@@ -13,6 +13,10 @@ use crate::analysis::seams::{
 use crate::analysis::test_grip_evidence::{
     RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence, TestTargetEvidence,
 };
+use crate::analysis_outcome::{
+    AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome, AnalysisOutcomeCounts,
+    AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind, AnalysisStage,
+};
 use crate::app::{CheckInput, CheckOutput, Mode};
 use crate::config::RiprConfig;
 use crate::domain::{
@@ -419,7 +423,7 @@ fn badge_native_json_uses_snake_case_schema_version_and_all_required_fields() {
     let summary = ripr_badge_summary(&output, BadgePolicy::default());
     let json = render_native_json(&summary);
 
-    assert!(json.contains("\"schema_version\": \"0.7\""));
+    assert!(json.contains("\"schema_version\": \"0.8\""));
     assert!(!json.contains("\"schemaVersion\""));
     // Diff-scoped badges carry no public projection.
     assert!(!json.contains("\"public_projection\""));
@@ -1682,6 +1686,50 @@ fn clean_rust_diff_zero_findings_no_preview_is_pass_green() {
 }
 
 #[test]
+fn incomplete_zero_finding_diff_is_not_a_green_badge() -> Result<(), String> {
+    let mut output = check_output(Vec::new());
+    output.analysis_outcome = Some(incomplete_outcome()?);
+
+    let summary = ripr_badge_summary(&output, BadgePolicy::default());
+    assert_eq!(summary.status, BadgeStatus::Warn);
+    assert_eq!(summary.color, "yellow");
+    assert_eq!(summary.message, "analysis-incomplete: unsupported_input");
+
+    let rendered = render_native_json(&summary);
+    let value: serde_json::Value = serde_json::from_str(&rendered)
+        .map_err(|error| format!("badge JSON should parse: {error}"))?;
+    assert_eq!(value["analysis_complete"], false);
+    assert_eq!(value["analysis_outcome"]["kind"], "unsupported_input");
+    assert_eq!(
+        value["analysis_outcome"]["limitations"][0]["kind"],
+        "unresolved_conflict_markers"
+    );
+    let shields: serde_json::Value = serde_json::from_str(&render_shields_json(&summary))
+        .map_err(|error| format!("Shields JSON should parse: {error}"))?;
+    assert_eq!(shields["message"], "analysis-incomplete: unsupported_input");
+    assert_eq!(shields["color"], "yellow");
+    Ok(())
+}
+
+fn incomplete_outcome() -> Result<AnalysisOutcome, String> {
+    let recovery = AnalysisRecovery::new(
+        AnalysisRecoveryKind::ResolveConflicts,
+        "resolve conflict markers before rerunning analysis",
+    )?;
+    let limitation = AnalysisLimitation::new(
+        AnalysisLimitationKind::UnresolvedConflictMarkers,
+        AnalysisStage::DiffParse,
+        recovery,
+    );
+    AnalysisOutcome::new(
+        AnalysisOutcomeKind::UnsupportedInput,
+        Default::default(),
+        AnalysisOutcomeCounts::default(),
+        vec![limitation],
+    )
+}
+
+#[test]
 fn typescript_disabled_advisory_downgrades_badge_from_pass_to_warn() {
     // Direction 2: diff contains a TypeScript file with the adapter NOT enabled.
     // Badge must be amber/warn even though there are 0 findings; message names
@@ -1776,14 +1824,14 @@ fn typescript_disabled_with_rust_findings_keeps_warn_and_names_skip() {
 }
 
 #[test]
-fn native_json_schema_version_is_0_7() {
+fn native_json_schema_version_is_0_8() {
     let output = check_output(vec![]);
     let summary = ripr_badge_summary(&output, BadgePolicy::default());
     let json = render_native_json(&summary);
 
     assert!(
-        json.contains("\"schema_version\": \"0.7\""),
-        "schema_version must be 0.7 after public_projection addition"
+        json.contains("\"schema_version\": \"0.8\""),
+        "schema_version must be 0.8 after typed diff outcome addition"
     );
 }
 

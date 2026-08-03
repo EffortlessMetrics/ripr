@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use crate::analysis_outcome::AnalysisOutcome;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BadgeKind {
     /// Counts unsuppressed static exposure gaps only.
@@ -152,6 +154,9 @@ pub struct BadgeSummary {
     /// closed public state and the six required sidecar fields, and the
     /// summary's `message` / `status` / `color` are projected from it.
     pub projection: Option<super::public_projection::PublicBadgeProjection>,
+    /// Typed diff completeness and limitation facts. `None` is expected for
+    /// repo-scoped badges that have no diff denominator.
+    pub analysis_outcome: Option<AnalysisOutcome>,
 }
 
 /// The schema_version of the native badge JSON. Bumping it is a public
@@ -165,8 +170,9 @@ pub struct BadgeSummary {
 /// `public_projection` object (RIPR-SPEC-0066): the closed public badge
 /// state plus the `run_status`, `generated_at`, `actionable_count`,
 /// `limited_reason`, `stale_age_secs`, and `source_report` sidecar fields,
-/// present only on repo-scoped public badges.
-pub const BADGE_SCHEMA_VERSION: &str = "0.7";
+/// present only on repo-scoped public badges. v0.8 adds the typed diff
+/// analysis outcome and completeness state for diff-scoped badges.
+pub const BADGE_SCHEMA_VERSION: &str = "0.8";
 
 /// All test-efficiency reason strings the badge JSON reports as zero
 /// defaults until later PRs read the test-efficiency report. The order

@@ -8,7 +8,9 @@ fn render_check_dispatches_badge_json_format() -> Result<(), String> {
     let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
     let rendered = render_check(&output, &OutputFormat::BadgeJson)?;
 
-    assert!(rendered.contains("\"schema_version\": \"0.7\""));
+    assert!(rendered.contains("\"schema_version\": \"0.8\""));
+    assert!(rendered.contains("\"analysis_complete\": null"));
+    assert!(rendered.contains("\"analysis_outcome\": null"));
     // Diff-scoped badges never carry a public projection.
     assert!(!rendered.contains("\"public_projection\""));
     assert!(rendered.contains("\"kind\": \"ripr\""));
@@ -75,7 +77,9 @@ fn render_check_repo_badge_json_paints_scope_repo() -> Result<(), String> {
     let output = check_output_with_temp_seam_workspace(vec![sample_finding("src/lib.rs", 1)])?;
     let rendered = render_check(&output, &OutputFormat::RepoBadgeJson)?;
 
-    assert!(rendered.contains("\"schema_version\": \"0.7\""));
+    assert!(rendered.contains("\"schema_version\": \"0.8\""));
+    assert!(rendered.contains("\"analysis_complete\": null"));
+    assert!(rendered.contains("\"analysis_outcome\": null"));
     assert!(rendered.contains("\"scope\": \"repo\""));
     assert!(rendered.contains("\"basis\": \"canonical_actionable_gap\""));
     assert!(!rendered.contains("\"scope\": \"diff\""));

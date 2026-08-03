@@ -47,7 +47,7 @@ map is:
 | `ripr agent status` | `schema_version` | `0.1` |
 | `ripr agent review-summary` | `schema_version` | `0.1` |
 | `ripr receipt write/check` | `schema_version` | `0.1` |
-| badge JSON | `schema_version` | `0.7` |
+| badge JSON | `schema_version` | `0.8` |
 | `ripr cache status --json` | `schema_version` | `0.1` |
 
 Bump rules below apply per contract: a breaking change to one family bumps
@@ -1528,11 +1528,11 @@ ripr check --format repo-badge-plus-json
 ripr check --format repo-badge-json --gap-ledger target/ripr/reports/gap-decision-ledger.json
 ```
 
-Native schema `0.7`:
+Native schema `0.8`:
 
 ```json
 {
-  "schema_version": "0.7",
+  "schema_version": "0.8",
   "kind": "ripr",
   "scope": "repo",
   "basis": "canonical_actionable_gap",
@@ -1540,6 +1540,8 @@ Native schema `0.7`:
   "message": "0 actionable",
   "status": "pass",
   "color": "brightgreen",
+  "analysis_complete": null,
+  "analysis_outcome": null,
   "counts": {
     "unsuppressed_exposure_gaps": 0,
     "unsuppressed_test_efficiency_findings": 0,
@@ -1587,12 +1589,15 @@ Native schema `0.7`:
 
 Field contract:
 
-- `schema_version` — currently `"0.7"`. `0.2` added `scope`; `0.3` adds
+- `schema_version` — currently `"0.8"`. `0.2` added `scope`; `0.3` adds
   `basis` and `counts.analyzed_seams`; `0.4` adds
   `basis = "gap_decision_ledger"` and `counts.analyzed_gap_records`;
   `0.5` adds `basis = "canonical_actionable_gap"` for public repair-item
   projection; `0.6` adds `preview_skipped`; `0.7` adds the
-  `public_projection` object (RIPR-SPEC-0066) on repo-scoped public badges.
+  `public_projection` object (RIPR-SPEC-0066) on repo-scoped public badges;
+  `0.8` adds `analysis_complete` and typed `analysis_outcome` on diff-scoped
+  badges. Repo-scoped badges emit both fields as `null` because they do not
+  have a diff completeness denominator.
 - `kind` — `"ripr"` or `"ripr_plus"`.
 - `scope` — `"diff"` for PR/diff artifacts, `"repo"` for public repo
   baseline artifacts.
@@ -1631,6 +1636,15 @@ Field contract:
 - `preview_skipped` — (v0.6) array of preview-language adapter names detected
   in the diff but not enabled; a non-empty list means the result is not a
   clean Rust-grade result. Always present as an array (possibly empty).
+- `analysis_complete` — (v0.8) nullable Boolean derived from the typed
+  diff-scoped `analysis_outcome`; `false` means the badge is not a clean
+  result even when its finding count is zero, while `null` means the badge is
+  repo-scoped or otherwise has no diff outcome.
+- `analysis_outcome` — (v0.8) nullable typed `AnalysisOutcome` DTO for
+  diff-scoped badges. It preserves the producer outcome kind, counts,
+  limitations, recovery routes, and semantic input identity. An incomplete
+  outcome downgrades a pass/green diff badge to warning/yellow and names the
+  outcome kind in `message`; an existing failure remains a failure.
 - `public_projection` — (v0.7) present only on repo-scoped public badges
   (`canonical_actionable_gap` or `gap_decision_ledger` basis). The
   RIPR-SPEC-0066 projection of the badge into one closed public state plus
@@ -1826,6 +1840,13 @@ Configured severity maps into SARIF as:
 
 SARIF v1 does not emit `level: "error"`. CI blocking is a separate opt-in
 policy decision, not a property of the static SARIF renderer.
+
+Diff-scoped SARIF also carries additive run-level `properties` when the
+producer supplies an `AnalysisOutcome`: `run_status` is `"complete"` or
+`"incomplete"`, `analysis_complete` is the derived Boolean, and
+`analysis_outcome` is the typed DTO. These properties keep an empty `results`
+array from being misread as a clean analysis. Repo-scoped seam SARIF retains
+its existing limitation properties and does not invent a diff outcome.
 
 Every result carries:
 

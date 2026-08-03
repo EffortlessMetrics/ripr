@@ -39,9 +39,10 @@ completeness flag.
 ## PR boundary
 
 PR A of #2829 owns parser-to-pipeline, human, JSON, and status projection plus
-complete-versus-limited zero-result parity. SARIF, badge, gate, generated-CI,
-LSP, agent, and review projections are the serial PR-B follow-up and remain
-unclaimed until they consume this DTO.
+complete-versus-limited zero-result parity. PR-B1 owns the additive SARIF
+run-level disclosure and diff-scoped native/Shields badge downgrade. Gate,
+generated-CI, LSP, agent, and review projections remain unclaimed until later
+serial PR-B slices consume this DTO.
 
 ## Non-Goals
 
@@ -59,13 +60,20 @@ projection does not analyze those regions.
 - human and JSON output carry the same limitation kind and recovery route;
 - the outcome input identity is stable for identical diff bytes and does not
   contain an absolute checkout path;
-- PR-B surfaces remain explicitly unclaimed until their own parity fixtures
-  land.
+- SARIF and diff-scoped badge output disclose an incomplete zero-result run;
+  repo-scoped badges retain `analysis_complete = null` and
+  `analysis_outcome = null` because no diff denominator exists.
+- Gate, generated-CI, LSP, agent, and review surfaces remain explicitly
+  unclaimed until their own parity fixtures land.
 
 Current PR-A proof is anchored by
 `analysis::pipeline::tests::diff_pipeline_projects_parser_limitation_and_distinguishes_complete_zero`
 and
 `output::json::tests::typed_incomplete_outcome_matches_human_and_json_projection`.
+PR-B1 adds
+`output::sarif::tests::sarif_discloses_incomplete_zero_finding_outcome_at_run_level`
+and
+`output::badge::tests::incomplete_zero_finding_diff_is_not_a_green_badge`.
 
 ## Required Evidence
 
@@ -73,13 +81,17 @@ and
 - complete zero-result and incomplete zero-result fixtures remain distinct;
 - human and JSON projections disclose the same typed kind and recovery route;
 - stable outcome identity excludes absolute checkout paths;
-- PR-B projections remain explicitly unclaimed.
+- SARIF run-level and diff-scoped badge projections disclose the typed outcome
+  and fail closed for incomplete zero-result input.
+- Gate, generated-CI, LSP, agent, and review projections remain explicitly
+  unclaimed.
 
 ## Test Mapping
 
 The focused pipeline and JSON/human parity tests above cover limitation
 propagation, complete-versus-incomplete zero-result behavior, and shared
-projection facts. The fixture goldens under `fixtures/` cover the additive
+projection facts. PR-B1's focused SARIF and badge fixtures cover the
+incomplete zero-result downgrade and run-level disclosure. The fixture goldens under `fixtures/` cover the additive
 JSON, human, and changelog output projection across the existing language and
 edge-case corpus; `cargo xtask goldens check` is the drift gate.
 
@@ -90,7 +102,9 @@ The producer contract is implemented in
 `crates/ripr/src/analysis/` and `crates/ripr/src/analysis/pipeline.rs`.
 Human rendering is in `crates/ripr/src/output/human.rs`, while JSON/status
 projection is in `crates/ripr/src/output/json/` and the related output
-builders. `docs/OUTPUT_SCHEMA.md` records the wire shape.
+builders. PR-B1 projects the DTO in `crates/ripr/src/output/sarif.rs` and
+`crates/ripr/src/output/badge/`. `docs/OUTPUT_SCHEMA.md` records the wire
+shape.
 
 ## Metrics
 

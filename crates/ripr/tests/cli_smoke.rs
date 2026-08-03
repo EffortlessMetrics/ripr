@@ -3075,7 +3075,7 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.7""#));
+    assert!(stdout.contains(r#""schema_version": "0.8""#));
     // Diff-scoped badge JSON never carries a public projection.
     assert!(!stdout.contains(r#""public_projection""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
@@ -5746,7 +5746,7 @@ fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.7""#));
+    assert!(stdout.contains(r#""schema_version": "0.8""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
@@ -5848,7 +5848,7 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.7""#));
+    assert!(stdout.contains(r#""schema_version": "0.8""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
@@ -5921,7 +5921,7 @@ fn check_repo_badge_json_can_use_gap_ledger_targets() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.7""#));
+    assert!(stdout.contains(r#""schema_version": "0.8""#));
     assert!(stdout.contains(r#""basis": "gap_decision_ledger""#));
     // The gap-ledger repo badge is projected into the closed public vocabulary.
     assert!(stdout.contains(r#""message": "1 actionable""#));
@@ -5977,7 +5977,7 @@ fn check_repo_badge_plus_json_emits_repo_scope_metadata() -> Result<(), String> 
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.7""#));
+    assert!(stdout.contains(r#""schema_version": "0.8""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));

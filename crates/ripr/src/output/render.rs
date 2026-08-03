@@ -378,6 +378,7 @@ fn missing_test_efficiency_badge_summary(
         warnings: vec![warning],
         preview_skipped: Vec::new(),
         projection: None,
+        analysis_outcome: None,
     }
 }
 

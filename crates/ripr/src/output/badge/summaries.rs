@@ -4,6 +4,7 @@ use crate::analysis::SeamGripClassCounts;
 use crate::analysis::canonical_gap::canonical_gap_identities;
 #[cfg(test)]
 use crate::analysis::seams::SeamGripClass;
+use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::CheckOutput;
 #[cfg(test)]
 use crate::config::{ConfigSeverity, RiprConfig};
@@ -49,6 +50,37 @@ fn preview_skip_status_color_message(
     let names = preview_skipped.join(", ");
     let message = format!("preview-skipped: {names}");
     (BadgeStatus::Warn, "yellow", message)
+}
+
+pub(super) fn apply_analysis_outcome_disclosure(
+    source: Option<&AnalysisOutcome>,
+    status: BadgeStatus,
+    color: &'static str,
+    message: String,
+) -> (BadgeStatus, &'static str, String, Option<AnalysisOutcome>) {
+    let analysis_outcome = source.cloned();
+    let Some(outcome) = analysis_outcome.as_ref() else {
+        return (status, color, message, None);
+    };
+    if outcome.kind.is_complete() {
+        return (status, color, message, analysis_outcome);
+    }
+
+    let final_color = if status == BadgeStatus::Pass {
+        "yellow"
+    } else {
+        color
+    };
+    (
+        if status == BadgeStatus::Fail {
+            BadgeStatus::Fail
+        } else {
+            BadgeStatus::Warn
+        },
+        final_color,
+        format!("analysis-incomplete: {}", outcome.kind.as_str()),
+        analysis_outcome,
+    )
 }
 
 /// Builds the `ripr` badge summary from a `CheckOutput`, applying any
@@ -134,20 +166,21 @@ pub fn ripr_badge_summary_with_suppressions(
     // to warn/yellow and name the skipped languages in the message so the
     // consumer has an actionable signal without reading full JSON.
     let preview_skipped = collect_preview_skipped(output);
-    let (final_status, final_color, final_message) =
-        if !preview_skipped.is_empty() && status == BadgeStatus::Pass {
-            // Only downgrade from Pass; if there are already real findings the
-            // headline already reflects non-pass, and we just annotate the skip.
-            let (ds, dc, dm) = preview_skip_status_color_message(&preview_skipped);
-            (ds, dc, dm)
-        } else if !preview_skipped.is_empty() {
-            // Already not pass (there are real findings). Keep existing
-            // status/color but override message to name the skip.
-            let (_, _, dm) = preview_skip_status_color_message(&preview_skipped);
-            (status, color, dm)
-        } else {
-            (status, color, headline.to_string())
-        };
+    let (status, color, message) = if !preview_skipped.is_empty() && status == BadgeStatus::Pass {
+        // Only downgrade from Pass; if there are already real findings the
+        // headline already reflects non-pass, and we just annotate the skip.
+        let (ds, dc, dm) = preview_skip_status_color_message(&preview_skipped);
+        (ds, dc, dm)
+    } else if !preview_skipped.is_empty() {
+        // Already not pass (there are real findings). Keep existing
+        // status/color but override message to name the skip.
+        let (_, _, dm) = preview_skip_status_color_message(&preview_skipped);
+        (status, color, dm)
+    } else {
+        (status, color, headline.to_string())
+    };
+    let (final_status, final_color, final_message, analysis_outcome) =
+        apply_analysis_outcome_disclosure(output.analysis_outcome.as_ref(), status, color, message);
 
     BadgeSummary {
         kind: BadgeKind::Ripr,
@@ -162,6 +195,7 @@ pub fn ripr_badge_summary_with_suppressions(
         warnings,
         preview_skipped,
         projection: None,
+        analysis_outcome,
     }
 }
 
@@ -259,6 +293,7 @@ pub(crate) fn ripr_seam_badge_summary_from_counts(
         warnings: Vec::new(),
         preview_skipped: Vec::new(),
         projection: None,
+        analysis_outcome: None,
     }
 }
 
@@ -335,6 +370,7 @@ pub(crate) fn ripr_canonical_actionable_gap_badge_summary(
         warnings: Vec::new(),
         preview_skipped: Vec::new(),
         projection: None,
+        analysis_outcome: None,
     }
 }
 
@@ -389,6 +425,7 @@ pub(crate) fn repo_gap_ledger_badge_summary_from_json(
         warnings: Vec::new(),
         preview_skipped: Vec::new(),
         projection: None,
+        analysis_outcome: None,
     })
 }
 

@@ -6507,6 +6507,8 @@ spec = "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md"
 tests = [
   "crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_projects_parser_limitation_and_distinguishes_complete_zero",
   "crates/ripr/src/output/json/mod.rs::tests::typed_incomplete_outcome_matches_human_and_json_projection",
+  "crates/ripr/src/output/sarif.rs::tests::sarif_discloses_incomplete_zero_finding_outcome_at_run_level",
+  "crates/ripr/src/output/badge/tests.rs::tests::incomplete_zero_finding_diff_is_not_a_green_badge",
 ]
 code = [
   "crates/ripr/src/analysis_outcome.rs",
@@ -6516,10 +6518,16 @@ code = [
   "crates/ripr/src/app.rs",
   "crates/ripr/src/output/human.rs",
   "crates/ripr/src/output/json/report.rs",
+  "crates/ripr/src/output/sarif.rs",
+  "crates/ripr/src/output/badge/model.rs",
+  "crates/ripr/src/output/badge/render.rs",
+  "crates/ripr/src/output/badge/summaries.rs",
+  "crates/ripr/src/output/badge/test_efficiency.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/BADGE_POLICY.md",
 ]
 metrics = [
   "analysis_outcome_complete_zero_distinguishable",

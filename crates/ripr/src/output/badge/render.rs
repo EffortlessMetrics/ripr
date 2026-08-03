@@ -22,6 +22,25 @@ pub fn render_native_json(summary: &BadgeSummary) -> String {
     ));
     out.push_str(&format!("  \"status\": \"{}\",\n", summary.status.as_str()));
     out.push_str(&format!("  \"color\": \"{}\",\n", summary.color));
+    match &summary.analysis_outcome {
+        Some(outcome) => {
+            out.push_str(&format!(
+                "  \"analysis_complete\": {},\n",
+                outcome.kind.is_complete()
+            ));
+            let rendered = serde_json::to_string(outcome).unwrap_or_else(|error| {
+                format!(
+                    "{{\"serialization_error\":\"{}\"}}",
+                    json_escape(&error.to_string())
+                )
+            });
+            out.push_str(&format!("  \"analysis_outcome\": {rendered},\n"));
+        }
+        None => {
+            out.push_str("  \"analysis_complete\": null,\n");
+            out.push_str("  \"analysis_outcome\": null,\n");
+        }
+    }
 
     let counts = &summary.counts;
     out.push_str("  \"counts\": {\n");
@@ -130,7 +149,8 @@ pub fn render_native_json(summary: &BadgeSummary) -> String {
     // Rust-grade result. Non-empty only when at least one preview-language
     // adapter was detected but NOT enabled (v0.6 contract field).
     //
-    // The `public_projection` object (v0.7) follows only on repo-scoped public
+    // The typed diff outcome fields (v0.8) precede `preview_skipped`. The
+    // `public_projection` object (v0.7) follows only on repo-scoped public
     // badges; when present `preview_skipped` keeps a trailing comma and the
     // projection closes the object.
     out.push_str("  \"preview_skipped\": [");

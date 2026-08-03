@@ -441,7 +441,7 @@ output boundary; it is never the source of truth.
 
 ```json
 {
-  "schema_version": "0.7",
+  "schema_version": "0.8",
   "kind": "ripr",
   "scope": "repo",
   "basis": "canonical_actionable_gap",
@@ -449,6 +449,8 @@ output boundary; it is never the source of truth.
   "message": "0 actionable",
   "status": "pass",
   "color": "brightgreen",
+  "analysis_complete": null,
+  "analysis_outcome": null,
   "counts": {
     "unsuppressed_exposure_gaps": 0,
     "unsuppressed_test_efficiency_findings": 0,
@@ -507,7 +509,9 @@ change and must be called out in the PR. `0.3` adds `basis` and
 preview-language diff was not analyzed and the badge is not a clean
 Rust-grade result (see Preview-language honesty below); `0.7` adds the
 `public_projection` object on repo-scoped public badges (see Public badge
-projection below).
+projection below); `0.8` adds nullable `analysis_complete` and typed
+`analysis_outcome` fields for diff-scoped badges, downgrading incomplete
+zero-finding input from pass/green to warn/yellow.
 
 ### Public badge projection (RIPR-SPEC-0066)
 

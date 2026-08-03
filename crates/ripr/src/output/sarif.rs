@@ -7,6 +7,7 @@
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::SeamLimitInfo;
 use crate::analysis::seams::SeamGripClass;
+use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::CheckOutput;
 use crate::config::{ConfigSeverity, RiprConfig};
 use crate::domain::{
@@ -48,7 +49,7 @@ pub(crate) fn render_findings_sarif(
         .iter()
         .filter_map(|finding| finding_result(finding, config, suppressions, &today))
         .collect::<Vec<_>>();
-    sarif_document("finding", rules, results)
+    sarif_document("finding", rules, results, output.analysis_outcome.as_ref())
 }
 
 /// Render repo-scoped classified seams as SARIF.
@@ -114,7 +115,39 @@ fn sarif_document_repo_seam(
     json_pretty(document)
 }
 
-fn sarif_document(scope: &str, rules: Vec<Value>, results: Vec<Value>) -> String {
+fn sarif_document(
+    scope: &str,
+    rules: Vec<Value>,
+    results: Vec<Value>,
+    analysis_outcome: Option<&AnalysisOutcome>,
+) -> String {
+    let mut properties = Map::new();
+    properties.insert("tool".to_string(), json!("ripr"));
+    properties.insert(
+        "schema_version".to_string(),
+        json!(RIPR_SARIF_SCHEMA_VERSION),
+    );
+    properties.insert("scope".to_string(), json!(scope));
+    if let Some(outcome) = analysis_outcome {
+        properties.insert(
+            "run_status".to_string(),
+            json!(if outcome.kind.is_complete() {
+                "complete"
+            } else {
+                "incomplete"
+            }),
+        );
+        properties.insert(
+            "analysis_complete".to_string(),
+            json!(outcome.kind.is_complete()),
+        );
+        properties.insert(
+            "analysis_outcome".to_string(),
+            serde_json::to_value(outcome).unwrap_or_else(
+                |error| json!({"serialization_error": escape_message(&error.to_string())}),
+            ),
+        );
+    }
     let document = json!({
         "$schema": SARIF_SCHEMA,
         "version": SARIF_VERSION,
@@ -129,11 +162,7 @@ fn sarif_document(scope: &str, rules: Vec<Value>, results: Vec<Value>) -> String
                     }
                 },
                 "results": results,
-                "properties": {
-                    "tool": "ripr",
-                    "schema_version": RIPR_SARIF_SCHEMA_VERSION,
-                    "scope": scope
-                }
+                "properties": properties
             }
         ]
     });
@@ -832,6 +861,10 @@ mod tests {
     use crate::analysis::test_grip_evidence::{
         RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence,
     };
+    use crate::analysis_outcome::{
+        AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome, AnalysisOutcomeCounts,
+        AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind, AnalysisStage,
+    };
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, FindingCanonicalGap, FlowSinkFact, FlowSinkKind,
@@ -858,6 +891,30 @@ mod tests {
         assert_eq!(
             result["partialFingerprints"]["riprFingerprintV1"],
             "ripr.finding.weakly_exposed|finding:discount|probe:src/pricing.rs:88:predicate|src/pricing.rs|88"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sarif_discloses_incomplete_zero_finding_outcome_at_run_level() -> Result<(), String> {
+        let mut output = sample_output();
+        output.findings.clear();
+        output.analysis_outcome = Some(incomplete_outcome()?);
+
+        let rendered = render_findings_sarif(&output, &RiprConfig::default(), &[]);
+        let sarif = parse_json(&rendered)?;
+        let props = &sarif["runs"][0]["properties"];
+
+        assert_eq!(
+            sarif["runs"][0]["results"].as_array().map(Vec::len),
+            Some(0)
+        );
+        assert_eq!(props["run_status"], "incomplete");
+        assert_eq!(props["analysis_complete"], false);
+        assert_eq!(props["analysis_outcome"]["kind"], "unsupported_input");
+        assert_eq!(
+            props["analysis_outcome"]["limitations"][0]["kind"],
+            "unresolved_conflict_markers"
         );
         Ok(())
     }
@@ -1625,6 +1682,24 @@ weakly_gripped = "note"
             analysis_outcome: None,
             partial_scope: None,
         }
+    }
+
+    fn incomplete_outcome() -> Result<AnalysisOutcome, String> {
+        let recovery = AnalysisRecovery::new(
+            AnalysisRecoveryKind::ResolveConflicts,
+            "resolve conflict markers before rerunning analysis",
+        )?;
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::UnresolvedConflictMarkers,
+            AnalysisStage::DiffParse,
+            recovery,
+        );
+        AnalysisOutcome::new(
+            AnalysisOutcomeKind::UnsupportedInput,
+            Default::default(),
+            AnalysisOutcomeCounts::default(),
+            vec![limitation],
+        )
     }
 
     fn sample_finding() -> Finding {
