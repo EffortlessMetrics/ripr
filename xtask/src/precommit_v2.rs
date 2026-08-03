@@ -1241,15 +1241,20 @@ mod tests {
 
     #[test]
     fn merge_base_falls_back_to_local_main_and_fails_closed_without_one() -> Result<(), String> {
-        let fixture = TestRepo::new()?;
-        fixture.write("tracked.txt", "base\n")?;
-        fixture.git(&["add", "tracked.txt"])?;
-        fixture.git(&["commit", "-m", "base"])?;
-        let (base_ref, base_sha) =
-            resolve_merge_base(&fixture.path).map_err(|error| error.message)?;
-        require(base_ref == "main", "local main fallback was not selected")?;
-        require(is_sha(&base_sha), "local main fallback was not a SHA")?;
+        {
+            let fixture = TestRepo::new()?;
+            fixture.write("tracked.txt", "base\n")?;
+            fixture.git(&["add", "tracked.txt"])?;
+            fixture.git(&["commit", "-m", "base"])?;
+            let (base_ref, base_sha) =
+                resolve_merge_base(&fixture.path).map_err(|error| error.message)?;
+            require(base_ref == "main", "local main fallback was not selected")?;
+            require(is_sha(&base_sha), "local main fallback was not a SHA")?;
+        }
 
+        // Each fixture holds the process-wide read guard. Drop the first one
+        // before creating the second so a queued cwd writer cannot block this
+        // test's next read acquisition.
         let empty = TestRepo::new()?;
         let error = resolve_merge_base(&empty.path)
             .err()
@@ -1451,7 +1456,7 @@ mod tests {
         // directory. Keep the process cwd stable while those commands run;
         // a concurrent cwd-writing test can otherwise delete the inherited
         // directory between spawn and cargo metadata initialization.
-        _cwd_guard: std::sync::RwLockReadGuard<'static, ()>,
+        _cwd_guard: crate::CwdReadGuard<'static>,
     }
 
     impl TestRepo {
