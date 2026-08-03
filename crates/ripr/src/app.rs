@@ -13,7 +13,9 @@ mod explain;
 pub(crate) mod impacted_evidence;
 mod navigation;
 pub(crate) mod pr_evidence;
-pub(crate) mod pr_summary;
+/// Shared PR-evidence summary projection used by the `ripr` binary and the
+/// compatibility `xtask` route.
+pub mod pr_summary;
 pub(crate) mod receipt;
 pub(crate) mod ripr_plus;
 mod selector;

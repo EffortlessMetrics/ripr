@@ -16,7 +16,9 @@ mod render;
 mod util;
 
 use io::load_json;
-use json::{build_pr_evidence_summary, render_pr_evidence_summary_json};
+pub use json::{build_pr_evidence_summary, render_pr_evidence_summary_json};
+pub use model::PrEvidenceSummaryJson;
+pub use render::render_evidence_summary_md;
 use render::{SummaryRenderInput, render_pr_evidence_summary};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -97,10 +99,6 @@ fn write_evidence_summary_pair(repo: &Path, options: &SummaryOptions) -> Result<
     write_parented_file(&md_path, PR_EVIDENCE_SUMMARY_MD, md_text.as_bytes())?;
     println!("Wrote {PR_EVIDENCE_SUMMARY_MD}");
     Ok(())
-}
-
-fn render_evidence_summary_md(s: &model::PrEvidenceSummaryJson) -> String {
-    render::render_evidence_summary_md(s)
 }
 
 fn summary_text(repo: &Path) -> String {

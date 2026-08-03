@@ -96,8 +96,10 @@ only: `exposed`, `weakly_exposed`, `reachable_unrevealed`,
 `static_unknown`. The forbidden runtime-mutation words (`killed`,
 `survived`, `untested`, `proven`, `adequate`) are not used.
 
-`run_status` values: `complete`, `seam_limit_applied`,
-`diff_complete_full_repo_limited`, `unknown`.
+`run_status` values: `complete`, `incomplete`, `seam_limit_applied`,
+`diff_complete_full_repo_limited`, `unknown`. When the diff report carries
+`analysis_outcome.analysis_complete: false`, the summary uses `incomplete`
+even if a legacy run-status field says `complete`.
 
 ## JSON Shape
 
@@ -109,6 +111,8 @@ Schema version `0.1`. Stable field order.
   "kind": "pr_evidence_summary",
   "tool": "ripr",
   "run_status": "diff_complete_full_repo_limited",
+  "analysis_complete": null,
+  "analysis_outcome": null,
   "changed_surfaces": 3,
   "gaps": {
     "total_actionable": 2,
@@ -177,6 +181,8 @@ When there are no limitations, `top_limitation` is omitted entirely.
 | `kind` | string | static | Always `"pr_evidence_summary"`. |
 | `tool` | string | static | Always `"ripr"`. |
 | `run_status` | string | diff-report then repo-exposure | `"unknown"` when both missing. |
+| `analysis_complete` | boolean or null | diff-report `analysis_outcome.analysis_complete` | Preserves the typed producer fact; null when the envelope is absent. `false` makes `run_status` `incomplete`. |
+| `analysis_outcome` | object or null | diff-report `analysis_outcome` | Preserves typed kind, limitations, and recovery routes; never reconstructed from empty findings. |
 | `changed_surfaces` | u64 or `"not_available"` | diff-report `summary.changed_files` | `"not_available"` when artifact missing. |
 | `gaps.total_actionable` | u64 or `"not_available"` | gap-ledger `summary.repairable_total` | |
 | `gaps.total_static_limitation` | u64 or `"not_available"` | gap-ledger `summary.static_limitation_total` | |
@@ -200,9 +206,10 @@ When there are no limitations, `top_limitation` is omitted entirely.
 
 ## Required Evidence
 
-- Unit tests in `xtask/src/reports/pr_evidence_summary/json.rs`:
+- Unit tests in `crates/ripr/src/app/pr_summary/json.rs`:
   - `missing_all_artifacts_yields_unknown_run_status`
   - `present_top_gap_populates_top_repair`
+  - `typed_incomplete_diff_outcome_is_preserved_and_not_reported_complete`
   - `gap_ledger_counts_are_surfaced`
   - `repo_exposure_limitations_are_aggregated`
   - `receipt_status_missing_all_artifacts_is_not_available`
@@ -217,12 +224,10 @@ When there are no limitations, `top_limitation` is omitted entirely.
   - `is_verify_failure_result_matches_expected_tokens`
 - Unit test in `crates/ripr/src/output/gap_decision_ledger.rs` (#1130 honesty guard):
   - `ledger_summary_does_not_emit_fabricated_receipt_state_counts`
-- Integration tests in `xtask/src/reports/pr_evidence_summary.rs`:
-  - `parse_accepts_baseline_path`
-  - `parse_rejects_baseline_without_path`
-  - `evidence_summary_pair_missing_all_shows_explicit_states`
-  - `evidence_summary_pair_present_top_gap_is_copyable`
-  - `evidence_summary_pair_attempt_ledger_verify_failed_is_nonzero` (integration non-zero proof, PR7 of #1123)
+- CLI integration coverage includes
+  `crates/ripr/tests/cli_smoke.rs::pr_summary_help_exits_cleanly`; the command
+  remains the binary-first surface and the xtask route is only a compatibility
+  wrapper.
 
 ## Non-Goals
 
@@ -270,15 +275,23 @@ integer values computed from the before/after snapshots.
 
 ## Implementation Mapping
 
-- `xtask/src/reports/pr_evidence_summary.rs` — top-level module: `SummaryOptions`, `parse_options`, `write_evidence_summary_pair` (loads attempt ledger), `render_evidence_summary_md`, `ATTEMPT_LEDGER_JSON` constant.
-- `xtask/src/reports/pr_evidence_summary/json.rs` — `build_pr_evidence_summary` (new `attempt_ledger_value` parameter), `count_verify_failed_from_attempt_ledger`, `is_verify_failure_result`, `render_pr_evidence_summary_json`.
-- `xtask/src/reports/pr_evidence_summary/model.rs` — `PrEvidenceSummaryJson`, `GapCounts`, `LimitationEntry`, `TopRepair`, `TopLimitation`, `U64OrNotAvailable`, `NullableU64`; updated `verify_failed_receipts` doc comment.
-- `xtask/src/reports/pr_evidence_summary/io.rs` — `load_json` (reused unchanged).
-- `xtask/src/reports/pr_evidence_summary/util.rs` — `value_path` helper (reused unchanged).
+- `crates/ripr/src/app/pr_summary/mod.rs` — binary command options and
+  artifact composition.
+- `crates/ripr/src/app/pr_summary/json.rs` — summary derivation and JSON
+  rendering, including typed incomplete-outcome preservation.
+- `crates/ripr/src/app/pr_summary/model.rs` — `PrEvidenceSummaryJson`,
+  `GapCounts`, limitation and receipt-status models.
+- `crates/ripr/src/app/pr_summary/render.rs` — Markdown summary rendering,
+  including typed outcome kind and recovery limitations.
+- `crates/ripr/src/output/gate.rs` and `gate/input.rs` — fail-closed gate and
+  baseline consumption of typed incomplete outcomes.
+- `xtask/src/reports/pr_evidence_summary.rs` and its `json.rs`/`model.rs`
+  modules — compatibility command kept behaviorally paired with the binary
+  summary, including typed outcome disclosure.
 - `docs/OUTPUT_SCHEMA.md` — `## PR Evidence Summary` section: updated field source for `verify_failed_receipts`.
 - `docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md` — this file.
 
 ## Metrics
 
 - `pr_evidence_summary_json_schema_version_present` — advisory: `schema_version == "0.1"` in each produced file.
-- `unit_test_pass_rate` for `xtask::reports::pr_evidence_summary` (existing CI gate).
+- `unit_test_pass_rate` for the `ripr` PR-summary and gate modules (existing CI gate).

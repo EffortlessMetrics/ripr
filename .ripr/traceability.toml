@@ -5106,22 +5106,27 @@ id = "RIPR-SPEC-0075"
 name = "pr evidence summary"
 spec = "docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md"
 tests = [
-  "xtask/src/reports/pr_evidence_summary/json.rs::tests::missing_all_artifacts_yields_unknown_run_status",
-  "xtask/src/reports/pr_evidence_summary/json.rs::tests::present_top_gap_populates_top_repair",
-  "xtask/src/reports/pr_evidence_summary/json.rs::tests::gap_ledger_counts_are_surfaced",
-  "xtask/src/reports/pr_evidence_summary/json.rs::tests::repo_exposure_limitations_are_aggregated",
-  "xtask/src/reports/pr_evidence_summary::tests::parse_accepts_baseline_path",
-  "xtask/src/reports/pr_evidence_summary::tests::parse_rejects_baseline_without_path",
-  "xtask/src/reports/pr_evidence_summary::tests::evidence_summary_pair_missing_all_shows_explicit_states",
-  "xtask/src/reports/pr_evidence_summary::tests::evidence_summary_pair_present_top_gap_is_copyable"
+  "crates/ripr/src/app/pr_summary/json.rs::tests::missing_all_artifacts_yields_unknown_run_status",
+  "crates/ripr/src/app/pr_summary/json.rs::tests::present_top_gap_populates_top_repair",
+  "crates/ripr/src/app/pr_summary/json.rs::tests::typed_incomplete_diff_outcome_is_preserved_and_not_reported_complete",
+  "crates/ripr/src/app/pr_summary/json.rs::tests::gap_ledger_counts_are_surfaced",
+  "crates/ripr/src/app/pr_summary/json.rs::tests::repo_exposure_limitations_are_aggregated",
+  "crates/ripr/src/app/pr_summary/mod.rs::tests::parse_accepts_baseline",
+  "crates/ripr/src/app/pr_summary/mod.rs::tests::parse_rejects_unknown_arg",
+  "crates/ripr/tests/cli_smoke.rs::pr_summary_help_exits_cleanly",
+  "xtask/src/reports/pr_evidence_summary/json.rs::tests::typed_incomplete_diff_outcome_is_preserved_and_not_reported_complete"
 ]
 fixtures = []
 code = [
+  "crates/ripr/src/app/pr_summary/mod.rs",
+  "crates/ripr/src/app/pr_summary/json.rs",
+  "crates/ripr/src/app/pr_summary/model.rs",
+  "crates/ripr/src/app/pr_summary/render.rs",
+  "crates/ripr/src/output/gate.rs",
+  "crates/ripr/src/output/gate/input.rs",
   "xtask/src/reports/pr_evidence_summary.rs",
   "xtask/src/reports/pr_evidence_summary/json.rs",
-  "xtask/src/reports/pr_evidence_summary/model.rs",
-  "xtask/src/reports/pr_evidence_summary/io.rs",
-  "xtask/src/reports/pr_evidence_summary/util.rs"
+  "xtask/src/reports/pr_evidence_summary/model.rs"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md",
@@ -6507,6 +6512,11 @@ spec = "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md"
 tests = [
   "crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_projects_parser_limitation_and_distinguishes_complete_zero",
   "crates/ripr/src/output/json/mod.rs::tests::typed_incomplete_outcome_matches_human_and_json_projection",
+  "crates/ripr/src/output/gate/tests.rs::tests::gate_fails_closed_on_typed_incomplete_analysis_outcome",
+  "crates/ripr/src/output/gate/tests.rs::tests::check_output_gap_ledger_preserves_incomplete_outcome_for_gate_consumers",
+  "crates/ripr/src/output/gate/tests.rs::tests::gate_gap_ledger_and_baseline_rejections_name_typed_outcome_kind",
+  "crates/ripr/src/output/gap_decision_ledger.rs::tests::records_source_preserves_incomplete_outcome_in_json_and_markdown",
+  "crates/ripr/src/app/pr_summary/json.rs::tests::typed_incomplete_diff_outcome_is_preserved_and_not_reported_complete",
   "crates/ripr/src/output/sarif.rs::tests::sarif_discloses_incomplete_zero_finding_outcome_at_run_level",
   "crates/ripr/src/output/badge/tests.rs::tests::incomplete_zero_finding_diff_is_not_a_green_badge",
 ]
@@ -6518,6 +6528,14 @@ code = [
   "crates/ripr/src/app.rs",
   "crates/ripr/src/output/human.rs",
   "crates/ripr/src/output/json/report.rs",
+  "crates/ripr/src/output/gate.rs",
+  "crates/ripr/src/output/gate/input.rs",
+  "crates/ripr/src/output/gap_decision_ledger.rs",
+  "crates/ripr/src/app/pr_summary/json.rs",
+  "crates/ripr/src/app/pr_summary/model.rs",
+  "crates/ripr/src/app/pr_summary/render.rs",
+  "xtask/src/reports/pr_evidence_summary/json.rs",
+  "xtask/src/reports/pr_evidence_summary.rs",
   "crates/ripr/src/output/sarif.rs",
   "crates/ripr/src/output/badge/model.rs",
   "crates/ripr/src/output/badge/render.rs",

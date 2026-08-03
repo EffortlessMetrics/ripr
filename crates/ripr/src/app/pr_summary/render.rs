@@ -343,11 +343,41 @@ fn value_at_path<'a>(value: Option<&'a Value>, path: &[&str]) -> Option<&'a Valu
 }
 
 /// Render the compact Markdown panel from the computed summary struct.
-pub(super) fn render_evidence_summary_md(s: &super::model::PrEvidenceSummaryJson) -> String {
+pub fn render_evidence_summary_md(s: &super::model::PrEvidenceSummaryJson) -> String {
     use super::model::{NullableU64, U64OrNotAvailable};
     let mut out = String::new();
     out.push_str("# PR Evidence Summary v1\n\n");
     out.push_str(&format!("**Run Status**: `{}`\n\n", s.run_status));
+    out.push_str(&format!(
+        "**Analysis Complete**: `{}`\n\n",
+        s.analysis_complete
+            .map_or_else(|| "not_available".to_string(), |value| value.to_string())
+    ));
+    if let Some(outcome) = &s.analysis_outcome {
+        let kind = outcome
+            .pointer("/outcome/kind")
+            .and_then(Value::as_str)
+            .unwrap_or("not_available");
+        out.push_str(&format!("**Analysis Outcome**: `{kind}`\n\n"));
+        if let Some(limitations) = outcome
+            .pointer("/outcome/limitations")
+            .and_then(Value::as_array)
+        {
+            out.push_str("### Analysis Limitations\n\n");
+            for limitation in limitations {
+                let limitation_kind = limitation
+                    .get("kind")
+                    .and_then(Value::as_str)
+                    .unwrap_or("not_available");
+                let recovery = limitation
+                    .pointer("/recovery/kind")
+                    .and_then(Value::as_str)
+                    .unwrap_or("not_available");
+                out.push_str(&format!("- `{limitation_kind}`; recovery: `{recovery}`\n"));
+            }
+            out.push('\n');
+        }
+    }
 
     let surfaces = match &s.changed_surfaces {
         U64OrNotAvailable::Value(n) => n.to_string(),

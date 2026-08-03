@@ -69,17 +69,26 @@ pub(super) fn read_gap_ledger_impl(
     // RIPR-PROP-0019 decision 5: a ledger disclosing a `limited_partial_scope`
     // producer run is not a valid gate input — fail closed rather than gating
     // on a partial denominator.
-    if let Ok(value) = serde_json::from_str::<Value>(&text)
-        && super::discloses_limited_partial_scope(&value)
-    {
-        config_errors.push(format!(
-            "required gap decision ledger input {} discloses a {} analysis run \
-             (gate_eligibility: {}); a partial denominator is never a gate input",
-            display_path(path),
-            crate::analysis::PartialDiffScope::RUN_STATUS,
-            crate::analysis::PartialDiffScope::GATE_ELIGIBILITY,
-        ));
-        return Some(Vec::new());
+    if let Ok(value) = serde_json::from_str::<Value>(&text) {
+        if super::discloses_limited_partial_scope(&value) {
+            config_errors.push(format!(
+                "required gap decision ledger input {} discloses a {} analysis run \
+                 (gate_eligibility: {}); a partial denominator is never a gate input",
+                display_path(path),
+                crate::analysis::PartialDiffScope::RUN_STATUS,
+                crate::analysis::PartialDiffScope::GATE_ELIGIBILITY,
+            ));
+            return Some(Vec::new());
+        }
+        if super::discloses_incomplete_analysis_outcome(&value) {
+            let kind = super::incomplete_analysis_outcome_kind(&value);
+            config_errors.push(format!(
+                "required gap decision ledger input {} discloses an incomplete analysis \
+                 outcome ({kind}); an incomplete denominator is never a gate input",
+                display_path(path),
+            ));
+            return Some(Vec::new());
+        }
     }
     match gap_decision_ledger::parse_gap_records_json(&text) {
         Ok(records) => {
@@ -249,6 +258,15 @@ pub(super) fn read_baseline_impl(
                     display_path(path),
                     crate::analysis::PartialDiffScope::RUN_STATUS,
                     crate::analysis::PartialDiffScope::GATE_ELIGIBILITY,
+                ));
+                return BaselineIndex::default();
+            }
+            if super::discloses_incomplete_analysis_outcome(&value) {
+                let kind = super::incomplete_analysis_outcome_kind(&value);
+                config_errors.push(format!(
+                    "baseline {} discloses an incomplete analysis outcome ({kind}); \
+                     an incomplete denominator is never a baseline input",
+                    display_path(path),
                 ));
                 return BaselineIndex::default();
             }

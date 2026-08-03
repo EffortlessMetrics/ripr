@@ -48,6 +48,7 @@ pub(crate) struct GapDecisionLedgerReport {
     generated_at: String,
     inputs: GapDecisionLedgerInputs,
     summary: GapDecisionLedgerSummary,
+    analysis_outcome: Option<Value>,
     records: Vec<GapRecord>,
     warnings: Vec<String>,
     limits: Vec<String>,
@@ -268,14 +269,20 @@ pub(crate) fn build_gap_decision_ledger_report(
     input: GapDecisionLedgerInput,
 ) -> GapDecisionLedgerReport {
     let mut warnings = Vec::new();
+    let mut analysis_outcome = None;
     let mut records = match input.records_json {
-        Ok(contents) => match parse_gap_decision_source(input.source_kind, &contents) {
-            Ok(records) => records,
-            Err(err) => {
-                warnings.push(format!("parse {} failed: {err}", input.records_path));
-                Vec::new()
+        Ok(contents) => {
+            analysis_outcome = serde_json::from_str::<Value>(&contents)
+                .ok()
+                .and_then(|value| value.get("analysis_outcome").cloned());
+            match parse_gap_decision_source(input.source_kind, &contents) {
+                Ok(records) => records,
+                Err(err) => {
+                    warnings.push(format!("parse {} failed: {err}", input.records_path));
+                    Vec::new()
+                }
             }
-        },
+        }
         Err(err) => {
             warnings.push(err);
             Vec::new()
@@ -309,6 +316,7 @@ pub(crate) fn build_gap_decision_ledger_report(
             records: input.records_path,
         },
         summary,
+        analysis_outcome,
         records,
         warnings,
         limits: vec![
@@ -337,6 +345,8 @@ pub(crate) fn render_gap_decision_ledger_json(
         generated_at: &'a str,
         inputs: &'a GapDecisionLedgerInputs,
         summary: &'a GapDecisionLedgerSummary,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        analysis_outcome: Option<&'a Value>,
         records: &'a [Value],
         warnings: &'a [String],
         limits: &'a [String],
@@ -351,6 +361,7 @@ pub(crate) fn render_gap_decision_ledger_json(
         generated_at: &report.generated_at,
         inputs: &report.inputs,
         summary: &report.summary,
+        analysis_outcome: report.analysis_outcome.as_ref(),
         records: &records,
         warnings: &report.warnings,
         limits: &report.limits,
@@ -391,6 +402,21 @@ pub(crate) fn render_gap_decision_ledger_markdown(report: &GapDecisionLedgerRepo
     out.push_str(&format!("Status: `{}`\n\n", md_inline(&report.status)));
     out.push_str(&format!("Root: `{}`\n\n", md_inline(&report.root)));
     out.push_str("Authority: gate-decision artifacts own pass/fail authority. This report is advisory projection input.\n\n");
+    if let Some(outcome) = &report.analysis_outcome {
+        let complete = outcome
+            .get("analysis_complete")
+            .and_then(Value::as_bool)
+            .map_or_else(|| "not_available".to_string(), |value| value.to_string());
+        let kind = outcome
+            .pointer("/outcome/kind")
+            .and_then(Value::as_str)
+            .unwrap_or("not_available");
+        out.push_str(&format!(
+            "Analysis complete: `{}`; analysis outcome: `{}`\n\n",
+            md_inline(&complete),
+            md_inline(kind)
+        ));
+    }
 
     out.push_str("## Summary\n\n");
     out.push_str(&format!("- Records: `{}`\n", report.summary.records_total));
@@ -2481,6 +2507,26 @@ mod tests {
                 .contains("Gate-decision artifacts remain the only configured pass/fail authority")
         );
         assert!(markdown.contains("AddOutputGolden"));
+        Ok(())
+    }
+
+    #[test]
+    fn records_source_preserves_incomplete_outcome_in_json_and_markdown() -> Result<(), String> {
+        let report = report_from_json(serde_json::json!({
+            "analysis_outcome": {
+                "analysis_complete": false,
+                "outcome": {"kind": "unsupported_input"}
+            },
+            "records": []
+        }));
+
+        let json = render_gap_decision_ledger_json(&report)?;
+        assert!(json.contains("\"analysis_complete\": false"));
+        assert!(json.contains("\"kind\": \"unsupported_input\""));
+
+        let markdown = render_gap_decision_ledger_markdown(&report);
+        assert!(markdown.contains("Analysis complete: `false`"));
+        assert!(markdown.contains("analysis outcome: `unsupported_input`"));
         Ok(())
     }
 

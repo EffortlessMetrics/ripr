@@ -14964,6 +14964,8 @@ JSON shape (schema version `0.1`):
   "kind": "pr_evidence_summary",
   "tool": "ripr",
   "run_status": "diff_complete_full_repo_limited",
+  "analysis_complete": null,
+  "analysis_outcome": null,
   "changed_surfaces": 3,
   "gaps": {
     "total_actionable": 2,
@@ -15020,6 +15022,8 @@ Field sources:
 | Field | Source artifact | Path |
 | --- | --- | --- |
 | `run_status` | diff-report (then repo-exposure fallback) | `run_status` |
+| `analysis_complete` | diff-report | `analysis_outcome.analysis_complete`; null when the typed envelope is absent. A false value forces summary `run_status` to `incomplete`. |
+| `analysis_outcome` | diff-report | `analysis_outcome`; preserves typed kind, limitations, and recovery routes without reconstructing them from empty findings. |
 | `changed_surfaces` | diff-report | `summary.changed_files` |
 | `gaps.total_actionable` | gap-decision-ledger | `summary.repairable_total` |
 | `gaps.total_static_limitation` | gap-decision-ledger | `summary.static_limitation_total` |

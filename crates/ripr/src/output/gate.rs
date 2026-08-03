@@ -1161,6 +1161,18 @@ fn partial_scope_input_error(value: &Value, path: &Path) -> Option<String> {
             crate::analysis::PartialDiffScope::RUN_STATUS,
             crate::analysis::PartialDiffScope::GATE_ELIGIBILITY,
         ))
+    } else if discloses_incomplete_analysis_outcome(value) {
+        let kind = value
+            .pointer("/analysis_outcome/outcome/kind")
+            .and_then(Value::as_str)
+            .unwrap_or("incomplete");
+        Some(format!(
+            "gate input {} discloses an incomplete analysis outcome ({kind}); \
+             an incomplete or unsupported denominator is never a gate, baseline, \
+             badge, or RIPR Zero input — follow the producer recovery limitation \
+             before gating",
+            display_path(path),
+        ))
     } else {
         None
     }
@@ -1199,6 +1211,27 @@ pub(crate) fn discloses_limited_partial_scope(value: &Value) -> bool {
                     || entry.get("category").and_then(Value::as_str) == Some(run_status)
             })
         })
+}
+
+/// Whether a producer supplied the typed incomplete-analysis envelope.
+///
+/// This is intentionally separate from the older run-state vocabulary: an
+/// unsupported input or another typed limitation is still an incomplete
+/// denominator even when it does not use `limited_partial_scope`.
+pub(crate) fn discloses_incomplete_analysis_outcome(value: &Value) -> bool {
+    value
+        .pointer("/analysis_outcome/analysis_complete")
+        .and_then(Value::as_bool)
+        == Some(false)
+}
+
+/// Return the producer-owned typed outcome kind for an incomplete envelope.
+/// Consumers use this only for fail-closed diagnostics.
+pub(crate) fn incomplete_analysis_outcome_kind(value: &Value) -> &str {
+    value
+        .pointer("/analysis_outcome/outcome/kind")
+        .and_then(Value::as_str)
+        .unwrap_or("incomplete")
 }
 
 fn resolve_root_path(root: &Path, path: &Path) -> PathBuf {

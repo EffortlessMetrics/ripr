@@ -111,6 +111,142 @@ fn gate_fails_closed_on_limited_partial_scope_pr_guidance() -> Result<(), String
 }
 
 #[test]
+fn gate_fails_closed_on_typed_incomplete_analysis_outcome() -> Result<(), String> {
+    let dir = temp_dir("gate-typed-incomplete-outcome")?;
+    let guidance = write_temp_json(
+        &dir,
+        "comments.json",
+        r#"{
+          "schema_version": "0.1",
+          "status": "advisory",
+          "comments": [],
+          "analysis_outcome": {
+            "analysis_complete": false,
+            "outcome": {
+              "kind": "unsupported_input",
+              "limitations": [
+                {
+                  "kind": "unresolved_conflict_markers",
+                  "recovery": {"kind": "resolve_conflicts"}
+                }
+              ]
+            }
+          }
+        }"#,
+    )?;
+    let mut input = fixture_input(GateMode::VisibleOnly);
+    input.pr_guidance = Some(guidance);
+
+    let report = build_gate_decision_report(&input)?;
+
+    assert_eq!(report.status, "config_error");
+    assert!(gate_decision_should_fail(&report));
+    assert_eq!(report.summary.evaluated, 0);
+    assert!(
+        report
+            .config_errors
+            .iter()
+            .any(|error| { error.contains("unsupported_input") && error.contains("incomplete") })
+    );
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
+fn gate_gap_ledger_and_baseline_rejections_name_typed_outcome_kind() -> Result<(), String> {
+    let dir = temp_dir("gate-typed-incomplete-consumers")?;
+    let envelope = r#"{
+      "analysis_outcome": {
+        "analysis_complete": false,
+        "outcome": {"kind": "unsupported_input"}
+      }
+    }"#;
+
+    let gap_ledger = write_temp_json(&dir, "gap-ledger.json", envelope)?;
+    let mut gap_input = fixture_input(GateMode::VisibleOnly);
+    gap_input.pr_guidance = None;
+    gap_input.gap_ledger = Some(gap_ledger);
+    let gap_report = build_gate_decision_report(&gap_input)?;
+    assert_eq!(gap_report.status, "config_error");
+    assert!(
+        gap_report
+            .config_errors
+            .iter()
+            .any(|error| error.contains("gap decision ledger")
+                && error.contains("unsupported_input")),
+        "gap-ledger rejection must name the typed outcome kind: {:?}",
+        gap_report.config_errors
+    );
+
+    let baseline = write_temp_json(&dir, "baseline.json", envelope)?;
+    let mut baseline_input = fixture_input(GateMode::CalibratedGate);
+    baseline_input.pr_guidance = None;
+    baseline_input.baseline = Some(baseline);
+    let baseline_report = build_gate_decision_report(&baseline_input)?;
+    assert_eq!(baseline_report.status, "config_error");
+    assert!(
+        baseline_report
+            .config_errors
+            .iter()
+            .any(|error| error.contains("baseline") && error.contains("unsupported_input")),
+        "baseline rejection must name the typed outcome kind: {:?}",
+        baseline_report.config_errors
+    );
+
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
+fn check_output_gap_ledger_preserves_incomplete_outcome_for_gate_consumers() -> Result<(), String> {
+    let dir = temp_dir("gate-check-output-typed-outcome")?;
+    let check_output = serde_json::json!({
+        "findings": [],
+        "analysis_outcome": {
+            "analysis_complete": false,
+            "outcome": {"kind": "unsupported_input"}
+        }
+    });
+    let source = serde_json::to_string(&check_output)
+        .map_err(|error| format!("serialize check output failed: {error}"))?;
+    let ledger = crate::output::gap_decision_ledger::build_gap_decision_ledger_report(
+        crate::output::gap_decision_ledger::GapDecisionLedgerInput {
+            root: dir.display().to_string(),
+            generated_at: "test".to_string(),
+            source_kind:
+                crate::output::gap_decision_ledger::GapDecisionLedgerSourceKind::CheckOutput,
+            records_path: "check-output.json".to_string(),
+            records_json: Ok(source),
+        },
+    );
+    let ledger_json = crate::output::gap_decision_ledger::render_gap_decision_ledger_json(&ledger)?;
+    assert!(
+        ledger_json.contains("\"analysis_outcome\""),
+        "check-output ledger must retain the producer outcome: {ledger_json}"
+    );
+    let ledger_path = write_temp_json(&dir, "gap-ledger.json", &ledger_json)?;
+
+    let mut gate_input = fixture_input(GateMode::VisibleOnly);
+    gate_input.pr_guidance = None;
+    gate_input.gap_ledger = Some(ledger_path);
+    let report = build_gate_decision_report(&gate_input)?;
+
+    assert_eq!(report.status, "config_error");
+    assert_eq!(report.summary.evaluated, 0);
+    assert!(
+        report
+            .config_errors
+            .iter()
+            .any(|error| error.contains("unsupported_input")),
+        "gate must reject the real check-output ledger with its typed kind: {:?}",
+        report.config_errors
+    );
+
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
 fn gate_fails_closed_on_limited_partial_scope_gap_ledger() -> Result<(), String> {
     let dir = temp_dir("gate-partial-gap-ledger")?;
     let ledger = write_temp_json(
@@ -200,6 +336,25 @@ fn limited_partial_scope_detection_covers_run_state_vocabulary() {
     })));
     assert!(!discloses_limited_partial_scope(&json!({
         "analysis_scope": {"run_status": "diff_scope_oversized"}
+    })));
+}
+
+#[test]
+fn incomplete_analysis_outcome_detection_covers_typed_envelope() {
+    assert!(discloses_incomplete_analysis_outcome(&json!({
+        "analysis_outcome": {
+            "analysis_complete": false,
+            "outcome": {"kind": "unsupported_input"}
+        }
+    })));
+    assert!(!discloses_incomplete_analysis_outcome(&json!({
+        "analysis_outcome": {
+            "analysis_complete": true,
+            "outcome": {"kind": "complete"}
+        }
+    })));
+    assert!(!discloses_incomplete_analysis_outcome(&json!({
+        "run_status": "complete"
     })));
 }
 

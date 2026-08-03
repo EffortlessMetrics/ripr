@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 ///   When present, `verify_failed_receipts` is derived from its
 ///   `attempts[].verify_result` field. When absent, `verify_failed_receipts`
 ///   stays `not_available` (honest-absent rule: absence ≠ zero).
-pub(super) fn build_pr_evidence_summary(
+pub fn build_pr_evidence_summary(
     start_here_value: Option<&Value>,
     gap_ledger_value: Option<&Value>,
     repo_exposure_value: Option<&Value>,
@@ -24,7 +24,14 @@ pub(super) fn build_pr_evidence_summary(
     baseline_value: Option<&Value>,
     attempt_ledger_value: Option<&Value>,
 ) -> PrEvidenceSummaryJson {
-    let run_status = derive_run_status(diff_report_value, repo_exposure_value);
+    let analysis_outcome = diff_report_value
+        .and_then(|value| value.get("analysis_outcome"))
+        .cloned();
+    let analysis_complete = analysis_outcome
+        .as_ref()
+        .and_then(|value| value.get("analysis_complete"))
+        .and_then(Value::as_bool);
+    let run_status = derive_run_status(diff_report_value, repo_exposure_value, analysis_complete);
     let changed_surfaces = derive_changed_surfaces(diff_report_value);
     let gaps = derive_gaps(gap_ledger_value, baseline_value);
     let limitations = derive_limitations(repo_exposure_value);
@@ -42,6 +49,8 @@ pub(super) fn build_pr_evidence_summary(
 
     PrEvidenceSummaryJson {
         run_status,
+        analysis_complete,
+        analysis_outcome,
         changed_surfaces,
         gaps,
         limitations,
@@ -57,7 +66,11 @@ pub(super) fn build_pr_evidence_summary(
 fn derive_run_status(
     diff_report_value: Option<&Value>,
     repo_exposure_value: Option<&Value>,
+    analysis_complete: Option<bool>,
 ) -> String {
+    if analysis_complete == Some(false) {
+        return "incomplete".to_string();
+    }
     // Prefer diff-report run_status (top-level field per DiffReport struct).
     if let Some(status) = value_path(diff_report_value, &["run_status"])
         .and_then(Value::as_str)
@@ -453,7 +466,7 @@ fn nullable_u64(v: &NullableU64) -> Value {
 }
 
 /// Render the in-memory summary as a versioned JSON string.
-pub(super) fn render_pr_evidence_summary_json(s: &PrEvidenceSummaryJson) -> String {
+pub fn render_pr_evidence_summary_json(s: &PrEvidenceSummaryJson) -> String {
     let top_repair = match &s.top_repair {
         Some(r) => json!({
             "canonical_gap_id": r.canonical_gap_id,
@@ -512,6 +525,8 @@ pub(super) fn render_pr_evidence_summary_json(s: &PrEvidenceSummaryJson) -> Stri
         "kind": "pr_evidence_summary",
         "tool": "ripr",
         "run_status": s.run_status,
+        "analysis_complete": s.analysis_complete,
+        "analysis_outcome": s.analysis_outcome,
         "changed_surfaces": u64_or_not_available(&s.changed_surfaces),
         "gaps": gaps,
         "limitations": limitations,
@@ -657,6 +672,49 @@ mod tests {
         assert_eq!(repair.receipt_state, "receipt_missing");
         assert!(s.top_repair_state.is_none());
         Ok(())
+    }
+
+    #[test]
+    fn typed_incomplete_diff_outcome_is_preserved_and_not_reported_complete() {
+        let diff = serde_json::json!({
+            "run_status": "complete",
+            "summary": {"changed_files": 2},
+            "analysis_outcome": {
+                "analysis_complete": false,
+                "outcome": {
+                    "kind": "unsupported_input",
+                    "limitations": [{
+                        "kind": "unresolved_conflict_markers",
+                        "recovery": {"kind": "resolve_conflicts"}
+                    }]
+                }
+            }
+        });
+
+        let summary = build_pr_evidence_summary(None, None, None, Some(&diff), None, None);
+
+        assert_eq!(summary.run_status, "incomplete");
+        assert_eq!(summary.analysis_complete, Some(false));
+        assert_eq!(
+            summary
+                .analysis_outcome
+                .as_ref()
+                .and_then(|value| value["outcome"]["kind"].as_str()),
+            Some("unsupported_input")
+        );
+
+        let rendered = render_pr_evidence_summary_json(&summary);
+        assert!(rendered.contains("\"run_status\": \"incomplete\""));
+        assert!(rendered.contains("\"analysis_complete\": false"));
+        assert!(rendered.contains("unsupported_input"));
+        assert!(!rendered.contains("\"run_status\": \"complete\""));
+
+        let markdown = super::super::render_evidence_summary_md(&summary);
+        assert!(markdown.contains("**Run Status**: `incomplete`"));
+        assert!(markdown.contains("**Analysis Complete**: `false`"));
+        assert!(markdown.contains("**Analysis Outcome**: `unsupported_input`"));
+        assert!(markdown.contains("unresolved_conflict_markers"));
+        assert!(markdown.contains("recovery: `resolve_conflicts`"));
     }
 
     #[test]
