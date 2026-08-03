@@ -17,6 +17,9 @@ use std::time::{Duration, Instant};
 /// upper bound.
 const POST_KILL_DRAIN_GRACE: Duration = Duration::from_secs(5);
 
+#[cfg(windows)]
+const WINDOWS_TREE_EXIT_GRACE: Duration = Duration::from_millis(500);
+
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
@@ -585,7 +588,21 @@ fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<boo
     }
     let tree_terminated = terminate_timed_process_tree(child);
     if tree_terminated {
-        return Ok(true);
+        #[cfg(windows)]
+        {
+            // `taskkill /T /F` can report success before the direct parent
+            // has actually exited. Confirm the parent is gone before
+            // returning; otherwise its post-wait continuation can still run.
+            // If it remains alive, the direct kill below is the bounded
+            // fallback while the tree kill remains responsible for descendants.
+            if wait_for_child_exit(child, WINDOWS_TREE_EXIT_GRACE, error_context)? {
+                return Ok(true);
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            return Ok(true);
+        }
     }
     match child.kill() {
         Ok(()) => Ok(true),
@@ -595,13 +612,49 @@ fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<boo
                 .map_err(|err| format!("failed to poll {error_context}: {err}"))?
                 .is_some()
             {
-                Ok(false)
+                // A successful Windows tree-kill request still represents an
+                // enforced timeout even if the parent exits in the race
+                // between the final poll and the direct-kill fallback.
+                Ok(tree_terminated)
             } else {
                 Err(format!(
                     "failed to terminate timed-out {error_context}: {kill_err}"
                 ))
             }
         }
+    }
+}
+
+#[cfg(windows)]
+fn wait_for_child_exit(
+    child: &mut Child,
+    grace: Duration,
+    error_context: &str,
+) -> Result<bool, String> {
+    let started = Instant::now();
+    let deadline = started
+        .checked_add(grace)
+        .ok_or_else(|| format!("failed to establish child-exit deadline for {error_context}"))?;
+    loop {
+        if Instant::now() >= deadline {
+            return Ok(false);
+        }
+
+        let exited = child
+            .try_wait()
+            .map_err(|err| format!("failed to poll {error_context}: {err}"))?;
+        if exited.is_some() {
+            // Only accept an exit observed strictly before the bounded grace
+            // deadline. A late observation must not turn a failed tree-kill
+            // test into a pass merely because the child eventually exited.
+            return Ok(Instant::now() < deadline);
+        }
+
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Ok(false);
+        }
+        thread::sleep(remaining.min(Duration::from_millis(10)));
     }
 }
 
