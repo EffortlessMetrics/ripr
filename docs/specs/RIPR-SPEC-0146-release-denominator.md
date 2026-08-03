@@ -79,6 +79,24 @@ and record-set digest
 It is range/identity and explicitly reconciled disposition evidence, not a
 final release qualification.
 
+## Cut-relative denominator boundary
+
+The final denominator is relative to a selected development cut `C`, not to
+an indefinitely moving `main`. Every commit through `C` must have a reviewed
+disposition and candidate-tree state. The ledger must identify whether each
+record is present in the candidate tree, which selected claim it satisfies,
+whether it is structural/control-only, superseded, explicitly excluded, or
+deferred, and what residual issue or truthful non-claim remains. Commits after
+`C` belong to a later provisional range or a later candidate; they must not be
+added to this candidate's denominator merely because development continues.
+
+The denominator is one reviewed input to the candidate-relative hard-cut
+predicate `candidate_required_claims_pending == 0`; the #2766 candidate
+selection DTO owns selected-claim closure. This denominator report does not
+establish selected-claim satisfaction from generic issue references alone. It
+does not impose a repository-wide open-PR or open-issue convergence
+requirement.
+
 ## Acceptance and proof map
 
 Acceptance is limited to a deterministic supplemental denominator ledger and a

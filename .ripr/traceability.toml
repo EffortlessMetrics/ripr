@@ -7777,6 +7777,7 @@ name = "temporary 0.11 release-control lens"
 spec = "docs/specs/RIPR-SPEC-0144-release-control-lens.md"
 tests = [
   "xtask/src/reports/release_control.rs::tests::complete_snapshot_is_ready_and_only_required_rows_are_merge_eligible",
+  "xtask/src/reports/release_control.rs::tests::missing_candidate_selection_is_exposed_as_scope_pending",
   "xtask/src/reports/release_control.rs::tests::missing_disposition_fails_closed",
   "xtask/src/reports/release_control.rs::tests::input_order_does_not_change_normalized_output",
   "xtask/src/reports/release_control.rs::tests::stale_authority_cannot_be_merge_eligible",
@@ -7786,13 +7787,27 @@ tests = [
   "xtask/src/reports/release_control.rs::tests::non_main_base_cannot_be_merge_eligible",
   "xtask/src/reports/release_control.rs::tests::bounded_live_collector_normalizes_success_and_failure_inputs",
   "xtask/src/reports/release_control.rs::tests::live_open_pr_bound_is_disclosed_and_fails_closed",
+  "xtask/src/reports/candidate_control.rs::tests::staged_state_advances_only_after_each_boundary",
+  "xtask/src/reports/candidate_control.rs::tests::missing_candidate_selection_is_not_ready",
+  "xtask/src/reports/candidate_control.rs::tests::unresolved_claim_is_not_hard_cut_eligible",
+  "xtask/src/reports/candidate_control.rs::tests::unresolved_defect_is_not_hard_cut_eligible",
+  "xtask/src/reports/candidate_control.rs::tests::missing_cut_and_projection_are_not_hard_cut_eligible",
+  "xtask/src/reports/candidate_control.rs::tests::mismatched_materialization_and_manifest_do_not_qualify",
+  "xtask/src/reports/candidate_control.rs::tests::blank_landed_reference_is_not_scope_closed",
+  "xtask/src/reports/candidate_control.rs::tests::whitespace_non_claim_is_not_scope_closed",
+  "xtask/src/reports/candidate_control.rs::tests::optional_failed_claim_is_not_scope_closed",
+  "xtask/src/reports/candidate_control.rs::tests::blank_projection_digests_do_not_materialize",
+  "xtask/src/reports/candidate_control.rs::tests::mutable_candidate_ref_does_not_qualify",
+  "xtask/src/reports/candidate_control.rs::tests::negative_candidate_state_fixture_covers_each_false_ready_boundary",
 ]
 fixtures = [
   "fixtures/release_control/complete.json",
   "fixtures/release_control/reconcile-required.json",
+  "fixtures/release_control/candidate-state-negative.json",
 ]
 code = [
   "xtask/src/reports/release_control.rs",
+  "xtask/src/reports/candidate_control.rs",
   "xtask/src/command.rs",
   "xtask/src/dispatch.rs",
   "xtask/src/fixture_contracts/mod.rs",

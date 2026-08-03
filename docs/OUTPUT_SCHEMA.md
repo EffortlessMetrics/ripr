@@ -11912,6 +11912,47 @@ The Markdown report is derived from the same normalized DTO and is advisory
 only. This report never closes issues, merges PRs, selects or qualifies a
 candidate, or publishes release artifacts.
 
+The open-PR inventory is informational and must not be used as a candidate
+readiness gate. Candidate readiness is a separate, cut-relative decision over
+selected claims, candidate-only exclusions, the reviewed denominator through
+development cut `C`, and a reproducible candidate tree. The candidate control
+artifact must report `candidate_required_claims_pending` and the associated
+landed, excluded, deferred, unresolved-defect, denominator, cut, and immutable
+candidate-reference state. An `open_release_pr_count`, if displayed, is
+context only.
+
+The release-control JSON carries this candidate-relative state separately from
+PR rows:
+
+```json
+{
+  "candidate_state": {
+    "status": "scope_pending | scope_closed | hard_cut_eligible | candidate_materialized | qualification_eligible",
+    "selected_candidate_claims": 0,
+    "candidate_required_claims_pending": 0,
+    "candidate_claims_landed": 0,
+    "candidate_claims_excluded": 0,
+    "candidate_claims_deferred": 0,
+    "candidate_defects_unresolved": 0,
+    "denominator_decisions_remaining": 0,
+    "candidate_cut_selected": false,
+    "candidate_ref_created": false,
+    "projection_reproducible": false,
+    "candidate_tree_present": false,
+    "candidate_tree_parent_matches_cut": false,
+    "exclusion_digests_match": false,
+    "preservation_digests_match": false,
+    "manifest_matches_candidate_tree": false,
+    "qualification_instruments_available": false,
+    "reasons": []
+  }
+}
+```
+
+`denominator_decisions_remaining` is `null` when candidate selection authority
+is absent. A state earlier than `qualification_eligible` is not a qualification
+claim; the state names the next missing boundary.
+
 ## Release Denominator Ledger Report
 
 `release-denominator` writes a deterministic supplemental denominator report

@@ -12,6 +12,8 @@ The snapshots are captured inputs, not release authority or candidate proof.
 - complete portfolio, open-PR, and active-claim inventories;
 - a complete worktree inventory observation;
 - explicit release dispositions for every captured open PR.
+- an optional #2766 `candidate_selection` authority; when present, it is
+  evaluated independently from the open-PR inventory.
 
 ## When
 
@@ -25,6 +27,9 @@ The snapshots are captured inputs, not release authority or candidate proof.
 - JSON and Markdown retain the same sorted PR disposition records;
 - `release_required` is the only disposition that may be merge-eligible;
 - a complete snapshot is stable under input-order changes.
+- missing candidate selection remains `scope_pending` and cannot imply a
+  hard-cut or qualification-ready candidate;
+- the candidate-state negative corpus rejects each staged false-ready state.
 
 ## Must Not
 

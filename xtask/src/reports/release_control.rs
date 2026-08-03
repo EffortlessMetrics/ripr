@@ -12,6 +12,10 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use super::candidate_control::{
+    CandidateSelection, CandidateState, evaluate as evaluate_candidate_state,
+};
+
 const REPORT_NAME: &str = "release-control";
 const SCHEMA_VERSION: &str = "0.1";
 const INPUT_KIND: &str = "release_control_snapshot";
@@ -36,6 +40,8 @@ struct Snapshot {
     source: SnapshotSource,
     #[serde(default)]
     prs: Vec<SnapshotPr>,
+    #[serde(default)]
+    candidate_selection: Option<CandidateSelection>,
     #[serde(default)]
     collector_errors: Vec<String>,
 }
@@ -78,6 +84,7 @@ struct NormalizedReport {
     captured_at: String,
     source: SnapshotSource,
     prs: Vec<NormalizedPr>,
+    candidate_state: CandidateState,
     reconciliation_reasons: Vec<String>,
     next_action: String,
 }
@@ -298,6 +305,7 @@ where
             graph_digest,
         },
         prs,
+        candidate_selection: None,
         collector_errors,
     }
 }
@@ -391,6 +399,7 @@ fn normalize_snapshot_with_origin(snapshot: Snapshot, live_collected: bool) -> N
     let mut reasons = Vec::new();
     reasons.extend(snapshot.collector_errors.iter().cloned());
     validate_source(&snapshot, live_collected, &mut reasons);
+    let candidate_state = evaluate_candidate_state(snapshot.candidate_selection.as_ref());
 
     let mut seen = BTreeSet::new();
     let mut prs = snapshot
@@ -426,6 +435,7 @@ fn normalize_snapshot_with_origin(snapshot: Snapshot, live_collected: bool) -> N
         captured_at: snapshot.captured_at,
         source: snapshot.source,
         prs,
+        candidate_state,
         reconciliation_reasons: reasons,
         next_action,
     }
@@ -595,6 +605,7 @@ fn report_json(report: &NormalizedReport) -> Value {
             "disposition_reason": pr.reason,
             "merge_eligible": pr.merge_eligible,
         })).collect::<Vec<_>>(),
+        "candidate_state": &report.candidate_state,
         "next_action": report.next_action,
         "authority_boundary": "temporary_release_lens_only",
         "must_not_claim": [
@@ -622,6 +633,29 @@ fn report_markdown(report: &NormalizedReport) -> String {
         report.source.worktree_count,
         report.source.graph_digest
     ));
+    body.push_str("## Candidate state\n\n");
+    body.push_str(&format!(
+        "- status: `{}`\n- selected claims: `{}`\n- required claims pending: `{}`\n- unresolved candidate defects: `{}`\n- denominator decisions remaining: `{}`\n- cut selected: `{}`\n- projection reproducible: `{}`\n- candidate tree present: `{}`\n- immutable candidate ref created: `{}`\n\n",
+        report.candidate_state.status,
+        report.candidate_state.selected_candidate_claims,
+        report.candidate_state.candidate_required_claims_pending,
+        report.candidate_state.candidate_defects_unresolved,
+        report
+            .candidate_state
+            .denominator_decisions_remaining
+            .map_or_else(|| "unknown".to_string(), |value| value.to_string()),
+        report.candidate_state.candidate_cut_selected,
+        report.candidate_state.projection_reproducible,
+        report.candidate_state.candidate_tree_present,
+        report.candidate_state.candidate_ref_created,
+    ));
+    if !report.candidate_state.reasons.is_empty() {
+        body.push_str("Candidate-state reasons:\n");
+        for reason in &report.candidate_state.reasons {
+            body.push_str(&format!("- {}\n", markdown_cell(reason)));
+        }
+        body.push('\n');
+    }
     if !report.reconciliation_reasons.is_empty() {
         body.push_str("## Reconciliation required\n\n");
         for reason in &report.reconciliation_reasons {
@@ -735,6 +769,28 @@ mod tests {
             return Err("post-release PR must remain held".to_string());
         }
         Ok(())
+    }
+
+    #[test]
+    fn missing_candidate_selection_is_exposed_as_scope_pending() -> Result<(), String> {
+        let report = normalize_snapshot(snapshot()?);
+        require(
+            report.status == "ready",
+            "candidate scope_pending must not change the reconciliation status",
+        )?;
+        let report_json = report_json(&report);
+        let state = report_json
+            .get("candidate_state")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "candidate_state was missing from JSON output".to_string())?;
+        require(
+            state.get("status") == Some(&Value::String("scope_pending".to_string())),
+            "missing candidate selection must remain scope_pending in JSON",
+        )?;
+        require(
+            state.get("candidate_cut_selected") == Some(&Value::Bool(false)),
+            "missing candidate selection must not select a cut",
+        )
     }
 
     #[test]

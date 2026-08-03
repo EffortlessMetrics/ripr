@@ -61,6 +61,85 @@ The report is advisory and report-only. It does not close issues, relabel
 items, merge or rebase PRs, create or delete branches, select a candidate,
 qualify a release, or mutate development `main`.
 
+## Candidate-relative hard-cut boundary
+
+The open-PR inventory and each row's `merge_eligible` value are work-selection
+and ownership observations. Neither is a repository-wide candidate-readiness
+gate. In particular, the report must not require the open release-PR count to
+reach zero before a candidate can be selected.
+
+Candidate readiness is evaluated against a selected development cut `C`, a
+selected claim set `S`, candidate-only exclusions `E`, and a reproducible
+candidate tree `T = project(C, E)`. The hard-cut predicate is:
+
+```text
+candidate_required_claims_pending == 0
+```
+
+That predicate requires every selected claim to be landed by `C`, explicitly
+excluded from `T`, or explicitly deferred with a truthful release non-claim;
+no known unresolved defect may invalidate the selected claims; every commit
+through `C` must have a reviewed disposition and candidate-tree state; and the
+projection from `C` to `T` must be reproducible. Commits and PRs outside `S`
+may remain open or land after `C` without affecting this candidate. They are
+relevant only if they disclose a defect that invalidates `T`.
+
+The candidate control vocabulary is
+`selected_candidate_claims`, `candidate_required_claims_pending`,
+`candidate_claims_landed`, `candidate_claims_excluded`,
+`candidate_claims_deferred`, `candidate_defects_unresolved`,
+`denominator_decisions_remaining`, `candidate_cut_selected`, and
+`candidate_ref_created`. An informational `open_release_pr_count` must not be
+used as a readiness predicate.
+
+The release-control snapshot may carry an optional `candidate_selection` DTO.
+When it is absent, candidate state is `scope_pending`; the ordinary PR lens
+remains replayable for disposition work, but it cannot imply candidate
+readiness. The DTO is the #2766 authority for the selected claim set:
+
+```text
+CandidateSelection
+  schema_version
+  selected_cut_sha
+  selected_claims[]
+  candidate_exclusions[]
+  known_candidate_defects[]
+  denominator_decisions_remaining
+  projection
+  qualification
+```
+
+Each selected claim carries `claim_id`, `owner_issue`,
+`required_for_candidate`, one resolution (`pending`, `landed`,
+`accepted_defer`, `candidate_exclusion`, or `failed`), evidence/commit/artifact
+references, `candidate_effect`, an explicit `non_claim` when deferred or
+excluded, and `reviewed`. Generic issue references or an `acceptance_owner`
+field cannot establish selected-claim satisfaction.
+
+The staged candidate states are fail-closed and ordered:
+
+```text
+scope_pending
+  → scope_closed
+  → hard_cut_eligible
+  → candidate_materialized
+  → qualification_eligible
+```
+
+`scope_closed` requires a non-empty, unique, reviewed claim set with a current
+resolution and explicit non-claims for defers/exclusions. `hard_cut_eligible`
+also requires zero required claims pending, zero unresolved candidate defects,
+zero denominator decisions through `C`, a selected `C`, and a reproducible
+projection. `candidate_materialized` additionally requires a candidate tree
+whose parent is `C` and matching exclusion/preservation digests.
+`qualification_eligible` additionally requires an immutable candidate ref, a
+manifest naming the materialized tree, and available qualification instruments.
+The immutable ref must use the repository-controlled
+`refs/ripr/candidate-<identifier>` namespace; mutable branch refs such as
+`refs/heads/main`, blank references, and whitespace-only values are not
+qualification evidence. The immutable ref is intentionally not required for
+hard-cut eligibility.
+
 ## Input contract
 
 The input envelope has `schema_version = "0.1"` and
@@ -76,6 +155,9 @@ inputs do not prove those facts; the resulting report is therefore
 `reconcile_required` until an approved source supplies them. PR rows carry a
 number, title, open state, head SHA, `main` base ref, and explicit
 disposition/reason.
+An optional `candidate_selection` object carries the #2766 selected-claim
+authority and candidate-state inputs described above; its absence is
+`scope_pending`, not a successful empty selection.
 
 The fixture corpus in `fixtures/release_control/` is manifest-only and is
 validated by `cargo xtask check-fixture-contracts`. It includes a complete
@@ -87,7 +169,9 @@ The command writes `target/ripr/reports/release-control.json` and
 `target/ripr/reports/release-control.md`. JSON is schema `0.1` and contains the
 normalized source observation, sorted PR rows, `reconciliation_reasons`, a
 `status` of `ready` or `reconcile_required`, per-row `merge_eligible`, a
-`next_action`, and the explicit `authority_boundary`/`must_not_claim` fields.
+`candidate_state`, `next_action`, and the explicit
+`authority_boundary`/`must_not_claim` fields. `candidate_state` is a staged
+control signal and never changes the report's non-qualification boundary.
 Markdown is a projection of that same normalized DTO; it cannot strengthen a
 reconciliation-required state or any per-PR disposition.
 
@@ -106,6 +190,8 @@ reconciliation-required state or any per-PR disposition.
 - `xtask/src/reports/release_control.rs` owns the captured-input schema,
   bounded live collectors, deterministic normalization, shared JSON/Markdown
   projection, and fail-closed merge eligibility.
+- `xtask/src/reports/candidate_control.rs` owns the selected-claim DTO,
+  candidate-state transitions, and fail-closed false-ready checks.
 - `fixtures/release_control/complete.json` proves a complete current snapshot
   with both required and held rows; `fixtures/release_control/reconcile-required.json`
   proves stale authority cannot produce eligibility.
@@ -120,6 +206,7 @@ reconciliation-required state or any per-PR disposition.
 - no singleton active-goal restoration or automatic backlog priority;
 - no candidate denominator, exact-candidate qualification, package proof,
   source handoff, version bump, tag, publication, signing, or marketplace;
+- no repository-wide convergence requirement or open-PR-zero gate;
 - no issue closure, merge queue, branch operation, or GitHub mutation;
 - no replacement for #2379, #1609, #1704, or #1706.
 
@@ -162,7 +249,8 @@ then the inventory is marked incomplete and no row can become merge-eligible.
 ## Test Mapping
 
 - `xtask/src/reports/release_control.rs::tests::complete_snapshot_is_ready_and_only_required_rows_are_merge_eligible`
-  — complete captured input applies the disposition and draft rules.
+- `xtask/src/reports/release_control.rs::tests::missing_candidate_selection_is_exposed_as_scope_pending`
+  — absent candidate selection is reported as `scope_pending`.
 - `xtask/src/reports/release_control.rs::tests::missing_disposition_fails_closed`
   — missing PR authority clears all eligibility.
 - `xtask/src/reports/release_control.rs::tests::input_order_does_not_change_normalized_output`

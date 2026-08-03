@@ -1,6 +1,7 @@
 mod annotations;
 mod badges;
 mod bun;
+mod candidate_control;
 mod ci_budget;
 mod dogfood;
 mod eval_sweep;

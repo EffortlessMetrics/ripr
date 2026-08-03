@@ -6,25 +6,67 @@ turning release work into a repository-wide task store or restoring singleton
 active-goal authority.
 
 The live baseline was initially `origin/main` at
-`76193cf5da5a2ab7034a95752ff05bc3061a6228`; it advanced to
-`19849177ce9418d0024e4cc839eb8382e4f716a8` and then to
-`d1e43bbff1d7583cf276830f05bfdc445ad43d38` while this campaign was being
-reconciled. The release authority remains
+`76193cf5da5a2ab7034a95752ff05bc3061a6228`; it advanced through several
+reconciliations and was observed at `fcbb30a7cf6a37027fa377abafb617632b2e6f57`
+on 2026-08-02. The later current-main observation is recorded below. The
+release authority remains
 [#2379](https://github.com/EffortlessMetrics/ripr-swarm/issues/2379), while
 #1704 and #1706 remain the longer-term portfolio and selected-work authorities.
 Those identities must be reread before each release disposition; this plan is
 execution context, not a replacement authority. The complete fixture is
-updated to the later observed main and open-PR set; the earlier observation is
-retained here as race evidence rather than treated as current authority.
+updated only when a bounded capture is intentionally refreshed; earlier
+observations are retained as race evidence rather than treated as current
+authority.
 
 ## Objective
 
-For the temporary 0.11 convergence window, make work selection and merge
-eligibility consume one explicit, fail-closed release lens over the live
-portfolio, current `main`, open PRs, and the accepted #2379 graph. Investigation
-and branch preparation may continue outside that graph, but unrelated merges
-must have an explicit hold or named authority before they can be treated as
-eligible.
+For the temporary 0.11 release window, make work selection and candidate
+readiness consume one explicit, fail-closed release lens over the selected
+claim set, the development cut, candidate-tree projection, and the accepted
+#2379 graph. The live portfolio and open-PR inventory remain inputs for
+ownership and disposition reconciliation; they are not a repository-wide
+convergence requirement.
+
+## Candidate-relative hard-cut authority
+
+The hard cut is relative to one selected development cut `C` and one selected
+candidate claim set `S`. Define the candidate-only exclusion set as `E` and
+the reproducible candidate projection as `T = project(C, E)`. The readiness
+predicate is:
+
+```text
+candidate_required_claims_pending == 0
+```
+
+This is true only when every claim in `S` is landed at or before `C`,
+explicitly excluded from `T`, or explicitly deferred with a truthful release
+non-claim; no known unresolved defect invalidates the selected claims; every
+commit through `C` has a reviewed disposition and candidate-tree state; and
+the projection from `C` to `T` is reproducible. The denominator is therefore
+cut-relative and must not chase later development commits.
+
+An open-PR count is informational. Open release-labelled PRs, later-release
+implementation, corrective experiments, and work that merges after `C` do not
+block this candidate unless they belong to `S` or disclose a defect that
+invalidates `T`. Release control does not close, relabel, rebase, pause, or
+seize independently owned lanes to manufacture readiness.
+
+The control and dashboard vocabulary is candidate-relative:
+
+```text
+selected_candidate_claims
+candidate_required_claims_pending
+candidate_claims_landed
+candidate_claims_excluded
+candidate_claims_deferred
+candidate_defects_unresolved
+denominator_decisions_remaining
+candidate_cut_selected
+candidate_ref_created
+```
+
+`open_release_pr_count` may be reported as context, but it is never a hard-cut
+gate.
 
 ## Multi-slice sequence
 
@@ -101,13 +143,16 @@ release publication, or product correctness.
 
 ## Current implementation receipt
 
-Observed after the latest live reconciliation: `origin/main` is
-`d1e43bbff1d7583cf276830f05bfdc445ad43d38`, with open PR #2771 at head
-`9762da8ecbabecb1fb585e59963b74f30ada88a3` and #2772 at head
-`80bb56ad28112769d24d7af78c7f360de4d093c5`. Earlier PR #2770
-merged as `d1e43bbff1d7583cf276830f05bfdc445ad43d38` during this campaign and
-is therefore a denominator event for the later #2768 slice, not an open-PR
-row in the current fixture.
+Observed at `2026-08-02` during that reconciliation: `origin/main` was
+`fcbb30a7cf6a37027fa377abafb617632b2e6f57`; the later 2026-08-03 refresh below
+records the current `origin/main`. PR #2869 merged at that SHA and
+delivered the typed reference-authority and fail-closed offline denominator
+slice. Its final routed result was not a clean qualification signal, so this
+merge is recorded as delivered implementation evidence, not candidate or
+release qualification. The current open-PR inventory observed at
+`2026-08-03T02:42:33-04:00` contains #2863, #2864, #2865, #2866, #2868,
+#2871, #2872, and #2873. Those rows remain ownership/disposition context and
+do not form a global hard-cut predicate.
 Passed locally: `cargo metadata --no-deps --locked`, `cargo fmt --all --
 --check`, standalone rustfmt for every changed Rust file, `cargo check -p xtask
 --locked`, the focused `cargo test -p xtask release_control -- --nocapture`
@@ -171,20 +216,21 @@ reviewed final denominator and cannot unblock #1609 or #2769.
 
 ## Live reconciliation boundary (2026-08-03)
 
-The release-control checkout was refreshed from final `origin/main`
-`c30a26831b75051813bfaa3dbd9378096ec6aa82` after #2870, #2860, #2861, #2869,
-#2876, #2873, #2878, and #2872 landed. The final captured provisional fixture
-above carries 234/219 records and fifteen candidate-only exclusions/safe
-deferrals. PR #2831 A owns
-only the typed reference-authority schema, offline validator, compatibility
-projection checks, and representative fixture proof. Concurrent product and
-release lanes remain independently owned and are not required to close for
-this plan slice. The production repair commit is
-`2a20da216428aa5ea13757d68f9fe9eed8cb6be1`; the focused denominator suite has
-25 tests, including the fail-closed candidate-tree-subset regression. The
-required routed proof for #2869 was still running when GitHub merged it, so that
-hosted receipt is retained as an explicit proof gap rather than a pass. The
-pinned record-set digest is
+The release-control checkout was refreshed from current `origin/main`
+`e7c700ff423bf595429909280133978406dda93e` after #2870, #2860, #2861, #2869,
+#2876, #2873, #2878, #2872, and #2868 landed. The selected provisional cutoff
+remains `c30a26831b75051813bfaa3dbd9378096ec6aa82`; the #2868 control commit is
+after that cutoff and is not folded back into the denominator. The final
+captured provisional fixture above carries 234/219 records and fifteen
+candidate-only exclusions/safe deferrals. PR #2831 A owns only the typed
+reference-authority schema, offline validator, compatibility projection checks,
+and representative fixture proof. Concurrent product and release lanes remain
+independently owned and are not required to close for this plan slice. The
+production repair commit is `2a20da216428aa5ea13757d68f9fe9eed8cb6be1`; the
+focused denominator suite has 25 tests, including the fail-closed
+candidate-tree-subset regression. The required routed proof for #2869 was
+still running when GitHub merged it, so that hosted receipt is retained as an
+explicit proof gap rather than a pass. The pinned record-set digest is
 `sha256:166380b5b8cef061f6d617db089a5070e566e54841bd103c6a962d832881efe0`.
 
 ## Non-goals and safety boundary
@@ -195,13 +241,16 @@ pinned record-set digest is
   marketplace, or secret operation; the scoped #2831 A branch is the only
   implementation branch created by this slice;
 - no replacement for GitHub state, #2379, #1609, #1704, or #1706;
-- no exact-candidate qualification until the later dependent slices are
-  complete and the candidate identity is immutable.
+- no exact-candidate qualification until a cut-relative selected claim set,
+  denominator, reproducible projection, and immutable candidate identity exist.
 
 ## Closeout requirements
 
-Before marking this campaign complete, reread live `main`, all open PRs,
-active worktrees/claims, #2379, and the dependent issue state. Record merged
-heads and proof per slice, distinguish infrastructure gaps from product
-failures, clean only campaign-created worktrees/branches/artifacts, and leave
-builder-ready follow-ups for anything still outside the claim boundary.
+Before marking this campaign complete, select and record development cut `C`,
+claim set `S`, candidate exclusions `E`, candidate tree `T`, and the exact
+immutable candidate ref. Adjudicate every commit through `C`, record merged
+heads and proof per selected slice, distinguish infrastructure gaps from
+product failures, qualify only `T`, hand that exact identity to source, and
+leave builder-ready follow-ups for anything outside the candidate claim
+boundary. Re-read the live board for ownership and defect discovery, but do
+not require the repository-wide open-PR count to reach zero.
