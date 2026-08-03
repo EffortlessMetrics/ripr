@@ -3,6 +3,7 @@ use super::gap_artifacts::{GapArtifactRejection, ValidatedGapArtifact};
 use super::input_identity::LspAnalysisInputIdentity;
 use super::uri::{file_uris_match, path_from_file_uri};
 use crate::analysis::ClassifiedSeam;
+use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::Mode;
 use crate::config::LspDiagnosticProfile;
 use crate::domain::Finding;
@@ -553,6 +554,7 @@ impl AnalysisHealth {
             Some("seams_deferred") => "seams_deferred",
             Some("cache_limited") => "cache_limited",
             Some("limited") => "limited",
+            Some("limited_incomplete_input") => "limited_incomplete_input",
             // RIPR-PROP-0019 (#1999): a partial partition is a limited run
             // state, never "full" — falling through here would present a
             // partial denominator as complete (#2142 review).
@@ -609,6 +611,10 @@ pub(super) struct AnalysisSnapshot {
     pub(super) mode: Mode,
     pub(super) refresh: RefreshMetadata,
     pub(super) findings: Vec<Finding>,
+    /// Producer-owned diff completeness and limitation facts. LSP status and
+    /// diagnostic projections must retain this typed outcome instead of
+    /// inferring completeness from an empty finding set.
+    pub(super) analysis_outcome: Option<AnalysisOutcome>,
     /// Profile used to derive the published finding diagnostics. Keeping this
     /// on the snapshot lets consistency validate the same bounded projection
     /// that the refresh actually published.
@@ -1495,6 +1501,7 @@ mod tests {
             mode: Mode::Draft,
             refresh: RefreshMetadata::default(),
             findings: Vec::new(),
+            analysis_outcome: None,
             diagnostic_profile: LspDiagnosticProfile::Full,
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),
@@ -1525,6 +1532,7 @@ mod tests {
             mode: Mode::Draft,
             refresh: RefreshMetadata::default(),
             findings: Vec::new(),
+            analysis_outcome: None,
             diagnostic_profile: LspDiagnosticProfile::Full,
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),

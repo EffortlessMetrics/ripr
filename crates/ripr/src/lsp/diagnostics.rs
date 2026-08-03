@@ -10,6 +10,7 @@ use crate::analysis::ClassifiedSeam;
 use crate::analysis::cancellation::AnalysisCancellationToken;
 use crate::analysis::inventory_classified_seams_at_with_config;
 use crate::analysis::seams::SeamGripClass;
+use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::causal_projection::{CausalDeltaArtifact, insert_canonical_delta_fields};
 use crate::app::check_workspace_with_config;
 use crate::config::{ConfigSeverity, LspDiagnosticProfile, SeverityConfig};
@@ -482,13 +483,14 @@ pub(super) fn document_diagnostic_result_id(snapshot: &AnalysisSnapshot, uri: &U
         [
             snapshot.mode.as_str(),
             snapshot.diagnostic_profile.as_str(),
-            derive_run_status(
+            derive_run_status_with_outcome(
                 &snapshot.findings,
                 &snapshot.gap_artifact_rejections,
                 &snapshot.gap_artifacts,
                 snapshot.seams_deferred,
                 snapshot.partial_scope.is_some(),
                 &snapshot.component_outcomes,
+                snapshot.analysis_outcome.as_ref(),
             ),
             snapshot.base.as_deref().unwrap_or("no-base"),
             relative_uri.as_str(),
@@ -525,13 +527,14 @@ pub(super) fn complete_diagnostic_evidence_identity(snapshot: &AnalysisSnapshot)
     let mut parts = vec![
         snapshot.mode.as_str().to_string(),
         snapshot.diagnostic_profile.as_str().to_string(),
-        derive_run_status(
+        derive_run_status_with_outcome(
             &snapshot.findings,
             &snapshot.gap_artifact_rejections,
             &snapshot.gap_artifacts,
             snapshot.seams_deferred,
             snapshot.partial_scope.is_some(),
             &snapshot.component_outcomes,
+            snapshot.analysis_outcome.as_ref(),
         )
         .to_string(),
         snapshot
@@ -559,13 +562,14 @@ pub(super) fn workspace_diagnostic_result_id(snapshot: &AnalysisSnapshot) -> Str
     let mut parts = vec![
         snapshot.mode.as_str().to_string(),
         snapshot.diagnostic_profile.as_str().to_string(),
-        derive_run_status(
+        derive_run_status_with_outcome(
             &snapshot.findings,
             &snapshot.gap_artifact_rejections,
             &snapshot.gap_artifacts,
             snapshot.seams_deferred,
             snapshot.partial_scope.is_some(),
             &snapshot.component_outcomes,
+            snapshot.analysis_outcome.as_ref(),
         )
         .to_string(),
         snapshot
@@ -747,6 +751,7 @@ pub(super) fn workspace_diagnostics_with_config(
     };
     let root = output.root;
     let base = output.base;
+    let analysis_outcome = output.analysis_outcome;
     let mode = output.mode;
     let partial_scope = output.partial_scope;
     // Scope the LSP projection to production Rust anchors, matching the CLI
@@ -878,13 +883,14 @@ pub(super) fn workspace_diagnostics_with_config(
     // state, scope, deferral, and the typed component outcomes (#1939,
     // #1997). A degraded optional component makes the run `limited` — never
     // a silent `full`.
-    let run_status = derive_run_status(
+    let run_status = derive_run_status_with_outcome(
         &findings,
         &gap_artifact_report.rejections,
         &gap_artifact_report.artifacts,
         defer_seam_inventory,
         partial_scope.is_some(),
         &component_outcomes,
+        analysis_outcome.as_ref(),
     );
     let is_full_run = run_status == "full";
 
@@ -968,6 +974,7 @@ pub(super) fn workspace_diagnostics_with_config(
         mode,
         refresh: RefreshMetadata::generated_now(),
         findings,
+        analysis_outcome,
         diagnostic_profile: config.diagnostic_profile,
         classified_seams,
         gap_artifacts: gap_artifact_report.artifacts,
@@ -1027,6 +1034,7 @@ fn git_timeout_limited_diagnostics(
         mode: config.mode.clone(),
         refresh: RefreshMetadata::generated_now(),
         findings: Vec::new(),
+        analysis_outcome: None,
         diagnostic_profile: config.diagnostic_profile,
         classified_seams: Vec::new(),
         gap_artifacts: Vec::new(),
@@ -1095,6 +1103,7 @@ fn oversized_diff_limited_diagnostics(
         mode: config.mode.clone(),
         refresh: RefreshMetadata::generated_now(),
         findings: Vec::new(),
+        analysis_outcome: None,
         diagnostic_profile: config.diagnostic_profile,
         classified_seams: Vec::new(),
         gap_artifacts: Vec::new(),
@@ -1123,12 +1132,14 @@ fn oversized_diff_limited_diagnostics(
 /// run `limited` — this is the ONLY run-status aggregation on the LSP path.
 ///
 /// Returns `"full"`, `"stale"`, `"cache_limited"`, `"limited"`,
-/// `"limited_partial_scope"`, or `"seams_deferred"`. `"seams_deferred"` is
+/// `"limited_partial_scope"`, `"limited_incomplete_input"`, or
+/// `"seams_deferred"`. `"seams_deferred"` is
 /// returned when `defer_seam_inventory` is `true` and no other limitation
 /// applies; it is a member of the `limited` family for severity-downgrade
 /// policy purposes. `"limited_partial_scope"` (RIPR-PROP-0019) is returned
 /// when the run analyzed a bounded partition of an over-budget diff; the
 /// run-level scope limitation dominates per-finding static limitations.
+#[cfg(test)]
 pub(super) fn derive_run_status(
     findings: &[Finding],
     rejections: &[GapArtifactRejection],
@@ -1136,6 +1147,26 @@ pub(super) fn derive_run_status(
     defer_seam_inventory: bool,
     has_partial_scope: bool,
     component_outcomes: &[ComponentOutcome],
+) -> &'static str {
+    derive_run_status_with_outcome(
+        findings,
+        rejections,
+        gap_artifacts,
+        defer_seam_inventory,
+        has_partial_scope,
+        component_outcomes,
+        None,
+    )
+}
+
+pub(super) fn derive_run_status_with_outcome(
+    findings: &[Finding],
+    rejections: &[GapArtifactRejection],
+    gap_artifacts: &[super::gap_artifacts::ValidatedGapArtifact],
+    defer_seam_inventory: bool,
+    has_partial_scope: bool,
+    component_outcomes: &[ComponentOutcome],
+    analysis_outcome: Option<&AnalysisOutcome>,
 ) -> &'static str {
     if rejections
         .iter()
@@ -1148,6 +1179,9 @@ pub(super) fn derive_run_status(
     }
     if has_partial_scope {
         return crate::analysis::PartialDiffScope::RUN_STATUS;
+    }
+    if analysis_outcome.is_some_and(|outcome| !outcome.kind.is_complete()) {
+        return "limited_incomplete_input";
     }
     let has_static_limit = findings.iter().any(|f| f.static_limit_kind.is_some())
         || gap_artifacts.iter().any(|a| a.has_static_limit());
@@ -2863,6 +2897,11 @@ mod seam_diagnostic_tests {
 #[cfg(test)]
 mod diagnostic_policy_tests {
     use super::*;
+    use crate::analysis_outcome::{
+        AnalysisIdentity, AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome,
+        AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
+        AnalysisStage,
+    };
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, LanguageStatus,
         MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId,
@@ -2922,6 +2961,70 @@ mod diagnostic_policy_tests {
             oracle_alignment: None,
             alignment_reason: None,
         }
+    }
+
+    fn typed_outcome(kind: AnalysisOutcomeKind) -> Result<AnalysisOutcome, String> {
+        let limitations = if kind.is_complete() {
+            Vec::new()
+        } else {
+            vec![
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::UnresolvedConflictMarkers,
+                    AnalysisStage::DiffParse,
+                    AnalysisRecovery::new(
+                        AnalysisRecoveryKind::ResolveConflicts,
+                        "resolve conflict markers before retrying analysis",
+                    )?,
+                )
+                .with_path("src/lib.rs")?
+                .with_affected_items(1)?,
+            ]
+        };
+        AnalysisOutcome::new(
+            kind,
+            AnalysisIdentity {
+                input_identity: Some("sha256:lsp-fixture".to_string()),
+                ..AnalysisIdentity::default()
+            },
+            AnalysisOutcomeCounts {
+                changed_line_count: u64::from(kind.is_complete()),
+                candidate_line_count: u64::from(kind.is_complete()),
+                ..AnalysisOutcomeCounts::default()
+            },
+            limitations,
+        )
+    }
+
+    #[test]
+    fn typed_incomplete_outcome_never_projects_as_full() -> Result<(), String> {
+        let complete = typed_outcome(AnalysisOutcomeKind::CompleteNoFindings)?;
+        let unsupported = typed_outcome(AnalysisOutcomeKind::UnsupportedInput)?;
+
+        assert_eq!(
+            derive_run_status_with_outcome(&[], &[], &[], false, false, &[], Some(&complete)),
+            "full"
+        );
+        assert_eq!(
+            derive_run_status_with_outcome(&[], &[], &[], false, false, &[], Some(&unsupported)),
+            "limited_incomplete_input"
+        );
+        assert_eq!(
+            derive_run_status_with_outcome(
+                &[],
+                &[GapArtifactRejection::StaleArtifact],
+                &[],
+                false,
+                false,
+                &[],
+                Some(&unsupported)
+            ),
+            "stale"
+        );
+        assert_eq!(
+            derive_run_status_with_outcome(&[], &[], &[], false, true, &[], Some(&unsupported)),
+            "limited_partial_scope"
+        );
+        Ok(())
     }
 
     fn complete_gap_record() -> GapRecord {
@@ -3718,6 +3821,7 @@ mod delivery_tests {
             mode: crate::app::Mode::Draft,
             refresh: RefreshMetadata::default(),
             findings: Vec::new(),
+            analysis_outcome: None,
             diagnostic_profile: LspDiagnosticProfile::Full,
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),

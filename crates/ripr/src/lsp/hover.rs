@@ -1246,6 +1246,7 @@ mod seam_hover_tests {
             mode,
             refresh: super::super::state::RefreshMetadata::default(),
             findings: Vec::new(),
+            analysis_outcome: None,
             diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),

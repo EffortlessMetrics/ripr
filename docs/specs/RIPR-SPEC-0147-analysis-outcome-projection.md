@@ -48,9 +48,12 @@ The B2 ownership includes `crates/ripr/src/output/gate/input.rs`,
 `crates/ripr/src/output/gate/tests.rs`,
 `crates/ripr/src/output/gap_decision_ledger.rs`,
 `crates/ripr/src/app/pr_summary/`, and the compatibility forwarding surface
-under `xtask/src/reports/pr_evidence_summary/`. Generated-CI, LSP, agent, and
-review projections remain serial follow-up work and are unclaimed until they
-consume this DTO.
+under `xtask/src/reports/pr_evidence_summary/`. PR-C owns LSP consumption: the
+committed editor snapshot, analysis status, workspace status, and
+top-limitation command retain the typed outcome and derive
+`limited_incomplete_input` without treating zero findings as complete.
+Generated-CI, agent, and review projections remain serial follow-up work and
+are unclaimed until they consume this DTO.
 
 ## Non-Goals
 
@@ -77,9 +80,11 @@ projection does not analyze those regions.
 - SARIF and diff-scoped badge output disclose an incomplete zero-result run;
   repo-scoped badges retain `analysis_complete = null` and
   `analysis_outcome = null` because no diff denominator exists.
-- Gate and PR-evidence-summary consumers are covered by PR-B2; generated-CI,
-  LSP, agent, and review surfaces remain explicitly unclaimed until their own
-  parity fixtures land.
+- Gate and PR-evidence-summary consumers are covered by PR-B2.
+- LSP analysis status and workspace/top-limitation status disclose the same
+  typed outcome; incomplete input is never reported as `run_status = "full"`.
+- Generated-CI, agent, and review surfaces remain explicitly unclaimed until
+  their own parity fixtures land.
 
 Current PR-A proof is anchored by
 `analysis::pipeline::tests::diff_pipeline_projects_parser_limitation_and_distinguishes_complete_zero`
@@ -98,23 +103,28 @@ and
 - stable outcome identity excludes absolute checkout paths;
 - SARIF run-level and diff-scoped badge projections disclose the typed outcome
   and fail closed for incomplete zero-result input.
-- Gate and PR-evidence-summary projections are covered by PR-B2; generated-CI,
-  LSP, agent, and review projections remain explicitly unclaimed.
+- Gate and PR-evidence-summary projections are covered by PR-B2.
+- LSP status, workspace status, top limitation, and diagnostic severity retain
+  the typed outcome and suppress full-run repair authority for incomplete
+  input.
+- Generated-CI, agent, and review projections remain explicitly unclaimed.
 
 ## Test Mapping
 
 The focused pipeline and JSON/human parity tests above cover limitation
 propagation, complete-versus-incomplete zero-result behavior, and shared
- projection facts. PR-B1's focused SARIF and badge fixtures cover the
+projection facts. PR-B1's focused SARIF and badge fixtures cover the
 incomplete zero-result downgrade and run-level disclosure. PR-B2's gate and
 PR-summary typed-envelope fixtures cover fail-closed consumption and summary
 preservation across `crates/ripr/src/output/gate/`,
 `crates/ripr/src/app/pr_summary/`, and the xtask compatibility route. The
 gate-decision-ledger round-trip fixture covers preservation in both JSON and
-Markdown when a rendered ledger is consumed as records. The
-fixture goldens under `fixtures/` cover the additive JSON, human, and
-changelog output projection across the existing language and edge-case corpus;
-`cargo xtask goldens check` is the drift gate.
+Markdown when a rendered ledger is consumed as records. PR-C's
+LSP fixtures cover complete-versus-unsupported zero, status/top-limitation
+parity, and precedence over stale and partial states. The fixture goldens
+under `fixtures/` cover the additive JSON, human, and changelog output
+projection across the existing language and edge-case corpus; `cargo xtask
+goldens check` is the drift gate.
 
 ## Implementation Mapping
 
@@ -128,6 +138,8 @@ builders. PR-B1 projects the DTO in `crates/ripr/src/output/sarif.rs` and
 `crates/ripr/src/output/gate/input.rs`,
 `crates/ripr/src/output/gap_decision_ledger.rs`, and the shared
 `crates/ripr/src/app/pr_summary/` owner; xtask delegates through that API.
+PR-C projects the DTO through `crates/ripr/src/lsp/state.rs`,
+`crates/ripr/src/lsp/diagnostics.rs`, and `crates/ripr/src/lsp/backend.rs`.
 `docs/OUTPUT_SCHEMA.md` records the wire shape.
 
 ## Metrics
@@ -135,4 +147,4 @@ builders. PR-B1 projects the DTO in `crates/ripr/src/output/sarif.rs` and
 The typed outcome exposes changed-file, changed-line, candidate-line, probe,
 finding, limitation, and semantic-digest fields. `analysis_complete` is a
 derived projection of the closed outcome kind; no independent completeness
-metric is introduced by PR A or PR-B2.
+metric is introduced by PR A, PR-B2, or PR-C.

@@ -6519,6 +6519,8 @@ tests = [
   "crates/ripr/src/app/pr_summary/json.rs::tests::typed_incomplete_diff_outcome_is_preserved_and_not_reported_complete",
   "crates/ripr/src/output/sarif.rs::tests::sarif_discloses_incomplete_zero_finding_outcome_at_run_level",
   "crates/ripr/src/output/badge/tests.rs::tests::incomplete_zero_finding_diff_is_not_a_green_badge",
+  "crates/ripr/src/lsp/diagnostics.rs::diagnostic_policy_tests::typed_incomplete_outcome_never_projects_as_full",
+  "crates/ripr/src/lsp/backend.rs::top_limitation_selection_tests::top_limitation_retains_typed_incomplete_outcome",
 ]
 code = [
   "crates/ripr/src/analysis_outcome.rs",
@@ -6541,6 +6543,9 @@ code = [
   "crates/ripr/src/output/badge/render.rs",
   "crates/ripr/src/output/badge/summaries.rs",
   "crates/ripr/src/output/badge/test_efficiency.rs",
+  "crates/ripr/src/lsp/state.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/lsp/backend.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md",

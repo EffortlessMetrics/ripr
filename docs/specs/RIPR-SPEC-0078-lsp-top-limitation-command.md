@@ -62,16 +62,20 @@ The DTO distinguishes incomplete and limited states from a current scoped
 result. At minimum it emits `no_snapshot`, `analysis_queued`,
 `analysis_running`, `analysis_failed_retained_snapshot`, `snapshot_stale`,
 `workspace_ambiguous`, `input_invalid`, `run_limited`, `seams_deferred`,
-`artifact_rejected`, `canonical_static_limitation`, `no_actionable_item`, or
-`no_active_limitation_in_current_scope` as applicable. No state means that the
+`artifact_rejected`, `canonical_static_limitation`, `no_actionable_item`,
+`analysis_outcome_incomplete`, or `no_active_limitation_in_current_scope` as
+applicable. No state means that the
 repository is clean or that the test suite is adequate.
 
 When multiple artifact rejections are present, the selected sample is ordered
 by stable category and payload rather than raw artifact order. The DTO carries
 `snapshot_id`, `input_identity`, `run_status`, `scope`, `completeness`,
 `why_not_actionable`, `recovery_route`, bounded counts, sample sources, and
-static non-claims. A missing producer fact remains an explicit limitation; the
-renderer does not invent a taxonomy or a zero value.
+static non-claims. When the producer supplies an incomplete typed
+`AnalysisOutcome`, the DTO also carries `analysis_outcome`, preserves its
+limitation and recovery route, and reports `run_status ==
+"limited_incomplete_input"`. A missing producer fact remains an explicit
+limitation; the renderer does not invent a taxonomy or a zero value.
 
 ### `unlock_condition` equivalence
 
@@ -193,7 +197,7 @@ Current complete scope with no active limitation:
    non-empty `why_not_actionable`, `non_claims` is array, `limits_note`
    present, no mutation-runtime vocabulary.
 4. Workspace status and the command return the same top-limitation identity
-   and state.
+   and state, including an incomplete typed analysis outcome when present.
 5. Capabilities list contains exactly 7 commands including
    `ripr.collectTopLimitation`.
 
