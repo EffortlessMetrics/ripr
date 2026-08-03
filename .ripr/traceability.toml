@@ -6501,6 +6501,32 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0147"
+name = "typed analysis outcome projection"
+spec = "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md"
+tests = [
+  "crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_projects_parser_limitation_and_distinguishes_complete_zero",
+  "crates/ripr/src/output/json/mod.rs::tests::typed_incomplete_outcome_matches_human_and_json_projection",
+]
+code = [
+  "crates/ripr/src/analysis_outcome.rs",
+  "crates/ripr/src/analysis/diff/parse.rs",
+  "crates/ripr/src/analysis/pipeline.rs",
+  "crates/ripr/src/analysis/mod.rs",
+  "crates/ripr/src/app.rs",
+  "crates/ripr/src/output/human.rs",
+  "crates/ripr/src/output/json/report.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md",
+  "docs/OUTPUT_SCHEMA.md",
+]
+metrics = [
+  "analysis_outcome_complete_zero_distinguishable",
+  "analysis_outcome_limitation_projection_parity",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0146"
 name = "release supplemental denominator ledger"
 spec = "docs/specs/RIPR-SPEC-0146-release-denominator.md"

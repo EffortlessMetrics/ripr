@@ -5,6 +5,10 @@
   "root": "fixtures/python_test_placement_verify/input",
   "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":2},{"language":"rust","files":0}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:cd88982add196d1608b7653e759d6b760eee3a157305cae0f6e7df4fe077de1b","snapshot_identity":null},"counts":{"changed_file_count":2,"changed_line_count":2,"candidate_line_count":2,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
     {
       "id": "probe:src_pricing.py:python_preview:b6c16437",

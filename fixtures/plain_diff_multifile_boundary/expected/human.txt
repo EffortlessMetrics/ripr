@@ -4,6 +4,9 @@ root: fixtures/plain_diff_multifile_boundary/input
 
 Summary: 4 probe(s), 0 exposed, 0 weak, 0 unrevealed, 4 no path, 0 unknown
 
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 2 changed file(s), 4 changed line(s), 2 candidate line(s), 4 probe(s), 4 finding(s).
+
 Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.

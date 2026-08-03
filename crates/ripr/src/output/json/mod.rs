@@ -35,6 +35,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::{context_packet::render_context_packet, render, report::finding_json};
+    use crate::analysis_outcome::{
+        AnalysisIdentity, AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome,
+        AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
+        AnalysisStage,
+    };
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
@@ -45,6 +50,63 @@ mod tests {
     };
     use proptest::prelude::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn typed_incomplete_outcome_matches_human_and_json_projection() -> Result<(), String> {
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::CombinedHunkUnsupported,
+            AnalysisStage::DiffParse,
+            AnalysisRecovery::new(
+                AnalysisRecoveryKind::UseTwoWayDiff,
+                "Re-run against a two-way diff of the merge result.",
+            )?,
+        )
+        .with_path("src/lib.rs")?
+        .with_affected_items(1)?;
+        let outcome = AnalysisOutcome::new(
+            AnalysisOutcomeKind::UnsupportedInput,
+            AnalysisIdentity {
+                input_identity: Some("sha256:fixture".to_string()),
+                ..AnalysisIdentity::default()
+            },
+            AnalysisOutcomeCounts {
+                changed_file_count: 1,
+                changed_line_count: 2,
+                ..AnalysisOutcomeCounts::default()
+            },
+            vec![limitation],
+        )?;
+        let output = CheckOutput {
+            analysis_outcome: Some(outcome),
+            ..sample_output(None)
+        };
+
+        let json = render(&output);
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|error| format!("parse JSON output: {error}"))?;
+        assert_eq!(value["analysis_outcome"]["analysis_complete"], false);
+        assert_eq!(
+            value["analysis_outcome"]["outcome"]["kind"],
+            "unsupported_input"
+        );
+        assert_eq!(
+            value["analysis_outcome"]["outcome"]["limitations"][0]["kind"],
+            "combined_hunk_unsupported"
+        );
+        assert_eq!(
+            value["analysis_outcome"]["outcome"]["limitations"][0]["recovery"]["kind"],
+            "use_two_way_diff"
+        );
+
+        let human = crate::output::human::render(&output);
+        assert!(human.contains("Analysis outcome: unsupported_input (analysis incomplete)."));
+        assert!(!human.contains("Analysis outcome: \"unsupported_input\""));
+        assert!(human.contains("analysis incomplete"));
+        assert!(human.contains("Zero findings is not a clean result"));
+        assert!(human.contains("combined_hunk_unsupported"));
+        assert!(human.contains("two-way diff"));
+        Ok(())
+    }
 
     #[test]
     fn finding_json_includes_effective_stop_reasons_for_unknowns() {
@@ -351,6 +413,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -474,6 +537,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -643,6 +707,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -1314,6 +1379,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         }
     }
@@ -1447,6 +1513,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -1495,6 +1562,7 @@ mod tests {
             no_scope_provided: true,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -1551,6 +1619,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -1586,6 +1655,7 @@ mod tests {
             no_scope_provided: true,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 

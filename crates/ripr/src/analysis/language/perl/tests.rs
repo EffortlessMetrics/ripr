@@ -293,6 +293,35 @@ fn perl_fact_packet_adapter_parses_partial_dynamic_boundary_limitation() -> Resu
 }
 
 #[test]
+fn perl_diff_projection_keeps_partial_packet_incomplete() -> Result<(), String> {
+    let packet_path = std::env::temp_dir().join(format!(
+        "ripr-perl-partial-projection-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(
+        &packet_path,
+        bless_fingerprint(PARTIAL_DYNAMIC_BOUNDARY_PACKET),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut options = packet_test_options();
+    options.perl_facts_path = Some(packet_path.clone());
+    let result = PerlAdapter.analyze_diff(&options, &OraclePolicy::default(), &[])?;
+    assert_eq!(result.limitations.len(), 1);
+    assert_eq!(
+        result.limitations[0].kind,
+        AnalysisLimitationKind::LanguageScopeUnsupported
+    );
+    assert!(
+        result.limitations[0]
+            .bounded_detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("packet partial"))
+    );
+    std::fs::remove_file(packet_path).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
 fn perl_fact_packet_adapter_keeps_verify_command_as_fact_not_result() -> Result<(), String> {
     let packet = consume(EXACT_RETURN_PACKET)?;
     let command = packet

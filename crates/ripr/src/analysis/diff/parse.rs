@@ -173,13 +173,6 @@ pub(crate) struct ParsedDiff {
     /// Typed record of diff regions this parser deliberately refused to read as
     /// ordinary source (#2828). An empty vector means the parser read the whole
     /// input; it never means "no such region existed but we said nothing".
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "producer-owned parser limitations; #2829 connects the public projection"
-        )
-    )]
     pub(crate) limitations: Vec<AnalysisLimitation>,
 }
 

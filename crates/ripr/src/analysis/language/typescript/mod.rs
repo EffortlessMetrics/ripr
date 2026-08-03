@@ -15,6 +15,10 @@ pub(crate) use super::{
     LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route,
 };
 pub(super) use crate::analysis::probes;
+pub(crate) use crate::analysis_outcome::{
+    AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
+    AnalysisStage,
+};
 pub(crate) use crate::config::OraclePolicy;
 pub(crate) use crate::domain::{
     ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding,
@@ -103,6 +107,10 @@ impl LanguageAdapter for TypeScriptAdapter {
         // so we can find related tests for any owner regardless of whether
         // the test file itself changed in this diff.
         let workspace_files = collect_workspace_typescript_files(&options.root);
+        let changed_paths = changed_files
+            .iter()
+            .map(|changed| normalized_path(&changed.path))
+            .collect::<Vec<_>>();
         let mut all_owners: Vec<TypeScriptOwner> = Vec::new();
         let mut all_tests: Vec<TypeScriptTest> = Vec::new();
         let mut parse_limits: Vec<TypeScriptParseLimit> = Vec::new();
@@ -112,7 +120,11 @@ impl LanguageAdapter for TypeScriptAdapter {
                 continue;
             };
             if let Some(reason) = parse_error_reason(relative, &source) {
-                if !is_test_file(relative) {
+                if !is_test_file(relative)
+                    && changed_paths
+                        .iter()
+                        .any(|changed| changed == &normalized_path(relative))
+                {
                     parse_limits.push(TypeScriptParseLimit {
                         file: relative.clone(),
                         reason,
@@ -262,12 +274,30 @@ impl LanguageAdapter for TypeScriptAdapter {
         if changed_javascript > 0 {
             changed_files_by_language.push((LanguageId::JavaScript, changed_javascript));
         }
+        let limitations = parse_limits
+            .iter()
+            .map(|limit| {
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::LanguageScopeUnsupported,
+                    AnalysisStage::LanguageAdapter,
+                    AnalysisRecovery::new(
+                        AnalysisRecoveryKind::Retry,
+                        "Fix the TypeScript or JavaScript parse error, then re-run the analysis.",
+                    )?,
+                )
+                .with_path(limit.file.to_string_lossy())?
+                .with_affected_items(1)?
+                .with_detail(limit.reason.clone())
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         Ok(LanguageDiffResult {
             findings,
             changed_files: changed_count,
+            candidate_line_count: 0,
             changed_files_by_language,
             partial_scope: None,
             skipped_files: 0,
+            limitations,
         })
     }
 

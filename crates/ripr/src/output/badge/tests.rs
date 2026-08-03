@@ -99,6 +99,7 @@ fn check_output(findings: Vec<Finding>) -> CheckOutput {
         no_scope_provided: false,
         unanalyzed_working_tree: false,
         suppression: None,
+        analysis_outcome: None,
         partial_scope: None,
     }
 }
@@ -1654,6 +1655,7 @@ fn check_output_with_preview_advisory(
         no_scope_provided: false,
         unanalyzed_working_tree: false,
         suppression: None,
+        analysis_outcome: None,
         partial_scope: None,
     }
 }

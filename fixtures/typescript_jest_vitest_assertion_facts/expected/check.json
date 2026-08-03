@@ -5,6 +5,10 @@
   "root": "fixtures/typescript_jest_vitest_assertion_facts/input",
   "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":6,"findings":6,"exposed":2,"weakly_exposed":4,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:adcf008c854bc76d9f8a0ab95c8051a615cd2a2a95b48039048a1faf465f7b9f","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":13,"candidate_line_count":6,"probe_count":6,"finding_count":6},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
     {
       "id": "probe:src_signals.ts:typescript_preview:7878a956",

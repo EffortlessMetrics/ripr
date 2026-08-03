@@ -6,6 +6,9 @@ Summary: 4 probe(s), 0 exposed, 3 weak, 0 unrevealed, 1 no path, 0 unknown
 
 Changed file(s) by language: javascript: 2, rust: 0, typescript: 2.
 
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 4 changed file(s), 8 changed line(s), 4 candidate line(s), 4 probe(s), 4 finding(s).
+
 Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.

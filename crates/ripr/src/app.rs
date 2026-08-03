@@ -177,6 +177,10 @@ pub struct CheckOutput {
     pub root: PathBuf,
     /// Base revision used to build the diff when applicable.
     pub base: Option<String>,
+    /// Typed producer-owned completeness and limitation facts for diff and
+    /// worktree analysis. `None` is reserved for repo-scope projections that
+    /// have no diff denominator.
+    pub(crate) analysis_outcome: Option<crate::analysis_outcome::AnalysisOutcome>,
     /// Summary counts and high-level evidence status.
     pub summary: Summary,
     /// Probe-level findings.

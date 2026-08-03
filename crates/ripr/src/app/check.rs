@@ -79,6 +79,7 @@ pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
     output_builder::check_output_from_analysis(
         input,
         AnalysisResult {
+            analysis_outcome: None,
             summary: Summary::default(),
             findings: Vec::new(),
             preview_language_advisories: Vec::new(),

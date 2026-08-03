@@ -17,6 +17,7 @@ use crate::analysis::cancellation;
 use crate::analysis::facts::{FunctionSummary, RustIndex};
 use crate::config::OraclePolicy;
 use crate::domain::{ExposureClass, Finding, Probe, StaticLimitKind, StopReason};
+use std::collections::BTreeSet;
 use std::path::Path;
 
 /// Default ceiling on the number of Rust files a diff-scoped analysis will
@@ -1354,6 +1355,7 @@ impl RustAdapter {
 
         let mut findings = Vec::new();
         let mut changed_rust_files = 0usize;
+        let mut candidate_lines = BTreeSet::new();
 
         for changed in analyzable_changed_files
             .iter()
@@ -1374,6 +1376,7 @@ impl RustAdapter {
             cancellation::checkpoint()?;
             let probes = probes::probes_for_file(&options.root, changed, &index);
             for probe in probes {
+                candidate_lines.insert((probe.location.file.clone(), probe.location.line));
                 cancellation::checkpoint()?;
                 let mut finding = classifier::classify_probe(&probe, &index);
                 finding.language = Some(LanguageId::Rust);
@@ -1409,6 +1412,7 @@ impl RustAdapter {
         Ok(LanguageDiffResult {
             findings,
             changed_files: changed_rust_files,
+            candidate_line_count: candidate_lines.len(),
             changed_files_by_language: Vec::new(),
             partial_scope,
             skipped_files: changed_files
@@ -1418,6 +1422,7 @@ impl RustAdapter {
                     is_generated_rust_file_with_patterns(&file.path, generated_file_patterns)
                 })
                 .count(),
+            limitations: Vec::new(),
         })
     }
 }

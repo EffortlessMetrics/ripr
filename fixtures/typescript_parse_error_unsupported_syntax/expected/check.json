@@ -5,6 +5,10 @@
   "root": "fixtures/typescript_parse_error_unsupported_syntax/input",
   "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": false,
+    "outcome": {"schema_version":"0.1","kind":"partial_with_limitations","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:e9884f41573c5f5ba126a7604bbf0cc24b32fc546ca8ad6acff7fbb46a2874d6","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[{"kind":"language_scope_unsupported","producer_stage":"language_adapter","path":"src/broken.ts","affected_items":1,"bounded_detail":"1 parser error(s)","recovery":{"kind":"retry","detail":"Fix the TypeScript or JavaScript parse error, then re-run the analysis."}}],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
     {
       "id": "probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0",

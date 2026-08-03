@@ -4,6 +4,9 @@ root: fixtures/error_path_sibling_oracle_fake_clean/input
 
 Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
 
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
+
 WARNING fixtures/error_path_sibling_oracle_fake_clean/input/src/lib.rs:10
 
 Changed

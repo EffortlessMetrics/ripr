@@ -24,6 +24,7 @@ pub(crate) fn render_bounded_with_config_and_navigation(
     navigation: Option<&FindingNavigation>,
 ) -> String {
     let mut out = render_header_summary(output);
+    render_analysis_outcome_disclosure(&mut out, output);
     render_suppression_policy_block(&mut out, output);
     render_partial_scope_disclosure(&mut out, output);
 
@@ -71,6 +72,7 @@ your working tree.\n",
 pub(crate) fn render_full_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
     let mut out = render_header_summary(output);
 
+    render_analysis_outcome_disclosure(&mut out, output);
     render_suppression_policy_block(&mut out, output);
     render_partial_scope_disclosure(&mut out, output);
 
@@ -155,6 +157,57 @@ fn render_header_summary(output: &CheckOutput) -> String {
     ));
     render_language_file_breakdown(&mut out, output);
     out
+}
+
+/// Render the producer-owned completeness contract before any empty-finding
+/// message. A limitation is therefore visible even when the parser produced
+/// no source findings; zero findings never upgrades an incomplete run.
+fn render_analysis_outcome_disclosure(out: &mut String, output: &CheckOutput) {
+    let Some(outcome) = &output.analysis_outcome else {
+        return;
+    };
+    let kind = outcome.kind.as_str();
+    out.push_str(&format!(
+        "Analysis outcome: {kind} ({}).\n",
+        if outcome.kind.is_complete() {
+            "analysis complete"
+        } else {
+            "analysis incomplete"
+        }
+    ));
+    if outcome.limitations.is_empty() {
+        out.push_str(&format!(
+            "  Counts: {} changed file(s), {} changed line(s), {} candidate line(s), {} probe(s), {} finding(s).\n\n",
+            outcome.counts.changed_file_count,
+            outcome.counts.changed_line_count,
+            outcome.counts.candidate_line_count,
+            outcome.counts.probe_count,
+            outcome.counts.finding_count,
+        ));
+        return;
+    }
+    out.push_str(
+        "  Zero findings is not a clean result because the analyzed scope is incomplete.\n",
+    );
+    for limitation in &outcome.limitations {
+        out.push_str(&format!(
+            "  Limitation: {} at {}",
+            limitation.kind.as_str(),
+            limitation.producer_stage.as_str()
+        ));
+        if let Some(path) = &limitation.path {
+            out.push_str(&format!(" ({path})"));
+        }
+        if let Some(count) = limitation.affected_items {
+            out.push_str(&format!("; affected items: {count}"));
+        }
+        out.push_str(&format!(
+            "; recovery: {} — {}.\n",
+            limitation.recovery.kind.as_str(),
+            limitation.recovery.detail
+        ));
+    }
+    out.push('\n');
 }
 
 /// Emit a per-language changed-file breakdown only when a non-Rust language
@@ -514,6 +567,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -549,6 +603,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -581,6 +636,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -622,6 +678,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -656,6 +713,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -697,6 +755,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -736,6 +795,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -784,6 +844,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -810,6 +871,7 @@ mod tests {
             no_scope_provided: true,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -848,6 +910,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -1042,6 +1105,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         }
     }
@@ -1137,6 +1201,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -1173,6 +1238,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -1217,6 +1283,7 @@ mod tests {
                         .to_string(),
                 ],
             }),
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -1261,6 +1328,7 @@ mod tests {
                 }],
                 warnings: Vec::new(),
             }),
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -1287,6 +1355,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: Some(crate::analysis::PartialDiffScope {
                 run_status: crate::analysis::PartialDiffScope::RUN_STATUS.to_string(),
                 diff_identity: "sha256:abc".to_string(),
@@ -1326,6 +1395,7 @@ mod tests {
 
         // Full-scope runs carry no partial disclosure.
         let full = CheckOutput {
+            analysis_outcome: None,
             partial_scope: None,
             ..output
         };
@@ -1354,6 +1424,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: Some(crate::analysis::PartialDiffScope {
                 run_status: crate::analysis::PartialDiffScope::RUN_STATUS.to_string(),
                 diff_identity: "sha256:abc".to_string(),
@@ -2098,6 +2169,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2137,6 +2209,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2167,6 +2240,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2203,6 +2277,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2237,6 +2312,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2293,6 +2369,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2365,6 +2442,7 @@ mod tests {
             no_scope_provided: true,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2412,6 +2490,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2446,6 +2525,7 @@ mod tests {
             no_scope_provided: true,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2481,6 +2561,7 @@ mod tests {
             no_scope_provided: true,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2520,6 +2601,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2568,6 +2650,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2614,6 +2697,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2667,6 +2751,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2701,6 +2786,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2732,6 +2818,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2760,6 +2847,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2793,6 +2881,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 
@@ -2825,6 +2914,7 @@ mod tests {
             no_scope_provided: false,
             unanalyzed_working_tree: false,
             suppression: None,
+            analysis_outcome: None,
             partial_scope: None,
         };
 

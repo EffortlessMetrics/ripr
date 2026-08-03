@@ -5,6 +5,10 @@
   "root": "fixtures/perl_cpan_alpha/input",
   "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":0,"findings":0,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0}]},
+  "analysis_outcome": {
+    "analysis_complete": false,
+    "outcome": {"schema_version":"0.1","kind":"partial_with_limitations","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:efde2b65f8424c4863f4cdf1eab56783e0230296ee5a271ee7018b56e7ca2b28","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":0,"probe_count":0,"finding_count":0},"limitations":[{"kind":"language_adapter_unavailable","producer_stage":"language_adapter","path":null,"affected_items":1,"bounded_detail":"perl changed 1 file(s), but the preview adapter was not enabled or available","recovery":{"kind":"enable_language","detail":"Enable the perl preview adapter and re-run the analysis."}}],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
   ],
   "preview_languages": [

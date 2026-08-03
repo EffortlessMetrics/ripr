@@ -26,6 +26,74 @@ pub(crate) enum AnalysisOutcomeKind {
     AnalysisFailed,
 }
 
+impl AnalysisOutcomeKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::NoScope => "no_scope",
+            Self::NoChangedLines => "no_changed_lines",
+            Self::NoBehavioralCandidates => "no_behavioral_candidates",
+            Self::CompleteNoFindings => "complete_no_findings",
+            Self::CompleteWithFindings => "complete_with_findings",
+            Self::PartialWithLimitations => "partial_with_limitations",
+            Self::UnsupportedInput => "unsupported_input",
+            Self::AnalysisFailed => "analysis_failed",
+        }
+    }
+
+    pub(crate) const fn is_complete(self) -> bool {
+        matches!(
+            self,
+            Self::NoScope
+                | Self::NoChangedLines
+                | Self::NoBehavioralCandidates
+                | Self::CompleteNoFindings
+                | Self::CompleteWithFindings
+        )
+    }
+}
+
+impl AnalysisLimitationKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::CombinedHunkUnsupported => "combined_hunk_unsupported",
+            Self::UnresolvedConflictMarkers => "unresolved_conflict_markers",
+            Self::MalformedDiff => "malformed_diff",
+            Self::DiffScopeOversized => "diff_scope_oversized",
+            Self::LanguageAdapterUnavailable => "language_adapter_unavailable",
+            Self::LanguageScopeUnsupported => "language_scope_unsupported",
+            Self::ProducerTimeout => "producer_timeout",
+            Self::ProducerFailure => "producer_failure",
+        }
+    }
+}
+
+impl AnalysisStage {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::DiffLoad => "diff_load",
+            Self::DiffParse => "diff_parse",
+            Self::LanguageAdapter => "language_adapter",
+            Self::ProbeGeneration => "probe_generation",
+            Self::FindingClassification => "finding_classification",
+            Self::AnalysisPipeline => "analysis_pipeline",
+        }
+    }
+}
+
+impl AnalysisRecoveryKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::NarrowDiff => "narrow_diff",
+            Self::UseTwoWayDiff => "use_two_way_diff",
+            Self::ResolveConflicts => "resolve_conflicts",
+            Self::EnableLanguage => "enable_language",
+            Self::IncreaseConfiguredLimit => "increase_configured_limit",
+            Self::Retry => "retry",
+            Self::InspectFailure => "inspect_failure",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AnalysisStage {
@@ -42,6 +110,7 @@ pub(crate) enum AnalysisStage {
 pub(crate) enum AnalysisLimitationKind {
     CombinedHunkUnsupported,
     UnresolvedConflictMarkers,
+    MalformedDiff,
     DiffScopeOversized,
     LanguageAdapterUnavailable,
     LanguageScopeUnsupported,
@@ -371,10 +440,13 @@ fn validate_outcome(
                 || counts.probe_count != 0
                 || counts.finding_count != 0
             {
-                return Err(
-                    "no_behavioral_candidates requires changed lines and zero candidate, probe, and finding counts"
-                        .to_string(),
-                );
+                return Err(format!(
+                    "no_behavioral_candidates requires changed lines and zero candidate, probe, and finding counts (changed_line_count={}, candidate_line_count={}, probe_count={}, finding_count={})",
+                    counts.changed_line_count,
+                    counts.candidate_line_count,
+                    counts.probe_count,
+                    counts.finding_count,
+                ));
             }
         }
         AnalysisOutcomeKind::CompleteNoFindings => {
@@ -515,6 +587,69 @@ mod tests {
             assert_eq!(actual, expected);
         }
         Ok(())
+    }
+
+    #[test]
+    fn typed_limitation_tokens_match_the_wire_contract() {
+        let limitation_kinds = [
+            (
+                AnalysisLimitationKind::CombinedHunkUnsupported,
+                "combined_hunk_unsupported",
+            ),
+            (
+                AnalysisLimitationKind::UnresolvedConflictMarkers,
+                "unresolved_conflict_markers",
+            ),
+            (AnalysisLimitationKind::MalformedDiff, "malformed_diff"),
+            (
+                AnalysisLimitationKind::DiffScopeOversized,
+                "diff_scope_oversized",
+            ),
+            (
+                AnalysisLimitationKind::LanguageAdapterUnavailable,
+                "language_adapter_unavailable",
+            ),
+            (
+                AnalysisLimitationKind::LanguageScopeUnsupported,
+                "language_scope_unsupported",
+            ),
+            (AnalysisLimitationKind::ProducerTimeout, "producer_timeout"),
+            (AnalysisLimitationKind::ProducerFailure, "producer_failure"),
+        ];
+        for (kind, expected) in limitation_kinds {
+            assert_eq!(kind.as_str(), expected);
+        }
+
+        let stages = [
+            (AnalysisStage::DiffLoad, "diff_load"),
+            (AnalysisStage::DiffParse, "diff_parse"),
+            (AnalysisStage::LanguageAdapter, "language_adapter"),
+            (AnalysisStage::ProbeGeneration, "probe_generation"),
+            (
+                AnalysisStage::FindingClassification,
+                "finding_classification",
+            ),
+            (AnalysisStage::AnalysisPipeline, "analysis_pipeline"),
+        ];
+        for (stage, expected) in stages {
+            assert_eq!(stage.as_str(), expected);
+        }
+
+        let recoveries = [
+            (AnalysisRecoveryKind::NarrowDiff, "narrow_diff"),
+            (AnalysisRecoveryKind::UseTwoWayDiff, "use_two_way_diff"),
+            (AnalysisRecoveryKind::ResolveConflicts, "resolve_conflicts"),
+            (AnalysisRecoveryKind::EnableLanguage, "enable_language"),
+            (
+                AnalysisRecoveryKind::IncreaseConfiguredLimit,
+                "increase_configured_limit",
+            ),
+            (AnalysisRecoveryKind::Retry, "retry"),
+            (AnalysisRecoveryKind::InspectFailure, "inspect_failure"),
+        ];
+        for (recovery, expected) in recoveries {
+            assert_eq!(recovery.as_str(), expected);
+        }
     }
 
     #[test]

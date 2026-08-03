@@ -6,6 +6,10 @@ Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
 Changed file(s) by language: rust: 0, typescript: 1.
 
+Analysis outcome: partial_with_limitations (analysis incomplete).
+  Zero findings is not a clean result because the analyzed scope is incomplete.
+  Limitation: language_scope_unsupported at language_adapter (src/broken.ts); affected items: 1; recovery: retry — Fix the TypeScript or JavaScript parse error, then re-run the analysis..
+
 Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.

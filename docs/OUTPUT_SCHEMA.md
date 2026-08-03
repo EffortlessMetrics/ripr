@@ -135,9 +135,35 @@ Repo-scoped formats such as `repo-exposure-json`, `repo-exposure-md`,
     "propagation_unknown": 0,
     "static_unknown": 0
   },
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {
+      "schema_version": "0.1",
+      "kind": "complete_with_findings",
+      "identity": {
+        "base_revision": "origin/main",
+        "input_identity": "sha256:<diff-bytes>"
+      },
+      "counts": {
+        "changed_file_count": 1,
+        "changed_line_count": 2,
+        "candidate_line_count": 2,
+        "probe_count": 1,
+        "finding_count": 1
+      },
+      "limitations": [],
+      "claim_boundary": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+    }
+  },
   "findings": []
 }
 ```
+
+`analysis_outcome` is emitted for diff and worktree analysis. Its
+`analysis_complete` member is derived from `outcome.kind`; consumers must use
+the typed outcome and its `limitations[]` rather than infer completeness from
+`findings` or `probes`. For `unsupported_input` and
+`partial_with_limitations`, zero findings is explicitly not a clean result.
 
 When supported raw findings align to a canonical evidence item, `ripr check
 --json` also emits an additive `finding_alignment` section. The section is

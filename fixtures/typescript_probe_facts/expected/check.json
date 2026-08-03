@@ -5,6 +5,10 @@
   "root": "fixtures/typescript_probe_facts/input",
   "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":10,"findings":10,"exposed":0,"weakly_exposed":10,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"javascript","files":2},{"language":"rust","files":0},{"language":"typescript","files":5}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:bdb002aa17a1302d532d1264003251192b3716071db783e2dd521ab0b55f1dd6","snapshot_identity":null},"counts":{"changed_file_count":7,"changed_line_count":20,"candidate_line_count":10,"probe_count":10,"finding_count":10},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
     {
       "id": "probe:src_ambiguous.ts:typescript_preview:ba5968cd",

@@ -502,6 +502,9 @@ impl LanguageRunStatus {
 
 #[derive(Clone, Debug)]
 pub struct AnalysisResult {
+    /// Producer-owned completeness and limitation facts. Diff/worktree
+    /// pipelines populate this; repo-scope analysis has no diff denominator.
+    pub(crate) analysis_outcome: Option<crate::analysis_outcome::AnalysisOutcome>,
     pub summary: Summary,
     pub findings: Vec<Finding>,
     /// Advisory records for preview-language files in the analyzed scope.

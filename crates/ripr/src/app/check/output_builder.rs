@@ -12,6 +12,7 @@ pub(super) fn check_output_from_analysis(
         mode: input.mode,
         root: input.root,
         base: input.base,
+        analysis_outcome: analysis.analysis_outcome,
         summary: analysis.summary,
         findings: analysis.findings,
         preview_language_advisories: analysis.preview_language_advisories,

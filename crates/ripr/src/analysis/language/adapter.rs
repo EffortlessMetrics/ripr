@@ -4,6 +4,7 @@
 
 use super::super::{AnalysisOptions, diff::ChangedFile};
 use super::rust::PartialDiffScope;
+use crate::analysis_outcome::AnalysisLimitation;
 use crate::config::OraclePolicy;
 use crate::domain::Finding;
 use std::path::Path;
@@ -21,6 +22,10 @@ use std::path::Path;
 pub(crate) struct LanguageDiffResult {
     pub(crate) findings: Vec<Finding>,
     pub(crate) changed_files: usize,
+    /// Number of distinct changed source lines for which the adapter
+    /// generated at least one probe. This is a producer fact, not a proxy for
+    /// every changed source line.
+    pub(crate) candidate_line_count: usize,
     /// Per-output-language breakdown of `changed_files` for adapters that
     /// cover more than one output language — the TypeScript adapter handles
     /// `.ts/.tsx` (typescript) and `.js/.jsx` (javascript) (#2103 review).
@@ -31,6 +36,9 @@ pub(crate) struct LanguageDiffResult {
     /// Number of accepted-language files intentionally excluded as generated
     /// source. The pipeline records this as a partial run disclosure.
     pub(crate) skipped_files: usize,
+    /// Typed adapter-owned limitations that the pipeline publishes in the
+    /// shared analysis outcome.
+    pub(crate) limitations: Vec<AnalysisLimitation>,
 }
 
 /// Per-language results returned by [`LanguageAdapter::analyze_repo`].
