@@ -155,33 +155,37 @@ No final candidate qualification or publication claim is made here.
 PR #2790 merged at `3c08654028dcf20eb9bee5fbf3c67b3ef6111891` with deterministic
 synthetic fixtures for validator shape. PR #2795 then merged at
 `f55df6f67797de5d2fe4515b689aa7cea57669b4`, retaining the real census in
-`fixtures/release_denominator/current-main-provisional.json`. This refresh
-rebases the provisional census to `origin/main` `5576c5331580413840c5958be4bb2d4e07b197dc`:
-the first-parent range `c86807ec..5576c533` contains 224 observed commits and
-the candidate-tree projection contains 219 records. Merged PRs #2842, #2844,
-corrective #2858/#2859, and corrective #2862, plus later corrective follow-ups, remain explicitly
-`safe_defer_post_0_11` / `hold_post_release` and absent by
-`candidate_only_exclusion` unless #2379 changes the release graph. The fixture
-proves current range identity and reconciled disposition only; it is not a
+`fixtures/release_denominator/current-main-provisional.json`. This final refresh
+rebases the provisional census to `origin/main`
+`c30a26831b75051813bfaa3dbd9378096ec6aa82`: the first-parent range
+`c86807ec..c30a2683` contains 234 observed commits and the candidate-tree
+projection contains 219 records. Merged PRs #2842, #2844, corrective #2858/#2859,
+corrective #2862, release-control #2857, corrective #2867, #2870, #2860, #2861,
+#2869, #2876, #2873, #2878, and #2872 remain explicitly assigned current
+`safe_defer_post_0_11` disposition and
+`absent_by_candidate_only_exclusion` tree state; earlier `hold_post_release`
+is historical context only unless #2379 changes the release graph. The fixture
+proves current range identity, 15 exclusions/safe deferrals, and reconciled
+disposition only; it is not a
 reviewed final denominator and cannot unblock #1609 or #2769.
 
-## Live reconciliation boundary (2026-08-02)
+## Live reconciliation boundary (2026-08-03)
 
-The release-control checkout was refreshed from `origin/main`
-`d2a93e7bbb91ea90e46e38b92bef4e9cd281e9cb` after independently owned PR #2861
-merged the typed diff-limitation parser correction on top of PR #2860's
-process/CWD harness correction and PR #2870's earlier test-only harness
-correction. The captured provisional fixture
-above remains historical until #2831 PR B imports a fresh GitHub-backed census;
-its 224/219 counts are not the current release denominator. PR #2831 A owns
+The release-control checkout was refreshed from final `origin/main`
+`c30a26831b75051813bfaa3dbd9378096ec6aa82` after #2870, #2860, #2861, #2869,
+#2876, #2873, #2878, and #2872 landed. The final captured provisional fixture
+above carries 234/219 records and fifteen candidate-only exclusions/safe
+deferrals. PR #2831 A owns
 only the typed reference-authority schema, offline validator, compatibility
 projection checks, and representative fixture proof. Concurrent product and
 release lanes remain independently owned and are not required to close for
 this plan slice. The production repair commit is
 `2a20da216428aa5ea13757d68f9fe9eed8cb6be1`; the focused denominator suite has
-25 tests, including the fail-closed candidate-tree-subset regression. The local
-wrapper/clippy relink remains unverified because the Windows volume exhausted
-space; hosted required proof is authoritative for the pushed candidate.
+25 tests, including the fail-closed candidate-tree-subset regression. The
+required routed proof for #2869 was still running when GitHub merged it, so that
+hosted receipt is retained as an explicit proof gap rather than a pass. The
+pinned record-set digest is
+`sha256:166380b5b8cef061f6d617db089a5070e566e54841bd103c6a962d832881efe0`.
 
 ## Non-goals and safety boundary
 

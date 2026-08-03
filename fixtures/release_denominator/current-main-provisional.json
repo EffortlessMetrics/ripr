@@ -1,14 +1,14 @@
 {
   "schema_version": "0.1",
   "kind": "release_denominator_snapshot",
-  "captured_at": "2026-08-01T22:24:00Z",
+  "captured_at": "2026-08-03T13:50:49Z",
   "source": {
     "mode": "captured",
     "stage": "provisional",
     "freshness": "current",
     "historical_base_sha": "c86807ecdbf359594ef88c0ff38b10b446139dca",
     "candidate_ref": "origin/main",
-    "candidate_sha": "5576c5331580413840c5958be4bb2d4e07b197dc",
+    "candidate_sha": "c30a26831b75051813bfaa3dbd9378096ec6aa82",
     "range_commits": [
       "fd1eec2ad8145678f0fb494a50bd181d6857b0c7",
       "7fc0dda3dd6625f20874c3703aeaacfe65a289e7",
@@ -233,7 +233,17 @@
       "224c240824566ec4c3beea4b3c86c6a149b81761",
       "bdf7386f517c2a6999581236d6f509a254dd590a",
       "a8777c3549e52855415bff55753356adfc9c1cb9",
-      "5576c5331580413840c5958be4bb2d4e07b197dc"
+      "5576c5331580413840c5958be4bb2d4e07b197dc",
+      "4c836dd61dc50f7a6711be82f5faca63ff220665",
+      "a379dd1bc27e7cba09f24f9dd9a9e6a90982e9af",
+      "2a84e5808e594d809b07bee59a1a5dbeeda79914",
+      "8d520fdf7f4c036b711cbd5b5b1aa5d8b29bb592",
+      "d2a93e7bbb91ea90e46e38b92bef4e9cd281e9cb",
+      "fcbb30a7cf6a37027fa377abafb617632b2e6f57",
+      "15d59a262f7fe8b5927ab812efb81f6e90cf3ee6",
+      "827c9e08f8abb87b0864b1ebb7b3135e78727bb3",
+      "e7e6e6632f1fc2a0b19d30ed6dc76ef8a167c7c6",
+      "c30a26831b75051813bfaa3dbd9378096ec6aa82"
     ],
     "candidate_tree_commits": [
       "fd1eec2ad8145678f0fb494a50bd181d6857b0c7",
@@ -4518,8 +4528,8 @@
       "acceptance_owner": "agent-system-verification",
       "candidate_tree_state": "absent_by_candidate_only_exclusion",
       "review_refs": [], "proof_refs": ["git:first-parent-range", "issue:2840"],
-      "source_survivor_or_swarm_exclusion_effect": "merged in development main; preserve the prior hold_post_release disposition and exclude the incomplete acceptance candidate from the 0.11 tree",
-      "limitation_or_operator_decision": "Implementation is merged, but issue acceptance remains partial; safe_defer_post_0_11 until behavioral proof and substantive review complete."
+      "source_survivor_or_swarm_exclusion_effect": "merged in development main; preserve the post-0.11 hold and exclude the corrective candidate from the 0.11 tree",
+      "limitation_or_operator_decision": "Implementation is merged and #2841 acceptance is complete; safe_defer_post_0_11 unless #2379 changes the release graph."
     },
     {
       "commit_sha": "220c50d0db8e1076d37653ec9af892076ba40b7e",
@@ -4635,8 +4645,8 @@
       "acceptance_owner": "precommit-correctness",
       "candidate_tree_state": "absent_by_candidate_only_exclusion",
       "review_refs": [], "proof_refs": ["git:first-parent-range", "issue:2841"],
-      "source_survivor_or_swarm_exclusion_effect": "corrective precommit implementation merged in development main; preserve the prior hold_post_release disposition and exclude the incomplete acceptance candidate from the 0.11 tree",
-      "limitation_or_operator_decision": "Corrective implementation is merged, but issue acceptance remains partial; safe_defer_post_0_11 until current-main integrated proof completes."
+      "source_survivor_or_swarm_exclusion_effect": "corrective precommit implementation merged in development main; preserve the post-0.11 hold and exclude the corrective candidate from the 0.11 tree",
+      "limitation_or_operator_decision": "Corrective implementation is merged and #2841 acceptance is complete; safe_defer_post_0_11 unless #2379 changes the release graph."
     },
     {
       "commit_sha": "a8777c3549e52855415bff55753356adfc9c1cb9",
@@ -4663,6 +4673,136 @@
       "review_refs": [], "proof_refs": ["git:first-parent-range", "issue:2822"],
       "source_survivor_or_swarm_exclusion_effect": "corrective VS Code lifecycle production seam merged in development main; preserve the prior hold_post_release disposition and exclude the incomplete acceptance candidate from the 0.11 tree",
       "limitation_or_operator_decision": "Corrective implementation is merged, but issue acceptance remains partial; safe_defer_post_0_11 until complete current-main lifecycle and real-host proof completes."
+    },
+    {
+      "commit_sha": "4c836dd61dc50f7a6711be82f5faca63ff220665",
+      "first_parent_position": 225,
+      "subject": "release: reconcile post-merge acceptance candidates (#2857)",
+      "pr_refs": [2857], "issue_refs": [],
+      "theme_or_surface": "release-control",
+      "release_disposition": "safe_defer_post_0_11",
+      "acceptance_owner": "release-control-2379",
+      "candidate_tree_state": "absent_by_candidate_only_exclusion",
+      "review_refs": [], "proof_refs": ["git:first-parent-range", "pr:2857"],
+      "source_survivor_or_swarm_exclusion_effect": "release-control reconciliation is present in development main; preserve the post-0.11 hold and keep unresolved acceptance candidates outside the 0.11 tree",
+      "limitation_or_operator_decision": "Control refresh merged; #2841 acceptance is complete, #2840 remains partial, and #1609 operator decisions remain unresolved; safe_defer_post_0_11 unless #2379 changes the release graph."
+    },
+    {
+      "commit_sha": "a379dd1bc27e7cba09f24f9dd9a9e6a90982e9af",
+      "first_parent_position": 226,
+      "subject": "fix(vscode): omit absent context identity",
+      "pr_refs": [2867], "issue_refs": [1579],
+      "theme_or_surface": "fix(vscode)",
+      "release_disposition": "safe_defer_post_0_11",
+      "acceptance_owner": "vscode-lifecycle-verification",
+      "candidate_tree_state": "absent_by_candidate_only_exclusion",
+      "review_refs": [], "proof_refs": ["git:first-parent-range", "issue:1579"],
+      "source_survivor_or_swarm_exclusion_effect": "corrective VS Code context-contract implementation is merged in development main; preserve the post-0.11 hold and keep the corrective candidate outside the 0.11 tree",
+      "limitation_or_operator_decision": "Corrective implementation is merged, but broader #1579 acceptance remains partial; safe_defer_post_0_11 unless #2379 changes the release graph."
+    },
+    {
+      "commit_sha": "2a84e5808e594d809b07bee59a1a5dbeeda79914",
+      "first_parent_position": 227,
+      "subject": "fix(test): mark flaky git pipe tests #[serial] (#2567) (#2870)",
+      "pr_refs": [2870], "issue_refs": [2567],
+      "theme_or_surface": "test(harness)",
+      "release_disposition": "safe_defer_post_0_11",
+      "acceptance_owner": "process-harness-verification",
+      "candidate_tree_state": "absent_by_candidate_only_exclusion",
+      "review_refs": [], "proof_refs": ["git:first-parent-range", "issue:2567"],
+      "source_survivor_or_swarm_exclusion_effect": "merged in development main; preserve the post-0.11 hold and keep the corrective harness candidate outside the 0.11 tree",
+      "limitation_or_operator_decision": "Corrective harness implementation is merged, but the broader acceptance campaign remains outside the 0.11 candidate; safe_defer_post_0_11 unless #2379 changes the release graph."
+    },
+    {
+      "commit_sha": "8d520fdf7f4c036b711cbd5b5b1aa5d8b29bb592",
+      "first_parent_position": 228,
+      "subject": "test: stabilize process-backed parallel harness (#2860)",
+      "pr_refs": [2860], "issue_refs": [2567, 2841],
+      "theme_or_surface": "test(harness)",
+      "release_disposition": "safe_defer_post_0_11",
+      "acceptance_owner": "process-harness-verification",
+      "candidate_tree_state": "absent_by_candidate_only_exclusion",
+      "review_refs": [], "proof_refs": ["git:first-parent-range", "issue:2567", "issue:2841"],
+      "source_survivor_or_swarm_exclusion_effect": "merged in development main; preserve the post-0.11 hold and keep the corrective harness candidate outside the 0.11 tree",
+      "limitation_or_operator_decision": "Corrective harness implementation is merged, but the broader acceptance campaign remains outside the 0.11 candidate; safe_defer_post_0_11 unless #2379 changes the release graph."
+    },
+    {
+      "commit_sha": "d2a93e7bbb91ea90e46e38b92bef4e9cd281e9cb",
+      "first_parent_position": 229,
+      "subject": "fix(diff): retain combined-hunk and conflict-marker limitations (#2828) (#2861)",
+      "pr_refs": [2861], "issue_refs": [2828],
+      "theme_or_surface": "analysis",
+      "release_disposition": "safe_defer_post_0_11",
+      "acceptance_owner": "release-control-2379",
+      "candidate_tree_state": "absent_by_candidate_only_exclusion",
+      "review_refs": [], "proof_refs": ["git:first-parent-range", "issue:2828"],
+      "source_survivor_or_swarm_exclusion_effect": "merged in development main after the provisional candidate cut; preserve the post-0.11 hold and keep the corrective candidate outside the 0.11 tree",
+      "limitation_or_operator_decision": "Post-cut corrective implementation remains outside the 0.11 candidate; safe_defer_post_0_11 unless #2379 changes the release graph."
+    },
+    {
+      "commit_sha": "fcbb30a7cf6a37027fa377abafb617632b2e6f57",
+      "first_parent_position": 230,
+      "subject": "release: add typed denominator reference authority (#2869)",
+      "pr_refs": [2869], "issue_refs": [],
+      "theme_or_surface": "release-control",
+      "release_disposition": "safe_defer_post_0_11",
+      "acceptance_owner": "release-control-2379",
+      "candidate_tree_state": "absent_by_candidate_only_exclusion",
+      "review_refs": [], "proof_refs": ["git:first-parent-range", "pr:2869"],
+      "source_survivor_or_swarm_exclusion_effect": "release-control correction is merged after the provisional candidate cut; preserve the post-0.11 hold and keep the control candidate outside the 0.11 tree",
+      "limitation_or_operator_decision": "Post-cut release-control correction remains outside the 0.11 candidate; safe_defer_post_0_11 unless #2379 changes the release graph."
+    },
+    {
+      "commit_sha": "15d59a262f7fe8b5927ab812efb81f6e90cf3ee6",
+      "first_parent_position": 231,
+      "subject": "test(xtask): make CWD gate writer-fair (#2876)",
+      "pr_refs": [2876], "issue_refs": [2567, 2841, 2875],
+      "theme_or_surface": "test(harness)",
+      "release_disposition": "safe_defer_post_0_11",
+      "acceptance_owner": "process-harness-verification",
+      "candidate_tree_state": "absent_by_candidate_only_exclusion",
+      "review_refs": [], "proof_refs": ["git:first-parent-range", "issue:2567", "issue:2841", "issue:2875"],
+      "source_survivor_or_swarm_exclusion_effect": "merged in development main after the provisional candidate cut; preserve the post-0.11 hold and keep the corrective harness candidate outside the 0.11 tree",
+      "limitation_or_operator_decision": "Post-cut harness correction remains outside the 0.11 candidate; safe_defer_post_0_11 unless #2379 changes the release graph."
+    },
+    {
+      "commit_sha": "827c9e08f8abb87b0864b1ebb7b3135e78727bb3",
+      "first_parent_position": 232,
+      "subject": "test(precommit): make parallel fixtures uniquely named (#2567)",
+      "pr_refs": [2873], "issue_refs": [2567],
+      "theme_or_surface": "test(precommit)",
+      "release_disposition": "safe_defer_post_0_11",
+      "acceptance_owner": "process-harness-verification",
+      "candidate_tree_state": "absent_by_candidate_only_exclusion",
+      "review_refs": [], "proof_refs": ["git:first-parent-range", "issue:2567"],
+      "source_survivor_or_swarm_exclusion_effect": "merged in development main after the provisional candidate cut; preserve the post-0.11 hold and keep the corrective precommit fixture candidate outside the 0.11 tree",
+      "limitation_or_operator_decision": "Post-cut precommit harness correction remains outside the 0.11 candidate; safe_defer_post_0_11 unless #2379 changes the release graph."
+    },
+    {
+      "commit_sha": "e7e6e6632f1fc2a0b19d30ed6dc76ef8a167c7c6",
+      "first_parent_position": 233,
+      "subject": "fix(xtask): verify Windows timeout parent exit (#2878)",
+      "pr_refs": [2878], "issue_refs": [2567, 2877],
+      "theme_or_surface": "test(harness)",
+      "release_disposition": "safe_defer_post_0_11",
+      "acceptance_owner": "process-harness-verification",
+      "candidate_tree_state": "absent_by_candidate_only_exclusion",
+      "review_refs": [], "proof_refs": ["git:first-parent-range", "issue:2567", "issue:2877"],
+      "source_survivor_or_swarm_exclusion_effect": "merged in development main after the provisional candidate cut; preserve the post-0.11 hold and keep the corrective harness candidate outside the 0.11 tree",
+      "limitation_or_operator_decision": "Post-cut harness correction remains outside the 0.11 candidate; safe_defer_post_0_11 unless #2379 changes the release graph."
+    },
+    {
+      "commit_sha": "c30a26831b75051813bfaa3dbd9378096ec6aa82",
+      "first_parent_position": 234,
+      "subject": "feat(output): project typed analysis outcomes (#2829) (#2872)",
+      "pr_refs": [2872], "issue_refs": [2829],
+      "theme_or_surface": "output-contract",
+      "release_disposition": "safe_defer_post_0_11",
+      "acceptance_owner": "output-contract-verification",
+      "candidate_tree_state": "absent_by_candidate_only_exclusion",
+      "review_refs": [], "proof_refs": ["git:first-parent-range", "issue:2829"],
+      "source_survivor_or_swarm_exclusion_effect": "typed output-contract correction is merged after the provisional candidate cut; preserve the post-0.11 hold and keep the corrective candidate outside the 0.11 tree",
+      "limitation_or_operator_decision": "Post-cut output-contract correction remains outside the 0.11 candidate; safe_defer_post_0_11 unless #2379 changes the release graph."
     }
   ]
 }

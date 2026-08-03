@@ -1246,11 +1246,11 @@ mod tests {
             ),
         )?;
         require(
-            report.records.len() == 224,
+            report.records.len() == 234,
             "current-main census record count changed",
         )?;
         require(
-            report.source.range_commits.len() == 224,
+            report.source.range_commits.len() == 234,
             "current-main census range count changed",
         )?;
         require(
@@ -1259,19 +1259,64 @@ mod tests {
         )?;
         require(
             report.source.historical_base_sha == "c86807ecdbf359594ef88c0ff38b10b446139dca"
-                && report.source.candidate_sha == "5576c5331580413840c5958be4bb2d4e07b197dc"
+                && report.source.candidate_sha == "c30a26831b75051813bfaa3dbd9378096ec6aa82"
                 && report.source.range_commits.first().map(String::as_str)
                     == Some("fd1eec2ad8145678f0fb494a50bd181d6857b0c7")
                 && report.source.range_commits.last().map(String::as_str)
-                    == Some("5576c5331580413840c5958be4bb2d4e07b197dc"),
+                    == Some("c30a26831b75051813bfaa3dbd9378096ec6aa82"),
             "current-main identity changed",
         )?;
         require(
             report.range_digest
-                == "sha256:e2d1bb7679cb1c554e707907160a657b80ff95f999cbf704fbff8ca7c0e4d75d"
+                == "sha256:b85b8314b5f738335ae63220fe5f0ea8ef4e6e1892124eea148ea49181168501"
                 && report.candidate_tree_digest
                     == "sha256:c1b3675b6b98f609343f35711898e805a6ad27577c8f9b351ae53718b91082ae",
             "current-main range or candidate-tree digest changed",
+        )?;
+        require(
+            report.record_set_digest
+                == "sha256:166380b5b8cef061f6d617db089a5070e566e54841bd103c6a962d832881efe0",
+            "current-main record-set digest changed",
+        )?;
+        require(
+            report
+                .counts_by_tree_state
+                .get("absent_by_candidate_only_exclusion")
+                == Some(&15)
+                && report.counts_by_tree_state.get("present_in_candidate") == Some(&219)
+                && report.counts_by_disposition.get("safe_defer_post_0_11") == Some(&15)
+                && report
+                    .counts_by_disposition
+                    .get("operator_decision_required")
+                    == Some(&219),
+            "current-main denominator counts changed",
+        )?;
+        let excluded = report
+            .records
+            .iter()
+            .filter(|record| record.candidate_tree_state == "absent_by_candidate_only_exclusion")
+            .map(|record| record.commit_sha.as_str())
+            .collect::<Vec<_>>();
+        require(
+            excluded
+                == vec![
+                    "558451709fba77330371c1e2ecf898e62a658a68",
+                    "0b1a40f7fcbbce18ef8a729c2aad0a4b5d60e73a",
+                    "bdf7386f517c2a6999581236d6f509a254dd590a",
+                    "a8777c3549e52855415bff55753356adfc9c1cb9",
+                    "5576c5331580413840c5958be4bb2d4e07b197dc",
+                    "4c836dd61dc50f7a6711be82f5faca63ff220665",
+                    "a379dd1bc27e7cba09f24f9dd9a9e6a90982e9af",
+                    "2a84e5808e594d809b07bee59a1a5dbeeda79914",
+                    "8d520fdf7f4c036b711cbd5b5b1aa5d8b29bb592",
+                    "d2a93e7bbb91ea90e46e38b92bef4e9cd281e9cb",
+                    "fcbb30a7cf6a37027fa377abafb617632b2e6f57",
+                    "15d59a262f7fe8b5927ab812efb81f6e90cf3ee6",
+                    "827c9e08f8abb87b0864b1ebb7b3135e78727bb3",
+                    "e7e6e6632f1fc2a0b19d30ed6dc76ef8a167c7c6",
+                    "c30a26831b75051813bfaa3dbd9378096ec6aa82",
+                ],
+            "current-main excluded commit identities changed",
         )?;
         Ok(())
     }

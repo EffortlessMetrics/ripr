@@ -61,18 +61,23 @@ decision; final output is ready only after every record is reconciled.
 
 ## Current-main evidence
 
-`fixtures/release_denominator/current-main-provisional.json` is a historical
-captured provisional census of `c86807ec..5576c533` at `origin/main` as
-observed on 2026-08-01. It carries 224 first-parent records and 219
-candidate-tree records. It is not a current-main receipt after later merges;
-PR B of #2831 must migrate it before denominator decisions consume it. The
-development-main merges for #2842, #2844, corrective #2858/#2859, and
-corrective #2862 are retained in
-the denominator with `safe_defer_post_0_11` / `hold_post_release` disposition
-and `absent_by_candidate_only_exclusion` tree state; the later corrective
-commits inherit that disposition unless #2379 changes the release graph. The
-fixture is range/identity and explicitly reconciled disposition evidence, not
-a final release qualification.
+`fixtures/release_denominator/current-main-provisional.json` is a captured
+provisional census of `c86807ec..c30a2683` at `origin/main` as observed on
+2026-08-03. It carries 234 first-parent records and 219 candidate-tree
+records, with 15 candidate-only exclusions and 15 safe deferrals. The
+development-main merges for #2842, #2844, corrective #2858/#2859,
+corrective #2862, release-control #2857, corrective #2867, #2870, #2860, #2861,
+#2869, #2876, #2873, #2878, and #2872 are retained in
+the denominator with current `safe_defer_post_0_11` disposition and
+`absent_by_candidate_only_exclusion` tree state; earlier `hold_post_release`
+is historical context only. The later corrective commits inherit that
+disposition unless #2379 changes the release graph. The fixture pins cutoff
+`c30a26831b75051813bfaa3dbd9378096ec6aa82`, range digest
+`sha256:b85b8314b5f738335ae63220fe5f0ea8ef4e6e1892124eea148ea49181168501`,
+and record-set digest
+`sha256:166380b5b8cef061f6d617db089a5070e566e54841bd103c6a962d832881efe0`.
+It is range/identity and explicitly reconciled disposition evidence, not a
+final release qualification.
 
 ## Acceptance and proof map
 
@@ -81,7 +86,7 @@ shared fail-closed validator. It does not close the final candidate decision
 tracked by #1609 or the dependent release-editor lane #2769.
 
 The implementation and fixture contract are mapped in `.ripr/traceability.toml`
-under `RIPR-SPEC-0146`. Focused proof is provided by the twenty-four tests named there
+under `RIPR-SPEC-0146`. Focused proof is provided by the twenty-five tests named there
 and the complete/reconcile-required fixtures under
 `fixtures/release_denominator/`; hosted CI is the authoritative execution
 proof for this PR. The complete fixture pins the #2767/#2788 and #2768/#2790
@@ -136,8 +141,9 @@ operator decisions, live drift, JSON/Markdown claim-boundary parity, typed
 reference authority, compatibility projection mismatch, contradictory
 identity, the two known issue/merge-PR pairs, deterministic ordering, changed mappings, final unreviewed
 references, malformed reference evidence, numeric compatibility projection
-ordering, manual-mapping reasons, reused reference identity, and the historical
-current-main census.
+ordering, manual-mapping reasons, reused reference identity, and the current-main
+census pinned to the final corrective cutoff, counts, excluded commit
+identities, and record-set digest.
 
 ## Implementation Mapping
 
