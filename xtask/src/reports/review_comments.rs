@@ -50,6 +50,7 @@ struct ReviewCommentsOptions {
     root: String,
     base: String,
     head: String,
+    check_output: Option<String>,
     check: bool,
 }
 
@@ -59,6 +60,7 @@ impl Default for ReviewCommentsOptions {
             root: DEFAULT_ROOT.to_string(),
             base: DEFAULT_BASE.to_string(),
             head: DEFAULT_HEAD.to_string(),
+            check_output: None,
             check: false,
         }
     }
@@ -95,6 +97,10 @@ fn parse_options(args: &[String]) -> Result<ReviewCommentsOptions, String> {
                 i += 1;
                 options.head = non_empty_arg(args, i, "--head")?.to_string();
             }
+            "--check-output" => {
+                i += 1;
+                options.check_output = Some(non_empty_arg(args, i, "--check-output")?.to_string());
+            }
             "--check" => options.check = true,
             other => return Err(format!("unknown ripr-review-comments argument {other:?}")),
         }
@@ -117,7 +123,7 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
 
 fn print_help() {
     println!(
-        "usage: cargo xtask ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check]"
+        "usage: cargo xtask ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check-output <path>] [--check]"
     );
 }
 
@@ -136,7 +142,7 @@ where
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
     remove_stale_review_artifacts(repo)?;
-    if !has_changed_paths(repo, &options.base, &options.head)? {
+    if !has_changed_paths(repo, &options.base, &options.head)? && options.check_output.is_none() {
         write_empty_review_comments(repo, options)?;
     } else {
         match run_producer(repo, options).map_err(Into::into) {
@@ -225,6 +231,7 @@ fn validate_packet_value(
     validate_rendering_limits(packet, &mut violations);
     validate_summary_counts(packet, &mut violations);
     validate_run_receipt(packet, repo, options, &mut violations);
+    validate_check_output_against_packet(packet, repo, options, &mut violations);
 
     for key in ["comments", "summary_only", "suppressed", "warnings"] {
         if !packet.get(key).is_some_and(Value::is_array) {
@@ -238,6 +245,74 @@ fn validate_packet_value(
         violations.push(format!("{REVIEW_COMMENTS_MD} is missing"));
     }
     violations
+}
+
+fn validate_check_output_against_packet(
+    packet: &Value,
+    repo: &Path,
+    options: &ReviewCommentsOptions,
+    violations: &mut Vec<String>,
+) {
+    let Some(check_output) = &options.check_output else {
+        return;
+    };
+    let path = Path::new(check_output);
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        repo.join(path)
+    };
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) => {
+            violations.push(format!(
+                "--check-output {} is unreadable: {error}",
+                path.display()
+            ));
+            return;
+        }
+    };
+    let producer: Value = match serde_json::from_str(&text) {
+        Ok(value) => value,
+        Err(error) => {
+            violations.push(format!(
+                "--check-output {} is invalid JSON: {error}",
+                path.display()
+            ));
+            return;
+        }
+    };
+    for field in ["schema_version", "tool", "mode", "root", "base"] {
+        if producer
+            .get(field)
+            .is_none_or(|value| value.as_str().is_none_or(|text| text.trim().is_empty()))
+        {
+            violations.push(format!(
+                "--check-output {} is missing producer field {field}",
+                path.display()
+            ));
+        }
+    }
+    if producer.get("tool").and_then(Value::as_str) != Some("ripr") {
+        violations.push(format!(
+            "--check-output {} producer tool must be ripr",
+            path.display()
+        ));
+    }
+    if !producer.get("summary").is_some_and(Value::is_object)
+        || !producer.get("findings").is_some_and(Value::is_array)
+    {
+        violations.push(format!(
+            "--check-output {} requires producer summary and findings",
+            path.display()
+        ));
+    }
+    if producer.get("analysis_outcome") != packet.get("analysis_outcome") {
+        violations.push(format!(
+            "--check-output {} analysis_outcome does not match rendered review packet",
+            path.display()
+        ));
+    }
 }
 
 fn validate_rendering_limits(packet: &Value, violations: &mut Vec<String>) {
@@ -446,7 +521,7 @@ fn run_ripr_review_comments(
     let root_arg = command_root_arg(repo, &options.root);
     let out_arg = out.display().to_string();
     let timeout_ms = review_comments_timeout_ms()?;
-    let ripr_args = vec![
+    let mut ripr_args = vec![
         "review-comments".to_string(),
         "--root".to_string(),
         root_arg,
@@ -454,11 +529,17 @@ fn run_ripr_review_comments(
         options.base.clone(),
         "--head".to_string(),
         options.head.clone(),
+    ];
+    if let Some(check_output) = &options.check_output {
+        ripr_args.push("--check-output".to_string());
+        ripr_args.push(check_output.clone());
+    }
+    ripr_args.extend([
         "--timeout-ms".to_string(),
         timeout_ms.to_string(),
         "--out".to_string(),
         out_arg,
-    ];
+    ]);
     let binary = match env::var("RIPR_BIN") {
         Ok(binary) => {
             if binary.trim().is_empty() {
@@ -962,6 +1043,7 @@ mod tests {
             root: ".".to_string(),
             base: "origin/main".to_string(),
             head: "HEAD".to_string(),
+            check_output: None,
             check: false,
         }
     }
@@ -1064,6 +1146,64 @@ mod tests {
             Path::new("missing-comments.md"),
         );
         assert!(violations.contains(&format!("{REVIEW_COMMENTS_MD} is missing")));
+    }
+
+    #[test]
+    fn check_output_missing_artifact_is_not_accepted() {
+        let mut options = options();
+        options.check_output = Some("target/missing-check-output.json".to_string());
+        let violations = validate_packet_value(
+            &valid_packet(&options),
+            &repo_root_for_display(),
+            &options,
+            false,
+            Path::new(REVIEW_COMMENTS_MD),
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("is unreadable")),
+            "{violations:#?}"
+        );
+    }
+
+    #[test]
+    fn check_output_outcome_mismatch_is_not_accepted() -> Result<(), String> {
+        let repo = temp_repo("ripr-review-comments-check-mismatch")?;
+        let mut options = options();
+        options.check_output = Some("target/check-output.json".to_string());
+        let packet = valid_packet_for_repo(&repo, &options);
+        let producer = json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "draft",
+            "root": repo.display().to_string(),
+            "base": options.base.clone(),
+            "summary": {},
+            "findings": [],
+            "analysis_outcome": {"analysis_complete": true}
+        });
+        fs::create_dir_all(repo.join("target")).map_err(|err| format!("create target: {err}"))?;
+        fs::write(
+            repo.join("target/check-output.json"),
+            serde_json::to_string(&producer).map_err(|err| format!("serialize: {err}"))?,
+        )
+        .map_err(|err| format!("write producer: {err}"))?;
+        let violations = validate_packet_value(
+            &packet,
+            &repo,
+            &options,
+            false,
+            Path::new(REVIEW_COMMENTS_MD),
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("does not match rendered review packet")),
+            "{violations:#?}"
+        );
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
     }
 
     #[test]
@@ -1221,6 +1361,33 @@ mod tests {
     }
 
     #[test]
+    fn write_wrapper_runs_producer_for_empty_diff_with_check_output() -> Result<(), String> {
+        let (repo, mut options) = prepared_review_repo("ripr-review-comments-empty-check")?;
+        options.base = "HEAD".to_string();
+        options.head = "HEAD".to_string();
+        options.check_output = Some("target/check-output.json".to_string());
+        let mut producer_called = false;
+
+        let result = write_review_comments_with_runner(&repo, &options, |_repo, _options| {
+            producer_called = true;
+            Err(ReviewCommentsRunError::from(
+                "producer received explicit check output for an empty diff".to_string(),
+            ))
+        });
+
+        assert!(producer_called);
+        let error = result
+            .err()
+            .ok_or_else(|| "missing check-output must fail closed".to_string())?;
+        assert!(error.contains("--check-output"), "{error}");
+        let packet = read_packet(&repo)?;
+        assert_eq!(packet["status"], "error");
+        assert_eq!(packet["run_receipt"]["status"], "failed");
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
     fn changed_path_detection_distinguishes_empty_and_non_empty_diffs() -> Result<(), String> {
         let (repo, options) = prepared_review_repo("ripr-review-comments-diff")?;
 
@@ -1342,6 +1509,7 @@ mod tests {
                 root: ".".to_string(),
                 base: "HEAD~1".to_string(),
                 head: "HEAD".to_string(),
+                check_output: None,
                 check: false,
             },
         ))

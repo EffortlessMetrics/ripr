@@ -16,7 +16,7 @@ testing, edit source files, configure CI policy, or make gate decisions.
 "#;
 pub(super) const REVIEW_COMMENTS_HELP: &str = r#"Write advisory PR test guidance on changed lines (does not post to GitHub).
 
-Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--gap-ledger PATH] [--out PATH] [--timeout-ms MS]
+Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--gap-ledger PATH | --check-output PATH] [--out PATH] [--timeout-ms MS]
 
 Options:
   --root PATH    Workspace root. Defaults to current directory.
@@ -26,6 +26,10 @@ Options:
                  Optional gap decision ledger JSON; when supplied, changed-line
                  repair cards come only from `projection_eligibility.pr_comment`
                  GapRecord targets.
+  --check-output PATH
+                 Optional producer-generated `ripr check --json` artifact.
+                 Its typed analysis outcome is projected without rerunning the
+                 producer; incomplete input remains incomplete guidance.
   --out PATH     JSON output path. Defaults to target/ripr/review/comments.json.
   --timeout-ms MS
                  Configured operator bound recorded in the run receipt. The

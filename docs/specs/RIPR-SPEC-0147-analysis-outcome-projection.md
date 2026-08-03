@@ -52,8 +52,24 @@ under `xtask/src/reports/pr_evidence_summary/`. PR-C owns LSP consumption: the
 committed editor snapshot, analysis status, workspace status, and
 top-limitation command retain the typed outcome and derive
 `limited_incomplete_input` without treating zero findings as complete.
-Generated-CI, agent, and review projections remain serial follow-up work and
-are unclaimed until they consume this DTO.
+Generated-CI and agent projections remain serial follow-up work and are
+unclaimed until they consume this DTO. Review-comments is the bounded review
+consumer described below.
+
+The review-comments projection is the next bounded consumer. When invoked with
+`--check-output PATH`, it consumes the producer-generated check JSON and copies
+the typed outcome into an `analysis_outcome` envelope. It does not rerun the
+producer or infer completeness from review-comment counts. Incomplete and
+unsupported outcomes set the review report status to `incomplete`, retain every
+limitation and recovery route, and must not become a clean or zero-finding
+claim. Without `--check-output`, the existing limited-diff scope remains a
+legacy scope-only report with no fabricated outcome. Gap-ledger-only rendering
+also remains scope-only because it has no diff-analysis denominator. An
+explicit artifact must be the canonical producer envelope, including its
+schema version, tool, mode, root, base, summary, findings, and typed outcome;
+the declared completeness must agree with the closed outcome kind. The xtask
+wrapper still uses the legacy empty packet only when no producer artifact was
+requested.
 
 ## Non-Goals
 
@@ -83,8 +99,15 @@ projection does not analyze those regions.
 - Gate and PR-evidence-summary consumers are covered by PR-B2.
 - LSP analysis status and workspace/top-limitation status disclose the same
   typed outcome; incomplete input is never reported as `run_status = "full"`.
-- Generated-CI, agent, and review surfaces remain explicitly unclaimed until
-  their own parity fixtures land.
+- Generated-CI and agent surfaces remain explicitly unclaimed until their own
+  parity fixtures land.
+
+Review-comments complete, partial, and unsupported producer-backed fixtures
+preserve the typed kind, completeness, limitation, and recovery route in JSON
+and Markdown. Missing or malformed producer output is an error rather than a
+silent legacy fallback; a complete zero-finding outcome remains advisory and
+an incomplete outcome is explicitly not clean. Generated-CI and agent surfaces
+remain explicitly unclaimed until their own parity fixtures land.
 
 Current PR-A proof is anchored by
 `analysis::pipeline::tests::diff_pipeline_projects_parser_limitation_and_distinguishes_complete_zero`
@@ -107,7 +130,7 @@ and
 - LSP status, workspace status, top limitation, and diagnostic severity retain
   the typed outcome and suppress full-run repair authority for incomplete
   input.
-- Generated-CI, agent, and review projections remain explicitly unclaimed.
+- Generated-CI and agent projections remain explicitly unclaimed.
 
 ## Test Mapping
 
@@ -126,6 +149,14 @@ under `fixtures/` cover the additive JSON, human, and changelog output
 projection across the existing language and edge-case corpus; `cargo xtask
 goldens check` is the drift gate.
 
+Review-comments parity is covered by
+`output::review_comments::tests::review_comments_projects_typed_outcome_without_strengthening_incomplete_input`
+and
+`output::review_comments::tests::review_comments_projects_complete_zero_outcome_as_advisory`.
+The CLI `--check-output` loader and mutual-exclusion parser tests cover the
+fail-closed artifact boundary; the review-comments schema and xtask forwarding
+surface carry the same envelope without changing the legacy gap-ledger route.
+
 ## Implementation Mapping
 
 The producer contract is implemented in
@@ -141,6 +172,10 @@ builders. PR-B1 projects the DTO in `crates/ripr/src/output/sarif.rs` and
 PR-C projects the DTO through `crates/ripr/src/lsp/state.rs`,
 `crates/ripr/src/lsp/diagnostics.rs`, and `crates/ripr/src/lsp/backend.rs`.
 `docs/OUTPUT_SCHEMA.md` records the wire shape.
+Review-comments consumes the DTO in `crates/ripr/src/cli/commands.rs` and
+projects it through `crates/ripr/src/output/review_comments.rs`; the wire
+contract is defined in `schemas/ripr/review-comments.schema.json` and the
+xtask wrapper forwards `--check-output`.
 
 ## Metrics
 

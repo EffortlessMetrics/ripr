@@ -11,6 +11,7 @@ use crate::cli::suggest::unknown_argument;
 use crate::config::CONFIG_FILE_NAME;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
 use crate::output;
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 use crate::cli::commands_agent_support::{
@@ -20,6 +21,148 @@ use crate::cli::commands_options::*;
 use crate::cli::commands_timestamps::generated_at_unix_ms;
 
 const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
+
+fn load_review_comments_analysis_outcome(
+    path: Option<&Path>,
+    root: &Path,
+    base: &str,
+    diff_text: &str,
+) -> Result<Option<crate::analysis_outcome::AnalysisOutcome>, String> {
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    let text = std::fs::read_to_string(path).map_err(|error| {
+        format!(
+            "review-comments --check-output {} is invalid: read failed: {error}",
+            path.display()
+        )
+    })?;
+    let value: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
+        format!(
+            "review-comments --check-output {} is invalid: JSON parse failed: {error}",
+            path.display()
+        )
+    })?;
+    let _producer_schema_version = value
+        .get("schema_version")
+        .and_then(serde_json::Value::as_str)
+        .filter(|version| !version.trim().is_empty())
+        .ok_or_else(|| {
+            format!(
+                "review-comments --check-output {} is invalid: missing producer schema_version",
+                path.display()
+            )
+        })?;
+    if value.get("tool").and_then(serde_json::Value::as_str) != Some("ripr") {
+        return Err(format!(
+            "review-comments --check-output {} is invalid: producer tool must be ripr",
+            path.display()
+        ));
+    }
+    for field in ["mode", "root", "base"] {
+        if value
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .is_none()
+        {
+            return Err(format!(
+                "review-comments --check-output {} is invalid: producer envelope is missing string field {field}",
+                path.display()
+            ));
+        }
+    }
+    if value.get("root").and_then(serde_json::Value::as_str)
+        != Some(output::outcome::display_path(root).as_str())
+    {
+        return Err(format!(
+            "review-comments --check-output {} is invalid: producer root does not match requested root",
+            path.display()
+        ));
+    }
+    if value.get("base").and_then(serde_json::Value::as_str) != Some(base) {
+        return Err(format!(
+            "review-comments --check-output {} is invalid: producer base does not match requested base",
+            path.display()
+        ));
+    }
+    if !value
+        .get("summary")
+        .is_some_and(serde_json::Value::is_object)
+        || !value
+            .get("findings")
+            .is_some_and(serde_json::Value::is_array)
+    {
+        return Err(format!(
+            "review-comments --check-output {} is invalid: producer envelope requires summary and findings",
+            path.display()
+        ));
+    }
+    let Some(envelope) = value.get("analysis_outcome") else {
+        return Err(format!(
+            "review-comments --check-output {} is invalid: missing analysis_outcome",
+            path.display()
+        ));
+    };
+    if envelope.is_null() {
+        return Err(format!(
+            "review-comments --check-output {} is invalid: analysis_outcome is null",
+            path.display()
+        ));
+    }
+    let declared_complete = envelope
+        .get("analysis_complete")
+        .and_then(serde_json::Value::as_bool)
+        .ok_or_else(|| {
+            format!(
+                "review-comments --check-output {} is invalid: analysis_complete is missing or not boolean",
+                path.display()
+            )
+        })?;
+    let outcome = envelope.get("outcome").cloned().ok_or_else(|| {
+        format!(
+            "review-comments --check-output {} is invalid: analysis_outcome.outcome is missing",
+            path.display()
+        )
+    })?;
+    let outcome: crate::analysis_outcome::AnalysisOutcome =
+        serde_json::from_value(outcome).map_err(|error| {
+            format!(
+                "review-comments --check-output {} is invalid: typed outcome failed validation: {error}",
+                path.display()
+            )
+        })?;
+    let expected_input_identity = format!(
+        "sha256:{}",
+        Sha256::digest(diff_text.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    if outcome.identity.input_identity.as_deref() != Some(expected_input_identity.as_str()) {
+        return Err(format!(
+            "review-comments --check-output {} is invalid: producer input identity does not match the requested diff",
+            path.display()
+        ));
+    }
+    if outcome
+        .identity
+        .base_revision
+        .as_deref()
+        .is_some_and(|revision| revision != base)
+    {
+        return Err(format!(
+            "review-comments --check-output {} is invalid: typed outcome base revision does not match requested base",
+            path.display()
+        ));
+    }
+    if declared_complete != outcome.kind.is_complete() {
+        return Err(format!(
+            "review-comments --check-output {} is invalid: analysis_complete does not match typed outcome kind",
+            path.display()
+        ));
+    }
+    Ok(Some(outcome))
+}
 
 #[path = "commands/agent.rs"]
 mod agent;
@@ -1138,6 +1281,11 @@ fn review_comments_with_diff_loader(
     receipt.write_atomic(&receipt_path)?;
 
     if let Some(gap_ledger) = &options.gap_ledger {
+        if options.check_output.is_some() {
+            return Err(
+                "review-comments accepts at most one of --gap-ledger or --check-output".to_string(),
+            );
+        }
         let gap_ledger_text = std::fs::read_to_string(gap_ledger).map_err(|err| {
             format!(
                 "review-comments --gap-ledger {} is invalid: read failed: {err}",
@@ -1229,6 +1377,12 @@ fn review_comments_with_diff_loader(
         &working_set,
         &scoped_inventory,
     );
+    let analysis_outcome = load_review_comments_analysis_outcome(
+        options.check_output.as_deref(),
+        &input.root,
+        &options.base,
+        &diff_text,
+    )?;
     let render_context = output::review_comments::ReviewCommentsRenderContext {
         root: &input.root,
         base: &options.base,
@@ -1241,12 +1395,14 @@ fn review_comments_with_diff_loader(
         &working_set,
         &selection,
         &analysis_scope,
+        analysis_outcome.as_ref(),
     )?;
     let rendered_md = output::review_comments::render_review_comments_markdown_with_scope(
         &render_context,
         &working_set,
         &selection,
         &analysis_scope,
+        analysis_outcome.as_ref(),
     );
     receipt.phase("static_rendering", "artifact_io");
     receipt.write_atomic(&receipt_path)?;
@@ -1509,6 +1665,7 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
     let mut base: Option<String> = None;
     let mut head: Option<String> = None;
     let mut gap_ledger = None;
+    let mut check_output = None;
     let mut out = PathBuf::from("target/ripr/review/comments.json");
     let mut timeout_ms = DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS;
 
@@ -1545,6 +1702,16 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
                 }
                 gap_ledger = Some(PathBuf::from(value));
             }
+            "--check-output" => {
+                i += 1;
+                let value = expect_value(args, i, "--check-output")?;
+                if value.trim().is_empty() {
+                    return Err(
+                        "review-comments --check-output requires a non-empty path".to_string()
+                    );
+                }
+                check_output = Some(PathBuf::from(value));
+            }
             "--out" => {
                 i += 1;
                 let value = expect_value(args, i, "--out")?;
@@ -1568,6 +1735,7 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
         base: base.ok_or_else(|| "review-comments requires --base <sha>".to_string())?,
         head: head.ok_or_else(|| "review-comments requires --head <sha>".to_string())?,
         gap_ledger,
+        check_output,
         out,
         timeout_ms,
     })
@@ -3260,6 +3428,7 @@ pub(super) fn ripr_plus(args: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest, Sha256};
 
     pub(super) fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -4143,6 +4312,7 @@ mod tests {
                 base: "origin/main".to_string(),
                 head: "HEAD".to_string(),
                 gap_ledger: None,
+                check_output: None,
                 out: PathBuf::from("target/ripr/review/comments.json"),
                 timeout_ms: DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS,
             })
@@ -4163,6 +4333,7 @@ mod tests {
                 gap_ledger: Some(PathBuf::from(
                     "target/ripr/reports/gap-decision-ledger.json"
                 )),
+                check_output: None,
                 out: PathBuf::from("target/ripr/review/comments.json"),
                 timeout_ms: DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS,
             })
@@ -4213,12 +4384,109 @@ mod tests {
             Err("review-comments --gap-ledger requires a non-empty path".to_string())
         );
         assert_eq!(
+            parse_review_comments_options(&args(&[
+                "--base",
+                "main",
+                "--head",
+                "HEAD",
+                "--check-output",
+                "",
+            ])),
+            Err("review-comments --check-output requires a non-empty path".to_string())
+        );
+        assert_eq!(
             parse_review_comments_options(&args(&["--base", "main", "--head", "HEAD", "--bad"])),
             Err(
                 "unknown review-comments argument \"--bad\". Run `ripr review-comments --help`."
                     .to_string()
             )
         );
+    }
+
+    #[test]
+    fn review_comments_loads_typed_outcome_from_check_artifact() -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments-check-output");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create temp root: {err}"))?;
+        let path = root.join("check.json");
+        let diff_text = "fixture diff";
+        let input_identity = format!(
+            "sha256:{}",
+            Sha256::digest(diff_text.as_bytes())
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        );
+        let mut artifact = serde_json::json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "draft",
+            "root": ".",
+            "base": "main",
+            "summary": {},
+            "findings": [],
+            "analysis_outcome": {
+                "analysis_complete": false,
+                "outcome": {
+                    "schema_version": "0.1",
+                    "kind": "partial_with_limitations",
+                    "identity": {
+                        "repository_identity": null,
+                        "root_identity": null,
+                        "config_identity": null,
+                        "base_revision": "main",
+                        "input_identity": input_identity,
+                        "snapshot_identity": null
+                    },
+                    "counts": {
+                        "changed_file_count": 0,
+                        "changed_line_count": 0,
+                        "candidate_line_count": 0,
+                        "probe_count": 0,
+                        "finding_count": 0
+                    },
+                    "limitations": [{
+                        "kind": "producer_timeout",
+                        "producer_stage": "analysis_pipeline",
+                        "path": null,
+                        "affected_items": null,
+                        "bounded_detail": null,
+                        "recovery": {
+                            "kind": "retry",
+                            "detail": "rerun the producer"
+                        }
+                    }],
+                    "claim_boundary": crate::analysis_outcome::ANALYSIS_OUTCOME_CLAIM_BOUNDARY
+                }
+            }
+        });
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&artifact).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| format!("write check artifact: {err}"))?;
+        let outcome =
+            load_review_comments_analysis_outcome(Some(&path), Path::new("."), "main", diff_text)?
+                .ok_or_else(|| "expected typed outcome".to_string())?;
+        assert_eq!(outcome.kind.as_str(), "partial_with_limitations");
+        assert_eq!(outcome.limitations[0].recovery.kind.as_str(), "retry");
+        artifact["analysis_outcome"]["analysis_complete"] = serde_json::json!(true);
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&artifact).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| format!("rewrite mismatched check artifact: {err}"))?;
+        let mismatch = match load_review_comments_analysis_outcome(
+            Some(&path),
+            Path::new("."),
+            "main",
+            diff_text,
+        ) {
+            Ok(_) => return Err("mismatched completeness must fail closed".to_string()),
+            Err(error) => error,
+        };
+        assert!(mismatch.contains("does not match typed outcome kind"));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
     }
 
     #[test]

@@ -43,6 +43,7 @@ pub(crate) struct ReviewCommentsOptions {
     pub(crate) base: String,
     pub(crate) head: String,
     pub(crate) gap_ledger: Option<PathBuf>,
+    pub(crate) check_output: Option<PathBuf>,
     pub(crate) out: PathBuf,
     pub(crate) timeout_ms: u64,
 }

@@ -3,6 +3,7 @@ use crate::agent::loop_commands::{
     WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_verify_command, display_path,
 };
 use crate::analysis::canonical_gap::canonical_gap_identity;
+use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::Mode;
 use crate::app::agent_brief::{
     AgentBriefResolvedWorkingSet, AgentBriefSelectedSeam, AgentBriefSelection,
@@ -66,7 +67,7 @@ pub(crate) fn render_review_comments_json(
         mode,
         config,
     };
-    render_review_comments_json_with_scope(&context, working_set, selection, &analysis_scope)
+    render_review_comments_json_with_scope(&context, working_set, selection, &analysis_scope, None)
 }
 
 pub(crate) fn render_review_comments_json_with_scope(
@@ -74,6 +75,7 @@ pub(crate) fn render_review_comments_json_with_scope(
     working_set: &AgentBriefResolvedWorkingSet,
     selection: &AgentBriefSelection<'_>,
     analysis_scope: &ReviewCommentsAnalysisScope,
+    analysis_outcome: Option<&AnalysisOutcome>,
 ) -> Result<String, String> {
     let (causal_projection, causal_projection_warning) =
         load_causal_projection_for_review(context.root);
@@ -171,7 +173,11 @@ pub(crate) fn render_review_comments_json_with_scope(
     let value = json!({
         "schema_version": REVIEW_COMMENTS_SCHEMA_VERSION,
         "tool": "ripr",
-        "status": "advisory",
+        "status": if analysis_outcome.is_some_and(|outcome| !outcome.kind.is_complete()) {
+            "incomplete"
+        } else {
+            "advisory"
+        },
         "root": display_path(context.root),
         "base": context.base,
         "head": context.head,
@@ -194,6 +200,17 @@ pub(crate) fn render_review_comments_json_with_scope(
         "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
     });
     let mut value = value;
+    if let Some(outcome) = analysis_outcome
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(
+            "analysis_outcome".to_string(),
+            json!({
+                "analysis_complete": outcome.kind.is_complete(),
+                "outcome": outcome,
+            }),
+        );
+    }
     if let Some(projection) = &causal_projection
         && let Some(object) = value.as_object_mut()
     {
@@ -325,7 +342,13 @@ pub(crate) fn render_review_comments_markdown(
         mode,
         config,
     };
-    render_review_comments_markdown_with_scope(&context, working_set, selection, &analysis_scope)
+    render_review_comments_markdown_with_scope(
+        &context,
+        working_set,
+        selection,
+        &analysis_scope,
+        None,
+    )
 }
 
 pub(crate) fn render_review_comments_markdown_with_scope(
@@ -333,10 +356,15 @@ pub(crate) fn render_review_comments_markdown_with_scope(
     working_set: &AgentBriefResolvedWorkingSet,
     selection: &AgentBriefSelection<'_>,
     analysis_scope: &ReviewCommentsAnalysisScope,
+    analysis_outcome: Option<&AnalysisOutcome>,
 ) -> String {
-    let Ok(rendered) =
-        render_review_comments_json_with_scope(context, working_set, selection, analysis_scope)
-    else {
+    let Ok(rendered) = render_review_comments_json_with_scope(
+        context,
+        working_set,
+        selection,
+        analysis_scope,
+        analysis_outcome,
+    ) else {
         return "# RIPR PR Guidance\n\nUnable to render PR guidance.\n".to_string();
     };
     let Ok(value) = serde_json::from_str::<Value>(&rendered) else {
@@ -405,8 +433,18 @@ fn render_review_comments_markdown_value(
         format!("- suppressed recommendations: {suppressed}"),
     ];
     push_analysis_scope_summary(&mut lines, value.get("analysis_scope"));
+    push_analysis_outcome_summary(&mut lines, value.get("analysis_outcome"));
     lines.push(String::new());
-    lines.push("Advisory static evidence only. RIPR does not edit source, generate tests, run mutation testing, or make CI blocking by default.".to_string());
+    lines.push(
+        "Advisory static evidence only. RIPR does not edit source, generate tests, run mutation testing, or make CI blocking by default."
+            .to_string(),
+    );
+    if value.get("status").and_then(Value::as_str) == Some("incomplete") {
+        lines.push(
+            "Incomplete producer input is not a clean or zero-finding result; follow the recovery route before relying on this guidance."
+                .to_string(),
+        );
+    }
     lines.push(String::new());
 
     push_markdown_items(&mut lines, "Line Annotations", value.get("comments"));
@@ -418,6 +456,43 @@ fn render_review_comments_markdown_value(
     push_suppressed_items(&mut lines, value.get("suppressed"));
     lines.push(String::new());
     lines.join("\n")
+}
+
+fn push_analysis_outcome_summary(lines: &mut Vec<String>, outcome: Option<&Value>) {
+    let Some(outcome) = outcome else {
+        return;
+    };
+    let analysis_complete = outcome
+        .get("analysis_complete")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let kind = outcome
+        .get("outcome")
+        .and_then(|value| value.get("kind"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    lines.push(format!("- producer analysis outcome: {kind}"));
+    lines.push(format!("- producer analysis complete: {analysis_complete}"));
+    if let Some(limitations) = outcome
+        .get("outcome")
+        .and_then(|value| value.get("limitations"))
+        .and_then(Value::as_array)
+    {
+        for limitation in limitations {
+            let limitation_kind = limitation
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let recovery = limitation
+                .get("recovery")
+                .and_then(|value| value.get("kind"))
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            lines.push(format!(
+                "- producer limitation: {limitation_kind}; recovery: {recovery}"
+            ));
+        }
+    }
 }
 
 fn gap_record_comment_json(
@@ -1287,6 +1362,10 @@ mod tests {
     use crate::analysis::test_grip_evidence::{
         RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence,
     };
+    use crate::analysis_outcome::{
+        AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcomeCounts, AnalysisOutcomeKind,
+        AnalysisRecovery, AnalysisRecoveryKind, AnalysisStage,
+    };
     use crate::app::agent_brief::{
         AgentBriefChangedOwner, AgentBriefLine, AgentBriefResolvedWorkingSet,
         AgentBriefSelectedSeam, AgentBriefSelection, AgentBriefWhyNow, AgentBriefWhyNowConfidence,
@@ -1509,6 +1588,65 @@ mod tests {
             selection,
         )?;
         serde_json::from_str(&rendered).map_err(|err| format!("parse review comments JSON: {err}"))
+    }
+
+    fn render_value_with_outcome(
+        working_set: &AgentBriefResolvedWorkingSet,
+        seams: &[ClassifiedSeam],
+        outcome: &AnalysisOutcome,
+    ) -> Result<Value, String> {
+        let selection = selection(seams);
+        let analysis_scope =
+            ReviewCommentsAnalysisScope::from_working_set(working_set, selection.returned);
+        let config = RiprConfig::default();
+        let context = ReviewCommentsRenderContext {
+            root: Path::new("."),
+            base: "main",
+            head: "HEAD",
+            mode: &Mode::Draft,
+            config: &config,
+        };
+        let rendered = render_review_comments_json_with_scope(
+            &context,
+            working_set,
+            &selection,
+            &analysis_scope,
+            Some(outcome),
+        )?;
+        serde_json::from_str(&rendered).map_err(|err| format!("parse review comments JSON: {err}"))
+    }
+
+    fn partial_outcome() -> Result<AnalysisOutcome, String> {
+        let recovery = AnalysisRecovery::new(AnalysisRecoveryKind::Retry, "rerun the producer")?;
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::ProducerTimeout,
+            AnalysisStage::AnalysisPipeline,
+            recovery,
+        );
+        AnalysisOutcome::new(
+            AnalysisOutcomeKind::PartialWithLimitations,
+            Default::default(),
+            Default::default(),
+            vec![limitation],
+        )
+    }
+
+    fn unsupported_outcome() -> Result<AnalysisOutcome, String> {
+        let recovery = AnalysisRecovery::new(
+            AnalysisRecoveryKind::EnableLanguage,
+            "enable the required language adapter",
+        )?;
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::LanguageAdapterUnavailable,
+            AnalysisStage::LanguageAdapter,
+            recovery,
+        );
+        AnalysisOutcome::new(
+            AnalysisOutcomeKind::UnsupportedInput,
+            Default::default(),
+            Default::default(),
+            vec![limitation],
+        )
     }
 
     fn render_markdown(
@@ -1942,6 +2080,82 @@ mod tests {
         assert!(rendered.contains("`8f7fa8644fd12280` @ `src/pricing.rs:88`"));
         assert!(rendered.contains("state: `actionable`"));
         assert!(rendered.contains("ripr agent brief"));
+    }
+
+    #[test]
+    fn review_comments_projects_typed_outcome_without_strengthening_incomplete_input()
+    -> Result<(), String> {
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        for outcome in [partial_outcome()?, unsupported_outcome()?] {
+            let value = render_value_with_outcome(&working_set, &seams, &outcome)?;
+            assert_eq!(value["status"], "incomplete");
+            assert_eq!(value["analysis_outcome"]["analysis_complete"], false);
+            assert_eq!(
+                value["analysis_outcome"]["outcome"]["kind"],
+                outcome.kind.as_str()
+            );
+            assert_eq!(
+                value["analysis_outcome"]["outcome"]["limitations"][0]["recovery"]["kind"],
+                outcome.limitations[0].recovery.kind.as_str()
+            );
+            assert_ne!(value["summary"]["comments"], Value::Null);
+
+            let selection = selection(&seams);
+            let analysis_scope =
+                ReviewCommentsAnalysisScope::from_working_set(&working_set, selection.returned);
+            let config = RiprConfig::default();
+            let context = ReviewCommentsRenderContext {
+                root: Path::new("."),
+                base: "main",
+                head: "HEAD",
+                mode: &Mode::Draft,
+                config: &config,
+            };
+            let markdown = render_review_comments_markdown_with_scope(
+                &context,
+                &working_set,
+                &selection,
+                &analysis_scope,
+                Some(&outcome),
+            );
+            assert!(markdown.contains("producer analysis complete: false"));
+            assert!(markdown.contains("Incomplete producer input is not a clean"));
+            assert!(markdown.contains(outcome.kind.as_str()));
+            assert!(markdown.contains(outcome.limitations[0].recovery.kind.as_str()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_projects_complete_zero_outcome_as_advisory() -> Result<(), String> {
+        let outcome = AnalysisOutcome::new(
+            AnalysisOutcomeKind::CompleteNoFindings,
+            Default::default(),
+            AnalysisOutcomeCounts {
+                changed_file_count: 1,
+                changed_line_count: 1,
+                candidate_line_count: 1,
+                probe_count: 1,
+                finding_count: 0,
+            },
+            Vec::new(),
+        )?;
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value_with_outcome(&working_set, &[classified(88)], &outcome)?;
+        assert_eq!(value["status"], "advisory");
+        assert_eq!(value["analysis_outcome"]["analysis_complete"], true);
+        assert_eq!(
+            value["analysis_outcome"]["outcome"]["kind"],
+            "complete_no_findings"
+        );
+        Ok(())
     }
 
     #[test]

@@ -390,7 +390,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "impacted-evidence [--pr-evidence <path>] [--label <label>] [--labels <csv>] [--check]",
         "ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check]",
         "first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--out-dir <path>] [--check]",
-        "ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check]",
+        "ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check-output <path>] [--check]",
         "ripr-pr-summary [--check]",
         "ripr-annotations [--comments <path>] [--out <path>] [--check]",
         "badges [--check] [--gap-ledger <path>]",
@@ -1057,7 +1057,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Writes the start-here packet when --check is absent; checks existing packets when --check is present. The packet names one repairable gap, fallback state, verify command, receipt command, and receipt path.",
         ),
         command_entry(
-            "ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check]",
+            "ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check-output <path>] [--check]",
             "argument_dependent",
             "target/ripr/reports or check-only",
             false,

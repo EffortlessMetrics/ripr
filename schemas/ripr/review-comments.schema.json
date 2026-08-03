@@ -65,6 +65,9 @@
     "analysis_scope": {
       "$ref": "#/$defs/analysis_scope"
     },
+    "analysis_outcome": {
+      "$ref": "#/$defs/analysis_outcome_projection"
+    },
     "causal_comparison": {
       "type": "object",
       "additionalProperties": false,
@@ -238,7 +241,261 @@
       "$ref": "#/$defs/run_receipt"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "required": ["analysis_outcome"],
+        "properties": {
+          "analysis_outcome": {
+            "properties": {
+              "analysis_complete": { "const": true }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "status": { "const": "advisory" }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["analysis_outcome"],
+        "properties": {
+          "analysis_outcome": {
+            "properties": {
+              "analysis_complete": { "const": false }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "status": { "const": "incomplete" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "incomplete" }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["analysis_outcome"]
+      }
+    }
+  ],
   "$defs": {
+    "analysis_outcome_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "analysis_complete",
+        "outcome"
+      ],
+      "properties": {
+        "analysis_complete": {
+          "type": "boolean"
+        },
+        "outcome": {
+          "$ref": "#/$defs/analysis_outcome"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "analysis_complete": { "const": true }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "no_scope",
+                      "no_changed_lines",
+                      "no_behavioral_candidates",
+                      "complete_no_findings",
+                      "complete_with_findings"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "analysis_complete": { "const": false }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "partial_with_limitations",
+                      "unsupported_input",
+                      "analysis_failed"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "analysis_outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "identity",
+        "counts",
+        "limitations",
+        "claim_boundary"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.1"
+        },
+        "kind": {
+          "enum": [
+            "no_scope",
+            "no_changed_lines",
+            "no_behavioral_candidates",
+            "complete_no_findings",
+            "complete_with_findings",
+            "partial_with_limitations",
+            "unsupported_input",
+            "analysis_failed"
+          ]
+        },
+        "identity": {
+          "$ref": "#/$defs/analysis_identity"
+        },
+        "counts": {
+          "$ref": "#/$defs/analysis_outcome_counts"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/analysis_limitation"
+          }
+        },
+        "claim_boundary": {
+          "const": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+        }
+      }
+    },
+    "analysis_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_identity",
+        "root_identity",
+        "config_identity",
+        "base_revision",
+        "input_identity",
+        "snapshot_identity"
+      ],
+      "properties": {
+        "repository_identity": { "type": ["string", "null"] },
+        "root_identity": { "type": ["string", "null"] },
+        "config_identity": { "type": ["string", "null"] },
+        "base_revision": { "type": ["string", "null"] },
+        "input_identity": { "type": ["string", "null"] },
+        "snapshot_identity": { "type": ["string", "null"] }
+      }
+    },
+    "analysis_outcome_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changed_file_count",
+        "changed_line_count",
+        "candidate_line_count",
+        "probe_count",
+        "finding_count"
+      ],
+      "properties": {
+        "changed_file_count": { "type": "integer", "minimum": 0 },
+        "changed_line_count": { "type": "integer", "minimum": 0 },
+        "candidate_line_count": { "type": "integer", "minimum": 0 },
+        "probe_count": { "type": "integer", "minimum": 0 },
+        "finding_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "analysis_limitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "producer_stage",
+        "path",
+        "affected_items",
+        "bounded_detail",
+        "recovery"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "combined_hunk_unsupported",
+            "unresolved_conflict_markers",
+            "malformed_diff",
+            "diff_scope_oversized",
+            "language_adapter_unavailable",
+            "language_scope_unsupported",
+            "producer_timeout",
+            "producer_failure"
+          ]
+        },
+        "producer_stage": {
+          "enum": [
+            "diff_load",
+            "diff_parse",
+            "language_adapter",
+            "probe_generation",
+            "finding_classification",
+            "analysis_pipeline"
+          ]
+        },
+        "path": { "type": ["string", "null"] },
+        "affected_items": { "type": ["integer", "null"], "minimum": 0 },
+        "bounded_detail": { "type": ["string", "null"] },
+        "recovery": {
+          "$ref": "#/$defs/analysis_recovery"
+        }
+      }
+    },
+    "analysis_recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "detail"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "narrow_diff",
+            "use_two_way_diff",
+            "resolve_conflicts",
+            "enable_language",
+            "increase_configured_limit",
+            "retry",
+            "inspect_failure"
+          ]
+        },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    },
     "analysis_scope": {
       "type": "object",
       "additionalProperties": false,
