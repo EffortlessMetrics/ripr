@@ -1044,6 +1044,9 @@ fn is_sha(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_TEST_REPO_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     fn require(condition: bool, message: impl Into<String>) -> Result<(), String> {
         condition.then_some(()).ok_or_else(|| message.into())
@@ -1466,9 +1469,10 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .map_err(|error| error.to_string())?
                 .as_nanos();
+            let sequence = NEXT_TEST_REPO_SEQUENCE.fetch_add(1, Ordering::Relaxed);
             let path = std::env::temp_dir().join(format!(
-                "ripr-precommit-fixture-{}-{nonce}",
-                std::process::id()
+                "ripr-precommit-fixture-{}-{nonce}-{sequence}",
+                std::process::id(),
             ));
             fs::create_dir_all(&path).map_err(|error| format!("create fixture: {error}"))?;
             let fixture = Self {
