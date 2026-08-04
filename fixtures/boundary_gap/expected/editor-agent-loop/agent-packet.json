@@ -15,6 +15,8 @@
       "current_grip": "weakly_gripped",
       "headline_eligible": true,
       "recommended_test": {"name": "discounted_total_boundary_discriminator", "file": "tests/pricing.rs", "reason": "place the new targeted test next to the producer-owned related test"},
+      "suggested_test_command": "cargo test discounted_total_boundary_discriminator",
+      "suggested_test_command_status": "runnable_after_the_suggested_test_exists",
       "nearest_strong_test_to_imitate": {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 4, "oracle_kind": "exact_value", "oracle_strength": "strong", "relation_reason": "direct_owner_call", "relation_confidence": "high", "reason": "nearest strong related test by ranked evidence"},
       "evidence": {"reach": "yes", "activate": "yes", "propagate": "yes", "observe": "yes", "discriminate": "yes"},
       "observed_values": ["50", "10_000"],
@@ -43,5 +45,11 @@
       "runtime_confirmation": "optional cargo-mutants confirmation; ripr reports static evidence only",
       "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval."
     }
-  ]
+  ],
+  "next": {
+    "before_snapshot_command": "mkdir -p target/ripr/workflow target/ripr/reports && ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
+    "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+    "verify_after_edit": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json",
+    "receipt_after_verify": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/reports/agent-receipt.json"
+  }
 }

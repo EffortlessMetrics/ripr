@@ -12552,6 +12552,8 @@ schema bump.
         "file": "tests/pricing.rs",
         "reason": "place the new targeted test next to the nearest strong related test"
       },
+      "suggested_test_command": "cargo test discounted_total_boundary_discriminator",
+      "suggested_test_command_status": "runnable_after_the_suggested_test_exists",
       "nearest_strong_test_to_imitate": {
         "name": "below_threshold_has_no_discount",
         "file": "tests/pricing.rs",
@@ -12736,7 +12738,13 @@ schema bump.
       "runtime_confirmation": "optional cargo-mutants confirmation; ripr reports static evidence only",
       "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval."
     }
-  ]
+  ],
+  "next": {
+    "before_snapshot_command": "mkdir -p target/ripr/workflow target/ripr/reports && ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
+    "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+    "verify_after_edit": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json",
+    "receipt_after_verify": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id f3c9e4d21a0b7c88 --json --out target/ripr/reports/agent-receipt.json"
+  }
 }
 ```
 
@@ -12856,6 +12864,12 @@ Field contract:
   falls back to the highest-confidence related test, and otherwise
   infers a conventional `tests/*_tests.rs` path from the production
   seam file. `reason` explains that choice.
+- `packets[].suggested_test_command` — an advisory Cargo test-name filter for
+  the recommended test. It is emitted only for `write_targeted_test` packets
+  and is not expected to select a test until the agent writes the named test.
+- `packets[].suggested_test_command_status` — the explicit value
+  `runnable_after_the_suggested_test_exists`; this prevents consumers from
+  presenting the proposed filter as an already-executed proof command.
 - `packets[].nearest_strong_test_to_imitate` — first ranked related
   test with `oracle_strength: "strong"`, or `null` when no strong
   related test is visible. This is an imitation target, not a
@@ -12918,6 +12932,16 @@ Field contract:
 - `packets[].static_evidence_boundary` - typed non-claim boundary for coding
   agents and editor surfaces. Consumers should copy this field rather than
   infer runtime, coverage, correctness, gate, or merge claims from prose.
+- `next` — optional repair-loop commands emitted when the envelope contains at
+  least one actionable targeted-test packet. `before_snapshot_command` first
+  creates the workflow and report directories, then captures the initial
+  static evidence; `after_snapshot_command` captures the static evidence after
+  the edit;
+  `verify_after_edit` writes the verify artifact consumed by the receipt
+  command. `receipt_after_verify` is a seam-scoped command for a one-seam
+  packet and is `null` for a repo-wide envelope containing multiple seams.
+  These commands are advisory handoff instructions and do not execute a test,
+  approve a patch, or authorize a merge.
 
 The packet is the agent's work order: it names the seam, the missing
 discriminator, the oracle shape, and an assertion template — but never
@@ -13031,7 +13055,7 @@ The JSON shape uses schema `0.1`:
         "seam_id": "f3c9e4d21a0b7c88"
       },
       "verification": {
-        "before_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
+        "before_snapshot_command": "mkdir -p target/ripr/workflow target/ripr/reports && ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
         "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
         "suggested_test_command": "cargo test discounted_total_boundary_discriminator"

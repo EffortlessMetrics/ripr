@@ -18,6 +18,11 @@
 //! contract aimed at coding agents rather than reviewers.
 
 use crate::agent::command_specs::agent_command_spec_from_display;
+use crate::agent::loop_commands::{
+    WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
+    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_receipt_command,
+    agent_verify_command, check_repo_exposure_command, shell_arg,
+};
 use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::repair_route::{
     NewTestKind, RepairTargetSelection, cross_language_test_target_unresolved,
@@ -52,6 +57,29 @@ const MAX_RELATED_TESTS_PER_PACKET: usize = 8;
 /// agents that static evidence is preflight, not proof.
 const RUNTIME_CONFIRMATION_NOTE: &str =
     "optional cargo-mutants confirmation; ripr reports static evidence only";
+
+/// Packet task for a seam the agent can repair with a targeted test.
+const TASK_WRITE_TARGETED_TEST: &str = "write_targeted_test";
+
+/// Root the rendered repair-loop commands assume. The packet carries no
+/// workspace path of its own, and the receipt command already projected
+/// through `evidence_record` uses the same `--root .`, so the whole
+/// envelope stays consistent for an agent running from the workspace root.
+const REPAIR_LOOP_ROOT: &str = ".";
+
+/// Mode the rendered before/after snapshot commands use. Matches the draft
+/// default `ripr agent status` and `first-useful-action` already publish.
+const REPAIR_LOOP_MODE: &str = "draft";
+
+/// Create the two destinations used by the first redirected snapshot and the
+/// later receipt. This stays local to the packet renderer because xtask
+/// includes `loop_commands.rs` independently without this output module.
+const WORKFLOW_PREPARE_COMMAND: &str = "mkdir -p target/ripr/workflow target/ripr/reports";
+
+/// Honesty label carried next to `suggested_test_command`. The recommended
+/// test does not exist yet, so the `cargo test` filter selects nothing until
+/// the agent has written it.
+const SUGGESTED_TEST_COMMAND_STATUS: &str = "runnable_after_the_suggested_test_exists";
 
 /// Render every actionable `ClassifiedSeam` in `classified` as an agent
 /// packet, returning a JSON object with a `packets` array. Strongly-gripped,
@@ -147,9 +175,99 @@ pub(crate) fn render_agent_seam_packets_json_with_causal(
     if !actionable.is_empty() {
         out.push_str("  ");
     }
-    out.push_str("]\n");
+    out.push(']');
+    match repair_loop_commands(&actionable) {
+        Some(commands) => {
+            out.push_str(",\n");
+            push_repair_loop_json(&mut out, &commands);
+        }
+        None => out.push('\n'),
+    }
     out.push_str("}\n");
     out
+}
+
+/// The commands that close an agent's own repair loop for this envelope:
+/// snapshot, edit, snapshot, verify, receipt.
+///
+/// Every string is built from the shared `agent::loop_commands` templates so
+/// the packet cannot drift from what `ripr agent status`, `agent brief`, and
+/// the evidence record already publish.
+struct RepairLoopCommands {
+    before_snapshot: String,
+    after_snapshot: String,
+    verify: String,
+    /// `ripr agent receipt` names one seam, so this is only knowable when the
+    /// envelope resolves to a single actionable packet — the
+    /// `ripr agent packet --seam-id` shape. Repo-wide envelopes leave it
+    /// `null`; the per-seam command stays in each packet's
+    /// `evidence_record.canonical_item.receipt_command`.
+    receipt: Option<String>,
+}
+
+/// Render the loop commands only when the envelope actually asks for a
+/// targeted test. An envelope of `inspect_static_limitation` packets has no
+/// repair to verify, so it keeps its current shape.
+fn repair_loop_commands(actionable: &[&ClassifiedSeam]) -> Option<RepairLoopCommands> {
+    let first = actionable
+        .iter()
+        .find(|entry| task_for(entry) == TASK_WRITE_TARGETED_TEST)?;
+    let receipt = (actionable.len() == 1).then(|| {
+        agent_receipt_command(
+            REPAIR_LOOP_ROOT,
+            WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            first.seam.id().as_str(),
+            Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+        )
+    });
+    Some(RepairLoopCommands {
+        before_snapshot: format!(
+            "{WORKFLOW_PREPARE_COMMAND} && {}",
+            check_repo_exposure_command(
+                REPAIR_LOOP_ROOT,
+                REPAIR_LOOP_MODE,
+                WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+            )
+        ),
+        after_snapshot: check_repo_exposure_command(
+            REPAIR_LOOP_ROOT,
+            REPAIR_LOOP_MODE,
+            WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+        ),
+        // Redirected into the verify artifact the receipt command reads, so
+        // the two steps compose instead of naming a file nothing wrote.
+        verify: agent_verify_command(
+            REPAIR_LOOP_ROOT,
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+            WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+            Some(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+        ),
+        receipt,
+    })
+}
+
+fn push_repair_loop_json(out: &mut String, commands: &RepairLoopCommands) {
+    out.push_str("  \"next\": {\n");
+    out.push_str(&format!(
+        "    \"before_snapshot_command\": \"{}\",\n",
+        json_escape(&commands.before_snapshot)
+    ));
+    out.push_str(&format!(
+        "    \"after_snapshot_command\": \"{}\",\n",
+        json_escape(&commands.after_snapshot)
+    ));
+    out.push_str(&format!(
+        "    \"verify_after_edit\": \"{}\",\n",
+        json_escape(&commands.verify)
+    ));
+    match commands.receipt.as_deref() {
+        Some(receipt) => out.push_str(&format!(
+            "    \"receipt_after_verify\": \"{}\"\n",
+            json_escape(receipt)
+        )),
+        None => out.push_str("    \"receipt_after_verify\": null\n"),
+    }
+    out.push_str("  }\n");
 }
 
 /// Render the existing agent seam packet JSON envelope for one seam.
@@ -1459,7 +1577,7 @@ fn task_for(entry: &ClassifiedSeam) -> &'static str {
     // (`repair_packet_queue_visible`); under that filter the authority's
     // fail-closed flip reduces to producer route readiness.
     if is_safe_for_repair_packet(entry) {
-        "write_targeted_test"
+        TASK_WRITE_TARGETED_TEST
     } else {
         "inspect_static_limitation"
     }
@@ -1520,6 +1638,20 @@ fn push_packet_json(
         json_escape(recommended.reason.as_str())
     ));
     out.push_str("},\n");
+
+    // The `cargo test` filter for the test this packet asks for. Only
+    // actionable packets name a test at all, and the named test does not
+    // exist yet, so the status string travels with the command.
+    if task_for(entry) == TASK_WRITE_TARGETED_TEST {
+        out.push_str(&format!(
+            "      \"suggested_test_command\": \"cargo test {}\",\n",
+            json_escape(&shell_arg(recommended.name.as_str()))
+        ));
+        out.push_str(&format!(
+            "      \"suggested_test_command_status\": \"{}\",\n",
+            SUGGESTED_TEST_COMMAND_STATUS
+        ));
+    }
 
     let nearest_strong = nearest_strong_test_to_imitate(seam.kind(), evidence);
     out.push_str("      \"nearest_strong_test_to_imitate\": ");
@@ -4684,6 +4816,190 @@ mod tests {
             json.contains("\"schema_version\": \"0.3\""),
             "expected schema_version 0.3: {json}"
         );
+    }
+
+    /// A second `write_targeted_test` seam with an identity of its own, so a
+    /// multi-packet envelope is not just the same seam twice.
+    fn second_actionable_classified() -> ClassifiedSeam {
+        let mut entry = weakly_gripped_classified();
+        let seam = RepoSeam::new(
+            "src/shipping.rs",
+            "shipping::free_shipping_total",
+            SeamKind::PredicateBoundary,
+            17,
+            31,
+            "weight >= free_shipping_threshold",
+            RequiredDiscriminator::BoundaryValue {
+                description: "weight >= free_shipping_threshold".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        entry.evidence.seam_id = seam.id().clone();
+        entry.seam = seam;
+        entry.evidence.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "free_shipping_threshold (equality boundary)".to_string(),
+            reason: "observed values do not include the equality-boundary case".to_string(),
+            flow_sink: None,
+        }];
+        entry
+    }
+
+    fn parsed_envelope(json: &str) -> Result<serde_json::Value, String> {
+        serde_json::from_str(json)
+            .map_err(|err| format!("packet JSON did not parse: {err}: {json}"))
+    }
+
+    #[test]
+    fn actionable_packet_carries_a_suggested_test_command_marked_not_yet_runnable()
+    -> Result<(), String> {
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
+        let value = parsed_envelope(&json)?;
+        let packet = &value["packets"][0];
+        if packet["task"] != TASK_WRITE_TARGETED_TEST {
+            return Err(format!("expected an actionable packet: {json}"));
+        }
+        let recommended_name = packet["recommended_test"]["name"]
+            .as_str()
+            .ok_or_else(|| format!("packet has no recommended test name: {json}"))?;
+        assert_eq!(
+            packet["suggested_test_command"],
+            serde_json::Value::String(format!("cargo test {recommended_name}"))
+        );
+        // The named test does not exist yet, so the command must not read as
+        // one that works right now.
+        assert_eq!(
+            packet["suggested_test_command_status"],
+            "runnable_after_the_suggested_test_exists"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn single_actionable_envelope_carries_the_whole_loop_including_a_seam_receipt()
+    -> Result<(), String> {
+        let entry = weakly_gripped_classified();
+        let seam_id = entry.seam.id().as_str().to_string();
+        let json = render_agent_seam_packets_json(&[entry], None);
+        let value = parsed_envelope(&json)?;
+        let next = &value["next"];
+        // Every command is the shared loop-command template, not a
+        // hand-written duplicate of it.
+        assert_eq!(
+            next["before_snapshot_command"],
+            serde_json::Value::String(format!(
+                "{WORKFLOW_PREPARE_COMMAND} && {}",
+                check_repo_exposure_command(".", "draft", WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT)
+            ))
+        );
+        assert_eq!(
+            next["after_snapshot_command"],
+            serde_json::Value::String(check_repo_exposure_command(
+                ".",
+                "draft",
+                WORKFLOW_AFTER_SNAPSHOT_ARTIFACT
+            ))
+        );
+        assert_eq!(
+            next["verify_after_edit"],
+            serde_json::Value::String(agent_verify_command(
+                ".",
+                WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+                WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+                Some(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            ))
+        );
+        assert_eq!(
+            next["receipt_after_verify"],
+            serde_json::Value::String(agent_receipt_command(
+                ".",
+                WORKFLOW_AGENT_VERIFY_ARTIFACT,
+                seam_id.as_str(),
+                Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+            ))
+        );
+        // The verify step must write the artifact the receipt step reads, or
+        // the loop does not compose.
+        let verify = next["verify_after_edit"]
+            .as_str()
+            .ok_or_else(|| format!("verify command missing: {json}"))?;
+        let receipt = next["receipt_after_verify"]
+            .as_str()
+            .ok_or_else(|| format!("receipt command missing: {json}"))?;
+        assert!(
+            verify.ends_with(&format!("> {WORKFLOW_AGENT_VERIFY_ARTIFACT}")),
+            "verify command does not write the verify artifact: {verify}"
+        );
+        assert!(
+            receipt.contains(&format!("--verify-json {WORKFLOW_AGENT_VERIFY_ARTIFACT}")),
+            "receipt command does not read the verify artifact: {receipt}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn mixed_actionable_and_limitation_envelope_leaves_the_seam_receipt_null() -> Result<(), String>
+    {
+        let mut limitation = weakly_gripped_classified();
+        limitation.class = SeamGripClass::Opaque;
+        let value = parsed_envelope(&render_agent_seam_packets_json(
+            &[weakly_gripped_classified(), limitation],
+            None,
+        ))?;
+        assert_eq!(value["packets_total"], 2);
+        assert!(value["next"]["verify_after_edit"].is_string());
+        assert!(
+            value["next"]["receipt_after_verify"].is_null(),
+            "mixed envelope must not name the actionable packet's receipt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn multi_seam_envelope_leaves_the_seam_scoped_receipt_null() -> Result<(), String> {
+        let json = render_agent_seam_packets_json(
+            &[weakly_gripped_classified(), second_actionable_classified()],
+            None,
+        );
+        let value = parsed_envelope(&json)?;
+        if value["packets_total"] != 2 {
+            return Err(format!("expected two actionable packets: {json}"));
+        }
+        assert!(value["next"]["verify_after_edit"].is_string());
+        // `ripr agent receipt` names one seam; a repo-wide envelope cannot.
+        assert!(
+            value["next"]["receipt_after_verify"].is_null(),
+            "repo-wide envelope must not name one seam's receipt: {json}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn static_limitation_only_envelope_keeps_its_current_shape() -> Result<(), String> {
+        let mut entry = weakly_gripped_classified();
+        entry.class = SeamGripClass::Opaque;
+        let json = render_agent_seam_packets_json(&[entry], None);
+        let value = parsed_envelope(&json)?;
+        if value["packets"][0]["task"] != "inspect_static_limitation" {
+            return Err(format!("expected a static-limitation packet: {json}"));
+        }
+        assert!(
+            value.get("next").is_none(),
+            "an envelope with no targeted-test packet has no loop to close: {json}"
+        );
+        assert!(value["packets"][0].get("suggested_test_command").is_none());
+        assert!(
+            value["packets"][0]
+                .get("suggested_test_command_status")
+                .is_none()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn empty_envelope_carries_no_loop_commands() -> Result<(), String> {
+        let value = parsed_envelope(&render_agent_seam_packets_json(&[], None))?;
+        assert!(value.get("next").is_none());
+        Ok(())
     }
 
     #[test]
