@@ -63,8 +63,17 @@
         "status": "resolved"
       },
       "suggested_test": {
+        "assertion_guidance": {
+          "basis": "seam_required_discriminator",
+          "example": "assert_eq!(discounted_total(/* boundary input where amount == discount_threshold */), /* expected */)",
+          "kind": "exact_return_value",
+          "observer_kind": null,
+          "reason": null,
+          "recovery": null,
+          "state": "concrete"
+        },
         "assertion_kind": "exact_return_value",
-        "assertion_shape": "assert_eq!(discounted_total(/* boundary input for amount == discount_threshold */), /* expected */)",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input where amount == discount_threshold */), /* expected */)",
         "candidate_values": [
           "amount == discount_threshold"
         ],

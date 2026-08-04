@@ -5,7 +5,7 @@
       "canonical_gap_id": "gap:dedf923a13a00573",
       "decision": "acknowledged",
       "evidence": {
-        "assertion_shape": "assert_eq!(discounted_total(/* boundary input for amount == discount_threshold */), /* expected */)",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input where amount == discount_threshold */), /* expected */)",
         "candidate_values": [
           "amount == discount_threshold"
         ],

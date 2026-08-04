@@ -629,6 +629,72 @@ mod tests {
     }
 
     #[test]
+    fn assertion_guidance_schema_rejects_invalid_state_shapes() -> Result<(), String> {
+        let root = repo_root()?;
+        let schema = read_json(root.join("schemas/ripr/review-comments.schema.json"))?;
+        let guidance_schema = schema
+            .pointer("/$defs/suggested_test/properties/assertion_guidance")
+            .ok_or_else(|| "assertion guidance schema is missing".to_string())?;
+
+        let validate = |value: Value| {
+            let mut violations = Vec::new();
+            validate_value_against_schema(
+                &value,
+                guidance_schema,
+                &schema,
+                "assertion guidance".to_string(),
+                &mut violations,
+            );
+            violations
+        };
+
+        let valid_concrete = serde_json::json!({
+            "state": "concrete",
+            "example": "assert_eq!(value, expected)",
+            "kind": "exact_return_value",
+            "basis": "seam_required_discriminator",
+            "observer_kind": null,
+            "reason": null,
+            "recovery": null
+        });
+        assert!(validate(valid_concrete).is_empty());
+
+        let invalid_concrete = serde_json::json!({
+            "state": "concrete",
+            "example": null,
+            "kind": "exact_return_value",
+            "basis": "seam_required_discriminator",
+            "observer_kind": null,
+            "reason": null,
+            "recovery": null
+        });
+        assert!(!validate(invalid_concrete).is_empty());
+
+        let invalid_non_concrete = serde_json::json!({
+            "state": "stale",
+            "example": "assert_eq!(value, expected)",
+            "kind": null,
+            "basis": null,
+            "observer_kind": null,
+            "reason": "snapshot_stale",
+            "recovery": "refresh_analysis"
+        });
+        assert!(!validate(invalid_non_concrete).is_empty());
+
+        let invalid_observer_setup = serde_json::json!({
+            "state": "requires_observer_setup",
+            "example": null,
+            "kind": null,
+            "basis": null,
+            "observer_kind": null,
+            "reason": "observer_not_statically_visible",
+            "recovery": null
+        });
+        assert!(!validate(invalid_observer_setup).is_empty());
+        Ok(())
+    }
+
+    #[test]
     fn invalid_type_reports_actionable_path() -> Result<(), String> {
         let root = repo_root()?;
         let schema = read_json(root.join("schemas/badges/shields-endpoint.schema.json"))?;

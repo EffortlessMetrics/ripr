@@ -124,6 +124,16 @@ pub(crate) enum AssertionBasis {
     ResolvedFlowSink,
 }
 
+impl AssertionBasis {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::SeamRequiredDiscriminator => "seam_required_discriminator",
+            Self::ObservedValueFact => "observed_value_fact",
+            Self::ResolvedFlowSink => "resolved_flow_sink",
+        }
+    }
+}
+
 /// The closed assertion-shape vocabulary. These replace the ad-hoc
 /// `&'static str` shape tokens the packet renderer used, so that a shape can
 /// only be named when a concrete example exists.
@@ -138,6 +148,19 @@ pub(crate) enum AssertionKind {
     CallExpectation,
 }
 
+impl AssertionKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::ExactReturnValue => "exact_return_value",
+            Self::ExactErrorVariant => "exact_error_variant",
+            Self::FieldEquality => "field_equality",
+            Self::SideEffectObserver => "side_effect_observer",
+            Self::MatchResult => "match_result",
+            Self::CallExpectation => "call_expectation",
+        }
+    }
+}
+
 /// The kind of observer a test must establish before it can assert.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -145,6 +168,16 @@ pub(crate) enum ObserverKind {
     SideEffectSink,
     CallSite,
     ExternalLanguageOracle,
+}
+
+impl ObserverKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::SideEffectSink => "side_effect_sink",
+            Self::CallSite => "call_site",
+            Self::ExternalLanguageOracle => "external_language_oracle",
+        }
+    }
 }
 
 /// Availability of a producer-owned discriminator for one changed behavior.
@@ -232,6 +265,19 @@ pub(crate) enum AssertionState {
     VerificationOnly,
     Unresolved,
     Stale,
+}
+
+impl AssertionState {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Concrete => "concrete",
+            Self::RequiresObserverSetup => "requires_observer_setup",
+            Self::FixSiteOnly => "fix_site_only",
+            Self::VerificationOnly => "verification_only",
+            Self::Unresolved => "unresolved",
+            Self::Stale => "stale",
+        }
+    }
 }
 
 /// Producer facts a gap-ledger repair route can offer.
@@ -716,6 +762,34 @@ impl DiscriminatorGuidanceView {
 }
 
 impl AssertionGuidanceView {
+    pub(crate) const fn state(&self) -> AssertionState {
+        self.state
+    }
+
+    pub(crate) fn example(&self) -> Option<&str> {
+        self.example.as_deref()
+    }
+
+    pub(crate) const fn kind(&self) -> Option<AssertionKind> {
+        self.kind
+    }
+
+    pub(crate) const fn basis(&self) -> Option<AssertionBasis> {
+        self.basis
+    }
+
+    pub(crate) const fn observer_kind(&self) -> Option<ObserverKind> {
+        self.observer_kind
+    }
+
+    pub(crate) const fn reason(&self) -> Option<GuidanceReason> {
+        self.reason
+    }
+
+    pub(crate) const fn recovery(&self) -> Option<GuidanceRecovery> {
+        self.recovery
+    }
+
     /// Reject any state/field combination that would let a non-concrete state
     /// carry a paste-ready-looking example.
     fn validate(&self) -> Result<(), String> {

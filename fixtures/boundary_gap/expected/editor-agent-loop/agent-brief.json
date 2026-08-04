@@ -22,8 +22,13 @@
   "top_seams": [
     {
       "assertion_shape": {
+        "basis": "seam_required_discriminator",
         "example": "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)",
-        "kind": "exact_return_value"
+        "kind": "exact_return_value",
+        "observer_kind": null,
+        "reason": null,
+        "recovery": null,
+        "state": "concrete"
       },
       "candidate_values": [
         {

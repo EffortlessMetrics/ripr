@@ -30,7 +30,7 @@
         {"value": "discount_threshold (equality boundary)", "reason": "observed values do not include the equality-boundary case for this predicate"}
       ],
       "missing_oracle_shape": "exact returned value assertion at the equality boundary",
-      "assertion_shape": {"kind": "exact_return_value", "example": "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)"},
+      "assertion_shape": {"basis":"seam_required_discriminator","example":"assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)","kind":"exact_return_value","observer_kind":null,"reason":null,"recovery":null,"state":"concrete"},
       "related_existing_tests": [
         {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 4, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"},
         {"name": "far_above_threshold_discounts", "file": "tests/pricing.rs", "line": 9, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"}

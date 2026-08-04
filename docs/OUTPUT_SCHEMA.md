@@ -6892,7 +6892,11 @@ Field contract:
   observation when available.
 - `comments[].suggested_test` - bounded test intent, candidate values,
   assertion shape, recommended test file, and related test to imitate when
-  available.
+  available. `assertion_guidance` is the typed projection of the same
+  producer-owned contract used by agent packets: only `state: "concrete"`
+  carries an example; `requires_observer_setup`, `fix_site_only`,
+  `verification_only`, `unresolved`, and `stale` carry `example: null` and
+  their bounded reason/recovery fields.
 - `comments[].suggested_test.related_test` - structured navigational object
   `{name, file, line}` for the nearest strong related test (RIPR-SPEC-0068),
   or `null` when no strong related test resolves. The flat `recommended_file`,
@@ -12972,11 +12976,12 @@ Field contract:
     assert_matches!)"
   - `side_effect` → "mock expectation, event/state observer, or
     persistence assertion (...)"
-- `packets[].assertion_shape` — structured assertion guidance with a
-  stable `kind` (`exact_return_value`, `exact_error_variant`,
-  `field_equality`, `side_effect_observer`, `match_result`, or
-  `call_expectation`) plus a fill-in example. Placeholders are
-  intentional; ripr does not invent expected values.
+- `packets[].assertion_shape` — the typed assertion-guidance projection.
+  `state` is one of `concrete`, `requires_observer_setup`, `fix_site_only`,
+  `verification_only`, `unresolved`, or `stale`. Only `concrete` may carry
+  `kind`, `basis`, or `example`; every other state carries `example: null`
+  and names its `reason` plus any bounded `recovery`. Observer-required
+  states name `observer_kind` and never emit a comment-shaped assertion.
 - `packets[].related_existing_tests` — capped at
   `MAX_RELATED_TESTS_PER_PACKET` (currently 8). Carries test name,
   file, line, oracle kind, oracle strength, and a short
@@ -12991,8 +12996,9 @@ Field contract:
   related tests or adding another test with only already-observed
   values. Each entry has `{pattern, reason}`.
 - `packets[].suggested_assertions` — best-effort assertion templates
-  the agent fills in. Placeholders are intentional; ripr never invents
-  expected values. Example for predicate boundary:
+  the agent fills in, emitted only for `assertion_shape.state == concrete`.
+  Placeholders are intentional; ripr never invents expected values. Example
+  for predicate boundary:
   `"assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"`.
 - `packets[].confidence` — `high`, `medium`, `low`, or `unknown`
   confidence in the packet recommendation. It is derived from related
@@ -13022,8 +13028,9 @@ Field contract:
   approve a patch, or authorize a merge.
 
 The packet is the agent's work order: it names the seam, the missing
-discriminator, the oracle shape, and an assertion template — but never
-generates the test itself. Composition with a coding agent closes the
+discriminator, the oracle shape, and either a producer-backed assertion
+template or an explicit non-concrete recovery state — but never generates
+the test itself. Composition with a coding agent closes the
 loop.
 
 ## Agent Working-Set Brief

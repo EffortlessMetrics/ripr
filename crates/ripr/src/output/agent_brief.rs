@@ -154,10 +154,7 @@ fn top_seam_json(
             "value": record.value.as_str(),
             "reason": record.reason.as_str(),
         })).collect::<Vec<_>>(),
-        "assertion_shape": {
-            "kind": assertion_shape.kind,
-            "example": assertion_shape.example,
-        },
+        "assertion_shape": agent_seam_packets::assertion_guidance_json(&assertion_shape),
         "packet_ref": {
             "format": "agent-seam-packets-json",
             "seam_id": seam.id().as_str(),

@@ -458,7 +458,9 @@ pub(crate) fn actionability_for(
 ) -> EvidenceRecordActionability {
     let static_limited = is_static_limited(entry);
     let candidate_values = !candidate_values_for(entry, missing_records).is_empty();
-    let assertion_shape = !static_limited && entry.class.is_headline_eligible();
+    let assertion_shape = !static_limited
+        && entry.class.is_headline_eligible()
+        && assertion_shape_for_entry(entry).is_concrete();
     let related_test = !entry.evidence.related_tests.is_empty();
     let verification_command = assertion_shape;
     let missing_discriminator = !missing_records.is_empty();
@@ -509,12 +511,13 @@ pub(crate) fn actionability_for(
     EvidenceRecordActionability {
         class: class.to_string(),
         reason: reason.to_string(),
-        has_concrete_guidance: matches!(
-            class,
-            "actionable_assertion_upgrade"
-                | "actionable_related_test_extension"
-                | "actionable_focused_test"
-        ),
+        has_concrete_guidance: assertion_shape
+            && matches!(
+                class,
+                "actionable_assertion_upgrade"
+                    | "actionable_related_test_extension"
+                    | "actionable_focused_test"
+            ),
         signals: EvidenceRecordActionabilitySignals {
             missing_discriminator,
             candidate_value: candidate_values,
@@ -853,8 +856,9 @@ fn recommendation_for(
     };
 
     let recommended_test = actionable.then(|| recommended_test_record(recommended_test));
-    let assertion_shape =
-        actionable.then(|| assertion_shape_record(assertion_shape_for_entry(entry)));
+    let assertion_shape = actionable
+        .then(|| assertion_shape_record(assertion_shape_for_entry(entry)))
+        .flatten();
     let verify_command = actionable.then(|| VERIFY_COMMAND.to_string());
     let nearest_test_to_imitate =
         nearest_strong_test_to_imitate(entry.seam.kind(), &entry.evidence)
@@ -906,11 +910,11 @@ fn candidate_value_record(value: CandidateValue) -> EvidenceRecordCandidateValue
     }
 }
 
-fn assertion_shape_record(shape: AssertionShape) -> EvidenceRecordAssertionShape {
-    EvidenceRecordAssertionShape {
-        kind: shape.kind.to_string(),
-        example: shape.example,
-    }
+fn assertion_shape_record(shape: AssertionShape) -> Option<EvidenceRecordAssertionShape> {
+    Some(EvidenceRecordAssertionShape {
+        kind: shape.kind()?.as_str().to_string(),
+        example: shape.example()?.to_string(),
+    })
 }
 
 fn related_test_record(

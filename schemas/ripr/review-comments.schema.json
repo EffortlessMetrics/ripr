@@ -1026,6 +1026,138 @@
             "null"
           ]
         },
+        "assertion_guidance": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "example",
+            "kind",
+            "basis",
+            "observer_kind",
+            "reason",
+            "recovery"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "concrete",
+                "requires_observer_setup",
+                "fix_site_only",
+                "verification_only",
+                "unresolved",
+                "stale"
+              ]
+            },
+            "example": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "basis": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "observer_kind": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "recovery": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "anyOf": [
+            {
+              "properties": {
+                "state": { "const": "concrete" },
+                "example": { "type": "string", "minLength": 1 },
+                "kind": { "type": "string", "minLength": 1 },
+                "basis": { "type": "string", "minLength": 1 },
+                "observer_kind": { "const": null },
+                "reason": { "const": null },
+                "recovery": { "const": null }
+              }
+            },
+            {
+              "properties": {
+                "state": { "const": "requires_observer_setup" },
+                "example": { "const": null },
+                "kind": { "const": null },
+                "basis": { "const": null },
+                "observer_kind": { "type": "string", "minLength": 1 },
+                "reason": { "type": "string", "minLength": 1 },
+                "recovery": { "const": null }
+              }
+            },
+            {
+              "properties": {
+                "state": { "const": "fix_site_only" },
+                "example": { "const": null },
+                "kind": { "const": null },
+                "basis": { "const": null },
+                "observer_kind": { "const": null },
+                "reason": { "type": "string", "minLength": 1 },
+                "recovery": { "const": null }
+              }
+            },
+            {
+              "properties": {
+                "state": { "const": "verification_only" },
+                "example": { "const": null },
+                "kind": { "const": null },
+                "basis": { "const": null },
+                "observer_kind": { "const": null },
+                "reason": { "type": "string", "minLength": 1 },
+                "recovery": { "const": null }
+              }
+            },
+            {
+              "properties": {
+                "state": { "const": "unresolved" },
+                "example": { "const": null },
+                "kind": { "const": null },
+                "basis": { "const": null },
+                "observer_kind": { "const": null },
+                "reason": { "type": "string", "minLength": 1 },
+                "recovery": { "type": "string", "minLength": 1 }
+              }
+            },
+            {
+              "properties": {
+                "state": { "const": "stale" },
+                "example": { "const": null },
+                "kind": { "const": null },
+                "basis": { "const": null },
+                "observer_kind": { "const": null },
+                "reason": { "type": "string", "minLength": 1 },
+                "recovery": { "type": "string", "minLength": 1 }
+              }
+            }
+          ]
+        },
         "recommended_file": {
           "type": "string"
         },
