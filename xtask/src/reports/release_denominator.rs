@@ -2512,11 +2512,11 @@ mod tests {
             ),
         )?;
         require(
-            report.records.len() == 234,
+            report.records.len() == 262,
             "current-main census record count changed",
         )?;
         require(
-            report.source.range_commits.len() == 234,
+            report.source.range_commits.len() == 262,
             "current-main census range count changed",
         )?;
         require(
@@ -2525,35 +2525,35 @@ mod tests {
         )?;
         require(
             report.source.historical_base_sha == "c86807ecdbf359594ef88c0ff38b10b446139dca"
-                && report.source.candidate_sha == "c30a26831b75051813bfaa3dbd9378096ec6aa82"
+                && report.source.candidate_sha == "0afa0144b0eec64ad0c0b2cd47d3bec4c2b3e26c"
                 && report.source.range_commits.first().map(String::as_str)
                     == Some("fd1eec2ad8145678f0fb494a50bd181d6857b0c7")
                 && report.source.range_commits.last().map(String::as_str)
-                    == Some("c30a26831b75051813bfaa3dbd9378096ec6aa82"),
+                    == Some("0afa0144b0eec64ad0c0b2cd47d3bec4c2b3e26c"),
             "current-main identity changed",
         )?;
         require(
             report.range_digest
-                == "sha256:b85b8314b5f738335ae63220fe5f0ea8ef4e6e1892124eea148ea49181168501"
+                == "sha256:9c34712f2dc201455c8f43d07958494d1c701e51e20befd891672fee90ac18e7"
                 && report.candidate_tree_digest
                     == "sha256:2392d40f28fdd141b81a949cf019c1ad3850cf68bb2ab3cef5802fbdcde7c93b",
             "current-main range or candidate-tree digest changed",
         )?;
         require(
             report.record_set_digest
-                == "sha256:7b3e24c061fe8252b432dc852b8a84179571cacfba1013382795f23ff0ce901c",
+                == "sha256:3c5d6dccfaca1c9cc22ecefb5488c813c7bcf0b3805419103b56a15fe3731620",
             "current-main record-set digest changed",
         )?;
         require(
             report
                 .counts_by_tree_state
                 .get("candidate_tree_state_pending")
-                == Some(&4)
+                == Some(&32)
                 && report.counts_by_tree_state.get("present_in_candidate") == Some(&230)
                 && report
                     .counts_by_disposition
                     .get("operator_decision_required")
-                    == Some(&4),
+                    == Some(&32),
             "current-main denominator counts changed",
         )?;
         let execution_record = report
@@ -2575,6 +2575,28 @@ mod tests {
             report.counts_by_disposition.get("candidate_only_exclusion") == Some(&1),
             "current-main census does not retain exactly one accepted execution exclusion",
         )?;
+        let golden_defect = report
+            .candidate_selection
+            .as_ref()
+            .and_then(|selection| {
+                selection.known_candidate_defects.iter().find(|defect| {
+                    defect.defect_id == "defect:goldens-check-misses-editor-agent-loop"
+                })
+            })
+            .ok_or_else(|| {
+                "current-main census lost the golden-check defect authority".to_string()
+            })?;
+        require(
+            !golden_defect.resolved
+                && golden_defect
+                    .description
+                    .contains("Candidate inclusion of that fixing commit remains pending")
+                && report.records.iter().any(|record| {
+                    record.commit_sha == "c1fbf43274e187edbb8a1b2cd8ba2b6b3620ebcd"
+                        && record.candidate_tree_state == "candidate_tree_state_pending"
+                }),
+            "golden-check defect was cleared before its fixing commit was adjudicated",
+        )?;
         let pending = report
             .records
             .iter()
@@ -2588,10 +2610,70 @@ mod tests {
                     "827c9e08f8abb87b0864b1ebb7b3135e78727bb3",
                     "e7e6e6632f1fc2a0b19d30ed6dc76ef8a167c7c6",
                     "c30a26831b75051813bfaa3dbd9378096ec6aa82",
+                    "e7c700ff423bf595429909280133978406dda93e",
+                    "ad98674c602431dd2d689392db1349e03538be11",
+                    "a9db152fe0c5d23bc2fe6613b524430478c9af16",
+                    "4e02f83e12090f93ba1bb590f7026fb1dcae92ae",
+                    "83e4f066d844a641d1e09100d794f1ebf6928861",
+                    "36105bbf7e33c2403b87a521bfdc404606700699",
+                    "41790837486f8ac1efcdaa7b601a0174300a148a",
+                    "c864308fc4845b133aa17f824f3af29b0e981de5",
+                    "ebc6391c3e37dbf2c52289f8f20d9feb660e6e57",
+                    "0253adaebfe9f4fdd3924d805d93dfc8142885b5",
+                    "5c8ad0e4dd7efd69d16a8d967253c1a958c9b230",
+                    "ebacc790bd1b157d0e29d516c815987b3deb9ddf",
+                    "b91848b678a3b72c98b6d637418dcd45701dae01",
+                    "24da79d85d6ad7f8db1d9ae251a35300f374ec40",
+                    "930936a6e78d5d5afaa51defd27ffa23ecaaf038",
+                    "5923689b0e89f02f35272bb7c987c7e6ccf3d5cc",
+                    "619f87ff70b75ea5f0754a3e7bc8f1e45eb9fc47",
+                    "8fe2bc394fb6dfabbb72e8dac294230767575fcc",
+                    "9594db7f95571eb03ac9cd1124df19a8bbca4cd0",
+                    "0e055f136dc7c3fd3fd409b4901bfae07a7d1823",
+                    "5077b486141b226e0c59b9bf09f0723c029c489f",
+                    "59d2b0178d4802cab5d8550a6ef6b1a726959f71",
+                    "c1fbf43274e187edbb8a1b2cd8ba2b6b3620ebcd",
+                    "d5dd29a740eaf6a8405a5e470b1fef2ea71e9db8",
+                    "388aa3c49cf639fe53f9dcbf24ef9c54e19e36ba",
+                    "3af35dae54277b470dc66239c7569a556ca15285",
+                    "f5f69e1bf92a1b4e5b8e18e83a305a495dc4b0f4",
+                    "0afa0144b0eec64ad0c0b2cd47d3bec4c2b3e26c",
                 ],
-            "current-main excluded commit identities changed",
+            "current-main pending commit identities changed",
         )?;
         Ok(())
+    }
+
+    #[test]
+    fn current_main_provisional_range_matches_record_order() -> Result<(), String> {
+        let snapshot: Snapshot = serde_json::from_str(include_str!(
+            "../../../fixtures/release_denominator/current-main-provisional.json"
+        ))
+        .map_err(|error| error.to_string())?;
+        let record_range = snapshot
+            .records
+            .iter()
+            .map(|record| record.commit_sha.clone())
+            .collect::<Vec<_>>();
+        require(
+            record_range == snapshot.source.range_commits
+                && snapshot.source.range_commits.len() == 262
+                && snapshot
+                    .source
+                    .provisional_review_cutoff_sha
+                    .as_deref()
+                    .and_then(|cutoff| {
+                        snapshot
+                            .source
+                            .range_commits
+                            .iter()
+                            .position(|commit| commit == cutoff)
+                    })
+                    == Some(229)
+                && snapshot.source.range_commits.last().map(String::as_str)
+                    == Some("0afa0144b0eec64ad0c0b2cd47d3bec4c2b3e26c"),
+            "pinned 262-entry first-parent census does not match record order and cutoff",
+        )
     }
 
     #[test]
