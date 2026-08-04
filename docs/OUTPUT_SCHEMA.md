@@ -3930,11 +3930,13 @@ packet is not yet a public badge item. This does not change committed badge
 endpoint semantics.
 Canonical evidence-record items carry additive `command_specs.verify` and
 `command_specs.receipt` `CommandSpec` objects when RIPR owns those routes.
-GapRecord-derived gap-ledger and agent-packet queue projections currently carry
-arrays of those objects when multiple legacy route strings are present. LSP
-gap-artifact validation accepts the object form and this compatibility array
-form, but rejects non-object `command_specs` containers, malformed specs, and
-role-mismatched specs before projection.
+GapRecord-derived gap-ledger and agent-packet queue projections carry those
+objects only when the producer supplied them; legacy display strings are never
+parsed back into machine authority. A legacy string-only GapRecord remains
+readable, but its typed command collections are omitted until a producer-owned
+spec is available. LSP gap-artifact validation accepts the object form and
+compatibility array form, but rejects non-object `command_specs` containers,
+malformed specs, and role-mismatched specs before projection.
 
 ## RIPR Swarm Plan
 

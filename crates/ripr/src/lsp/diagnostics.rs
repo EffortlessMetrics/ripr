@@ -2815,6 +2815,7 @@ mod seam_diagnostic_tests {
             evidence_ids: vec!["evidence:pricing".to_string()],
             projection_eligibility,
             verification_commands: vec!["cargo xtask fixtures boundary_gap".to_string()],
+            command_specs: None,
             receipt_command: Some(
                 "ripr outcome --before target/ripr/workflow/before.json --after target/ripr/workflow/after.json --out target/ripr/receipts/pricing.json".to_string(),
             ),
@@ -3071,6 +3072,7 @@ mod diagnostic_policy_tests {
             evidence_ids: Vec::new(),
             projection_eligibility,
             verification_commands: vec!["cargo xtask fixtures boundary_gap".to_string()],
+            command_specs: None,
             receipt_command: Some(
                 "ripr outcome --before before.json --after after.json --out receipt.json"
                     .to_string(),
