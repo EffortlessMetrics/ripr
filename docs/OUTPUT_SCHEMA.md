@@ -12422,8 +12422,17 @@ The queue envelope is:
       "language": "python",
       "language_status": "preview",
       "repair_kind": "StrengthenExistingTest",
+      "task": "strengthen_targeted_test",
       "changed_owner": "calculate_discount",
       "missing_discriminator": "amount == threshold",
+      "discriminator_guidance": {
+        "state": "present",
+        "text": "amount == threshold",
+        "basis": "activation_evidence_fact",
+        "reason": null,
+        "recovery": null,
+        "static_limit_kind": null
+      },
       "suggested_test_file": "tests/test_pricing.py",
       "suggested_test_name": "test_calculate_discount_smoke",
       "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
@@ -12831,7 +12840,9 @@ Field contract:
   existing weak related test,
   `"inspect_static_limitation"` for explicit inspection routes, and
   `"add_output_golden"` for `MissingOutputContract` records whose repair
-  route is `AddOutputGolden`.
+  route is `AddOutputGolden`. A discriminator-dependent GapRecord route with
+  no producer-owned discriminator is downgraded to
+  `"inspect_static_limitation"`.
 - `packets[].gap_id`, `packets[].canonical_gap_id`, `packets[].gap_kind`,
   `packets[].language`, `packets[].language_status`,
   `packets[].policy_state`, `packets[].gap_state`,
@@ -12873,9 +12884,15 @@ Field contract:
   reconstructing repair intent from rendered prose. `repair_route` may include
   `missing_discriminator` when the source record can name the exact missing
   proof separately from the suggested assertion shape.
-- `packets[].missing_discriminator` - optional first-screen missing proof copied
-  from `repair_route.missing_discriminator` when supplied, with compatibility
-  fallback to `assertion_shape` or `changed_behavior` for older GapRecords.
+- `packets[].missing_discriminator` - nullable legacy first-screen missing
+  proof copied only from producer-owned `repair_route.missing_discriminator`.
+  `assertion_shape` and `changed_behavior` are never relabelled as this field.
+- `packets[].discriminator_guidance` - typed additive availability authority
+  with `state` (`present`, `not_produced`, `not_applicable`,
+  `static_limitation`, or `stale`), nullable `text`, `basis`, `reason`,
+  `recovery`, and `static_limit_kind`. When the state is not `present`, the
+  packet must not promote a discriminator-dependent route to a targeted-test
+  repair; the copyable Markdown and repair card carry the same state.
 - `packets[].verification_commands` and `packets[].verify_command` - optional
   GapRecord verification commands. `verify_command` is the first command and
   is provided for existing single-command consumers.
