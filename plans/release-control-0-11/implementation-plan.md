@@ -203,35 +203,31 @@ synthetic fixtures for validator shape. PR #2795 then merged at
 `fixtures/release_denominator/current-main-provisional.json`. This final refresh
 rebases the provisional census to `origin/main`
 `c30a26831b75051813bfaa3dbd9378096ec6aa82`: the first-parent range
-`c86807ec..c30a2683` contains 234 observed commits and the candidate-tree
-projection contains 219 records. Merged PRs #2842, #2844, corrective #2858/#2859,
-corrective #2862, release-control #2857, corrective #2867, #2870, #2860, #2861,
-#2869, #2876, #2873, #2878, and #2872 remain explicitly assigned current
-`safe_defer_post_0_11` disposition and
-`absent_by_candidate_only_exclusion` tree state; earlier `hold_post_release`
-is historical context only unless #2379 changes the release graph. The fixture
-proves current range identity, 15 exclusions/safe deferrals, and reconciled
-disposition only; it is not a
-reviewed final denominator and cannot unblock #1609 or #2769.
+`c86807ec..c30a2683` contains 234 observed commits and the retained provisional
+tree contains 219 records. The imported fixture now carries typed GitHub
+capture for all 234 rows, but all rows remain `operator_decision_required` and
+the fifteen inherited blanket exclusions are represented as
+`candidate_tree_state_pending`. The fixed provisional review cutoff for #2832
+is `fcbb30a7cf6a37027fa377abafb617632b2e6f57`; later rows are retained as
+observed delta, not silently excluded. The fixture is not a reviewed final
+denominator and cannot unblock #1609 or #2769.
 
 ## Live reconciliation boundary (2026-08-03)
 
 The release-control checkout was refreshed from current `origin/main`
-`e7c700ff423bf595429909280133978406dda93e` after #2870, #2860, #2861, #2869,
-#2876, #2873, #2878, #2872, and #2868 landed. The selected provisional cutoff
-remains `c30a26831b75051813bfaa3dbd9378096ec6aa82`; the #2868 control commit is
-after that cutoff and is not folded back into the denominator. The final
-captured provisional fixture above carries 234/219 records and fifteen
-candidate-only exclusions/safe deferrals. PR #2831 A owns only the typed
-reference-authority schema, offline validator, compatibility projection checks,
-and representative fixture proof. Concurrent product and release lanes remain
-independently owned and are not required to close for this plan slice. The
-production repair commit is `2a20da216428aa5ea13757d68f9fe9eed8cb6be1`; the
-focused denominator suite has 25 tests, including the fail-closed
-candidate-tree-subset regression. The required routed proof for #2869 was
-still running when GitHub merged it, so that hosted receipt is retained as an
-explicit proof gap rather than a pass. The pinned record-set digest is
-`sha256:166380b5b8cef061f6d617db089a5070e566e54841bd103c6a962d832881efe0`.
+`36105bbf7e33c2403b87a521bfdc404606700699` after #2871 and the independent
+output/review lanes landed. PR #2868 has already merged at `e7c700ff...` as a
+provisional census refresh; it is not #2831 PR B. The current bounded slice is
+the fresh #2831 B branch: it adds GitHub capture/import, the fixed cutoff
+boundary, pending candidate-tree state, and optional #2766/#2871 selected-claim
+references. Concurrent product and release lanes remain independently owned
+and are not required to close for this plan slice. The focused denominator
+suite has 29 tests. The imported fixture pins range digest
+`sha256:b85b8314b5f738335ae63220fe5f0ea8ef4e6e1892124eea148ea49181168501`,
+candidate-tree digest
+`sha256:c1b3675b6b98f609343f35711898e805a6ad27577c8f9b351ae53718b91082ae`,
+and record-set digest
+`sha256:172ef3d76ae3db47b8f7abedae9151ce971d3941b5a9eeb18b4c824d25c9530d`.
 
 ## Non-goals and safety boundary
 

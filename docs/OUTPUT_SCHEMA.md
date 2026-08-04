@@ -11987,6 +11987,7 @@ stable top-level shape:
   "captured_at": "...",
   "status": "ready | reconcile_required",
   "source": {},
+  "candidate_selection": null,
   "counts_by_disposition": {},
   "counts_by_tree_state": {},
   "records": [],
@@ -12024,6 +12025,18 @@ Exactly one of `evidence_url` or `github_identity` is required. The legacy
 `pr_refs` and `issue_refs` fields are compatibility projections and cannot
 establish final denominator authority by themselves. Final ledgers reject
 unreviewed references and legacy-only projections.
+
+`source.github_repository` pins the GitHub repository whose retained authority
+may be imported; captures from another repository are rejected.
+`source.provisional_review_cutoff_sha` optionally pins the fixed review cutoff
+used by #2832. Each record may also carry `claim_refs[]`,
+`reference_capture_status` (`not_captured`, `captured`,
+`no_linked_authority`, `ambiguous`, or `unavailable`), and
+`reference_capture_limitation`. `candidate_tree_state_pending` is the
+fail-closed state for a row whose candidate-tree effect has not been
+adjudicated; it is only valid with `operator_decision_required`. The optional
+`candidate_selection` object is the #2766/#2871 selected-claim authority, not a
+claim inferred from numeric issue or PR references.
 
 ## Operator Cockpit Report
 

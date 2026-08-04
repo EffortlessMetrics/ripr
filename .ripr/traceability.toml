@@ -6593,6 +6593,10 @@ tests = [
   "xtask/src/reports/release_denominator.rs::tests::malformed_reference_evidence_fails_closed",
   "xtask/src/reports/release_denominator.rs::tests::compatibility_projections_sort_reference_numbers",
   "xtask/src/reports/release_denominator.rs::tests::reviewed_manual_mapping_requires_reason",
+  "xtask/src/reports/release_denominator.rs::tests::capture_status_requires_typed_reference_evidence",
+  "xtask/src/reports/release_denominator.rs::tests::pending_cutoff_rows_are_not_candidate_exclusions",
+  "xtask/src/reports/release_denominator.rs::tests::claim_refs_require_selected_claim_authority",
+  "xtask/src/reports/release_denominator.rs::tests::github_body_reference_parser_handles_unicode_context",
 ]
 fixtures = [
   "fixtures/release_denominator/complete.json",

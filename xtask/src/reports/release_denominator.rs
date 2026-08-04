@@ -13,12 +13,15 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
+use super::candidate_control::{CandidateSelection, evaluate as evaluate_candidate_selection};
+
 const REPORT_NAME: &str = "release-denominator";
 const SCHEMA_VERSION: &str = "0.1";
 const INPUT_KIND: &str = "release_denominator_snapshot";
 const JSON_FILE: &str = "release-denominator.json";
 const MARKDOWN_FILE: &str = "release-denominator.md";
 const LIVE_TIMEOUT: Duration = Duration::from_secs(30);
+const GITHUB_CAPTURE_TIMEOUT: Duration = Duration::from_secs(45);
 
 const DISPOSITIONS: &[&str] = &[
     "include_product",
@@ -36,6 +39,15 @@ const TREE_STATES: &[&str] = &[
     "absent_by_candidate_only_exclusion",
     "replaced_by_later_commit",
     "source_only_not_in_swarm_candidate",
+    "candidate_tree_state_pending",
+];
+
+const CAPTURE_STATUSES: &[&str] = &[
+    "not_captured",
+    "captured",
+    "no_linked_authority",
+    "ambiguous",
+    "unavailable",
 ];
 
 const REFERENCE_KINDS: &[&str] = &[
@@ -58,6 +70,8 @@ struct Snapshot {
     kind: String,
     captured_at: String,
     source: SnapshotSource,
+    #[serde(default)]
+    candidate_selection: Option<CandidateSelection>,
     records: Vec<CommitRecord>,
 }
 
@@ -67,6 +81,10 @@ struct SnapshotSource {
     stage: String,
     freshness: String,
     historical_base_sha: String,
+    #[serde(default)]
+    provisional_review_cutoff_sha: Option<String>,
+    #[serde(default)]
+    github_repository: Option<String>,
     candidate_ref: String,
     candidate_sha: String,
     range_commits: Vec<String>,
@@ -84,6 +102,12 @@ struct CommitRecord {
     issue_refs: Vec<u64>,
     #[serde(default)]
     references: Vec<ReferenceEvidence>,
+    #[serde(default)]
+    claim_refs: Vec<String>,
+    #[serde(default = "default_capture_status")]
+    reference_capture_status: String,
+    #[serde(default)]
+    reference_capture_limitation: String,
     theme_or_surface: String,
     release_disposition: String,
     acceptance_owner: String,
@@ -112,6 +136,58 @@ struct ReferenceEvidence {
     limitation: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct GithubCapture {
+    schema_version: String,
+    kind: String,
+    repository: String,
+    observed_for_candidate_sha: String,
+    observed_range_digest: String,
+    records: Vec<GithubCaptureRecord>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct GithubCaptureRecord {
+    commit_sha: String,
+    status: String,
+    #[serde(default)]
+    limitation: String,
+    #[serde(default)]
+    references: Vec<ReferenceEvidence>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct GithubPullRequest {
+    number: u64,
+    url: String,
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(rename = "mergeCommit")]
+    merge_commit: Option<GithubCommitRef>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct GithubCommitRef {
+    oid: String,
+}
+
+#[derive(Clone, Debug)]
+enum DenominatorCommand<'a> {
+    Normalize {
+        live: bool,
+        path: &'a str,
+    },
+    Capture {
+        path: &'a str,
+        output: &'a str,
+    },
+    Import {
+        path: &'a str,
+        capture: &'a str,
+        output: &'a str,
+    },
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct LiveFacts {
     candidate_sha: Option<String>,
@@ -125,6 +201,7 @@ struct NormalizedReport {
     status: String,
     captured_at: String,
     source: SnapshotSource,
+    candidate_selection: Option<CandidateSelection>,
     records: Vec<CommitRecord>,
     counts_by_disposition: BTreeMap<String, usize>,
     counts_by_tree_state: BTreeMap<String, usize>,
@@ -136,31 +213,79 @@ struct NormalizedReport {
 }
 
 pub(crate) fn release_denominator(args: &[String]) -> Result<(), String> {
-    let (live, path) = parse_args(args)?;
-    let snapshot = read_snapshot(path)?;
-    let live_facts = live.then(|| collect_live_facts(&snapshot.source));
-    let report = normalize_snapshot(snapshot, live_facts.as_ref())?;
-    let json_text = serde_json::to_string_pretty(&report_json(&report))
-        .map_err(|error| format!("failed to serialize release-denominator JSON: {error}"))?;
-    crate::write_report(JSON_FILE, &format!("{json_text}\n"))?;
-    crate::write_report(MARKDOWN_FILE, &report_markdown(&report))?;
-    println!("Wrote target/ripr/reports/{JSON_FILE}");
-    println!("Wrote target/ripr/reports/{MARKDOWN_FILE}");
+    match parse_args(args)? {
+        DenominatorCommand::Normalize { live, path } => {
+            let snapshot = read_snapshot(path)?;
+            let live_facts = live.then(|| collect_live_facts(&snapshot.source));
+            let report = normalize_snapshot(snapshot, live_facts.as_ref())?;
+            let json_text =
+                serde_json::to_string_pretty(&report_json(&report)).map_err(|error| {
+                    format!("failed to serialize release-denominator JSON: {error}")
+                })?;
+            crate::write_report(JSON_FILE, &format!("{json_text}\n"))?;
+            crate::write_report(MARKDOWN_FILE, &report_markdown(&report))?;
+            println!("Wrote target/ripr/reports/{JSON_FILE}");
+            println!("Wrote target/ripr/reports/{MARKDOWN_FILE}");
+        }
+        DenominatorCommand::Capture { path, output } => capture_github(path, output)?,
+        DenominatorCommand::Import {
+            path,
+            capture,
+            output,
+        } => import_github(path, capture, output)?,
+    }
     Ok(())
 }
 
-fn parse_args(args: &[String]) -> Result<(bool, &str), String> {
-    let usage = "usage: cargo xtask release-denominator [--live] --input <ledger.json>";
+fn parse_args<'a>(args: &'a [String]) -> Result<DenominatorCommand<'a>, String> {
+    let usage = "usage: cargo xtask release-denominator [--live] --input <ledger.json> | --capture-github --input <ledger.json> --output <capture.json> | --import-github --input <ledger.json> --capture <capture.json> --output <ledger.json>";
     match args {
-        [input, path] if input == "--input" && !path.trim().is_empty() => Ok((false, path)),
+        [input, path] if input == "--input" && !path.trim().is_empty() => {
+            Ok(DenominatorCommand::Normalize { live: false, path })
+        }
         [live, input, path]
             if live == "--live" && input == "--input" && !path.trim().is_empty() =>
         {
-            Ok((true, path))
+            Ok(DenominatorCommand::Normalize { live: true, path })
+        }
+        [mode, input, path, output_flag, output]
+            if mode == "--capture-github"
+                && input == "--input"
+                && output_flag == "--output"
+                && !path.trim().is_empty()
+                && !output.trim().is_empty() =>
+        {
+            Ok(DenominatorCommand::Capture { path, output })
+        }
+        [
+            mode,
+            input,
+            path,
+            capture_flag,
+            capture,
+            output_flag,
+            output,
+        ] if mode == "--import-github"
+            && input == "--input"
+            && capture_flag == "--capture"
+            && output_flag == "--output"
+            && !path.trim().is_empty()
+            && !capture.trim().is_empty()
+            && !output.trim().is_empty() =>
+        {
+            Ok(DenominatorCommand::Import {
+                path,
+                capture,
+                output,
+            })
         }
         [help] if help == "--help" || help == "-h" => Err(usage.to_string()),
         _ => Err(usage.to_string()),
     }
+}
+
+fn default_capture_status() -> String {
+    "not_captured".to_string()
 }
 
 fn read_snapshot(path: &str) -> Result<Snapshot, String> {
@@ -168,6 +293,352 @@ fn read_snapshot(path: &str) -> Result<Snapshot, String> {
         .map_err(|error| format!("failed to read release-denominator input {path}: {error}"))?;
     serde_json::from_str(&text)
         .map_err(|error| format!("failed to parse release-denominator input {path}: {error}"))
+}
+
+fn capture_github(input: &str, output: &str) -> Result<(), String> {
+    let snapshot = read_snapshot(input)?;
+    let repository = gh_repository_name()?;
+    validate_capture_repository(snapshot.source.github_repository.as_deref(), &repository)?;
+    let all_prs = gh_pull_requests(&repository)?;
+    let mut by_merge_sha: BTreeMap<String, Vec<&GithubPullRequest>> = BTreeMap::new();
+    let mut known_prs = BTreeMap::new();
+    for pull_request in &all_prs {
+        known_prs.insert(pull_request.number, pull_request);
+        if let Some(merge_commit) = &pull_request.merge_commit {
+            by_merge_sha
+                .entry(merge_commit.oid.clone())
+                .or_default()
+                .push(pull_request);
+        }
+    }
+
+    let mut records = Vec::with_capacity(snapshot.records.len());
+    for record in &snapshot.records {
+        let Some(merge_prs) = by_merge_sha.get(&record.commit_sha) else {
+            records.push(GithubCaptureRecord {
+                commit_sha: record.commit_sha.clone(),
+                status: "no_linked_authority".to_string(),
+                limitation: "No merged PR or linked PR/issue reference was found in retained GitHub metadata.".to_string(),
+                references: Vec::new(),
+            });
+            continue;
+        };
+        if merge_prs.len() != 1 {
+            records.push(GithubCaptureRecord {
+                commit_sha: record.commit_sha.clone(),
+                status: "ambiguous".to_string(),
+                limitation: format!(
+                    "Multiple merged PRs claim commit {}: {}.",
+                    record.commit_sha,
+                    merge_prs
+                        .iter()
+                        .map(|pull_request| format!("#{}", pull_request.number))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                references: Vec::new(),
+            });
+            continue;
+        }
+
+        let pull_request = merge_prs[0];
+        let mut references = Vec::new();
+        references.push(ReferenceEvidence {
+            kind: "merge_pr".to_string(),
+            number: pull_request.number,
+            source: "associated_pull_request".to_string(),
+            evidence_url: Some(pull_request.url.clone()),
+            github_identity: None,
+            observed_for_commit_sha: record.commit_sha.clone(),
+            reviewed: false,
+            limitation:
+                "Captured from GitHub merge metadata; operator adjudication remains required."
+                    .to_string(),
+        });
+        let body = pull_request.body.as_deref().unwrap_or_default();
+        for (number, source) in body_issue_or_pr_references(body) {
+            if number == pull_request.number {
+                continue;
+            }
+            let kind = if known_prs.contains_key(&number) {
+                "pull_request"
+            } else {
+                "issue"
+            };
+            references.push(ReferenceEvidence {
+                kind: kind.to_string(),
+                number,
+                source: source.to_string(),
+                evidence_url: None,
+                github_identity: Some(format!(
+                    "pr-body:{}:{}:{}",
+                    pull_request.number, source, number
+                )),
+                observed_for_commit_sha: record.commit_sha.clone(),
+                reviewed: false,
+                limitation: "Captured from a retained GitHub PR body; operator adjudication remains required.".to_string(),
+            });
+        }
+        references.sort_by_key(|reference| {
+            (
+                reference.kind.clone(),
+                reference.number,
+                reference.source.clone(),
+            )
+        });
+        references.dedup_by_key(|reference| {
+            (
+                reference.kind.clone(),
+                reference.number,
+                reference.source.clone(),
+            )
+        });
+        records.push(GithubCaptureRecord {
+            commit_sha: record.commit_sha.clone(),
+            status: "captured".to_string(),
+            limitation: "References are captured authority, not yet operator-reviewed.".to_string(),
+            references,
+        });
+    }
+
+    let range_digest = digest_json(&snapshot.source.range_commits)?;
+    let capture = GithubCapture {
+        schema_version: "0.1".to_string(),
+        kind: "release_denominator_github_capture".to_string(),
+        repository,
+        observed_for_candidate_sha: snapshot.source.candidate_sha,
+        observed_range_digest: range_digest,
+        records,
+    };
+    let text = serde_json::to_string_pretty(&capture)
+        .map_err(|error| format!("failed to serialize GitHub denominator capture: {error}"))?;
+    fs::write(output, format!("{text}\n"))
+        .map_err(|error| format!("failed to write GitHub denominator capture {output}: {error}"))?;
+    println!("Wrote GitHub denominator capture {output}");
+    Ok(())
+}
+
+fn import_github(input: &str, capture_path: &str, output: &str) -> Result<(), String> {
+    let mut snapshot = read_snapshot(input)?;
+    let capture_text = fs::read_to_string(capture_path).map_err(|error| {
+        format!("failed to read GitHub denominator capture {capture_path}: {error}")
+    })?;
+    let capture: GithubCapture = serde_json::from_str(&capture_text).map_err(|error| {
+        format!("failed to parse GitHub denominator capture {capture_path}: {error}")
+    })?;
+    if capture.schema_version != "0.1" || capture.kind != "release_denominator_github_capture" {
+        return Err("GitHub denominator capture has an unsupported schema or kind".to_string());
+    }
+    validate_capture_repository(
+        snapshot.source.github_repository.as_deref(),
+        &capture.repository,
+    )?;
+    if capture.observed_for_candidate_sha != snapshot.source.candidate_sha {
+        return Err(
+            "GitHub denominator capture candidate SHA does not match input ledger".to_string(),
+        );
+    }
+    let expected_range_digest = digest_json(&snapshot.source.range_commits)?;
+    if capture.observed_range_digest != expected_range_digest {
+        return Err(
+            "GitHub denominator capture range digest does not match input ledger".to_string(),
+        );
+    }
+    let mut by_commit = BTreeMap::new();
+    for record in capture.records {
+        if by_commit
+            .insert(record.commit_sha.clone(), record)
+            .is_some()
+        {
+            return Err("GitHub denominator capture contains a duplicate commit".to_string());
+        }
+    }
+    for record in &mut snapshot.records {
+        let captured = by_commit.get(&record.commit_sha).ok_or_else(|| {
+            format!(
+                "GitHub denominator capture is missing commit {}",
+                record.commit_sha
+            )
+        })?;
+        if !CAPTURE_STATUSES.contains(&captured.status.as_str()) {
+            return Err(format!(
+                "GitHub denominator capture has invalid status {} for {}",
+                captured.status, record.commit_sha
+            ));
+        }
+        record.references = captured.references.clone();
+        record.pr_refs.clear();
+        record.issue_refs.clear();
+        record.reference_capture_status = captured.status.clone();
+        record.reference_capture_limitation = captured.limitation.clone();
+    }
+    apply_provisional_cutoff_boundary(&mut snapshot)?;
+    let text = serde_json::to_string_pretty(&snapshot)
+        .map_err(|error| format!("failed to serialize imported denominator ledger: {error}"))?;
+    fs::write(output, format!("{text}\n")).map_err(|error| {
+        format!("failed to write imported denominator ledger {output}: {error}")
+    })?;
+    println!("Wrote imported denominator ledger {output}");
+    Ok(())
+}
+
+fn validate_capture_repository(expected: Option<&str>, observed: &str) -> Result<(), String> {
+    let expected = expected.ok_or_else(|| {
+        "GitHub denominator input must pin source.github_repository before capture or import"
+            .to_string()
+    })?;
+    if expected != observed {
+        return Err(format!(
+            "GitHub denominator capture repository {observed} does not match expected {expected}"
+        ));
+    }
+    Ok(())
+}
+
+fn apply_provisional_cutoff_boundary(snapshot: &mut Snapshot) -> Result<(), String> {
+    let Some(cutoff) = snapshot.source.provisional_review_cutoff_sha.as_deref() else {
+        return Ok(());
+    };
+    let cutoff_position = snapshot
+        .records
+        .iter()
+        .position(|record| record.commit_sha == cutoff)
+        .ok_or_else(|| {
+            format!("provisional review cutoff {cutoff} is not in the captured range")
+        })?;
+    for (index, record) in snapshot.records.iter_mut().enumerate() {
+        if index > cutoff_position || record.release_disposition == "safe_defer_post_0_11" {
+            record.release_disposition = "operator_decision_required".to_string();
+            record.candidate_tree_state = "candidate_tree_state_pending".to_string();
+            record.source_survivor_or_swarm_exclusion_effect =
+                "Observed in the provisional denominator; candidate-tree inclusion or exclusion awaits record-level adjudication in #2832."
+                    .to_string();
+            record.limitation_or_operator_decision =
+                "No blanket post-cutoff exclusion is accepted. Review the exact commit, claim mapping, proof, and candidate-tree effect before candidate selection."
+                    .to_string();
+        }
+    }
+    Ok(())
+}
+
+fn gh_repository_name() -> Result<String, String> {
+    let output = crate::run::run_output_owned(
+        "gh",
+        &[
+            "repo".to_string(),
+            "view".to_string(),
+            "--json".to_string(),
+            "nameWithOwner".to_string(),
+        ],
+    )?;
+    let value: Value = serde_json::from_str(&output)
+        .map_err(|error| format!("failed to parse gh repository JSON: {error}"))?;
+    value
+        .get("nameWithOwner")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| "gh repository JSON is missing nameWithOwner".to_string())
+}
+
+fn gh_pull_requests(repository: &str) -> Result<Vec<GithubPullRequest>, String> {
+    let args = vec![
+        "pr".to_string(),
+        "list".to_string(),
+        "--repo".to_string(),
+        repository.to_string(),
+        "--state".to_string(),
+        "all".to_string(),
+        "--limit".to_string(),
+        "10000".to_string(),
+        "--json".to_string(),
+        "number,url,body,mergeCommit".to_string(),
+    ];
+    let output = crate::run::capture_output_with_timeout(
+        "gh",
+        &args,
+        &[],
+        GITHUB_CAPTURE_TIMEOUT,
+        "GitHub denominator PR capture",
+    )?;
+    if output.timed_out {
+        return Err("GitHub denominator PR capture timed out".to_string());
+    }
+    let status = output
+        .status
+        .ok_or_else(|| "GitHub denominator PR capture did not report a status".to_string())?;
+    if !status.success() {
+        return Err(format!(
+            "GitHub denominator PR capture failed with {status}: {}",
+            output.stderr.trim()
+        ));
+    }
+    serde_json::from_str(&output.stdout)
+        .map_err(|error| format!("failed to parse GitHub PR capture: {error}"))
+}
+
+fn body_issue_or_pr_references(body: &str) -> Vec<(u64, &'static str)> {
+    let bytes = body.as_bytes();
+    let mut references = Vec::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'#'
+            || (index > 0 && (bytes[index - 1].is_ascii_alphanumeric() || bytes[index - 1] == b'_'))
+        {
+            index += 1;
+            continue;
+        }
+        let start = index + 1;
+        let mut end = start;
+        while end < bytes.len() && bytes[end].is_ascii_digit() {
+            end += 1;
+        }
+        if end == start {
+            index += 1;
+            continue;
+        }
+        let Ok(number) = body[start..end].parse::<u64>() else {
+            index = end;
+            continue;
+        };
+        let source = if has_explicit_closing_keyword(&body[..index]) {
+            "closing_reference"
+        } else {
+            "body_reference"
+        };
+        references.push((number, source));
+        index = end;
+    }
+    references
+}
+
+fn has_explicit_closing_keyword(prefix: &str) -> bool {
+    let words = prefix
+        .split_whitespace()
+        .rev()
+        .take(3)
+        .map(|word| {
+            word.trim_matches(|character: char| !character.is_ascii_alphanumeric())
+                .to_ascii_lowercase()
+        })
+        .collect::<Vec<_>>();
+    let Some(keyword) = words.first().map(String::as_str) else {
+        return false;
+    };
+    if !matches!(
+        keyword,
+        "close"
+            | "closes"
+            | "closed"
+            | "fix"
+            | "fixes"
+            | "fixed"
+            | "resolve"
+            | "resolves"
+            | "resolved"
+    ) {
+        return false;
+    }
+    !matches!(words.get(1).map(String::as_str), Some("not" | "never"))
 }
 
 fn normalize_snapshot(
@@ -235,6 +706,8 @@ fn normalize_snapshot(
         }
         normalize_reference_projections(record, &mut reasons);
         validate_record(record, &snapshot.source, &mut reasons);
+        validate_capture_metadata(record, &mut reasons);
+        validate_claim_refs(record, snapshot.candidate_selection.as_ref(), &mut reasons);
         *counts_by_disposition
             .entry(record.release_disposition.clone())
             .or_insert(0) += 1;
@@ -278,6 +751,7 @@ fn normalize_snapshot(
         status: status.to_string(),
         captured_at: snapshot.captured_at,
         source: snapshot.source,
+        candidate_selection: snapshot.candidate_selection,
         records: snapshot.records,
         counts_by_disposition,
         counts_by_tree_state,
@@ -326,6 +800,17 @@ fn validate_source(snapshot: &Snapshot, reasons: &mut Vec<String>) {
     }
     if !is_sha(&source.historical_base_sha) {
         reasons.push("historical_base_sha must be a 40-character hexadecimal SHA".to_string());
+    }
+    if let Some(cutoff) = &source.provisional_review_cutoff_sha {
+        if !is_sha(cutoff) {
+            reasons.push(
+                "provisional_review_cutoff_sha must be a 40-character hexadecimal SHA".to_string(),
+            );
+        } else if !source.range_commits.iter().any(|sha| sha == cutoff) {
+            reasons.push(format!(
+                "provisional review cutoff {cutoff} is not in range_commits"
+            ));
+        }
     }
     if source.candidate_ref.trim().is_empty() {
         reasons.push("candidate_ref is missing".to_string());
@@ -458,7 +943,94 @@ fn validate_record(record: &CommitRecord, source: &SnapshotSource, reasons: &mut
             record.commit_sha
         ));
     }
+    if record.candidate_tree_state == "candidate_tree_state_pending"
+        && record.release_disposition != "operator_decision_required"
+    {
+        reasons.push(format!(
+            "commit {} pending candidate-tree state requires operator_decision_required",
+            record.commit_sha
+        ));
+    }
     validate_reference_evidence(record, source, reasons);
+}
+
+fn validate_capture_metadata(record: &CommitRecord, reasons: &mut Vec<String>) {
+    if !CAPTURE_STATUSES.contains(&record.reference_capture_status.as_str()) {
+        reasons.push(format!(
+            "commit {} has invalid reference_capture_status {}",
+            record.commit_sha, record.reference_capture_status
+        ));
+    }
+    match record.reference_capture_status.as_str() {
+        "captured" if record.references.is_empty() => reasons.push(format!(
+            "commit {} is marked captured without typed reference evidence",
+            record.commit_sha
+        )),
+        "no_linked_authority" if !record.references.is_empty() => reasons.push(format!(
+            "commit {} has references despite no_linked_authority capture status",
+            record.commit_sha
+        )),
+        "ambiguous" | "unavailable" if record.reference_capture_limitation.trim().is_empty() => {
+            reasons.push(format!(
+                "commit {} {} capture status must state its limitation",
+                record.commit_sha, record.reference_capture_status
+            ));
+        }
+        _ => {}
+    }
+}
+
+fn validate_claim_refs(
+    record: &CommitRecord,
+    selection: Option<&CandidateSelection>,
+    reasons: &mut Vec<String>,
+) {
+    let mut seen = BTreeSet::new();
+    for claim_ref in &record.claim_refs {
+        if claim_ref.trim().is_empty() {
+            reasons.push(format!(
+                "commit {} has a blank claim_ref",
+                record.commit_sha
+            ));
+        }
+        if !seen.insert(claim_ref) {
+            reasons.push(format!(
+                "commit {} repeats claim_ref {}",
+                record.commit_sha, claim_ref
+            ));
+        }
+    }
+    let Some(selection) = selection else {
+        if !record.claim_refs.is_empty() {
+            reasons.push(format!(
+                "commit {} has claim_refs but the selected claim authority is absent",
+                record.commit_sha
+            ));
+        }
+        return;
+    };
+    let authority = evaluate_candidate_selection(Some(selection));
+    if authority.status == "scope_pending" && !record.claim_refs.is_empty() {
+        reasons.push(format!(
+            "commit {} claim_refs require structurally valid selected claim authority: {}",
+            record.commit_sha,
+            authority.reasons.join("; ")
+        ));
+        return;
+    }
+    let selected_claim_ids = selection
+        .selected_claims
+        .iter()
+        .map(|claim| claim.claim_id.as_str())
+        .collect::<BTreeSet<_>>();
+    for claim_ref in &record.claim_refs {
+        if !selected_claim_ids.contains(claim_ref.as_str()) {
+            reasons.push(format!(
+                "commit {} claim_ref {} is absent from selected claim authority",
+                record.commit_sha, claim_ref
+            ));
+        }
+    }
 }
 
 fn normalize_reference_projections(record: &mut CommitRecord, reasons: &mut Vec<String>) {
@@ -738,6 +1310,7 @@ fn report_json(report: &NormalizedReport) -> Value {
         "status": report.status,
         "captured_at": report.captured_at,
         "source": report.source,
+        "candidate_selection": report.candidate_selection,
         "range_digest": report.range_digest,
         "candidate_tree_digest": report.candidate_tree_digest,
         "record_set_digest": report.record_set_digest,
@@ -758,10 +1331,15 @@ fn report_json(report: &NormalizedReport) -> Value {
 
 fn report_markdown(report: &NormalizedReport) -> String {
     let mut markdown = format!(
-        "# Supplemental release denominator\n\n- Status: `{}`\n- Stage: `{}`\n- Historical base: `{}`\n- Candidate: `{}` (`{}`)\n- Range digest: `{}`\n- Candidate-tree digest: `{}`\n- Record-set digest: `{}`\n\n",
+        "# Supplemental release denominator\n\n- Status: `{}`\n- Stage: `{}`\n- Historical base: `{}`\n- Provisional review cutoff: `{}`\n- Candidate: `{}` (`{}`)\n- Range digest: `{}`\n- Candidate-tree digest: `{}`\n- Record-set digest: `{}`\n\n",
         report.status,
         report.source.stage,
         report.source.historical_base_sha,
+        report
+            .source
+            .provisional_review_cutoff_sha
+            .as_deref()
+            .unwrap_or("not selected"),
         report.source.candidate_ref,
         report.source.candidate_sha,
         report.range_digest,
@@ -875,7 +1453,7 @@ mod tests {
         )?;
         require(
             report.record_set_digest
-                == "sha256:5e49670e6b0f8da180ac36538bb8267d02849795595d56b9b29cba0e679ea9d4",
+                == "sha256:10aad6896d106a06d6e89053adb8bfb095ee94d0ce4c8b4cfa7d66007b3cd31c",
             "normalized record-set digest changed",
         )?;
         let again = normalize_snapshot(fixture()?, None)?;
@@ -1232,6 +1810,120 @@ mod tests {
     }
 
     #[test]
+    fn capture_status_requires_typed_reference_evidence() -> Result<(), String> {
+        let mut snapshot = fixture()?;
+        snapshot.records[0].reference_capture_status = "captured".to_string();
+        snapshot.records[0].references.clear();
+        let report = normalize_snapshot(snapshot, None)?;
+        require(
+            report
+                .reconciliation_reasons
+                .iter()
+                .any(|reason| reason.contains("marked captured without typed reference evidence")),
+            "captured status without references was accepted",
+        )
+    }
+
+    #[test]
+    fn pending_cutoff_rows_are_not_candidate_exclusions() -> Result<(), String> {
+        let mut snapshot = fixture()?;
+        snapshot.source.provisional_review_cutoff_sha =
+            Some(snapshot.records[1].commit_sha.clone());
+        apply_provisional_cutoff_boundary(&mut snapshot)?;
+        require(
+            snapshot.records[0].candidate_tree_state == "present_in_candidate",
+            "cutoff predecessor changed unexpectedly",
+        )?;
+        require(
+            snapshot.records[2].release_disposition == "operator_decision_required"
+                && snapshot.records[2].candidate_tree_state == "candidate_tree_state_pending",
+            "post-cutoff row remained implicitly excluded",
+        )
+    }
+
+    #[test]
+    fn claim_refs_require_selected_claim_authority() -> Result<(), String> {
+        let mut snapshot = fixture()?;
+        snapshot.records[0].claim_refs = vec!["claim:lifecycle".to_string()];
+        let report = normalize_snapshot(snapshot, None)?;
+        require(
+            report.reconciliation_reasons.iter().any(|reason| {
+                reason.contains("claim_refs but the selected claim authority is absent")
+            }),
+            "claim reference was accepted without selected claim authority",
+        )
+    }
+
+    #[test]
+    fn claim_refs_reject_structurally_invalid_selected_authority() -> Result<(), String> {
+        let mut snapshot = fixture()?;
+        snapshot.candidate_selection = Some(
+            serde_json::from_value(json!({
+                "schema_version": "0.1",
+                "selected_claims": [{
+                    "claim_id": "claim:lifecycle",
+                    "owner_issue": 0,
+                    "required_for_candidate": true,
+                    "resolution": "pending",
+                    "candidate_effect": "",
+                    "reviewed": false
+                }]
+            }))
+            .map_err(|error| error.to_string())?,
+        );
+        snapshot.records[0].claim_refs = vec!["claim:lifecycle".to_string()];
+        let report = normalize_snapshot(snapshot, None)?;
+        require(
+            report.reconciliation_reasons.iter().any(|reason| {
+                reason.contains("claim_refs require structurally valid selected claim authority")
+            }),
+            "structurally invalid selected claim authority was accepted",
+        )
+    }
+
+    #[test]
+    fn github_body_reference_parser_handles_unicode_context() -> Result<(), String> {
+        require(
+            body_issue_or_pr_references("Decision — Closes #2393.")
+                == vec![(2393, "closing_reference")],
+            "Unicode PR body context was not parsed safely",
+        )
+    }
+
+    #[test]
+    fn github_body_reference_parser_requires_explicit_closing_syntax() -> Result<(), String> {
+        require(
+            body_issue_or_pr_references("Add fixture #123") == vec![(123, "body_reference")],
+            "ordinary fixture reference was misclassified as closing",
+        )?;
+        require(
+            body_issue_or_pr_references("Does not close #123") == vec![(123, "body_reference")],
+            "negated closing reference was misclassified",
+        )?;
+        require(
+            body_issue_or_pr_references("Fixes #123") == vec![(123, "closing_reference")],
+            "explicit closing reference was not recognized",
+        )
+    }
+
+    #[test]
+    fn github_capture_repository_must_match_pinned_source() -> Result<(), String> {
+        require(
+            validate_capture_repository(Some("EffortlessMetrics/ripr-swarm"), "attacker/fork")
+                .is_err(),
+            "capture from a different repository was accepted",
+        )?;
+        require(
+            validate_capture_repository(
+                Some("EffortlessMetrics/ripr-swarm"),
+                "EffortlessMetrics/ripr-swarm",
+            )
+            .is_ok(),
+            "matching capture repository was rejected",
+        )
+    }
+
+    #[test]
     fn current_main_provisional_census_is_ready_and_pinned() -> Result<(), String> {
         let snapshot: Snapshot = serde_json::from_str(include_str!(
             "../../../fixtures/release_denominator/current-main-provisional.json"
@@ -1275,30 +1967,29 @@ mod tests {
         )?;
         require(
             report.record_set_digest
-                == "sha256:166380b5b8cef061f6d617db089a5070e566e54841bd103c6a962d832881efe0",
+                == "sha256:172ef3d76ae3db47b8f7abedae9151ce971d3941b5a9eeb18b4c824d25c9530d",
             "current-main record-set digest changed",
         )?;
         require(
             report
                 .counts_by_tree_state
-                .get("absent_by_candidate_only_exclusion")
+                .get("candidate_tree_state_pending")
                 == Some(&15)
                 && report.counts_by_tree_state.get("present_in_candidate") == Some(&219)
-                && report.counts_by_disposition.get("safe_defer_post_0_11") == Some(&15)
                 && report
                     .counts_by_disposition
                     .get("operator_decision_required")
-                    == Some(&219),
+                    == Some(&234),
             "current-main denominator counts changed",
         )?;
-        let excluded = report
+        let pending = report
             .records
             .iter()
-            .filter(|record| record.candidate_tree_state == "absent_by_candidate_only_exclusion")
+            .filter(|record| record.candidate_tree_state == "candidate_tree_state_pending")
             .map(|record| record.commit_sha.as_str())
             .collect::<Vec<_>>();
         require(
-            excluded
+            pending
                 == vec![
                     "558451709fba77330371c1e2ecf898e62a658a68",
                     "0b1a40f7fcbbce18ef8a729c2aad0a4b5d60e73a",

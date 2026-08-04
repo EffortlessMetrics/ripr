@@ -17,14 +17,21 @@ candidate qualification or publication decision.
 
 `release-denominator --input <ledger.json>` accepts a versioned
 `release_denominator_snapshot` containing the historical base, candidate ref
-and SHA, ordered range commits, candidate-tree commits, and one record per
-range commit. Each record carries release disposition, ownership, tree state,
-review/proof references, source-survivor or swarm-exclusion context, and
-typed `references[]` authority evidence. Each reference records its kind,
-number, source, one evidence URL or stable GitHub identity, the observed
-commit SHA, review state, and any limitation. The legacy `pr_refs` and
-`issue_refs` fields remain compatibility projections derived from
-`references[]`; they are not reference authority.
+and SHA, the pinned `source.github_repository`, an optional fixed
+`provisional_review_cutoff_sha`, ordered range
+commits, candidate-tree commits, and one record per range commit. Each record
+carries release disposition, ownership, tree state, review/proof references,
+source-survivor or swarm-exclusion context, capture status, optional
+`claim_refs[]`, and typed `references[]` authority evidence. Each reference
+records its kind, number, source, one evidence URL or stable GitHub identity,
+the observed commit SHA, review state, and any limitation. The legacy
+`pr_refs` and `issue_refs` fields remain compatibility projections derived
+from `references[]`; they are not reference authority. An optional
+`candidate_selection` object carries the #2766/#2871 selected-claim authority;
+claim references are rejected when that authority is absent or does not name
+the claim. A structurally invalid selected-claim authority also rejects its
+claim references; readiness state remains owned by the shared candidate
+control evaluator.
 
 The accepted dispositions are `include_product`,
 `include_release_infrastructure`, `include_control_or_honesty`,
@@ -37,6 +44,22 @@ or released.
 `--live --input <ledger.json>` additionally compares the captured candidate
 SHA, first-parent range, and candidate-tree commit set with bounded live Git
 observations. It does not replace the reviewed ledger.
+
+`--capture-github --input <ledger.json> --output <capture.json>` reads the
+exact ledger range and captures all-state PR merge identities plus PR-body
+issue/PR references from the current repository through `gh`. The capture is
+bound to the input candidate SHA and range digest and is replayable offline.
+Captured references are deliberately `reviewed: false` with an explicit
+limitation; GitHub observation is not operator adjudication. PR-body references
+are classified as closing references only for explicit, token-bounded closing
+keywords; ordinary or negated prose remains a body reference.
+
+`--import-github --input <ledger.json> --capture <capture.json> --output
+<ledger.json>` imports only a capture with matching repository, candidate,
+and range identity. It rejects missing or duplicate commit records and converts
+inherited `safe_defer_post_0_11` rows, plus rows after the fixed provisional
+cutoff, into `operator_decision_required` with
+`candidate_tree_state_pending`. No blanket post-cutoff exclusion is accepted.
 
 ## Validation
 
@@ -61,23 +84,22 @@ decision; final output is ready only after every record is reconciled.
 
 ## Current-main evidence
 
-`fixtures/release_denominator/current-main-provisional.json` is a captured
-provisional census of `c86807ec..c30a2683` at `origin/main` as observed on
-2026-08-03. It carries 234 first-parent records and 219 candidate-tree
-records, with 15 candidate-only exclusions and 15 safe deferrals. The
-development-main merges for #2842, #2844, corrective #2858/#2859,
-corrective #2862, release-control #2857, corrective #2867, #2870, #2860, #2861,
-#2869, #2876, #2873, #2878, and #2872 are retained in
-the denominator with current `safe_defer_post_0_11` disposition and
-`absent_by_candidate_only_exclusion` tree state; earlier `hold_post_release`
-is historical context only. The later corrective commits inherit that
-disposition unless #2379 changes the release graph. The fixture pins cutoff
-`c30a26831b75051813bfaa3dbd9378096ec6aa82`, range digest
+`fixtures/release_denominator/current-main-provisional.json` is the fixed
+captured census of `c86807ec..c30a2683` observed on 2026-08-03. It carries 234
+first-parent records, 219 records present in the retained provisional tree,
+and 15 records with `candidate_tree_state_pending`; all 234 records remain
+`operator_decision_required`. Its fixed provisional review cutoff is
+`fcbb30a7cf6a37027fa377abafb617632b2e6f57`; later rows are retained as
+observed delta, not silently excluded. Every record has replayable GitHub
+capture status and typed authority, but those references remain unreviewed
+until #2832 adjudication. The fixture pins range digest
 `sha256:b85b8314b5f738335ae63220fe5f0ea8ef4e6e1892124eea148ea49181168501`,
+candidate-tree digest
+`sha256:c1b3675b6b98f609343f35711898e805a6ad27577c8f9b351ae53718b91082ae`,
 and record-set digest
-`sha256:166380b5b8cef061f6d617db089a5070e566e54841bd103c6a962d832881efe0`.
-It is range/identity and explicitly reconciled disposition evidence, not a
-final release qualification.
+`sha256:172ef3d76ae3db47b8f7abedae9151ce971d3941b5a9eeb18b4c824d25c9530d`.
+It is a fixed, captured input to substantive #2832 review, not a final
+release qualification.
 
 ## Cut-relative denominator boundary
 
@@ -104,7 +126,7 @@ shared fail-closed validator. It does not close the final candidate decision
 tracked by #1609 or the dependent release-editor lane #2769.
 
 The implementation and fixture contract are mapped in `.ripr/traceability.toml`
-under `RIPR-SPEC-0146`. Focused proof is provided by the twenty-five tests named there
+under `RIPR-SPEC-0146`. Focused proof is provided by the twenty-nine tests named there
 and the complete/reconcile-required fixtures under
 `fixtures/release_denominator/`; hosted CI is the authoritative execution
 proof for this PR. The complete fixture pins the #2767/#2788 and #2768/#2790
@@ -153,7 +175,7 @@ decision in a final ledger, or disagreeing with live observations produces
 
 ## Test Mapping
 
-The twenty-five focused tests listed in `.ripr/traceability.toml` cover deterministic
+The twenty-nine focused tests listed in `.ripr/traceability.toml` cover deterministic
 normalization, missing/duplicate/out-of-range/order/tree failures, final
 operator decisions, live drift, JSON/Markdown claim-boundary parity, typed
 reference authority, compatibility projection mismatch, contradictory
