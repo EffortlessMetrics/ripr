@@ -3938,6 +3938,12 @@ spec is available. LSP gap-artifact validation accepts the object form and
 compatibility array form, but rejects non-object `command_specs` containers,
 malformed specs, and role-mismatched specs before projection.
 
+This producer-owned projection boundary is distinct from the explicit
+`agent verify-execute` surface below. GapRecord packet rendering does not
+reconstruct typed routes from compatibility display strings; a consumer that
+requires direct execution must apply its own execution-route consistency and
+provenance checks before running a command.
+
 ## RIPR Swarm Plan
 
 `cargo xtask ripr-swarm plan --top <n>` ranks existing actionable canonical gap

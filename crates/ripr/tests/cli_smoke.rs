@@ -8386,6 +8386,54 @@ fn producer_verify_packet(
     std::fs::write(root.join("after.json"), &snapshot.stdout)?;
 
     let verify = "ripr agent verify --root . --before before.json --after after.json --json";
+    let verify_spec = serde_json::json!({
+        "schema_version": "1",
+        "command_id": "ripr:agent:verify",
+        "role": "verify",
+        "execution_mode": "direct",
+        "program": "ripr",
+        "args": ["agent", "verify", "--root", ".", "--before", "before.json", "--after", "after.json", "--json"],
+        "cwd": ".",
+        "env_set": [],
+        "env_passthrough": [],
+        "environment": "clean",
+        "stdin": "null",
+        "timeout_ms": 120000,
+        "cancellation": "allowed",
+        "network": "forbidden",
+        "expected_result_parser": "declared_json",
+        "expected_exit_codes": [0],
+        "expected_writes": [],
+        "cost_class": "unknown",
+        "platforms": ["linux", "macos", "windows"],
+        "human_display": verify,
+        "authority_boundary": "verification_route_only"
+    });
+    let receipt =
+        "ripr agent receipt --root . --verify-json verify.json --seam-id gap-verify-execute --json";
+    let receipt_spec = serde_json::json!({
+        "schema_version": "1",
+        "command_id": "ripr:agent:receipt",
+        "role": "receipt",
+        "execution_mode": "direct",
+        "program": "ripr",
+        "args": ["agent", "receipt", "--root", ".", "--verify-json", "verify.json", "--seam-id", "gap-verify-execute", "--json"],
+        "cwd": ".",
+        "env_set": [],
+        "env_passthrough": [],
+        "environment": "clean",
+        "stdin": "null",
+        "timeout_ms": 120000,
+        "cancellation": "allowed",
+        "network": "forbidden",
+        "expected_result_parser": "declared_json",
+        "expected_exit_codes": [0],
+        "expected_writes": [],
+        "cost_class": "unknown",
+        "platforms": ["linux", "macos", "windows"],
+        "human_display": receipt,
+        "authority_boundary": "receipt_route_only"
+    });
     let ledger = serde_json::json!({
         "kind": "gap_decision_ledger",
         "root": ".",
@@ -8411,7 +8459,8 @@ fn producer_verify_packet(
                 "changed_behavior": "if x >= y"
             },
             "verification_commands": [verify],
-            "receipt_command": "ripr agent receipt --root . --verify-json verify.json --seam-id gap-verify-execute --json",
+            "receipt_command": receipt,
+            "command_specs": {"verify": [verify_spec], "receipt": [receipt_spec]},
             "evidence_ids": ["probe:marker"]
         }]
     });

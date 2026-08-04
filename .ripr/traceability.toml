@@ -6692,6 +6692,8 @@ tests = [
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::gap_ledger_preserves_producer_typed_commands_without_reparsing_legacy_display",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::gap_ledger_rejects_malformed_or_role_mismatched_typed_commands",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::repo_exposure_rejects_malformed_typed_command_specs_with_seam_context",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::typed_gap_commands_project_from_producer_specs_and_queue",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::invalid_typed_gap_command_role_is_rejected_before_projection",
   "crates/ripr/src/lsp/tests.rs::gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid",
   "crates/ripr/src/agent/command_specs.rs::tests::typed_agent_routes_preserve_argv_and_disclose_shell_redirection",
   "crates/ripr/src/agent/command_specs.rs::tests::typed_route_recovery_rejects_arbitrary_test_commands",

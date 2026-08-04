@@ -17,7 +17,6 @@
 //! repo-exposure report's 0.1, because the packet is a separate
 //! contract aimed at coding agents rather than reviewers.
 
-use crate::agent::command_specs::agent_command_spec_from_display;
 use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
     WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_receipt_command,
@@ -32,6 +31,7 @@ use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass,
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, TestGripEvidence};
 use crate::analysis::{ClassifiedSeam, SeamLimitInfo, SeamLimitSource};
 use crate::app::causal_projection::CausalDeltaArtifact;
+use crate::domain::CommandRole;
 use crate::output::evidence_record::{
     CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE, evidence_record_for, evidence_record_json_value,
 };
@@ -347,7 +347,7 @@ pub(crate) fn render_agent_gap_record_packet_json_with_causal(
         "name": route.related_test.as_deref(),
         "reason": recommended_test_reason(route),
     });
-    let repair_card_json = json!({
+    let mut repair_card_json = json!({
         "gap_kind": record.kind.as_str(),
         "changed_behavior": route.changed_behavior.as_deref(),
         "missing_discriminator": missing_discriminator,
@@ -357,12 +357,16 @@ pub(crate) fn render_agent_gap_record_packet_json_with_causal(
         "verification_commands": &record.verification_commands,
         "verify_command": &verify_command,
         "receipt_command": record.receipt_command.as_deref(),
-        "command_specs": command_specs,
         "receipt_status": receipt_status,
         "source_artifact": gap_ledger_path,
         "static_evidence_boundary": STATIC_EVIDENCE_BOUNDARY,
         "authority_boundary": &authority_boundary,
     });
+    if let Some(command_specs) = command_specs.as_ref()
+        && let Some(object) = repair_card_json.as_object_mut()
+    {
+        object.insert("command_specs".to_string(), command_specs.clone());
+    }
     let llm_guidance_json = json!({
         "prompt": gap_record_prompt(route, &verify_command),
         "verify_command": &verify_command,
@@ -400,7 +404,6 @@ pub(crate) fn render_agent_gap_record_packet_json_with_causal(
         "verification_commands": &record.verification_commands,
         "verify_command": &verify_command,
         "receipt_command": record.receipt_command.as_deref(),
-        "command_specs": command_specs,
         "receipt_status": receipt_status,
         "must_not_change": must_not_change,
         "stop_conditions": &stop_conditions,
@@ -410,6 +413,11 @@ pub(crate) fn render_agent_gap_record_packet_json_with_causal(
         "runtime_confirmation": RUNTIME_CONFIRMATION_NOTE,
         "static_evidence_boundary": STATIC_EVIDENCE_BOUNDARY,
     });
+    if let Some(command_specs) = command_specs
+        && let Some(object) = packet.as_object_mut()
+    {
+        object.insert("command_specs".to_string(), command_specs);
+    }
     if let Some(projection) = causal_projection
         && let Some(delta) = projection.delta_for(non_empty(&record.canonical_gap_id).as_deref())
         && let Some(object) = packet.as_object_mut()
@@ -437,21 +445,12 @@ pub(crate) fn render_agent_gap_record_packet_json_with_causal(
     Ok(rendered)
 }
 
-fn gap_record_command_specs_json(record: &GapRecord) -> serde_json::Value {
-    let verify = record
-        .verification_commands
-        .iter()
-        .filter_map(|command| agent_command_spec_from_display(command))
-        .collect::<Vec<_>>();
-    let receipt = record
-        .receipt_command
-        .iter()
-        .filter_map(|command| agent_command_spec_from_display(command))
-        .collect::<Vec<_>>();
-    serde_json::json!({
-        "verify": verify,
-        "receipt": receipt,
-    })
+fn gap_record_command_specs_json(record: &GapRecord) -> Option<serde_json::Value> {
+    let command_specs = record.command_specs.as_ref()?;
+    Some(serde_json::json!({
+        "verify": &command_specs.verify,
+        "receipt": &command_specs.receipt,
+    }))
 }
 
 /// Render a deterministic queue over explicit GapRecords that are already
@@ -505,6 +504,7 @@ pub(crate) fn render_agent_gap_record_queue_json(
             suggested_test_name: route.related_test.clone(),
             verify_command: verify_command.clone(),
             receipt_command: record.receipt_command.clone(),
+            command_specs: gap_record_command_specs_json(record),
             conflict_group,
             queue_state: freshness.queue_state,
             staleness_status: freshness.staleness_status,
@@ -553,7 +553,7 @@ pub(crate) fn render_agent_gap_record_queue_json(
                 .get(&candidate.conflict_group)
                 .copied()
                 .unwrap_or(1);
-            json!({
+            let mut packet = json!({
                 "priority": selected_index + 1,
                 "source_index": candidate.source_index,
                 "queue_state": candidate.queue_state.as_str(),
@@ -593,7 +593,13 @@ pub(crate) fn render_agent_gap_record_queue_json(
                     candidate.gap_id.as_str(),
                     "--json"
                 ],
-            })
+            });
+            if let Some(command_specs) = candidate.command_specs.as_ref()
+                && let Some(object) = packet.as_object_mut()
+            {
+                object.insert("command_specs".to_string(), command_specs.clone());
+            }
+            packet
         })
         .collect();
     let envelope = json!({
@@ -789,6 +795,7 @@ struct GapRecordQueueCandidate {
     suggested_test_name: Option<String>,
     verify_command: String,
     receipt_command: Option<String>,
+    command_specs: Option<serde_json::Value>,
     conflict_group: String,
     queue_state: String,
     staleness_status: String,
@@ -1096,6 +1103,7 @@ pub(crate) fn targeted_test_brief_outline_for_classified_seam(
 }
 
 pub(crate) fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(), String> {
+    validate_gap_record_command_specs(record)?;
     let projection = record
         .projection_eligibility
         .get("agent_packet")
@@ -1128,6 +1136,44 @@ pub(crate) fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(),
         return Err("requires receipt_command".to_string());
     }
     Ok(())
+}
+
+fn validate_gap_record_command_specs(record: &GapRecord) -> Result<(), String> {
+    let Some(command_specs) = record.command_specs.as_ref() else {
+        return Ok(());
+    };
+    validate_command_specs_for_role("verify", CommandRole::Verify, &command_specs.verify)?;
+    validate_command_specs_for_role("receipt", CommandRole::Receipt, &command_specs.receipt)?;
+    Ok(())
+}
+
+fn validate_command_specs_for_role(
+    field: &str,
+    expected_role: CommandRole,
+    specs: &[crate::domain::CommandSpec],
+) -> Result<(), String> {
+    for spec in specs {
+        spec.validate()
+            .map_err(|error| format!("command_specs.{field} is invalid: {error}"))?;
+        if spec.role != expected_role {
+            return Err(format!(
+                "command_specs.{field} contains {} role, expected {}",
+                format_command_role(spec.role),
+                format_command_role(expected_role),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn format_command_role(role: CommandRole) -> &'static str {
+    match role {
+        CommandRole::Verify => "verify",
+        CommandRole::Receipt => "receipt",
+        CommandRole::Regeneration => "regeneration",
+        CommandRole::Inspection => "inspection",
+        CommandRole::TargetedRerun => "targeted_rerun",
+    }
 }
 
 fn gap_record_id(record: &GapRecord) -> String {
@@ -2556,6 +2602,56 @@ mod tests {
         StageEvidence::new(state, Confidence::Medium, "test stage")
     }
 
+    fn typed_gap_record() -> Result<GapRecord, String> {
+        let mut record = crate::output::gap_decision_ledger::parse_gap_records_json(
+            r#"{"records":[{
+              "gap_id":"gap:rust:typed-packet",
+              "kind":"MissingBoundaryAssertion",
+              "language":"rust",
+              "language_status":"stable",
+              "scope":"pr_local",
+              "evidence_class":"predicate_boundary",
+              "gap_state":"actionable",
+              "policy_state":"new",
+              "repairability":"repairable",
+              "anchor":{"file":"src/typed.rs","line":7,"owner":"typed::owner","dedupe_fingerprint":"gap:typed-packet"},
+              "repair_route":{
+                "route_kind":"AddBoundaryAssertion",
+                "target_file":"tests/typed.rs",
+                "related_test":"typed_boundary",
+                "missing_discriminator":"value == boundary",
+                "assertion_shape":"assert_eq!(value, expected)",
+                "changed_behavior":"value == boundary",
+                "stop_conditions":["Stop if the producer facts are unavailable."]
+              },
+              "verification_commands":["legacy verify display"],
+              "receipt_command":"legacy receipt display",
+              "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}}
+            }]}"#,
+        )?
+        .pop()
+        .ok_or_else(|| "expected typed gap record".to_string())?;
+        let verify = crate::agent::command_specs::agent_verify_command_spec(
+            ".",
+            "target/ripr/workflow/before with spaces/前.json",
+            "target/ripr/workflow/after with spaces/後.json",
+            Some("target/ripr/reports/typed packet/receipt.json"),
+        );
+        let receipt = crate::agent::command_specs::agent_receipt_command_spec(
+            ".",
+            "target/ripr/reports/typed packet/verify.json",
+            "gap:rust:typed-packet/Δ",
+            Some("target/ripr/receipts/typed packet/receipt.json"),
+        );
+        record.verification_commands = vec!["legacy verify display changed".to_string()];
+        record.receipt_command = Some("legacy receipt display changed".to_string());
+        record.command_specs = Some(crate::output::gap_decision_ledger::GapRecordCommandSpecs {
+            verify: vec![verify],
+            receipt: vec![receipt],
+        });
+        Ok(record)
+    }
+
     #[test]
     fn targeted_outline_accessor_identifies_limited_routes() {
         let limited = TargetedTestBriefOutline {
@@ -3170,6 +3266,10 @@ mod tests {
                 .and_then(serde_json::Value::as_str),
             Some("cargo xtask fixtures boundary_gap")
         );
+        assert!(
+            packet.get("command_specs").is_none(),
+            "legacy display-only records must not synthesize machine-facing command specs: {json}"
+        );
         assert_eq!(
             packet
                 .get("missing_discriminator")
@@ -3347,6 +3447,72 @@ mod tests {
                 "- Do not edit production code unless the focused proof exposes a real product defect."
             ),
             "copyable packet should include do-not-do guidance: {copyable_markdown}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn typed_gap_commands_project_from_producer_specs_and_queue() -> Result<(), String> {
+        let record = typed_gap_record()?;
+        let packet_json = render_agent_gap_record_packet_json("gap-ledger.json", &record)?;
+        let packet_value = serde_json::from_str::<serde_json::Value>(&packet_json)
+            .map_err(|err| format!("typed packet JSON should parse: {err}"))?;
+        let packet = packet_value["packets"]
+            .as_array()
+            .and_then(|packets| packets.first())
+            .ok_or_else(|| format!("missing typed packet: {packet_json}"))?;
+        let typed = packet
+            .get("command_specs")
+            .ok_or_else(|| format!("missing producer-owned command specs: {packet_json}"))?;
+        assert_eq!(typed["verify"][0]["role"], "verify");
+        assert_eq!(typed["receipt"][0]["role"], "receipt");
+        assert_eq!(
+            typed["verify"][0]["args"][5],
+            "target/ripr/workflow/before with spaces/前.json"
+        );
+        assert_eq!(typed["receipt"][0]["args"][7], "gap:rust:typed-packet/Δ");
+        assert_eq!(packet["verify_command"], "legacy verify display changed");
+        assert_eq!(packet["receipt_command"], "legacy receipt display changed");
+        assert_eq!(
+            packet["repair_card"]["command_specs"],
+            typed.clone(),
+            "repair card must use the same producer-owned typed projection"
+        );
+
+        let queue_json =
+            render_agent_gap_record_queue_json(".", "ledger.json", &[record], "rust", 1)?;
+        let queue_value = serde_json::from_str::<serde_json::Value>(&queue_json)
+            .map_err(|err| format!("typed queue JSON should parse: {err}"))?;
+        let queued = queue_value["packets"]
+            .as_array()
+            .and_then(|packets| packets.first())
+            .ok_or_else(|| format!("missing typed queue packet: {queue_json}"))?;
+        assert_eq!(queued["command_specs"], *typed);
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_typed_gap_command_role_is_rejected_before_projection() -> Result<(), String> {
+        let mut record = typed_gap_record()?;
+        record
+            .command_specs
+            .as_mut()
+            .ok_or_else(|| "expected typed command specs".to_string())?
+            .verify[0]
+            .role = crate::domain::CommandRole::Receipt;
+        record
+            .command_specs
+            .as_mut()
+            .ok_or_else(|| "expected typed command specs".to_string())?
+            .verify[0]
+            .authority_boundary = crate::domain::CommandAuthorityBoundary::ReceiptRouteOnly;
+        let error = match render_agent_gap_record_packet_json("gap-ledger.json", &record) {
+            Ok(_) => return Err("role-mismatched producer command was projected".to_string()),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("command_specs.verify contains receipt role, expected verify"),
+            "unexpected validation error: {error}"
         );
         Ok(())
     }
