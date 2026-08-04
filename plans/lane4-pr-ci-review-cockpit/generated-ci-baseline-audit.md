@@ -31,9 +31,9 @@ source, generate tests, call providers, or run mutation testing.
 Commands and files inspected:
 
 ```bash
-rtk cargo run -p ripr -- init --help
-rtk cargo run -p ripr -- init --ci github --dry-run
-rtk powershell -NoProfile -Command 'Get-Content -LiteralPath "crates/ripr/src/cli/commands.rs" | Select-Object -Skip 990 -First 1450'
+cargo run -p ripr -- init --help
+cargo run -p ripr -- init --ci github --dry-run
+powershell -NoProfile -Command 'Get-Content -LiteralPath "crates/ripr/src/cli/commands.rs" | Select-Object -Skip 990 -First 1450'
 ```
 
 The current public dry-run command is:
@@ -254,10 +254,10 @@ This audit did not change:
 Docs-only audit updates should run:
 
 ```bash
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-campaign
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-campaign
+cargo xtask check-pr
+git diff --check
 ```
