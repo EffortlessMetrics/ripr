@@ -21,6 +21,10 @@ pub(crate) fn validate_assistant_loop_health_fixture_corpus_at(
     violations: &mut Vec<String>,
 ) -> Result<(), String> {
     if !base.exists() {
+        violations.push(format!(
+            "assistant-loop-health corpus is missing {}",
+            normalize_path(base)
+        ));
         return Ok(());
     }
 

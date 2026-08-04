@@ -187,6 +187,7 @@ pub(crate) use fixture_contracts::{
     USER_SURFACE_PROJECTION_REQUIRED_SURFACES, check_fixture_contracts,
     editor_first_pr_bridge_case_requires_first_screen_contract,
     validate_assistant_loop_health_fixture_corpus,
+    validate_assistant_loop_health_fixture_corpus_at,
     validate_editor_first_pr_bridge_first_screen_contract,
     validate_first_successful_pr_actionable_json, validate_first_successful_pr_actionable_markdown,
 };
@@ -204,7 +205,6 @@ pub(crate) use fixture_contracts::{
     user_surface_projection_source_alignment_errors, validate_actionable_gap_outcomes_fixture_case,
     validate_actionable_gap_outcomes_fixture_corpus,
     validate_actionable_gap_outcomes_fixture_corpus_at,
-    validate_assistant_loop_health_fixture_corpus_at,
     validate_cross_language_oracle_graph_fixture_corpus_at,
     validate_editor_adoption_assurance_fixture_corpus,
     validate_editor_first_run_usability_fixture_corpus, validate_editor_gap_cockpit_fixture_case,
@@ -277,8 +277,9 @@ pub(crate) use reports::{
 #[cfg(test)]
 pub(crate) use reports::{
     GoldenDriftEntry, GoldenDriftSemantics, first_line_difference, fixture_contract_violations,
-    golden_drift_semantics, golden_drift_type, goldens_check_failure_message,
-    json_string_values_for_key, normalize_golden_text, parse_reason, validate_bless_reason,
+    golden_assistant_loop_health_contract_violations_at, golden_drift_semantics, golden_drift_type,
+    goldens_check_failure_message, json_string_values_for_key, normalize_golden_text, parse_reason,
+    validate_bless_reason,
 };
 #[cfg(test)]
 pub(crate) use reports::{

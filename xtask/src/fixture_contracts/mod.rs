@@ -76,6 +76,7 @@ pub(crate) fn check_fixture_contracts() -> Result<(), String> {
     validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
     validate_report_packet_index_fixture_corpus(&mut violations)?;
     validate_pr_inline_comment_publisher_fixture_corpus(&mut violations)?;
+    validate_assistant_loop_health_fixture_corpus(&mut violations)?;
     validate_release_control_fixture_corpus(&mut violations)?;
     validate_release_scope_fixture_corpus(&mut violations)?;
     for entry in

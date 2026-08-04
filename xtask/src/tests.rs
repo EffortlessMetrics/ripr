@@ -4901,6 +4901,72 @@ fn assistant_loop_health_fixture_corpus_guard_reports_contract_drift() -> Result
 }
 
 #[test]
+fn goldens_check_includes_assistant_loop_health_contract_drift() -> Result<(), String> {
+    let root = temp_dir("goldens-assistant-loop-health-invalid");
+    let base = root.join("assistant-loop-health");
+    let report = root.join("assistant-loop-health.json");
+    let markdown = root.join("assistant-loop-health.md");
+    let proof = root.join("proof.json");
+    write_assistant_loop_health_corpus(&base, &report, &markdown, &proof, "advisory", 0);
+    write(
+        &report,
+        r#"{
+  "kind": "assistant_loop_health",
+  "status": "blocked",
+  "summary": {
+    "proofs": 1,
+    "complete": 1,
+    "partial": 0,
+    "missing_required_input": 0,
+    "missing_optional_input": 0,
+    "improved": 1,
+    "unchanged": 0,
+    "regressed": 0,
+    "unknown_movement": 0,
+    "warnings": 0,
+    "repair_queue": 0
+  },
+  "repair_queue": [],
+  "limits": ["Static RIPR evidence only."]
+}
+"#,
+    );
+    write(
+        &markdown,
+        "# RIPR Assistant Loop Health\n\nStatus: advisory\n",
+    );
+
+    let violations = super::golden_assistant_loop_health_contract_violations_at(&base)?;
+    let report = violations.join("\n");
+
+    assert!(report.contains("expected status advisory"), "{report}");
+    Ok(())
+}
+
+#[test]
+fn assistant_loop_health_missing_corpus_fails_both_shared_gates() -> Result<(), String> {
+    let root = temp_dir("assistant-loop-health-missing");
+    let base = root.join("assistant-loop-health");
+
+    let mut fixture_contract_violations = Vec::new();
+    super::validate_assistant_loop_health_fixture_corpus_at(
+        &base,
+        &mut fixture_contract_violations,
+    )?;
+    assert_eq!(
+        fixture_contract_violations,
+        vec![format!(
+            "assistant-loop-health corpus is missing {}",
+            super::normalize_path(&base)
+        )]
+    );
+
+    let golden_violations = super::golden_assistant_loop_health_contract_violations_at(&base)?;
+    assert_eq!(golden_violations, fixture_contract_violations);
+    Ok(())
+}
+
+#[test]
 fn editor_gap_cockpit_fixture_case_guard_accepts_actionable_contract() -> Result<(), String> {
     let root = temp_dir("editor-gap-cockpit-valid");
     write_editor_gap_case_expected(

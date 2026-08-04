@@ -127,6 +127,19 @@ pub(crate) fn goldens_check() -> Result<(), String> {
     }
 }
 
+/// Run the assistant-loop-health corpus contract used by `goldens check`.
+///
+/// This is intentionally the same validator used by `check-fixture-contracts`:
+/// the golden gate must fail when an editor-agent-loop expectation drifts, even
+/// though that corpus is manifest-only and is not executed by `run_fixture`.
+pub(crate) fn golden_assistant_loop_health_contract_violations_at(
+    base: &Path,
+) -> Result<Vec<String>, String> {
+    let mut violations = Vec::new();
+    crate::validate_assistant_loop_health_fixture_corpus_at(base, &mut violations)?;
+    Ok(violations)
+}
+
 /// Build an actionable `goldens check` failure: each drifted fixture gets its
 /// semantic drift type (the discriminator from [`golden_drift_type`]) and a
 /// blessing-state note, non-drift violations (contract/run errors) are listed
@@ -187,6 +200,9 @@ pub(crate) fn golden_drift_impl() -> Result<(), String> {
 
 fn collect_golden_runs() -> Result<GoldenRunSet, String> {
     let fixture_dirs = fixture_dirs()?;
+    let mut violations = golden_assistant_loop_health_contract_violations_at(Path::new(
+        "fixtures/boundary_gap/expected/assistant-loop-health",
+    ))?;
     // Parallelize fixture execution via rayon (#2415). Each fixture is independent
     // (disjoint input/expected dirs), so parallel runs produce identical output.
     // The sequential results are collected in input order for deterministic reports.
@@ -204,7 +220,6 @@ fn collect_golden_runs() -> Result<GoldenRunSet, String> {
         })
         .collect();
 
-    let mut violations = Vec::new();
     let mut runs = Vec::new();
     for result in results {
         match result {
