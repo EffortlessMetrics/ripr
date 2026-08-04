@@ -15162,7 +15162,7 @@ Field sources:
 
 | Field | Source artifact | Path |
 | --- | --- | --- |
-| `run_status` | diff-report (then repo-exposure fallback) | `run_status` |
+| `run_status` | diff-report | `run_status`; `unknown` when diff evidence is missing, because repo-exposure status cannot establish diff-analysis completeness |
 | `analysis_complete` | diff-report | `analysis_outcome.analysis_complete`; null when the typed envelope is absent. A false value forces summary `run_status` to `incomplete`. |
 | `analysis_outcome` | diff-report | `analysis_outcome`; preserves typed kind, limitations, and recovery routes without reconstructing them from empty findings. |
 | `changed_surfaces` | diff-report | `summary.changed_files` |

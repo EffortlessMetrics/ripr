@@ -82,7 +82,7 @@ when no baseline is available.
 | Artifact | Field sourced |
 | --- | --- |
 | `target/ripr/reports/diff-report.json` | `run_status`, `changed_surfaces`, `local_reproduction_commands` base/head |
-| `target/ripr/reports/repo-exposure.json` | `run_status` (fallback), `limitations[]` |
+| `target/ripr/reports/repo-exposure.json` | `limitations[]` |
 | `target/ripr/reports/gap-decision-ledger.json` | `gaps.total_actionable`, `gaps.total_static_limitation`, `missing_receipts`, `receipt_status.receipts_present`, `receipt_status.missing_receipts` |
 | `target/ripr/reports/start-here.json` | `top_repair` (when `selected.state == "top_gap"`), `top_repair_state`, `local_reproduction_commands` verify command |
 | `target/ripr/reports/swarm-attempt-ledger.json` | `receipt_status.verify_failed_receipts` — count of `attempts[].verify_result` ∈ `{"fail","failed","error"}` (RIPR-SPEC-0057, PR7 of #1123); `not_available` when artifact absent |
@@ -180,7 +180,7 @@ When there are no limitations, `top_limitation` is omitted entirely.
 | `schema_version` | string | static | Always `"0.1"`. |
 | `kind` | string | static | Always `"pr_evidence_summary"`. |
 | `tool` | string | static | Always `"ripr"`. |
-| `run_status` | string | diff-report then repo-exposure | `"unknown"` when both missing. |
+| `run_status` | string | diff-report | `"unknown"` when the diff report or its status is missing. Repo-exposure status is a separate evidence product and never establishes diff-analysis completeness. |
 | `analysis_complete` | boolean or null | diff-report `analysis_outcome.analysis_complete` | Preserves the typed producer fact; null when the envelope is absent. `false` makes `run_status` `incomplete`. |
 | `analysis_outcome` | object or null | diff-report `analysis_outcome` | Preserves typed kind, limitations, and recovery routes; never reconstructed from empty findings. |
 | `changed_surfaces` | u64 or `"not_available"` | diff-report `summary.changed_files` | `"not_available"` when artifact missing. |
@@ -212,6 +212,7 @@ When there are no limitations, `top_limitation` is omitted entirely.
   - `typed_incomplete_diff_outcome_is_preserved_and_not_reported_complete`
   - `gap_ledger_counts_are_surfaced`
   - `repo_exposure_limitations_are_aggregated`
+  - `missing_diff_evidence_does_not_inherit_repo_exposure_completion`
   - `receipt_status_missing_all_artifacts_is_not_available`
   - `receipt_status_json_not_derivable_fields_are_not_available_not_zero`
   - `receipt_status_receipts_present_derived_from_ledger`
@@ -268,6 +269,7 @@ integer values computed from the before/after snapshots.
 - `xtask/src/reports/pr_evidence_summary/json.rs::tests::present_top_gap_populates_top_repair`
 - `xtask/src/reports/pr_evidence_summary/json.rs::tests::gap_ledger_counts_are_surfaced`
 - `xtask/src/reports/pr_evidence_summary/json.rs::tests::repo_exposure_limitations_are_aggregated`
+- `xtask/src/reports/pr_evidence_summary/json.rs::tests::compatibility_route_does_not_promote_repo_status_without_diff_artifact`
 - `xtask/src/reports/pr_evidence_summary::tests::parse_accepts_baseline_path`
 - `xtask/src/reports/pr_evidence_summary::tests::parse_rejects_baseline_without_path`
 - `xtask/src/reports/pr_evidence_summary::tests::evidence_summary_pair_missing_all_shows_explicit_states`

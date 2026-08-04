@@ -37,4 +37,18 @@ mod tests {
         assert!(markdown.contains("**Analysis Complete**: `false`"));
         assert!(markdown.contains("**Analysis Outcome**: `unsupported_input`"));
     }
+
+    #[test]
+    fn compatibility_route_does_not_promote_repo_status_without_diff_artifact() {
+        let repo_exposure = serde_json::json!({
+            "run_status": "complete",
+            "limitations": []
+        });
+        let summary = build_pr_evidence_summary(None, None, Some(&repo_exposure), None, None, None);
+        let json = render_pr_evidence_summary_json(&summary);
+
+        assert!(json.contains("\"run_status\": \"unknown\""));
+        assert!(!json.contains("\"run_status\": \"complete\""));
+        assert!(!json.contains("\"analysis_complete\": true"));
+    }
 }

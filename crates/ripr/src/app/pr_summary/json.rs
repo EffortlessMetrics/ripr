@@ -31,7 +31,7 @@ pub fn build_pr_evidence_summary(
         .as_ref()
         .and_then(|value| value.get("analysis_complete"))
         .and_then(Value::as_bool);
-    let run_status = derive_run_status(diff_report_value, repo_exposure_value, analysis_complete);
+    let run_status = derive_run_status(diff_report_value, analysis_complete);
     let changed_surfaces = derive_changed_surfaces(diff_report_value);
     let gaps = derive_gaps(gap_ledger_value, baseline_value);
     let limitations = derive_limitations(repo_exposure_value);
@@ -63,11 +63,7 @@ pub fn build_pr_evidence_summary(
     }
 }
 
-fn derive_run_status(
-    diff_report_value: Option<&Value>,
-    repo_exposure_value: Option<&Value>,
-    analysis_complete: Option<bool>,
-) -> String {
+fn derive_run_status(diff_report_value: Option<&Value>, analysis_complete: Option<bool>) -> String {
     if analysis_complete == Some(false) {
         return "incomplete".to_string();
     }
@@ -78,13 +74,9 @@ fn derive_run_status(
     {
         return status.to_string();
     }
-    // Fall back to repo-exposure run_status.
-    if let Some(status) = value_path(repo_exposure_value, &["run_status"])
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-    {
-        return status.to_string();
-    }
+    // A repo-exposure status is a separate evidence product. It cannot
+    // establish the completeness of the diff-scoped producer analysis, so a
+    // missing diff report must remain explicitly unknown here.
     "unknown".to_string()
 }
 
@@ -785,7 +777,7 @@ mod tests {
             ]
         });
         let s = build_pr_evidence_summary(None, None, Some(&repo), None, None, None);
-        assert_eq!(s.run_status, "seam_limit_applied");
+        assert_eq!(s.run_status, "unknown");
         assert_eq!(s.limitations.len(), 1);
         assert_eq!(s.limitations[0].category, "repo_seam_limit_applied");
         let top_lim = match s.top_limitation.as_ref() {
@@ -799,6 +791,21 @@ mod tests {
             top_lim.why_not_actionable
         );
         Ok(())
+    }
+
+    #[test]
+    fn missing_diff_evidence_does_not_inherit_repo_exposure_completion() {
+        let repo = serde_json::json!({
+            "run_status": "complete",
+            "limitations": []
+        });
+        let summary = build_pr_evidence_summary(None, None, Some(&repo), None, None, None);
+
+        assert_eq!(summary.run_status, "unknown");
+        assert_eq!(summary.analysis_complete, None);
+        let rendered = render_pr_evidence_summary_json(&summary);
+        assert!(rendered.contains("\"run_status\": \"unknown\""));
+        assert!(!rendered.contains("\"run_status\": \"complete\""));
     }
 
     // ── receipt_status six-count tests ───────────────────────────────────────
