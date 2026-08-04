@@ -378,6 +378,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "release-denominator --live --input <ledger.json>",
         "release-denominator --capture-github --input <ledger.json> --output <capture.json>",
         "release-denominator --import-github --input <ledger.json> --capture <capture.json> --output <ledger.json>",
+        "release-denominator --apply-adjudication --input <ledger.json> --decisions <adjudication.json> --output <ledger.json>",
         "release-scope --input <scope.json>",
         "release-server-archive --version <version> --target <triple> --executable <name> --archive <zip|tar.gz>",
         "release-server-manifest --version <version> --repository <owner/repo>",
@@ -961,6 +962,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             false,
             false,
             "Imports an exact GitHub capture into a replayable denominator ledger and converts inherited blanket post-cutoff exclusions into explicit pending operator decisions.",
+        ),
+        command_entry(
+            "release-denominator --apply-adjudication --input <ledger.json> --decisions <adjudication.json> --output <ledger.json>",
+            "report_only",
+            "<ledger.json>",
+            false,
+            false,
+            "Applies a reviewed, range-complete #2832 adjudication manifest through the pinned provisional cutoff without qualifying a candidate.",
         ),
         command_entry(
             "release-scope --input <scope.json>",

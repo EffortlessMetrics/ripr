@@ -61,6 +61,14 @@ inherited `safe_defer_post_0_11` rows, plus rows after the fixed provisional
 cutoff, into `operator_decision_required` with
 `candidate_tree_state_pending`. No blanket post-cutoff exclusion is accepted.
 
+`--apply-adjudication --input <ledger.json> --decisions <adjudication.json>
+--output <ledger.json>` applies one reviewed, position-complete #2832
+adjudication manifest through the pinned cutoff. Each position receives a
+closed disposition, a non-pending candidate-tree state, a batch review receipt,
+and a residual non-claim; rows after the cutoff remain untouched. The
+adjudicated candidate-tree commit list is projected from the resulting tree
+states, while the ledger remains `stage = provisional`.
+
 ## Validation
 
 Validation fails closed for missing, duplicate, out-of-range, or wrongly
@@ -85,20 +93,22 @@ decision; final output is ready only after every record is reconciled.
 ## Current-main evidence
 
 `fixtures/release_denominator/current-main-provisional.json` is the fixed
-captured census of `c86807ec..c30a2683` observed on 2026-08-03. It carries 234
-first-parent records, 219 records present in the retained provisional tree,
-and 15 records with `candidate_tree_state_pending`; all 234 records remain
+captured census of `c86807ec..c30a2683` observed on 2026-08-03. After the
+#2832 manifest is applied it carries 234 first-parent records, 230 records
+present in the reviewed provisional tree, and four rows after the cutoff with
+`candidate_tree_state_pending`; zero records through the fixed cutoff retain
 `operator_decision_required`. Its fixed provisional review cutoff is
-`fcbb30a7cf6a37027fa377abafb617632b2e6f57`; later rows are retained as
+`fcbb30a7cf6a37027fa377abafb617632b2e6f57`; later rows are retained as an
 observed delta, not silently excluded. Every record has replayable GitHub
-capture status and typed authority, but those references remain unreviewed
-until #2832 adjudication. The fixture pins range digest
+capture status and typed authority; captured references remain unreviewed
+authority until separately reviewed, while #2832 records the substantive
+commit disposition. The fixture pins range digest
 `sha256:b85b8314b5f738335ae63220fe5f0ea8ef4e6e1892124eea148ea49181168501`,
 candidate-tree digest
-`sha256:c1b3675b6b98f609343f35711898e805a6ad27577c8f9b351ae53718b91082ae`,
+`sha256:2392d40f28fdd141b81a949cf019c1ad3850cf68bb2ab3cef5802fbdcde7c93b`,
 and record-set digest
-`sha256:172ef3d76ae3db47b8f7abedae9151ce971d3941b5a9eeb18b4c824d25c9530d`.
-It is a fixed, captured input to substantive #2832 review, not a final
+`sha256:bb768e8f2b271695efb6ec1578be32474af43193b1f2f5455387e418f359ff80`.
+It is a reviewed provisional input to later delta adjudication, not a final
 release qualification.
 
 ## Cut-relative denominator boundary

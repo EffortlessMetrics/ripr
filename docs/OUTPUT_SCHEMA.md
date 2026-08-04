@@ -12059,6 +12059,11 @@ adjudicated; it is only valid with `operator_decision_required`. The optional
 `candidate_selection` object is the #2766/#2871 selected-claim authority, not a
 claim inferred from numeric issue or PR references.
 
+The checked provisional fixture also retains the #2832 adjudication batch
+receipt in each reviewed record's `review_refs[]`, and its candidate-tree
+commit list is the ordered projection of reviewed `candidate_tree_state` values.
+Rows after the pinned cutoff remain pending and do not enter that projection.
+
 ## Operator Cockpit Report
 
 `cargo xtask operator-cockpit` joins existing repo-local report artifacts into

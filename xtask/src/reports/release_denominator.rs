@@ -157,6 +157,24 @@ struct GithubCaptureRecord {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+struct AdjudicationManifest {
+    schema_version: String,
+    kind: String,
+    cutoff_sha: String,
+    batches: Vec<AdjudicationBatch>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct AdjudicationBatch {
+    id: String,
+    positions: Vec<usize>,
+    disposition: String,
+    candidate_tree_state: String,
+    review_ref: String,
+    rationale: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 struct GithubPullRequest {
     number: u64,
     url: String,
@@ -184,6 +202,11 @@ enum DenominatorCommand<'a> {
     Import {
         path: &'a str,
         capture: &'a str,
+        output: &'a str,
+    },
+    Adjudicate {
+        path: &'a str,
+        decisions: &'a str,
         output: &'a str,
     },
 }
@@ -233,12 +256,17 @@ pub(crate) fn release_denominator(args: &[String]) -> Result<(), String> {
             capture,
             output,
         } => import_github(path, capture, output)?,
+        DenominatorCommand::Adjudicate {
+            path,
+            decisions,
+            output,
+        } => apply_adjudication(path, decisions, output)?,
     }
     Ok(())
 }
 
 fn parse_args<'a>(args: &'a [String]) -> Result<DenominatorCommand<'a>, String> {
-    let usage = "usage: cargo xtask release-denominator [--live] --input <ledger.json> | --capture-github --input <ledger.json> --output <capture.json> | --import-github --input <ledger.json> --capture <capture.json> --output <ledger.json>";
+    let usage = "usage: cargo xtask release-denominator [--live] --input <ledger.json> | --capture-github --input <ledger.json> --output <capture.json> | --import-github --input <ledger.json> --capture <capture.json> --output <ledger.json> | --apply-adjudication --input <ledger.json> --decisions <adjudication.json> --output <ledger.json>";
     match args {
         [input, path] if input == "--input" && !path.trim().is_empty() => {
             Ok(DenominatorCommand::Normalize { live: false, path })
@@ -276,6 +304,28 @@ fn parse_args<'a>(args: &'a [String]) -> Result<DenominatorCommand<'a>, String> 
             Ok(DenominatorCommand::Import {
                 path,
                 capture,
+                output,
+            })
+        }
+        [
+            mode,
+            input,
+            path,
+            decisions_flag,
+            decisions,
+            output_flag,
+            output,
+        ] if mode == "--apply-adjudication"
+            && input == "--input"
+            && decisions_flag == "--decisions"
+            && output_flag == "--output"
+            && !path.trim().is_empty()
+            && !decisions.trim().is_empty()
+            && !output.trim().is_empty() =>
+        {
+            Ok(DenominatorCommand::Adjudicate {
+                path,
+                decisions,
                 output,
             })
         }
@@ -492,6 +542,142 @@ fn validate_capture_repository(expected: Option<&str>, observed: &str) -> Result
             "GitHub denominator capture repository {observed} does not match expected {expected}"
         ));
     }
+    Ok(())
+}
+
+fn apply_adjudication(input: &str, decisions_path: &str, output: &str) -> Result<(), String> {
+    let mut snapshot = read_snapshot(input)?;
+    let decisions_text = fs::read_to_string(decisions_path).map_err(|error| {
+        format!("failed to read denominator adjudication {decisions_path}: {error}")
+    })?;
+    let manifest: AdjudicationManifest =
+        serde_json::from_str(&decisions_text).map_err(|error| {
+            format!("failed to parse denominator adjudication {decisions_path}: {error}")
+        })?;
+    if manifest.schema_version != "0.1" || manifest.kind != "release_denominator_adjudication" {
+        return Err("denominator adjudication has an unsupported schema or kind".to_string());
+    }
+    let cutoff = snapshot
+        .source
+        .provisional_review_cutoff_sha
+        .as_deref()
+        .ok_or_else(|| "input ledger has no provisional review cutoff".to_string())?;
+    if manifest.cutoff_sha != cutoff {
+        return Err("denominator adjudication cutoff does not match input ledger".to_string());
+    }
+    let cutoff_position = snapshot
+        .records
+        .iter()
+        .position(|record| record.commit_sha == cutoff)
+        .ok_or_else(|| format!("adjudication cutoff {cutoff} is not in the input ledger"))?
+        + 1;
+    let mut coverage = BTreeMap::new();
+    let mut batch_ids = BTreeSet::new();
+    for batch in &manifest.batches {
+        if batch.id.trim().is_empty()
+            || !batch_ids.insert(batch.id.clone())
+            || batch.review_ref.trim().is_empty()
+            || !batch.review_ref.starts_with("review:2832:")
+            || batch.rationale.trim().is_empty()
+        {
+            return Err(
+                "adjudication batches require unique id, review:2832:* review_ref, and rationale"
+                    .to_string(),
+            );
+        }
+        if batch.positions.is_empty()
+            || batch
+                .positions
+                .iter()
+                .any(|position| *position == 0 || *position > cutoff_position)
+        {
+            return Err(format!(
+                "adjudication batch {} has an invalid first-parent position list",
+                batch.id
+            ));
+        }
+        if !DISPOSITIONS.contains(&batch.disposition.as_str())
+            || batch.disposition == "operator_decision_required"
+        {
+            return Err(format!(
+                "adjudication batch {} has a non-closed disposition {}",
+                batch.id, batch.disposition
+            ));
+        }
+        if !TREE_STATES.contains(&batch.candidate_tree_state.as_str())
+            || batch.candidate_tree_state == "candidate_tree_state_pending"
+        {
+            return Err(format!(
+                "adjudication batch {} has a non-closed candidate-tree state {}",
+                batch.id, batch.candidate_tree_state
+            ));
+        }
+        for position in &batch.positions {
+            if coverage.insert(*position, batch.id.clone()).is_some() {
+                return Err(format!(
+                    "adjudication batches overlap at first-parent position {position}"
+                ));
+            }
+        }
+    }
+    for position in 1..=cutoff_position {
+        let batch_id = coverage.get(&position).ok_or_else(|| {
+            format!("adjudication has no decision for first-parent position {position}")
+        })?;
+        let batch = manifest
+            .batches
+            .iter()
+            .find(|batch| &batch.id == batch_id)
+            .ok_or_else(|| format!("adjudication batch {batch_id} disappeared"))?;
+        let record = snapshot
+            .records
+            .get_mut(position - 1)
+            .ok_or_else(|| format!("ledger is missing first-parent position {position}"))?;
+        if record.first_parent_position != position {
+            return Err(format!(
+                "ledger record at position {position} has first_parent_position {}",
+                record.first_parent_position
+            ));
+        }
+        record.release_disposition = batch.disposition.clone();
+        record.candidate_tree_state = batch.candidate_tree_state.clone();
+        record.review_refs = vec![batch.review_ref.clone(), format!("batch:{}", batch.id)];
+        record.source_survivor_or_swarm_exclusion_effect = format!(
+            "#2832 {} reviewed commit {} at first-parent position {}: {}",
+            batch.id, record.commit_sha, position, batch.rationale
+        );
+        record.limitation_or_operator_decision = format!(
+            "This provisional disposition does not close the owning issue, prove candidate qualification, or claim source promotion. Residual acceptance remains with {}.",
+            record.acceptance_owner
+        );
+    }
+    let adjudicated_tree = snapshot
+        .records
+        .iter()
+        .take(cutoff_position)
+        .filter(|record| record.candidate_tree_state == "present_in_candidate")
+        .map(|record| record.commit_sha.as_str())
+        .collect::<BTreeSet<_>>();
+    snapshot.source.candidate_tree_commits = snapshot
+        .source
+        .range_commits
+        .iter()
+        .filter(|commit_sha| adjudicated_tree.contains(commit_sha.as_str()))
+        .cloned()
+        .collect();
+    let normalized = normalize_snapshot(snapshot.clone(), None)?;
+    if normalized.status != "ready" {
+        return Err(format!(
+            "adjudication produced a non-reconciling ledger: {}",
+            normalized.reconciliation_reasons.join("; ")
+        ));
+    }
+    let text = serde_json::to_string_pretty(&snapshot)
+        .map_err(|error| format!("failed to serialize adjudicated denominator ledger: {error}"))?;
+    fs::write(output, format!("{text}\n")).map_err(|error| {
+        format!("failed to write adjudicated denominator ledger {output}: {error}")
+    })?;
+    println!("Wrote adjudicated denominator ledger {output}");
     Ok(())
 }
 
@@ -1946,7 +2132,7 @@ mod tests {
             "current-main census range count changed",
         )?;
         require(
-            report.source.candidate_tree_commits.len() == 219,
+            report.source.candidate_tree_commits.len() == 230,
             "current-main census candidate-tree count changed",
         )?;
         require(
@@ -1962,24 +2148,24 @@ mod tests {
             report.range_digest
                 == "sha256:b85b8314b5f738335ae63220fe5f0ea8ef4e6e1892124eea148ea49181168501"
                 && report.candidate_tree_digest
-                    == "sha256:c1b3675b6b98f609343f35711898e805a6ad27577c8f9b351ae53718b91082ae",
+                    == "sha256:2392d40f28fdd141b81a949cf019c1ad3850cf68bb2ab3cef5802fbdcde7c93b",
             "current-main range or candidate-tree digest changed",
         )?;
         require(
             report.record_set_digest
-                == "sha256:172ef3d76ae3db47b8f7abedae9151ce971d3941b5a9eeb18b4c824d25c9530d",
+                == "sha256:bb768e8f2b271695efb6ec1578be32474af43193b1f2f5455387e418f359ff80",
             "current-main record-set digest changed",
         )?;
         require(
             report
                 .counts_by_tree_state
                 .get("candidate_tree_state_pending")
-                == Some(&15)
-                && report.counts_by_tree_state.get("present_in_candidate") == Some(&219)
+                == Some(&4)
+                && report.counts_by_tree_state.get("present_in_candidate") == Some(&230)
                 && report
                     .counts_by_disposition
                     .get("operator_decision_required")
-                    == Some(&234),
+                    == Some(&4),
             "current-main denominator counts changed",
         )?;
         let pending = report
@@ -1991,17 +2177,6 @@ mod tests {
         require(
             pending
                 == vec![
-                    "558451709fba77330371c1e2ecf898e62a658a68",
-                    "0b1a40f7fcbbce18ef8a729c2aad0a4b5d60e73a",
-                    "bdf7386f517c2a6999581236d6f509a254dd590a",
-                    "a8777c3549e52855415bff55753356adfc9c1cb9",
-                    "5576c5331580413840c5958be4bb2d4e07b197dc",
-                    "4c836dd61dc50f7a6711be82f5faca63ff220665",
-                    "a379dd1bc27e7cba09f24f9dd9a9e6a90982e9af",
-                    "2a84e5808e594d809b07bee59a1a5dbeeda79914",
-                    "8d520fdf7f4c036b711cbd5b5b1aa5d8b29bb592",
-                    "d2a93e7bbb91ea90e46e38b92bef4e9cd281e9cb",
-                    "fcbb30a7cf6a37027fa377abafb617632b2e6f57",
                     "15d59a262f7fe8b5927ab812efb81f6e90cf3ee6",
                     "827c9e08f8abb87b0864b1ebb7b3135e78727bb3",
                     "e7e6e6632f1fc2a0b19d30ed6dc76ef8a167c7c6",
@@ -2010,6 +2185,28 @@ mod tests {
             "current-main excluded commit identities changed",
         )?;
         Ok(())
+    }
+
+    #[test]
+    fn adjudication_manifest_covers_every_record_through_cutoff() -> Result<(), String> {
+        let manifest: AdjudicationManifest = serde_json::from_str(include_str!(
+            "../../../fixtures/release_denominator/2832-adjudication.json"
+        ))
+        .map_err(|error| error.to_string())?;
+        let positions = manifest
+            .batches
+            .iter()
+            .flat_map(|batch| batch.positions.iter().copied())
+            .collect::<Vec<_>>();
+        let unique = positions.iter().copied().collect::<BTreeSet<_>>();
+        require(
+            manifest.cutoff_sha == "fcbb30a7cf6a37027fa377abafb617632b2e6f57"
+                && positions.len() == 230
+                && unique.len() == 230
+                && unique.first() == Some(&1)
+                && unique.last() == Some(&230),
+            "#2832 adjudication manifest does not cover the fixed cutoff exactly",
+        )
     }
 
     #[test]
