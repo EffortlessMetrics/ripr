@@ -635,14 +635,18 @@ fn report_markdown(report: &NormalizedReport) -> String {
     ));
     body.push_str("## Candidate state\n\n");
     body.push_str(&format!(
-        "- status: `{}`\n- selected claims: `{}`\n- required claims pending: `{}`\n- unresolved candidate defects: `{}`\n- denominator decisions remaining: `{}`\n- cut selected: `{}`\n- projection reproducible: `{}`\n- candidate tree present: `{}`\n- immutable candidate ref created: `{}`\n\n",
+        "- status: `{}`\n- selected claims: `{}`\n- required claims pending: `{}`\n- unresolved candidate defects: `{}`\n- denominator decisions remaining through provisional cutoff: `{}`\n- denominator decisions remaining through selected cut: `{}`\n- cut selected: `{}`\n- projection reproducible: `{}`\n- candidate tree present: `{}`\n- immutable candidate ref created: `{}`\n\n",
         report.candidate_state.status,
         report.candidate_state.selected_candidate_claims,
         report.candidate_state.candidate_required_claims_pending,
         report.candidate_state.candidate_defects_unresolved,
         report
             .candidate_state
-            .denominator_decisions_remaining
+            .denominator_decisions_remaining_through_provisional_cutoff
+            .map_or_else(|| "unknown".to_string(), |value| value.to_string()),
+        report
+            .candidate_state
+            .denominator_decisions_remaining_through_selected_cut
             .map_or_else(|| "unknown".to_string(), |value| value.to_string()),
         report.candidate_state.candidate_cut_selected,
         report.candidate_state.projection_reproducible,

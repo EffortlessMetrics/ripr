@@ -88,7 +88,8 @@ The candidate control vocabulary is
 `selected_candidate_claims`, `candidate_required_claims_pending`,
 `candidate_claims_landed`, `candidate_claims_excluded`,
 `candidate_claims_deferred`, `candidate_defects_unresolved`,
-`denominator_decisions_remaining`, `candidate_cut_selected`, and
+`denominator_decisions_remaining` (the schema-0.1 provisional-cutoff field),
+`denominator_decisions_remaining_through_selected_cut`, `candidate_cut_selected`, and
 `candidate_ref_created`. An informational `open_release_pr_count` must not be
 used as a readiness predicate.
 
@@ -104,7 +105,8 @@ CandidateSelection
   selected_claims[]
   candidate_exclusions[]
   known_candidate_defects[]
-  denominator_decisions_remaining
+  denominator_decisions_remaining_through_provisional_cutoff
+  denominator_decisions_remaining_through_selected_cut
   projection
   qualification
 ```

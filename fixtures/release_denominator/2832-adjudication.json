@@ -35,5 +35,45 @@
       "review_ref": "review:2832:batch-D-structural",
       "rationale": "The exact commit is documentation, refactor, style, or maintenance work; the retained tree state is present, but this record makes no additional product-behavior claim."
     }
+  ],
+  "overrides": [
+    {
+      "position": 81,
+      "batch_id": "2832-A-product",
+      "exclusion_id": "exclusion:2767:verification-execution",
+      "candidate_only_exclusion_granularity": "hunk_or_symbol",
+      "disposition": "candidate_only_exclusion",
+      "candidate_tree_state": "present_in_candidate",
+      "review_ref": "review:2832:exception-2767",
+      "delivered_delta": "PR #2396 adds the producer-owned verify-execute command and RepairReceiptV2 issuance surface.",
+      "challenged_disposition": "include_product",
+      "candidate_effect": "retain the development commit and reusable provenance/static-assurance foundations; #2835 must apply the exact execution-only path set with hunk-or-symbol-scoped projection rather than whole-file removal",
+      "residual_acceptance": "#2767/#2788 accepted Outcome A; #2835 must materialize the path-level exclusion and preserve the release non-claim that 0.11.0 does not execute verification commands or issue RepairReceiptV2.",
+      "candidate_only_excluded_paths": [
+        ".allow/spec-system/slices/verification-command-execution.v1.toml",
+        ".ripr/traceability.toml",
+        "crates/ripr/src/app.rs",
+        "crates/ripr/src/app/verification_execution.rs",
+        "crates/ripr/src/cli/agent.rs",
+        "crates/ripr/src/cli/commands/agent.rs",
+        "crates/ripr/src/cli/commands/agent_dispatch.rs",
+        "crates/ripr/src/cli/execute.rs",
+        "crates/ripr/src/cli/help.rs",
+        "crates/ripr/src/cli/help/agent.rs",
+        "crates/ripr/src/cli/help/overview.rs",
+        "crates/ripr/src/domain/verification_result.rs",
+        "crates/ripr/tests/cli_smoke.rs",
+        "crates/ripr/tests/verification_result.rs",
+        "docs/OUTPUT_SCHEMA.md",
+        "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md",
+        "policy/process_allowlist.txt",
+        "schemas/ripr/repair-assurance.schema.json"
+      ],
+      "review_evidence": [
+        "issue:2767",
+        "pr:2788",
+        "fixture:release_scope/accepted-outcome-a.json"
+      ]
+    }
   ]
 }

@@ -33,6 +33,11 @@ the claim. A structurally invalid selected-claim authority also rejects its
 claim references; readiness state remains owned by the shared candidate
 control evaluator.
 
+Records carrying the accepted execution-surface exclusion also retain the
+exact excluded path set and `candidate_only_exclusion_granularity =
+"hunk_or_symbol"`; a later candidate materializer must not remove an entire
+shared file when retained changes in that file are outside the exclusion.
+
 The accepted dispositions are `include_product`,
 `include_release_infrastructure`, `include_control_or_honesty`,
 `structural_no_semantic_delta`, `candidate_only_exclusion`,
@@ -40,6 +45,11 @@ The accepted dispositions are `include_product`,
 `operator_decision_required`. The report uses `ready` or
 `reconcile_required`; it never claims that a candidate is qualified, published,
 or released.
+
+When a provisional cutoff is present, normalization derives the count of
+`operator_decision_required` records through that cutoff from the ordered
+records. A supplied candidate-selection count is reconciled against the
+derived value; disagreement is not silently accepted.
 
 `--live --input <ledger.json>` additionally compares the captured candidate
 SHA, first-parent range, and candidate-tree commit set with bounded live Git
@@ -107,7 +117,7 @@ commit disposition. The fixture pins range digest
 candidate-tree digest
 `sha256:2392d40f28fdd141b81a949cf019c1ad3850cf68bb2ab3cef5802fbdcde7c93b`,
 and record-set digest
-`sha256:bb768e8f2b271695efb6ec1578be32474af43193b1f2f5455387e418f359ff80`.
+`sha256:7b3e24c061fe8252b432dc852b8a84179571cacfba1013382795f23ff0ce901c`.
 It is a reviewed provisional input to later delta adjudication, not a final
 release qualification.
 

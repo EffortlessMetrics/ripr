@@ -60,7 +60,7 @@ candidate_claims_landed
 candidate_claims_excluded
 candidate_claims_deferred
 candidate_defects_unresolved
-denominator_decisions_remaining
+   denominator_decisions_remaining_through_provisional_cutoff
 candidate_cut_selected
 candidate_ref_created
 ```

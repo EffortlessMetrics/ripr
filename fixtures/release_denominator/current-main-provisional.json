@@ -583,23 +583,86 @@
         "reviewed": true
       },
       {
-        "claim_id": "claim:denominator-candidate-identity",
+        "claim_id": "claim:provisional-denominator",
         "owner_issue": 2832,
+        "required_for_candidate": true,
+        "resolution": "landed",
+        "evidence_refs": [
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2832",
+          "https://github.com/EffortlessMetrics/ripr-swarm/pull/2889"
+        ],
+        "commit_refs": [
+          "619f87ff70b75ea5f0754a3e7bc8f1e45eb9fc47"
+        ],
+        "artifact_refs": [],
+        "candidate_effect": "control_only_through_provisional_cutoff",
+        "non_claim": "Does not select the final development cut, materialize the candidate tree, or create the immutable candidate identity.",
+        "reviewed": true
+      },
+      {
+        "claim_id": "claim:final-candidate-identity",
+        "owner_issue": 2833,
         "required_for_candidate": true,
         "resolution": "pending",
         "evidence_refs": [
-          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2832"
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2833",
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/1609"
         ],
         "commit_refs": [],
         "artifact_refs": [],
-        "candidate_effect": "include",
+        "candidate_effect": "materialize_and_lock",
         "non_claim": null,
+        "reviewed": true
+      },
+      {
+        "claim_id": "claim:candidate-only-execution-exclusion",
+        "owner_issue": 2835,
+        "required_for_candidate": true,
+        "resolution": "candidate_exclusion",
+        "evidence_refs": [
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2767",
+          "https://github.com/EffortlessMetrics/ripr-swarm/pull/2788"
+        ],
+        "commit_refs": [
+          "365f7d61e27fd441e997e6e17e3f3e28859a3964"
+        ],
+        "artifact_refs": [
+          "fixtures/release_scope/accepted-outcome-a.json"
+        ],
+        "candidate_effect": "exclude_execution_only_paths_in_candidate_tree",
+        "non_claim": "The development commit and reusable provenance/static-assurance foundations remain; the 0.11 candidate does not execute verification commands or issue RepairReceiptV2.",
         "reviewed": true
       }
     ],
-    "candidate_exclusions": [],
-    "known_candidate_defects": [],
-    "denominator_decisions_remaining": 0,
+    "candidate_exclusions": [
+      {
+        "exclusion_id": "exclusion:2767:verification-execution",
+        "claim_id": "claim:candidate-only-execution-exclusion",
+        "reason": "Apply the accepted #2767/#2788 Outcome A path-level exclusion to the final candidate tree; do not rewrite development main or remove reusable provenance/static-assurance foundations.",
+        "non_claim": "This is not a claim that verification execution or RepairReceiptV2 issuance is qualified for 0.11.",
+        "evidence_refs": [
+          "issue:2767",
+          "pr:2788",
+          "fixture:release_scope/accepted-outcome-a.json",
+          "issue:2835"
+        ],
+        "reviewed": true
+      }
+    ],
+    "known_candidate_defects": [
+      {
+        "defect_id": "defect:goldens-check-misses-editor-agent-loop",
+        "description": "The golden-check command can report no drift while the editor-agent-loop fixture contract detects drift; qualification must run both until the enumerators are unified.",
+        "resolved": false,
+        "evidence_refs": [
+          "command:cargo xtask goldens check",
+          "fixture:boundary_gap/expected/editor-agent-loop",
+          "command:cargo xtask check-fixture-contracts"
+        ]
+      }
+    ],
+    "denominator_decisions_remaining_through_provisional_cutoff": 0,
+    "denominator_decisions_remaining_through_selected_cut": null,
     "projection": {
       "reproducible": false,
       "candidate_tree_sha": null,
@@ -5818,19 +5881,45 @@
       "reference_capture_status": "captured",
       "reference_capture_limitation": "References are captured authority, not yet operator-reviewed.",
       "theme_or_surface": "feat(verify)",
-      "release_disposition": "include_product",
+      "release_disposition": "candidate_only_exclusion",
       "acceptance_owner": "release-authority-2379",
       "candidate_tree_state": "present_in_candidate",
+      "candidate_only_excluded_paths": [
+        ".allow/spec-system/slices/verification-command-execution.v1.toml",
+        ".ripr/traceability.toml",
+        "crates/ripr/src/app.rs",
+        "crates/ripr/src/app/verification_execution.rs",
+        "crates/ripr/src/cli/agent.rs",
+        "crates/ripr/src/cli/commands/agent.rs",
+        "crates/ripr/src/cli/commands/agent_dispatch.rs",
+        "crates/ripr/src/cli/execute.rs",
+        "crates/ripr/src/cli/help.rs",
+        "crates/ripr/src/cli/help/agent.rs",
+        "crates/ripr/src/cli/help/overview.rs",
+        "crates/ripr/src/domain/verification_result.rs",
+        "crates/ripr/tests/cli_smoke.rs",
+        "crates/ripr/tests/verification_result.rs",
+        "docs/OUTPUT_SCHEMA.md",
+        "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md",
+        "policy/process_allowlist.txt",
+        "schemas/ripr/repair-assurance.schema.json"
+      ],
+      "candidate_only_exclusion_granularity": "hunk_or_symbol",
       "replacement_commit_sha": null,
       "review_refs": [
         "review:2832:batch-A-product",
-        "batch:2832-A-product"
+        "batch:2832-A-product",
+        "review:2832:exception-2767",
+        "issue:2767",
+        "pr:2788",
+        "fixture:release_scope/accepted-outcome-a.json",
+        "override:81"
       ],
       "proof_refs": [
         "git:first-parent-range"
       ],
-      "source_survivor_or_swarm_exclusion_effect": "#2832 2832-A-product reviewed commit 365f7d61e27fd441e997e6e17e3f3e28859a3964 at first-parent position 81: The exact commit changes shipped product behavior, user-facing output, editor behavior, or producer-owned evidence and is retained in the provisional candidate projection.",
-      "limitation_or_operator_decision": "This provisional disposition does not close the owning issue, prove candidate qualification, or claim source promotion. Residual acceptance remains with release-authority-2379."
+      "source_survivor_or_swarm_exclusion_effect": "#2832 2832-A-product reviewed commit 365f7d61e27fd441e997e6e17e3f3e28859a3964 at first-parent position 81: delivered delta: PR #2396 adds the producer-owned verify-execute command and RepairReceiptV2 issuance surface.; challenged disposition: include_product; accepted disposition: candidate_only_exclusion; candidate effect: retain the development commit and reusable provenance/static-assurance foundations; #2835 must apply the exact execution-only path set with hunk-or-symbol-scoped projection rather than whole-file removal.",
+      "limitation_or_operator_decision": "#2767/#2788 accepted Outcome A; #2835 must materialize the path-level exclusion and preserve the release non-claim that 0.11.0 does not execute verification commands or issue RepairReceiptV2. Release non-claim: this provisional disposition does not close the owning issue, prove candidate qualification, or claim source promotion."
     },
     {
       "commit_sha": "1a261fe54b2870d154833938bb3304e8d5bb267b",
