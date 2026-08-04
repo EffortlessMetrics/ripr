@@ -32,6 +32,10 @@ pub use check::{check_workspace, check_workspace_repo, repo_seam_inventory_input
 /// (`cli::commands`) reference this single source of truth via
 /// `crate::app::PERL_FACT_PACKET_SCHEMA`.
 pub(crate) const PERL_FACT_PACKET_SCHEMA: &str = "ripr-perl-facts-v1";
+
+/// The versioned envelope consumed by the producer-owned agent verification
+/// route and emitted by the agent seam packet renderer.
+pub(crate) const AGENT_SEAM_PACKET_SCHEMA_VERSION: &str = "0.4";
 pub(crate) use crate::analysis::repair_route::repair_route_readiness;
 pub(crate) use check::is_managed_perl_producer;
 pub use check::{

@@ -11780,7 +11780,7 @@ fn execute_command_collect_context_returns_agent_seam_packet_for_known_seam() ->
         let Some(packet) = packet else {
             return Err("expected seam packet".to_string());
         };
-        assert_eq!(packet["schema_version"], "0.3");
+        assert_eq!(packet["schema_version"], "0.4");
         assert_eq!(packet["packets_total"], 1);
         assert_eq!(packet["packets"][0]["seam_id"], seam_id);
         assert_eq!(

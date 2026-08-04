@@ -24,6 +24,102 @@ impl AnalysisOutcomeArtifactError {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AnalysisOutcomeUnavailableStatus {
+    Missing,
+    Invalid,
+}
+
+impl AnalysisOutcomeUnavailableStatus {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Missing => "missing",
+            Self::Invalid => "invalid",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AnalysisOutcomeProjection {
+    pub(crate) status: &'static str,
+    pub(crate) outcome: Value,
+    pub(crate) error: Option<String>,
+}
+
+pub(crate) fn analysis_outcome_projection(
+    analysis_outcome: Option<&AnalysisOutcome>,
+    required: bool,
+) -> AnalysisOutcomeProjection {
+    let Some(analysis_outcome) = analysis_outcome else {
+        return if required {
+            AnalysisOutcomeProjection {
+                status: "missing",
+                outcome: Value::Null,
+                error: Some(
+                    "diff-scoped agent packet requires the producer AnalysisOutcome artifact"
+                        .to_string(),
+                ),
+            }
+        } else {
+            AnalysisOutcomeProjection {
+                status: "not_applicable",
+                outcome: Value::Null,
+                error: None,
+            }
+        };
+    };
+
+    let outcome_value = match serde_json::to_value(analysis_outcome) {
+        Ok(value) => value,
+        Err(error) => {
+            return AnalysisOutcomeProjection {
+                status: "invalid",
+                outcome: Value::Null,
+                error: Some(format!(
+                    "serialize producer AnalysisOutcome failed: {error}"
+                )),
+            };
+        }
+    };
+    let digest = match analysis_outcome.semantic_digest() {
+        Ok(digest) => digest,
+        Err(error) => {
+            return AnalysisOutcomeProjection {
+                status: "invalid",
+                outcome: Value::Null,
+                error: Some(format!(
+                    "compute producer AnalysisOutcome digest failed: {error}"
+                )),
+            };
+        }
+    };
+
+    AnalysisOutcomeProjection {
+        status: if analysis_outcome.kind.is_complete() {
+            "complete"
+        } else {
+            "incomplete"
+        },
+        outcome: serde_json::json!({
+            "analysis_complete": analysis_outcome.kind.is_complete(),
+            "outcome": outcome_value,
+            "semantic_digest": digest,
+        }),
+        error: None,
+    }
+}
+
+pub(crate) fn unavailable_analysis_outcome_projection(
+    status: AnalysisOutcomeUnavailableStatus,
+    reason: &str,
+) -> AnalysisOutcomeProjection {
+    AnalysisOutcomeProjection {
+        status: status.as_str(),
+        outcome: Value::Null,
+        error: Some(reason.to_string()),
+    }
+}
+
 impl std::fmt::Display for AnalysisOutcomeArtifactError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -298,9 +394,19 @@ mod tests {
                     .to_string()
             ))
         );
+        // Use an absolute path that cannot accidentally resolve back into the
+        // checkout. Hosted CI places `CARGO_TARGET_DIR` outside the checkout,
+        // while local Cargo commonly creates an in-tree `target`; using the
+        // relative `target` path would therefore exercise different Git
+        // discovery behavior in the two environments.
+        let invalid_root = std::env::temp_dir().join(format!(
+            "ripr-analysis-outcome-invalid-root-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&invalid_root);
         assert!(matches!(
             validate_analysis_outcome_artifact(
-                Path::new("target"),
+                &invalid_root,
                 &root_display,
                 &artifact(&outcome, true)?,
             ),

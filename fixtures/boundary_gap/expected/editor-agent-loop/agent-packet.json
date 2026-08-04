@@ -1,6 +1,9 @@
 {
-  "schema_version": "0.3",
+  "schema_version": "0.4",
   "scope": "repo",
+  "analysis_outcome_status": "not_applicable",
+  "analysis_outcome_error": null,
+  "analysis_outcome": null,
   "run_status": "complete",
   "packets_total": 1,
   "packets": [

@@ -42,7 +42,7 @@ map is:
 | `ripr check --format sarif` | `version` | `2.1.0` (standard SARIF envelope) |
 | `ripr gate evaluate` | `schema_version` | `0.1` |
 | `ripr doctor --json` | `schema_version` | `0.2` |
-| `ripr agent packet` | `schema_version` | `0.3` |
+| `ripr agent packet` | `schema_version` | `0.4` |
 | `ripr agent receipt` | `schema_version` | `0.4` |
 | `ripr agent status` | `schema_version` | `0.1` |
 | `ripr agent review-summary` | `schema_version` | `0.1` |
@@ -6371,7 +6371,7 @@ Field contract:
 
 `ripr agent verify-execute --root <workspace> --packet <packet-json>
 --result-json <result-json> --authorize --json` is the only explicit process
-execution surface in the agent loop. It accepts one schema `0.3` producer
+execution surface in the agent loop. It accepts one schema `0.4` producer
 envelope containing exactly one packet, and executes only the direct,
 no-network, no-write `ripr agent verify` route. The current ripr executable is
 used; shell text is never interpreted.
@@ -12804,7 +12804,7 @@ schema bump.
 
 Field contract:
 
-- `schema_version` — currently `"0.3"`. Distinct from the repo-exposure
+- `schema_version` — currently `"0.4"`. Distinct from the repo-exposure
   report's `"0.2"` because the packet is a separate contract aimed at
   coding agents rather than reviewers. Bumping requires updating this
   section, the renderer (`crates/ripr/src/output/agent_seam_packets.rs`),
@@ -12816,12 +12816,28 @@ Field contract:
   `nearest_strong_test_to_imitate`, `candidate_values`,
   `assertion_shape`, `patterns_to_imitate`, `patterns_to_avoid`, and
   packet `confidence` without changing the version again because the
-  in-flight `0.3` contract had not yet closed.
+  in-flight `0.3` contract had not yet closed. `0.4` adds the producer-owned
+  `analysis_outcome_status` and `analysis_outcome` envelope so packet
+  consumers cannot mistake seam-budget completion for diff-analysis
+  completeness.
   Reason and confidence vocabularies are documented in the
   `repo-exposure.json` field contract above.
 - `scope` — always `"repo"`, including the one-seam `ripr agent packet`
   expansion. The one-seam command is a filtered view of the repo packet
   contract, not a second packet schema.
+- `analysis_outcome_status` — the producer outcome projection state. It is
+  `"complete"` or `"incomplete"` when a typed diff outcome is present,
+  `"missing"` or `"invalid"` when a required producer artifact cannot be
+  trusted, and `"not_applicable"` for repo-only or gap-ledger packets that do
+  not have a diff denominator. This field is independent of `run_status`,
+  which only describes the agent packet seam budget.
+- `analysis_outcome_error` — optional bounded diagnostic for `missing` or
+  `invalid` producer evidence. It is never converted into a clean packet.
+- `analysis_outcome` — `null` for `not_applicable`, `missing`, or `invalid`;
+  otherwise an envelope containing `analysis_complete`, the exact typed
+  producer `outcome` (including kind, limitations, recovery routes, and input
+  identity), and its `semantic_digest`. Packet consumers copy this envelope;
+  they do not rerun diff analysis or infer completeness from packet counts.
 - `source` - optional. Present as `"gap_decision_ledger"` when the packet was
   rendered from explicit `GapRecord` input rather than live seam analysis.
 - `inputs.gap_ledger` - optional. Present with gap-ledger packet mode so

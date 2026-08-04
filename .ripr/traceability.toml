@@ -371,7 +371,7 @@ tests = [
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_ungripped_seam_when_packet_is_rendered_then_task_is_write_targeted_test",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_strongly_gripped_seam_when_packets_are_requested_then_no_actionable_packet_is_emitted",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_related_tests_when_packet_is_rendered_then_oracle_kind_and_strength_are_present",
-  "crates/ripr/src/output/agent_seam_packets.rs::tests::schema_version_is_pinned_to_zero_three",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::schema_version_is_pinned_to_zero_four",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::actionable_packet_carries_a_suggested_test_command_marked_not_yet_runnable",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::single_actionable_envelope_carries_the_whole_loop_including_a_seam_receipt",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::mixed_actionable_and_limitation_envelope_leaves_the_seam_receipt_null",
@@ -6547,6 +6547,10 @@ tests = [
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_preserves_incomplete_typed_outcome_and_digest",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_does_not_look_clean_without_producer_evidence",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_marks_malformed_or_stale_evidence_invalid",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::repo_packet_marks_diff_outcome_not_applicable",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::diff_packet_copies_complete_zero_outcome_and_digest",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::diff_packet_preserves_unsupported_outcome_as_incomplete",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::diff_packet_marks_missing_producer_outcome_incomplete",
 ]
 code = [
   "crates/ripr/src/analysis_outcome.rs",
@@ -6592,6 +6596,7 @@ code = [
   "crates/ripr/src/app/analysis_outcome_artifact.rs",
   "crates/ripr/src/output/agent_receipt.rs",
   "crates/ripr/src/cli/commands/agent.rs",
+  "crates/ripr/src/output/agent_seam_packets.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md",

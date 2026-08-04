@@ -52,8 +52,8 @@ under `xtask/src/reports/pr_evidence_summary/`. PR-C owns LSP consumption: the
 committed editor snapshot, analysis status, workspace status, and
 top-limitation command retain the typed outcome and derive
 `limited_incomplete_input` without treating zero findings as complete.
-Generated-CI and agent projections remain serial follow-up work. This slice
-owns the generated-CI handoff only: `ripr-pr` preserves the producer's
+Generated-CI and agent projections are covered by serial follow-up slices.
+This slice owns the generated-CI handoff: `ripr-pr` preserves the producer's
 canonical check JSON at `target/ripr/pr/check.json`, removes a stale copy
 before each run, and pull-request workflows pass that artifact to
 review-comments. The workflow does not infer completeness from the PR-evidence
@@ -61,8 +61,10 @@ summary packet. The first agent parity slice is the generated workflow and
 `agent review-summary` handoff described below. The receipt parity slice now
 consumes the same artifact through a shared validator, copies the typed outcome
 and semantic digest, and emits an explicit missing or invalid state instead of
-a clean-looking legacy receipt. Agent packets remain unclaimed until their own
-parity fixtures consume this DTO.
+a clean-looking legacy receipt. Agent packets copy the typed producer envelope
+when diff-scoped and explicitly mark repo-only and gap-ledger packets as not
+applicable; their seam-budget `run_status` is not a diff-completeness
+authority.
 Review-comments is the bounded review consumer described below.
 
 The review-comments projection is the next bounded consumer. When invoked with
@@ -113,8 +115,9 @@ projection does not analyze those regions.
   named diff-scoped analysis-outcome artifact for `agent review-summary`.
   Agent receipts consume that artifact without rerunning analysis and preserve
   complete, incomplete, missing, malformed, stale, and identity-mismatched
-  states; agent packets remain explicitly unclaimed until their own parity
-  fixtures land.
+  states. Agent packets copy the typed producer envelope when diff-scoped and
+  explicitly mark repo-only and gap-ledger packets as not applicable; their
+  seam-budget `run_status` is not a diff-completeness authority.
 
 Review-comments complete, partial, and unsupported producer-backed fixtures
 preserve the typed kind, completeness, limitation, and recovery route in JSON
@@ -124,7 +127,9 @@ an incomplete outcome is explicitly not clean. Generated-CI is covered by the
 canonical check artifact and workflow forwarding described above. The agent
 review-summary and receipt slices require the producer artifact, preserve the
 typed envelope and semantic identity, and never fabricate a replacement
-outcome; agent packets remain unclaimed.
+outcome. Agent packet fixtures cover complete zero, incomplete/unsupported,
+and repo-only not-applicable projections without conflating `run_status` with
+diff completeness.
 
 Current PR-A proof is anchored by
 `analysis::pipeline::tests::diff_pipeline_projects_parser_limitation_and_distinguishes_complete_zero`
@@ -160,7 +165,8 @@ and
   `pr_evidence::tests::write_and_check_packet_in_git_repo`, and
   `pr_evidence::tests::stale_check_artifact_is_removed_before_revision_setup_failure`;
   generated agent workflow and review-summary parity are covered by their named
-  artifact fixtures; agent packets and receipts remain explicitly unclaimed.
+  artifact fixtures; agent packet fixtures cover the producer envelope and
+  explicit repo-only non-applicability.
 
 ## Test Mapping
 
@@ -204,13 +210,14 @@ PR-C projects the DTO through `crates/ripr/src/lsp/state.rs`,
 `docs/OUTPUT_SCHEMA.md` records the wire shape. Generated-CI preserves the
 raw producer artifact through `xtask/src/reports/pr_evidence.rs`, forwards it
 from the CI workflows, and emits the same handoff from the generated workflow
-in `crates/ripr/src/cli/commands/init.rs`; agent projections remain explicitly
-unclaimed. The producer's success, failure, timeout, packet-validation, and
+in `crates/ripr/src/cli/commands/init.rs`. The producer's success, failure,
+timeout, packet-validation, and
 stale-artifact setup tests are mapped directly in the traceability ledger.
 The generated agent workflow records the same diff-scoped producer envelope at
 `target/ripr/workflow/analysis-outcome.json`, and `agent_review_summary`
-consumes it as typed data; agent packets and receipts remain explicitly
-unclaimed.
+consumes it as typed data. Diff-backed agent packets receive the typed outcome
+from `CheckOutput`; repo-only and gap-ledger packet routes disclose that no
+diff denominator applies, without rerunning analysis.
 Review-comments consumes the DTO in `crates/ripr/src/cli/commands.rs` and
 projects it through `crates/ripr/src/output/review_comments.rs`; the wire
 contract is defined in `schemas/ripr/review-comments.schema.json` and the

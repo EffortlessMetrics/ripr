@@ -54,7 +54,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const PACKET_SCHEMA_VERSION: &str = "0.3";
+const PACKET_SCHEMA_VERSION: &str = crate::app::AGENT_SEAM_PACKET_SCHEMA_VERSION;
 const MAX_OUTPUT_BYTES: u64 = 1_048_576;
 const MAX_CANCEL_AFTER_MS: u64 = 3_600_000;
 const RESPONSE_SCHEMA_VERSION: &str = "1";

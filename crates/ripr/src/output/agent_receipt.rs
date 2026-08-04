@@ -6,26 +6,16 @@
 //! runtime mutation output.
 
 use crate::analysis_outcome::AnalysisOutcome;
+use crate::app::analysis_outcome_artifact::{
+    analysis_outcome_projection, unavailable_analysis_outcome_projection,
+};
 use serde_json::Value;
 
 use super::receipt_lifecycle::receipt_lifecycle_state_from_movement;
 
 pub(crate) const AGENT_RECEIPT_SCHEMA_VERSION: &str = "0.4";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AgentReceiptUnavailableStatus {
-    Missing,
-    Invalid,
-}
-
-impl AgentReceiptUnavailableStatus {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Missing => "missing",
-            Self::Invalid => "invalid",
-        }
-    }
-}
+pub(crate) use crate::app::analysis_outcome_artifact::AnalysisOutcomeUnavailableStatus as AgentReceiptUnavailableStatus;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum AgentReceiptAnalysisOutcome {
@@ -121,7 +111,14 @@ pub(crate) fn render_agent_receipt_value_json(
     let guidance = receipt_guidance(&seam.change);
     let receipt_state = receipt_lifecycle_state_from_movement(Some(seam.change.as_str()));
     let provenance = provenance_json(&provenance, &seam);
-    let analysis_projection = analysis_outcome_json(&analysis_outcome)?;
+    let analysis_projection = match &analysis_outcome {
+        AgentReceiptAnalysisOutcome::Present(outcome) => {
+            analysis_outcome_projection(Some(outcome), true)
+        }
+        AgentReceiptAnalysisOutcome::Unavailable { status, reason } => {
+            unavailable_analysis_outcome_projection(*status, reason)
+        }
+    };
     let status = match &analysis_outcome {
         AgentReceiptAnalysisOutcome::Present(outcome) if outcome.kind.is_complete() => "advisory",
         AgentReceiptAnalysisOutcome::Present(_) => "incomplete",
@@ -136,9 +133,9 @@ pub(crate) fn render_agent_receipt_value_json(
         "schema_version": AGENT_RECEIPT_SCHEMA_VERSION,
         "tool": "ripr",
         "status": status,
-        "analysis_outcome_status": analysis_outcome_status(&analysis_outcome),
-        "analysis_outcome_error": analysis_outcome_error(&analysis_outcome),
-        "analysis_outcome": analysis_projection,
+        "analysis_outcome_status": analysis_projection.status,
+        "analysis_outcome_error": analysis_projection.error,
+        "analysis_outcome": analysis_projection.outcome,
         "inputs": {
             "agent_verify_json": agent_verify_path,
             "before": input_paths.before,
@@ -173,32 +170,6 @@ pub(crate) fn render_agent_receipt_value_json(
         }
     });
     super::json::render_pretty_with_newline(&value, "agent receipt")
-}
-
-fn analysis_outcome_json(analysis_outcome: &AgentReceiptAnalysisOutcome) -> Result<Value, String> {
-    match analysis_outcome {
-        AgentReceiptAnalysisOutcome::Present(outcome) => Ok(serde_json::json!({
-            "analysis_complete": outcome.kind.is_complete(),
-            "outcome": outcome,
-            "semantic_digest": outcome.semantic_digest()?
-        })),
-        AgentReceiptAnalysisOutcome::Unavailable { .. } => Ok(Value::Null),
-    }
-}
-
-fn analysis_outcome_status(analysis_outcome: &AgentReceiptAnalysisOutcome) -> &str {
-    match analysis_outcome {
-        AgentReceiptAnalysisOutcome::Present(outcome) if outcome.kind.is_complete() => "complete",
-        AgentReceiptAnalysisOutcome::Present(_) => "incomplete",
-        AgentReceiptAnalysisOutcome::Unavailable { status, .. } => status.as_str(),
-    }
-}
-
-fn analysis_outcome_error(analysis_outcome: &AgentReceiptAnalysisOutcome) -> Option<&str> {
-    match analysis_outcome {
-        AgentReceiptAnalysisOutcome::Unavailable { reason, .. } => Some(reason.as_str()),
-        AgentReceiptAnalysisOutcome::Present(_) => None,
-    }
 }
 
 #[cfg(test)]

@@ -127,10 +127,12 @@ pub(crate) fn render_check_with_config(
                 eprintln!("ripr agent packets: {warning}");
             }
             Ok(
-                agent_seam_packets::render_agent_seam_packets_json_with_causal(
+                agent_seam_packets::render_agent_seam_packets_json_with_causal_and_outcome(
                     &classified,
                     None,
                     causal_projection.as_ref(),
+                    output.analysis_outcome.as_ref(),
+                    output.base.is_some(),
                 ),
             )
         }
@@ -471,7 +473,7 @@ mod tests {
             &RiprConfig::default(),
         )?;
 
-        assert!(rendered.contains("\"schema_version\": \"0.3\""));
+        assert!(rendered.contains("\"schema_version\": \"0.4\""));
         assert!(rendered.contains("\"packets\""));
 
         remove_temp_root(&output.root)?;
