@@ -34,6 +34,11 @@ fn gate_acknowledgeable_blocks_policy_candidate_without_label() -> Result<(), St
     assert_eq!(report.summary.blocking, 1);
     assert!(gate_decision_should_fail(&report));
     assert_eq!(report.decisions[0].decision, "blocking");
+    // #2640: the reason names the label that would have acknowledged the gap.
+    assert_eq!(
+        report.decisions[0].gate_reason,
+        "policy-eligible gap blocks under acknowledgeable mode without a matching acknowledgement label (expected: `ripr-waive`)"
+    );
     Ok(())
 }
 
@@ -1270,6 +1275,52 @@ fn gate_acknowledgeable_blocks_complete_gap_ledger_route_with_typed_seam_identit
     Ok(())
 }
 
+/// #2640: the `(expected: ...)` acknowledgement-label hint must be reachable
+/// for `gap_decision_ledger` blockers, not only for `comments`-source blockers.
+/// Without threading the labels into the gap-ledger arm, the hint was dead code
+/// for the source that most needs it (review bots flagged this in #2863).
+#[test]
+fn gate_acknowledgeable_gap_ledger_block_names_the_expected_label() -> Result<(), String> {
+    let dir = temp_dir("gate-gap-ledger-label")?;
+    let gap_ledger = write_temp_json(&dir, "gap-ledger.json", GAP_LEDGER_BLOCKING_JSON)?;
+    let input = GateEvaluateInput {
+        root: dir.clone(),
+        repo_exposure: None,
+        pr_guidance: None,
+        gap_ledger: Some(
+            gap_ledger
+                .strip_prefix(&dir)
+                .map_err(|err| err.to_string())?
+                .to_path_buf(),
+        ),
+        sarif_policy: None,
+        labels_json: None,
+        labels: Vec::new(),
+        agent_verify: None,
+        agent_receipt: None,
+        recommendation_calibration: None,
+        mutation_calibration: None,
+        baseline: None,
+        mode: GateMode::Acknowledgeable,
+        acknowledgement_labels: vec!["ripr-waive".to_string()],
+        exception_policy: None,
+    };
+
+    let report = build_gate_decision_report(&input)?;
+    assert_eq!(report.status, "blocked");
+    assert_eq!(report.decisions[0].decision, "blocking");
+    assert_eq!(report.decisions[0].source, "gap_decision_ledger");
+    assert!(
+        report.decisions[0]
+            .gate_reason
+            .contains("without a matching acknowledgement label (expected: `ripr-waive`)"),
+        "gap-ledger block must name the expected label; got: {}",
+        report.decisions[0].gate_reason
+    );
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
 #[test]
 fn conflicting_gap_ledger_seam_identities_fail_closed_as_config_error() -> Result<(), String> {
     let dir = temp_dir("gate-gap-ledger-conflicting-seams")?;
@@ -1420,6 +1471,26 @@ fn gate_labels_array_supports_custom_acknowledgement_label() -> Result<(), Strin
         report.decisions[0].policy.acknowledgement_label.as_deref(),
         Some("accepted-risk")
     );
+
+    // #2640: without the waiver label the blocking reason names the configured
+    // label, not the built-in default.
+    input.labels_json = None;
+    let blocked = build_gate_decision_report(&input)?;
+    assert_eq!(blocked.status, "blocked");
+    assert_eq!(blocked.decisions[0].decision, "blocking");
+    assert_eq!(
+        blocked.decisions[0].gate_reason,
+        "policy-eligible gap blocks under acknowledgeable mode without a matching acknowledgement label (expected: `accepted-risk`)"
+    );
+    assert!(!blocked.decisions[0].gate_reason.contains("ripr-waive"));
+
+    input.acknowledgement_labels = vec!["accepted-risk".to_string(), "ops-waiver".to_string()];
+    let blocked = build_gate_decision_report(&input)?;
+    assert_eq!(
+        blocked.decisions[0].gate_reason,
+        "policy-eligible gap blocks under acknowledgeable mode without a matching acknowledgement label (expected: `accepted-risk`, `ops-waiver`)"
+    );
+
     let _ = fs::remove_dir_all(dir);
     Ok(())
 }

@@ -581,6 +581,9 @@ fn gate_decision(
             mutation_calibration: &mutation_calibration,
             acknowledgement_label: acknowledgement_label.as_deref(),
         },
+        // #2640: the configured labels travel alongside the matched one so a
+        // blocking reason can name the label that would have acknowledged it.
+        &policy.acknowledgement_labels,
     );
     let repair_route = build_gate_repair_route(candidate);
     GateDecision {
@@ -805,7 +808,26 @@ fn candidate_would_block(
     }
 }
 
-fn gate_reason(candidate: &GateCandidate, context: GateReasonContext<'_>) -> String {
+/// Append the `(expected: \`label\`, ...)` suffix to a blocking reason when
+/// acknowledgement labels are configured. Shared by the gap-decision-ledger arm
+/// and the catch-all arm so the hint is reachable for every blocking source.
+fn append_expected_label(base: &str, labels: &[String]) -> String {
+    if labels.is_empty() {
+        return base.to_string();
+    }
+    let expected = labels
+        .iter()
+        .map(|label| format!("`{label}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{base} without a matching acknowledgement label (expected: {expected})")
+}
+
+fn gate_reason(
+    candidate: &GateCandidate,
+    context: GateReasonContext<'_>,
+    configured_acknowledgement_labels: &[String],
+) -> String {
     if candidate.suppressed || candidate.configured_off {
         return format!(
             "configured-hidden or suppressed candidate preserved as `{}`",
@@ -881,10 +903,13 @@ fn gate_reason(candidate: &GateCandidate, context: GateReasonContext<'_>) -> Str
         "blocking" if context.mode == GateMode::BaselineCheck && context.is_baseline_new => {
             "new policy-eligible gap blocks under baseline-check".to_string()
         }
-        "blocking" if candidate.source == "gap_decision_ledger" => format!(
-            "new repairable {} gap blocks from gap decision ledger",
-            candidate.gap_kind.as_deref().unwrap_or("Rust")
-        ),
+        "blocking" if candidate.source == "gap_decision_ledger" => {
+            let base = format!(
+                "new repairable {} gap blocks from gap decision ledger",
+                candidate.gap_kind.as_deref().unwrap_or("Rust")
+            );
+            append_expected_label(&base, configured_acknowledgement_labels)
+        }
         "blocking" if context.mode == GateMode::CalibratedGate => {
             if context.mutation_calibration.confidence_effect == "supports_static_gap" {
                 "new policy-eligible gap has supporting imported mutation calibration".to_string()
@@ -892,7 +917,10 @@ fn gate_reason(candidate: &GateCandidate, context: GateReasonContext<'_>) -> Str
                 "new policy-eligible gap has supporting recommendation calibration".to_string()
             }
         }
-        "blocking" => "policy-eligible gap blocks under acknowledgeable mode".to_string(),
+        "blocking" => {
+            let base = "policy-eligible gap blocks under acknowledgeable mode";
+            append_expected_label(base, configured_acknowledgement_labels)
+        }
         _ if context.mode == GateMode::VisibleOnly => {
             "visible-only mode records evidence without blocking".to_string()
         }
