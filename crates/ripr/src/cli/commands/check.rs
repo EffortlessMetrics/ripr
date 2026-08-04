@@ -159,14 +159,9 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 // --mode is a speed tier on the diff path, not a scope provider.
                 // `ripr check --mode fast` with no --diff/--base analyzes nothing
                 // and must still trigger the no-scope disclosure (RIPR-SPEC-0083).
-                // #2644: `fast` is currently behaviorally identical to `draft`.
-                // Warn the user so the no-op is visible.
-                if input.mode == app::Mode::Fast {
-                    eprintln!(
-                        "ripr: --mode fast is currently identical to --mode draft; \
-                         there is no behavioral difference. Use --mode draft or --mode deep."
-                    );
-                }
+                // #2644: the `fast` no-op notice is NOT emitted here — argv
+                // position is not the effective mode. It fires once after the
+                // config merge below.
             }
             "--json" => input.format = OutputFormat::Json,
             "--format" => {
@@ -296,6 +291,19 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 path.display()
             ));
         }
+    }
+    // #2644: `fast` is currently behaviorally identical to `draft`. The notice
+    // fires on the EFFECTIVE mode after `apply_to_check_input`, not on argv
+    // position, so a repo `ripr.toml` with `mode = "fast"` is disclosed too,
+    // `--mode fast --mode deep` stays silent, and a repeated `--mode fast`
+    // discloses once. stderr only: stdout and every machine format are
+    // unchanged. This sits before the gap-ledger and repo-exposure-json early
+    // returns below so repo-scoped formats keep the notice.
+    if input.mode == app::Mode::Fast {
+        eprintln!(
+            "ripr: mode fast is currently identical to mode draft; there is no behavioral difference. \
+             Use draft or deep (--mode on the command line, or [analysis] mode in ripr.toml)."
+        );
     }
     if let Some(warning) =
         repo_scope_diff_bound_warning(format, base_explicitly_provided, input.diff_file.as_deref())

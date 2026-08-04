@@ -7629,6 +7629,182 @@ fn check_mode_fast_alone_shows_no_scope_disclosure_smoke() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+// #2644 regression guards: the fast-mode no-op notice is a property of the
+// EFFECTIVE (config-merged) mode, not of argv position. #2851 added the notice
+// inside the argv parse loop with no tests; these guards pin the resolved-mode
+// behavior and the stderr-only contract.
+
+/// Wording-independent fragment of the #2644 notice. Matching the claim rather
+/// than the full sentence keeps these guards about the emission site, and makes
+/// the negative guards fail on any fast-mode notice, however it is phrased.
+const FAST_MODE_NOOP_NOTICE: &str = "fast is currently identical to";
+
+/// A committed single-package git repo for `check --root <repo>` runs.
+fn fast_mode_notice_workspace(label: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace(label);
+    std::fs::create_dir_all(root.join("src"))?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+    )?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"fast-mode-notice-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )?;
+    init_git_fixture_repo(&root)?;
+    Ok(root)
+}
+
+/// A repo `ripr.toml` with `mode = "fast"` resolves to the fast tier just as
+/// `--mode fast` does, so it must get the same no-op notice. Before the fix the
+/// notice was tied to the `--mode` argv arm and config-derived fast was silent.
+#[test]
+fn check_fast_mode_notice_fires_for_config_derived_mode_smoke()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = fast_mode_notice_workspace("fast-notice-config")?;
+    let root_str = root.display().to_string();
+
+    let without_config = run_ripr(&["check", "--root", &root_str]);
+    let without_config_stderr = String::from_utf8_lossy(&without_config.stderr).into_owned();
+
+    std::fs::write(root.join("ripr.toml"), "[analysis]\nmode = \"fast\"\n")?;
+    let with_config = run_ripr(&["check", "--root", &root_str]);
+    let with_config_stderr = String::from_utf8_lossy(&with_config.stderr).into_owned();
+
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        !without_config_stderr.contains(FAST_MODE_NOOP_NOTICE),
+        "default mode must not emit the fast no-op notice; got stderr:\n{without_config_stderr}"
+    );
+    assert!(
+        with_config_stderr.contains(FAST_MODE_NOOP_NOTICE),
+        "ripr.toml [analysis] mode = \"fast\" must emit the fast no-op notice; got stderr:\n{with_config_stderr}"
+    );
+    Ok(())
+}
+
+/// `--mode fast --mode deep` resolves to deep, so the notice must not fire —
+/// argv-position emission warned about a mode the run never used. stdout must
+/// stay byte-identical to the same run without the overridden `--mode fast`.
+#[test]
+fn check_fast_mode_notice_is_silent_when_a_later_mode_wins_smoke()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = fast_mode_notice_workspace("fast-notice-overridden")?;
+    let root_str = root.display().to_string();
+
+    let overridden = run_ripr(&[
+        "check", "--root", &root_str, "--mode", "fast", "--mode", "deep", "--json",
+    ]);
+    let deep_only = run_ripr(&["check", "--root", &root_str, "--mode", "deep", "--json"]);
+    let overridden_stderr = String::from_utf8_lossy(&overridden.stderr).into_owned();
+
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        !overridden_stderr.contains(FAST_MODE_NOOP_NOTICE),
+        "--mode fast --mode deep resolves to deep and must not emit the fast no-op notice; got stderr:\n{overridden_stderr}"
+    );
+    assert_eq!(
+        overridden.stdout, deep_only.stdout,
+        "the fast no-op notice is stderr-only; stdout must not change"
+    );
+    assert_eq!(
+        overridden.status.code(),
+        deep_only.status.code(),
+        "the fast no-op notice must not change the exit code"
+    );
+    Ok(())
+}
+
+/// A repeated `--mode fast` resolves to one effective mode, so the notice fires
+/// once. Argv-position emission printed it once per occurrence.
+#[test]
+fn check_fast_mode_notice_is_emitted_once_for_repeated_mode_flags_smoke()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = fast_mode_notice_workspace("fast-notice-repeated")?;
+    let root_str = root.display().to_string();
+
+    let repeated = run_ripr(&[
+        "check", "--root", &root_str, "--mode", "fast", "--mode", "fast", "--json",
+    ]);
+    let single = run_ripr(&["check", "--root", &root_str, "--mode", "fast", "--json"]);
+    let repeated_stderr = String::from_utf8_lossy(&repeated.stderr).into_owned();
+    let single_stderr = String::from_utf8_lossy(&single.stderr).into_owned();
+
+    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(
+        repeated_stderr.matches(FAST_MODE_NOOP_NOTICE).count(),
+        1,
+        "--mode fast --mode fast must emit the fast no-op notice once; got stderr:\n{repeated_stderr}"
+    );
+    assert_eq!(
+        single_stderr.matches(FAST_MODE_NOOP_NOTICE).count(),
+        1,
+        "--mode fast must emit the fast no-op notice once; got stderr:\n{single_stderr}"
+    );
+    assert_eq!(
+        repeated.stdout, single.stdout,
+        "the fast no-op notice is stderr-only; stdout must not change"
+    );
+    Ok(())
+}
+
+/// The notice is emitted before the gap-ledger and repo-exposure-json early
+/// returns, so repo-scoped formats keep it. A later emission site would drop
+/// the notice on exactly the paths that return before rendering findings.
+#[test]
+fn check_fast_mode_notice_precedes_repo_scoped_early_returns_smoke()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = fast_mode_notice_workspace("fast-notice-repo-scope")?;
+    let root_str = root.display().to_string();
+    let ledger = root.join("gap-ledger.json");
+    std::fs::write(&ledger, "{\"records\": []}\n")?;
+    let ledger_str = ledger.display().to_string();
+
+    let repo_exposure = run_ripr(&[
+        "check",
+        "--root",
+        &root_str,
+        "--mode",
+        "fast",
+        "--format",
+        "repo-exposure-json",
+    ]);
+    let gap_ledger = run_ripr(&[
+        "check",
+        "--root",
+        &root_str,
+        "--mode",
+        "fast",
+        "--format",
+        "repo-badge-json",
+        "--gap-ledger",
+        &ledger_str,
+    ]);
+    let repo_exposure_stderr = String::from_utf8_lossy(&repo_exposure.stderr).into_owned();
+    let gap_ledger_stderr = String::from_utf8_lossy(&gap_ledger.stderr).into_owned();
+    let repo_exposure_stdout = String::from_utf8_lossy(&repo_exposure.stdout).into_owned();
+    let gap_ledger_stdout = String::from_utf8_lossy(&gap_ledger.stdout).into_owned();
+
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(
+        repo_exposure_stderr.contains(FAST_MODE_NOOP_NOTICE),
+        "--format repo-exposure-json must still get the fast no-op notice; got stderr:\n{repo_exposure_stderr}"
+    );
+    assert!(
+        gap_ledger_stderr.contains(FAST_MODE_NOOP_NOTICE),
+        "--gap-ledger must still get the fast no-op notice; got stderr:\n{gap_ledger_stderr}"
+    );
+    assert!(
+        repo_exposure_stdout.starts_with('{'),
+        "repo-exposure-json stdout must stay machine-readable JSON; got:\n{repo_exposure_stdout}"
+    );
+    assert!(
+        gap_ledger_stdout.starts_with('{'),
+        "repo-badge-json stdout must stay machine-readable JSON; got:\n{gap_ledger_stdout}"
+    );
+    Ok(())
+}
+
 /// Regression guard: `ripr check --base origin/main` (real diff scope) must NOT
 /// show the no-scope disclosure when the result is empty.
 #[test]
