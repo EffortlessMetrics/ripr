@@ -52,9 +52,14 @@ under `xtask/src/reports/pr_evidence_summary/`. PR-C owns LSP consumption: the
 committed editor snapshot, analysis status, workspace status, and
 top-limitation command retain the typed outcome and derive
 `limited_incomplete_input` without treating zero findings as complete.
-Generated-CI and agent projections remain serial follow-up work and are
-unclaimed until they consume this DTO. Review-comments is the bounded review
-consumer described below.
+Generated-CI and agent projections remain serial follow-up work. This slice
+owns the generated-CI handoff only: `ripr-pr` preserves the producer's
+canonical check JSON at `target/ripr/pr/check.json`, removes a stale copy
+before each run, and pull-request workflows pass that artifact to
+review-comments. The workflow does not infer completeness from the PR-evidence
+summary packet. Agent projections remain unclaimed until their own parity
+fixtures consume this DTO. Review-comments is the bounded review consumer
+described below.
 
 The review-comments projection is the next bounded consumer. When invoked with
 `--check-output PATH`, it consumes the producer-generated check JSON and copies
@@ -99,15 +104,17 @@ projection does not analyze those regions.
 - Gate and PR-evidence-summary consumers are covered by PR-B2.
 - LSP analysis status and workspace/top-limitation status disclose the same
   typed outcome; incomplete input is never reported as `run_status = "full"`.
-- Generated-CI and agent surfaces remain explicitly unclaimed until their own
-  parity fixtures land.
+- Generated-CI preserves the canonical check artifact and forwards it to the
+  review-comments projection; agent surfaces remain explicitly unclaimed until
+  their own parity fixtures land.
 
 Review-comments complete, partial, and unsupported producer-backed fixtures
 preserve the typed kind, completeness, limitation, and recovery route in JSON
 and Markdown. Missing or malformed producer output is an error rather than a
 silent legacy fallback; a complete zero-finding outcome remains advisory and
-an incomplete outcome is explicitly not clean. Generated-CI and agent surfaces
-remain explicitly unclaimed until their own parity fixtures land.
+an incomplete outcome is explicitly not clean. Generated-CI is covered by the
+canonical check artifact and workflow forwarding described above; agent
+surfaces remain explicitly unclaimed until their own parity fixtures land.
 
 Current PR-A proof is anchored by
 `analysis::pipeline::tests::diff_pipeline_projects_parser_limitation_and_distinguishes_complete_zero`
@@ -130,7 +137,19 @@ and
 - LSP status, workspace status, top limitation, and diagnostic severity retain
   the typed outcome and suppress full-run repair authority for incomplete
   input.
-- Generated-CI and agent projections remain explicitly unclaimed.
+- Generated-CI canonical-artifact publication and workflow forwarding are
+  covered by this slice through `xtask/src/reports/pr_evidence.rs`,
+  `crates/ripr/src/cli/commands/init.rs`, and the generated-workflow fixtures
+  `commands::tests::init_generated_github_workflow_matches_smoke_fixture` and
+  `commands::tests::init_generated_github_workflow_is_advisory`. Direct
+  producer coverage includes
+  `pr_evidence::tests::run_ripr_check_uses_fake_binary_success_output`,
+  `pr_evidence::tests::run_ripr_check_reports_fake_binary_failure`,
+  `pr_evidence::tests::run_ripr_check_reports_fake_binary_timeout`,
+  `pr_evidence::tests::write_pr_evidence_writes_error_packet_when_check_fails`,
+  `pr_evidence::tests::write_and_check_packet_in_git_repo`, and
+  `pr_evidence::tests::stale_check_artifact_is_removed_before_revision_setup_failure`;
+  agent projections remain explicitly unclaimed.
 
 ## Test Mapping
 
@@ -171,7 +190,12 @@ builders. PR-B1 projects the DTO in `crates/ripr/src/output/sarif.rs` and
 `crates/ripr/src/app/pr_summary/` owner; xtask delegates through that API.
 PR-C projects the DTO through `crates/ripr/src/lsp/state.rs`,
 `crates/ripr/src/lsp/diagnostics.rs`, and `crates/ripr/src/lsp/backend.rs`.
-`docs/OUTPUT_SCHEMA.md` records the wire shape.
+`docs/OUTPUT_SCHEMA.md` records the wire shape. Generated-CI preserves the
+raw producer artifact through `xtask/src/reports/pr_evidence.rs`, forwards it
+from the CI workflows, and emits the same handoff from the generated workflow
+in `crates/ripr/src/cli/commands/init.rs`; agent projections remain explicitly
+unclaimed. The producer's success, failure, timeout, packet-validation, and
+stale-artifact setup tests are mapped directly in the traceability ledger.
 Review-comments consumes the DTO in `crates/ripr/src/cli/commands.rs` and
 projects it through `crates/ripr/src/output/review_comments.rs`; the wire
 contract is defined in `schemas/ripr/review-comments.schema.json` and the

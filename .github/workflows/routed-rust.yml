@@ -207,8 +207,8 @@ jobs:
         run: |
           cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
           cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
-          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
-          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check-output target/ripr/pr/check.json
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check --check-output target/ripr/pr/check.json
           cargo xtask impacted-evidence
           cargo xtask impacted-evidence --check
           cargo xtask ripr-pr-summary
@@ -349,8 +349,8 @@ jobs:
         run: |
           cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
           cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
-          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
-          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check-output target/ripr/pr/check.json
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check --check-output target/ripr/pr/check.json
           cargo xtask impacted-evidence
           cargo xtask impacted-evidence --check
           cargo xtask ripr-pr-summary
@@ -490,8 +490,8 @@ jobs:
         run: |
           cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
           cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
-          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
-          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check-output target/ripr/pr/check.json
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check --check-output target/ripr/pr/check.json
           cargo xtask impacted-evidence
           cargo xtask impacted-evidence --check
           cargo xtask ripr-pr-summary
@@ -584,8 +584,8 @@ jobs:
         run: |
           cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
           cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
-          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
-          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check-output target/ripr/pr/check.json
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check --check-output target/ripr/pr/check.json
           cargo xtask impacted-evidence
           cargo xtask impacted-evidence --check
           cargo xtask ripr-pr-summary

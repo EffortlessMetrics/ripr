@@ -14949,6 +14949,22 @@ artifact is reported as unavailable and never converted into a causal result.
 In particular, `comparison_unknown` and incomplete coverage remain visible but
 cannot be promoted by a renderer into PR-caused debt.
 
+## Canonical PR Check Artifact
+
+`cargo xtask ripr-pr` also preserves the parsed producer output at
+`target/ripr/pr/check.json`. This is the canonical typed analysis envelope for
+downstream PR projections; it is not the derived PR-evidence summary packet.
+The artifact retains the producer's `schema_version`, `tool`, `mode`, `root`,
+`base`, `summary`, `findings`, and `analysis_outcome` fields. A new PR-evidence
+run removes a stale copy before invoking the producer, so a failed or timed-out
+run cannot leave a previous passing outcome for generated CI to consume.
+
+Pull-request workflows pass this artifact to `ripr-review-comments
+--check-output target/ripr/pr/check.json` for both rendering and contract
+validation. Missing or malformed output remains an unavailable/error state;
+generated CI does not infer a complete result from the derived
+`target/ripr/pr/repo-exposure.json` packet.
+
 ## PR Evidence Summary
 
 `cargo xtask ripr-pr-summary` writes two sibling files after the legacy

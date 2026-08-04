@@ -95,7 +95,10 @@ line, reviewers should see it in the summary rather than on an unrelated line.
 `ripr review-comments` on pull requests before the existing RIPR advisory
 summary and annotation consumer steps. The generated workflow:
 
+- preserves the producer check JSON at `target/ripr/pr/check.json`;
 - writes `target/ripr/review/comments.json` and `comments.md`;
+- passes the canonical check artifact to `ripr review-comments
+  --check-output` so incomplete analysis cannot become a clean review packet;
 - appends PR guidance counts and summary content to `$GITHUB_STEP_SUMMARY`;
 - emits non-blocking GitHub check annotations from `comments[]`;
 - uploads `target/ripr/review/` with the rest of the RIPR artifact packet;

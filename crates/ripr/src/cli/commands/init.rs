@@ -486,11 +486,20 @@ jobs:
         # own input.
         continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
         run: |
-          mkdir -p target/ripr/review
+          mkdir -p target/ripr/pr target/ripr/review
+          check_status=0
+          ripr check \
+            --root . \
+            --base "origin/${{ github.base_ref }}" \
+            --format json > target/ripr/pr/check.json || check_status=$?
+          if [ "$check_status" -ne 0 ]; then
+            echo "RIPR check did not produce a complete result (exit $check_status); review-comments will fail closed on the named artifact."
+          fi
           ripr review-comments \
             --root . \
             --base "origin/${{ github.base_ref }}" \
             --head HEAD \
+            --check-output target/ripr/pr/check.json \
             --out target/ripr/review/comments.json
 
       - name: Capture existing RIPR inline comments

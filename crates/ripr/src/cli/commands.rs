@@ -6725,6 +6725,9 @@ language = "rust"
         assert!(workflow.contains("target/ripr/reports/index.md"));
         assert!(workflow.contains("target/ci/labels.json"));
         assert!(workflow.contains("target/ripr/review/comments.json"));
+        assert!(workflow.contains("target/ripr/pr/check.json"));
+        assert!(workflow.contains("ripr check \\"));
+        assert!(workflow.contains("--check-output target/ripr/pr/check.json"));
         assert!(workflow.contains("target/ripr/review/existing-comments.json"));
         assert!(workflow.contains("target/ripr/review/comment-publish-plan.json"));
         assert!(workflow.contains("target/ripr/review/comment-publish-plan.md"));
@@ -7161,7 +7164,13 @@ language = "rust"
 
         let guidance = workflow_step(&workflow, "Run RIPR PR guidance report");
         assert!(guidance.contains("github.event_name == 'pull_request'"));
-        assert!(guidance.contains("mkdir -p target/ripr/review"));
+        assert!(guidance.contains("mkdir -p target/ripr/pr target/ripr/review"));
+        assert!(guidance.contains("check_status=0"));
+        assert!(guidance.contains(r#"ripr check \"#));
+        assert!(guidance.contains(r#"--base "origin/${{ github.base_ref }}"#));
+        assert!(guidance.contains("--format json > target/ripr/pr/check.json"));
+        assert!(guidance.contains("|| check_status=$?"));
+        assert!(guidance.contains("target/ripr/pr/check.json"));
         assert!(guidance.contains("ripr review-comments"));
         assert!(guidance.contains("--base \"origin/${{ github.base_ref }}\""));
         assert!(guidance.contains("--head HEAD"));

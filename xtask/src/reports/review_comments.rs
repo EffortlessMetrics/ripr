@@ -686,7 +686,7 @@ fn error_review_comments_packet(
     error: &str,
     receipt: &Value,
 ) -> Value {
-    serde_json::json!({
+    let mut packet = serde_json::json!({
         "schema_version": "0.1",
         "tool": "ripr",
         "status": "error",
@@ -716,7 +716,30 @@ fn error_review_comments_packet(
         ],
         "limits_note": "Review guidance generation is advisory. The producer did not complete, so no comments are emitted.",
         "run_receipt": receipt
-    })
+    });
+    if let Some(analysis_outcome) = producer_analysis_outcome(repo, options) {
+        packet["analysis_outcome"] = analysis_outcome;
+        packet["limits_note"] = serde_json::json!(
+            "Review guidance generation did not complete; no comments are emitted, but the producer analysis outcome is retained and bound to this error packet."
+        );
+    }
+    packet
+}
+
+fn producer_analysis_outcome(repo: &Path, options: &ReviewCommentsOptions) -> Option<Value> {
+    let check_output = options.check_output.as_deref()?;
+    let path = Path::new(check_output);
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        repo.join(path)
+    };
+    let text = fs::read_to_string(path).ok()?;
+    let producer: Value = serde_json::from_str(&text).ok()?;
+    producer
+        .get("analysis_outcome")
+        .filter(|outcome| !outcome.is_null())
+        .cloned()
 }
 
 fn empty_review_comments_packet(
@@ -1230,6 +1253,78 @@ mod tests {
         assert!(violations.is_empty(), "{violations:#?}");
         assert_eq!(packet["status"], "error");
         assert_eq!(packet["warnings"][0]["kind"], "tool_error");
+    }
+
+    #[test]
+    fn error_packet_retains_check_output_analysis_outcome() -> Result<(), String> {
+        let repo = temp_repo("ripr-review-comments-error-outcome")?;
+        let mut options = options();
+        options.check_output = Some("target/check-output.json".to_string());
+        let producer = json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "draft",
+            "root": repo.display().to_string(),
+            "base": options.base.clone(),
+            "summary": {},
+            "findings": [],
+            "analysis_outcome": {
+                "analysis_complete": true,
+                "outcome": {
+                    "schema_version": "0.1",
+                    "kind": "complete_no_findings",
+                    "identity": {
+                        "repository_identity": null,
+                        "root_identity": null,
+                        "config_identity": null,
+                        "base_revision": options.base.clone(),
+                        "input_identity": null,
+                        "snapshot_identity": null
+                    },
+                    "counts": {
+                        "changed_file_count": 0,
+                        "changed_line_count": 0,
+                        "candidate_line_count": 0,
+                        "probe_count": 0,
+                        "finding_count": 0
+                    },
+                    "limitations": [],
+                    "claim_boundary": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+                }
+            }
+        });
+        fs::create_dir_all(repo.join("target")).map_err(|err| format!("create target: {err}"))?;
+        fs::write(
+            repo.join("target/check-output.json"),
+            serde_json::to_string(&producer).map_err(|err| format!("serialize: {err}"))?,
+        )
+        .map_err(|err| format!("write producer: {err}"))?;
+
+        let receipt = review_comments_receipt(
+            &repo,
+            &options,
+            "limited_timeout",
+            Some("ripr review-comments timed out after 60 seconds"),
+        );
+        let packet = error_review_comments_packet(
+            &repo,
+            &options,
+            "ripr review-comments timed out after 60 seconds",
+            &receipt,
+        );
+        assert_eq!(packet["status"], "error");
+        assert_eq!(packet["analysis_outcome"], producer["analysis_outcome"]);
+        let violations = validate_packet_value(
+            &packet,
+            &repo,
+            &options,
+            false,
+            Path::new(REVIEW_COMMENTS_MD),
+        );
+        assert!(violations.is_empty(), "{violations:#?}");
+
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
     }
 
     #[test]
