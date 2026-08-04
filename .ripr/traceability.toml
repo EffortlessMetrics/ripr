@@ -6541,6 +6541,12 @@ tests = [
   "xtask/src/reports/pr_evidence.rs::tests::stale_check_artifact_is_removed_before_revision_setup_failure",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_fails_closed_on_incomplete_analysis_outcome",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_rejects_malformed_analysis_outcome",
+  "crates/ripr/src/app/analysis_outcome_artifact.rs::tests::validates_complete_findings_and_zero_outcomes_without_count_inference",
+  "crates/ripr/src/app/analysis_outcome_artifact.rs::tests::preserves_incomplete_and_unsupported_kinds",
+  "crates/ripr/src/app/analysis_outcome_artifact.rs::tests::rejects_missing_envelope_and_declared_completeness_disagreement",
+  "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_preserves_incomplete_typed_outcome_and_digest",
+  "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_does_not_look_clean_without_producer_evidence",
+  "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_marks_malformed_or_stale_evidence_invalid",
 ]
 code = [
   "crates/ripr/src/analysis_outcome.rs",
@@ -6583,6 +6589,9 @@ code = [
   "crates/ripr/src/app/agent_review_summary/report.rs",
   "crates/ripr/src/app/agent_review_summary/types.rs",
   "crates/ripr/src/app/agent_workflow.rs",
+  "crates/ripr/src/app/analysis_outcome_artifact.rs",
+  "crates/ripr/src/output/agent_receipt.rs",
+  "crates/ripr/src/cli/commands/agent.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md",

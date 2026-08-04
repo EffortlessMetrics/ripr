@@ -58,8 +58,11 @@ canonical check JSON at `target/ripr/pr/check.json`, removes a stale copy
 before each run, and pull-request workflows pass that artifact to
 review-comments. The workflow does not infer completeness from the PR-evidence
 summary packet. The first agent parity slice is the generated workflow and
-`agent review-summary` handoff described below; agent packets and receipts
-remain unclaimed until their own parity fixtures consume this DTO.
+`agent review-summary` handoff described below. The receipt parity slice now
+consumes the same artifact through a shared validator, copies the typed outcome
+and semantic digest, and emits an explicit missing or invalid state instead of
+a clean-looking legacy receipt. Agent packets remain unclaimed until their own
+parity fixtures consume this DTO.
 Review-comments is the bounded review consumer described below.
 
 The review-comments projection is the next bounded consumer. When invoked with
@@ -108,8 +111,10 @@ projection does not analyze those regions.
 - Generated-CI preserves the canonical check artifact and forwards it to the
   review-comments projection; the generated agent workflow also publishes a
   named diff-scoped analysis-outcome artifact for `agent review-summary`.
-  Agent packets and receipts remain explicitly unclaimed until their own
-  parity fixtures land.
+  Agent receipts consume that artifact without rerunning analysis and preserve
+  complete, incomplete, missing, malformed, stale, and identity-mismatched
+  states; agent packets remain explicitly unclaimed until their own parity
+  fixtures land.
 
 Review-comments complete, partial, and unsupported producer-backed fixtures
 preserve the typed kind, completeness, limitation, and recovery route in JSON
@@ -117,8 +122,9 @@ and Markdown. Missing or malformed producer output is an error rather than a
 silent legacy fallback; a complete zero-finding outcome remains advisory and
 an incomplete outcome is explicitly not clean. Generated-CI is covered by the
 canonical check artifact and workflow forwarding described above. The agent
-review-summary slice requires a valid producer artifact and preserves the
-typed envelope; agent packets and receipts remain unclaimed.
+review-summary and receipt slices require the producer artifact, preserve the
+typed envelope and semantic identity, and never fabricate a replacement
+outcome; agent packets remain unclaimed.
 
 Current PR-A proof is anchored by
 `analysis::pipeline::tests::diff_pipeline_projects_parser_limitation_and_distinguishes_complete_zero`

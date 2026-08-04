@@ -33,7 +33,7 @@
     },
     "workflow_artifact": null
   },
-  "schema_version": "0.3",
+  "schema_version": "0.4",
   "seam": {
     "after": "weakly_gripped",
     "before": "weakly_gripped",
@@ -48,7 +48,10 @@
     "seam_id": "67fc764ba37d77bd",
     "seam_kind": "predicate_boundary"
   },
-  "status": "advisory",
+  "status": "incomplete",
+  "analysis_outcome_status": "missing",
+  "analysis_outcome_error": "<analysis_outcome_error>",
+  "analysis_outcome": null,
   "summary": {
     "receipt_state": "receipt_movement_unchanged",
     "next_action": {

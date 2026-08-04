@@ -4,6 +4,7 @@ pub(crate) mod agent_receipt;
 pub(crate) mod agent_review_summary;
 pub(crate) mod agent_status;
 pub(crate) mod agent_workflow;
+pub(crate) mod analysis_outcome_artifact;
 pub(crate) mod annotations;
 pub(crate) mod causal_projection;
 mod check;

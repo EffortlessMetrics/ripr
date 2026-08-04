@@ -85,8 +85,8 @@
       "name": "analysis_outcome",
       "label": "Analysis outcome",
       "path": "target/ripr/workflow/analysis-outcome.json",
-      "state": "invalid_json",
-      "status": "invalid_json",
+      "state": "invalid",
+      "status": "invalid",
       "required": true,
       "summary": "Analysis outcome artifact has an invalid typed outcome: complete_no_findings requires a behavioral candidate or probe subject."
     }

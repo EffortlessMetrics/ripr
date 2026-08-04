@@ -51,15 +51,8 @@
 //!
 
 // Shared internal outcome vocabulary for parser and output children under
-// #2827. The public Rust API remains unchanged until those consumers adopt
-// and deliberately expose the contract.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "staged internal contract; #2828 connects the first producer before public projection"
-    )
-)]
+// #2827. The public Rust API remains unchanged while internal projections
+// deliberately carry the contract.
 mod analysis_outcome;
 mod atomic_file;
 // Shared internal repair-guidance availability vocabulary for the agent packet

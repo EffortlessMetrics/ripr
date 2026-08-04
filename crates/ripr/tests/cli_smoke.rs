@@ -396,9 +396,28 @@ fn normalize_agent_receipt_fixture(text: &str) -> Result<String, Box<dyn std::er
             }
         }
     }
+    let object = value
+        .as_object_mut()
+        .ok_or("agent receipt fixture should be a JSON object")?;
+    if object.contains_key("analysis_outcome_error") {
+        object.insert(
+            "analysis_outcome_error".to_string(),
+            serde_json::Value::String("<analysis_outcome_error>".to_string()),
+        );
+    }
     let mut rendered = serde_json::to_string_pretty(&value)?;
     rendered.push('\n');
     Ok(rendered)
+}
+
+#[test]
+fn normalize_agent_receipt_fixture_rejects_non_object_json() -> Result<(), String> {
+    for fixture in ["[]", "null"] {
+        if normalize_agent_receipt_fixture(fixture).is_ok() {
+            return Err(format!("non-object fixture should be rejected: {fixture}"));
+        }
+    }
+    Ok(())
 }
 
 fn json_string_field(text: &str, field: &str) -> Option<String> {
@@ -2806,7 +2825,7 @@ fn agent_receipt_writes_one_seam_handoff_json() -> Result<(), Box<dyn std::error
     assert_success(&output);
 
     let text = std::fs::read_to_string(&receipt)?;
-    assert!(text.contains(r#""schema_version": "0.3""#));
+    assert!(text.contains(r#""schema_version": "0.4""#));
     assert!(text.contains(r#""seam_id": "seam-a""#));
     assert!(text.contains(r#""change": "improved""#));
     assert!(text.contains(&format!(

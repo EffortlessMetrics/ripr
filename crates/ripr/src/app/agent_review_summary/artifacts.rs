@@ -7,7 +7,6 @@ use crate::agent::loop_commands::{
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::agent_status::AgentStatusReport;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::path::Path;
 
 use super::receipt::receipt_snapshot;
@@ -40,102 +39,19 @@ pub(super) fn read_analysis_outcome(
     let Some(value) = artifact.value else {
         return (None, artifact.surface);
     };
-    if value.get("tool").and_then(Value::as_str) != Some("ripr") {
-        return (
-            None,
-            invalid_analysis_outcome_surface(
-                "Analysis outcome artifact has an unknown producer tool.",
-            ),
-        );
-    }
-    if value.get("root").and_then(Value::as_str) != Some(root_display) {
-        return (
-            None,
-            invalid_analysis_outcome_surface(
-                "Analysis outcome artifact root does not match the review root.",
-            ),
-        );
-    }
-    let Some(envelope) = value.get("analysis_outcome") else {
-        return (
-            None,
-            invalid_analysis_outcome_surface(
-                "Analysis outcome artifact is missing the analysis_outcome envelope.",
-            ),
-        );
-    };
-    let Some(declared_complete) = envelope.get("analysis_complete").and_then(Value::as_bool) else {
-        return (
-            None,
-            invalid_analysis_outcome_surface(
-                "Analysis outcome artifact is missing boolean analysis_complete.",
-            ),
-        );
-    };
-    let Some(outcome) = envelope.get("outcome") else {
-        return (
-            None,
-            invalid_analysis_outcome_surface(
-                "Analysis outcome artifact is missing the typed outcome.",
-            ),
-        );
-    };
-    let outcome = match serde_json::from_value::<AnalysisOutcome>(outcome.clone()) {
+    let outcome = match crate::app::analysis_outcome_artifact::validate_analysis_outcome_artifact(
+        root,
+        root_display,
+        &value,
+    ) {
         Ok(outcome) => outcome,
         Err(error) => {
             return (
                 None,
-                invalid_analysis_outcome_surface(&format!(
-                    "Analysis outcome artifact has an invalid typed outcome: {error}."
-                )),
+                invalid_analysis_outcome_surface(error.status(), &error.to_string()),
             );
         }
     };
-    if declared_complete != outcome.kind.is_complete() {
-        return (
-            None,
-            invalid_analysis_outcome_surface(
-                "Analysis outcome artifact completeness disagrees with its typed outcome.",
-            ),
-        );
-    }
-    let declared_base = value.get("base").and_then(Value::as_str);
-    if outcome.identity.base_revision.as_deref() != declared_base {
-        return (
-            None,
-            invalid_analysis_outcome_surface(
-                "Analysis outcome artifact base does not match its typed identity.",
-            ),
-        );
-    }
-    if root.join(".git").exists() {
-        let diff = match crate::analysis::load_diff(root, declared_base, None, None) {
-            Ok(diff) => diff,
-            Err(error) => {
-                return (
-                    None,
-                    invalid_analysis_outcome_surface(&format!(
-                        "Current analysis input could not be established: {error}."
-                    )),
-                );
-            }
-        };
-        let expected_input_identity = format!(
-            "sha256:{}",
-            Sha256::digest(diff.as_bytes())
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>()
-        );
-        if outcome.identity.input_identity.as_deref() != Some(expected_input_identity.as_str()) {
-            return (
-                None,
-                invalid_analysis_outcome_surface(
-                    "Analysis outcome artifact input identity does not match the current diff.",
-                ),
-            );
-        }
-    }
     let mut surface = artifact.surface;
     surface.status = if outcome.kind.is_complete() {
         "complete".to_string()
@@ -154,13 +70,13 @@ pub(super) fn read_analysis_outcome(
     (Some(outcome), surface)
 }
 
-fn invalid_analysis_outcome_surface(summary: &str) -> AgentReviewSurface {
+fn invalid_analysis_outcome_surface(status: &str, summary: &str) -> AgentReviewSurface {
     AgentReviewSurface {
         name: "analysis_outcome".to_string(),
         label: "Analysis outcome".to_string(),
         path: Some(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT.to_string()),
-        state: "invalid_json".to_string(),
-        status: "invalid_json".to_string(),
+        state: status.to_string(),
+        status: status.to_string(),
         required: true,
         summary: summary.to_string(),
     }
