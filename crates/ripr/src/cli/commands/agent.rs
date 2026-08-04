@@ -7,10 +7,10 @@
 //! exit mapping for the agent command family.
 
 use crate::analysis;
-use crate::app;
 use crate::app::agent_brief::{
     AgentBriefPolicy, AgentBriefResolvedWorkingSet, select_agent_brief_seams,
 };
+use crate::app::{self, OutputFormat};
 use crate::cli::agent::{
     AgentBriefOptions, AgentCommand, AgentPacketOptions, AgentReceiptOptions, AgentRepairOptions,
     AgentRepairPhase, AgentReviewSummaryOptions, AgentStartOptions, AgentStatusOptions,
@@ -403,6 +403,12 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
             // stale after artifact from an earlier run.
             write_agent_repo_exposure_snapshot(root, &after)?;
 
+            // Review summaries consume the canonical diff-scoped producer
+            // outcome. Generate it from the same current root before issuing
+            // the receipt so the built-in repair route cannot report a clean
+            // review packet without completeness evidence.
+            write_agent_analysis_outcome(root)?;
+
             let verify_options = AgentVerifyOptions {
                 root: root.clone(),
                 before: before.clone(),
@@ -434,6 +440,22 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
             Ok(())
         }
     }
+}
+
+fn write_agent_analysis_outcome(root: &Path) -> Result<(), String> {
+    let (mut input, config) = load_root_input_and_config(root)?;
+    // Match the bare `ripr check --root <root> --format json` route used by
+    // generated workflows: default-base resolution remains owned by the
+    // analysis loader rather than being frozen to origin/main here.
+    input.base = None;
+    input.format = OutputFormat::Json;
+    input.git_timeout = Some(app::default_cli_git_timeout());
+    let output = app::check_workspace_with_config(input, &config)?;
+    let rendered = app::render_check_with_config(&output, &OutputFormat::Json, &config)?;
+    write_text_file(
+        &root.join(crate::agent::loop_commands::WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT),
+        &rendered,
+    )
 }
 
 fn write_agent_repo_exposure_snapshot(root: &Path, path: &Path) -> Result<(), String> {

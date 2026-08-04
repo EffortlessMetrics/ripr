@@ -1,7 +1,7 @@
 {
   "schema_version": "0.1",
   "tool": "ripr",
-  "status": "warning",
+  "status": "incomplete",
   "root": ".",
   "target_seam": {
     "seam_id": "seam-stale",
@@ -24,6 +24,7 @@
       "recommended_action": "Add the missing discriminator or stronger assertion named by the packet."
     }
   },
+  "analysis_outcome": null,
   "next_command": null,
   "surfaces": [
     {
@@ -33,7 +34,7 @@
       "state": "computed",
       "status": "warning",
       "required": true,
-      "summary": "6 required artifacts present, 0 missing, 3 warnings. Command: ripr agent status --root . --json > target/ripr/workflow/agent-status.json"
+      "summary": "7 required artifacts present, 0 missing, 3 warnings. Command: ripr agent status --root . --json > target/ripr/workflow/agent-status.json"
     },
     {
       "name": "agent_workflow",
@@ -79,6 +80,15 @@
       "status": "optional_missing",
       "required": false,
       "summary": "LSP cockpit artifact is not present."
+    },
+    {
+      "name": "analysis_outcome",
+      "label": "Analysis outcome",
+      "path": "target/ripr/workflow/analysis-outcome.json",
+      "state": "invalid_json",
+      "status": "invalid_json",
+      "required": true,
+      "summary": "Analysis outcome artifact has an invalid typed outcome: complete_no_findings requires a behavioral candidate or probe subject."
     }
   ],
   "ci_artifacts": [
@@ -108,6 +118,11 @@
       "state": "missing"
     },
     {
+      "name": "analysis_outcome",
+      "path": "target/ripr/workflow/analysis-outcome.json",
+      "state": "present"
+    },
+    {
       "name": "agent_receipt",
       "path": "target/ripr/reports/agent-receipt.json",
       "state": "present"
@@ -124,13 +139,14 @@
     }
   ],
   "reviewer_summary": {
-    "headline": "Review packet is warning for seam seam-stale.",
-    "what_changed": "Static movement is unchanged (weakly_gripped -> weakly_gripped).",
+    "headline": "Review packet is incomplete for seam-stale: producer analysis outcome is unavailable.",
+    "what_changed": "No producer-backed completeness result is available; static review evidence cannot be treated as complete.",
     "evidence": "Review target/ripr/reports/agent-receipt.json with target/ripr/workflow/agent-verify.json.",
     "remaining": "Add the missing discriminator or stronger assertion named by the packet.",
     "reviewer_should_inspect": [
       "target/ripr/reports/agent-receipt.json",
       "target/ripr/workflow/agent-verify.json",
+      "target/ripr/workflow/analysis-outcome.json",
       "target/ripr/reports/operator-cockpit.json",
       "target/ripr/reports/repo-exposure.json"
     ]
@@ -142,4 +158,3 @@
     "generated_tests": false
   }
 }
-

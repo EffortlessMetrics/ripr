@@ -6,6 +6,8 @@ pub(crate) const WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT: &str =
     "target/ripr/workflow/before.repo-exposure.json";
 pub(crate) const WORKFLOW_AFTER_SNAPSHOT_ARTIFACT: &str =
     "target/ripr/workflow/after.repo-exposure.json";
+pub(crate) const WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT: &str =
+    "target/ripr/workflow/analysis-outcome.json";
 pub(crate) const WORKFLOW_MANIFEST_ARTIFACT: &str = "target/ripr/workflow/workflow.json";
 pub(crate) const WORKFLOW_COMMANDS_MARKDOWN_ARTIFACT: &str = "target/ripr/workflow/commands.md";
 pub(crate) const WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT: &str =
@@ -64,6 +66,15 @@ pub(crate) fn check_repo_exposure_command_with_base(
 pub(crate) fn agent_seam_packets_command(root: &str, mode: &str, out_path: &str) -> String {
     format!(
         "ripr check --root {} --mode {} --format agent-seam-packets-json > {}",
+        shell_arg(root),
+        shell_arg(mode),
+        shell_arg(out_path)
+    )
+}
+
+pub(crate) fn check_analysis_outcome_command(root: &str, mode: &str, out_path: &str) -> String {
+    format!(
+        "ripr check --root {} --mode {} --format json > {}",
         shell_arg(root),
         shell_arg(mode),
         shell_arg(out_path)
@@ -251,6 +262,10 @@ mod tests {
         assert_eq!(
             check_repo_exposure_command(".", "draft", WORKFLOW_AFTER_SNAPSHOT_ARTIFACT),
             "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json"
+        );
+        assert_eq!(
+            check_analysis_outcome_command(".", "draft", WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT),
+            "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json"
         );
         assert_eq!(
             agent_packet_command(".", "seam-a", WORKFLOW_AGENT_PACKET_ARTIFACT),

@@ -928,6 +928,8 @@ tests = [
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixture_pins_stale_artifact",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixtures_pin_path_arguments",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_reports_missing_receipt_with_next_command",
+  "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_fails_closed_on_incomplete_analysis_outcome",
+  "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_rejects_malformed_analysis_outcome",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_markdown_names_review_focus_and_limits",
   "crates/ripr/src/cli/agent.rs::tests::agent_review_summary_parses_root_json_and_human_default",
   "crates/ripr/src/cli/agent.rs::tests::agent_review_summary_requires_values_and_rejects_unknown_arguments",
@@ -6531,6 +6533,8 @@ tests = [
   "xtask/src/reports/pr_evidence.rs::tests::write_pr_evidence_writes_error_packet_when_check_fails",
   "xtask/src/reports/pr_evidence.rs::tests::write_and_check_packet_in_git_repo",
   "xtask/src/reports/pr_evidence.rs::tests::stale_check_artifact_is_removed_before_revision_setup_failure",
+  "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_fails_closed_on_incomplete_analysis_outcome",
+  "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_rejects_malformed_analysis_outcome",
 ]
 code = [
   "crates/ripr/src/analysis_outcome.rs",
@@ -6564,11 +6568,21 @@ code = [
   "xtask/src/reports/pr_evidence.rs",
   ".github/workflows/ci.yml",
   ".github/workflows/routed-rust.yml",
+  "crates/ripr/src/agent/loop_commands.rs",
+  "crates/ripr/src/app/agent_status.rs",
+  "crates/ripr/src/app/agent_review_summary.rs",
+  "crates/ripr/src/app/agent_review_summary/artifacts.rs",
+  "crates/ripr/src/app/agent_review_summary/json.rs",
+  "crates/ripr/src/app/agent_review_summary/markdown.rs",
+  "crates/ripr/src/app/agent_review_summary/report.rs",
+  "crates/ripr/src/app/agent_review_summary/types.rs",
+  "crates/ripr/src/app/agent_workflow.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/BADGE_POLICY.md",
+  "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",
 ]
 metrics = [
   "analysis_outcome_complete_zero_distinguishable",

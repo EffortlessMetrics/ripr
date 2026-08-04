@@ -7161,6 +7161,8 @@ language = "rust"
         assert!(agent_loop.contains("cp target/ripr/workflow/agent-verify.json"));
         assert!(agent_loop.contains("cp target/ripr/reports/agent-receipt.json"));
         assert!(agent_loop.contains("--format repo-exposure-json"));
+        assert!(agent_loop.contains("--format json"));
+        assert!(agent_loop.contains("target/ripr/workflow/analysis-outcome.json"));
 
         let guidance = workflow_step(&workflow, "Run RIPR PR guidance report");
         assert!(guidance.contains("github.event_name == 'pull_request'"));

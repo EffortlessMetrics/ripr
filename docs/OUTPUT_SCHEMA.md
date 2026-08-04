@@ -11560,6 +11560,8 @@ joins only existing artifacts:
 - `target/ripr/reports/operator-cockpit.json` when present;
 - `target/ripr/reports/repo-exposure.json` when present;
 - `target/ripr/reports/lsp-cockpit.json` when present;
+- `target/ripr/workflow/analysis-outcome.json`, the required producer-backed
+  diff completeness envelope emitted by the generated agent workflow;
 - local file presence for CI-published work-loop artifacts.
 
 The JSON schema is version `0.1`:
@@ -11589,6 +11591,17 @@ The JSON schema is version `0.1`:
       "kind": "improved",
       "summary": "Static grip improved.",
       "recommended_action": "Keep the focused test and include this receipt in review."
+    }
+  },
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {
+      "schema_version": "0.1",
+      "kind": "complete_no_findings",
+      "identity": {},
+      "counts": {},
+      "limitations": [],
+      "claim_boundary": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
     }
   },
   "next_command": null,
@@ -11646,13 +11659,18 @@ The JSON schema is version `0.1`:
 
 Field notes:
 
-- `status` is `ready` when a receipt is present and required loop artifacts do
-  not report warnings; `warning` when a receipt exists but local artifact state
-  looks stale or malformed; `incomplete` when the receipt is missing.
+- `status` is `ready` when a receipt is present, the required loop artifacts do
+  not report warnings, and the producer-backed `analysis_outcome` is present
+  and complete; `warning` when a receipt exists but optional local artifact
+  state looks stale or malformed; `incomplete` when the receipt or typed
+  producer outcome is missing, invalid, or incomplete.
 - `target_seam` is recovered from receipt first, then workflow, then agent
   status.
 - `static_movement` is copied from the receipt and remains a static
   before/after artifact relationship.
+- `analysis_outcome` is copied from the producer's typed check envelope. Its
+  `analysis_complete` value is derived from the closed outcome kind; it is not
+  inferred from receipt movement, packet-budget state, or empty findings.
 - `surfaces[]` reports each joined surface as `computed`, `present`, `missing`,
   `optional_missing`, or `invalid_json`.
 - `ci_artifacts[]` is local file presence for artifacts that generated CI can
@@ -11686,6 +11704,9 @@ manifest that names artifact paths and shared command templates for the static
 before snapshot, agent packet, agent brief, after snapshot, verify, and
 receipt steps. It does not edit source files, generate tests, call LLM APIs,
 run mutation testing, refresh LSP state, or configure CI blocking.
+The generated command list also captures the diff-scoped producer outcome at
+`target/ripr/workflow/analysis-outcome.json`; this is a required input to the
+review-summary projection and is distinct from repo-exposure snapshots.
 
 JSON shape:
 

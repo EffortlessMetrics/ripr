@@ -57,9 +57,10 @@ owns the generated-CI handoff only: `ripr-pr` preserves the producer's
 canonical check JSON at `target/ripr/pr/check.json`, removes a stale copy
 before each run, and pull-request workflows pass that artifact to
 review-comments. The workflow does not infer completeness from the PR-evidence
-summary packet. Agent projections remain unclaimed until their own parity
-fixtures consume this DTO. Review-comments is the bounded review consumer
-described below.
+summary packet. The first agent parity slice is the generated workflow and
+`agent review-summary` handoff described below; agent packets and receipts
+remain unclaimed until their own parity fixtures consume this DTO.
+Review-comments is the bounded review consumer described below.
 
 The review-comments projection is the next bounded consumer. When invoked with
 `--check-output PATH`, it consumes the producer-generated check JSON and copies
@@ -105,16 +106,19 @@ projection does not analyze those regions.
 - LSP analysis status and workspace/top-limitation status disclose the same
   typed outcome; incomplete input is never reported as `run_status = "full"`.
 - Generated-CI preserves the canonical check artifact and forwards it to the
-  review-comments projection; agent surfaces remain explicitly unclaimed until
-  their own parity fixtures land.
+  review-comments projection; the generated agent workflow also publishes a
+  named diff-scoped analysis-outcome artifact for `agent review-summary`.
+  Agent packets and receipts remain explicitly unclaimed until their own
+  parity fixtures land.
 
 Review-comments complete, partial, and unsupported producer-backed fixtures
 preserve the typed kind, completeness, limitation, and recovery route in JSON
 and Markdown. Missing or malformed producer output is an error rather than a
 silent legacy fallback; a complete zero-finding outcome remains advisory and
 an incomplete outcome is explicitly not clean. Generated-CI is covered by the
-canonical check artifact and workflow forwarding described above; agent
-surfaces remain explicitly unclaimed until their own parity fixtures land.
+canonical check artifact and workflow forwarding described above. The agent
+review-summary slice requires a valid producer artifact and preserves the
+typed envelope; agent packets and receipts remain unclaimed.
 
 Current PR-A proof is anchored by
 `analysis::pipeline::tests::diff_pipeline_projects_parser_limitation_and_distinguishes_complete_zero`
@@ -149,7 +153,8 @@ and
   `pr_evidence::tests::write_pr_evidence_writes_error_packet_when_check_fails`,
   `pr_evidence::tests::write_and_check_packet_in_git_repo`, and
   `pr_evidence::tests::stale_check_artifact_is_removed_before_revision_setup_failure`;
-  agent projections remain explicitly unclaimed.
+  generated agent workflow and review-summary parity are covered by their named
+  artifact fixtures; agent packets and receipts remain explicitly unclaimed.
 
 ## Test Mapping
 
@@ -196,6 +201,10 @@ from the CI workflows, and emits the same handoff from the generated workflow
 in `crates/ripr/src/cli/commands/init.rs`; agent projections remain explicitly
 unclaimed. The producer's success, failure, timeout, packet-validation, and
 stale-artifact setup tests are mapped directly in the traceability ledger.
+The generated agent workflow records the same diff-scoped producer envelope at
+`target/ripr/workflow/analysis-outcome.json`, and `agent_review_summary`
+consumes it as typed data; agent packets and receipts remain explicitly
+unclaimed.
 Review-comments consumes the DTO in `crates/ripr/src/cli/commands.rs` and
 projects it through `crates/ripr/src/output/review_comments.rs`; the wire
 contract is defined in `schemas/ripr/review-comments.schema.json` and the

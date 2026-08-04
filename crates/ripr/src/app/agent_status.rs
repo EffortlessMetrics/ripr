@@ -3,10 +3,11 @@ use crate::agent::loop_commands::{
     WORKFLOW_AGENT_PACKET_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
     WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT, WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT,
     WORKFLOW_AGENT_STATUS_ARTIFACT, WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT,
-    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command,
-    agent_packet_command, agent_receipt_command, agent_review_summary_command,
-    agent_review_summary_markdown_command, agent_status_command, agent_status_markdown_command,
-    agent_verify_command, check_repo_exposure_command, display_path,
+    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+    WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_packet_command,
+    agent_receipt_command, agent_review_summary_command, agent_review_summary_markdown_command,
+    agent_status_command, agent_status_markdown_command, agent_verify_command,
+    check_analysis_outcome_command, check_repo_exposure_command, display_path,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -31,6 +32,11 @@ const ARTIFACTS: &[AgentStatusArtifactDef] = &[
         name: "after_snapshot",
         label: "after snapshot",
         path: WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+    },
+    AgentStatusArtifactDef {
+        name: "analysis_outcome",
+        label: "analysis outcome",
+        path: WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
     },
     AgentStatusArtifactDef {
         name: "agent_brief",
@@ -59,6 +65,7 @@ const MISSING_COMMAND_ORDER: &[&str] = &[
     "agent_packet",
     "agent_brief",
     "after_snapshot",
+    "analysis_outcome",
     "agent_verify",
     "agent_receipt",
 ];
@@ -509,6 +516,9 @@ fn command_for_missing_artifact(
         "after_snapshot" => {
             check_repo_exposure_command(&root, "draft", WORKFLOW_AFTER_SNAPSHOT_ARTIFACT)
         }
+        "analysis_outcome" => {
+            check_analysis_outcome_command(&root, "draft", WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT)
+        }
         "agent_packet" => agent_packet_command(&root, seam_id, WORKFLOW_AGENT_PACKET_ARTIFACT),
         "agent_brief" => agent_brief_command(&root, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
         "agent_verify" => agent_verify_command(
@@ -590,8 +600,8 @@ mod tests {
         assert_eq!(value["schema_version"], AGENT_STATUS_SCHEMA_VERSION);
         assert_eq!(value["status"], "incomplete");
         assert_eq!(value["seam"], Value::Null);
-        assert_eq!(value["artifacts"].as_array().map(Vec::len), Some(6));
-        assert_eq!(value["missing_commands"].as_array().map(Vec::len), Some(6));
+        assert_eq!(value["artifacts"].as_array().map(Vec::len), Some(7));
+        assert_eq!(value["missing_commands"].as_array().map(Vec::len), Some(7));
         assert_eq!(value["next_command"]["step"], "before_snapshot");
         assert_eq!(
             value["next_command"]["command"],
@@ -607,6 +617,7 @@ mod tests {
         let root = unique_agent_status_test_dir("complete");
         write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
         write_file(&root.join(WORKFLOW_AFTER_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT), "{}")?;
         write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
         write_file(&root.join(WORKFLOW_AGENT_PACKET_ARTIFACT), "{}")?;
         write_file(
@@ -812,11 +823,16 @@ mod tests {
         };
         let commands = missing_commands(Path::new("."), Some(&seam), &artifacts);
 
-        assert_eq!(commands.len(), 6);
+        assert_eq!(commands.len(), 7);
         assert!(commands.iter().any(|command| {
             command.step == "after_snapshot"
                 && command.command
                     == "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.step == "analysis_outcome"
+                && command.command
+                    == "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json"
         }));
         assert!(commands.iter().any(|command| {
             command.step == "agent_brief"

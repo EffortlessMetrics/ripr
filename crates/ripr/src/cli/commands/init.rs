@@ -442,6 +442,11 @@ jobs:
             --format repo-exposure-json \
             > target/ripr/workflow/after.repo-exposure.json
           cp target/ripr/workflow/after.repo-exposure.json target/ripr/pilot/after.repo-exposure.json
+          ripr check \
+            --root . \
+            --mode draft \
+            --format json \
+            > target/ripr/workflow/analysis-outcome.json
           ripr agent verify \
             --root . \
             --before target/ripr/workflow/before.repo-exposure.json \
