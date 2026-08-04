@@ -30,14 +30,31 @@ pub(crate) struct CandidateSelection {
     #[serde(default)]
     pub(crate) known_candidate_defects: Vec<KnownCandidateDefect>,
     #[serde(default)]
-    #[serde(alias = "denominator_decisions_remaining")]
+    #[serde(
+        rename = "denominator_decisions_remaining",
+        alias = "denominator_decisions_remaining_through_provisional_cutoff"
+    )]
     pub(crate) denominator_decisions_remaining_through_provisional_cutoff: Option<u64>,
     #[serde(default)]
     pub(crate) denominator_decisions_remaining_through_selected_cut: Option<u64>,
     #[serde(default)]
+    pub(crate) final_cut_authority: Option<FinalCutAuthority>,
+    #[serde(default)]
     pub(crate) projection: CandidateProjection,
     #[serde(default)]
     pub(crate) qualification: QualificationInputs,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FinalCutAuthority {
+    pub(crate) cut_sha: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) record_set_digest: Option<String>,
+    pub(crate) provisional_decisions_remaining: u64,
+    pub(crate) unreviewed_post_provisional_records_through_cut: u64,
+    pub(crate) final_cut_decisions_remaining: u64,
+    pub(crate) reviewed_through_selected_cut: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -124,6 +141,9 @@ pub(crate) struct CandidateState {
     #[serde(rename = "denominator_decisions_remaining")]
     pub(crate) denominator_decisions_remaining_through_provisional_cutoff: Option<u64>,
     pub(crate) denominator_decisions_remaining_through_selected_cut: Option<u64>,
+    pub(crate) final_cut_authority_present: bool,
+    pub(crate) final_cut_reviewed_through_selected_cut: bool,
+    pub(crate) final_cut_decisions_remaining: Option<u64>,
     pub(crate) candidate_cut_selected: bool,
     pub(crate) candidate_ref_created: bool,
     pub(crate) projection_reproducible: bool,
@@ -148,6 +168,9 @@ pub(crate) fn evaluate(selection: Option<&CandidateSelection>) -> CandidateState
             candidate_defects_unresolved: 0,
             denominator_decisions_remaining_through_provisional_cutoff: None,
             denominator_decisions_remaining_through_selected_cut: None,
+            final_cut_authority_present: false,
+            final_cut_reviewed_through_selected_cut: false,
+            final_cut_decisions_remaining: None,
             candidate_cut_selected: false,
             candidate_ref_created: false,
             projection_reproducible: false,
@@ -367,11 +390,36 @@ pub(crate) fn evaluate(selection: Option<&CandidateSelection>) -> CandidateState
         .is_some_and(|(manifest, tree)| manifest == tree);
     let qualification_instruments_available =
         selection.qualification.required_instruments_available;
+    let final_cut_authority_present = selection.final_cut_authority.is_some();
+    let final_cut_reviewed_through_selected_cut = selection
+        .final_cut_authority
+        .as_ref()
+        .is_some_and(|authority| authority.reviewed_through_selected_cut);
+    let final_cut_decisions_remaining = selection
+        .final_cut_authority
+        .as_ref()
+        .map(|authority| authority.final_cut_decisions_remaining);
+    let final_cut_authority_valid =
+        selection
+            .final_cut_authority
+            .as_ref()
+            .is_some_and(|authority| {
+                Some(authority.cut_sha.as_str()) == selection.selected_cut_sha.as_deref()
+                    && authority.provisional_decisions_remaining == 0
+                    && authority.unreviewed_post_provisional_records_through_cut == 0
+                    && authority.final_cut_decisions_remaining == 0
+                    && authority.reviewed_through_selected_cut
+                    && authority
+                        .record_set_digest
+                        .as_deref()
+                        .is_some_and(is_record_set_digest)
+            });
 
     let hard_cut_blocked = candidate_required_claims_pending > 0
         || candidate_defects_unresolved > 0
         || selection.denominator_decisions_remaining_through_provisional_cutoff != Some(0)
         || selection.denominator_decisions_remaining_through_selected_cut != Some(0)
+        || !final_cut_authority_valid
         || !candidate_cut_selected
         || !projection_reproducible;
     let status = if !scope_closed {
@@ -404,6 +452,11 @@ pub(crate) fn evaluate(selection: Option<&CandidateSelection>) -> CandidateState
     {
         reasons.push("denominator decisions remain through the selected cut".to_string());
     }
+    if !final_cut_authority_valid {
+        reasons.push(
+            "final-cut authority is missing, unbound, unreviewed, or retains decisions".to_string(),
+        );
+    }
     if !candidate_cut_selected {
         reasons.push("development cut C is not selected".to_string());
     }
@@ -435,6 +488,9 @@ pub(crate) fn evaluate(selection: Option<&CandidateSelection>) -> CandidateState
             .denominator_decisions_remaining_through_provisional_cutoff,
         denominator_decisions_remaining_through_selected_cut: selection
             .denominator_decisions_remaining_through_selected_cut,
+        final_cut_authority_present,
+        final_cut_reviewed_through_selected_cut,
+        final_cut_decisions_remaining,
         candidate_cut_selected,
         candidate_ref_created,
         projection_reproducible,
@@ -450,6 +506,13 @@ pub(crate) fn evaluate(selection: Option<&CandidateSelection>) -> CandidateState
 
 fn is_sha(value: &str) -> bool {
     value.len() == 40 && value.chars().all(|character| character.is_ascii_hexdigit())
+}
+
+fn is_record_set_digest(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix("sha256:") else {
+        return false;
+    };
+    hex.len() == 64 && hex.chars().all(|character| character.is_ascii_hexdigit())
 }
 
 fn references_are_non_blank(references: &[&[String]]) -> bool {
@@ -480,6 +543,10 @@ mod tests {
     use serde::Deserialize;
     use serde_json::json;
 
+    fn require(condition: bool, message: impl Into<String>) -> Result<(), String> {
+        condition.then_some(()).ok_or(message.into())
+    }
+
     fn selection() -> Result<CandidateSelection, String> {
         serde_json::from_value(json!({
             "schema_version": "0.1",
@@ -500,6 +567,14 @@ mod tests {
             "known_candidate_defects": [],
             "denominator_decisions_remaining_through_provisional_cutoff": 0,
             "denominator_decisions_remaining_through_selected_cut": 0,
+            "final_cut_authority": {
+                "cut_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "record_set_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "provisional_decisions_remaining": 0,
+                "unreviewed_post_provisional_records_through_cut": 0,
+                "final_cut_decisions_remaining": 0,
+                "reviewed_through_selected_cut": true
+            },
             "projection": {
                 "reproducible": true,
                 "candidate_tree_sha": "cccccccccccccccccccccccccccccccccccccccc",
@@ -516,6 +591,79 @@ mod tests {
             }
         }))
         .map_err(|error| format!("failed to build candidate selection: {error}"))
+    }
+
+    #[test]
+    fn schema_01_preserves_legacy_denominator_field_on_serialization() -> Result<(), String> {
+        let value = serde_json::to_value(selection()?).map_err(|error| error.to_string())?;
+        if value
+            .get("denominator_decisions_remaining")
+            .and_then(serde_json::Value::as_u64)
+            != Some(0)
+        {
+            return Err("schema 0.1 legacy denominator field was not retained".to_string());
+        }
+        if value
+            .get("denominator_decisions_remaining_through_provisional_cutoff")
+            .is_some()
+        {
+            return Err("schema 0.1 emitted the post-migration denominator field".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn final_cut_authority_rejects_unreviewed_post_cutoff_records() -> Result<(), String> {
+        let mut candidate = selection()?;
+        candidate
+            .final_cut_authority
+            .as_mut()
+            .ok_or_else(|| "selection fixture lost final-cut authority".to_string())?
+            .unreviewed_post_provisional_records_through_cut = 1;
+        let state = evaluate(Some(&candidate));
+        if state.status != "scope_closed"
+            || !state
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("final-cut authority"))
+        {
+            return Err("unreviewed post-cutoff record was treated as hard-cut ready".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn final_cut_authority_requires_record_set_provenance() -> Result<(), String> {
+        let mut candidate = selection()?;
+        candidate
+            .final_cut_authority
+            .as_mut()
+            .ok_or_else(|| "selection fixture lost final-cut authority".to_string())?
+            .record_set_digest = None;
+        let state = evaluate(Some(&candidate));
+        require(
+            state.status == "scope_closed"
+                && state
+                    .reasons
+                    .iter()
+                    .any(|reason| reason.contains("final-cut authority")),
+            "final-cut authority without record-set provenance was accepted",
+        )
+    }
+
+    #[test]
+    fn missing_denominator_counts_fail_closed() -> Result<(), String> {
+        let mut candidate = selection()?;
+        candidate.denominator_decisions_remaining_through_provisional_cutoff = None;
+        candidate.denominator_decisions_remaining_through_selected_cut = None;
+        let state = evaluate(Some(&candidate));
+        require(
+            state.status == "scope_closed"
+                && state.reasons.iter().any(|reason| {
+                    reason.contains("denominator decisions remain through the provisional")
+                }),
+            "missing denominator counts did not block the hard cut",
+        )
     }
 
     #[test]

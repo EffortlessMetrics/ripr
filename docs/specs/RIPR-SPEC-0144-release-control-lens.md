@@ -90,8 +90,12 @@ The candidate control vocabulary is
 `candidate_claims_deferred`, `candidate_defects_unresolved`,
 `denominator_decisions_remaining` (the schema-0.1 provisional-cutoff field),
 `denominator_decisions_remaining_through_selected_cut`, `candidate_cut_selected`, and
-`candidate_ref_created`. An informational `open_release_pr_count` must not be
-used as a readiness predicate.
+`candidate_ref_created`. A hard-cut decision also requires a `final_cut_authority`
+ledger bound to the selected cut. Its record-derived authority must report zero
+provisional decisions, zero unreviewed records after the provisional cutoff
+through the selected cut, and zero final-cut decisions; its review flag must be
+true. An informational `open_release_pr_count` must not be used as a readiness
+predicate.
 
 The release-control snapshot may carry an optional `candidate_selection` DTO.
 When it is absent, candidate state is `scope_pending`; the ordinary PR lens
@@ -107,9 +111,23 @@ CandidateSelection
   known_candidate_defects[]
   denominator_decisions_remaining_through_provisional_cutoff
   denominator_decisions_remaining_through_selected_cut
+  final_cut_authority
   projection
   qualification
 ```
+
+`final_cut_authority` carries `cut_sha`, a normalized denominator
+`record_set_digest`,
+`provisional_decisions_remaining`,
+`unreviewed_post_provisional_records_through_cut`,
+`final_cut_decisions_remaining`, and `reviewed_through_selected_cut`. The
+denominator normalizer derives these values and the digest from records keyed
+by commit SHA and rejects disagreement with supplied authority. A
+release-control snapshot must carry the same digest as normalized denominator
+provenance before the final-cut authority can advance; a missing or mismatched
+digest remains reconciliation-required. The legacy
+`denominator_decisions_remaining` serialized field remains the schema-0.1 wire
+name; the longer internal name is accepted as an input alias only.
 
 Each selected claim carries `claim_id`, `owner_issue`,
 `required_for_candidate`, one resolution (`pending`, `landed`,
@@ -131,8 +149,8 @@ scope_pending
 `scope_closed` requires a non-empty, unique, reviewed claim set with a current
 resolution and explicit non-claims for defers/exclusions. `hard_cut_eligible`
 also requires zero required claims pending, zero unresolved candidate defects,
-zero denominator decisions through `C`, a selected `C`, and a reproducible
-projection. `candidate_materialized` additionally requires a candidate tree
+the valid final-cut authority, a selected `C`, and a reproducible projection.
+`candidate_materialized` additionally requires a candidate tree
 whose parent is `C` and matching exclusion/preservation digests.
 `qualification_eligible` additionally requires an immutable candidate ref, a
 manifest naming the materialized tree, and available qualification instruments.

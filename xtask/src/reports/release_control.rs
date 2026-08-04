@@ -62,6 +62,8 @@ struct SnapshotSource {
     #[serde(default)]
     worktree_count: u64,
     graph_digest: String,
+    #[serde(default)]
+    denominator_record_set_digest: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -303,6 +305,7 @@ where
             worktree_inventory_complete,
             worktree_count,
             graph_digest,
+            denominator_record_set_digest: None,
         },
         prs,
         candidate_selection: None,
@@ -399,6 +402,7 @@ fn normalize_snapshot_with_origin(snapshot: Snapshot, live_collected: bool) -> N
     let mut reasons = Vec::new();
     reasons.extend(snapshot.collector_errors.iter().cloned());
     validate_source(&snapshot, live_collected, &mut reasons);
+    validate_denominator_provenance(&snapshot, &mut reasons);
     let candidate_state = evaluate_candidate_state(snapshot.candidate_selection.as_ref());
 
     let mut seen = BTreeSet::new();
@@ -569,30 +573,71 @@ fn normalize_pr(pr: SnapshotPr, duplicate: bool, reasons: &mut Vec<String>) -> N
     }
 }
 
+fn validate_denominator_provenance(snapshot: &Snapshot, reasons: &mut Vec<String>) {
+    let Some(authority) = snapshot
+        .candidate_selection
+        .as_ref()
+        .and_then(|selection| selection.final_cut_authority.as_ref())
+    else {
+        return;
+    };
+    let Some(authority_digest) = authority.record_set_digest.as_deref() else {
+        reasons.push("final-cut authority has no denominator record-set digest".to_string());
+        return;
+    };
+    let Some(source_digest) = snapshot.source.denominator_record_set_digest.as_deref() else {
+        reasons.push(
+            "final-cut authority has no normalized denominator provenance in the release snapshot"
+                .to_string(),
+        );
+        return;
+    };
+    if !is_record_set_digest(source_digest) {
+        reasons.push("denominator record-set provenance is not a sha256 digest".to_string());
+    }
+    if source_digest != authority_digest {
+        reasons.push(
+            "release snapshot denominator provenance does not match final-cut authority"
+                .to_string(),
+        );
+    }
+}
+
+fn is_record_set_digest(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix("sha256:") else {
+        return false;
+    };
+    hex.len() == 64 && hex.chars().all(|character| character.is_ascii_hexdigit())
+}
+
 fn is_sha(value: &str) -> bool {
     value.len() == 40 && value.chars().all(|character| character.is_ascii_hexdigit())
 }
 
 fn report_json(report: &NormalizedReport) -> Value {
+    let mut source = json!({
+        "mode": report.source.mode,
+        "freshness": report.source.freshness,
+        "main_sha": report.source.main_sha,
+        "authority_issue": report.source.authority_issue,
+        "authority_state": report.source.authority_state,
+        "authority_main_sha": report.source.authority_main_sha,
+        "portfolio_state": report.source.portfolio_state,
+        "open_prs_complete": report.source.open_prs_complete,
+        "active_claims_complete": report.source.active_claims_complete,
+        "worktree_inventory_complete": report.source.worktree_inventory_complete,
+        "worktree_count": report.source.worktree_count,
+        "graph_digest": report.source.graph_digest,
+    });
+    if let Some(digest) = report.source.denominator_record_set_digest.as_deref() {
+        source["denominator_record_set_digest"] = json!(digest);
+    }
     json!({
         "report": REPORT_NAME,
         "schema_version": SCHEMA_VERSION,
         "status": report.status,
         "captured_at": report.captured_at,
-        "source": {
-            "mode": report.source.mode,
-            "freshness": report.source.freshness,
-            "main_sha": report.source.main_sha,
-            "authority_issue": report.source.authority_issue,
-            "authority_state": report.source.authority_state,
-            "authority_main_sha": report.source.authority_main_sha,
-            "portfolio_state": report.source.portfolio_state,
-            "open_prs_complete": report.source.open_prs_complete,
-            "active_claims_complete": report.source.active_claims_complete,
-            "worktree_inventory_complete": report.source.worktree_inventory_complete,
-            "worktree_count": report.source.worktree_count,
-            "graph_digest": report.source.graph_digest,
-        },
+        "source": source,
         "reconciliation_reasons": report.reconciliation_reasons,
         "prs": report.prs.iter().map(|pr| json!({
             "number": pr.number,
@@ -794,6 +839,28 @@ mod tests {
         require(
             state.get("candidate_cut_selected") == Some(&Value::Bool(false)),
             "missing candidate selection must not select a cut",
+        )
+    }
+
+    #[test]
+    fn final_cut_requires_normalized_denominator_provenance() -> Result<(), String> {
+        let mut value = serde_json::to_value(snapshot()?)
+            .map_err(|error| format!("failed to serialize snapshot: {error}"))?;
+        let candidate_fixture: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/release_control/candidate-state-negative.json"
+        ))
+        .map_err(|error| format!("failed to parse candidate fixture: {error}"))?;
+        value["candidate_selection"] = candidate_fixture["base_selection"].clone();
+        let candidate_snapshot: Snapshot = serde_json::from_value(value)
+            .map_err(|error| format!("failed to parse candidate snapshot: {error}"))?;
+        let report = normalize_snapshot(candidate_snapshot);
+        require(
+            report.status == "reconcile_required"
+                && report
+                    .reconciliation_reasons
+                    .iter()
+                    .any(|reason| reason.contains("no normalized denominator provenance")),
+            "final-cut authority without normalized denominator provenance was accepted",
         )
     }
 

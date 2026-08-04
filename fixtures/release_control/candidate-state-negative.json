@@ -21,6 +21,14 @@
     "known_candidate_defects": [],
     "denominator_decisions_remaining_through_provisional_cutoff": 0,
     "denominator_decisions_remaining_through_selected_cut": 0,
+    "final_cut_authority": {
+      "cut_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "record_set_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "provisional_decisions_remaining": 0,
+      "unreviewed_post_provisional_records_through_cut": 0,
+      "final_cut_decisions_remaining": 0,
+      "reviewed_through_selected_cut": true
+    },
     "projection": {
       "reproducible": true,
       "candidate_tree_sha": "cccccccccccccccccccccccccccccccccccccccc",

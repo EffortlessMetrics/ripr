@@ -139,6 +139,14 @@ establish selected-claim satisfaction from generic issue references alone. It
 does not impose a repository-wide open-PR or open-issue convergence
 requirement.
 
+For a selected cut, `final_cut_authority.record_set_digest` must equal the
+normalized report's `record_set_digest`. Post-provisional review credit is
+limited to nonblank structured `review:2832:<id>` references; arbitrary,
+whitespace-only, or unrelated record strings do not count as adjudication.
+When the selected cut equals the provisional cutoff, the post-cutoff record
+set is empty and its derived unreviewed count is zero without relying on an
+invalid slice.
+
 ## Acceptance and proof map
 
 Acceptance is limited to a deterministic supplemental denominator ledger and a
