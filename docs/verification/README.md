@@ -33,6 +33,7 @@ Machine-readable schemas live under `schemas/`:
 | [`schemas/ripr/pr-evidence.schema.json`](../../schemas/ripr/pr-evidence.schema.json) | Canonical PR evidence summary packet. |
 | [`schemas/ripr/review-comments.schema.json`](../../schemas/ripr/review-comments.schema.json) | `ripr review-comments` guidance output. |
 | [`schemas/ripr/gate-decision.schema.json`](../../schemas/ripr/gate-decision.schema.json) | `ripr gate evaluate` decision output and its structured repair route. |
+| [`schemas/ripr/check.schema.json`](../../schemas/ripr/check.schema.json) | `ripr check --json` primary findings and typed analysis-outcome output. |
 
 The schema set and valid fixture packets are checked by:
 

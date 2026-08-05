@@ -116,6 +116,14 @@ Repo-scoped formats such as `repo-exposure-json`, `repo-exposure-md`,
 
 `ripr check --json` emits:
 
+The normative top-level contract is
+[`schemas/ripr/check.schema.json`](../schemas/ripr/check.schema.json). It pins
+`schema_version` (`0.2`), `tool`, `mode`, `root`, `summary`, and `findings`.
+The optional `analysis_outcome` block preserves producer-owned completeness;
+the optional `finding_alignment` block is the typed canonical seam projection.
+Unknown top-level fields are rejected by the verification contract. Nested
+finding and seam details may grow additively within the pinned version.
+
 ```json
 {
   "schema_version": "0.2",
