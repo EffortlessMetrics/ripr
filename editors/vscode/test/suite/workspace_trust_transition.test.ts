@@ -43,6 +43,9 @@ function trustedConfig(): RiprConfig {
     downloadBaseUrl: 'https://sentinel.invalid/ripr',
     checkMode: 'draft',
     baseRef: 'origin/main',
+    includeUnchangedTests: true,
+    seamDiagnostics: true,
+    diagnosticProfile: 'actionable',
     traceServer: 'off'
   };
 }

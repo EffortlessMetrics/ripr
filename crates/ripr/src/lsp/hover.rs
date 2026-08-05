@@ -104,9 +104,18 @@ pub(super) fn diagnostic_covers_position(diagnostic: &Diagnostic, position: &Pos
     position_in_range(position, &diagnostic.range)
 }
 
+pub(super) fn is_gap_diagnostic(diagnostic: &Diagnostic) -> bool {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("source"))
+        .and_then(Value::as_str)
+        == Some("gap_decision_ledger")
+}
+
 fn diagnostic_hover_markdown(diagnostic: &Diagnostic) -> String {
-    if let Some(data) = &diagnostic.data
-        && data.get("source").and_then(string_value) == Some("gap_decision_ledger")
+    if is_gap_diagnostic(diagnostic)
+        && let Some(data) = &diagnostic.data
     {
         return gap_diagnostic_hover_markdown(diagnostic, data);
     }

@@ -840,7 +840,7 @@ fn push_gap_actions(
                 AGENT_VERIFY_COMMAND_TITLE,
                 COPY_AGENT_VERIFY_COMMAND,
                 "copy_agent_verify_command",
-                gap_command_target(context.diagnostic, "gap_verify", command),
+                gap_command_target(params, context.diagnostic, "gap_verify", command),
                 context.diagnostic,
                 Some(context.snapshot),
             )),
@@ -869,7 +869,7 @@ fn push_gap_actions(
                     AGENT_RECEIPT_COMMAND_TITLE,
                     COPY_AGENT_RECEIPT_COMMAND,
                     "copy_agent_receipt_command",
-                    gap_command_target(context.diagnostic, "gap_receipt", &command),
+                    gap_command_target(params, context.diagnostic, "gap_receipt", &command),
                     context.diagnostic,
                     Some(context.snapshot),
                 )),
@@ -909,7 +909,7 @@ fn push_gap_actions(
         // the packet action inert with the limitation named.
         actions.push(action);
     }
-    if let Some(target) = static_limit_note_target(context.diagnostic) {
+    if let Some(target) = static_limit_note_target(params, context.diagnostic) {
         actions.push(copy_context_action(
             COPY_STATIC_LIMIT_NOTE_TITLE,
             COPY_STATIC_LIMIT_NOTE_TITLE,
@@ -1761,15 +1761,20 @@ fn copy_optional_value(object: &mut serde_json::Map<String, Value>, data: &Value
     }
 }
 
-fn gap_command_target(diagnostic: &Diagnostic, label: &str, command: &str) -> LSPAny {
-    let mut target = serde_json::json!({
-        "label": label,
-        "command": command,
-        "root": COMMAND_ROOT,
-    });
-    if let Some(data) = &diagnostic.data
-        && let Some(object) = target.as_object_mut()
-    {
+fn gap_command_target(
+    params: &CodeActionParams,
+    diagnostic: &Diagnostic,
+    label: &str,
+    command: &str,
+) -> LSPAny {
+    let mut target = copy_context_target(params, diagnostic);
+    if let Some(object) = target.as_object_mut() {
+        object.insert("label".to_string(), Value::String(label.to_string()));
+        object.insert("command".to_string(), Value::String(command.to_string()));
+        object.insert("root".to_string(), Value::String(COMMAND_ROOT.to_string()));
+        let Some(data) = diagnostic.data.as_ref() else {
+            return target;
+        };
         for key in [
             "gap_id",
             "canonical_gap_id",
@@ -1866,21 +1871,21 @@ fn path_matches_diagnostic_language(data: &Value, path: &str) -> bool {
     }
 }
 
-fn static_limit_note_target(diagnostic: &Diagnostic) -> Option<LSPAny> {
+fn static_limit_note_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> Option<LSPAny> {
     let data = diagnostic.data.as_ref()?;
     let note = static_limit_note(data)?;
-    let mut target = serde_json::json!({
-        "label": "static_limit_note",
-        "gap_id": string_at(data, &["gap_id"]),
-        "canonical_gap_id": string_at(data, &["canonical_gap_id"]),
-        "language": string_at(data, &["language"]),
-        "language_status": string_at(data, &["language_status"]),
-        "note": note,
-        "limits_note": "Static evidence only; no runtime adequacy claim.",
-    });
-    if let Some(navigation_target) = value_at(data, &["navigation_only_target"]).cloned()
-        && let Some(object) = target.as_object_mut()
-    {
+    let mut target = copy_context_target(params, diagnostic);
+    let object = target.as_object_mut()?;
+    object.insert(
+        "label".to_string(),
+        Value::String("static_limit_note".to_string()),
+    );
+    object.insert("note".to_string(), Value::String(note));
+    object.insert(
+        "limits_note".to_string(),
+        Value::String("Static evidence only; no runtime adequacy claim.".to_string()),
+    );
+    if let Some(navigation_target) = value_at(data, &["navigation_only_target"]).cloned() {
         object.insert("navigation_only_target".to_string(), navigation_target);
     }
     Some(target)
@@ -2389,6 +2394,27 @@ mod tests {
             target["gap_ledger"],
             "target/ripr/reports/gap-decision-ledger.json"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_command_target_keeps_context_when_diagnostic_has_no_data() -> Result<(), String> {
+        let params = code_action_params(Vec::new())?;
+        let target = gap_command_target(
+            &params,
+            &Diagnostic::default(),
+            "gap_verify",
+            "cargo xtask verify",
+        );
+
+        if target["label"] != "gap_verify"
+            || target["command"] != "cargo xtask verify"
+            || target["root"] != COMMAND_ROOT
+            || target["uri"] != "file:///workspace/src/pricing.rs"
+            || target["line"] != 12
+        {
+            return Err(format!("gap command context was not preserved: {target}"));
+        }
         Ok(())
     }
 

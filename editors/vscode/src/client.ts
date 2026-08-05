@@ -70,6 +70,20 @@ const RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION = new Map<string, 'rust' | 'typesc
 ]);
 const RIPR_CONFIG_RELATIVE_PATH = 'ripr.toml';
 
+function lspConfigurationForResource(scopeUri: string | undefined): Record<string, unknown> {
+  const resource = scopeUri ? vscode.Uri.parse(scopeUri) : undefined;
+  const config = vscode.workspace.getConfiguration('ripr', resource);
+  return {
+    baseRef: config.get<string>('baseRef'),
+    checkMode: config.get<string>('check.mode'),
+    includeUnchangedTests: config.get<boolean>('includeUnchangedTests'),
+    seamDiagnostics: config.get<boolean>('seamDiagnostics'),
+    diagnosticProfile: config.get<string>('diagnosticProfile'),
+    gitTimeoutMs: config.get<number>('gitTimeoutMs'),
+    refreshDeadlineMs: config.get<number>('refreshDeadlineMs')
+  };
+}
+
 // The ripr.* commands this extension registers, advertised to the server at
 // initialize inside the RIPR experimental capability block (#1987,
 // RIPR-SPEC-0143) so the session profile knows which client commands exist.
@@ -274,7 +288,7 @@ export class RiprClientLifecycleTimeoutError extends Error {
 }
 
 export interface RiprClientRuntime {
-  getConfig(): RiprConfig;
+  getConfig(resource?: vscode.Uri): RiprConfig;
   workspaceRootState(): RiprWorkspaceRootState;
   workspaceFolders(): readonly vscode.WorkspaceFolder[];
   showQuickPick<T extends vscode.QuickPickItem>(
@@ -435,9 +449,11 @@ export class RiprClientController {
       return;
     }
 
-    const config = this.runtime.getConfig();
     this.workspaceRootState = this.resolveWorkspaceRootState();
     this.workspaceRoot = this.workspaceRootState.root;
+    const config = this.runtime.getConfig(
+      this.workspaceRoot ? vscode.Uri.file(this.workspaceRoot) : undefined
+    );
     await this.refreshSetupStatusFiles();
 
     if (!config.enabled) {
@@ -530,10 +546,38 @@ export class RiprClientController {
       initializationOptions: {
         baseRef: config.baseRef,
         checkMode: config.checkMode,
-        includeUnchangedTests: true
+        includeUnchangedTests: config.includeUnchangedTests,
+        seamDiagnostics: config.seamDiagnostics,
+        diagnosticProfile: config.diagnosticProfile
       },
       outputChannel: this.output,
       traceOutputChannel: this.output,
+      middleware: {
+        workspace: {
+          configuration: async (params, token, next) => {
+            const riprItems = params.items.filter((item) => item.section === 'ripr');
+            const otherItems = params.items.filter((item) => item.section !== 'ripr');
+            if (riprItems.length === 0) {
+              return next(params, token);
+            }
+            const riprConfigurations = riprItems.map((item) => lspConfigurationForResource(item.scopeUri));
+            if (otherItems.length === 0) {
+              return riprConfigurations;
+            }
+            const otherConfigurations = await next({ items: otherItems }, token);
+            if (!Array.isArray(otherConfigurations)) {
+              return otherConfigurations;
+            }
+            let riprIndex = 0;
+            let otherIndex = 0;
+            return params.items.map((item) =>
+              item.section === 'ripr'
+                ? riprConfigurations[riprIndex++]
+                : otherConfigurations[otherIndex++]
+            );
+          }
+        }
+      },
       synchronize: {
         configurationSection: 'ripr',
         fileEvents: this.runtime.createFileSystemWatcher(
@@ -811,19 +855,24 @@ export class RiprClientController {
       return;
     }
 
-    if (target?.label === 'first_repair_packet' && typeof target.packet === 'string') {
+    const directPacketLabel = target?.label === 'first_repair_packet'
+      ? 'first repair packet'
+      : target?.label === 'gap_repair_packet'
+        ? 'gap repair packet'
+        : undefined;
+    if (directPacketLabel && target && typeof target.packet === 'string') {
       const packet = target.packet.trim();
       if (!packet) {
-        this.runtime.showInformationMessage('No ripr first repair packet is available for this diagnostic.');
+        this.runtime.showInformationMessage(`No ripr ${directPacketLabel} is available for this diagnostic.`);
         return;
       }
       try {
         await this.runtime.writeClipboard(packet);
-        this.runtime.showInformationMessage('Copied ripr first repair packet to clipboard.');
+        this.runtime.showInformationMessage(`Copied ripr ${directPacketLabel} to clipboard.`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.output.appendLine(`ripr copy first repair packet failed: ${message}`);
-        this.warnWithOutput('ripr could not copy the first repair packet.');
+        this.output.appendLine(`ripr copy ${directPacketLabel} failed: ${message}`);
+        this.warnWithOutput(`ripr could not copy the ${directPacketLabel}.`);
       }
       return;
     }
@@ -1029,7 +1078,7 @@ export class RiprClientController {
       return;
     }
 
-    const rootBlocker = this.repairActionRootBlocker();
+    const rootBlocker = this.repairActionRootBlocker(uriFromTarget(target));
     if (rootBlocker) {
       this.runtime.showInformationMessage(rootBlocker);
       return;
@@ -1051,6 +1100,10 @@ export class RiprClientController {
   }
 
   async copyCurrentRepairPacket(): Promise<void> {
+    if (!this.runtime.isWorkspaceTrusted()) {
+      this.runtime.showInformationMessage('ripr workspace is not trusted; repair packets are unavailable.');
+      return;
+    }
     await this.refreshSetupStatusFiles();
     const queue = this.setupStatus.actionableQueue;
     if (this.status.kind === 'stale' && actionableGapQueueCanBecomeStale(queue.state)) {

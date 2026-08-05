@@ -179,6 +179,32 @@
           "default": "origin/main",
           "description": "Git base ref used by ripr editor diagnostics and context commands."
         },
+        "ripr.includeUnchangedTests": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include unchanged tests as static evidence when analyzing editor diagnostics. Forwarded as initializationOptions.includeUnchangedTests and workspace/configuration.",
+          "scope": "resource"
+        },
+        "ripr.seamDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable saved-workspace repository seam diagnostics in addition to diff-derived findings. Forwarded as initializationOptions.seamDiagnostics.",
+          "scope": "resource"
+        },
+        "ripr.diagnosticProfile": {
+          "type": "string",
+          "enum": [
+            "actionable",
+            "full"
+          ],
+          "enumDescriptions": [
+            "Actionable: publish only producer-backed bounded finding routes",
+            "Full: preserve audit and debug finding and seam visibility"
+          ],
+          "default": "actionable",
+          "description": "Diagnostic projection profile forwarded as initializationOptions.diagnosticProfile.",
+          "scope": "resource"
+        },
         "ripr.gitTimeoutMs": {
           "type": "number",
           "minimum": 1000,

@@ -778,10 +778,12 @@ pub(super) fn workspace_diagnostics_with_config(
 
     // Validate gap artifacts first so we can determine run status before
     // assembling diagnostics. Run status governs severity downgrade/suppression
-    // policy: finding WARNINGs become INFORMATION and gap-record diagnostics are
-    // suppressed entirely when the run is not "full" (stale/cache_limited/limited).
-    // This surfaces the limited state via `ripr.collectWorkspaceStatus`, not
-    // per-file spam. See RIPR-SPEC-0076 diagnostics policy.
+    // policy: finding WARNINGs become INFORMATION. Gap-record diagnostics are
+    // normally suppressed outside a full run, with one narrow exception for a
+    // usable, preview-only ledger: preview languages are intentionally limited,
+    // but their producer-backed advisory evidence still belongs in the editor.
+    // Stale, cache-limited, incomplete, partial, and degraded runs remain
+    // status-only. See RIPR-SPEC-0076 diagnostics policy.
     let gap_artifact_report =
         validate_workspace_gap_artifact_report(&root, config.repo_config().languages().enabled());
     component_outcomes.push(cache_component_outcome(&gap_artifact_report.rejections));
@@ -942,12 +944,18 @@ pub(super) fn workspace_diagnostics_with_config(
         })
         .collect();
 
-    // Policy: gap-record diagnostics are suppressed entirely when run is not
-    // "full" (stale/cache_limited/limited). The limited state is surfaced by
-    // `ripr.collectWorkspaceStatus`, not per-file spam. The ledger was
-    // already read, validated, and parsed once above; a degraded ledger
-    // component means there are no records to project.
-    if is_full_run && let Some((ledger_path, records)) = &gap_ledger {
+    // The ledger was already read, validated, and parsed once above; a degraded
+    // ledger component means there are no records to project. Preview-only
+    // records are the one non-full exception because the preview contract
+    // requires visible, bounded advisory evidence rather than a silent zero.
+    if should_project_gap_records(
+        run_status,
+        &findings,
+        &gap_artifact_report.artifacts,
+        &component_outcomes,
+        gap_ledger.as_ref().map(|(_, records)| records.as_slice()),
+    ) && let Some((ledger_path, records)) = &gap_ledger
+    {
         append_gap_record_diagnostics_with_causal(
             &root,
             ledger_path,
@@ -987,6 +995,53 @@ pub(super) fn workspace_diagnostics_with_config(
         out_of_scope_test_file_findings,
     };
     Ok(WorkspaceDiagnostics { snapshot, batches })
+}
+
+/// Decide whether the validated gap ledger is safe to project into the editor.
+///
+/// A full run may project any valid ledger. A limited run may project only a
+/// preview-only ledger when the limitation itself is preview/static evidence
+/// and no other component degraded. This keeps preview diagnostics visible
+/// while preserving the fail-closed suppression policy for stale, rejected,
+/// incomplete, partial, and operationally degraded runs.
+fn should_project_gap_records(
+    run_status: &str,
+    findings: &[Finding],
+    gap_artifacts: &[super::gap_artifacts::ValidatedGapArtifact],
+    component_outcomes: &[ComponentOutcome],
+    records: Option<&[GapRecord]>,
+) -> bool {
+    if run_status == "full" {
+        return records.is_some_and(|records| !records.is_empty());
+    }
+    if run_status != "limited" || component_outcomes.iter().any(ComponentOutcome::is_degraded) {
+        return false;
+    }
+    let Some(records) = records else {
+        return false;
+    };
+    if records.is_empty()
+        || !records
+            .iter()
+            .all(|record| record.language_status == "preview")
+    {
+        return false;
+    }
+
+    let preview_limitation = findings.iter().any(|finding| {
+        finding.static_limit_kind.is_some()
+            && finding.language_status == Some(LanguageStatus::Preview)
+    }) || gap_artifacts
+        .iter()
+        .any(|artifact| artifact.has_static_limit() && artifact.is_preview());
+    let all_static_limitations_are_preview = findings.iter().all(|finding| {
+        finding.static_limit_kind.is_none()
+            || finding.language_status == Some(LanguageStatus::Preview)
+    }) && gap_artifacts
+        .iter()
+        .all(|artifact| !artifact.has_static_limit() || artifact.is_preview());
+
+    preview_limitation && all_static_limitations_are_preview
 }
 
 /// Run workspace diagnostics with a token installed for synchronous analysis
@@ -3422,6 +3477,167 @@ mod diagnostic_policy_tests {
             return Err(format!(
                 "expected INFORMATION after limited-run downgrade, got {final_severity:?}"
             ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn limited_preview_run_projects_preview_gap_records() -> Result<(), String> {
+        let mut finding = policy_finding();
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+        let mut record = complete_gap_record();
+        record.language_status = "preview".to_string();
+        record.language = "typescript".to_string();
+
+        let run_status = derive_run_status(&[finding.clone()], &[], &[], false, false, &[]);
+        if run_status != "limited" {
+            return Err(format!(
+                "expected preview static limitation to produce limited status, got {run_status}"
+            ));
+        }
+        if !should_project_gap_records(
+            run_status,
+            &[finding],
+            &[],
+            &[ComponentOutcome::complete(AnalysisComponent::Diff)],
+            Some(std::slice::from_ref(&record)),
+        ) {
+            return Err(
+                "preview gap records should remain visible in a limited preview run".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn limited_stable_run_suppresses_gap_records() -> Result<(), String> {
+        let mut finding = policy_finding();
+        finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+        let record = complete_gap_record();
+        let run_status = derive_run_status(&[finding.clone()], &[], &[], false, false, &[]);
+        if should_project_gap_records(
+            run_status,
+            &[finding],
+            &[],
+            &[ComponentOutcome::complete(AnalysisComponent::Diff)],
+            Some(std::slice::from_ref(&record)),
+        ) {
+            return Err("stable/static-limited gap records must remain suppressed".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn degraded_preview_run_suppresses_gap_records() -> Result<(), String> {
+        let mut finding = policy_finding();
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+        let mut record = complete_gap_record();
+        record.language_status = "preview".to_string();
+        record.language = "typescript".to_string();
+        let run_status = derive_run_status(&[finding.clone()], &[], &[], false, false, &[]);
+        let degraded = ComponentOutcome::failed(
+            AnalysisComponent::SeamInventory,
+            "seam_inventory_failed",
+            "test degradation",
+            true,
+            "retry ripr.refreshDiagnostics",
+        );
+        if should_project_gap_records(
+            run_status,
+            &[finding],
+            &[],
+            &[degraded],
+            Some(std::slice::from_ref(&record)),
+        ) {
+            return Err(
+                "operationally degraded preview runs must suppress gap records".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gap_projection_policy_is_fail_closed_for_missing_or_mixed_preview_evidence()
+    -> Result<(), String> {
+        let complete = ComponentOutcome::complete(AnalysisComponent::Diff);
+        let record = complete_gap_record();
+        let preview_record = {
+            let mut record = record.clone();
+            record.language = "typescript".to_string();
+            record.language_status = "preview".to_string();
+            record
+        };
+        let mut preview_finding = policy_finding();
+        preview_finding.language_status = Some(LanguageStatus::Preview);
+        preview_finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+
+        if should_project_gap_records("full", &[], &[], std::slice::from_ref(&complete), None)
+            || should_project_gap_records(
+                "full",
+                &[],
+                &[],
+                std::slice::from_ref(&complete),
+                Some(&[]),
+            )
+            || !should_project_gap_records(
+                "full",
+                &[],
+                &[],
+                std::slice::from_ref(&complete),
+                Some(std::slice::from_ref(&record)),
+            )
+        {
+            return Err("full-run projection must require a non-empty ledger".to_string());
+        }
+        if should_project_gap_records("stale", &[], &[], std::slice::from_ref(&complete), None)
+            || should_project_gap_records(
+                "limited",
+                &[],
+                &[],
+                std::slice::from_ref(&complete),
+                None,
+            )
+            || should_project_gap_records(
+                "limited",
+                &[preview_finding.clone()],
+                &[],
+                std::slice::from_ref(&complete),
+                Some(&[]),
+            )
+            || should_project_gap_records(
+                "limited",
+                &[preview_finding.clone()],
+                &[],
+                std::slice::from_ref(&complete),
+                Some(std::slice::from_ref(&record)),
+            )
+            || !should_project_gap_records(
+                "limited",
+                &[preview_finding.clone()],
+                &[],
+                std::slice::from_ref(&complete),
+                Some(std::slice::from_ref(&preview_record)),
+            )
+        {
+            return Err(
+                "limited projection must require preview-only, non-empty records".to_string(),
+            );
+        }
+
+        let mut stable_finding = policy_finding();
+        stable_finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+        if should_project_gap_records(
+            "limited",
+            &[preview_finding, stable_finding],
+            &[],
+            &[complete],
+            Some(std::slice::from_ref(&preview_record)),
+        ) {
+            return Err(
+                "mixed preview and non-preview limitations must remain suppressed".to_string(),
+            );
         }
         Ok(())
     }

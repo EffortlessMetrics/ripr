@@ -13,6 +13,7 @@ use super::diagnostics::{
 use super::hover::{
     classified_seam_hover_response, diagnostic_at_position, diagnostic_covers_position,
     diagnostic_hover_response, finding_hover_response, hover_response, hover_with_snapshot_status,
+    is_gap_diagnostic,
 };
 use super::lens::{LensViewIdentity, code_lens_response, lens_view_identity};
 use super::payload_bounds::{
@@ -2519,6 +2520,19 @@ impl Backend {
                 if let Some(seam) = snapshot.classified_seam_for_diagnostic(diagnostic) {
                     return Some(hover_with_snapshot_status(
                         classified_seam_hover_response(seam, diagnostic, Some(snapshot)),
+                        snapshot,
+                    ));
+                }
+            }
+            // A producer-backed gap decision is more specific than the
+            // overlapping language finding: it carries the bounded repair,
+            // verification, and receipt route the user asked to inspect.
+            // Prefer it before the generic finding hover while retaining seam
+            // evidence as the highest-priority structural projection.
+            for diagnostic in &overlapping {
+                if is_gap_diagnostic(diagnostic) {
+                    return Some(hover_with_snapshot_status(
+                        diagnostic_hover_response(diagnostic),
                         snapshot,
                     ));
                 }
@@ -7443,6 +7457,52 @@ mod delivery_selection_parity_tests {
                     "workspace pull diverged from push for {uri}: pull={ids:?} push={push_ids:?}"
                 ));
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn hover_prefers_gap_diagnostic_over_overlapping_finding() -> Result<(), String> {
+        let harness = parity_backend()?;
+        let backend = harness.service.inner();
+        let uri = parity_uri("pricing.rs")?;
+        let mut finding = parity_diagnostic("finding:pricing", true);
+        finding.range = tower_lsp_server::ls_types::Range::new(
+            tower_lsp_server::ls_types::Position::new(0, 0),
+            tower_lsp_server::ls_types::Position::new(0, 20),
+        );
+        let mut gap = finding.clone();
+        gap.data = Some(serde_json::json!({
+            "diagnostic_id": "gap:pricing",
+            "source": "gap_decision_ledger",
+            "gap_id": "gap:rust:pricing:threshold-boundary",
+            "language": "rust",
+            "language_status": "supported",
+            "repairability": "actionable",
+            "repair_route": "AddBoundaryAssertion"
+        }));
+
+        commit(
+            backend,
+            parity_workspace_diagnostics(vec![(uri.clone(), vec![finding, gap])]),
+        )?;
+        let params = HoverParams {
+            text_document_position_params: tower_lsp_server::ls_types::TextDocumentPositionParams {
+                text_document: tower_lsp_server::ls_types::TextDocumentIdentifier::new(uri),
+                position: tower_lsp_server::ls_types::Position::new(0, 1),
+            },
+            work_done_progress_params: tower_lsp_server::ls_types::WorkDoneProgressParams::default(
+            ),
+        };
+
+        let hover = backend
+            .hover_for_position(&params)
+            .ok_or_else(|| "overlapping gap diagnostic should provide a hover".to_string())?;
+        let hover_text = serde_json::to_string(&hover).map_err(|error| error.to_string())?;
+        if !hover_text.contains("gap:rust:pricing:threshold-boundary") {
+            return Err(format!(
+                "overlapping gap diagnostic did not own the hover content: {hover_text}"
+            ));
         }
         Ok(())
     }
