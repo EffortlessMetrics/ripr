@@ -336,6 +336,24 @@ pub(crate) fn capture_output(
     })
 }
 
+pub(crate) fn capture_output_in_dir(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    error_context: &str,
+) -> Result<CapturedOutput, String> {
+    let output = Command::new(program)
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|err| format!("failed to run {error_context} in {}: {err}", cwd.display()))?;
+    Ok(CapturedOutput {
+        status: output.status,
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
 pub(crate) fn capture_output_with_timeout(
     program: &str,
     args: &[String],

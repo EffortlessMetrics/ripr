@@ -11851,8 +11851,10 @@ target/ripr/reports/release-readiness.md
 ```
 
 The report checks repo artifacts and safe local commands for the 0.4
-first-hour loop. It path-installs the local binary, verifies the public command
-surface, runs the boundary-gap `ripr pilot`, `ripr outcome`, and
+first-hour loop. It packages and extracts the local crate, installs the binary
+from that extracted package, verifies the installed binary differs from the
+workspace build, and exercises `ripr doctor` against an external fixture. It
+then verifies the public command surface, runs the boundary-gap `ripr pilot`, `ripr outcome`, and
 `ripr agent verify` snapshots, writes a focused `ripr agent receipt`, refreshes
 repo-exposure latency and LSP cockpit reports, checks the advisory GitHub
 workflow dry-run, and confirms VSIX and known-limit docs. It does not run
@@ -11906,7 +11908,7 @@ Field contract:
   failed.
 - `version` - requested release version from `--version`.
 - `checks[].id` - stable check identifier such as `package-list`,
-  `publish-dry-run`, `path-install`, `installed-command-surface`,
+  `publish-dry-run`, `package-install`, `installed-command-surface`,
   `pilot-boundary-fixture`, `outcome-boundary-fixture`,
   `agent-verify-boundary-fixture`, `agent-receipt-boundary-fixture`,
   `repo-exposure-latency`, `lsp-cockpit`, `github-workflow-defaults`,

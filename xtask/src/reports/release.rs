@@ -1,7 +1,10 @@
+use flate2::read::GzDecoder;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tar::Archive;
 
 const REPORT_WORK_DIR: &str = "target/ripr/release-readiness";
 const INSTALL_ROOT: &str = "target/ripr/release-readiness/install";
@@ -106,8 +109,8 @@ fn build_release_readiness_report(version: &str) -> ReleaseReadinessReport {
     let installed_binary = installed_ripr_binary();
     let checks = vec![
         package_list_check(version, crate_version.as_deref(), clean_tree.clone()),
-        publish_dry_run_check(version, crate_version.as_deref(), clean_tree),
-        path_install_check(),
+        publish_dry_run_check(version, crate_version.as_deref(), clean_tree.clone()),
+        package_install_check(version, crate_version.as_deref()),
         installed_command_surface_check(&installed_binary),
         pilot_fixture_check(&installed_binary),
         outcome_fixture_check(&installed_binary),
@@ -246,49 +249,489 @@ where
     }
 }
 
-fn path_install_check() -> ReleaseReadinessCheck {
-    let command =
-        format!("cargo install --path crates/ripr --locked --root {INSTALL_ROOT} --force");
-    match run_command(
-        "cargo",
-        &[
-            "install",
-            "--path",
-            "crates/ripr",
-            "--locked",
-            "--root",
-            INSTALL_ROOT,
-            "--force",
-        ],
-    ) {
-        Ok(result) if result.success => readiness_check(
-            "path-install",
-            "pass",
-            true,
+fn package_install_check(version: &str, crate_version: Option<&str>) -> ReleaseReadinessCheck {
+    let command = format!(
+        "cargo package -p ripr --locked && cargo install --path <external-package-root>/ripr-{version} --locked --root {INSTALL_ROOT} --force && installed ripr doctor --root <external-fixture> --json"
+    );
+    let Some(crate_version) = crate_version else {
+        return readiness_check(
+            "package-install",
+            "not_run",
+            false,
             &command,
-            "path-installed ripr binary is available",
-            vec![crate::normalize_path(&installed_ripr_binary())],
-            command_details(&result),
-        ),
-        Ok(result) => readiness_check(
-            "path-install",
+            "crate version could not be read; release-prep should run this gate explicitly",
+            Vec::new(),
+            Vec::new(),
+        );
+    };
+    if crate_version != version {
+        return readiness_check(
+            "package-install",
+            "not_run",
+            false,
+            &command,
+            "requested release version does not match the crate version yet",
+            Vec::new(),
+            vec![format!(
+                "requested version: {version}; crates/ripr version: {crate_version}"
+            )],
+        );
+    }
+    // Re-read the worktree immediately before packaging.  The initial status
+    // snapshot is shared with the other release checks, but this gate owns a
+    // package/install proof whose safety depends on the state at this exact
+    // point in time.
+    match git_worktree_is_clean() {
+        Ok(true) => match run_packaged_install(version, crate_version) {
+            Ok(result) if result.success => readiness_check(
+                "package-install",
+                "pass",
+                true,
+                &command,
+                "packaged crate was extracted, installed, identity-checked, and exercised outside the source checkout",
+                result.artifacts,
+                result.details,
+            ),
+            Ok(result) => readiness_check(
+                "package-install",
+                "fail",
+                true,
+                &command,
+                "packaged crate install or external CLI smoke failed",
+                result.artifacts,
+                result.details,
+            ),
+            Err(err) => readiness_check(
+                "package-install",
+                "fail",
+                true,
+                &command,
+                "packaged crate install could not run",
+                vec![crate::normalize_path(&installed_ripr_binary())],
+                vec![err],
+            ),
+        },
+        Ok(false) => readiness_check(
+            "package-install",
             "fail",
             true,
             &command,
-            "path install failed",
-            vec![crate::normalize_path(&installed_ripr_binary())],
-            command_details(&result),
+            "dirty tree at package/install proof time; package/install proof is not trustworthy",
+            Vec::new(),
+            Vec::new(),
         ),
         Err(err) => readiness_check(
-            "path-install",
+            "package-install",
             "fail",
             true,
             &command,
-            "path install could not run",
-            vec![crate::normalize_path(&installed_ripr_binary())],
+            "git worktree state could not be verified before package/install proof",
+            Vec::new(),
             vec![err],
         ),
     }
+}
+
+struct PackageInstallResult {
+    success: bool,
+    artifacts: Vec<String>,
+    details: Vec<String>,
+}
+
+fn run_packaged_install(
+    version: &str,
+    crate_version: &str,
+) -> Result<PackageInstallResult, String> {
+    let package_dir = external_package_root()?;
+    let extracted_root = package_dir.join(format!("ripr-{version}"));
+    let archive = Path::new("target/package").join(format!("ripr-{version}.crate"));
+    let workspace_binary =
+        Path::new("target/debug").join(format!("ripr{}", std::env::consts::EXE_SUFFIX));
+    let installed_binary = installed_ripr_binary();
+    let install_root = std::env::current_dir()
+        .map_err(|err| format!("read current directory for install root failed: {err}"))?
+        .join(INSTALL_ROOT);
+    let fixture_root = external_doctor_fixture_root()?;
+    let mut artifacts = vec![
+        crate::normalize_path(&archive),
+        crate::normalize_path(&installed_binary),
+    ];
+    let mut details = Vec::new();
+
+    let _ = fs::remove_dir_all(&package_dir);
+    let _ = fs::remove_dir_all(&install_root);
+    let _ = fs::remove_dir_all(&fixture_root);
+
+    let package = run_command("cargo", &["package", "-p", "ripr", "--locked"])
+        .map_err(|err| format!("cargo package could not run: {err}"))?;
+    details.extend(command_details(&package));
+    if !package.success {
+        return Ok(PackageInstallResult {
+            success: false,
+            artifacts,
+            details,
+        });
+    }
+    if !archive.is_file() {
+        details.push(format!(
+            "missing package archive: {}",
+            crate::normalize_path(&archive)
+        ));
+        return Ok(PackageInstallResult {
+            success: false,
+            artifacts,
+            details,
+        });
+    }
+    let archive_digest = crate::reports::release_server::sha256_file(&archive)?;
+    details.push(format!("package archive sha256: {archive_digest}"));
+    if let Err(err) = extract_packaged_crate(&archive, &package_dir, version) {
+        let cleanup = fs::remove_dir_all(&package_dir);
+        if let Err(cleanup_err) = cleanup {
+            return Err(format!(
+                "{err}; package extraction cleanup failed: {cleanup_err}"
+            ));
+        }
+        return Err(err);
+    }
+    if !extracted_root.is_dir() {
+        details.push(format!(
+            "missing extracted package root: {}",
+            crate::normalize_path(&extracted_root)
+        ));
+        return Ok(PackageInstallResult {
+            success: false,
+            artifacts,
+            details,
+        });
+    }
+    artifacts.push(crate::normalize_path(&extracted_root));
+
+    let build = run_command("cargo", &["build", "-p", "ripr", "--locked"])
+        .map_err(|err| format!("workspace binary build could not run: {err}"))?;
+    details.extend(command_details(&build));
+    if !build.success || !workspace_binary.is_file() {
+        details.push(format!(
+            "missing workspace binary: {}",
+            crate::normalize_path(&workspace_binary)
+        ));
+        let _ = fs::remove_dir_all(&package_dir);
+        return Ok(PackageInstallResult {
+            success: false,
+            artifacts,
+            details,
+        });
+    }
+    let workspace_digest = crate::reports::release_server::sha256_file(&workspace_binary)?;
+    details.push(format!("workspace binary sha256: {workspace_digest}"));
+
+    let install_args = vec![
+        "install".to_string(),
+        "--path".to_string(),
+        ".".to_string(),
+        "--locked".to_string(),
+        "--root".to_string(),
+        crate::normalize_path(&install_root),
+        "--force".to_string(),
+    ];
+    let install = crate::run::capture_output_in_dir(
+        "cargo",
+        &install_args,
+        &extracted_root,
+        "cargo install from packaged crate",
+    )
+    .map_err(|err| format!("cargo install from packaged crate could not run: {err}"))?;
+    let install_result = CommandResult {
+        status: install.status.code(),
+        success: install.status.success(),
+        stdout: install.stdout,
+        stderr: install.stderr,
+    };
+    details.extend(command_details(&install_result));
+    if !install_result.success || !installed_binary.is_file() {
+        details.push(format!(
+            "missing installed binary: {}",
+            crate::normalize_path(&installed_binary)
+        ));
+        let _ = fs::remove_dir_all(&package_dir);
+        return Ok(PackageInstallResult {
+            success: false,
+            artifacts,
+            details,
+        });
+    }
+    let installed_binary = fs::canonicalize(&installed_binary).map_err(|err| {
+        format!("canonicalize installed binary for external execution failed: {err}")
+    })?;
+    let installed_digest = crate::reports::release_server::sha256_file(&installed_binary)?;
+    details.push(format!("installed binary sha256: {installed_digest}"));
+    if let Err(err) = validate_binary_identity(&workspace_digest, &installed_digest) {
+        details.push(err);
+        return Ok(PackageInstallResult {
+            success: false,
+            artifacts,
+            details,
+        });
+    }
+
+    let version_result = run_command_path(&installed_binary, &["--version"])
+        .map_err(|err| format!("installed ripr --version could not run: {err}"))?;
+    details.extend(command_details(&version_result));
+    if let Err(err) = validate_installed_version(
+        version_result.success,
+        &version_result.stdout,
+        crate_version,
+    ) {
+        details.push(err);
+        return Ok(PackageInstallResult {
+            success: false,
+            artifacts,
+            details,
+        });
+    }
+
+    fs::remove_dir_all(&package_dir)
+        .map_err(|err| format!("remove extracted package after install failed: {err}"))?;
+    let fixture = create_external_doctor_fixture(&fixture_root)?;
+    let doctor_args = vec![
+        "doctor".to_string(),
+        "--root".to_string(),
+        crate::normalize_path(&fixture),
+        "--json".to_string(),
+    ];
+    let doctor = match crate::run::capture_output_in_dir(
+        &installed_binary.to_string_lossy(),
+        &doctor_args,
+        &fixture,
+        "installed ripr doctor",
+    ) {
+        Ok(output) => output,
+        Err(err) => {
+            let cleanup = fs::remove_dir_all(&fixture_root);
+            details.push(format!("installed ripr doctor could not run: {err}"));
+            if let Err(cleanup_err) = cleanup {
+                details.push(format!(
+                    "external doctor fixture cleanup failed: {cleanup_err}"
+                ));
+            }
+            return Ok(PackageInstallResult {
+                success: false,
+                artifacts,
+                details,
+            });
+        }
+    };
+    let doctor_result = CommandResult {
+        status: doctor.status.code(),
+        success: doctor.status.success(),
+        stdout: doctor.stdout,
+        stderr: doctor.stderr,
+    };
+    details.extend(command_details(&doctor_result));
+    let doctor_json: Value = match serde_json::from_str(&doctor_result.stdout) {
+        Ok(value) => value,
+        Err(err) => {
+            let cleanup = fs::remove_dir_all(&fixture_root);
+            details.push(format!(
+                "installed ripr doctor emitted malformed JSON: {err}"
+            ));
+            if let Err(cleanup_err) = cleanup {
+                details.push(format!(
+                    "external doctor fixture cleanup failed: {cleanup_err}"
+                ));
+            }
+            return Ok(PackageInstallResult {
+                success: false,
+                artifacts,
+                details,
+            });
+        }
+    };
+    if let Err(err) = validate_doctor_result(doctor_result.success, &doctor_json) {
+        details.push(err);
+        if let Err(cleanup_err) = fs::remove_dir_all(&fixture_root) {
+            details.push(format!(
+                "external doctor fixture cleanup failed: {cleanup_err}"
+            ));
+        }
+        return Ok(PackageInstallResult {
+            success: false,
+            artifacts,
+            details,
+        });
+    }
+
+    fs::remove_dir_all(&fixture_root)
+        .map_err(|err| format!("remove external doctor fixture failed: {err}"))?;
+    details.push(format!(
+        "external doctor fixture cleaned: {}",
+        crate::normalize_path(&fixture_root)
+    ));
+    Ok(PackageInstallResult {
+        success: true,
+        artifacts,
+        details,
+    })
+}
+
+fn extract_packaged_crate(archive: &Path, destination: &Path, version: &str) -> Result<(), String> {
+    let file = fs::File::open(archive).map_err(|err| {
+        format!(
+            "open package archive {} failed: {err}",
+            crate::normalize_path(archive)
+        )
+    })?;
+    let decoder = GzDecoder::new(file);
+    let mut tar = Archive::new(decoder);
+    let expected_root = PathBuf::from(format!("ripr-{version}"));
+    fs::create_dir_all(destination)
+        .map_err(|err| format!("create package extraction directory failed: {err}"))?;
+    for (index, entry_result) in tar
+        .entries()
+        .map_err(|err| format!("read package archive entries failed: {err}"))?
+        .enumerate()
+    {
+        let mut entry =
+            entry_result.map_err(|err| format!("read package entry {index} failed: {err}"))?;
+        let enclosed = entry
+            .path()
+            .map_err(|err| format!("read package entry {index} path failed: {err}"))?
+            .into_owned();
+        validate_package_entry(&enclosed, entry.header().entry_type(), &expected_root)?;
+        let output = destination.join(&enclosed);
+        if let Some(parent) = output.parent() {
+            fs::create_dir_all(parent).map_err(|err| {
+                format!(
+                    "create package parent {} failed: {err}",
+                    crate::normalize_path(parent)
+                )
+            })?;
+        }
+        entry.unpack(&output).map_err(|err| {
+            format!(
+                "extract package entry {} failed: {err}",
+                crate::normalize_path(&output)
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn validate_package_entry(
+    enclosed: &Path,
+    entry_type: tar::EntryType,
+    expected_root: &Path,
+) -> Result<(), String> {
+    if !enclosed.starts_with(expected_root) {
+        return Err(format!(
+            "package entry {:?} is outside expected root {expected_root:?}",
+            enclosed
+        ));
+    }
+    if enclosed.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::ParentDir
+                | std::path::Component::RootDir
+                | std::path::Component::Prefix(_)
+        )
+    }) {
+        return Err(format!(
+            "package entry {:?} escapes extraction root",
+            enclosed
+        ));
+    }
+    if entry_type.is_symlink() || entry_type.is_hard_link() {
+        return Err(format!("package entry {:?} is a link", enclosed));
+    }
+    Ok(())
+}
+
+fn validate_binary_identity(workspace_digest: &str, installed_digest: &str) -> Result<(), String> {
+    if installed_digest == workspace_digest {
+        return Err("installed binary unexpectedly matches workspace binary digest".to_string());
+    }
+    Ok(())
+}
+
+fn validate_installed_version(success: bool, stdout: &str, version: &str) -> Result<(), String> {
+    if !success || !stdout.contains(&format!("ripr {version}")) {
+        return Err(
+            "installed binary version output did not identify the packaged crate version"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn validate_doctor_result(success: bool, doctor_json: &Value) -> Result<(), String> {
+    if !success || doctor_json.get("status").and_then(Value::as_str) != Some("pass") {
+        return Err(
+            "installed ripr doctor did not report pass for the external fixture".to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn external_doctor_fixture_root() -> Result<PathBuf, String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock is before Unix epoch: {err}"))?
+        .as_nanos();
+    Ok(release_temp_root()?.join(format!(
+        "ripr-release-doctor-{}-{stamp}",
+        std::process::id()
+    )))
+}
+
+fn external_package_root() -> Result<PathBuf, String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock is before Unix epoch: {err}"))?
+        .as_nanos();
+    Ok(release_temp_root()?.join(format!(
+        "ripr-release-package-{}-{stamp}",
+        std::process::id()
+    )))
+}
+
+fn release_temp_root() -> Result<PathBuf, String> {
+    let configured = std::env::temp_dir();
+    let current = std::env::current_dir()
+        .map_err(|err| format!("read current directory for release fixture failed: {err}"))?;
+    let current = fs::canonicalize(&current).map_err(|err| {
+        format!("canonicalize current directory for release fixture failed: {err}")
+    })?;
+    let mut candidate = fs::canonicalize(&configured).map_err(|err| {
+        format!("canonicalize temporary directory for release fixture failed: {err}")
+    })?;
+    for _ in 0..64 {
+        if candidate != current && !candidate.starts_with(&current) {
+            return Ok(candidate);
+        }
+        candidate = candidate
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "configured temporary directory has no external parent".to_string())?;
+    }
+    Err("could not find an external release fixture directory within 64 parent steps".to_string())
+}
+
+fn create_external_doctor_fixture(root: &Path) -> Result<PathBuf, String> {
+    let source = root.join("src");
+    fs::create_dir_all(&source)
+        .map_err(|err| format!("create external doctor fixture failed: {err}"))?;
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"release-doctor-fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .map_err(|err| format!("write external doctor fixture manifest failed: {err}"))?;
+    fs::write(
+        source.join("lib.rs"),
+        "pub fn fixture_marker() -> &'static str { \"ok\" }\n",
+    )
+    .map_err(|err| format!("write external doctor fixture source failed: {err}"))?;
+    Ok(root.to_path_buf())
 }
 
 /// Commands the bounded first screen (`ripr --help`) must keep offering.
@@ -1717,9 +2160,11 @@ mod tests {
     use super::{
         EditorVersion, FIRST_SCREEN_NEEDLES, PackageVersion, RELEASE_LOOP_NEEDLES,
         ReleaseReadinessCheck, ReleaseReadinessReport, extension_version_check_from,
-        missing_required_needles, package_version, parse_release_readiness_args,
-        read_crate_version, readiness_check, recommit_repo_exposure_json, release_readiness_json,
-        release_readiness_markdown, release_readiness_status,
+        extract_packaged_crate, missing_required_needles, package_version,
+        parse_release_readiness_args, read_crate_version, readiness_check,
+        recommit_repo_exposure_json, release_readiness_json, release_readiness_markdown,
+        release_readiness_status, validate_binary_identity, validate_doctor_result,
+        validate_installed_version, validate_package_entry,
         vsix_start_current_repair_command_present,
     };
     use serde_json::Value;
@@ -1727,6 +2172,141 @@ mod tests {
     use std::fs;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn packaged_crate_extraction_rejects_entry_outside_package_root() -> Result<(), String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("clock error: {err}"))?
+            .as_nanos();
+        let archive = std::env::temp_dir().join(format!("ripr-package-{stamp}.crate"));
+        let destination = std::env::temp_dir().join(format!("ripr-package-extract-{stamp}"));
+        let file = fs::File::create(&archive)
+            .map_err(|err| format!("create test archive failed: {err}"))?;
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut writer = tar::Builder::new(encoder);
+        let payload = b"must not extract";
+        let mut header = tar::Header::new_gnu();
+        header.set_size(payload.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        writer
+            .append_data(&mut header, "other/escape", &payload[..])
+            .map_err(|err| format!("write outside-root entry failed: {err}"))?;
+        let encoder = writer
+            .into_inner()
+            .map_err(|err| format!("finish test archive failed: {err}"))?;
+        encoder
+            .finish()
+            .map_err(|err| format!("finish compressed test archive failed: {err}"))?;
+
+        let result = extract_packaged_crate(&archive, &destination, "0.1.0");
+        let _ = fs::remove_file(&archive);
+        let _ = fs::remove_dir_all(&destination);
+        if result.is_ok() {
+            return Err(
+                "package extraction accepted an entry outside the package root".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packaged_crate_extraction_rejects_symlink_and_hardlink_entries() -> Result<(), String> {
+        for (kind, entry_type) in [
+            ("symlink", tar::EntryType::symlink()),
+            ("hardlink", tar::EntryType::hard_link()),
+        ] {
+            let stamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|err| format!("clock error: {err}"))?
+                .as_nanos();
+            let archive = std::env::temp_dir().join(format!("ripr-package-{kind}-{stamp}.crate"));
+            let destination =
+                std::env::temp_dir().join(format!("ripr-package-extract-{kind}-{stamp}"));
+            let file = fs::File::create(&archive)
+                .map_err(|err| format!("create {kind} test archive failed: {err}"))?;
+            let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+            let mut writer = tar::Builder::new(encoder);
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(entry_type);
+            header.set_mode(0o644);
+            writer
+                .append_link(&mut header, format!("ripr-0.1.0/{kind}"), "target")
+                .map_err(|err| format!("write {kind} entry failed: {err}"))?;
+            let encoder = writer
+                .into_inner()
+                .map_err(|err| format!("finish {kind} archive failed: {err}"))?;
+            encoder
+                .finish()
+                .map_err(|err| format!("finish compressed {kind} archive failed: {err}"))?;
+
+            let result = extract_packaged_crate(&archive, &destination, "0.1.0");
+            let _ = fs::remove_file(&archive);
+            let _ = fs::remove_dir_all(&destination);
+            if result.is_ok() {
+                return Err(format!("package extraction accepted a {kind} entry"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packaged_crate_entry_validation_rejects_traversal_components() -> Result<(), String> {
+        let expected_root = Path::new("ripr-0.1.0");
+        let regular = tar::EntryType::Regular;
+        for path in [Path::new("ripr-0.1.0/foo/../escape"), Path::new("/escape")] {
+            if validate_package_entry(path, regular, expected_root).is_ok() {
+                return Err(format!("package entry validation accepted {path:?}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packaged_install_validates_identity_version_and_doctor_status() -> Result<(), String> {
+        if validate_binary_identity("same", "same").is_ok() {
+            return Err("matching workspace and installed digests were accepted".to_string());
+        }
+        validate_binary_identity("workspace", "installed")?;
+
+        if validate_installed_version(true, "ripr 0.9.0\n", "0.10.0").is_ok() {
+            return Err("wrong installed version was accepted".to_string());
+        }
+        validate_installed_version(true, "ripr 0.10.0\n", "0.10.0")?;
+        if validate_installed_version(false, "ripr 0.10.0\n", "0.10.0").is_ok() {
+            return Err("failed version command was accepted".to_string());
+        }
+
+        let pass = serde_json::json!({"status": "pass"});
+        validate_doctor_result(true, &pass)?;
+        if validate_doctor_result(false, &pass).is_ok() {
+            return Err("failed doctor command was accepted".to_string());
+        }
+        let warn = serde_json::json!({"status": "warn"});
+        if validate_doctor_result(true, &warn).is_ok() {
+            return Err("non-pass doctor status was accepted".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn release_fixture_root_is_canonical_and_external() -> Result<(), String> {
+        let root = super::release_temp_root()?;
+        let current = fs::canonicalize(
+            std::env::current_dir()
+                .map_err(|err| format!("read current directory failed: {err}"))?,
+        )
+        .map_err(|err| format!("canonicalize current directory failed: {err}"))?;
+        if root == current || root.starts_with(&current) {
+            return Err(format!(
+                "release fixture root {} is not external to {}",
+                root.display(),
+                current.display()
+            ));
+        }
+        Ok(())
+    }
 
     /// Build the three editor manifest readings the real check collects.
     fn editors(package_json: Option<&str>, lock: Option<&str>) -> Vec<EditorVersion> {

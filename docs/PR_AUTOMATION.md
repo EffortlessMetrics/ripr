@@ -358,8 +358,9 @@ not change repo-exposure JSON/Markdown.
 
 `release-readiness --version <version>` writes
 `target/ripr/reports/release-readiness.md` and
-`target/ripr/reports/release-readiness.json`. It path-installs the local
-`ripr`, checks that `pilot`, `outcome`, `calibrate cargo-mutants`, and
+`target/ripr/reports/release-readiness.json`. It packages and extracts the
+local `ripr` crate, installs from that extracted package, checks the installed
+binary identity and an external `doctor` fixture, then checks that `pilot`, `outcome`, `calibrate cargo-mutants`, and
 `agent verify`/`agent receipt` are exposed, runs the boundary-gap
 pilot/outcome/agent-verify/agent-receipt fixtures, refreshes repo-exposure
 latency and LSP cockpit reports, inspects the advisory GitHub workflow dry-run,

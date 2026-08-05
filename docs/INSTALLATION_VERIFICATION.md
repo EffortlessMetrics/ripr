@@ -52,7 +52,7 @@ Release, VS Marketplace, or Open VSX availability for that next version.
 Pre-publish proof should record:
 
 - local package and publish dry-run success;
-- path-installed `ripr --version` and `ripr first-pr --help`;
+- packaged-crate-installed `ripr --version` and `ripr first-pr --help`;
 - generated CI dry-run with start-here/advisory gate boundaries;
 - VSIX packaging success;
 - one external-adopter smoke showing an installed binary can find one Rust
@@ -109,6 +109,14 @@ Run these before publishing:
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
+
+The authoritative packaged-crate install proof is produced by
+`cargo xtask release-readiness --version <version>`. It packages the requested
+crate, extracts it outside the source checkout, installs from that extracted
+source, compares the installed binary with the workspace build, and exercises
+`ripr doctor --root <external-fixture> --json`. The path-install smoke below is
+supplemental operator-loop coverage and must not be used as a substitute for
+that package-boundary receipt.
 
 Install from the checked-out package into a local temp root and exercise the
 operator loop with checked examples. The checked fixture is only the repeatable
