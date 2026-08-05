@@ -67,7 +67,7 @@ The first routed lane should be Rust-only:
 
 ```text
 Ripr Rust Small Result:
-  CX53 -> CX43 -> GitHub-hosted
+  CX43 -> CPX42 -> CX53 -> GitHub-hosted
 ```
 
 Self-hosted jobs are only for trusted same-repo PRs and pushes. Fork or
@@ -85,8 +85,9 @@ Implementation jobs are conditional:
 
 ```text
 Route Ripr Rust Small
-Ripr Rust Small on CX53
 Ripr Rust Small on CX43
+Ripr Rust Small on CPX42
+Ripr Rust Small on CX53
 Ripr Rust Small on GitHub Hosted
 ```
 
@@ -127,11 +128,12 @@ Before running proof:
 - confirm `ripr-swarm` has access to runner group `em-ci-small`;
 - confirm `EM_RUNNER_READ_TOKEN` is available to this repository or the
   workflow can otherwise read org runner state;
-- confirm one idle, online runner has labels `CX53` and `em-ci-rust-1.95`;
 - confirm one idle, online runner has labels `CX43` and `em-ci-rust-1.95`;
+- confirm one idle, online runner has labels `CPX42` and `em-ci-rust-1.95`;
+- confirm one idle, online runner has labels `CX53` and `em-ci-rust-1.95`;
 - keep source/release/publish/signing secrets out of `ripr-swarm`.
 
-Prove CX53 primary:
+Prove CX43 primary:
 
 ```bash
 gh workflow run routed-rust.yml --repo EffortlessMetrics/ripr-swarm --ref main
@@ -142,23 +144,25 @@ The run must finish with:
 
 ```text
 Ripr Rust Small Result: success
-target: cx53
-reason: cx53_idle
-cx53: success
-cx43: skipped
+target: cx43
+reason: cx43_idle
+cx43: success
+cpx42: skipped
+cx53: skipped
 github: skipped
 ```
 
-Prove CX43 fallback by making CX53 unavailable or busy while CX43 is online,
-idle, and image-ready, then rerun the same workflow command. The run must
-finish with:
+Prove CPX42 or CX53 fallback by making CX43 unavailable or busy while CPX42
+or CX53 is online, idle, and image-ready, then rerun the same workflow
+command. The run must finish with:
 
 ```text
 Ripr Rust Small Result: success
-target: cx43
-reason: cx43_idle
+target: cpx42
+reason: cpx42_idle
+cx43: skipped
+cpx42: success
 cx53: skipped
-cx43: success
 github: skipped
 ```
 

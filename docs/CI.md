@@ -410,8 +410,9 @@ Routing policy:
 
 ```text
 trusted same-repo PR or push:
-  CX53 if idle
   CX43 if idle
+  CPX42 if idle
+  CX53 if idle
   GitHub-hosted otherwise
 
 fork or otherwise untrusted PR:
@@ -420,7 +421,7 @@ fork or otherwise untrusted PR:
 
 The router uses the repository or organization `EM_RUNNER_READ_TOKEN` secret
 when available. It selects a self-hosted runner only when the runner is idle and
-has both the host label (`CX53` or `CX43`) and the `em-ci-rust-1.95`
+has both the host label (`CX43`, `CPX42`, or `CX53`) and the `em-ci-rust-1.95`
 runner-image/toolchain readiness label. If runner state cannot be read, or a
 runner is idle but not image-ready, the workflow fails closed to GitHub-hosted
 rather than selecting a self-hosted runner by guesswork.
@@ -434,7 +435,7 @@ logs are sufficient for issue proof.
 
 The copyable self-hosted proof runbook is in
 [`docs/swarm-development.md`](swarm-development.md#self-hosted-proof-runbook).
-Use it to record CX53 primary proof, CX43 fallback proof, or the bounded
+Use it to record CX43 primary proof, CPX42/CX53 fallback proof, or the bounded
 runner availability blocker without exposing runner tokens or secrets.
 
 The routed lane runs the existing Rust/product command surface without release
@@ -711,7 +712,7 @@ skip the Codecov test-results upload because repository secrets are unavailable.
 ### Self-Hosted Runner Placement
 
 The everyday required Rust gate routes through `routed-rust.yml`
-(`CX53 -> CX43 -> GitHub-hosted` fallback, shared `/mnt/ci-cache`, disk guards,
+(`CX43 -> CPX42 -> CX53 -> GitHub-hosted` fallback, shared `/mnt/ci-cache`, disk guards,
 and scratch cleanup) and exposes the single branch-protection check
 `Ripr Rust Small Result`. That lane is the migrated reference and is not changed
 by routine runner-placement edits.
