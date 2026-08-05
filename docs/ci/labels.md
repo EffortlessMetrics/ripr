@@ -10,7 +10,7 @@ vocabulary; the next section separates current wiring from target behavior.
 | Label | Effect |
 | --- | --- |
 | `full-ci` | Runs all lanes including release-surface proof. Maps forecast to release band; suppresses budget warnings. |
-| `release-check` | Runs the currently wired release-surface proof without opting into every `full-ci` lane. Today that means the legacy Rust package list and publish dry-run steps. |
+| `release-check` | Runs the currently wired release-surface proof without opting into every `full-ci` lane: package list, publish dry-run, and release-readiness. |
 | `ci-budget-ack` | Acknowledges an over-budget forecast at the `large` band. Budget-neutral; does not run additional lanes. |
 | `vscode` | Target label for forcing the VS Code extension lane on PRs that do not touch `editors/vscode/` but need it. |
 | `coverage` | Documented target label for future coverage-lane selection; current coverage workflow runs on PRs, pushes, and manual dispatch without reading this label. |
@@ -42,7 +42,7 @@ campaign record and a low-truth status comment buries substantive signal.
 
 Current behavior: labels are read directly by the workflows that already have
 label conditions. Today, `release-check` and `full-ci` affect the legacy Rust
-workflow package list and publish dry-run steps, `full-ci` affects the legacy
+workflow package list, publish dry-run, and release-readiness steps, `full-ci` affects the legacy
 VS Code CI job, and `clippy-future` or `full-ci` activates the future-Clippy
 advisory workflow. The `vscode`, `coverage`, `ci-budget-ack`, and
 `ripr-waive` labels are documented policy vocabulary, but not all of them are

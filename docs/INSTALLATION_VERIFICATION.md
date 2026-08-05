@@ -52,12 +52,24 @@ Release, VS Marketplace, or Open VSX availability for that next version.
 Pre-publish proof should record:
 
 - local package and publish dry-run success;
-- packaged-crate-installed `ripr --version` and `ripr first-pr --help`;
+- packaged-crate-installed `ripr --version`, `ripr --help`, and `ripr doctor`;
+- an external Cargo fixture (including a path with spaces) exercised by the
+  installed binary for `check --write-artifact`, exact `diff`, typed `explain`,
+  typed `context`, and bounded `pilot`, with the resulting packet and summary
+  retained in a platform receipt;
 - generated CI dry-run with start-here/advisory gate boundaries;
 - VSIX packaging success;
 - one external-adopter smoke showing an installed binary can find one Rust
   repairable gap, produce a bounded packet or no-action state, add one focused
   proof outside `ripr`, and verify static movement.
+
+The release-readiness gate writes
+`target/ripr/release-readiness/packaged-cli-journey-<os>.json` for each
+platform that runs it. The receipt records the packaged binary, independent
+fixture base/head identities, and executed commands. The readiness check
+reports retained JSON artifacts alongside the receipt. A Windows-only or
+Linux-only receipt is not a cross-platform qualification: the release handoff
+must name the missing platform when the other hosted lane has not run.
 
 ## Previous Release Proof
 
@@ -114,9 +126,12 @@ The authoritative packaged-crate install proof is produced by
 `cargo xtask release-readiness --version <version>`. It packages the requested
 crate, extracts it outside the source checkout, installs from that extracted
 source, compares the installed binary with the workspace build, and exercises
-`ripr doctor --root <external-fixture> --json`. The path-install smoke below is
-supplemental operator-loop coverage and must not be used as a substitute for
-that package-boundary receipt.
+`ripr doctor --root <external-fixture> --json`. It then runs the installed
+binary against an independent Cargo/Git fixture for `check`, exact `diff`,
+`explain`, `context`, and bounded `pilot`, retaining the check artifact,
+agent-seam packet, pilot summary, and platform receipt. The path-install smoke
+below is supplemental operator-loop coverage and must not be used as a
+substitute for that package-boundary receipt.
 
 Install from the checked-out package into a local temp root and exercise the
 operator loop with checked examples. The checked fixture is only the repeatable

@@ -267,7 +267,7 @@ implement and validate the lane-selection logic.
 | Label | Effect |
 | --- | --- |
 | `full-ci` | Run required, advisory, and release-like lanes. Demotes `ripr-waive` for this PR. Expected to cost more. |
-| `release-check` | Run the currently wired release-surface proof without opting into every `full-ci` lane. Today that is package list and publish dry-run. |
+| `release-check` | Run the currently wired release-surface proof without opting into every `full-ci` lane: package list, publish dry-run, and release-readiness. |
 | `vscode` | Run editor extension lanes even when no editor path changed. |
 | `coverage` | Run coverage lanes and upload coverage artifacts. |
 | `ripr-waive` | Acknowledge a soft static exposure finding for this PR. Does not skip CI and does not apply when `full-ci` is present. |
@@ -279,8 +279,8 @@ New labels that affect CI must update this table, the PR template, and the
 budget/risk-pack policy files in the same PR.
 
 These labels are the documented target vocabulary. Today, `release-check` and
-`full-ci` activate the Rust workflow's package list and publish dry-run steps
-on pull requests. Other label effects remain target vocabulary until a later PR
+`full-ci` activate the Rust workflow's package list, publish dry-run, and
+release-readiness steps on pull requests. Other label effects remain target vocabulary until a later PR
 wires them into a PR plan or workflow condition. The GitHub Settings App
 contract in `.github/settings.yml` codifies these label names, descriptions,
 and colors so the reviewable vocabulary does not drift in the GitHub UI.
@@ -490,6 +490,8 @@ release-surface package checks:
 ```bash
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
+release_version="$(cargo pkgid -p ripr | sed 's/.*#//')"
+cargo xtask release-readiness --version "$release_version"
 ```
 
 The CI workflow also has an explicit MSRV job that pins Rust `1.95.0` and runs:

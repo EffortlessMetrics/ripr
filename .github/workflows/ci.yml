@@ -69,6 +69,28 @@ jobs:
       - name: Publish dry-run (release surface)
         if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
         run: cargo publish -p ripr --dry-run
+      - name: Release readiness (release surface)
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: |
+          release_version="$(cargo pkgid -p ripr | sed 's/.*#//')"
+          cargo xtask release-readiness --version "$release_version"
+      - name: Upload release-readiness receipts
+        if: always() && ((github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci'))
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-readiness-${{ github.run_id }}
+          path: |
+            target/ripr/reports/release-readiness.json
+            target/ripr/reports/release-readiness.md
+            target/ripr/reports/agent-receipt.json
+            target/ripr/reports/gap-decision-ledger.json
+            target/ripr/reports/lsp-cockpit.json
+            target/ripr/reports/lsp-cockpit.md
+            target/ripr/reports/repo-exposure-latency.json
+            target/ripr/reports/repo-exposure-latency.md
+            target/ripr/reports/start-here.md
+            target/ripr/release-readiness/
+          if-no-files-found: warn
       - name: Generate ripr test-efficiency report
         if: always()
         run: cargo xtask test-efficiency-report || true

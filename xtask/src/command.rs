@@ -904,7 +904,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/release-readiness.{json,md}",
             false,
-            false,
+            true,
             "Writes release-readiness evidence; does not publish.",
         ),
         command_entry(

@@ -342,9 +342,26 @@ pub(crate) fn capture_output_in_dir(
     cwd: &Path,
     error_context: &str,
 ) -> Result<CapturedOutput, String> {
-    let output = Command::new(program)
-        .args(args)
-        .current_dir(cwd)
+    capture_output_in_dir_with_envs(program, args, cwd, error_context, &[], &[])
+}
+
+pub(crate) fn capture_output_in_dir_with_envs(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    error_context: &str,
+    envs: &[(&str, &str)],
+    env_remove: &[&str],
+) -> Result<CapturedOutput, String> {
+    let mut command = Command::new(program);
+    command.args(args).current_dir(cwd);
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    for name in env_remove {
+        command.env_remove(name);
+    }
+    let output = command
         .output()
         .map_err(|err| format!("failed to run {error_context} in {}: {err}", cwd.display()))?;
     Ok(CapturedOutput {
