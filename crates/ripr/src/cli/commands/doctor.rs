@@ -40,8 +40,10 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
 
     // Human-readable path (unchanged behavior).
     let core_evaluation = output::doctor::evaluate_doctor_core_with_config(&root);
-    let core_report = &core_evaluation.report;
+    let mut report = core_evaluation.report;
+    let core_report = &report;
     let mut ok = matches!(core_report.status, output::doctor::DoctorStatus::Pass);
+    let enabled_languages = enabled_languages(&core_evaluation.config);
     println!("ripr doctor");
     println!("- root: {}", root.display());
 
@@ -50,19 +52,19 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
     report_config_status(&root, core_evaluation.config, &mut ok);
     report_cache_status(&root);
     report_detected_languages(&root);
-    report_language_runtime_probes(&root);
+    ok &= add_language_runtime_probes(&root, &enabled_languages, &mut report, true, probe_runtime);
     suggest_preview_language_enablement(&root);
     report_detected_test_surfaces(&root);
     report_perl_preview(&root);
     report_known_limitations();
 
     for tool in output::doctor::DOCTOR_TOOLS {
-        ok &= report_doctor_core_check(core_report, &format!("tool_{tool}"));
+        ok &= report_doctor_core_check(&report, &format!("tool_{tool}"));
     }
 
     print_doctor_start_here_guidance(&root);
 
-    if ok {
+    if ok && report.status == output::doctor::DoctorStatus::Pass {
         println!("✓ doctor checks passed");
         Ok(())
     } else {
@@ -71,14 +73,25 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
     }
 }
 
-/// Typed JSON doctor output. Captures top-level checks as structured
-/// `DoctorCheck` values. Deeper sub-checks (languages, cache, perl, and test
-/// surfaces) remain on the human-oriented path for a follow-up
-/// PR to type individually. See #1771 / #1614.
+/// Typed JSON doctor output. Captures top-level checks and language runtime
+/// probes as structured values. Deeper sub-checks (cache, Perl, and test
+/// surfaces) remain on the human-oriented path for a follow-up PR to type
+/// individually. See #1771 / #1614.
 fn doctor_json(root: &Path) -> Result<(), String> {
-    let report = output::doctor::evaluate_doctor_core(root);
+    let evaluation = output::doctor::evaluate_doctor_core_with_config(root);
+    let mut report = evaluation.report;
+    let enabled_languages = enabled_languages(&evaluation.config);
+    let _ =
+        add_language_runtime_probes(root, &enabled_languages, &mut report, false, probe_runtime);
     println!("{}", report.render_json()?);
     output::doctor::doctor_report_result(&report)
+}
+
+fn enabled_languages(config: &Result<RiprConfig, String>) -> Vec<LanguageId> {
+    config
+        .as_ref()
+        .map(|config| config.languages().enabled().to_vec())
+        .unwrap_or_default()
 }
 
 fn report_doctor_core_check(report: &output::doctor::DoctorReport, name: &str) -> bool {
@@ -225,23 +238,102 @@ fn detect_languages(root: &Path) -> Vec<LanguageId> {
 }
 
 /// Probe the runtimes the verify/proof route needs for each detected
-/// language (#2071). Advisory only: a missing runtime is named with an
-/// install hint and never flips doctor to failure — preview languages are
-/// optional, and analysis itself is static. A user who enables a preview
-/// adapter without the runtime learns here, not at the next verify command.
-fn report_language_runtime_probes(root: &Path) {
-    for (language, tool, hint) in language_runtime_probes(root) {
-        // yarn loads project config on --version; probe it isolated so a
-        // hostile checkout cannot execute code via doctor (#2183 review).
-        let (status, evidence) = if tool == "yarn" {
-            output::doctor::doctor_tool_check_isolated(tool)
-        } else {
-            output::doctor::doctor_tool_check(tool)
-        };
-        println!(
-            "{}",
-            language_runtime_probe_line(language, status, &evidence, hint)
-        );
+/// language (#2071). A primary runtime is required only when its language is
+/// enabled in the effective config. Detected-but-disabled preview runtimes
+/// and optional test/package runners remain advisory.
+fn add_language_runtime_probes<F>(
+    root: &Path,
+    enabled: &[LanguageId],
+    report: &mut output::doctor::DoctorReport,
+    print: bool,
+    mut probe: F,
+) -> bool
+where
+    F: FnMut(&str, bool) -> (output::doctor::DoctorStatus, String),
+{
+    let mut ok = true;
+    for (language, tool, hint) in language_runtime_probes_for(root, enabled) {
+        let (status, evidence) = probe(tool, tool == "yarn");
+        let required = runtime_probe_is_required(language, tool, enabled);
+        report.add_runtime_probe(language, tool, status, &evidence, required, hint);
+        if required && status == output::doctor::DoctorStatus::Fail {
+            ok = false;
+        }
+        if print && let Some(probe) = report.runtime_probes.last() {
+            println!("{}", language_runtime_probe_display_line(probe));
+        }
+    }
+    ok
+}
+
+fn probe_runtime(tool: &str, isolated: bool) -> (output::doctor::DoctorStatus, String) {
+    // yarn loads project config on --version; probe it isolated so a
+    // hostile checkout cannot execute code via doctor (#2183 review).
+    if isolated {
+        output::doctor::doctor_tool_check_isolated(tool)
+    } else {
+        output::doctor::doctor_tool_check(tool)
+    }
+}
+
+fn runtime_probe_is_required(language: &str, tool: &str, enabled: &[LanguageId]) -> bool {
+    // The language's primary runtime is the configured capability doctor can
+    // require. A detected package manager or test runner is still useful
+    // evidence, but remains advisory because a project may use another route.
+    primary_runtime(language).is_some_and(|(primary, _)| primary == tool)
+        && enabled.iter().any(|id| id.as_str() == language)
+}
+
+const PRIMARY_RUNTIME_PROBES: &[(&str, &str, &str)] = &[
+    ("typescript", "node", "install Node.js"),
+    ("javascript", "node", "install Node.js"),
+    (
+        "python",
+        "python3",
+        "install python3 (e.g. apt install python3)",
+    ),
+];
+
+fn primary_runtime(language: &str) -> Option<(&'static str, &'static str)> {
+    PRIMARY_RUNTIME_PROBES
+        .iter()
+        .find(|(candidate, _, _)| *candidate == language)
+        .map(|(_, tool, hint)| (*tool, *hint))
+}
+
+fn language_runtime_probes_for(
+    root: &Path,
+    enabled: &[LanguageId],
+) -> Vec<(&'static str, &'static str, &'static str)> {
+    let mut probes = language_runtime_probes(root);
+    append_missing_primary_runtime_probes(&mut probes, enabled);
+    probes
+}
+
+fn append_missing_primary_runtime_probes(
+    probes: &mut Vec<(&'static str, &'static str, &'static str)>,
+    enabled: &[LanguageId],
+) {
+    for (language, tool, hint) in PRIMARY_RUNTIME_PROBES {
+        let enabled_language = enabled.iter().any(|id| id.as_str() == *language);
+        if enabled_language
+            && !probes
+                .iter()
+                .any(|(found, detected_tool, _)| *found == *language && *detected_tool == *tool)
+        {
+            probes.push((language, tool, hint));
+        }
+    }
+}
+
+fn language_runtime_probe_display_line(probe: &output::doctor::DoctorRuntimeProbe) -> String {
+    if probe.status == output::doctor::DoctorStatus::Fail && !probe.required {
+        format!(
+            "- {} verify-route runtime: {} — optional; {}",
+            probe.language, probe.evidence, probe.hint
+        )
+    } else {
+        language_runtime_probe_line(&probe.language, probe.status, &probe.evidence, &probe.hint)
     }
 }
 
@@ -1080,6 +1172,29 @@ mod tests {
     }
 
     #[test]
+    fn enabled_language_keeps_primary_runtime_required_when_other_tool_is_detected() {
+        let mut probes = vec![("typescript", "yarn", "install Yarn")];
+        append_missing_primary_runtime_probes(&mut probes, &[LanguageId::TypeScript]);
+        assert_eq!(
+            probes,
+            vec![
+                ("typescript", "yarn", "install Yarn"),
+                ("typescript", "node", "install Node.js"),
+            ]
+        );
+        assert!(runtime_probe_is_required(
+            "typescript",
+            "node",
+            &[LanguageId::TypeScript]
+        ));
+        assert!(!runtime_probe_is_required(
+            "typescript",
+            "yarn",
+            &[LanguageId::TypeScript]
+        ));
+    }
+
+    #[test]
     fn language_runtime_probe_line_names_labels_evidence_and_hint() {
         // #2183 review: the emitted contract is pinned, not just the list.
         let pass = language_runtime_probe_line(
@@ -1101,6 +1216,110 @@ mod tests {
         assert!(
             fail.contains("python3 not available — install python3 (e.g. apt install python3)")
         );
+    }
+
+    #[test]
+    fn configured_primary_runtime_failure_fails_report_and_optional_preview_does_not()
+    -> Result<(), String> {
+        let root = unique_command_test_dir("runtime-probe-requirement");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("package.json"), "{}")
+            .map_err(|err| format!("write package marker: {err}"))?;
+
+        let mut required_report = output::doctor::DoctorReport::new(&root.display().to_string());
+        let required_ok = add_language_runtime_probes(
+            &root,
+            &[LanguageId::TypeScript],
+            &mut required_report,
+            false,
+            |tool, _isolated| {
+                if tool == "node" {
+                    (
+                        output::doctor::DoctorStatus::Fail,
+                        "node not available".to_string(),
+                    )
+                } else {
+                    (
+                        output::doctor::DoctorStatus::Pass,
+                        format!("{tool} available"),
+                    )
+                }
+            },
+        );
+        assert!(!required_ok);
+        assert_eq!(required_report.status, output::doctor::DoctorStatus::Fail);
+        if output::doctor::doctor_report_result(&required_report).is_ok() {
+            return Err("required runtime failure unexpectedly passed doctor".to_string());
+        }
+        let node_probe = required_report
+            .runtime_probes
+            .iter()
+            .find(|probe| probe.tool == "node")
+            .ok_or_else(|| "missing node runtime probe".to_string())?;
+        assert!(node_probe.required);
+        assert_eq!(node_probe.status, output::doctor::DoctorStatus::Fail);
+
+        let mut optional_report = output::doctor::DoctorReport::new(&root.display().to_string());
+        let optional_ok = add_language_runtime_probes(
+            &root,
+            &[LanguageId::Rust],
+            &mut optional_report,
+            false,
+            |tool, _isolated| {
+                if tool == "node" {
+                    (
+                        output::doctor::DoctorStatus::Fail,
+                        "node not available".to_string(),
+                    )
+                } else {
+                    (
+                        output::doctor::DoctorStatus::Pass,
+                        format!("{tool} available"),
+                    )
+                }
+            },
+        );
+        assert!(optional_ok);
+        assert_eq!(optional_report.status, output::doctor::DoctorStatus::Pass);
+        output::doctor::doctor_report_result(&optional_report)
+            .map_err(|error| format!("optional runtime failure should remain advisory: {error}"))?;
+        let node_probe = optional_report
+            .runtime_probes
+            .iter()
+            .find(|probe| probe.tool == "node")
+            .ok_or_else(|| "missing optional node runtime probe".to_string())?;
+        assert!(!node_probe.required);
+        assert_eq!(node_probe.status, output::doctor::DoctorStatus::Fail);
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+
+        let configured_only_root = unique_command_test_dir("runtime-probe-configured-only");
+        std::fs::create_dir_all(&configured_only_root)
+            .map_err(|err| format!("create configured-only root: {err}"))?;
+        let mut configured_only_report =
+            output::doctor::DoctorReport::new(&configured_only_root.display().to_string());
+        let configured_only_ok = add_language_runtime_probes(
+            &configured_only_root,
+            &[LanguageId::Python],
+            &mut configured_only_report,
+            false,
+            |tool, _isolated| {
+                (
+                    output::doctor::DoctorStatus::Fail,
+                    format!("{tool} not available"),
+                )
+            },
+        );
+        assert!(!configured_only_ok);
+        assert!(
+            configured_only_report
+                .runtime_probes
+                .iter()
+                .any(|probe| probe.language == "python" && probe.tool == "python3")
+        );
+        std::fs::remove_dir_all(&configured_only_root)
+            .map_err(|err| format!("remove configured-only root: {err}"))?;
+        Ok(())
     }
 
     #[test]

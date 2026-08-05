@@ -137,6 +137,19 @@ pub(crate) struct DoctorSection {
     pub(crate) lines: Vec<String>,
 }
 
+/// The result of a language runtime probe. Primary runtimes for enabled
+/// languages are required; detected preview runtimes that are not enabled,
+/// and optional test/package runners, remain visible but advisory.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct DoctorRuntimeProbe {
+    pub(crate) language: String,
+    pub(crate) tool: String,
+    pub(crate) status: DoctorStatus,
+    pub(crate) evidence: String,
+    pub(crate) required: bool,
+    pub(crate) hint: String,
+}
+
 /// The full doctor report.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct DoctorReport {
@@ -146,6 +159,7 @@ pub(crate) struct DoctorReport {
     pub(crate) status: DoctorStatus,
     pub(crate) checks: Vec<DoctorCheck>,
     pub(crate) sections: Vec<DoctorSection>,
+    pub(crate) runtime_probes: Vec<DoctorRuntimeProbe>,
     /// Enabled language wire strings from the effective config (#2072):
     /// the typed surface the generated CI consumes instead of parsing the
     /// human "Enabled languages:" line.
@@ -163,6 +177,7 @@ impl DoctorReport {
             status: DoctorStatus::Pass,
             checks: Vec::new(),
             sections: Vec::new(),
+            runtime_probes: Vec::new(),
             languages: Vec::new(),
         }
     }
@@ -176,6 +191,31 @@ impl DoctorReport {
             name: name.to_string(),
             status,
             evidence,
+        });
+    }
+
+    /// Add a runtime probe and fail the report only when a required probe
+    /// fails. Optional preview/tooling probes remain visible in JSON without
+    /// turning a Rust-only or otherwise advisory setup into a false failure.
+    pub(crate) fn add_runtime_probe(
+        &mut self,
+        language: &str,
+        tool: &str,
+        status: DoctorStatus,
+        evidence: &str,
+        required: bool,
+        hint: &str,
+    ) {
+        if required && status == DoctorStatus::Fail {
+            self.status = DoctorStatus::Fail;
+        }
+        self.runtime_probes.push(DoctorRuntimeProbe {
+            language: language.to_string(),
+            tool: tool.to_string(),
+            status,
+            evidence: evidence.to_string(),
+            required,
+            hint: hint.to_string(),
         });
     }
 
@@ -254,6 +294,7 @@ pub(crate) struct DoctorCoreEvaluation {
 
 /// Evaluate the doctor core checks (root, Cargo.toml, config, tool
 /// availability) and return just the typed report.
+#[cfg(test)]
 pub(crate) fn evaluate_doctor_core(root: &Path) -> DoctorReport {
     evaluate_doctor_core_with_config(root).report
 }
@@ -709,6 +750,35 @@ mod tests {
         assert!(text.contains("! no Cargo.toml"));
         assert!(text.contains("run ripr doctor --help"));
         assert!(text.contains("! doctor checks failed"));
+    }
+
+    #[test]
+    fn required_runtime_probe_failure_fails_report_but_optional_does_not() -> Result<(), String> {
+        let mut report = DoctorReport::new("/workspace");
+        report.add_runtime_probe(
+            "python",
+            "python3",
+            DoctorStatus::Fail,
+            "python3 not available",
+            false,
+            "install python3",
+        );
+        assert_eq!(report.status, DoctorStatus::Pass);
+        report.add_runtime_probe(
+            "python",
+            "python3",
+            DoctorStatus::Fail,
+            "python3 not available",
+            true,
+            "install python3",
+        );
+        assert_eq!(report.status, DoctorStatus::Fail);
+        let parsed: serde_json::Value = serde_json::from_str(&report.render_json()?)
+            .map_err(|error| format!("invalid JSON: {error}"))?;
+        assert_eq!(parsed["runtime_probes"][0]["required"], false);
+        assert_eq!(parsed["runtime_probes"][1]["required"], true);
+        assert_eq!(parsed["runtime_probes"][1]["status"], "fail");
+        Ok(())
     }
 
     #[test]

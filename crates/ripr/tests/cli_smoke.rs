@@ -3244,7 +3244,84 @@ fn doctor_json_reports_current_schema() -> Result<(), String> {
         .map_err(|err| format!("doctor JSON did not parse: {err}"))?;
     assert_eq!(report["schema_version"], "0.2");
     assert_eq!(report["tool"], "ripr");
+    assert!(
+        report["runtime_probes"].is_array(),
+        "doctor JSON must expose typed runtime probe results: {report}"
+    );
     std::fs::remove_dir_all(workspace).map_err(|err| format!("remove workspace: {err}"))?;
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "lang-typescript")]
+fn doctor_json_process_fails_for_enabled_missing_node_runtime() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    std::fs::write(
+        workspace.join("ripr.toml"),
+        "[languages]\nenabled = [\"rust\", \"typescript\"]\n",
+    )
+    .map_err(|error| format!("write ripr.toml: {error}"))?;
+
+    let shim_dir = workspace.join("runtime-shims");
+    std::fs::create_dir_all(&shim_dir)
+        .map_err(|error| format!("create runtime shim directory: {error}"))?;
+    #[cfg(windows)]
+    let node_shim = shim_dir.join("node.cmd");
+    #[cfg(not(windows))]
+    let node_shim = shim_dir.join("node");
+    #[cfg(windows)]
+    let shim_contents = "@echo off\r\nexit /b 127\r\n";
+    #[cfg(not(windows))]
+    let shim_contents = "#!/bin/sh\nexit 127\n";
+    std::fs::write(&node_shim, shim_contents)
+        .map_err(|error| format!("write node runtime shim: {error}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(&node_shim)
+            .map_err(|error| format!("read node runtime shim permissions: {error}"))?
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&node_shim, permissions)
+            .map_err(|error| format!("make node runtime shim executable: {error}"))?;
+    }
+
+    let search_path = std::env::join_paths([shim_dir])
+        .map_err(|error| format!("build isolated runtime PATH: {error}"))?;
+    let search_path = search_path.to_string_lossy().into_owned();
+    let root = workspace.display().to_string();
+    let output = run_command_with_env(
+        env!("CARGO_BIN_EXE_ripr"),
+        &workspace,
+        &["doctor", "--root", &root, "--json"],
+        &[("PATH", &search_path)],
+    )
+    .map_err(|error| format!("run doctor process: {error}"))?;
+
+    if output.status.success() {
+        return Err(format!(
+            "enabled TypeScript without a working node runtime must fail doctor; stdout: {}",
+            String::from_utf8_lossy(&output.stdout)
+        ));
+    }
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("doctor failure JSON did not parse: {error}"))?;
+    let node_probe = report["runtime_probes"]
+        .as_array()
+        .and_then(|probes| {
+            probes
+                .iter()
+                .find(|probe| probe["language"] == "typescript" && probe["tool"] == "node")
+        })
+        .ok_or_else(|| format!("doctor JSON omitted the required node probe: {report}"))?;
+    if node_probe["required"] != true || node_probe["status"] != "fail" {
+        return Err(format!(
+            "required node probe did not fail closed: {node_probe}"
+        ));
+    }
+
+    std::fs::remove_dir_all(workspace)
+        .map_err(|error| format!("remove doctor runtime fixture: {error}"))?;
     Ok(())
 }
 

@@ -274,9 +274,16 @@ ripr doctor --root . --json
 ```
 
 The JSON report and the human command share the root-directory, `Cargo.toml`,
-configuration, and `git`/`cargo`/`rustc` checks. A `pass` report exits zero; a
-`fail` report exits non-zero. This is machine-readable setup evidence, not a
-release or analysis gate decision.
+configuration, `git`/`cargo`/`rustc`, and language-runtime checks. A `pass`
+report exits zero; a `fail` report exits non-zero. This is machine-readable
+setup evidence, not a release or analysis gate decision.
+
+The JSON report includes a `runtime_probes` array. A primary runtime probe is
+`required: true` only when its language is enabled in the effective
+configuration; a missing required runtime makes the report fail. Detected but
+disabled preview runtimes and optional test/package runners remain visible as
+`required: false` advisory results, so their absence does not make a Rust-only
+workspace fail.
 
 `doctor` also reports the repository config status for the selected root:
 
