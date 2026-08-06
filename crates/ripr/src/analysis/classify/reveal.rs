@@ -768,14 +768,34 @@ fn oracle_matches_family(family: &ProbeFamily, assertion: &OracleFact) -> bool {
 ///
 /// A bare dot is not enough: decimal literals such as `3.14` and range
 /// operators also contain dots without observing a constructed field.
+/// String-literal contents are also excluded: `assert_eq!(msg, "a.b")`
+/// contains a dot between two alphabetic chars but does not observe a
+/// constructed field (#2904).
 fn contains_member_access(text: &str) -> bool {
-    text.char_indices().any(|(index, character)| {
-        character == '.'
-            && text[index + character.len_utf8()..]
-                .chars()
-                .next()
-                .is_some_and(|next| next == '_' || next.is_alphabetic())
-    })
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut prev_was_dot = false;
+    for (_, ch) in text.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        if ch == '"' {
+            in_string = true;
+            continue;
+        }
+        if prev_was_dot && (ch == '_' || ch.is_alphabetic()) {
+            return true;
+        }
+        prev_was_dot = ch == '.';
+    }
+    false
 }
 
 fn probe_relative_oracle_strength(family: &ProbeFamily, assertion: &OracleFact) -> OracleStrength {
@@ -1166,6 +1186,15 @@ mod tests {
             &ProbeFamily::FieldConstruction,
             &oracle(
                 "assert!(3.14_f64 > 0.0_f64);",
+                OracleKind::Unknown,
+                OracleStrength::Unknown
+            )
+        ));
+        // #2904: a dot inside a string literal is not a field access.
+        assert!(!oracle_matches_family(
+            &ProbeFamily::FieldConstruction,
+            &oracle(
+                "assert_eq!(msg, \"error.timeout\");",
                 OracleKind::Unknown,
                 OracleStrength::Unknown
             )
