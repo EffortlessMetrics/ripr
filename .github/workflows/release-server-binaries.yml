@@ -6,9 +6,6 @@ on:
       version:
         description: "Release version, for example 0.2.0 or v0.2.0"
         required: true
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
@@ -86,3 +83,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: cargo xtask release-upload-assets --version "${{ github.event.inputs.version || github.ref_name }}"
+
+# Authority: this workflow is the SOURCE-REPO release authority.
+# It must NOT be tag-triggered in the swarm (ripr-swarm) repo.
+# The swarm repo's copy of this workflow is a read-only rehearsal
+# surface (#1882). Publication authority lives in
+# EffortlessMetrics/ripr, not here. The `push: tags: ["v*"]` trigger
+# was removed (#1882) because swarm-side v*-shaped tags must not
+# trigger a real publication.
