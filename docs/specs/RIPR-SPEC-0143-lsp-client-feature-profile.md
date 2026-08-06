@@ -79,7 +79,7 @@ profile fields.
 - work-done progress support;
 - workspace-folder support;
 - `workspace.codeLens.refreshSupport` (RIPR-SPEC-0138);
-- `workspace/didChangeWatchedFiles` dynamic registration;
+- `workspace/didChangeWatchedFiles` dynamic registration (required for automatic `ripr.toml`/`Cargo.toml` reload; clients without it must use `ripr: Refresh Full Analysis` after config edits — #2629);
 - the session-configuration transport (RIPR-SPEC-0136).
 
 ### Captured RIPR experimental blocks

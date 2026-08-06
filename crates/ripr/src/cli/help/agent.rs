@@ -95,6 +95,12 @@ an agent-focused before/after summary. Snapshot paths must resolve under
 `--root`. The command remains advisory and static; it does not run analysis,
 mutation testing, generate tests, edit files, change cache behavior, or touch
 LSP/MCP surfaces.
+
+Movement vocabulary (#2648): the JSON output uses two related fields:
+  - `change` (per-item): improved | changed | regressed | unchanged | new | resolved
+  - `gap_movement` (per-item): closed | persisted | new
+Precedence: `change: improved` means the grip class moved up; `gap_movement: closed`
+means the gap disappeared entirely. A gap can persist even when grip improves.
 "#;
 pub(super) const AGENT_VERIFY_EXECUTE_HELP: &str = r#"Execute one validated producer-owned verification route.
 
