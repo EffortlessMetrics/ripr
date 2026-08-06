@@ -212,6 +212,13 @@ fn finding_result(
         "partialFingerprints".to_string(),
         json!({ "riprFingerprintV1": finding_fingerprint(&rule_id, finding, &file, line) }),
     );
+    // #2627: also emit top-level fingerprints for GitHub Code Scanning cross-run
+    // dedup. partialFingerprints alone is insufficient — GitHub reads
+    // fingerprints as the primary dedup key.
+    result.insert(
+        "fingerprints".to_string(),
+        json!({ "riprFingerprintV1": finding_fingerprint(&rule_id, finding, &file, line) }),
+    );
     result.insert(
         "properties".to_string(),
         finding_properties(finding, severity),
@@ -244,6 +251,11 @@ fn seam_result(entry: &ClassifiedSeam, config: &RiprConfig) -> Option<Value> {
     );
     result.insert(
         "partialFingerprints".to_string(),
+        json!({ "riprFingerprintV1": seam_fingerprint(&rule_id, entry, &file, line) }),
+    );
+    // #2627: also emit top-level fingerprints for GitHub Code Scanning cross-run dedup.
+    result.insert(
+        "fingerprints".to_string(),
         json!({ "riprFingerprintV1": seam_fingerprint(&rule_id, entry, &file, line) }),
     );
     result.insert("properties".to_string(), seam_properties(entry, severity));
