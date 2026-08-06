@@ -135,8 +135,7 @@ mod tests {
     "next_action": {
       "kind": "improved",
       "summary": "Static grip improved.",
-      "recommended_action": "Keep the focused test and include this receipt in review.",
-      "safe_to_merge": false
+      "recommended_action": "Keep the focused test and include this receipt in review."
     }
   }
 }"#,
@@ -231,7 +230,6 @@ mod tests {
                         "kind": case.action_kind,
                         "summary": case.action_summary,
                         "recommended_action": case.action_recommendation,
-                        "safe_to_merge": false
                     }
                 }
             }))
@@ -526,7 +524,7 @@ mod tests {
         )?;
         write_file(
             &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
-            r#"{"schema_version":"0.3","tool":"ripr","status":"advisory","provenance":{"before_class":"weakly_gripped","after_class":"weakly_gripped","movement":"unchanged","verify_artifact":{"path":"target/ripr/workflow/agent-verify.json","sha256":"sha256:verify"}},"seam":{"seam_id":"seam-stale","file":"src/pricing.rs","line":42,"seam_kind":"predicate_boundary","before":"weakly_gripped","after":"weakly_gripped","change":"unchanged","grip_class":"weakly_gripped"},"summary":{"remaining_gap":"Fixture-controlled static review state.","next_recommendation":"Add the missing discriminator or stronger assertion named by the packet.","next_action":{"kind":"unchanged","summary":"Static grip did not improve.","recommended_action":"Add the missing discriminator or stronger assertion named by the packet.","safe_to_merge":false}}}"#,
+            r#"{"schema_version":"0.5","tool":"ripr","status":"advisory","provenance":{"before_class":"weakly_gripped","after_class":"weakly_gripped","movement":"unchanged","verify_artifact":{"path":"target/ripr/workflow/agent-verify.json","sha256":"sha256:verify"}},"seam":{"seam_id":"seam-stale","file":"src/pricing.rs","line":42,"seam_kind":"predicate_boundary","before":"weakly_gripped","after":"weakly_gripped","change":"unchanged","grip_class":"weakly_gripped"},"summary":{"remaining_gap":"Fixture-controlled static review state.","next_recommendation":"Add the missing discriminator or stronger assertion named by the packet.","next_action":{"kind":"unchanged","summary":"Static grip did not improve.","recommended_action":"Add the missing discriminator or stronger assertion named by the packet."}}}"#,
         )?;
         std::thread::sleep(std::time::Duration::from_millis(25));
         write_file(
