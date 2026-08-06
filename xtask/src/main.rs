@@ -11885,7 +11885,67 @@ struct DocArtifactEntry {
 }
 
 fn check_doc_artifacts() -> Result<(), String> {
-    let violations = doc_artifact_violations(Path::new("."), Path::new(DOC_ARTIFACT_LEDGER))?;
+    let mut violations = doc_artifact_violations(Path::new("."), Path::new(DOC_ARTIFACT_LEDGER))?;
+    // #1718: reverse-direction check — every RIPR-SPEC on disk must be registered
+    // in the ledger. This is ratcheted: the current unregistered count is 82, so
+    // the gate fails only when NEW unregistered specs appear (count > baseline).
+    let ledger = parse_doc_artifact_ledger(Path::new(DOC_ARTIFACT_LEDGER))?;
+    let registered: BTreeSet<String> = ledger
+        .artifacts
+        .iter()
+        .filter_map(|a| a.id.clone())
+        .collect();
+    let specs_dir = Path::new("docs/specs");
+    let entries = match std::fs::read_dir(specs_dir) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            // docs/specs doesn't exist (e.g. test fixtures). Skip the reverse
+            // check — the ledger→file check above is the authority.
+            return finish_policy_report(
+                PolicyReportSpec {
+                    report_file: "doc-artifacts.md",
+                    check: "check-doc-artifacts",
+                    why_it_matters: "The document artifact ledger is the machine-readable source-of-truth graph for proposals, specs, ADRs, plans, goals, support tiers, policy ledgers, and closeouts.",
+                    fix_kind: FixKind::AuthorDecisionRequired,
+                    recommended_fixes: &[
+                        "Keep policy/doc-artifacts.toml parseable with schema_version = \"1.0\".",
+                        "Register each source-of-truth artifact with a unique id, kind, path, status, and owner.",
+                        "Keep artifact files present and make sure the artifact id appears in the registered file.",
+                        "Link accepted specs to a proposal or provide a standalone_reason.",
+                        "Point superseded artifacts at a registered replacement.",
+                    ],
+                    rerun_command: "cargo xtask check-doc-artifacts",
+                    exception_template: None,
+                },
+                &violations,
+            );
+        }
+        Err(err) => return Err(format!("failed to read {}: {err}", specs_dir.display())),
+    };
+    let mut unregistered: Vec<String> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if let Some(spec_id) = spec_id_from_path(&path)
+            && !registered.contains(&spec_id)
+        {
+            unregistered.push(spec_id);
+        }
+    }
+    // Ratchet: fail only when the unregistered count GROWS beyond the baseline.
+    // The baseline (82) is the count at HEAD when this check was added (#1718).
+    // As specs are registered, the baseline should be lowered in this constant.
+    const UNREGISTERED_SPEC_BASELINE: usize = 82;
+    if unregistered.len() > UNREGISTERED_SPEC_BASELINE
+        && let Some(excess) = unregistered.len().checked_sub(UNREGISTERED_SPEC_BASELINE)
+    {
+        violations.push(format!(
+            "reverse-direction: {excess} new RIPR-SPEC file(s) on disk are not registered in {} \
+             (baseline: {UNREGISTERED_SPEC_BASELINE}, current: {}). \
+             Register the new spec(s) or lower the baseline if the count was intentionally reduced.",
+            DOC_ARTIFACT_LEDGER,
+            unregistered.len()
+        ));
+    }
     finish_policy_report(
         PolicyReportSpec {
             report_file: "doc-artifacts.md",
@@ -11898,6 +11958,7 @@ fn check_doc_artifacts() -> Result<(), String> {
                 "Keep artifact files present and make sure the artifact id appears in the registered file.",
                 "Link accepted specs to a proposal or provide a standalone_reason.",
                 "Point superseded artifacts at a registered replacement.",
+                "Register every new RIPR-SPEC file in the ledger (reverse-direction check, #1718).",
             ],
             rerun_command: "cargo xtask check-doc-artifacts",
             exception_template: None,
