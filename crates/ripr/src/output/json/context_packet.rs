@@ -2,6 +2,7 @@ use crate::domain::{Finding, MissingDiscriminatorFact, ValueFact, context_packet
 
 use super::{array_field, escape, field, number_field};
 use crate::output::json::report::{related_test_json, stop_reason_values};
+use crate::output::next_step::reconcile_next_step;
 
 // Keep the registered packet version literal in this renderer path so the
 // output-contract check can verify the JSON surface while the DTO owns values.
@@ -9,7 +10,16 @@ const CONTEXT_PACKET_VERSION_CONTRACT: &str = "1.0";
 
 pub fn render_context_packet(finding: &Finding, max_related_tests: usize) -> String {
     let stop_reasons = stop_reason_values(finding);
-    let packet = ContextPacket::from_finding(finding, max_related_tests, stop_reasons);
+    let mut packet = ContextPacket::from_finding(finding, max_related_tests, stop_reasons);
+    // Reconcile the next step so the context packet does not diverge from the
+    // human/JSON/SARIF surfaces. See #2597: every renderer MUST call
+    // reconcile_next_step.
+    let reconciled = reconcile_next_step(finding);
+    packet.recommended_next_step = if reconciled.is_empty() {
+        None
+    } else {
+        Some(reconciled)
+    };
     render_context_packet_dto(&packet)
 }
 
