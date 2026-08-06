@@ -305,6 +305,25 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
              Use draft or deep (--mode on the command line, or [analysis] mode in ripr.toml)."
         );
     }
+    // #2901: OraclePolicy (snapshot_strength, mock_expectation_strength,
+    // broad_error_strength) is consumed only by the Rust adapter. Python,
+    // Perl, and TypeScript silently ignore it. Warn when a non-Rust language
+    // is enabled and the policy is non-default, so the config-identity hash
+    // change (which invalidates caches for all languages) is not mistaken for
+    // a behavioral change in the preview adapters.
+    let oracle_customized = config.oracles != crate::config::OraclePolicy::default();
+    let has_preview_language = config
+        .languages
+        .enabled
+        .iter()
+        .any(|lang| !matches!(lang, crate::domain::LanguageId::Rust));
+    if oracle_customized && has_preview_language {
+        eprintln!(
+            "ripr: [oracles] policy applies to Rust only; TypeScript/Python/Perl adapters use \
+             hardcoded oracle strengths. The config-identity hash changes for all languages but \
+             analysis behavior changes only for Rust."
+        );
+    }
     if let Some(warning) =
         repo_scope_diff_bound_warning(format, base_explicitly_provided, input.diff_file.as_deref())
     {
