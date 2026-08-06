@@ -3584,11 +3584,11 @@ mod tests {
                     "suggested_assertion": "assert the exact returned `return_value` value",
                     "verify": {
                         "command": "prove t/app.t",
-                        "status": "fact_only_not_delegated"
+                        "status": "preview_fact_only_not_delegated"
                     },
                     "receipt": {
                         "command": null,
-                        "status": "available_not_delegated"
+                        "status": "preview_available_not_delegated"
                     },
                     "confidence": "medium",
                     "raw_evidence_refs": [{

@@ -5,8 +5,11 @@ use serde_json::{Value, json};
 
 const AUTHORITY_BOUNDARY: &str = "preview_advisory_only";
 const SURFACE_SCOPE: &str = "check_json_human_sarif_github_gap_ledger_markdown";
-const VERIFY_STATUS: &str = "fact_only_not_delegated";
-const RECEIPT_STATUS: &str = "available_not_delegated";
+/// Status is constant because Perl is at preview tier and cannot delegate
+/// verify/receipt routes. These names make the "preview, not ready" contract
+/// explicit rather than implying the status is context-dependent (#2645).
+const VERIFY_STATUS: &str = "preview_fact_only_not_delegated";
+const RECEIPT_STATUS: &str = "preview_available_not_delegated";
 
 /// The readiness flags a Perl preview card is allowed to carry (Campaign 31
 /// item 6 formal scope-down). This bespoke card path predates ADR 0019 and
@@ -416,9 +419,12 @@ mod tests {
         assert_eq!(value["badge_candidate"], false);
         assert_eq!(value["ripr_zero_candidate"], false);
         assert_eq!(value["verify"]["command"], "prove t/app.t");
-        assert_eq!(value["verify"]["status"], "fact_only_not_delegated");
+        assert_eq!(value["verify"]["status"], "preview_fact_only_not_delegated");
         assert!(value["receipt"]["command"].is_null());
-        assert_eq!(value["receipt"]["status"], "available_not_delegated");
+        assert_eq!(
+            value["receipt"]["status"],
+            "preview_available_not_delegated"
+        );
         assert_eq!(value["raw_evidence_refs"][0]["file"], "lib/My/App.pm");
         assert_eq!(value["raw_evidence_refs"][0]["line"], 8);
         assert!(value.get("allowed_edit_surface").is_none());

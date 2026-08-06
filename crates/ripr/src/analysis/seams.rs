@@ -316,6 +316,9 @@ fn normalize_path(p: &Path) -> String {
 /// cache (`crates/ripr/src/analysis/seam_cache.rs:1411`). Deliberate
 /// parity: all gap/seam IDs across languages use one scheme. See #1722.
 fn compute_seam_id(file: &str, owner: &str, kind: SeamKind, byte_offset: usize) -> SeamId {
+    // FNV-1a constants — deliberate parity with Perl adapter
+    // (crates/ripr/src/analysis/language/perl/mod.rs). Both sides must use
+    // identical constants so Rust and Perl gap IDs are comparable (#1722).
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
 

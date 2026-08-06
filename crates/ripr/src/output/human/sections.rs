@@ -787,10 +787,10 @@ fn push_perl_preview_card(out: &mut String, card: &PerlPreviewCard) {
         card.suggested_assertion
     ));
     out.push_str(&format!(
-        "  verify: {} (fact_only_not_delegated)\n",
+        "  verify: {} (preview_fact_only_not_delegated)\n",
         card.verify_command
     ));
-    out.push_str("  receipt: available_not_delegated\n");
+    out.push_str("  receipt: preview_available_not_delegated\n");
     out.push_str(&format!("  confidence: {}\n", card.confidence));
     for raw_ref in &card.raw_evidence_refs {
         out.push_str("  raw evidence: ");

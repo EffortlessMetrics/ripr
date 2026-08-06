@@ -3285,6 +3285,9 @@ struct RangeFact {
 /// parity: all gap/seam IDs across languages use one hash scheme so they
 /// are comparable in corpus ledgers and traceability edges. See #1722.
 fn canonical_perl_gap_id<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
+    // FNV-1a constants — deliberate parity with Rust adapter
+    // (crates/ripr/src/analysis/seams.rs). Both sides must use identical
+    // constants so Perl and Rust gap IDs are comparable (#1722).
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
 

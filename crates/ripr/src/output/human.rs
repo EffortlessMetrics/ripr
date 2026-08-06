@@ -1803,8 +1803,8 @@ mod tests {
                 "  suggested assertion: assert the exact returned `return_value` value\n"
             )
         );
-        assert!(rendered.contains("  verify: prove t/app.t (fact_only_not_delegated)\n"));
-        assert!(rendered.contains("  receipt: available_not_delegated\n"));
+        assert!(rendered.contains("  verify: prove t/app.t (preview_fact_only_not_delegated)\n"));
+        assert!(rendered.contains("  receipt: preview_available_not_delegated\n"));
         assert!(rendered.contains("  raw evidence: perl_change lib/My/App.pm:8 (perl_change)"));
         assert!(rendered.contains("  stop if:\n"));
         assert!(rendered.contains("    - perl-lsp packet status changes\n"));

@@ -1221,9 +1221,9 @@ mod tests {
         assert_eq!(card["badge_candidate"], false);
         assert_eq!(card["ripr_zero_candidate"], false);
         assert_eq!(card["verify"]["command"], "prove t/app.t");
-        assert_eq!(card["verify"]["status"], "fact_only_not_delegated");
+        assert_eq!(card["verify"]["status"], "preview_fact_only_not_delegated");
         assert!(card["receipt"]["command"].is_null());
-        assert_eq!(card["receipt"]["status"], "available_not_delegated");
+        assert_eq!(card["receipt"]["status"], "preview_available_not_delegated");
         assert_eq!(card["raw_evidence_refs"][0]["file"], "lib/My/App.pm");
         assert_eq!(card["raw_evidence_refs"][0]["line"], 8);
         assert!(card.get("allowed_edit_surface").is_none());
