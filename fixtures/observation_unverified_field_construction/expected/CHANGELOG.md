@@ -107,3 +107,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0125: field-value missing discriminator producer added (#1601)
+
+Command:
+`cargo xtask goldens bless observation_unverified_field_construction --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

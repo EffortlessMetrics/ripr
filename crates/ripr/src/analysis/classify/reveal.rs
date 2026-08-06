@@ -410,7 +410,7 @@ fn assertion_matches_probe_detail(
 /// Uses `is_ident_char` (alphanumeric + underscore) for boundary checks,
 /// matching Rust identifier rules: `_` is part of an identifier, so `err`
 /// does NOT match inside `is_err`.
-fn contains_as_whole_word(text: &str, token: &str) -> bool {
+pub(in crate::analysis) fn contains_as_whole_word(text: &str, token: &str) -> bool {
     fn is_ident_char(byte: u8) -> bool {
         byte.is_ascii_alphanumeric() || byte == b'_'
     }

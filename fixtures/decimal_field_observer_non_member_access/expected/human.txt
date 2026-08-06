@@ -13,7 +13,7 @@ Start here:
   File: fixtures/decimal_field_observer_non_member_access/input/src/lib.rs:7
   Static exposure: reachable_unrevealed (warning, confidence 0.79)
   Changed behavior: retries: 1,
-  Missing discriminator: No detected assertion observes the changed value, error, field, or effect
+  Missing discriminator: Missing discriminator value: retries: 1,
   Next step: Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
   Evidence:
     - reach yes: Related tests appear to reach default_config: decimal_observation_does_not_name_retries

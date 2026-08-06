@@ -13,7 +13,7 @@ Start here:
   File: fixtures/observation_unverified_field_construction/input/src/lib.rs:9
   Static exposure: weakly_exposed (warning, confidence 0.92)
   Changed behavior: retries: 1,
-  Missing discriminator: No strong discriminator was detected
+  Missing discriminator: Missing discriminator value: retries: 1,
   Related test: tests/item_tests.rs:4 config_exists
   Next step: Strengthen the related assertion so it discriminates the changed behavior.
   Evidence:
