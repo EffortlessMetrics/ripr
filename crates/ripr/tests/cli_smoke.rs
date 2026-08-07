@@ -234,7 +234,7 @@ fn write_bound_repo_exposure_fixture(
     "producer": {{"tool": "ripr", "version": "0.10.0"}},
     "repository": {{"root": "{root_identity}", "head": "{head}"}},
     "analysis": {{"format": "repo-exposure-json", "mode": "draft", "base_revision": null, "input_identity": "input:fixture", "command": "ripr check --format repo-exposure-json", "profile": "draft", "worktree": "clean"}},
-    "snapshot_identity": "snapshot:input:fixture",
+    "snapshot_identity": "snapshot:input:fixture;revision:{head}",
     "content_sha256": "{placeholder}"
   }},
   "scope": "repo",
@@ -349,7 +349,7 @@ fn bind_repo_exposure_fixture_with_worktree(
         "producer": {"tool": "ripr", "version": "0.10.0"},
         "repository": {"root": root_identity, "head": head},
         "analysis": {"format": "repo-exposure-json", "mode": "draft", "base_revision": null, "input_identity": "input:fixture", "command": "ripr check --format repo-exposure-json", "profile": "draft", "worktree": worktree},
-        "snapshot_identity": "snapshot:input:fixture",
+        "snapshot_identity": format!("snapshot:input:fixture;revision:{head}"),
         "content_sha256": placeholder,
     });
     let raw = serde_json::to_string_pretty(&value)?;
@@ -2954,6 +2954,10 @@ fn agent_receipt_rejects_incomparable_analysis_inputs() -> Result<(), Box<dyn st
         "\"input_identity\": \"input:fixture\"",
         "\"input_identity\": \"input:other\"",
     );
+    // Keep the tampered artifact internally consistent (input identity and
+    // snapshot identity must agree under exact snapshot validation) so the
+    // pair comparison — not single-artifact validation — rejects it.
+    let altered = altered.replace("snapshot:input:fixture", "snapshot:input:other");
     std::fs::write(&after, recommit_repo_exposure_json(altered))?;
     let verify = root.join("fabricated-agent-verify.json");
     write_fabricated_agent_verify_json(&verify, &before, &after)?;

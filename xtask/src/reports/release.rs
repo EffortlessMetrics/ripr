@@ -1858,7 +1858,7 @@ fn bind_repo_exposure_fixture(
             "profile": "draft",
             "worktree": worktree,
         },
-        "snapshot_identity": "snapshot:input:fixture",
+        "snapshot_identity": format!("snapshot:input:fixture;revision:{head}"),
         "content_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
     });
     let raw = serde_json::to_string_pretty(&value).map_err(|err| {

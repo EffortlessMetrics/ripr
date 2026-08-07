@@ -2128,7 +2128,7 @@ additive top-level `artifact` envelope before it is suitable for
     "profile": "draft",
     "worktree": "clean"
   },
-  "snapshot_identity": "snapshot:input:<bounded-fingerprint>",
+  "snapshot_identity": "snapshot:input:<bounded-fingerprint>;revision:<full-head-sha>",
   "content_sha256": "sha256:<64-hex-digest>"
 }
 ```
