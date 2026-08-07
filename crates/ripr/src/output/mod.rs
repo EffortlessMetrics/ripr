@@ -1,6 +1,5 @@
 pub(crate) mod agent_brief;
 pub(crate) mod agent_receipt;
-pub(crate) mod agent_schemas;
 pub(crate) mod agent_seam_packets;
 pub(crate) mod agent_workflow;
 pub(crate) mod assistant_loop_health;

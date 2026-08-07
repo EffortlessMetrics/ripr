@@ -34,6 +34,14 @@
         {
           "reason": "observed values do not include the equality-boundary case for this predicate",
           "value": "discount_threshold (equality boundary)"
+        },
+        {
+          "reason": "observed function_argument value from existing tests",
+          "value": "50"
+        },
+        {
+          "reason": "observed function_argument value from existing tests",
+          "value": "10_000"
         }
       ],
       "evidence": {

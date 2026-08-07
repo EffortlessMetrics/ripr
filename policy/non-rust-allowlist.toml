@@ -215,6 +215,15 @@ reason = "GitHub Actions workflow definitions."
 covered_by = ["cargo xtask check-workflows"]
 
 [[allow]]
+glob = ".github/actions/*/action.yml"
+kind = "ci_composite_action"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "GitHub Actions composite action definitions (ripr-check adoption surface, #2626)."
+covered_by = ["cargo xtask check-workflows"]
+
+[[allow]]
 glob = ".config/nextest.toml"
 kind = "ci_test_config"
 owner = "release/ci"

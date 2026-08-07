@@ -44,7 +44,7 @@ map is:
 | `ripr doctor --json` | `schema_version` | `0.2` |
 | `ripr agent packet` | `schema_version` | `0.4` |
 | `ripr agent receipt` | `schema_version` | `0.5` |
-| `ripr agent verify` | `schema_version` | `0.1` (stable; see `output::agent_schemas` registry) |
+| `ripr agent verify` | `schema_version` | `0.1` (stable) |
 | `ripr agent status` | `schema_version` | `0.1` |
 | `ripr agent review-summary` | `schema_version` | `0.1` |
 | `ripr receipt write/check` | `schema_version` | `0.1` |
