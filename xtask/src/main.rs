@@ -18833,6 +18833,16 @@ fn network_policy_patterns() -> Vec<String> {
         concat!("tungste", "nite"),
         concat!("ssh", "2::"),
         concat!("req", "west::Client"),
+        // Expanded patterns (#2903): UDP, web frameworks, HTTP/3, async
+        // runtimes, and PowerShell web cmdlets that were still invisible.
+        concat!("Udp", "Socket"),
+        concat!("ax", "um"),
+        concat!("act", "ix"),
+        concat!("soc", "ket2"),
+        concat!("qu", "inn"),
+        concat!("async-", "std"),
+        concat!("Invoke-", "WebRequest"),
+        concat!("Invoke-", "RestMethod"),
     ]
     .iter()
     .map(|value| value.to_string())
