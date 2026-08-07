@@ -332,7 +332,11 @@ fn run_agent_receipt(options: AgentReceiptOptions) -> Result<(), String> {
 fn run_agent_status(options: AgentStatusOptions) -> Result<(), String> {
     ensure_command_root(&options.root, "agent status")?;
 
-    let report = app::agent_status::build_agent_status_report(&options.root, &options.root);
+    let workflow_dir = match &options.out_dir {
+        Some(dir) => resolve_agent_start_out_dir(&options.root, dir),
+        None => options.root.join("target/ripr/workflow"),
+    };
+    let report = app::agent_status::build_agent_status_report(&options.root, &workflow_dir);
     if options.json {
         let rendered = app::agent_status::render_agent_status_json(&report)?;
         print!("{rendered}");
@@ -461,6 +465,7 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
             run_agent_status(AgentStatusOptions {
                 root: root.clone(),
                 json: true,
+                out_dir: Some(std::path::PathBuf::from("target/ripr/workflow")),
             })?;
 
             eprintln!("ripr: after phase complete. Review the receipt and status output.");

@@ -81,6 +81,7 @@ pub(super) struct AgentReceiptOptions {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct AgentStatusOptions {
+    pub(super) out_dir: Option<PathBuf>,
     pub(super) root: PathBuf,
     pub(super) json: bool,
 }
@@ -628,6 +629,7 @@ pub(super) fn parse_agent_receipt_options(args: &[String]) -> Result<AgentReceip
 pub(super) fn parse_agent_status_options(args: &[String]) -> Result<AgentStatusOptions, String> {
     let mut root = PathBuf::from(".");
     let mut json = false;
+    let mut out_dir = None;
 
     let mut i = 0usize;
     while i < args.len() {
@@ -637,12 +639,20 @@ pub(super) fn parse_agent_status_options(args: &[String]) -> Result<AgentStatusO
                 root = PathBuf::from(expect_value(args, i, "--root")?);
             }
             "--json" => json = true,
+            "--out" => {
+                i += 1;
+                out_dir = Some(PathBuf::from(expect_value(args, i, "--out")?));
+            }
             other => return Err(unknown_argument("agent status", other)),
         }
         i += 1;
     }
 
-    Ok(AgentStatusOptions { root, json })
+    Ok(AgentStatusOptions {
+        root,
+        json,
+        out_dir,
+    })
 }
 
 pub(super) fn parse_agent_review_summary_options(
@@ -1403,6 +1413,7 @@ mod tests {
             Ok(AgentStatusOptions {
                 root: PathBuf::from("repo"),
                 json: true,
+                out_dir: None,
             })
         );
         assert_eq!(
@@ -1410,6 +1421,7 @@ mod tests {
             Ok(AgentCommand::Status(AgentStatusOptions {
                 root: PathBuf::from("repo"),
                 json: true,
+                out_dir: None,
             }))
         );
     }
@@ -1421,6 +1433,7 @@ mod tests {
             Ok(AgentStatusOptions {
                 root: PathBuf::from("."),
                 json: false,
+                out_dir: None,
             })
         );
         assert_eq!(
