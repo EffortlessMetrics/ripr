@@ -2616,16 +2616,37 @@ fn push_related_test_reference(
 }
 
 pub(crate) fn candidate_values_for(
-    _entry: &ClassifiedSeam,
+    entry: &ClassifiedSeam,
     missing: &[MissingRecord],
 ) -> Vec<CandidateValue> {
-    missing
+    // #2673: Previously this function ignored the entry entirely and cloned
+    // missing_discriminators verbatim — candidate_values was always identical
+    // to missing_discriminators, carrying no additional information.
+    //
+    // Now: merge the missing-discriminator records with observed activation
+    // values from the test grip evidence. The observed values are the concrete
+    // inputs tests already use; the candidate values tell the consumer which
+    // input variants to try next.
+    let mut values: Vec<CandidateValue> = missing
         .iter()
         .map(|record| CandidateValue {
             value: record.value.clone(),
             reason: record.reason.clone(),
         })
-        .collect()
+        .collect();
+    for fact in &entry.evidence.observed_values {
+        // Only add observed values that aren't already a candidate
+        if !values.iter().any(|v| v.value == fact.value) {
+            values.push(CandidateValue {
+                value: fact.value.clone(),
+                reason: format!(
+                    "observed {} value from existing tests",
+                    fact.context.as_str()
+                ),
+            });
+        }
+    }
+    values
 }
 
 pub(crate) fn assertion_shape_for_entry(entry: &ClassifiedSeam) -> AssertionShape {
