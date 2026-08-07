@@ -1673,7 +1673,21 @@ fn agent_verify_fixture_check(
             Vec::new(),
         );
     }
-    match run_authentic_repo_exposure_journey(binary) {
+    let binary = match absolute_installed_binary(binary) {
+        Ok(path) => path,
+        Err(err) => {
+            return readiness_check(
+                "agent-verify-boundary-fixture",
+                "fail",
+                true,
+                &command,
+                "installed binary path is not usable inside the external fixture",
+                Vec::new(),
+                vec![err],
+            );
+        }
+    };
+    match run_authentic_repo_exposure_journey(&binary) {
         Ok(details) => readiness_check(
             "agent-verify-boundary-fixture",
             "pass",
@@ -1705,6 +1719,22 @@ fn agent_verify_fixture_check(
             vec![err],
         ),
     }
+}
+
+/// The authentic producer journey spawns the installed binary with the
+/// external fixture as its working directory, so the checkout-relative
+/// `installed_ripr_binary()` path would not resolve there. Resolve it to an
+/// absolute path before the journey begins.
+fn absolute_installed_binary(binary: &Path) -> Result<PathBuf, String> {
+    let resolved = fs::canonicalize(binary)
+        .map_err(|err| format!("canonicalize installed binary failed: {err}"))?;
+    if !resolved.is_absolute() {
+        return Err(format!(
+            "installed binary did not resolve to an absolute path: {}",
+            crate::normalize_path(&resolved)
+        ));
+    }
+    Ok(resolved)
 }
 
 fn run_authentic_repo_exposure_journey(binary: &Path) -> Result<Vec<String>, String> {
@@ -3101,6 +3131,24 @@ mod tests {
         let warn = serde_json::json!({"status": "warn"});
         if validate_doctor_result(true, &warn).is_ok() {
             return Err("non-pass doctor status was accepted".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn authentic_journey_binary_resolves_to_absolute_path() -> Result<(), String> {
+        let resolved = super::absolute_installed_binary(Path::new("Cargo.toml"))?;
+        if !resolved.is_absolute() {
+            return Err(format!(
+                "resolved binary path {} is not absolute",
+                resolved.display()
+            ));
+        }
+        if !resolved.ends_with("Cargo.toml") {
+            return Err(format!(
+                "resolved binary path {} lost its file name",
+                resolved.display()
+            ));
         }
         Ok(())
     }
