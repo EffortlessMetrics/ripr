@@ -13,8 +13,11 @@ selected issue/claim or existing PR → deliver-pr
 missing or stale issue premise → prepare-issue
 missing or weak oracle → prepare-proof
 implementation/hardening → build-candidate
-published or existing PR → finish-pr
+substantive exact-head inspection → review-pr
+published or existing PR convergence → finish-pr
 ```
+
+- `review_route:root_to_review_pr`
 
 Use the narrowest skill that matches the current state. Enter existing work at
 the earliest missing or stale judgment rather than recreating completed
@@ -86,7 +89,7 @@ many distinct claims may be in flight
 one current candidate per coherent claim
 one writer mutates each candidate branch/worktree at a time
 readers, researchers, reviewers, and tools may inspect it
-Git and focused integration proof surface real interactions when they occur
+Git or integration proof surfaces real interactions when they occur
 ```
 
 Do not inspect sibling worktrees, reserve files/crates/semantic surfaces,
@@ -227,7 +230,8 @@ Review and proof currentness are dimensional:
 - public claim;
 - generated relationships;
 - conflict resolution;
-- integration basis.
+- integration basis;
+- candidate head identity.
 
 Refresh only the dimensions affected by the latest change. Unrelated movement
 on `main` invalidates nothing by itself.
@@ -238,6 +242,21 @@ after a repair or reply exists.
 
 Quota, unavailable, skipped, failed, or stale review-provider output means
 review is missing; it is not a clean review.
+
+Use `.claude/skills/review-pr/SKILL.md` for the substantive current-head pass.
+Reading threads and checks is remote triage, not review completion. Before merge
+convergence, inspect the complete diff, semantic owner and consumers, test
+stimulus and oracle grip, rendered/public behavior, runtime/schema/docs/output
+parity, platform-relevant branches, and exact-head job/artifact evidence. A
+clean self-review records what was inspected and uses a `COMMENT` disposition on
+the author's PR; GitHub's inability to request changes from the author is not
+approval.
+
+Review binds only to committed Git objects. A pre-publication candidate review
+may establish source and oracle findings but must retain absent hosted checks,
+artifacts, and external review as `REVIEW_INCOMPLETE`. After the PR exists and
+remote evidence is current, re-run `review-pr` on the exact published head. Only
+that published-head pass may emit `REVIEW_READY` for merge convergence.
 
 ## Local validation
 
@@ -299,7 +318,11 @@ subjects.
 ## PR convergence
 
 Use `.claude/skills/finish-pr/SKILL.md` for publication, review repair, CI,
-integration, merge, and reconciliation.
+integration, merge, and reconciliation. A committed candidate with
+`REVIEW_INCOMPLETE` may be published so remote evidence can run. `finish-pr` may
+arm merge only after the exact published head has a `REVIEW_READY` disposition
+from `review-pr`; a later material head change refreshes affected review
+dimensions.
 
 Useful remote-owned outcomes:
 

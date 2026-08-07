@@ -3,8 +3,8 @@
 This repository is designed for high-discretion Claude and Codex development.
 The developer may state a high-level outcome; the accountable root is expected
 to research current repository truth, identify the required claims, build and
-challenge candidates, carry PRs through review and CI, and continue until the
-actual outcome is satisfied.
+challenge candidates, carry PRs through substantive review and CI, and continue
+until the actual outcome is satisfied.
 
 Claude and Codex use separate complete instruction and skill sets:
 
@@ -14,7 +14,7 @@ Codex:  AGENTS.md + .agents/skills/**
 ```
 
 The two sets may intentionally repeat the same repository semantics. Neither is
-a generated wrapper around the other.
+a generated wrapper around the other provider's files.
 
 For operational entry and exit rules, see [Agent workflows](AGENT_WORKFLOWS.md).
 For local and CI validation, see [PR automation](PR_AUTOMATION.md) and
@@ -103,18 +103,25 @@ current premise
 → test hardening
 → simplification
 → candidate challenge
+→ commit one exact candidate head
+→ pre-publication review-pr candidate pass
 → publication or PR resumption
+→ published-head review-pr with remote evidence
 → review and CI repair
-→ fixed-candidate review
+→ refreshed exact-head review for affected dimensions
 → integration proof
-→ squash merge
+→ merge convergence
 → reconciliation
 ```
+
+The pre-publication pass normally remains `REVIEW_INCOMPLETE` while hosted
+checks, artifacts, and external review are absent. The exact published PR head
+must receive `REVIEW_READY` before merge convergence.
 
 These are judgment passes, not mandatory identities. The accountable root may
 perform several passes directly. Focused provider-native subagents are useful
 when they change the evidence, context, oracle, tools, failure perspective,
-cost, or elapsed time.
+cost, platform reach, or elapsed time.
 
 A different persona is not automatically independent. Independence is earned
 through a different oracle, source, threat model, context, or verification
@@ -131,8 +138,12 @@ Examples:
 - no issue: research and capture the claim, then continue;
 - issue ready, no proof: design proof;
 - proof ready, no implementation: build candidate;
-- existing candidate: harden, simplify, or review it;
-- existing PR with comments: verify, repair or refute, and continue;
+- existing candidate: harden, simplify, or challenge it;
+- committed candidate, no PR: run candidate review, publish with incomplete
+  remote evidence, then review the published head;
+- candidate appears ready: run substantive exact-head review;
+- existing PR with comments: verify, repair or refute, refresh review as needed,
+  and continue;
 - PR waiting on remote state: yield the lane and advance another distinct claim;
 - merged PR: reconcile the issue and parent goal.
 
@@ -164,7 +175,8 @@ non-derivable product preference.
 
 ## Verify, do not trust
 
-A detailed builder or subagent report is not evidence.
+A detailed builder, subagent, automated review, or CI report is not semantic
+evidence by itself.
 
 - Verify current source and the retained production path.
 - Run the compiler and relevant behavioral proof.
@@ -179,6 +191,9 @@ A detailed builder or subagent report is not evidence.
 - Quota, unavailable, skipped, failed, or stale review-provider output is
   missing review, not a clean review.
 - A green aggregate check does not substitute for missing load-bearing evidence.
+- No unresolved threads does not mean the current head received substantive
+  review.
+- A pass with zero intended subjects is not proof.
 
 RIPR’s actionability rule remains load-bearing: a wrong actionable repair signal
 is worse than several missed advisories. Keep actionability fail-closed and use
@@ -223,11 +238,98 @@ The integrating writer:
 - owns accepted mutations to the branch/worktree;
 - reconciles contradictory research or review;
 - keeps the candidate coherent;
-- publishes one current head.
+- commits and publishes one current head.
 
 Read-only subagents may map authority, challenge tests, research external
-semantics, or review correctness/security/privacy/compatibility. The root
-verifies and synthesizes their results.
+semantics, or review correctness/security/privacy/compatibility/platform
+behavior. The root verifies and synthesizes their results.
+
+---
+
+## Substantive exact-head review
+
+`review-pr` is the required judgment between candidate hardening and merge
+convergence. It is not another permanent actor and does not require a separate
+person. It is a distinct evidence pass.
+
+An exact review subject is a committed Git object. Uncommitted worktree state
+cannot receive an exact-head disposition.
+
+A candidate may receive two passes:
+
+1. **Pre-publication candidate pass:** source, proof, and repository contracts
+   are reviewed on the exact committed branch head. Missing hosted checks,
+   artifacts, and external review remain explicit, so the normal result is
+   `REVIEW_INCOMPLETE`.
+2. **Published merge pass:** the exact PR head is reviewed with current hosted
+   jobs, artifacts, comments, and integration evidence. Only this pass may emit
+   `REVIEW_READY` for merge convergence.
+
+Bind every review to:
+
+```text
+reviewed_head_sha
+integration_basis
+claim_boundary
+review timestamp
+```
+
+Read the complete current-head diff and PR body, then follow the change into the
+semantic owner and actual consumers. Review applicable lanes:
+
+1. authority, provenance, identity, currentness, producer authenticity, and
+   compatibility authority;
+2. correctness, failure paths, rollback, cleanup, partial publication,
+   transaction boundaries, replay, stale input, TOCTOU, races, and concurrency;
+3. fixture setup, intended nonempty subjects, production-path reachability, and
+   whether the old or wrong behavior can still pass the test;
+4. rendered CLI/API/LSP/help/output behavior rather than raw source-text
+   coincidence;
+5. runtime validation, schema, docs, generated artifacts, output contracts,
+   compatibility history, and support-claim parity;
+6. platform, package, process, trust, security, permission, secret, and network
+   behavior where engaged;
+7. exact-head required/advisory jobs, denominators, skipped lanes, failures,
+   reports, receipts, and workflow artifacts.
+
+Challenge each load-bearing claim with a counterexample, alternate case,
+mutation/removal experiment, deliberately wrong implementation, or an explicit
+reason the experiment is impractical.
+
+A review record distinguishes:
+
+- blocking source/contract defects;
+- blocking test/oracle defects;
+- blocking missing platform/integration proof;
+- non-blocking suggestions;
+- refuted or stale findings;
+- missing proof or review;
+- instrument failure;
+- infrastructure failure;
+- not established.
+
+A clean review names changed surfaces, semantic owners, risks, invariants,
+validation signals, residual assumptions, missing evidence, and exact head.
+`LGTM` is not useful evidence.
+
+On the author's own PR, GitHub cannot accept `REQUEST_CHANGES`. Use a `COMMENT`
+review with an explicit blocking or review-ready disposition. The platform
+constraint is not approval.
+
+False-confidence boundaries:
+
+- green CI does not establish semantic correctness;
+- no review threads does not establish review;
+- individually atomic writes do not prove a multi-file/directory transaction;
+- a digest binds bytes but not their claimed producer or invocation;
+- source-string checks do not prove rendered behavior;
+- documentation cannot strengthen runtime/schema authority;
+- `mergeStateStatus: BLOCKED` is not a causal diagnosis and does not prove a
+  human approval requirement.
+
+Only the published-head `REVIEW_READY` disposition proceeds to merge
+convergence. `REPAIR_REQUIRED` returns to the same candidate and refreshes
+affected review dimensions.
 
 ---
 
@@ -254,7 +356,8 @@ Review and proof currentness are dimensional:
 - public claim;
 - generated relationships;
 - conflict resolution;
-- integration basis.
+- integration basis;
+- candidate head identity.
 
 A test-only hardening push need not invalidate review of untouched production
 code. A conflict resolution invalidates review of the conflict seam. Unrelated
@@ -310,7 +413,8 @@ state rather than source failure.
 A ready PR has:
 
 - one coherent claim;
-- an exact current candidate;
+- an exact current published candidate;
+- a current published-head `REVIEW_READY` disposition;
 - all substantive findings repaired or evidence-refuted;
 - current proof for affected seams;
 - required checks green or an explicit non-ready disposition;

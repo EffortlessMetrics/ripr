@@ -18,11 +18,19 @@ high-level goal
 → deliver-goal
 → one distinct PR claim
 → deliver-pr
-→ prepare-issue / prepare-proof / build-candidate / finish-pr as needed
+→ prepare-issue / prepare-proof / build-candidate as needed
+→ commit one exact candidate head
+→ review-pr candidate pass
+→ finish-pr publication or PR resumption
+→ review-pr published-head pass with remote evidence
+→ finish-pr merge convergence and reconciliation
 → merge or durable in-flight state
-→ reconcile
 → continue until the actual goal is satisfied
 ```
+
+The pre-publication pass normally exits `REVIEW_INCOMPLETE` when hosted checks,
+artifacts, or external review do not yet exist. Only the exact published PR head
+may receive `REVIEW_READY` for merge convergence.
 
 ---
 
@@ -62,12 +70,15 @@ Use `deliver-pr`.
    - implementation;
    - test hardening;
    - simplification;
-   - candidate review;
+   - candidate challenge;
+   - substantive current-head review;
    - review repair;
    - integration proof;
    - reconciliation.
-5. Continue through publication, review, CI, merge, and reconciliation unless a
-   real stop condition exists.
+5. Commit the coherent candidate before exact-head review.
+6. Continue through candidate review, publication, published-head review,
+   review/CI repair, merge, and reconciliation unless a real stop condition
+   exists.
 
 Filing or correcting the issue is not a reason to stop when implementation was
 the requested job.
@@ -76,10 +87,15 @@ the requested job.
 
 ## Starting from an existing PR
 
-Use `deliver-pr` or `finish-pr` depending on candidate maturity.
+Use `deliver-pr`, `review-pr`, or `finish-pr` depending on candidate maturity.
 
 - Read the complete current-head diff and PR body.
 - Read every current review thread and required check.
+- Treat thread/check inspection as remote triage, not substantive review.
+- Use `review-pr` to inspect semantic ownership and consumers, failure and
+  transaction behavior, test stimulus/oracle grip, rendered/public behavior,
+  runtime/schema/docs/output parity, platform-relevant branches, and exact-head
+  job/artifact evidence.
 - Verify findings against source and behavior.
 - Repair valid findings through the same candidate.
 - Refute invalid findings with evidence.
@@ -94,7 +110,7 @@ larger goal.
 
 ---
 
-## The six public skills
+## The seven public skills
 
 ### `deliver-goal`
 
@@ -104,6 +120,8 @@ in-flight PRs, and final satisfaction judgment.
 ### `deliver-pr`
 
 Owns one coherent claim from current premise to merge or deliberate closure.
+It routes a committed candidate through a pre-publication review, publication,
+and a published exact-head review before merge convergence.
 
 ### `prepare-issue`
 
@@ -118,13 +136,98 @@ proof before or during implementation.
 ### `build-candidate`
 
 Implements, tests, simplifies, challenges, and repairs one current candidate.
+It commits the coherent candidate before exact-head review. Its internal
+challenge pass does not substitute the final PR review.
+
+### `review-pr`
+
+Performs the substantive review on one exact committed head. It reads the
+complete diff and governing claim, follows the change into semantic owners and
+real consumers, challenges the test oracle and public/runtime contracts,
+inspects platform-relevant behavior and exact-head CI receipts, and emits one
+of:
+
+```text
+REVIEW_READY
+REPAIR_REQUIRED
+REVIEW_INCOMPLETE
+INSTRUMENT_FAILURE
+INFRASTRUCTURE_FAILURE
+NOT_ESTABLISHED
+```
+
+A pre-publication candidate review normally retains absent remote evidence as
+`REVIEW_INCOMPLETE`. A clean published-head review records what was inspected,
+risks considered, invariants checked, validation observed, missing evidence,
+residual assumptions, and the exact head. `LGTM`, green CI, and an empty thread
+list are not review records.
 
 ### `finish-pr`
 
-Publishes or resumes the PR, repairs review and CI findings, yields remote waits,
-merges the exact ready candidate, and reconciles repository state.
+Publishes or resumes a committed candidate with `REVIEW_INCOMPLETE`, obtains
+remote evidence, requires a current published-head `REVIEW_READY` disposition
+before arming merge, repairs review and CI findings, yields remote waits, merges
+the exact ready candidate, and reconciles repository state.
 
 Each provider's file contains the complete procedure and valid outcomes.
+
+---
+
+## Exact-head review contract
+
+An exact review subject is a committed Git object. Uncommitted working-tree
+state cannot receive an exact-head disposition.
+
+A standard review binds:
+
+```text
+reviewed_head_sha
+integration_basis
+claim_boundary
+changed_surfaces_and_semantic_owners_inspected
+blocking_findings
+non_blocking_suggestions
+refuted_or_stale_findings
+proof_and_ci_observed
+proof_or_review_missing
+affected_currentness_dimensions
+residual_assumptions_and_non_claims
+disposition
+```
+
+Review the applicable lanes:
+
+1. semantic ownership, authority, provenance, and identity;
+2. correctness, failure paths, rollback, cleanup, atomicity, replay, races, and
+   concurrency;
+3. fixture construction, intended subjects, production-path reachability, and
+   whether the old or wrong behavior can still pass;
+4. rendered CLI/API/LSP/help/output behavior rather than source-text
+   coincidence;
+5. runtime/schema/docs/generated/output/support parity;
+6. platform, packaging, process, trust, security, and permissions where engaged;
+7. exact-head required/advisory jobs, denominators, skips, failures, reports,
+   and artifacts.
+
+Every load-bearing claim should receive a counterexample, alternate case,
+mutation/removal experiment, deliberately wrong implementation, or an explicit
+reason such a challenge is impractical.
+
+On the author's own PR, GitHub cannot accept `REQUEST_CHANGES`. Use a `COMMENT`
+review with an explicit blocking or review-ready disposition. That platform
+constraint is neither approval nor a reason to weaken the review.
+
+False-confidence prohibitions:
+
+- no unresolved threads does not mean review occurred;
+- green required CI does not establish semantic correctness;
+- unavailable/quota/skipped/stale reviewers are missing review;
+- zero intended subjects is not proof;
+- individually atomic writes are not a whole transaction;
+- hashes bind bytes, not their named producer or invocation;
+- docs and PR prose cannot strengthen runtime/schema authority;
+- `mergeStateStatus: BLOCKED` is not a causal diagnosis or evidence of a human
+  approval requirement.
 
 ---
 
@@ -167,7 +270,8 @@ Useful subagent questions include:
 - What current issue or PR already owns this claim?
 - What is the strongest counterexample to the proposed proof?
 - Does the test reach the real production branch?
-- What security, privacy, compatibility, or product boundary is at risk?
+- What security, privacy, compatibility, platform, or product boundary is at
+  risk?
 
 Subagents are normally read-only. They return evidence-backed findings, not
 lifecycle authority. The root verifies their citations, resolves contradictions,
@@ -235,6 +339,21 @@ Keep separate:
 - squash or merge-group result.
 
 Do not rebase because `main` moved. Reconcile only real conflicts or interactions.
+
+A later edit invalidates only affected dimensions:
+
+- production implementation;
+- test stimulus;
+- test oracle;
+- public claim;
+- generated relationships;
+- conflict resolution;
+- integration basis;
+- candidate head identity.
+
+`finish-pr` may publish a committed `REVIEW_INCOMPLETE` candidate. It may arm
+merge only when the exact published head has `REVIEW_READY`, required proof is
+current, and substantive findings are repaired or evidence-refuted.
 
 Useful remote-owned outcomes include:
 

@@ -1,11 +1,16 @@
 ---
 name: build-candidate
-description: Build, harden, simplify, and challenge one current candidate for a coherent claim. Use after proof design or when an existing implementation needs repair before PR convergence.
+description: Build, harden, simplify, and challenge one current candidate for a coherent claim. Use after proof design or when an existing implementation needs repair before PR review and convergence.
 ---
 
 # Useful result
 
-One candidate implements the selected claim, carries discriminating proof, respects the semantic owner, has no unnecessary parallel authority, and is ready for publication or current-head review.
+One candidate implements the selected claim, carries discriminating proof, respects the semantic owner, has no unnecessary parallel authority, and is ready for substantive exact-head review.
+
+# Route markers
+
+- `review_route:build_candidate_to_review_pr`
+- `review_route:repair_returns_to_same_candidate`
 
 # Procedure
 
@@ -17,21 +22,25 @@ One candidate implements the selected claim, carries discriminating proof, respe
    - add the discriminating negative or alternate case;
    - validate fixture setup and nonempty subject;
    - add currentness or identity checks where relevant;
-   - preserve fail-closed unknown and limitation states.
+   - preserve fail-closed unknown and limitation states;
+   - prove rendered/public behavior when source-text coincidence could pass without the real route changing.
 6. Simplify the candidate:
    - remove temporary scaffolding and dead branches;
    - collapse duplicated logic into the owning layer;
    - remove public placeholders and panic/todo paths;
    - keep the PR's acceptance and rollback boundary coherent.
 7. Challenge the candidate with fresh criteria:
-   - authority and architecture;
-   - correctness and edge cases;
-   - test grip;
-   - security/privacy/compatibility where relevant;
-   - user-facing claim honesty.
+   - authority, provenance, and architecture;
+   - correctness, failure paths, rollback, transaction boundaries, replay, and concurrency;
+   - test stimulus and oracle grip;
+   - runtime/schema/docs/help/output parity;
+   - platform, packaging, process, security, and user-facing claim honesty where relevant.
 8. Repair every accepted finding through the same candidate.
 9. Run `cargo xtask precommit`, focused tests, and the additional gates required by the changed surface. Report incomplete or infrastructure-limited evidence honestly.
-10. Prepare the candidate for `finish-pr`.
+10. Commit the coherent candidate so review binds to an exact Git object. An uncommitted worktree cannot receive an exact-head disposition.
+11. Hand the exact committed head to `review-pr`. Candidate challenge inside the builder is not the final PR review, and green CI or zero review threads cannot replace that pass.
+12. Before a PR exists, `review-pr` may return `REVIEW_INCOMPLETE` because remote checks, artifacts, and review evidence are unavailable. Route that exact candidate to `finish-pr` for publication, then re-enter `review-pr` on the published PR head before merge convergence.
+13. If `review-pr` returns `REPAIR_REQUIRED`, repair the same candidate, recommit, and refresh only the affected review/proof dimensions before reviewing again.
 
 # Candidate law
 
@@ -48,10 +57,12 @@ Choose and document reasonable reversible decisions. Escalate only when material
 
 # Valid exits
 
-- `CANDIDATE_READY`
+- `CANDIDATE_READY_FOR_REVIEW`
 - `CANDIDATE_REPAIRED`
 - `PROOF_NEEDS_REPAIR`
 - `PLAN_OR_ISSUE_NEEDS_REPAIR`
+- `REPAIR_REQUIRED`
+- `REVIEW_INCOMPLETE`
 - `INSTRUMENT_FAILURE`
 - `INFRASTRUCTURE_FAILURE`
 - `EXTERNAL_BLOCKER`

@@ -433,12 +433,14 @@ PR.
 For scoped implementation, docs, tests, and refactors, use this default flow:
 
 ```text
-review -> improve -> validate -> commit -> push -> open/update PR -> merge when ready
+build -> improve -> validate -> commit exact candidate -> review-pr candidate pass -> push/open/update PR -> review-pr published-head pass -> finish-pr -> merge when ready
 ```
 
-A PR is ready when the branch is current, required checks pass, real review
-findings are addressed, the diff matches the stated scope, and repo policy does
-not require a different sequence.
+The candidate pass may remain `REVIEW_INCOMPLETE` while remote evidence does not
+exist. A PR is ready only when the exact published head has a current
+`REVIEW_READY` disposition, required checks pass, real review findings are
+addressed, the diff matches the stated scope, and repo policy does not require a
+different sequence.
 
 Merge-safety rules, learned the hard way:
 
@@ -535,6 +537,17 @@ findings, produce a short inspection record that names:
 - validation signals;
 - residual assumptions.
 
+Use `.agents/skills/review-pr/SKILL.md` for the substantive exact-head review
+before merge convergence. Reading automated comments, seeing an empty thread
+list, or seeing green CI is remote triage, not review completion. Follow changed
+behavior into its semantic owner and real consumers, challenge the test oracle,
+inspect rendered/public and runtime/schema/docs parity, check platform-relevant
+branches, and bind the review record to a committed head. A pre-publication pass
+may remain `REVIEW_INCOMPLETE`; re-run the review on the exact published PR head
+with current remote evidence before emitting `REVIEW_READY`. On the author's own
+PR, use a `COMMENT` review with an explicit blocking or review-ready disposition;
+GitHub's author-review limitation is not approval.
+
 When reviewing or repairing code, read these files first:
 
 - `.factory/skills/review-guidelines/SKILL.md`
@@ -552,19 +565,24 @@ Preserve the user's original goal, constraints, non-goals, assumptions, and
 acceptance predicates. The durable issue, specification, plan, policy, receipt,
 and closeout graph is the repository's source of truth for long-running work.
 
-Use the six Codex procedures under `.agents/skills/**` as the operational
+Use the seven Codex procedures under `.agents/skills/**` as the operational
 entrypoints. Select the narrowest procedure for the current claim, and keep one
-current branch/worktree/PR per coherent claim. A waiting PR is still in flight;
-advance a distinct claim when useful and revisit it after a material transition.
+current branch/worktree/PR per coherent claim. Commit the coherent candidate,
+run the pre-publication `review-pr` pass, and let a `REVIEW_INCOMPLETE` candidate
+enter `finish-pr` only for publication. Re-run `review-pr` on the exact published
+head with current remote evidence; only `REVIEW_READY` may enter `finish-pr`
+merge convergence. A waiting PR is still in flight; advance a distinct claim
+when useful and revisit it after a material transition.
 
 Use focused readers or reviewers only when they add a different source,
-oracle, context, threat model, or verification method. Their findings are leads
-until checked against current repository and GitHub evidence. Reasonable,
-reversible engineering choices should proceed without an owner pause.
+oracle, context, threat model, platform reach, or verification method. Their
+findings are leads until checked against current repository and GitHub evidence.
+Reasonable, reversible engineering choices should proceed without an owner
+pause.
 
 Keep PR head, integration basis, squash result, proof, review, and release
-state as separate judgments. Refresh only the proof dimensions affected by a
-changed head, conflict, implementation, oracle, public claim, generated
+state as separate judgments. Refresh only the proof/review dimensions affected
+by a changed head, conflict, implementation, oracle, public claim, generated
 relationship, or integration basis. Unrelated movement on `main` does not
 invalidate proof or review by itself.
 
