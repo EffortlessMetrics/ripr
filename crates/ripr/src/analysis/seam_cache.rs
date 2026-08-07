@@ -1577,6 +1577,10 @@ pub(crate) struct WorkspaceGraphProvenance {
     pub(crate) feature_graph_detail: Option<String>,
     pub(crate) external_dependency_graph_status: String,
     pub(crate) external_dependency_graph_detail: String,
+    /// #2968: path dependencies discovered in Cargo.toml `[dependencies]`
+    /// tables with `path = "..."` values. Each entry is `(from_manifest, dep_name, resolved_path)`.
+    /// Preserved but not yet walked (#2969/#2970 consume this).
+    pub(crate) path_dependency_edges: Vec<(String, String, String)>,
 }
 
 /// Read local Cargo manifests and derive deterministic package/feature graph
@@ -1596,11 +1600,13 @@ pub(crate) fn workspace_graph_provenance(root: &Path) -> WorkspaceGraphProvenanc
             external_dependency_graph_detail:
                 "external dependency metadata is not resolved; no network access was used"
                     .to_string(),
+            path_dependency_edges: Vec::new(),
             ..WorkspaceGraphProvenance::default()
         };
     }
 
     let mut package_facts = Vec::new();
+    let mut path_dep_edges: Vec<(String, String, String)> = Vec::new();
     let mut feature_facts = Vec::new();
     let mut parse_errors = Vec::new();
     for (path, bytes) in &manifests {
@@ -1633,6 +1639,23 @@ pub(crate) fn workspace_graph_provenance(root: &Path) -> WorkspaceGraphProvenanc
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
+        // #2968: also preserve path-dep values so #2969 can build the adjacency graph.
+        let manifest_dir = path.parent().unwrap_or(Path::new("."));
+        for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
+            if let Some(table) = value.get(section).and_then(toml::Value::as_table) {
+                for (dep_name, dep_value) in table {
+                    if let Some(path_str) = dep_value
+                        .as_table()
+                        .and_then(|t| t.get("path"))
+                        .and_then(toml::Value::as_str)
+                    {
+                        let resolved = manifest_dir.join(path_str);
+                        let resolved_str = resolved.to_string_lossy().replace('\\', "/");
+                        path_dep_edges.push((path_text.clone(), dep_name.clone(), resolved_str));
+                    }
+                }
+            }
+        }
         package_facts.push(format!(
             "{path_text}\0package={package_name}\0members={workspace_members}\0dependencies={dependencies:?}"
         ));
@@ -1676,6 +1699,7 @@ pub(crate) fn workspace_graph_provenance(root: &Path) -> WorkspaceGraphProvenanc
         external_dependency_graph_status: "unavailable".to_string(),
         external_dependency_graph_detail:
             "external dependency metadata is not resolved; no network access was used".to_string(),
+        path_dependency_edges: path_dep_edges,
     }
 }
 
