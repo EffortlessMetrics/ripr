@@ -135,7 +135,7 @@ jobs:
       - name: Install sccache
         uses: taiki-e/install-action@v2
         with:
-          tool: sccache
+          tool: sccache,nextest
       - name: Start sccache server
         run: |
           mkdir -p "$CARGO_TARGET_DIR" "$SCCACHE_DIR"
@@ -179,7 +179,7 @@ jobs:
           cargo fmt --check
           cargo check --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
-          cargo test --workspace
+          cargo nextest run --workspace
           cargo xtask precommit
           cargo xtask check-evidence-promotion-honesty
           cargo xtask check-agent-skills
@@ -276,7 +276,7 @@ jobs:
       - name: Install sccache
         uses: taiki-e/install-action@v2
         with:
-          tool: sccache
+          tool: sccache,nextest
       - name: Start sccache server
         run: |
           mkdir -p "$CARGO_TARGET_DIR" "$SCCACHE_DIR"
@@ -321,7 +321,7 @@ jobs:
           cargo fmt --check
           cargo check --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
-          cargo test --workspace
+          cargo nextest run --workspace
           cargo xtask precommit
           cargo xtask check-evidence-promotion-honesty
           cargo xtask check-agent-skills
@@ -418,7 +418,7 @@ jobs:
       - name: Install sccache
         uses: taiki-e/install-action@v2
         with:
-          tool: sccache
+          tool: sccache,nextest
       - name: Start sccache server
         run: |
           mkdir -p "$CARGO_TARGET_DIR" "$SCCACHE_DIR"
@@ -462,7 +462,7 @@ jobs:
           cargo fmt --check
           cargo check --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
-          cargo test --workspace
+          cargo nextest run --workspace
           cargo xtask precommit
           cargo xtask check-evidence-promotion-honesty
           cargo xtask check-agent-skills
@@ -557,7 +557,7 @@ jobs:
           cargo fmt --check
           cargo check --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
-          cargo test --workspace
+          cargo nextest run --workspace
           cargo xtask precommit
           cargo xtask check-evidence-promotion-honesty
           cargo xtask check-agent-skills
