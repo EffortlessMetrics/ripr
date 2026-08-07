@@ -43,7 +43,7 @@ oxc_allocator = { version = "0.130", optional = true }
 oxc_ast = { version = "0.130", optional = true }
 oxc_parser = { version = "0.130", optional = true }
 oxc_span = { version = "0.130", optional = true }
-ra_ap_syntax = "0.0.330"
+ra_ap_syntax = { version = "0.0.330", optional = true }
 rayon = "1"
 # Default features pull `malachite-bigint` (LGPL-3.0-only), which is
 # incompatible with our MIT/Apache-2.0 license posture. Disable the
@@ -60,7 +60,7 @@ tower-lsp-server = "0.23.0"
 
 [features]
 default = ["lang-rust", "lang-typescript", "lang-python"]
-lang-rust = []
+lang-rust = ["dep:ra_ap_syntax"]
 lang-typescript = ["dep:oxc_allocator", "dep:oxc_ast", "dep:oxc_parser", "dep:oxc_span"]
 lang-python = ["dep:rustpython-parser"]
 lang-perl = []
