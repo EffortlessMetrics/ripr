@@ -1389,8 +1389,8 @@ mod tests {
     #[test]
     fn doctor_rejects_unknown_arguments() {
         assert_eq!(
-            doctor(&args(&["--verbose"])),
-            Err("unknown doctor argument \"--verbose\". Run `ripr doctor --help`.".to_string())
+            doctor(&args(&["--bogus"])),
+            Err("unknown doctor argument \"--bogus\". Run `ripr doctor --help`.".to_string())
         );
     }
 

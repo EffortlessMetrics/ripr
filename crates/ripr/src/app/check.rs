@@ -89,6 +89,7 @@ pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
     )
 }
 
+#[derive(Debug)]
 enum AnalysisMode {
     Diff,
     Worktree,
@@ -136,6 +137,19 @@ fn run_check(
         languages.push(LanguageId::Perl);
     }
 
+    if crate::is_verbose() {
+        eprintln!(
+            "ripr: analyzing {} language(s): {}",
+            languages.len(),
+            languages
+                .iter()
+                .map(|l| l.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        eprintln!("ripr: mode = {:?}", mode);
+    }
+
     let analysis = match mode {
         AnalysisMode::Diff => run_analysis_with_oracle_policy_and_generated_file_patterns(
             &options,
@@ -158,6 +172,12 @@ fn run_check(
             config.languages().generated_file_patterns(),
         )?,
     };
+
+    if crate::is_verbose() {
+        let finding_count = analysis.findings.len();
+        let probe_count = analysis.summary.probes;
+        eprintln!("ripr: analysis complete — {probe_count} probes, {finding_count} findings");
+    }
 
     let suppression_policy = input.suppression_policy.clone();
     let mut output = output_builder::check_output_from_analysis(input, analysis);

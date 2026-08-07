@@ -118,3 +118,16 @@ pub use domain::{ExposureClass, Finding, Probe, ProbeFamily, RiprEvidence};
 pub use domain::{LanguageFileCount, Summary};
 pub use output::suppressions::CheckSuppressionOutcome;
 pub use output::suppressions::SuppressedCheckFinding;
+
+// #2610: global verbose flag. Set by the binary entry point before dispatch.
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+pub fn set_verbose(on: bool) {
+    VERBOSE.store(on, Ordering::Relaxed);
+}
+
+pub(crate) fn is_verbose() -> bool {
+    VERBOSE.load(Ordering::Relaxed)
+}
