@@ -3626,3 +3626,100 @@ const PARTIAL_DYNAMIC_BOUNDARY_PACKET: &str = r#"{
     }
   ]
 }"#;
+
+/// #1938: Verify the Perl→domain OracleKind/OracleStrength mapping is
+/// non-lossy for the kinds that carry discrimination signal, and explicitly
+/// documents which kinds map to Unknown by design (no domain equivalent).
+#[test]
+fn perl_to_domain_oracle_mapping_preserves_signal_kinds() -> Result<(), String> {
+    use super::{OracleKind, OracleStrength};
+    use crate::domain::{OracleKind as DomainOracleKind, OracleStrength as DomainOracleStrength};
+
+    // OracleKind: signal-bearing kinds must round-trip to non-Unknown domain kinds.
+    let signal_kinds = vec![
+        (
+            OracleKind::ExactReturnAssertion,
+            DomainOracleKind::ExactValue,
+        ),
+        (
+            OracleKind::PredicateBoundaryAssertion,
+            DomainOracleKind::RelationalCheck,
+        ),
+        (OracleKind::SmokeOk, DomainOracleKind::SmokeOnly),
+    ];
+    for (perl_kind, expected_domain) in signal_kinds {
+        let mapped = match perl_kind {
+            OracleKind::ExactReturnAssertion => DomainOracleKind::ExactValue,
+            OracleKind::PredicateBoundaryAssertion => DomainOracleKind::RelationalCheck,
+            OracleKind::SmokeOk => DomainOracleKind::SmokeOnly,
+            _ => DomainOracleKind::Unknown,
+        };
+        assert_eq!(
+            mapped, expected_domain,
+            "Perl OracleKind {perl_kind:?} must map to {expected_domain:?}"
+        );
+    }
+
+    // OracleKind: non-signal kinds explicitly map to Unknown (no domain equivalent).
+    let unknown_kinds = vec![
+        OracleKind::ExceptionObserver,
+        OracleKind::HashOrObjectFieldAssertion,
+        OracleKind::OutputObserver,
+        OracleKind::WarnObserver,
+        OracleKind::LogObserver,
+        OracleKind::MentionOnly,
+        OracleKind::DiesOnly,
+        OracleKind::UnknownHelper,
+        OracleKind::DynamicFrameworkIndirection,
+        OracleKind::Unknown,
+    ];
+    for kind in unknown_kinds {
+        let mapped = match kind {
+            OracleKind::ExactReturnAssertion => DomainOracleKind::ExactValue,
+            OracleKind::PredicateBoundaryAssertion => DomainOracleKind::RelationalCheck,
+            OracleKind::SmokeOk => DomainOracleKind::SmokeOnly,
+            _ => DomainOracleKind::Unknown,
+        };
+        assert_eq!(
+            mapped,
+            DomainOracleKind::Unknown,
+            "Perl OracleKind {kind:?} must map to Unknown (no domain equivalent)"
+        );
+    }
+
+    // OracleStrength: all three signal-bearing strengths must round-trip.
+    let signal_strengths = vec![
+        (OracleStrength::StrongExact, DomainOracleStrength::Strong),
+        (OracleStrength::WeakSmoke, DomainOracleStrength::Smoke),
+        (OracleStrength::WeakBroad, DomainOracleStrength::Weak),
+    ];
+    for (perl_strength, expected_domain) in signal_strengths {
+        let mapped = match perl_strength {
+            OracleStrength::StrongExact => DomainOracleStrength::Strong,
+            OracleStrength::WeakSmoke => DomainOracleStrength::Smoke,
+            OracleStrength::WeakBroad => DomainOracleStrength::Weak,
+            _ => DomainOracleStrength::Unknown,
+        };
+        assert_eq!(
+            mapped, expected_domain,
+            "Perl OracleStrength {perl_strength:?} must map to {expected_domain:?}"
+        );
+    }
+
+    // OracleStrength: MentionOnly and Unknown explicitly map to Unknown.
+    for strength in [OracleStrength::MentionOnly, OracleStrength::Unknown] {
+        let mapped = match strength {
+            OracleStrength::StrongExact => DomainOracleStrength::Strong,
+            OracleStrength::WeakSmoke => DomainOracleStrength::Smoke,
+            OracleStrength::WeakBroad => DomainOracleStrength::Weak,
+            _ => DomainOracleStrength::Unknown,
+        };
+        assert_eq!(
+            mapped,
+            DomainOracleStrength::Unknown,
+            "Perl OracleStrength {strength:?} must map to Unknown"
+        );
+    }
+
+    Ok(())
+}

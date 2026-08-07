@@ -5113,6 +5113,21 @@ fn check_spec_format() -> Result<(), String> {
             Some(value) => violations.push(format!("{normalized} has invalid status `{value}`")),
             None => violations.push(format!("{normalized} is missing `Status: ...`")),
         }
+        // #2708: flag proposed specs older than 90 days without review.
+        // Accepted/deprecated specs are exempt — they have been reviewed.
+        if status.as_deref() == Some("proposed") {
+            if let Ok(metadata) = std::fs::metadata(&path)
+                && let Ok(modified) = metadata.modified()
+                && let Ok(elapsed) = modified.elapsed()
+                && elapsed.as_secs() > 90 * 24 * 60 * 60
+            {
+                let days = elapsed.as_secs() / (24 * 60 * 60);
+                violations.push(format!(
+                    "{normalized} has been `proposed` for {days} days without review; \
+                     promote to `accepted`, re-scope, or add evidence to justify the status"
+                ));
+            }
+        }
         for heading in required_spec_headings() {
             if !has_markdown_heading(&text, heading) {
                 violations.push(format!("{normalized} is missing `{heading}`"));
