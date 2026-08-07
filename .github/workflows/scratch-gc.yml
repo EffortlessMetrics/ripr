@@ -46,7 +46,7 @@ jobs:
     steps:
       - name: Reclaim scratch and report disk
         run: |
-          find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +45 -exec rm -rf {} + 2>/dev/null || true
+          find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +30 -exec rm -rf {} + 2>/dev/null || true
           find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
           { echo '```'; echo "pool: ${{ matrix.pool }}"; du -sh /mnt/ci-scratch/* /mnt/ci-cache/* 2>/dev/null | sort -rh | head -20 || true; df -h / /mnt/ci-scratch 2>/dev/null || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           command -v ci-disk-guard >/dev/null 2>&1 && ci-disk-guard /mnt/ci-scratch 35 || { echo "::error::ci-disk-guard missing or /mnt/ci-scratch below 35G free on ${{ matrix.pool }}"; exit 1; }
