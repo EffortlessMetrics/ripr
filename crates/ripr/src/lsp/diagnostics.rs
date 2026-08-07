@@ -1807,6 +1807,18 @@ fn gap_record_diagnostic_data_with_causal(
         "receipt": record.receipt,
         "authority_boundary": record.authority_boundary,
     });
+    if let Some(missing_discriminator) = record
+        .repair_route
+        .as_ref()
+        .and_then(|route| route.missing_discriminator.as_deref())
+        .and_then(non_empty)
+        && let Some(object) = data.as_object_mut()
+    {
+        object.insert(
+            "missing_discriminator".to_string(),
+            serde_json::Value::String(missing_discriminator.to_string()),
+        );
+    }
     if let Some(object) = data.as_object_mut()
         && let Some(anchor) = object.get_mut("anchor")
         && let Some(anchor_object) = anchor.as_object_mut()
@@ -2890,6 +2902,47 @@ mod seam_diagnostic_tests {
             "root": ".",
             "records": records,
         })
+    }
+
+    #[test]
+    fn gap_diagnostic_projects_only_producer_owned_discriminator() -> Result<(), String> {
+        let root = temp_gap_root()?;
+        let result = (|| {
+            let record = gap_record(true);
+            let data = gap_record_diagnostic_data_with_causal(
+                &root,
+                Path::new("target/ripr/reports/gap-decision-ledger.json"),
+                &record,
+                None,
+            );
+            if data["missing_discriminator"] != "amount == threshold" {
+                return Err(format!(
+                    "producer discriminator was not projected at the diagnostic root: {data}"
+                ));
+            }
+
+            let mut without = record;
+            if let Some(route) = without.repair_route.as_mut() {
+                route.missing_discriminator = None;
+                route.assertion_shape = Some("assert_eq!(price(threshold), expected)".to_string());
+                route.changed_behavior = Some("amount >= threshold".to_string());
+            }
+            let data = gap_record_diagnostic_data_with_causal(
+                &root,
+                Path::new("target/ripr/reports/gap-decision-ledger.json"),
+                &without,
+                None,
+            );
+            if data.get("missing_discriminator").is_some() {
+                return Err(format!(
+                    "prose-only repair route fabricated a discriminator: {data}"
+                ));
+            }
+            Ok(())
+        })();
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        result
     }
 
     fn temp_gap_root() -> Result<PathBuf, String> {

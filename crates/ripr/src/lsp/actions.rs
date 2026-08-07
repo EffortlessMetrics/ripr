@@ -1132,6 +1132,10 @@ fn python_agent_packet_target(
     {
         return None;
     }
+    // #2657: an absent producer-owned discriminator strips agent-handoff
+    // authority; fail closed instead of presenting the packet as actionable.
+    let repair_route = data.get("repair_route")?;
+    missing_discriminator_for_packet(data, repair_route)?;
     string_at(data, &["gap_id"])?;
     let gap_ledger = string_at(data, &["gap_ledger"])?;
     if !workspace_path_is_safe(snapshot.root.as_path(), gap_ledger) {
@@ -1223,6 +1227,7 @@ fn first_repair_packet_text(
 ) -> Option<String> {
     let gap_identity = first_gap_identity(data)?;
     let route_kind = repair_route.get("route_kind").and_then(non_empty_string)?;
+    let missing_discriminator = missing_discriminator_for_packet(data, repair_route)?;
     let mut lines = vec![
         "RIPR first repair packet".to_string(),
         String::new(),
@@ -1250,9 +1255,7 @@ fn first_repair_packet_text(
     {
         lines.push(format!("- Changed behavior: {changed_behavior}"));
     }
-    if let Some(missing_discriminator) = missing_discriminator_for_packet(data, repair_route) {
-        lines.push(format!("- Missing discriminator: {missing_discriminator}"));
-    }
+    lines.push(format!("- Missing discriminator: {missing_discriminator}"));
     if let Some(focused_proof_intent) = focused_proof_intent_for_packet(repair_route) {
         lines.push(format!("- Focused proof intent: {focused_proof_intent}"));
     }
@@ -1465,8 +1468,7 @@ fn python_pytest_skeleton_target(snapshot: &AnalysisSnapshot, data: &Value) -> O
         .get("assertion_shape")
         .and_then(non_empty_string)
         .unwrap_or("assert <observed> == <expected>");
-    let missing_discriminator =
-        missing_discriminator_for_packet(data, route).unwrap_or_else(|| assertion.to_string());
+    let missing_discriminator = missing_discriminator_for_packet(data, route)?;
     let gap_identity = first_gap_identity(data).unwrap_or("unknown");
     let mut lines = vec![
         "# RIPR Python repair skeleton".to_string(),
@@ -1708,16 +1710,6 @@ fn missing_discriminator_for_packet(data: &Value, repair_route: &Value) -> Optio
         .or_else(|| {
             repair_route
                 .get("missing_discriminator")
-                .and_then(non_empty_string)
-        })
-        .or_else(|| {
-            repair_route
-                .get("assertion_shape")
-                .and_then(non_empty_string)
-        })
-        .or_else(|| {
-            repair_route
-                .get("changed_behavior")
                 .and_then(non_empty_string)
         })
         .map(ToOwned::to_owned)
@@ -2437,6 +2429,60 @@ mod tests {
         data["repair_route"]["target_file"] = serde_json::json!("../outside/test_pricing.py");
 
         assert!(python_pytest_skeleton_target(&snapshot, &data).is_none());
+    }
+
+    #[test]
+    fn lsp_actions_do_not_relabel_prose_as_a_missing_discriminator() -> Result<(), String> {
+        let snapshot = python_snapshot();
+        let data = serde_json::json!({
+            "language": "python",
+            "canonical_gap_id": "gap:python:pricing",
+            "repair_route": {
+                "route_kind": "existing_test_strengthening",
+                "target_file": "tests/test_pricing.py",
+                "assertion_shape": "assert result == expected",
+                "changed_behavior": "the threshold boundary changed"
+            },
+            "verification_commands": ["pytest tests/test_pricing.py::test_boundary"]
+        });
+        let route = &data["repair_route"];
+
+        if missing_discriminator_for_packet(&data, route).is_some() {
+            return Err("prose fields must not become a discriminator".to_string());
+        }
+        if python_pytest_skeleton_target(&snapshot, &data).is_some() {
+            return Err("skeleton must require producer-owned discriminator evidence".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn lsp_actions_preserve_producer_owned_missing_discriminator() -> Result<(), String> {
+        let snapshot = python_snapshot();
+        let data = serde_json::json!({
+            "language": "python",
+            "canonical_gap_id": "gap:python:pricing",
+            "missing_discriminator": "the threshold boundary outcome",
+            "repair_route": {
+                "route_kind": "existing_test_strengthening",
+                "target_file": "tests/test_pricing.py",
+                "assertion_shape": "assert result == expected",
+                "changed_behavior": "the threshold boundary changed"
+            },
+            "verification_commands": ["pytest tests/test_pricing.py::test_boundary"]
+        });
+
+        let target = python_pytest_skeleton_target(&snapshot, &data)
+            .ok_or_else(|| "producer-owned discriminator should enable the skeleton".to_string())?;
+        let brief = target["brief"]
+            .as_str()
+            .ok_or_else(|| "skeleton target must contain a text brief".to_string())?;
+        if !brief.contains("the threshold boundary outcome") {
+            return Err(format!(
+                "skeleton lost producer-owned discriminator: {brief}"
+            ));
+        }
+        Ok(())
     }
 
     #[test]
