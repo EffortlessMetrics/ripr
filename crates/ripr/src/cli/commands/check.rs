@@ -29,7 +29,7 @@ Use --format json for diff-scoped findings, or --format repo-exposure-summary-js
     ))
 }
 
-fn resolve_workspace_root(start: &Path) -> Result<Option<PathBuf>, String> {
+pub(super) fn resolve_workspace_root(start: &Path) -> Result<Option<PathBuf>, String> {
     let start = std::fs::canonicalize(start).map_err(|error| {
         format!(
             "resolve implicit workspace root from {} failed: {error}",

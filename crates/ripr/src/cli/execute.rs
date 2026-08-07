@@ -198,7 +198,7 @@ mod tests {
         );
         assert_eq!(
             execute(CliCommand::Cache(Vec::new())),
-            Err("cache requires subcommand `status`".to_string())
+            Err("cache requires subcommand `status` or `clear`".to_string())
         );
     }
 

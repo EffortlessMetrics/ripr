@@ -14,7 +14,7 @@ const STATUS_USAGE: &str = "Usage: ripr cache status [--json]";
 const CLEAR_USAGE: &str = r#"Usage: ripr cache clear [--dry-run] [--force]
 
 Removes the resolved cache directory (RIPR_CACHE_DIR when set, otherwise
-target/ripr/cache under the current workspace).
+target/ripr/cache under the Cargo workspace root.
 
   --dry-run   Report what would be removed and remove nothing.
   --force     Required to remove a cache directory that holds entries."#;
@@ -68,6 +68,25 @@ fn cache_dir_for_root(
     env_value: Result<String, std::env::VarError>,
 ) -> PathBuf {
     cache_base_dir_from_env(workspace_root, env_value)
+}
+
+fn cache_dir_for_current_dir(
+    current_dir: &Path,
+    env_value: Result<String, std::env::VarError>,
+) -> Result<PathBuf, String> {
+    let explicit_cache_dir = matches!(&env_value, Ok(value) if !value.trim().is_empty());
+    let workspace_root = if explicit_cache_dir {
+        current_dir.to_path_buf()
+    } else {
+        let current_dir = std::fs::canonicalize(current_dir).map_err(|error| {
+            format!(
+                "resolve cache workspace root from {} failed: {error}",
+                current_dir.display()
+            )
+        })?;
+        super::check::resolve_workspace_root(&current_dir)?.unwrap_or(current_dir)
+    };
+    Ok(cache_dir_for_root(&workspace_root, env_value))
 }
 
 fn render_status(cache_dir: &Path, status: &CacheStatus, is_json: bool) -> Result<String, String> {
@@ -207,6 +226,21 @@ fn clear_cache_dir(cache_dir: &Path, options: ClearOptions) -> Result<String, St
     }
 
     let status = inspect_cache_dir(cache_dir);
+    clear_cache_status(cache_dir, &status, options)
+}
+
+fn clear_cache_status(
+    cache_dir: &Path,
+    status: &CacheStatus,
+    options: ClearOptions,
+) -> Result<String, String> {
+    let display = cache_dir.display();
+    if status.state != "ok" {
+        return Err(format!(
+            "refusing to clear {display}: cache inspection is {}; no files were removed",
+            status.state
+        ));
+    }
     if status.entry_count == 0 {
         return Ok(format!(
             "Cache at {display} holds no entries; removed nothing."
@@ -220,7 +254,7 @@ fn clear_cache_dir(cache_dir: &Path, options: ClearOptions) -> Result<String, St
         ));
     }
 
-    let entries = describe_entries(&status);
+    let entries = describe_entries(status);
     if options.dry_run {
         return Ok(format!(
             "Dry run: would remove {entries} from {display}; removed nothing."
@@ -246,7 +280,7 @@ fn run_status(args: &[String]) -> Result<(), String> {
     let is_json = parse_status_args(args)?;
     let current_dir =
         std::env::current_dir().map_err(|e| format!("failed to get current dir: {}", e))?;
-    let cache_dir = cache_dir_for_root(&current_dir, std::env::var(CACHE_DIR_ENV));
+    let cache_dir = cache_dir_for_current_dir(&current_dir, std::env::var(CACHE_DIR_ENV))?;
     let status = inspect_cache_dir(&cache_dir);
     println!("{}", render_status(&cache_dir, &status, is_json)?);
     if !is_json {
@@ -267,7 +301,7 @@ fn run_clear(args: &[String]) -> Result<(), String> {
     let options = parse_clear_args(args)?;
     let current_dir =
         std::env::current_dir().map_err(|e| format!("failed to get current dir: {}", e))?;
-    let cache_dir = cache_dir_for_root(&current_dir, std::env::var(CACHE_DIR_ENV));
+    let cache_dir = cache_dir_for_current_dir(&current_dir, std::env::var(CACHE_DIR_ENV))?;
     // Name the directory at risk before anything is removed, so an operator who
     // resolved the wrong root sees which path was chosen either way.
     println!("Cache dir: {}", cache_dir.display());
@@ -288,7 +322,7 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
     // change is not scoped to touch. `ripr cache --help` and `ripr help --all`
     // both list `clear`. Widen both together in a follow-up.
     let Some((subcommand, rest)) = args.split_first() else {
-        return Err("cache requires subcommand `status`".to_string());
+        return Err("cache requires subcommand `status` or `clear`".to_string());
     };
 
     match subcommand.as_str() {
@@ -384,6 +418,38 @@ mod tests {
         if resolved != relocated {
             return Err(format!(
                 "expected relocated cache root {relocated:?}, got {resolved:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn default_cache_root_uses_the_workspace_ancestor() -> Result<(), String> {
+        let workspace = temp_dir("workspace-root");
+        let nested = workspace.join("crates").join("member");
+        fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+        fs::write(
+            workspace.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/member\"]\n",
+        )
+        .map_err(|error| error.to_string())?;
+        fs::write(
+            nested.join("Cargo.toml"),
+            "[package]\nname = \"member\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .map_err(|error| error.to_string())?;
+
+        let resolved = cache_dir_for_current_dir(&nested, Err(std::env::VarError::NotPresent))?;
+        let expected = std::fs::canonicalize(&workspace)
+            .map_err(|error| error.to_string())?
+            .join("target")
+            .join("ripr")
+            .join("cache");
+        remove_base(&workspace)?;
+
+        if resolved != expected {
+            return Err(format!(
+                "nested workspace cache resolved to {resolved:?}, expected {expected:?}"
             ));
         }
         Ok(())
@@ -658,11 +724,45 @@ mod tests {
     }
 
     #[test]
+    fn clear_refuses_unavailable_or_partial_inspection() -> Result<(), String> {
+        let cache_dir = temp_dir("unavailable-clear");
+        for state in ["unavailable", "partial"] {
+            let status = CacheStatus {
+                state,
+                total_size_bytes: 0,
+                entry_count: 0,
+            };
+            let result = clear_cache_status(
+                &cache_dir,
+                &status,
+                ClearOptions {
+                    dry_run: false,
+                    force: true,
+                },
+            );
+            let error = result
+                .err()
+                .ok_or_else(|| format!("{state} inspection was reported as clearable"))?;
+            if !error.contains(state) || !error.contains("no files were removed") {
+                return Err(format!(
+                    "{state} inspection error was not fail-closed: {error}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn run_rejects_missing_and_unknown_subcommands() -> Result<(), String> {
         let missing =
             run(&[]).map_err(|error| format!("missing subcommand unexpectedly passed: {error}"));
-        if missing.is_ok() {
-            return Err("missing cache subcommand unexpectedly passed".to_string());
+        let missing = missing
+            .err()
+            .ok_or_else(|| "missing cache subcommand unexpectedly passed".to_string())?;
+        if !missing.contains("status` or `clear") {
+            return Err(format!(
+                "missing cache error omitted accepted subcommands: {missing}"
+            ));
         }
         let unknown = run(&["show".to_string()]);
         if unknown.is_ok() {
