@@ -420,6 +420,19 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
             "ripr: --diff produced zero findings. If the diff file is not a valid unified diff, this result is empty because nothing was parsed — not because all behavior is covered."
         );
     }
+    // #2642: surface expired suppression entries as a stderr warning so they
+    // are visible even in --json mode (the human output already shows them as
+    // "policy warning:" lines). Expired suppressions are not applied, but a
+    // stale suppressions.toml indicates the policy needs maintenance.
+    if let Some(suppression) = &output.suppression
+        && !suppression.warnings.is_empty()
+    {
+        eprintln!(
+            "ripr: {} suppression policy warning(s). Run `ripr check` (human format) for details, \
+             or review the suppression policy file for expired or unmatched entries.",
+            suppression.warnings.len()
+        );
+    }
     // RIPR-SPEC-0112: disclose when --base was explicitly provided (committed-history
     // diff) AND the working tree has uncommitted changes to tracked source files.
     // Those changes were NOT analyzed. A zero-finding result in this state must NOT
