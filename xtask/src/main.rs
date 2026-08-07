@@ -721,36 +721,85 @@ fn check_pr() -> Result<(), String> {
         .iter()
         .map(|(name, value)| (name.as_str(), value.as_str()))
         .collect::<Vec<_>>();
-    label_check_pr_gate(
-        "ci-fast",
-        "cargo xtask ci-fast",
-        ci_fast_with_envs(&temp_env_refs),
-    )?;
-    label_check_pr_gate(
-        "clippy",
-        "cargo clippy --workspace --all-targets -- -D warnings",
-        run_with_envs(
-            "cargo",
-            &[
-                "clippy",
-                "--workspace",
-                "--all-targets",
-                "--",
-                "-D",
-                "warnings",
-            ],
-            &temp_env_refs,
+    // #1269: Capture the first gate that fails so the report can surface it
+    // prominently. The `?` operator short-circuits, but we want to record
+    // which gate failed for the report before propagating the error.
+    let mut first_failure: Option<(String, String)> = None;
+    let gates: [(&str, &str, Result<(), String>); 3] = [
+        (
+            "ci-fast",
+            "cargo xtask ci-fast",
+            ci_fast_with_envs(&temp_env_refs),
         ),
-    )?;
-    label_check_pr_gate(
-        "doc",
-        "cargo doc --workspace --no-deps",
-        run_with_envs(
-            "cargo",
-            &["doc", "--workspace", "--no-deps"],
-            &temp_env_refs,
+        (
+            "clippy",
+            "cargo clippy --workspace --all-targets -- -D warnings",
+            run_with_envs(
+                "cargo",
+                &[
+                    "clippy",
+                    "--workspace",
+                    "--all-targets",
+                    "--",
+                    "-D",
+                    "warnings",
+                ],
+                &temp_env_refs,
+            )
+            .and_then(|status| {
+                if status.success() {
+                    Ok(())
+                } else {
+                    Err(format!("clippy exited with {status}"))
+                }
+            }),
         ),
-    )?;
+        (
+            "doc",
+            "cargo doc --workspace --no-deps",
+            run_with_envs(
+                "cargo",
+                &["doc", "--workspace", "--no-deps"],
+                &temp_env_refs,
+            )
+            .and_then(|status| {
+                if status.success() {
+                    Ok(())
+                } else {
+                    Err(format!("doc exited with {status}"))
+                }
+            }),
+        ),
+    ];
+    for (name, reproduce, result) in &gates {
+        if let Err(err) = &result {
+            if first_failure.is_none() {
+                first_failure = Some((
+                    name.to_string(),
+                    err.lines().take(5).collect::<Vec<_>>().join("\n  "),
+                ));
+            }
+            // #1269: Write the first-failure block to the report before
+            // propagating the error so the operator sees which gate failed
+            // and the first few lines of the error without log archaeology.
+            if let Some((gate_name, gate_err)) = &first_failure {
+                let failure_report = format!(
+                    "## First actionable failure\n\n\
+                     Gate: `{gate_name}`\n\
+                     Reproduce: `{reproduce}`\n\n\
+                     First lines:\n  {gate_err}\n"
+                );
+                let _ = write_report(
+                    "check-pr.md",
+                    &format!("{}\n{}", check_pr_report_body(), failure_report),
+                );
+            }
+            return label_check_pr_gate(name, reproduce, result.clone());
+        }
+    }
+    // If all gates passed, fall through to the original success path.
+    // (We can't use the original `?` chain because we captured errors above,
+    //  so re-run the post-gate steps directly.)
     pr_summary()?;
     let body = check_pr_report_body();
     write_report("check-pr.md", &body)?;
