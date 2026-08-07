@@ -252,6 +252,14 @@ fn write_bound_repo_exposure_fixture(
             .map(|byte| format!("{byte:02x}"))
             .collect::<String>()
     );
+    // Exact-one rule (#2921): the placeholder must appear only as the
+    // governed `artifact.content_sha256` value before the global replace is
+    // safe. A second placeholder-shaped string would be silently rewritten.
+    let placeholder_occurrences = raw.matches(placeholder).count();
+    assert_eq!(
+        placeholder_occurrences, 1,
+        "bound repo-exposure fixture must contain exactly one content_sha256 placeholder"
+    );
     std::fs::write(path, raw.replace(placeholder, &digest))?;
     Ok(())
 }

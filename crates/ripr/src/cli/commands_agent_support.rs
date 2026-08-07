@@ -181,7 +181,25 @@ pub(super) fn validate_agent_verify_snapshot_path(
     Ok(candidate)
 }
 
+/// Bound on agent verify snapshot inputs, checked from file metadata before
+/// reading. Real repo-exposure artifacts for large repositories can reach
+/// tens of megabytes; 256 MiB is far above any legitimate artifact while
+/// still failing closed on an unbounded input (#2921).
+const MAX_AGENT_VERIFY_SNAPSHOT_BYTES: u64 = 256 * 1024 * 1024;
+
 pub(super) fn read_agent_verify_snapshot(path: &Path, label: &str) -> Result<String, String> {
+    let metadata = std::fs::metadata(path).map_err(|err| {
+        format!(
+            "read agent verify {label} snapshot {} failed: {err}",
+            output::outcome::display_path(path)
+        )
+    })?;
+    if metadata.len() > MAX_AGENT_VERIFY_SNAPSHOT_BYTES {
+        return Err(format!(
+            "agent verify {label} snapshot {} exceeds the {MAX_AGENT_VERIFY_SNAPSHOT_BYTES} byte input limit",
+            output::outcome::display_path(path)
+        ));
+    }
     std::fs::read_to_string(path).map_err(|err| {
         format!(
             "read agent verify {label} snapshot {} failed: {err}",
@@ -507,6 +525,30 @@ mod tests {
             err.contains("must stay under root"),
             "unexpected error: {err}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn read_agent_verify_snapshot_rejects_oversized_input() -> Result<(), String> {
+        let dir = ScratchDir::new("verify-oversize");
+        let oversized = dir.path.join("oversized.repo-exposure.json");
+        let file = std::fs::File::create(&oversized)
+            .map_err(|err| format!("create oversize fixture: {err}"))?;
+        // A sparse extension past the limit: cheap to create, and the
+        // metadata check must reject before any bytes are read.
+        file.set_len(MAX_AGENT_VERIFY_SNAPSHOT_BYTES + 1)
+            .map_err(|err| format!("size oversize fixture: {err}"))?;
+        let Err(error) = read_agent_verify_snapshot(&oversized, "before") else {
+            return Err("an oversized snapshot must be rejected".to_string());
+        };
+        assert!(
+            error.contains("exceeds") && error.contains("byte input limit"),
+            "unexpected error: {error}"
+        );
+        let small = dir.path.join("small.repo-exposure.json");
+        std::fs::write(&small, "{}").map_err(|err| format!("write small fixture: {err}"))?;
+        let contents = read_agent_verify_snapshot(&small, "before")?;
+        assert_eq!(contents, "{}");
         Ok(())
     }
 

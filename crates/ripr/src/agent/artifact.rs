@@ -138,6 +138,11 @@ fn repo_exposure_snapshot_identity(input_identity: &str, repository_head: &str) 
     format!("snapshot:{input_identity};revision:{repository_head}")
 }
 
+// Deferred negatives (#2921 claim boundary): main has no migration producer
+// and no binary/artifact-inventory producer, so "migrated fixture claims
+// fresh production" and "binary/artifact inventory disagrees" have no real
+// production condition to validate against. Do not fabricate those
+// rejections here; land them with the producers that make them real.
 pub(crate) fn validate_repo_exposure_artifact(
     root: &Path,
     raw: &str,
@@ -220,7 +225,7 @@ pub(crate) fn validate_repo_exposure_artifact(
             "agent verify {label} artifact is missing a sha256 content commitment"
         ));
     }
-    let recomputed = content_sha256_with_placeholder(raw)?;
+    let recomputed = content_sha256_with_placeholder(raw).map_err(|error| error.to_string())?;
     if recomputed != identity.content_sha256 {
         return Err(format!(
             "agent verify {label} artifact content commitment mismatch: declared {}, recomputed {}",
@@ -429,29 +434,265 @@ fn is_full_sha(value: &str) -> bool {
     value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
-fn content_sha256_with_placeholder(raw: &str) -> Result<String, String> {
-    let key = "\"content_sha256\"";
-    let mut matches = raw.match_indices(key);
-    let (key_start, _) = matches
-        .next()
-        .ok_or_else(|| "artifact is missing content_sha256 commitment".to_string())?;
-    if matches.next().is_some() {
-        return Err("artifact contains duplicate content_sha256 commitments".to_string());
+/// Bounded rejection reasons for the exact-one content commitment rule
+/// (#2921). The `Display` strings are part of the CLI error surface:
+/// `validate_repo_exposure_artifact` maps them through `to_string`, so
+/// changing a message changes downstream CLI output bytes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ContentCommitmentRejection {
+    /// The raw text is not well-formed JSON (malformed or truncated). An
+    /// unterminated governed value truncates the document, so it surfaces
+    /// here rather than as `UnterminatedValue` on real inputs.
+    MalformedJson(String),
+    /// No `content_sha256` key exists at the canonical `artifact.` path. A
+    /// same-named key anywhere else does not count.
+    Missing,
+    /// More than one `content_sha256` key exists at the canonical path.
+    Duplicate,
+    /// The governed field is present but its value is not a JSON string.
+    MalformedValue,
+    /// The governed string value never terminates. Unreachable after the
+    /// structured parse succeeds; retained as scanner defense-in-depth.
+    UnterminatedValue,
+    /// The governed string is not a `sha256:<64 hex>` digest.
+    InvalidDigestShape,
+}
+
+impl std::fmt::Display for ContentCommitmentRejection {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MalformedJson(error) => write!(formatter, "artifact JSON is malformed: {error}"),
+            Self::Missing => formatter.write_str("artifact is missing content_sha256 commitment"),
+            Self::Duplicate => {
+                formatter.write_str("artifact contains duplicate content_sha256 commitments")
+            }
+            Self::MalformedValue => {
+                formatter.write_str("artifact content_sha256 value is malformed")
+            }
+            Self::UnterminatedValue => {
+                formatter.write_str("artifact content_sha256 value is unterminated")
+            }
+            Self::InvalidDigestShape => {
+                formatter.write_str("artifact content_sha256 must be a sha256:<64 hex> value")
+            }
+        }
     }
-    let value_start = raw[key_start + key.len()..]
-        .find('"')
-        .map(|offset| key_start + key.len() + offset + 1)
-        .ok_or_else(|| "artifact content_sha256 value is malformed".to_string())?;
-    let value_end = raw[value_start..]
-        .find('"')
-        .map(|offset| value_start + offset)
-        .ok_or_else(|| "artifact content_sha256 value is unterminated".to_string())?;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum PathSegment {
+    Key(String),
+    Index,
+}
+
+/// Byte-level JSON scanner that locates the value span of the governed
+/// `artifact.content_sha256` field. `serde_json::Value` silently collapses
+/// duplicate object keys, so exact-one enforcement has to see the raw object
+/// text. The scanner tracks the object-key path stack and handles string
+/// escapes, so a literal `\"content_sha256\"` inside a string value is never
+/// counted. Keys are compared by raw bytes; an escape-spelled governed key is
+/// not recognized, which fails closed as a missing commitment. Multi-byte
+/// UTF-8 continuation bytes never equal `"` or `\`, so byte scanning stays on
+/// char boundaries.
+struct CommitmentScanner<'a> {
+    raw: &'a str,
+    position: usize,
+    spans: Vec<(usize, usize)>,
+}
+
+impl<'a> CommitmentScanner<'a> {
+    fn locate(raw: &'a str) -> Result<Vec<(usize, usize)>, ContentCommitmentRejection> {
+        let mut scanner = CommitmentScanner {
+            raw,
+            position: 0,
+            spans: Vec::new(),
+        };
+        scanner.scan_value(&mut Vec::new())?;
+        Ok(scanner.spans)
+    }
+
+    fn peek(&self) -> Option<u8> {
+        self.raw.as_bytes().get(self.position).copied()
+    }
+
+    fn skip_whitespace(&mut self) {
+        while matches!(self.peek(), Some(b' ' | b'\t' | b'\r' | b'\n')) {
+            self.position += 1;
+        }
+    }
+
+    fn malformed(detail: &str) -> ContentCommitmentRejection {
+        ContentCommitmentRejection::MalformedJson(detail.to_string())
+    }
+
+    fn scan_value(
+        &mut self,
+        path: &mut Vec<PathSegment>,
+    ) -> Result<(), ContentCommitmentRejection> {
+        self.skip_whitespace();
+        match self.peek() {
+            Some(b'{') => self.scan_object(path),
+            Some(b'[') => self.scan_array(path),
+            Some(b'"') => {
+                self.scan_string()?;
+                Ok(())
+            }
+            Some(_) => {
+                self.scan_primitive();
+                Ok(())
+            }
+            None => Err(Self::malformed("unexpected end of input")),
+        }
+    }
+
+    fn scan_object(
+        &mut self,
+        path: &mut Vec<PathSegment>,
+    ) -> Result<(), ContentCommitmentRejection> {
+        self.position += 1;
+        self.skip_whitespace();
+        if self.peek() == Some(b'}') {
+            self.position += 1;
+            return Ok(());
+        }
+        loop {
+            self.skip_whitespace();
+            if self.peek() != Some(b'"') {
+                return Err(Self::malformed("expected an object key"));
+            }
+            let key = self.scan_string()?;
+            self.skip_whitespace();
+            if self.peek() != Some(b':') {
+                return Err(Self::malformed("expected `:` after an object key"));
+            }
+            self.position += 1;
+            let governed = path.len() == 1
+                && matches!(&path[0], PathSegment::Key(parent) if parent == "artifact")
+                && key == "content_sha256";
+            if governed {
+                self.scan_governed_value()?;
+            } else {
+                path.push(PathSegment::Key(key));
+                self.scan_value(path)?;
+                path.pop();
+            }
+            self.skip_whitespace();
+            match self.peek() {
+                Some(b',') => {
+                    self.position += 1;
+                }
+                Some(b'}') => {
+                    self.position += 1;
+                    return Ok(());
+                }
+                _ => return Err(Self::malformed("expected `,` or `}` in object")),
+            }
+        }
+    }
+
+    fn scan_array(
+        &mut self,
+        path: &mut Vec<PathSegment>,
+    ) -> Result<(), ContentCommitmentRejection> {
+        self.position += 1;
+        self.skip_whitespace();
+        if self.peek() == Some(b']') {
+            self.position += 1;
+            return Ok(());
+        }
+        loop {
+            path.push(PathSegment::Index);
+            self.scan_value(path)?;
+            path.pop();
+            self.skip_whitespace();
+            match self.peek() {
+                Some(b',') => {
+                    self.position += 1;
+                }
+                Some(b']') => {
+                    self.position += 1;
+                    return Ok(());
+                }
+                _ => return Err(Self::malformed("expected `,` or `]` in array")),
+            }
+        }
+    }
+
+    /// Record the contents span of the governed string value. A non-string
+    /// value is a malformed commitment, not valid JSON at another shape.
+    fn scan_governed_value(&mut self) -> Result<(), ContentCommitmentRejection> {
+        self.skip_whitespace();
+        if self.peek() != Some(b'"') {
+            return Err(ContentCommitmentRejection::MalformedValue);
+        }
+        self.position += 1;
+        let start = self.position;
+        let end = self.scan_string_end()?;
+        self.spans.push((start, end));
+        Ok(())
+    }
+
+    /// Scan a string token and return its raw (still escaped) contents.
+    fn scan_string(&mut self) -> Result<String, ContentCommitmentRejection> {
+        self.position += 1;
+        let start = self.position;
+        let end = self.scan_string_end()?;
+        Ok(self.raw[start..end].to_string())
+    }
+
+    /// Advance past the closing quote and return its position.
+    fn scan_string_end(&mut self) -> Result<usize, ContentCommitmentRejection> {
+        loop {
+            match self.peek() {
+                Some(b'\\') => {
+                    self.position += 2;
+                }
+                Some(b'"') => {
+                    let end = self.position;
+                    self.position += 1;
+                    return Ok(end);
+                }
+                Some(_) => {
+                    self.position += 1;
+                }
+                None => return Err(ContentCommitmentRejection::UnterminatedValue),
+            }
+        }
+    }
+
+    fn scan_primitive(&mut self) {
+        while let Some(byte) = self.peek() {
+            if matches!(byte, b',' | b'}' | b']' | b' ' | b'\t' | b'\r' | b'\n') {
+                break;
+            }
+            self.position += 1;
+        }
+    }
+}
+
+/// Locate exactly one governed `artifact.content_sha256` field and return the
+/// span of its string contents. The structured parse runs first so malformed
+/// or truncated JSON is a typed rejection before any span work; the byte
+/// scanner then enforces exact-one at the canonical schema path, which the
+/// duplicate-collapsing `serde_json::Value` tree cannot see.
+fn governed_commitment_span(raw: &str) -> Result<(usize, usize), ContentCommitmentRejection> {
+    serde_json::from_str::<Value>(raw)
+        .map_err(|error| ContentCommitmentRejection::MalformedJson(error.to_string()))?;
+    match CommitmentScanner::locate(raw)?.as_slice() {
+        [] => Err(ContentCommitmentRejection::Missing),
+        [(start, end)] => Ok((*start, *end)),
+        _ => Err(ContentCommitmentRejection::Duplicate),
+    }
+}
+
+fn content_sha256_with_placeholder(raw: &str) -> Result<String, ContentCommitmentRejection> {
+    let (value_start, value_end) = governed_commitment_span(raw)?;
     let declared = &raw[value_start..value_end];
     if !declared.starts_with("sha256:")
         || declared.len() != 71
         || !declared[7..].bytes().all(|byte| byte.is_ascii_hexdigit())
     {
-        return Err("artifact content_sha256 must be a sha256:<64 hex> value".to_string());
+        return Err(ContentCommitmentRejection::InvalidDigestShape);
     }
     let mut normalized = String::with_capacity(raw.len());
     normalized.push_str(&raw[..value_start]);
@@ -465,6 +706,25 @@ fn content_sha256_with_placeholder(raw: &str) -> Result<String, String> {
         rendered.push_str(&format!("{byte:02x}"));
     }
     Ok(rendered)
+}
+
+/// Splice `new_value` into exactly the governed `artifact.content_sha256`
+/// field, leaving every other byte — including unrelated placeholder-shaped
+/// strings — untouched. No production caller exists yet (there is no
+/// migration producer on main); test and future migration helpers must route
+/// through this instead of a global string replace, which would rewrite
+/// decoy placeholder text elsewhere in the document.
+#[cfg(test)]
+fn replace_content_commitment(
+    raw: &str,
+    new_value: &str,
+) -> Result<String, ContentCommitmentRejection> {
+    let (value_start, value_end) = governed_commitment_span(raw)?;
+    let mut replaced = String::with_capacity(raw.len() + new_value.len());
+    replaced.push_str(&raw[..value_start]);
+    replaced.push_str(new_value);
+    replaced.push_str(&raw[value_end..]);
+    Ok(replaced)
 }
 
 #[cfg(test)]
@@ -505,16 +765,138 @@ mod tests {
 
     #[test]
     fn content_commitment_rejects_duplicate_fields() {
-        let raw = r#"{"content_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","content_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}"#;
+        let raw = r#"{"artifact":{"content_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","content_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}"#;
         let result = content_sha256_with_placeholder(raw);
-        assert!(matches!(result, Err(error) if error.contains("duplicate")));
+        assert!(matches!(result, Err(ContentCommitmentRejection::Duplicate)));
     }
 
     #[test]
     fn content_commitment_rejects_non_hex_digest() {
-        let raw = r#"{"content_sha256":"sha256:gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"}"#;
+        let raw = r#"{"artifact":{"content_sha256":"sha256:gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"}}"#;
         let result = content_sha256_with_placeholder(raw);
-        assert!(matches!(result, Err(error) if error.contains("sha256:<64 hex>")));
+        assert!(matches!(
+            result,
+            Err(ContentCommitmentRejection::InvalidDigestShape)
+        ));
+    }
+
+    #[test]
+    fn content_commitment_rejects_wrong_length_digest() {
+        let short = r#"{"artifact":{"content_sha256":"sha256:abcd"}}"#;
+        assert!(matches!(
+            content_sha256_with_placeholder(short),
+            Err(ContentCommitmentRejection::InvalidDigestShape)
+        ));
+        let missing_prefix = r#"{"artifact":{"content_sha256":"0000000000000000000000000000000000000000000000000000000000000000"}}"#;
+        assert!(matches!(
+            content_sha256_with_placeholder(missing_prefix),
+            Err(ContentCommitmentRejection::InvalidDigestShape)
+        ));
+    }
+
+    #[test]
+    fn content_commitment_rejects_field_at_wrong_path() {
+        // A `content_sha256` key anywhere but the canonical `artifact.` path
+        // is not the governed field; the commitment counts as missing.
+        let top_level = r#"{"content_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}"#;
+        assert!(matches!(
+            content_sha256_with_placeholder(top_level),
+            Err(ContentCommitmentRejection::Missing)
+        ));
+        let wrongly_nested = r#"{"other":{"content_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}"#;
+        assert!(matches!(
+            content_sha256_with_placeholder(wrongly_nested),
+            Err(ContentCommitmentRejection::Missing)
+        ));
+        let inside_array = r#"{"artifact":[{"content_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}]}"#;
+        assert!(matches!(
+            content_sha256_with_placeholder(inside_array),
+            Err(ContentCommitmentRejection::Missing)
+        ));
+        let artifact_without_field = r#"{"artifact":{}}"#;
+        assert!(matches!(
+            content_sha256_with_placeholder(artifact_without_field),
+            Err(ContentCommitmentRejection::Missing)
+        ));
+    }
+
+    #[test]
+    fn content_commitment_rejects_non_string_value() {
+        for raw in [
+            r#"{"artifact":{"content_sha256":123}}"#,
+            r#"{"artifact":{"content_sha256":null}}"#,
+            r#"{"artifact":{"content_sha256":["sha256:0000000000000000000000000000000000000000000000000000000000000000"]}}"#,
+        ] {
+            assert!(matches!(
+                content_sha256_with_placeholder(raw),
+                Err(ContentCommitmentRejection::MalformedValue)
+            ));
+        }
+    }
+
+    // Ported from stale PR #2916, adapted to the canonical `artifact.` path
+    // and the typed rejection taxonomy (#2921).
+    #[test]
+    fn content_commitment_requires_one_terminated_field() {
+        let missing = r#"{"kind":"repo_exposure"}"#;
+        assert!(matches!(
+            content_sha256_with_placeholder(missing),
+            Err(ContentCommitmentRejection::Missing)
+        ));
+
+        // A document whose governed value is unterminated is truncated JSON,
+        // so the structured parse rejects it before span location: the
+        // "unterminated" surface folds into the malformed-JSON rejection.
+        let unterminated = r#"{"artifact":{"content_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000}"#;
+        assert!(matches!(
+            content_sha256_with_placeholder(unterminated),
+            Err(ContentCommitmentRejection::MalformedJson(_))
+        ));
+    }
+
+    // Ported from stale PR #2916, adapted to the canonical `artifact.` path
+    // with the decoy placeholder-shaped string in an unrelated field (#2921).
+    #[test]
+    fn content_commitment_does_not_rewrite_unrelated_placeholder_text() -> Result<(), String> {
+        let placeholder = CONTENT_SHA256_PLACEHOLDER;
+        let declared = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+        let raw =
+            format!(r#"{{"artifact":{{"note":"{placeholder}","content_sha256":"{declared}"}}}}"#);
+        let digest = content_sha256_with_placeholder(&raw).map_err(|error| error.to_string())?;
+        let expected_input = raw.replacen(declared, placeholder, 1);
+        let mut writer = Sha256Writer::new();
+        writer
+            .write_all(expected_input.as_bytes())
+            .map_err(|error| format!("hash expected input: {error}"))?;
+        let expected = writer.finish();
+        if digest != expected {
+            return Err(format!(
+                "digest {digest} must equal {expected}: the hash of the document with only the governed value replaced"
+            ));
+        }
+        let recommitted =
+            replace_content_commitment(&raw, &digest).map_err(|error| error.to_string())?;
+        let decoy = format!(r#""note":"{placeholder}""#);
+        if !recommitted.contains(&decoy) {
+            return Err(
+                "recommit must not rewrite the unrelated placeholder-shaped string".to_string(),
+            );
+        }
+        let governed = format!(r#""content_sha256":"{digest}""#);
+        if !recommitted.contains(&governed) {
+            return Err("recommit must splice the digest into the governed field".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn content_commitment_ignores_escaped_key_text_in_string_values() {
+        // A literal `\"content_sha256\"` inside a string value is not the
+        // governed field; without escape handling it would read as a
+        // duplicate commitment.
+        let raw = r#"{"artifact":{"note":"see \"content_sha256\" in the schema","content_sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}"#;
+        let result = content_sha256_with_placeholder(raw);
+        assert!(result.is_ok(), "unexpected rejection: {result:?}");
     }
 
     fn comparable_artifact() -> ValidatedArtifact {
@@ -594,6 +976,18 @@ mod tests {
         assert!(matches!(
             validate_comparable_pair(&before, &after),
             Err(error) if error.contains("snapshot identities differ for the same repository head")
+        ));
+    }
+
+    #[test]
+    fn comparable_pair_rejects_producer_version_drift() {
+        let before = comparable_artifact();
+        let mut after = before.clone();
+        after.producer_version = "0.12.0".to_string();
+
+        assert!(matches!(
+            validate_comparable_pair(&before, &after),
+            Err(error) if error.contains("producer versions differ")
         ));
     }
 
@@ -723,8 +1117,12 @@ mod tests {
     }
 
     fn commit_content(raw_with_placeholder: &str) -> Result<String, String> {
-        let digest = content_sha256_with_placeholder(raw_with_placeholder)?;
-        Ok(raw_with_placeholder.replace(CONTENT_SHA256_PLACEHOLDER, &digest))
+        let digest = content_sha256_with_placeholder(raw_with_placeholder)
+            .map_err(|error| error.to_string())?;
+        // Exact-one rule: splice only the governed field. A global
+        // `str::replace` would also rewrite decoy placeholder-shaped strings
+        // elsewhere in the document, which the commitment law forbids.
+        replace_content_commitment(raw_with_placeholder, &digest).map_err(|error| error.to_string())
     }
 
     #[test]
@@ -785,6 +1183,278 @@ mod tests {
                         ));
                     }
                 }
+            }
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    /// Mutate one identity field of a canonical placeholder document,
+    /// recommit the content, and return the validator result.
+    fn validate_mutated_identity(
+        root: &Path,
+        document: &Value,
+        mutate: impl Fn(&mut Value),
+    ) -> Result<Result<ValidatedArtifact, String>, String> {
+        let mut tampered = document.clone();
+        mutate(&mut tampered);
+        let rendered = serde_json::to_string_pretty(&tampered)
+            .map_err(|error| format!("render tampered document: {error}"))?;
+        let committed = commit_content(&rendered)?;
+        Ok(validate_repo_exposure_artifact(
+            root,
+            &committed,
+            "test before",
+        ))
+    }
+
+    fn expect_identity_rejection(
+        case: &str,
+        result: Result<ValidatedArtifact, String>,
+        expected: &str,
+    ) -> Result<(), String> {
+        match result {
+            Err(error) if error.contains(expected) => Ok(()),
+            Err(error) => Err(format!("{case}: unexpected rejection reason: {error}")),
+            Ok(_) => Err(format!("{case}: mutated artifact must be rejected")),
+        }
+    }
+
+    type IdentityMutationCase = (&'static str, fn(&mut Value));
+
+    #[test]
+    fn repo_exposure_validation_rejects_invalid_producer_identity() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let placeholder_raw = repo_exposure_raw_with_placeholder(&root)?;
+            let document: Value = serde_json::from_str(&placeholder_raw)
+                .map_err(|error| format!("parse placeholder document: {error}"))?;
+            let cases: [IdentityMutationCase; 11] = [
+                ("artifact kind is not repo_exposure", |document| {
+                    document["artifact"]["kind"] = json!("repo_exposure_forged");
+                }),
+                ("artifact schema version is unsupported", |document| {
+                    document["artifact"]["schema_version"] = json!("2");
+                }),
+                ("canonicalization is unsupported", |document| {
+                    document["artifact"]["canonicalization"] = json!("pretty_json_v0");
+                }),
+                ("producer tool is not ripr", |document| {
+                    document["artifact"]["producer"]["tool"] = json!("forged");
+                }),
+                ("producer version is empty", |document| {
+                    document["artifact"]["producer"]["version"] = json!("");
+                }),
+                ("analysis format is unsupported", |document| {
+                    document["artifact"]["analysis"]["format"] = json!("repo-exposure-yaml");
+                }),
+                ("analysis mode is empty", |document| {
+                    document["artifact"]["analysis"]["mode"] = json!("");
+                }),
+                ("analysis input identity is empty", |document| {
+                    document["artifact"]["analysis"]["input_identity"] = json!("");
+                }),
+                ("analysis command is wrong", |document| {
+                    document["artifact"]["analysis"]["command"] = json!("ripr check");
+                }),
+                ("analysis profile differs from mode", |document| {
+                    document["artifact"]["analysis"]["profile"] = json!("release");
+                }),
+                ("analysis worktree state is unknown", |document| {
+                    document["artifact"]["analysis"]["worktree"] = json!("unavailable");
+                }),
+            ];
+            for (case, mutate) in cases {
+                let mutated = validate_mutated_identity(&root, &document, mutate)?;
+                expect_identity_rejection(case, mutated, "invalid or unknown producer identity")?;
+            }
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_validation_rejects_unsupported_document_schema() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let placeholder_raw = repo_exposure_raw_with_placeholder(&root)?;
+            let document: Value = serde_json::from_str(&placeholder_raw)
+                .map_err(|error| format!("parse placeholder document: {error}"))?;
+            let mutated = validate_mutated_identity(&root, &document, |document| {
+                document["schema_version"] = json!("9.0");
+            })?;
+            expect_identity_rejection(
+                "document schema version",
+                mutated,
+                "unsupported repo-exposure schema",
+            )
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_validation_rejects_foreign_repository_root() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let foreign = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let placeholder_raw = repo_exposure_raw_with_placeholder(&root)?;
+            let raw = commit_content(&placeholder_raw)?;
+            match validate_repo_exposure_artifact(&foreign, &raw, "test before") {
+                Err(error)
+                    if error.contains("repository root") && error.contains("does not match") =>
+                {
+                    Ok(())
+                }
+                Err(error) => Err(format!("unexpected rejection reason: {error}")),
+                Ok(_) => Err("an artifact bound to another root must be rejected".to_string()),
+            }
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        let cleanup_foreign = std::fs::remove_dir_all(&foreign)
+            .map_err(|error| format!("remove foreign temp root: {error}"));
+        result?;
+        cleanup?;
+        cleanup_foreign?;
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_validation_rejects_non_concrete_repository_head() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let placeholder_raw = repo_exposure_raw_with_placeholder(&root)?;
+            let document: Value = serde_json::from_str(&placeholder_raw)
+                .map_err(|error| format!("parse placeholder document: {error}"))?;
+            let head = document["artifact"]["repository"]["head"]
+                .as_str()
+                .ok_or_else(|| "fixture document omitted repository head".to_string())?
+                .to_string();
+            let cases = [
+                ("symbolic revision", "HEAD".to_string()),
+                ("short revision", head[..7].to_string()),
+                ("padded revision", format!("{head}0")),
+                ("non-hex revision", "g".repeat(40)),
+            ];
+            for (case, tampered_head) in cases {
+                let mutated = validate_mutated_identity(&root, &document, |document| {
+                    document["artifact"]["repository"]["head"] = json!(tampered_head);
+                })?;
+                expect_identity_rejection(case, mutated, "invalid repository HEAD")?;
+            }
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_currentness_tracks_live_repository_state() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let placeholder_raw = repo_exposure_raw_with_placeholder(&root)?;
+            let raw = commit_content(&placeholder_raw)?;
+            let current = validate_repo_exposure_artifact(&root, &raw, "test before")
+                .map_err(|error| format!("fresh canonical artifact must validate: {error}"))?;
+            if current.currentness != ArtifactCurrentness::Current {
+                return Err("fresh canonical artifact must be current".to_string());
+            }
+            // Positive control: revalidation at the same revision preserves
+            // every validated field, including input and snapshot identity.
+            let revalidated = validate_repo_exposure_artifact(&root, &raw, "test before")
+                .map_err(|error| format!("revalidation must succeed: {error}"))?;
+            if revalidated != current {
+                return Err(
+                    "same-revision revalidation must produce identical validated fields"
+                        .to_string(),
+                );
+            }
+            // A declared-clean artifact must not hide a dirty worktree: the
+            // validator checks the live repository, not the claim.
+            std::fs::write(root.join("Cargo.toml"), "[workspace]\n# unsaved edit\n")
+                .map_err(|error| format!("dirty fixture file: {error}"))?;
+            let dirty = validate_repo_exposure_artifact(&root, &raw, "test before")
+                .map_err(|error| format!("dirty revalidation must succeed: {error}"))?;
+            if dirty.currentness != ArtifactCurrentness::DirtyWorktree {
+                return Err("a dirty worktree must be disclosed as DirtyWorktree".to_string());
+            }
+            run_git(&root, &["checkout", "--", "Cargo.toml"])?;
+            let restored = validate_repo_exposure_artifact(&root, &raw, "test before")
+                .map_err(|error| format!("restored revalidation must succeed: {error}"))?;
+            if restored.currentness != ArtifactCurrentness::Current {
+                return Err("a restored clean worktree must validate as current".to_string());
+            }
+            // Replaying the same artifact bytes after the repository moves
+            // must disclose Historical, not current.
+            run_git(
+                &root,
+                &[
+                    "-c",
+                    "commit.gpgSign=false",
+                    "commit",
+                    "--quiet",
+                    "--allow-empty",
+                    "-m",
+                    "advance",
+                ],
+            )?;
+            let historical = validate_repo_exposure_artifact(&root, &raw, "test before")
+                .map_err(|error| format!("historical revalidation must succeed: {error}"))?;
+            if historical.currentness != ArtifactCurrentness::Historical {
+                return Err(
+                    "an artifact replayed after repository movement must be historical".to_string(),
+                );
+            }
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_declared_dirty_is_never_reported_current() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            // Produce the artifact while the worktree is dirty so it honestly
+            // declares `worktree: "dirty"`.
+            std::fs::write(root.join("Cargo.toml"), "[workspace]\n# unsaved edit\n")
+                .map_err(|error| format!("dirty fixture file: {error}"))?;
+            let placeholder_raw = repo_exposure_raw_with_placeholder(&root)?;
+            let raw = commit_content(&placeholder_raw)?;
+            // Restoring a clean worktree must not upgrade a declared-dirty
+            // artifact to current.
+            run_git(&root, &["checkout", "--", "Cargo.toml"])?;
+            let validated = validate_repo_exposure_artifact(&root, &raw, "test before")
+                .map_err(|error| format!("declared-dirty artifact must validate: {error}"))?;
+            if validated.currentness != ArtifactCurrentness::DirtyWorktree {
+                return Err(
+                    "a declared-dirty artifact must stay DirtyWorktree on a clean worktree"
+                        .to_string(),
+                );
             }
             Ok(())
         })();
