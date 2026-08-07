@@ -41,8 +41,19 @@ pub(in crate::analysis) fn find_related_tests<'a>(
         .collect();
 
     for test in &index.tests {
+        // #2971: Compute calls_owner BEFORE the package-prefix guard so a
+        // cross-crate test that genuinely calls the owner is not filtered out
+        // before the strong signal can save it.
+        let calls_owner = !owner_name.is_empty()
+            && (test.calls.iter().any(|call| call.name == owner_name)
+                || body_contains_owner_call(&test.body, owner_name));
+
+        // #2971: Only apply the package-prefix guard to WEAK signals (tests
+        // that do not directly call the owner). A cross-crate test that calls
+        // the owner is genuinely related and must not be suppressed.
         if let Some(prefix) = &owner_package_prefix
             && !normalize_path(&test.file).starts_with(prefix)
+            && !calls_owner
         {
             continue;
         }
@@ -52,9 +63,6 @@ pub(in crate::analysis) fn find_related_tests<'a>(
         {
             continue;
         }
-        let calls_owner = !owner_name.is_empty()
-            && (test.calls.iter().any(|call| call.name == owner_name)
-                || body_contains_owner_call(&test.body, owner_name));
 
         // Signal: a test's assertion observed_tokens intersect the probe's
         // long-enough identifier tokens. Only fires when the probe has no named
@@ -176,14 +184,26 @@ mod tests {
 
     #[test]
     fn given_owner_function_when_tests_share_name_across_packages_then_filters_to_package() {
+        // #2971: A cross-crate test that does NOT call the owner is filtered out
+        // by the package-prefix guard (same-name false-positive protection).
+        // A cross-crate test that DOES call the owner is correctly related.
         let owner = function("crates/crate_a/src/lib.rs", "score");
         let index = RustIndex {
             tests: vec![
-                test(
-                    "crates/crate_b/tests/score.rs",
-                    "crate_b_score_test",
-                    "score(2)",
-                ),
+                // Decoy: same-name test in a different crate that does NOT call
+                // the owner. Must be filtered out by the package-prefix guard.
+                TestSummary {
+                    name: "crate_b_unrelated_test".to_string(),
+                    file: PathBuf::from("crates/crate_b/tests/score.rs"),
+                    start_line: 1,
+                    end_line: 4,
+                    body: "do_something_else()".to_string(),
+                    calls: Vec::new(), // no calls to owner — must be filtered
+                    assertions: Vec::new(),
+                    literals: Vec::new(),
+                    attrs: Vec::new(),
+                },
+                // Same-crate test that calls the owner — must match.
                 test(
                     "crates/crate_a/tests/score.rs",
                     "crate_a_score_test",
