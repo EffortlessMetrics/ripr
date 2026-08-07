@@ -3093,6 +3093,67 @@ impl Backend {
         }
     }
 
+    /// `ripr/listActionableItems` custom request handler (#1603).
+    ///
+    /// Returns the diagnostic-budget selected/omitted items as a typed
+    /// envelope. The budget result already carries every field the response
+    /// needs — this is a pure transform, no new analysis.
+    pub(super) async fn ripr_list_actionable_items(
+        &self,
+        _params: LSPAny,
+    ) -> LspResult<Option<LSPAny>> {
+        let latest = self.latest_analysis.lock().ok();
+        let snapshot = match latest {
+            Some(guard) => guard.clone(),
+            None => None,
+        };
+        let Some(snapshot) = snapshot else {
+            return Ok(Some(serde_json::json!({
+                "error": {
+                    "kind": "no_snapshot",
+                    "message": "No analysis snapshot is available.",
+                    "recovery_route": "refresh",
+                }
+            })));
+        };
+        let Some(delivery) = &snapshot.delivery_selection else {
+            return Ok(Some(serde_json::json!({
+                "error": {
+                    "kind": "analysis_in_flight",
+                    "message": "Analysis is in progress.",
+                    "recovery_route": "refresh",
+                }
+            })));
+        };
+        let result = match &delivery.outcome {
+            crate::lsp::diagnostic_budget::DiagnosticDeliveryOutcome::Applied {
+                result, ..
+            } => result,
+            crate::lsp::diagnostic_budget::DiagnosticDeliveryOutcome::Unavailable { .. } => {
+                return Ok(Some(serde_json::json!({
+                    "error": {
+                        "kind": "analysis_in_flight",
+                        "message": "Diagnostic budget is unavailable for this snapshot.",
+                        "recovery_route": "refresh",
+                    }
+                })));
+            }
+        };
+        Ok(Some(serde_json::json!({
+            "kind": "actionable_items",
+            "status": "ok",
+            "snapshot_id": snapshot.refresh.snapshot_id,
+            "selected_count": result.selected.len(),
+            "omitted_count": result.omitted.len(),
+            "total_count": result.total_canonical_items,
+            "budget_identity": result.snapshot_profile_budget_identity,
+            "complete_evidence_identity": result.complete_evidence_identity,
+            "continuation_or_inspect_route": result.continuation_or_inspect_route,
+            "allowed_edit_surface": "read_only",
+            "must_not_change": ["source_edits", "workspace_edit", "autonomous_repair"],
+        })))
+    }
+
     /// Bounded params byte count for `verbose` traces, or `None` below
     /// `verbose`. The serialized form is used only for its length and is
     /// dropped immediately.

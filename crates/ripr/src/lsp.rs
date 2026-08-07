@@ -110,5 +110,9 @@ where
 fn build_service(root: std::path::PathBuf) -> (LspService<Backend>, ClientSocket) {
     LspService::build(|client| Backend::new(client, root))
         .custom_method("$/setTrace", Backend::set_trace)
+        .custom_method(
+            "ripr/listActionableItems",
+            Backend::ripr_list_actionable_items,
+        )
         .finish()
 }

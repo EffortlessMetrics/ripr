@@ -310,6 +310,10 @@ pub(super) enum RiprAgentRecoveryRoute {
 #[serde(rename_all = "snake_case")]
 enum RiprAgentImplementationState {
     CapabilityOnly,
+    /// At least one `ripr/*` request handler is registered and served.
+    /// The `supported_requests` list in the capability MUST match the
+    /// actually-registered handlers.
+    Implemented,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -488,6 +492,24 @@ impl RiprAgentCapability {
                 "no riprAgent requests are implemented by this slice."
             )
             .to_string(),
+        }
+    }
+
+    /// Capability with at least one handler implemented (#1603).
+    /// The snapshot_id is the existing generation counter (sufficient for v0.1).
+    pub(crate) fn v0_1_implemented() -> Self {
+        Self {
+            implementation_state: RiprAgentImplementationState::Implemented,
+            supported_requests: vec![RiprAgentRequest::ListActionableItems],
+            supported_profiles: vec![RiprAgentProfile::Actionable],
+            snapshot_handles: true,
+            cancellation: true,
+            claim_boundary: concat!(
+                "ripr/listActionableItems is implemented; ",
+                "all other riprAgent requests remain reserved."
+            )
+            .to_string(),
+            ..Self::v0_1()
         }
     }
 }
@@ -671,7 +693,7 @@ fn reserved_dto_layout() -> usize {
 pub(super) fn server_capability() -> LSPAny {
     let _ = reserved_dto_layout();
     let capability = RiprAgentServerCapability {
-        ripr_agent: RiprAgentCapability::v0_1(),
+        ripr_agent: RiprAgentCapability::v0_1_implemented(),
     };
     serde_json::to_value(capability).unwrap_or(serde_json::Value::Null)
 }
@@ -798,14 +820,22 @@ mod tests {
     }
 
     #[test]
-    fn capability_is_fail_closed_until_handlers_land() -> Result<(), String> {
+    fn capability_advertises_only_implemented_handlers() -> Result<(), String> {
         let capability = capability_fixture()?;
-        if !capability.supported_requests.is_empty() {
-            return Err("unimplemented request handlers must not be advertised".to_string());
+        // #1603: listActionableItems is now implemented, so it must be advertised.
+        if !capability
+            .supported_requests
+            .contains(&RiprAgentRequest::ListActionableItems)
+        {
+            return Err("ripr/listActionableItems must be in supported_requests".to_string());
         }
-        if !capability.supported_profiles.is_empty() {
-            return Err("unimplemented diagnostic profiles must not be advertised".to_string());
+        // Unimplemented handlers must NOT be advertised.
+        for req in &capability.supported_requests {
+            if *req != RiprAgentRequest::ListActionableItems {
+                return Err(format!("unsupported request advertised: {:?}", req));
+            }
         }
+        // The capability must remain read-only.
         if capability.source_edit_capability != RiprAgentSourceEditCapability::None {
             return Err("the capability must remain read-only".to_string());
         }
