@@ -1,5 +1,7 @@
 use crate::config::RiprConfig;
-use crate::domain::{ExposureClass, Finding, LanguageId, LanguageStatus};
+use crate::domain::{
+    ExposureClass, Finding, LanguageId, LanguageStatus, RevealEvidence, StageState,
+};
 use crate::output::agent_seam_packets::{
     allowed_edit_surface_for_gap_route, gap_record_packet_do_not_do,
 };
@@ -41,6 +43,11 @@ pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &Ripr
         severity,
         finding.confidence
     ));
+    // #2614: add a brief classification hint so the digest reader understands
+    // WHY the finding is at this class without reading the full form.
+    if let Some(hint) = classification_hint(&finding.class, &finding.ripr.reveal) {
+        out.push_str(&format!("  Why {0}: {hint}\n", finding.class.as_str()));
+    }
     if let Some(gap) = &finding.canonical_gap {
         out.push_str(&format!("  Canonical gap: {}\n", gap.id));
     }
@@ -834,6 +841,41 @@ struct RepairPlacement<'a> {
     test_node_id: Option<&'a str>,
     verify_command: &'a str,
     verify_confidence: &'a str,
+}
+
+/// Returns a one-line hint explaining why a finding landed at its exposure
+/// class (#2614). Only emitted for classes where the reasoning is non-obvious
+/// from the class name alone.
+fn classification_hint(class: &ExposureClass, reveal: &RevealEvidence) -> Option<String> {
+    match class {
+        ExposureClass::WeaklyExposed => {
+            if reveal.discriminate.state == StageState::Weak {
+                Some("a related test reaches this change but does not observe the exact changed value".to_string())
+            } else {
+                Some(
+                    "the evidence path is partially complete — see full form for details"
+                        .to_string(),
+                )
+            }
+        }
+        ExposureClass::ReachableUnrevealed => {
+            Some("no related test was found that reaches this change".to_string())
+        }
+        ExposureClass::NoStaticPath => {
+            Some("the changed behavior could not be traced to an observable output".to_string())
+        }
+        ExposureClass::InfectionUnknown => Some(
+            "the change reaches a sink but infection could not be determined statically"
+                .to_string(),
+        ),
+        ExposureClass::PropagationUnknown => Some(
+            "the change propagates but the downstream effect is unknown statically".to_string(),
+        ),
+        ExposureClass::StaticUnknown => {
+            Some("the analysis could not determine a static exposure state".to_string())
+        }
+        ExposureClass::Exposed => None, // self-explanatory: strong oracle observes the change
+    }
 }
 
 fn repair_placement_from_evidence(finding: &Finding) -> Option<RepairPlacement<'_>> {
