@@ -3,7 +3,7 @@ mod json;
 mod markdown;
 mod receipt;
 mod report;
-mod types;
+pub(crate) mod types;
 mod util;
 
 pub(crate) use json::render_agent_review_summary_json;
