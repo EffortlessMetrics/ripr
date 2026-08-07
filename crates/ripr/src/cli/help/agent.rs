@@ -1,8 +1,12 @@
-pub(super) const AGENT_HELP: &str = r#"Create a bounded packet for a coding agent and verify what it did.
+pub(super) const AGENT_HELP: &str = r#"Create a bounded repair transaction for a coding agent and inspect its evidence.
 
 Usage: ripr agent <subcommand>
 
-Subcommands:
+Primary workflow:
+  repair    Run the two-phase before/edit/after repair transaction for one seam.
+  status    Report existing agent-loop artifacts and the exact next command.
+
+Advanced and compatibility workflows:
   start      Write a source-edit-free workflow manifest for one seam.
   brief      Rank a working-set brief for the agent-active router.
   packet     Expand one visible seam into the existing agent seam packet JSON.
@@ -10,18 +14,19 @@ Subcommands:
   verify-execute
              Execute one validated producer-owned direct verify route.
   receipt    Summarize one seam from agent verify JSON for review handoff.
-  status     Report existing agent-loop artifacts and the next missing command.
   review-summary
              Join agent-loop artifacts into a compact review packet.
-  repair    Two-phase before/after repair loop for one seam.
 
-Run `ripr agent start --help` for the workflow manifest, `ripr agent brief
---help`, `ripr agent packet --help`, `ripr agent verify --help`, or
-`ripr agent verify-execute --help` for
-JSON-only agent surfaces. Run `ripr agent receipt --help` for the verification
-receipt surface, `ripr agent status --help` for the artifact status lens,
-`ripr agent review-summary --help` for the PR-review packet, and
-`ripr agent repair --help` for the two-phase repair loop.
+Ordinary repair path:
+  ripr agent repair --seam-id ID --phase before
+  # edit one focused test outside RIPR
+  ripr agent repair --seam-id ID --phase after
+
+Run `ripr agent repair --help` for the primary repair workflow. Run
+`ripr agent status --help` to inspect an interrupted or incomplete local loop.
+The lower-level `start`, `brief`, `packet`, `verify`, `verify-execute`,
+`receipt`, and `review-summary` help surfaces remain available for explicit
+control, debugging, and compatibility.
 "#;
 pub(super) const AGENT_START_HELP: &str = r#"Start a source-edit-free workflow packet for one selected change.
 
@@ -183,7 +188,7 @@ present, and local CI artifact state into a compact review packet. It remains
 advisory and static; it does not run analysis, mutation testing, generate
 tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
 "#;
-pub(super) const AGENT_REPAIR_HELP: &str = r#"Run a two-phase before/after repair loop for one seam.
+pub(super) const AGENT_REPAIR_HELP: &str = r#"Run the primary two-phase repair transaction for one named gap.
 
 Usage: ripr agent repair [--root PATH] --seam-id ID [--phase before|after]
 
@@ -192,12 +197,19 @@ Options:
   --seam-id ID         Select one visible seam by ID.
   --phase before|after Which half of the repair loop to run. Defaults to `before`.
 
-The repair command drives the two-phase repair loop:
-  before  — write the pre-edit repo-exposure snapshot and repair packet for
-            the selected seam.
-  after   — write the post-edit repo-exposure snapshot, persist the verify
-            JSON, and emit a receipt.
+The ordinary repair path is:
 
-Run `ripr agent repair --seam-id ID --phase before` before editing, then
-`ripr agent repair --seam-id ID --phase after` after editing.
+  ripr agent repair --seam-id ID --phase before
+  # edit one focused test outside RIPR
+  ripr agent repair --seam-id ID --phase after
+
+The before phase writes the pre-edit repo-exposure snapshot and repair packet.
+The after phase writes the post-edit snapshot, persists static verification
+JSON, and emits a receipt. RIPR owns the evidence plumbing; the human or
+external agent owns the test edit.
+
+Lower-level `start`, `brief`, `packet`, `verify`, `receipt`, `status`, and
+`review-summary` commands remain available for explicit control and debugging.
+The repair command does not generate or apply tests, execute mutation testing,
+or declare the repository safe to merge.
 "#;

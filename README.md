@@ -64,16 +64,32 @@ docs expands on them:
 
 ```bash
 cargo install ripr
-ripr first-pr --root . --base origin/main --head HEAD
+ripr check --base origin/main
 ```
 
-For a direct PR-diff check, `ripr check --base origin/main --format human`
-starts with one bounded `Start here:` route: a named state, one selected gap or
-safe next action, the omitted-finding count, and explicit pointers to
+`ripr check` is the ordinary first-value command: it analyzes the current
+change and returns one bounded `Start here:` route — a named state, one selected
+gap or safe next action, the omitted-finding count, and explicit pointers to
 `--format human-full` for exhaustive evidence and `--format json` for machine
-data. That's the whole loop: ripr names the top repairable gap, you add one
-focused test outside ripr, and the receipt records the observed movement.
-`ripr.toml` is optional; the zero-config run is the intended first interface.
+data. `ripr.toml` is optional; the zero-config run is the intended first
+interface.
+
+When the selected gap is repair-ready, use the dedicated two-phase transaction:
+
+```bash
+ripr agent repair --root . --seam-id <id> --phase before
+# edit one focused test outside ripr
+ripr agent repair --root . --seam-id <id> --phase after
+```
+
+RIPR owns the before/after evidence plumbing. The human or external coding agent
+owns the focused test edit. `ripr pilot --root .` remains the guided
+repository-adoption workflow. `ripr first-pr --root . --base origin/main --head
+HEAD` composes existing artifacts into PR-facing evidence; it is not the
+analyzer or repair driver.
+
+See the [public command hierarchy](docs/COMMAND_HIERARCHY.md) for the stable
+task boundaries.
 
 ## How ripr works (reference)
 
@@ -154,8 +170,8 @@ and gaps; it does not claim runtime mutation outcomes.
 | --- | --- | --- |
 | VS Code user | Install `EffortlessMetrics.ripr`, open a Rust workspace, use the status bar, Problems, and hover evidence. | [Quickstart](docs/QUICKSTART.md#vs-code-first-hour) |
 | CI owner | `ripr init --ci github` for an advisory PR summary and artifact packet. | [Quickstart](docs/QUICKSTART.md#ci-first-hour) |
-| CLI user | `ripr pilot --root .`, then add one focused test for the top gap. | [Quickstart](docs/QUICKSTART.md#cli-first-hour) |
-| Agent operator | `ripr agent status --root .` or a bounded, source-edit-free seam packet. | [LLM operator guide](docs/LLM_OPERATOR_GUIDE.md) |
+| CLI user | `ripr check --base origin/main`, then repair the selected named gap. | [Quickstart](docs/QUICKSTART.md#cli-first-hour) |
+| Agent operator | `ripr agent repair --seam-id <id> --phase before`, then finish after the focused test edit. | [LLM operator guide](docs/LLM_OPERATOR_GUIDE.md) |
 
 ## Status
 
@@ -177,6 +193,7 @@ release and distribution authority.
 | Need | Doc |
 | --- | --- |
 | Choose the first-hour path by surface | [Quickstart](docs/QUICKSTART.md) |
+| Understand the public command roles | [Command hierarchy](docs/COMMAND_HIERARCHY.md) |
 | Map plain language to the internal model | [Terminology](docs/TERMINOLOGY.md) |
 | Understand the model (discrimination vs coverage) | [Static exposure model](docs/STATIC_EXPOSURE_MODEL.md) |
 | Know what is usable / preview / advisory | [Support tiers](docs/status/SUPPORT_TIERS.md) |

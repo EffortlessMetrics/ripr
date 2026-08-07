@@ -590,7 +590,7 @@ mod tests {
         assert!(CALIBRATE_HELP.starts_with("Import cargo-mutants outcomes"));
         assert!(CALIBRATE_HELP.contains("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
-        assert!(AGENT_HELP.starts_with("Create a bounded packet for a coding agent"));
+        assert!(AGENT_HELP.starts_with("Create a bounded repair transaction for a coding agent"));
         assert!(AGENT_HELP.contains("Usage: ripr agent"));
         assert!(AGENT_START_HELP.starts_with("Start a source-edit-free workflow packet"));
         assert!(AGENT_START_HELP.contains("Usage: ripr agent start"));

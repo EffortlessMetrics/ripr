@@ -30,16 +30,18 @@ whether the gap closed. `ripr.toml` is optional; the zero-config run is the
 intended first interface.
 
 What are you trying to do?
-  Inspect one change     ripr check [--base REV | --diff PATH]
-                                    [--format human-full | json]
-  Understand a finding   ripr explain <finding-id>
-                         ripr context --at <finding-id>
-  Repair one gap         ripr first-pr            (write the start-here packet)
-                         ripr agent brief --json  (agent-ready work order)
-  Work in an editor      ripr lsp --stdio
-  Adopt in CI            ripr init --ci github    (advisory PR summary first)
-                         ripr gate evaluate       (only after adoption)
-  Validate config        ripr config validate     (check ripr.toml without running analysis)
+  Diagnose setup        ripr doctor
+  Inspect one change    ripr check [--base REV | --diff PATH]
+                                   [--format human-full | json]
+  Guided repo adoption  ripr pilot --root .
+  Understand a finding  ripr explain <finding-id>
+                        ripr context --at <finding-id>
+  Repair one named gap  ripr agent repair --seam-id ID --phase before
+                        # edit one focused test
+                        ripr agent repair --seam-id ID --phase after
+  Compose PR evidence   ripr first-pr --root . --base origin/main --head HEAD
+  Work in an editor     ripr lsp --stdio
+  Adopt advisory CI     ripr init --ci github
 
 More:
   ripr help <command>    Options for one command.
@@ -63,6 +65,14 @@ pub(super) const HELP_ALL: &str = r#"ripr — complete command reference.
 Task-oriented overview: ripr --help
 Options for one command: ripr help <command>
 
+Task map:
+  Diagnose setup        ripr doctor
+  Inspect one change    ripr check --base origin/main
+  Guided repo adoption  ripr pilot --root .
+  Repair one named gap  ripr agent repair --seam-id ID --phase before|after
+  Compose PR evidence   ripr first-pr --root . --base origin/main --head HEAD
+  Adopt advisory CI     ripr init --ci github
+
 Setup:
   ripr doctor
   ripr init [--root PATH] [--ci github] [--dry-run] [--force]
@@ -82,6 +92,7 @@ Analysis:
 
 Editor & Agent:
   ripr lsp [--stdio]
+  ripr agent repair --root . --seam-id ID --phase before|after
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
   ripr agent packet --root . --seam-id ID --json
@@ -140,17 +151,17 @@ What it does:
 
 Quick start (one command per group):
   ripr doctor                                             # setup
-  ripr pilot --root .                                     # analysis (zero-config)
-  ripr agent brief --root . --diff change.diff --json     # agent
-  ripr first-pr --root . --base origin/main --head HEAD   # PR & review
-  ripr gate evaluate --pr-guidance <comments.json>        # policy & gate
+  ripr check --base origin/main                           # ordinary first value
+  ripr agent repair --seam-id ID --phase before           # repair
+  ripr first-pr --root . --base origin/main --head HEAD   # PR evidence
+  ripr init --ci github                                   # advisory CI
   ripr reports index                                      # reports
 
 Start-here path:
   - `ripr doctor` checks whether the local workspace and config can produce evidence.
-  - `ripr cache status` inspects the analysis cache (size, entries, location).
-  - `ripr cache clear` removes that cache; `--dry-run` previews it and `--force` is required once it holds entries.
-  - `ripr first-pr` and `ripr start-here` write `target/ripr/reports/start-here.{json,md}` from existing artifacts.
+  - `ripr check` is the ordinary first-value analysis; `ripr pilot` is the guided repo-adoption workflow.
+  - `ripr agent repair` owns the before/edit/after repair transaction; lower-level brief, packet, verify, and receipt commands remain available for control and debugging.
+  - `ripr first-pr` and `ripr start-here` compose `target/ripr/reports/start-here.{json,md}` from existing artifacts; they do not run analysis or repair a gap.
   - Safe next action means repair one named gap, regenerate a missing or malformed artifact, or stop on no-action.
   - Missing artifact, stale evidence, wrong root, malformed artifact, and no actionable gap are explicit recovery states.
   - Verify command, receipt command, and receipt path are the static proof rail; receipts are advisory, not runtime adequacy or gate approval.
