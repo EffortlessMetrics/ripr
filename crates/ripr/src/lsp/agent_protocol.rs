@@ -8,7 +8,7 @@ use std::fmt;
 use tower_lsp_server::ls_types::LSPAny;
 
 pub(super) const RIPR_AGENT_PROTOCOL_VERSION: &str = "0.1";
-pub(super) const RIPR_AGENT_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const RIPR_AGENT_SCHEMA_VERSION: &str = "0.1";
 const RIPR_AGENT_SUPPORTED_PROTOCOL_MAJOR: u16 = 0;
 const RIPR_AGENT_SUPPORTED_SCHEMA_MAJOR: u16 = 0;
 
