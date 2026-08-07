@@ -24,6 +24,10 @@ pub(crate) use render_json::{
 use review::review_attention_class;
 
 pub(crate) const TARGETED_TEST_OUTCOME_SCHEMA_VERSION: &str = "0.1";
+// #2646: verify output has not changed structurally since the initial 0.1
+// release. Unlike receipt (0.5) and packet (0.4), which gained fields,
+// the verify JSON shape is stable. The version stays at 0.1 until a
+// breaking change lands (e.g. field removal/rename or type change).
 pub(crate) const AGENT_VERIFY_SCHEMA_VERSION: &str = "0.1";
 
 const SEAM_GRIP_CLASS_ORDER: &[&str] = &[
