@@ -2599,9 +2599,41 @@ fn agent_verify_rejects_incomparable_analysis_inputs() -> Result<(), Box<dyn std
     let seam = r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#;
     write_bound_repo_exposure_fixture(&root, &before, seam)?;
     write_bound_repo_exposure_fixture(&root, &after, seam)?;
+    let old_head = concrete_fixture_repository_head(&root)?;
+    std::fs::write(root.join("marker.txt"), "fixture-moved\n")?;
+    run_git(&root, &["add", "marker.txt"])?;
+    let commit = run_command(
+        "git",
+        Some(&root),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "advance fixture",
+        ],
+    )?;
+    assert!(commit.status.success(), "fixture commit failed: {commit:?}");
+    let new_head = concrete_fixture_repository_head(&root)?;
+    // Tamper the analysis input identity while keeping the after artifact
+    // internally consistent (input identity, declared head, and snapshot
+    // identity must agree under exact snapshot validation) so the pair
+    // comparison — not single-artifact validation — rejects it.
     let altered = std::fs::read_to_string(&after)?
-        .replace("input:fixture", "input:other")
-        .replace("snapshot:input:fixture", "snapshot:input:other");
+        .replace(
+            &format!("\"head\": \"{old_head}\""),
+            &format!("\"head\": \"{new_head}\""),
+        )
+        .replace(
+            &format!("snapshot:input:fixture;revision:{old_head}"),
+            &format!("snapshot:input:other;revision:{new_head}"),
+        )
+        .replace(
+            "\"input_identity\": \"input:fixture\"",
+            "\"input_identity\": \"input:other\"",
+        );
     std::fs::write(&after, recommit_repo_exposure_json(altered))?;
 
     let before_path = before.display().to_string();
@@ -2620,6 +2652,72 @@ fn agent_verify_rejects_incomparable_analysis_inputs() -> Result<(), Box<dyn std
     assert_failure(&output);
     assert!(String::from_utf8_lossy(&output.stderr).contains("analysis input identities differ"));
     std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_verify_rejects_comparison_metadata_drift() -> Result<(), Box<dyn std::error::Error>> {
+    let cases = [
+        (
+            "producer version",
+            "\"version\": \"0.10.0\"",
+            "\"version\": \"0.11.0\"",
+            "producer versions differ",
+        ),
+        (
+            "analysis mode",
+            "\"mode\": \"draft\", \"base_revision\"",
+            "\"mode\": \"release\", \"base_revision\"",
+            "analysis modes differ",
+        ),
+        (
+            "analysis profile",
+            "\"profile\": \"draft\"",
+            "\"profile\": \"release\"",
+            "analysis profiles differ",
+        ),
+        (
+            "base revision",
+            "\"base_revision\": null",
+            "\"base_revision\": \"base:other\"",
+            "base revisions differ",
+        ),
+    ];
+    for (label, from, to, expected) in cases {
+        let root = unique_temp_workspace(&format!("agent-verify-metadata-{label}"));
+        std::fs::create_dir_all(&root)?;
+        init_git_fixture_repo(&root)?;
+        let before = root.join("before.repo-exposure.json");
+        let after = root.join("after.repo-exposure.json");
+        let seam = r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#;
+        write_bound_repo_exposure_fixture(&root, &before, seam)?;
+        write_bound_repo_exposure_fixture(&root, &after, seam)?;
+        let mut altered = std::fs::read_to_string(&after)?.replace(from, to);
+        if label == "analysis mode" {
+            altered = altered.replace("\"profile\": \"draft\"", "\"profile\": \"release\"");
+        }
+        std::fs::write(&after, recommit_repo_exposure_json(altered))?;
+        let output = run_ripr(&[
+            "agent",
+            "verify",
+            "--root",
+            &root.display().to_string(),
+            "--before",
+            &before.display().to_string(),
+            "--after",
+            &after.display().to_string(),
+            "--json",
+        ]);
+        assert_failure(&output);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let expected = if label == "analysis profile" {
+            "invalid or unknown producer identity"
+        } else {
+            expected
+        };
+        assert!(stderr.contains(expected), "{label}: {stderr}");
+        std::fs::remove_dir_all(root)?;
+    }
     Ok(())
 }
 
@@ -2950,14 +3048,41 @@ fn agent_receipt_rejects_incomparable_analysis_inputs() -> Result<(), Box<dyn st
         &after,
         r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"strongly_gripped"}"#,
     )?;
-    let altered = std::fs::read_to_string(&after)?.replace(
-        "\"input_identity\": \"input:fixture\"",
-        "\"input_identity\": \"input:other\"",
-    );
-    // Keep the tampered artifact internally consistent (input identity and
-    // snapshot identity must agree under exact snapshot validation) so the
-    // pair comparison — not single-artifact validation — rejects it.
-    let altered = altered.replace("snapshot:input:fixture", "snapshot:input:other");
+    let old_head = concrete_fixture_repository_head(&root)?;
+    std::fs::write(root.join("marker.txt"), "fixture-moved\n")?;
+    run_git(&root, &["add", "marker.txt"])?;
+    let commit = run_command(
+        "git",
+        Some(&root),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "advance fixture",
+        ],
+    )?;
+    assert!(commit.status.success(), "fixture commit failed: {commit:?}");
+    let new_head = concrete_fixture_repository_head(&root)?;
+    // Tamper the analysis input identity while keeping the after artifact
+    // internally consistent (input identity, declared head, and snapshot
+    // identity must agree under exact snapshot validation) so the pair
+    // comparison — not single-artifact validation — rejects it.
+    let altered = std::fs::read_to_string(&after)?
+        .replace(
+            &format!("\"head\": \"{old_head}\""),
+            &format!("\"head\": \"{new_head}\""),
+        )
+        .replace(
+            &format!("snapshot:input:fixture;revision:{old_head}"),
+            &format!("snapshot:input:other;revision:{new_head}"),
+        )
+        .replace(
+            "\"input_identity\": \"input:fixture\"",
+            "\"input_identity\": \"input:other\"",
+        );
     std::fs::write(&after, recommit_repo_exposure_json(altered))?;
     let verify = root.join("fabricated-agent-verify.json");
     write_fabricated_agent_verify_json(&verify, &before, &after)?;
@@ -2974,8 +3099,71 @@ fn agent_receipt_rejects_incomparable_analysis_inputs() -> Result<(), Box<dyn st
         "--json",
     ]);
     assert_failure(&output);
-    assert!(String::from_utf8_lossy(&output.stderr).contains("[incomparable_analysis_inputs]"));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("[incomparable_analysis_inputs]"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_receipt_rejects_comparison_metadata_drift() -> Result<(), Box<dyn std::error::Error>> {
+    let cases = [
+        (
+            "producer version",
+            "\"version\": \"0.10.0\"",
+            "\"version\": \"0.11.0\"",
+        ),
+        (
+            "analysis mode",
+            "\"mode\": \"draft\", \"base_revision\"",
+            "\"mode\": \"release\", \"base_revision\"",
+        ),
+        (
+            "analysis profile",
+            "\"profile\": \"draft\"",
+            "\"profile\": \"release\"",
+        ),
+    ];
+    for (label, from, to) in cases {
+        let root = unique_temp_workspace(&format!("agent-receipt-metadata-{label}"));
+        std::fs::create_dir_all(&root)?;
+        init_git_fixture_repo(&root)?;
+        let before = root.join("before.repo-exposure.json");
+        let after = root.join("after.repo-exposure.json");
+        let seam = r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"strongly_gripped"}"#;
+        write_bound_repo_exposure_fixture(&root, &before, seam)?;
+        write_bound_repo_exposure_fixture(&root, &after, seam)?;
+        let mut altered = std::fs::read_to_string(&after)?.replace(from, to);
+        if label == "analysis mode" {
+            altered = altered.replace("\"profile\": \"draft\"", "\"profile\": \"release\"");
+        }
+        std::fs::write(&after, recommit_repo_exposure_json(altered))?;
+        let verify = root.join("fabricated-agent-verify.json");
+        write_fabricated_agent_verify_json(&verify, &before, &after)?;
+        let output = run_ripr(&[
+            "agent",
+            "receipt",
+            "--root",
+            &root.display().to_string(),
+            "--verify-json",
+            &verify.display().to_string(),
+            "--seam-id",
+            "seam-a",
+            "--json",
+        ]);
+        assert_failure(&output);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let expected = if label == "analysis profile" {
+            "invalid or unknown producer identity"
+        } else {
+            "[incomparable_analysis_inputs]"
+        };
+        assert!(stderr.contains(expected), "{label}: {stderr}");
+        std::fs::remove_dir_all(root)?;
+    }
     Ok(())
 }
 

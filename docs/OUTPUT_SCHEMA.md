@@ -2138,9 +2138,15 @@ with the fixed zero-digest placeholder. This is an integrity/currentness
 commitment, not a signature or runtime proof. `repository.head` and
 `analysis.worktree` are `unavailable` when the producer cannot resolve Git;
 such an artifact is disclosed but is not accepted by `agent verify`.
-`analysis.input_identity` binds the selected repository, base, mode, named
-workspace inputs, and analyzer version without exposing configuration bytes;
-`analysis.command` and `analysis.profile` state the producer operation used.
+`analysis.input_identity` binds the selected repository snapshot (including
+the concrete repository head), base, mode, named workspace inputs, and
+analyzer version without exposing configuration bytes. Consequently, two
+clean artifacts from different commits have distinct input and snapshot
+identities even when their analysis configuration is unchanged. `agent verify`
+and `agent receipt` compare the stable producer/version, base, mode, and
+profile fields separately, and reject unchanged identities when the declared
+repository commits differ. `analysis.command` and `analysis.profile` state the
+producer operation used.
 
 ### Repo Exposure Summary JSON
 

@@ -35,16 +35,17 @@ pub(crate) fn validate_agent_receipt_verify_json(
     let after_identity =
         crate::agent::artifact::validate_repo_exposure_artifact(root, &after_json, "receipt after")
             .map_err(|err| receipt_verify_input_error("artifact", err))?;
-    if before_identity.base_revision != after_identity.base_revision {
+    if let Err(reason) =
+        crate::agent::artifact::validate_comparable_pair(&before_identity, &after_identity)
+    {
+        let kind = if reason.contains("base revisions") {
+            "incomparable_base_revision"
+        } else {
+            "incomparable_analysis_inputs"
+        };
         return Err(receipt_verify_input_error(
-            "incomparable_base_revision",
-            "agent receipt verify JSON references incomparable artifacts: base revisions differ",
-        ));
-    }
-    if before_identity.input_identity != after_identity.input_identity {
-        return Err(receipt_verify_input_error(
-            "incomparable_analysis_inputs",
-            "agent receipt verify JSON references incomparable artifacts: analysis input identities differ",
+            kind,
+            format!("agent receipt verify JSON references incomparable artifacts: {reason}"),
         ));
     }
     let artifact_currentness = match (&before_identity.currentness, &after_identity.currentness) {

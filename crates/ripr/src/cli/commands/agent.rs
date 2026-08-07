@@ -201,17 +201,8 @@ fn render_agent_verify(options: &AgentVerifyOptions) -> Result<String, String> {
         &after_json,
         "after",
     )?;
-    if before_identity.base_revision != after_identity.base_revision {
-        return Err(format!(
-            "agent verify artifacts are incomparable: base revisions differ ({:?} vs {:?})",
-            before_identity.base_revision, after_identity.base_revision
-        ));
-    }
-    if before_identity.input_identity != after_identity.input_identity {
-        return Err(
-            "agent verify artifacts are incomparable: analysis input identities differ".to_string(),
-        );
-    }
+    crate::agent::artifact::validate_comparable_pair(&before_identity, &after_identity)
+        .map_err(|error| format!("agent verify artifacts are incomparable: {error}"))?;
     let artifact_currentness = match (&before_identity.currentness, &after_identity.currentness) {
         (
             crate::agent::artifact::ArtifactCurrentness::Current,

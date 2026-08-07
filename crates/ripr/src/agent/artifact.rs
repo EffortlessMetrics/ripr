@@ -250,6 +250,9 @@ pub(crate) fn validate_repo_exposure_artifact(
         input_identity: identity.analysis.input_identity,
         snapshot_identity: identity.snapshot_identity,
         repository_head: identity.repository.head,
+        producer_version: identity.producer.version,
+        analysis_mode: identity.analysis.mode,
+        analysis_profile: identity.analysis.profile,
     })
 }
 
@@ -267,6 +270,58 @@ pub(crate) struct ValidatedArtifact {
     pub(crate) input_identity: String,
     pub(crate) snapshot_identity: String,
     pub(crate) repository_head: String,
+    pub(crate) producer_version: String,
+    pub(crate) analysis_mode: String,
+    pub(crate) analysis_profile: String,
+}
+
+/// Validate that two producer artifacts describe comparable analyses. The
+/// input identity is stable semantic/configuration identity: it must be equal
+/// across a comparable pair (the positive control), independent of the
+/// repository head. The snapshot identity is producer-owned observation
+/// identity, exactly bound to the input identity plus the concrete repository
+/// head, so it must differ across distinct heads and agree for the same head.
+pub(crate) fn validate_comparable_pair(
+    before: &ValidatedArtifact,
+    after: &ValidatedArtifact,
+) -> Result<(), String> {
+    if before.base_revision != after.base_revision {
+        return Err(format!(
+            "base revisions differ ({:?} vs {:?})",
+            before.base_revision, after.base_revision
+        ));
+    }
+    if before.producer_version != after.producer_version {
+        return Err(format!(
+            "producer versions differ ({} vs {})",
+            before.producer_version, after.producer_version
+        ));
+    }
+    if before.analysis_mode != after.analysis_mode {
+        return Err(format!(
+            "analysis modes differ ({} vs {})",
+            before.analysis_mode, after.analysis_mode
+        ));
+    }
+    if before.analysis_profile != after.analysis_profile {
+        return Err(format!(
+            "analysis profiles differ ({} vs {})",
+            before.analysis_profile, after.analysis_profile
+        ));
+    }
+    if before.input_identity != after.input_identity {
+        return Err("analysis input identities differ".to_string());
+    }
+    if before.repository_head != after.repository_head {
+        if before.snapshot_identity == after.snapshot_identity {
+            return Err(
+                "snapshot identities are identical for distinct repository heads".to_string(),
+            );
+        }
+    } else if before.snapshot_identity != after.snapshot_identity {
+        return Err("snapshot identities differ for the same repository head".to_string());
+    }
+    Ok(())
 }
 
 #[derive(serde::Deserialize)]
@@ -460,6 +515,86 @@ mod tests {
         let raw = r#"{"content_sha256":"sha256:gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"}"#;
         let result = content_sha256_with_placeholder(raw);
         assert!(matches!(result, Err(error) if error.contains("sha256:<64 hex>")));
+    }
+
+    fn comparable_artifact() -> ValidatedArtifact {
+        ValidatedArtifact {
+            currentness: ArtifactCurrentness::Current,
+            base_revision: None,
+            input_identity: "input:stable".to_string(),
+            snapshot_identity: format!("snapshot:input:stable;revision:{}", "a".repeat(40)),
+            repository_head: "a".repeat(40),
+            producer_version: "0.11.0".to_string(),
+            analysis_mode: "draft".to_string(),
+            analysis_profile: "draft".to_string(),
+        }
+    }
+
+    #[test]
+    fn comparable_pair_rejects_profile_drift_after_artifact_validation() {
+        let before = comparable_artifact();
+        let mut after = before.clone();
+        after.analysis_profile = "release".to_string();
+
+        assert!(matches!(
+            validate_comparable_pair(&before, &after),
+            Err(error) if error.contains("analysis profiles differ")
+        ));
+    }
+
+    #[test]
+    fn comparable_pair_accepts_stable_input_identity_across_distinct_heads() {
+        let before = comparable_artifact();
+        let mut after = before.clone();
+        after.repository_head = "b".repeat(40);
+        after.snapshot_identity = format!("snapshot:input:stable;revision:{}", "b".repeat(40));
+
+        assert_eq!(validate_comparable_pair(&before, &after), Ok(()));
+    }
+
+    #[test]
+    fn comparable_pair_rejects_identical_snapshot_across_distinct_heads() {
+        let before = comparable_artifact();
+        let mut after = before.clone();
+        after.repository_head = "b".repeat(40);
+
+        assert!(matches!(
+            validate_comparable_pair(&before, &after),
+            Err(error) if error.contains("snapshot identities are identical")
+        ));
+    }
+
+    #[test]
+    fn comparable_pair_rejects_input_identity_drift() {
+        let before = comparable_artifact();
+        let mut same_head = before.clone();
+        same_head.input_identity = "input:drifted".to_string();
+        same_head.snapshot_identity = "snapshot:input:drifted".to_string();
+        assert!(matches!(
+            validate_comparable_pair(&before, &same_head),
+            Err(error) if error.contains("analysis input identities differ")
+        ));
+
+        let mut distinct_head = same_head.clone();
+        distinct_head.repository_head = "b".repeat(40);
+        distinct_head.snapshot_identity =
+            format!("snapshot:input:drifted;revision:{}", "b".repeat(40));
+        assert!(matches!(
+            validate_comparable_pair(&before, &distinct_head),
+            Err(error) if error.contains("analysis input identities differ")
+        ));
+    }
+
+    #[test]
+    fn comparable_pair_rejects_snapshot_drift_for_the_same_head() {
+        let before = comparable_artifact();
+        let mut after = before.clone();
+        after.snapshot_identity = "snapshot:input:other".to_string();
+
+        assert!(matches!(
+            validate_comparable_pair(&before, &after),
+            Err(error) if error.contains("snapshot identities differ for the same repository head")
+        ));
     }
 
     #[test]

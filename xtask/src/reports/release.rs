@@ -1,7 +1,7 @@
 use flate2::read::GzDecoder;
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tar::Archive;
@@ -10,6 +10,8 @@ const REPORT_WORK_DIR: &str = "target/ripr/release-readiness";
 const INSTALL_ROOT: &str = "target/ripr/release-readiness/install";
 const PILOT_OUT: &str = "target/ripr/release-readiness/pilot";
 const OUTCOME_OUT: &str = "target/ripr/release-readiness/targeted-test-outcome.json";
+const AGENT_ANALYSIS_OUTCOME_OUT: &str =
+    "target/ripr/release-readiness/agent-analysis-outcome.json";
 const AGENT_VERIFY_OUT: &str = "target/ripr/release-readiness/agent-verify.json";
 const AGENT_RECEIPT_OUT: &str = "target/ripr/release-readiness/agent-receipt.json";
 const BOUNDARY_BEFORE_OUT: &str = "target/ripr/release-readiness/before.repo-exposure.json";
@@ -69,6 +71,12 @@ struct PublicCliJourney {
     artifacts: Vec<String>,
     commands: Vec<Value>,
     details: Vec<String>,
+}
+
+struct AuthenticRepoExposureFixture {
+    root: PathBuf,
+    before_commit: String,
+    after_commit: String,
 }
 
 pub(crate) fn release_readiness(args: &[String]) -> Result<(), String> {
@@ -765,21 +773,6 @@ fn create_external_doctor_fixture(root: &Path) -> Result<PathBuf, String> {
     Ok(root.to_path_buf())
 }
 
-fn run_command_in_dir(
-    program: &str,
-    args: &[String],
-    cwd: &Path,
-    error_context: &str,
-) -> Result<CommandResult, String> {
-    let output = crate::run::capture_output_in_dir(program, args, cwd, error_context)?;
-    Ok(CommandResult {
-        status: output.status.code(),
-        success: output.status.success(),
-        stdout: output.stdout,
-        stderr: output.stderr,
-    })
-}
-
 fn run_git_output_in_dir(root: &Path, args: &[&str]) -> Result<String, String> {
     let mut owned = vec![
         "-c".to_string(),
@@ -991,7 +984,7 @@ fn packaged_cli_journey_check(binary: &Path, crate_version: Option<&str>) -> Rel
         })?;
         let version_args = vec!["--version".to_string()];
         let version = run_command_in_dir(
-            &binary.to_string_lossy(),
+            &binary,
             &version_args,
             &std::env::current_dir().map_err(|err| {
                 format!("read current directory for packaged CLI version failed: {err}")
@@ -1663,10 +1656,10 @@ fn outcome_fixture_check(binary: &Path) -> ReleaseReadinessCheck {
 
 fn agent_verify_fixture_check(
     binary: &Path,
-    producer_version: Option<&str>,
+    _producer_version: Option<&str>,
 ) -> ReleaseReadinessCheck {
     let command = format!(
-        "{} agent verify --root . --before {BOUNDARY_BEFORE_OUT} --after {BOUNDARY_AFTER_OUT} --json > {AGENT_VERIFY_OUT}",
+        "{} check --root . --mode draft --format repo-exposure-json; agent verify; agent receipt",
         crate::normalize_path(binary)
     );
     if !binary.exists() {
@@ -1680,220 +1673,421 @@ fn agent_verify_fixture_check(
             Vec::new(),
         );
     }
-    let Some(producer_version) = producer_version else {
-        return readiness_check(
+    match run_authentic_repo_exposure_journey(binary) {
+        Ok(details) => readiness_check(
             "agent-verify-boundary-fixture",
-            "fail",
+            "pass",
             true,
             &command,
-            "workspace package version is unavailable for fixture binding",
+            "installed RIPR produced and verified authentic before/after repo-exposure artifacts",
             vec![
                 BOUNDARY_BEFORE_OUT.to_string(),
                 BOUNDARY_AFTER_OUT.to_string(),
-            ],
-            vec!["cannot bind producer identity without the ripr package version".to_string()],
-        );
-    };
-    let root = match std::env::current_dir() {
-        Ok(root) => root,
-        Err(err) => {
-            return readiness_check(
-                "agent-verify-boundary-fixture",
-                "fail",
-                true,
-                &command,
-                "repository root could not be resolved for fixture binding",
-                vec![
-                    BOUNDARY_BEFORE_OUT.to_string(),
-                    BOUNDARY_AFTER_OUT.to_string(),
-                ],
-                vec![err.to_string()],
-            );
-        }
-    };
-    for (source, destination) in [
-        (BEFORE_EXPOSURE, BOUNDARY_BEFORE_OUT),
-        (AFTER_EXPOSURE, BOUNDARY_AFTER_OUT),
-    ] {
-        if let Err(err) = bind_repo_exposure_fixture(
-            &root,
-            Path::new(source),
-            Path::new(destination),
-            producer_version,
-        ) {
-            return readiness_check(
-                "agent-verify-boundary-fixture",
-                "fail",
-                true,
-                &command,
-                "release boundary fixture could not be bound to the current repository",
-                vec![
-                    BOUNDARY_BEFORE_OUT.to_string(),
-                    BOUNDARY_AFTER_OUT.to_string(),
-                ],
-                vec![err],
-            );
-        }
-    }
-    let _ = fs::remove_file(AGENT_VERIFY_OUT);
-    match run_command_path(
-        binary,
-        &[
-            "agent",
-            "verify",
-            "--root",
-            ".",
-            "--before",
-            BOUNDARY_BEFORE_OUT,
-            "--after",
-            BOUNDARY_AFTER_OUT,
-            "--json",
-        ],
-    ) {
-        Ok(result) if result.success => match fs::write(AGENT_VERIFY_OUT, &result.stdout) {
-            Ok(()) => readiness_check(
-                "agent-verify-boundary-fixture",
-                "pass",
-                true,
-                &command,
-                "ripr agent verify compared checked before/after snapshots",
-                vec![
-                    BOUNDARY_BEFORE_OUT.to_string(),
-                    BOUNDARY_AFTER_OUT.to_string(),
-                    AGENT_VERIFY_OUT.to_string(),
-                ],
-                Vec::new(),
-            ),
-            Err(err) => readiness_check(
-                "agent-verify-boundary-fixture",
-                "fail",
-                true,
-                &command,
-                "ripr agent verify passed but artifact write failed",
-                vec![AGENT_VERIFY_OUT.to_string()],
-                vec![format!("failed to write {AGENT_VERIFY_OUT}: {err}")],
-            ),
-        },
-        Ok(result) => readiness_check(
-            "agent-verify-boundary-fixture",
-            "fail",
-            true,
-            &command,
-            "ripr agent verify failed on checked snapshots",
-            vec![
-                BOUNDARY_BEFORE_OUT.to_string(),
-                BOUNDARY_AFTER_OUT.to_string(),
+                AGENT_ANALYSIS_OUTCOME_OUT.to_string(),
                 AGENT_VERIFY_OUT.to_string(),
+                AGENT_RECEIPT_OUT.to_string(),
             ],
-            command_details(&result),
+            details,
         ),
         Err(err) => readiness_check(
             "agent-verify-boundary-fixture",
             "fail",
             true,
             &command,
-            "ripr agent verify could not run",
+            "installed RIPR could not complete the authentic before/after producer journey",
             vec![
                 BOUNDARY_BEFORE_OUT.to_string(),
                 BOUNDARY_AFTER_OUT.to_string(),
+                AGENT_ANALYSIS_OUTCOME_OUT.to_string(),
                 AGENT_VERIFY_OUT.to_string(),
+                AGENT_RECEIPT_OUT.to_string(),
             ],
             vec![err],
         ),
     }
 }
 
-fn bind_repo_exposure_fixture(
-    root: &Path,
-    source: &Path,
-    destination: &Path,
-    producer_version: &str,
-) -> Result<(), String> {
-    let source_text = fs::read_to_string(source)
-        .map_err(|err| format!("read {} failed: {err}", crate::normalize_path(source)))?;
-    let mut value: Value = serde_json::from_str(&source_text)
-        .map_err(|err| format!("parse {} failed: {err}", crate::normalize_path(source)))?;
-    let root_identity = root
-        .canonicalize()
-        .map_err(|err| format!("canonicalize {} failed: {err}", root.display()))?
-        .to_string_lossy()
-        .replace('\\', "/");
-    let head = run_command("git", &["rev-parse", "HEAD"])?;
-    if !head.success {
-        return Err(format!(
-            "resolve repository HEAD failed: {}",
-            command_details(&head).join("; ")
-        ));
-    }
-    let head = head.stdout.trim();
-    if head.len() != 40 || !head.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(format!("repository HEAD is not a full commit SHA: {head}"));
-    }
-    let status = run_command("git", &["status", "--porcelain", "--untracked-files=no"])?;
-    if !status.success {
-        return Err(format!(
-            "resolve repository worktree status failed: {}",
-            command_details(&status).join("; ")
-        ));
-    }
-    let worktree = if status.stdout.trim().is_empty() {
-        "clean"
-    } else {
-        "dirty"
+fn run_authentic_repo_exposure_journey(binary: &Path) -> Result<Vec<String>, String> {
+    let fixture = create_authentic_repo_exposure_fixture()?;
+    let result = run_authentic_repo_exposure_journey_in_fixture(binary, &fixture);
+    let cleanup = fs::remove_dir_all(&fixture.root);
+    let mut details = match result {
+        Ok(details) => details,
+        Err(error) => return Err(format!("{error}; fixture cleanup: {cleanup:?}")),
     };
-    value["schema_version"] = json!("0.3");
-    value["run_status"] = json!("complete");
-    value["artifact"] = json!({
-        "kind": "repo_exposure",
-        "schema_version": "1",
-        "canonicalization": "raw_json_placeholder_v1",
-        "producer": {"tool": "ripr", "version": producer_version},
-        "repository": {"root": root_identity, "head": head},
-        "analysis": {
-            "format": "repo-exposure-json",
-            "mode": "draft",
-            "base_revision": null,
-            "input_identity": "input:fixture",
-            "command": "ripr check --format repo-exposure-json",
-            "profile": "draft",
-            "worktree": worktree,
-        },
-        "snapshot_identity": format!("snapshot:input:fixture;revision:{head}"),
-        "content_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-    });
-    let raw = serde_json::to_string_pretty(&value).map_err(|err| {
-        format!(
-            "render bound fixture {} failed: {err}",
-            destination.display()
-        )
-    })?;
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
-    }
-    fs::write(destination, recommit_repo_exposure_json(raw))
-        .map_err(|err| format!("write {} failed: {err}", destination.display()))
+    cleanup.map_err(|err| format!("remove authentic fixture failed: {err}"))?;
+    details.push(format!(
+        "external producer fixture cleaned: {}",
+        crate::normalize_path(&fixture.root)
+    ));
+    Ok(details)
 }
 
-fn recommit_repo_exposure_json(mut raw: String) -> String {
-    let placeholder = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
-    let mut hasher = Sha256::new();
-    hasher.update(raw.as_bytes());
-    let digest = hasher.finalize();
-    let digest = format!(
-        "sha256:{}",
-        digest
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
-    );
-    raw = raw.replace(placeholder, &digest);
-    raw
+fn create_authentic_repo_exposure_fixture() -> Result<AuthenticRepoExposureFixture, String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock is before Unix epoch: {err}"))?
+        .as_nanos();
+    let root = release_temp_root()?.join(format!(
+        "ripr-release-exposure-{}-{stamp}",
+        std::process::id()
+    ));
+    let result = (|| {
+        fs::create_dir_all(root.join("src"))
+            .map_err(|err| format!("create authentic fixture source failed: {err}"))?;
+        fs::create_dir_all(root.join("tests"))
+            .map_err(|err| format!("create authentic fixture tests failed: {err}"))?;
+        for relative in ["Cargo.toml", "src/lib.rs", "tests/pricing.rs"] {
+            let source = Path::new("fixtures/boundary_gap/input").join(relative);
+            let destination = root.join(relative);
+            fs::copy(&source, &destination).map_err(|err| {
+                format!(
+                    "copy authentic fixture {} to {} failed: {err}",
+                    crate::normalize_path(&source),
+                    crate::normalize_path(&destination)
+                )
+            })?;
+        }
+        run_fixture_git_command(&root, &["init", "--quiet", "--template="], "initialize")?;
+        run_fixture_git_command(
+            &root,
+            &["config", "user.name", "RIPR Release Fixture"],
+            "configure user name",
+        )?;
+        run_fixture_git_command(
+            &root,
+            &["config", "user.email", "release-fixture@example.invalid"],
+            "configure user email",
+        )?;
+        run_fixture_git_command(
+            &root,
+            &["config", "commit.gpgSign", "false"],
+            "disable signing",
+        )?;
+        run_fixture_git_command(
+            &root,
+            &["-c", "core.hooksPath=", "add", "."],
+            "stage before state",
+        )?;
+        run_fixture_git_command(
+            &root,
+            &["-c", "core.hooksPath=", "commit", "-m", "fixture before"],
+            "commit before state",
+        )?;
+        let before_commit = fixture_head(&root)?;
+
+        let tests_path = root.join("tests/pricing.rs");
+        let mut tests = fs::OpenOptions::new()
+            .append(true)
+            .open(&tests_path)
+            .map_err(|err| format!("open authentic fixture tests for update failed: {err}"))?;
+        writeln!(tests)
+            .map_err(|err| format!("write authentic fixture separator failed: {err}"))?;
+        writeln!(tests, "#[test]")
+            .map_err(|err| format!("write authentic fixture test failed: {err}"))?;
+        writeln!(tests, "fn equality_boundary_discounts() {{")
+            .map_err(|err| format!("write authentic fixture test body failed: {err}"))?;
+        writeln!(tests, "    assert_eq!(discounted_total(100, 100), 90);")
+            .map_err(|err| format!("write authentic fixture assertion failed: {err}"))?;
+        writeln!(tests, "}}")
+            .map_err(|err| format!("write authentic fixture test close failed: {err}"))?;
+        drop(tests);
+        run_fixture_git_command(
+            &root,
+            &["-c", "core.hooksPath=", "add", "."],
+            "stage after state",
+        )?;
+        run_fixture_git_command(
+            &root,
+            &["-c", "core.hooksPath=", "commit", "-m", "fixture after"],
+            "commit after state",
+        )?;
+        let after_commit = fixture_head(&root)?;
+        if before_commit == after_commit {
+            return Err("authentic fixture before and after commits are identical".to_string());
+        }
+        let ancestor = run_fixture_git_command(
+            &root,
+            &["merge-base", "--is-ancestor", &before_commit, &after_commit],
+            "compare fixture commits",
+        )?;
+        if !ancestor.success {
+            return Err(
+                "authentic fixture after commit is not descended from before commit".to_string(),
+            );
+        }
+        Ok(AuthenticRepoExposureFixture {
+            root: root.clone(),
+            before_commit,
+            after_commit,
+        })
+    })();
+    result.inspect_err(|_error| {
+        let _ = fs::remove_dir_all(&root);
+    })
+}
+
+fn run_authentic_repo_exposure_journey_in_fixture(
+    binary: &Path,
+    fixture: &AuthenticRepoExposureFixture,
+) -> Result<Vec<String>, String> {
+    let before_name = "before.repo-exposure.json";
+    let after_name = "after.repo-exposure.json";
+    checkout_fixture_commit(&fixture.root, &fixture.before_commit)?;
+    let _before = run_producer_check(binary, &fixture.root, before_name)?;
+    checkout_fixture_commit(&fixture.root, &fixture.after_commit)?;
+    let _after = run_producer_check(binary, &fixture.root, after_name)?;
+    validate_authentic_artifact(
+        &fixture.root.join(before_name),
+        &fixture.before_commit,
+        "before",
+    )?;
+    validate_authentic_artifact(
+        &fixture.root.join(after_name),
+        &fixture.after_commit,
+        "after",
+    )?;
+    let before_value = read_json_value(&fixture.root.join(before_name))?;
+    let after_value = read_json_value(&fixture.root.join(after_name))?;
+    let before_input = artifact_string(&before_value, &["artifact", "analysis", "input_identity"])?;
+    let after_input = artifact_string(&after_value, &["artifact", "analysis", "input_identity"])?;
+    let before_snapshot = artifact_string(&before_value, &["artifact", "snapshot_identity"])?;
+    let after_snapshot = artifact_string(&after_value, &["artifact", "snapshot_identity"])?;
+    if before_input != after_input || before_snapshot == after_snapshot {
+        return Err(
+            "authentic producer did not preserve comparable input identity and distinguish before/after snapshot identities"
+                .to_string(),
+        );
+    }
+    run_analysis_outcome_check(binary, &fixture.root)?;
+    let verify_args = vec![
+        "agent".to_string(),
+        "verify".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--before".to_string(),
+        before_name.to_string(),
+        "--after".to_string(),
+        after_name.to_string(),
+        "--json".to_string(),
+    ];
+    let verify = run_command_in_dir(
+        binary,
+        &verify_args,
+        &fixture.root,
+        "authentic agent verify",
+    )?;
+    if !verify.success {
+        return Err(format!(
+            "authentic agent verify failed: {}",
+            command_details(&verify).join("; ")
+        ));
+    }
+    fs::write(fixture.root.join("agent-verify.json"), &verify.stdout)
+        .map_err(|err| format!("write authentic agent verify artifact failed: {err}"))?;
+    let receipt_args = vec![
+        "agent".to_string(),
+        "receipt".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--verify-json".to_string(),
+        "agent-verify.json".to_string(),
+        "--seam-id".to_string(),
+        BOUNDARY_GAP_SEAM_ID.to_string(),
+        "--json".to_string(),
+        "--out".to_string(),
+        "agent-receipt.json".to_string(),
+    ];
+    let receipt = run_command_in_dir(
+        binary,
+        &receipt_args,
+        &fixture.root,
+        "authentic agent receipt",
+    )?;
+    if !receipt.success || !fixture.root.join("agent-receipt.json").is_file() {
+        return Err(format!(
+            "authentic agent receipt failed: {}",
+            command_details(&receipt).join("; ")
+        ));
+    }
+    for (source, destination) in [
+        (before_name, BOUNDARY_BEFORE_OUT),
+        (after_name, BOUNDARY_AFTER_OUT),
+        ("analysis-outcome.json", AGENT_ANALYSIS_OUTCOME_OUT),
+        ("agent-verify.json", AGENT_VERIFY_OUT),
+        ("agent-receipt.json", AGENT_RECEIPT_OUT),
+    ] {
+        fs::copy(fixture.root.join(source), destination).map_err(|err| {
+            format!("retain authentic artifact {source} at {destination} failed: {err}")
+        })?;
+    }
+    Ok(vec![
+        format!("authentic fixture before commit: {}", fixture.before_commit),
+        format!("authentic fixture after commit: {}", fixture.after_commit),
+        format!("before input identity: {before_input}"),
+        format!("after input identity: {after_input}"),
+        format!("before snapshot identity: {before_snapshot}"),
+        format!("after snapshot identity: {after_snapshot}"),
+        "producer artifacts, canonical analysis outcome, verify output, and receipt retained under target/ripr/release-readiness".to_string(),
+    ])
+}
+
+fn run_producer_check(binary: &Path, root: &Path, artifact_name: &str) -> Result<Value, String> {
+    let args = vec![
+        "check".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--mode".to_string(),
+        "draft".to_string(),
+        "--format".to_string(),
+        "repo-exposure-json".to_string(),
+    ];
+    let result = run_command_in_dir(binary, &args, root, "authentic repo-exposure producer")?;
+    if !result.success {
+        return Err(format!(
+            "producer check failed: {}",
+            command_details(&result).join("; ")
+        ));
+    }
+    let value: Value = serde_json::from_str(&result.stdout)
+        .map_err(|err| format!("producer emitted malformed repo-exposure JSON: {err}"))?;
+    fs::write(root.join(artifact_name), &result.stdout)
+        .map_err(|err| format!("write producer artifact {artifact_name} failed: {err}"))?;
+    Ok(value)
+}
+
+fn run_analysis_outcome_check(binary: &Path, root: &Path) -> Result<(), String> {
+    let args = vec![
+        "check".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--mode".to_string(),
+        "draft".to_string(),
+        "--format".to_string(),
+        "json".to_string(),
+    ];
+    let result = run_command_in_dir(binary, &args, root, "authentic analysis outcome producer")?;
+    if !result.success {
+        return Err(format!(
+            "analysis outcome producer failed: {}",
+            command_details(&result).join("; ")
+        ));
+    }
+    let _: Value = serde_json::from_str(&result.stdout)
+        .map_err(|err| format!("analysis outcome producer emitted malformed JSON: {err}"))?;
+    fs::write(root.join("analysis-outcome.json"), result.stdout)
+        .map_err(|err| format!("write analysis outcome artifact failed: {err}"))
+}
+
+fn validate_authentic_artifact(
+    path: &Path,
+    expected_head: &str,
+    label: &str,
+) -> Result<(), String> {
+    let value = read_json_value(path)?;
+    if value.get("run_status").and_then(Value::as_str) != Some("complete") {
+        return Err(format!("authentic {label} artifact is not complete"));
+    }
+    if artifact_string(&value, &["artifact", "producer", "tool"])? != "ripr" {
+        return Err(format!("authentic {label} artifact producer is not ripr"));
+    }
+    if artifact_string(&value, &["artifact", "repository", "head"])? != expected_head {
+        return Err(format!(
+            "authentic {label} artifact head does not match fixture commit"
+        ));
+    }
+    if value
+        .get("seams")
+        .and_then(Value::as_array)
+        .is_none_or(Vec::is_empty)
+    {
+        return Err(format!(
+            "authentic {label} artifact contains no analyzed seams"
+        ));
+    }
+    Ok(())
+}
+
+fn artifact_string<'a>(value: &'a Value, path: &[&str]) -> Result<&'a str, String> {
+    let mut current = value;
+    for key in path {
+        current = current
+            .get(*key)
+            .ok_or_else(|| format!("artifact is missing {}", path.join(".")))?;
+    }
+    current
+        .as_str()
+        .ok_or_else(|| format!("artifact {} is not a string", path.join(".")))
+}
+
+fn checkout_fixture_commit(root: &Path, commit: &str) -> Result<(), String> {
+    let result = run_fixture_git_command(
+        root,
+        &["checkout", "--quiet", "--detach", commit],
+        "checkout fixture commit",
+    )?;
+    if !result.success {
+        return Err(format!(
+            "checkout fixture commit failed: {}",
+            command_details(&result).join("; ")
+        ));
+    }
+    Ok(())
+}
+
+fn fixture_head(root: &Path) -> Result<String, String> {
+    let result = run_fixture_git_command(root, &["rev-parse", "HEAD"], "read fixture HEAD")?;
+    if !result.success {
+        return Err(format!(
+            "read fixture HEAD failed: {}",
+            command_details(&result).join("; ")
+        ));
+    }
+    let head = result.stdout.trim();
+    if head.len() != 40 || !head.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(format!("fixture HEAD is not a full commit SHA: {head}"));
+    }
+    Ok(head.to_string())
+}
+
+fn run_fixture_git_command(
+    root: &Path,
+    args: &[&str],
+    operation: &str,
+) -> Result<CommandResult, String> {
+    let args = args
+        .iter()
+        .map(|arg| (*arg).to_string())
+        .collect::<Vec<_>>();
+    let result = run_command_in_dir("git", &args, root, operation)?;
+    if !result.success {
+        return Err(format!(
+            "{operation} failed: {}",
+            command_details(&result).join("; ")
+        ));
+    }
+    Ok(result)
+}
+
+fn run_command_in_dir(
+    program: impl AsRef<Path>,
+    args: &[String],
+    cwd: &Path,
+    operation: &str,
+) -> Result<CommandResult, String> {
+    let program = program.as_ref().to_string_lossy().into_owned();
+    let output = crate::run::capture_output_in_dir(&program, args, cwd, operation)?;
+    Ok(CommandResult {
+        status: output.status.code(),
+        success: output.status.success(),
+        stdout: output.stdout,
+        stderr: output.stderr,
+    })
 }
 
 fn agent_receipt_fixture_check(binary: &Path) -> ReleaseReadinessCheck {
     let command = format!(
-        "{} agent receipt --root . --verify-json {AGENT_VERIFY_OUT} --seam-id {BOUNDARY_GAP_SEAM_ID} --json --out {AGENT_RECEIPT_OUT}",
+        "{} agent receipt (executed inside the authentic external fixture)",
         crate::normalize_path(binary)
     );
     if !binary.exists() {
@@ -1914,52 +2108,79 @@ fn agent_receipt_fixture_check(binary: &Path) -> ReleaseReadinessCheck {
             true,
             &command,
             "agent verify artifact is missing",
-            vec![AGENT_VERIFY_OUT.to_string(), AGENT_RECEIPT_OUT.to_string()],
+            vec![
+                AGENT_ANALYSIS_OUTCOME_OUT.to_string(),
+                AGENT_VERIFY_OUT.to_string(),
+                AGENT_RECEIPT_OUT.to_string(),
+            ],
             vec![format!("missing prerequisite: {AGENT_VERIFY_OUT}")],
         );
     }
-    let _ = fs::remove_file(AGENT_RECEIPT_OUT);
-    match run_command_path(
-        binary,
-        &[
-            "agent",
-            "receipt",
-            "--root",
-            ".",
-            "--verify-json",
-            AGENT_VERIFY_OUT,
-            "--seam-id",
-            BOUNDARY_GAP_SEAM_ID,
-            "--json",
-            "--out",
-            AGENT_RECEIPT_OUT,
-        ],
-    ) {
-        Ok(result) if result.success && Path::new(AGENT_RECEIPT_OUT).exists() => readiness_check(
-            "agent-receipt-boundary-fixture",
-            "pass",
-            true,
-            &command,
-            "ripr agent receipt wrote a focused boundary-gap receipt",
-            vec![AGENT_VERIFY_OUT.to_string(), AGENT_RECEIPT_OUT.to_string()],
-            Vec::new(),
-        ),
-        Ok(result) => readiness_check(
+    if !Path::new(AGENT_ANALYSIS_OUTCOME_OUT).exists() {
+        return readiness_check(
             "agent-receipt-boundary-fixture",
             "fail",
             true,
             &command,
-            "ripr agent receipt failed or did not write its artifact",
-            vec![AGENT_VERIFY_OUT.to_string(), AGENT_RECEIPT_OUT.to_string()],
-            command_details(&result),
+            "canonical analysis-outcome artifact is missing",
+            vec![
+                AGENT_ANALYSIS_OUTCOME_OUT.to_string(),
+                AGENT_VERIFY_OUT.to_string(),
+                AGENT_RECEIPT_OUT.to_string(),
+            ],
+            vec![format!(
+                "missing prerequisite: {AGENT_ANALYSIS_OUTCOME_OUT}"
+            )],
+        );
+    }
+    match read_json_value(Path::new(AGENT_RECEIPT_OUT)) {
+        Ok(value)
+            if value.get("analysis_outcome_status").and_then(Value::as_str) == Some("complete") =>
+        {
+            readiness_check(
+                "agent-receipt-boundary-fixture",
+                "pass",
+                true,
+                &command,
+                "authentic fixture receipt was produced by the installed RIPR binary",
+                vec![
+                    AGENT_ANALYSIS_OUTCOME_OUT.to_string(),
+                    AGENT_VERIFY_OUT.to_string(),
+                    AGENT_RECEIPT_OUT.to_string(),
+                ],
+                Vec::new(),
+            )
+        }
+        Ok(value) => readiness_check(
+            "agent-receipt-boundary-fixture",
+            "fail",
+            true,
+            &command,
+            "authentic fixture receipt does not retain complete analysis-outcome evidence",
+            vec![
+                AGENT_ANALYSIS_OUTCOME_OUT.to_string(),
+                AGENT_VERIFY_OUT.to_string(),
+                AGENT_RECEIPT_OUT.to_string(),
+            ],
+            vec![format!(
+                "analysis_outcome_status: {}",
+                value
+                    .get("analysis_outcome_status")
+                    .and_then(Value::as_str)
+                    .unwrap_or("missing")
+            )],
         ),
         Err(err) => readiness_check(
             "agent-receipt-boundary-fixture",
             "fail",
             true,
             &command,
-            "ripr agent receipt could not run",
-            vec![AGENT_VERIFY_OUT.to_string(), AGENT_RECEIPT_OUT.to_string()],
+            "authentic fixture receipt is missing or malformed",
+            vec![
+                AGENT_ANALYSIS_OUTCOME_OUT.to_string(),
+                AGENT_VERIFY_OUT.to_string(),
+                AGENT_RECEIPT_OUT.to_string(),
+            ],
             vec![err],
         ),
     }
@@ -2757,14 +2978,12 @@ mod tests {
         EditorVersion, FIRST_SCREEN_NEEDLES, PackageVersion, RELEASE_LOOP_NEEDLES,
         ReleaseReadinessCheck, ReleaseReadinessReport, extension_version_check_from,
         extract_packaged_crate, missing_required_needles, package_version,
-        parse_release_readiness_args, read_crate_version, readiness_check,
-        recommit_repo_exposure_json, release_readiness_json, release_readiness_markdown,
-        release_readiness_status, validate_binary_identity, validate_doctor_result,
-        validate_installed_version, validate_package_entry,
+        parse_release_readiness_args, read_crate_version, readiness_check, release_readiness_json,
+        release_readiness_markdown, release_readiness_status, validate_binary_identity,
+        validate_doctor_result, validate_installed_version, validate_package_entry,
         vsix_start_current_repair_command_present,
     };
     use serde_json::Value;
-    use sha2::{Digest, Sha256};
     use std::fs;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -3479,33 +3698,6 @@ mod tests {
             .map_err(|err| format!("failed to remove {}: {err}", path.display()))?;
         if !present {
             return Err("expected start current repair command to be detected".to_string());
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn bound_repo_exposure_json_recommits_content_placeholder() -> Result<(), String> {
-        let placeholder = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
-        let raw = format!(r#"{{"artifact":{{"content_sha256":"{placeholder}"}}}}"#);
-        let bound = recommit_repo_exposure_json(raw);
-        let value: Value = serde_json::from_str(&bound)
-            .map_err(|err| format!("bound artifact should parse as JSON: {err}"))?;
-        let declared = value["artifact"]["content_sha256"]
-            .as_str()
-            .ok_or_else(|| "bound artifact digest is missing".to_string())?;
-        let canonical = bound.replacen(declared, placeholder, 1);
-        let digest = Sha256::digest(canonical.as_bytes());
-        let expected = format!(
-            "sha256:{}",
-            digest
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>()
-        );
-        if declared != expected {
-            return Err(format!(
-                "unexpected content commitment: {declared} != {expected}"
-            ));
         }
         Ok(())
     }
