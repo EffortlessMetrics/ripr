@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/counter.py:next_value:return_value:return_value:count-1
   Changed behavior: return count - 1
   Missing discriminator: A strong Python oracle reaches `next_value`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Ad…

@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/invoice.py:invoice_payload:field_value:field_construction:return_status_paid_id_invoice_id
   Changed behavior: return {"status": "paid", "id": invoice_id}
   Missing discriminator: Related Python test reaches `invoice_payload` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value.

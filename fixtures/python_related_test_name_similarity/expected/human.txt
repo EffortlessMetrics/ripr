@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10
   Changed behavior: return amount - 10
   Missing discriminator: Only heuristic Python test links were found for `apply_discount`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion.

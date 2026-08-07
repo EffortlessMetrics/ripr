@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/promotions.py:trial_extension:predicate_boundary:predicate:days>=minimum_days
   Changed behavior: if days >= minimum_days:
   Missing discriminator: Related Python test reaches `trial_extension` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.

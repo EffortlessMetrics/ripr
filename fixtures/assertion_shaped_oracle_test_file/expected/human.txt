@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/assertion_shaped_oracle_test_file/input/src/fragment_checks.rs:8
   Static exposure: infection_unknown (warning, confidence 0.66)
+  Why infection_unknown: the change reaches a sink but infection could not be determined statically
   Changed behavior: fragment.crate_root.is_none()
   Missing discriminator: No detected boundary input for the changed predicate
   Related test: tests/fragments.rs:5 workspace_source_paths_are_stable

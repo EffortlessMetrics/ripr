@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/weak_error_oracle/input/src/lib.rs:7
   Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Err(AuthError::RevokedToken);
   Missing discriminator: Missing discriminator value: AuthError::RevokedToken
   Related test: tests/errors.rs:4 empty_token_is_rejected

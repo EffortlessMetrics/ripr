@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: static_unknown (note, confidence 0.20)
+  Why static_unknown: the analysis could not determine a static exposure state
   Changed behavior: if amount >= threshold:
   Missing discriminator: Static limit `property_based_test`: a related Python test uses property-based generated inputs such as `@given(...)`; syntax-first preview evidence cannot prove whether the generat…
   Related test: tests/test_pricing.py:6 test_apply_discount_property

@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/propagate_log_message/input/src/lib.rs:2
   Static exposure: reachable_unrevealed (warning, confidence 0.79)
+  Why reachable_unrevealed: no related test was found that reaches this change
   Changed behavior: log::info!("amount is {}", amount * 9);
   Missing discriminator: No detected assertion observes the changed value, error, field, or effect
   Related test: tests/report_tests.rs:4 report_does_not_panic

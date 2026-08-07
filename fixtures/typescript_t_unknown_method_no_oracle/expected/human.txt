@@ -16,6 +16,7 @@ Start here:
   Language: typescript
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return total - penalty + 0;
   Missing discriminator: Related test reaches `score` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form …
   Related test: tests/score.test.ts:3 unknown t method mentions the result

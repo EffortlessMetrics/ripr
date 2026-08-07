@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired
   Changed behavior: logger.warning("coupon expired")
   Missing discriminator: Related Python test reaches `warn_coupon` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the changed output/log/call effect.

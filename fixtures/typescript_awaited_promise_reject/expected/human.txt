@@ -16,6 +16,7 @@ Start here:
   Language: typescript
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return await Promise.reject(new Error("missing id"));
   Missing discriminator: Related test reaches `loadProfile` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repai…
   Related test: tests/profile.test.ts:1 rejects missing profile id broadly

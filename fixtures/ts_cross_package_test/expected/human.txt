@@ -16,6 +16,7 @@ Start here:
   Language: typescript
   Language status: preview
   Static exposure: no_static_path (warning, confidence 0.40)
+  Why no_static_path: the changed behavior could not be traced to an observable output
   Changed behavior: if (quantity >= minimum) {
   Missing discriminator: No test references `checkStock(` — add a test that calls the changed owner.
   Next step: TypeScript preview advisory: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair packet…

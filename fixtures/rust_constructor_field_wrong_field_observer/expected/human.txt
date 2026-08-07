@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/rust_constructor_field_wrong_field_observer/input/src/lib.rs:15
   Static exposure: no_static_path (warning, confidence 0.35)
+  Why no_static_path: the changed behavior could not be traced to an observable output
   Changed behavior: storage,
   Missing discriminator: No relevant oracle was detected
   Next step: ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr…

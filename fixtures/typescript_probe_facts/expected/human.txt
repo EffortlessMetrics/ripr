@@ -16,6 +16,7 @@ Start here:
   Language: typescript
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: const total = applyDiscount(amount, threshold);
   Missing discriminator: Related test reaches `summarize` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repa…
   Related test: tests/ambiguous.test.ts:1 summarize smoke

@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: static_unknown (note, confidence 0.20)
+  Why static_unknown: the analysis could not determine a static exposure state
   Changed behavior: return getattr(client, method_name)()
   Missing discriminator: Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called behavior…
   Related test: tests/test_dispatch.py:4 test_call_named_dispatches_total

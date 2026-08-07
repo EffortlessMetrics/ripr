@@ -16,6 +16,7 @@ Start here:
   Language: typescript
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return count > 99 ? "99+" : String(count);
   Missing discriminator: Only heuristic TypeScript test links were found for `formatBadge`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/badge.test.tsx:3 renders the cart label

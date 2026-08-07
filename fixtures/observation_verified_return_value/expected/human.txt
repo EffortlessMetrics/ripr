@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/observation_verified_return_value/input/src/lib.rs:4
   Static exposure: static_unknown (note, confidence 0.50)
+  Why static_unknown: the analysis could not determine a static exposure state
   Changed behavior: x + 1
   Missing discriminator: No strong discriminator was detected
   Related test: tests/score_tests.rs:4 score_uses_scale_factor

@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/notify.py:send_receipt:call_or_output_effect:side_effect:notifier_receipt.sent_order_id
   Changed behavior: notifier("receipt.sent", order_id)
   Missing discriminator: Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect.

@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/boundary_gap_reordered_tests/input/src/lib.rs:2
   Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: the evidence path is partially complete — see full form for details
   Changed behavior: amount >= discount_threshold
   Missing discriminator: Missing discriminator value: amount == discount_threshold
   Related test: tests/pricing.rs:9 below_threshold_has_no_discount

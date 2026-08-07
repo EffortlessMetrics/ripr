@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/all_no_path_disclosure/input/src/lib.rs:2
   Static exposure: no_static_path (warning, confidence 0.48)
+  Why no_static_path: the changed behavior could not be traced to an observable output
   Changed behavior: if amount >= fee {
   Missing discriminator: No detected boundary input for the changed predicate
   Next step: ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr…

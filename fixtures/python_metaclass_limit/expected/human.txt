@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: static_unknown (note, confidence 0.20)
+  Why static_unknown: the analysis could not determine a static exposure state
   Changed behavior: class InvoiceRecord(metaclass=AuditMeta):
   Missing discriminator: Static limit `metaprogramming`: the Python preview adapter saw metaprogramming syntax and does not infer runtime-created behavior.
   Related test: tests/test_models.py:4 test_invoice_record_status

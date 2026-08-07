@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/observation_unverified_field_construction/input/src/lib.rs:9
   Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: retries: 1,
   Missing discriminator: Missing discriminator value: retries: 1,
   Related test: tests/item_tests.rs:4 config_exists

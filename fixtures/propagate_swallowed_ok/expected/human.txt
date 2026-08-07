@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/propagate_swallowed_ok/input/src/lib.rs:11
   Static exposure: propagation_unknown (note, confidence 0.66)
+  Why propagation_unknown: the change propagates but the downstream effect is unknown statically
   Changed behavior: self.persist(amount * 9).ok()
   Missing discriminator: No clear propagation path from changed behavior to an observable sink
   Related test: tests/ledger_tests.rs:4 apply_changes_balance

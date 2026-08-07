@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/rust_macro_wrapped_assertion_limitation/input/src/internal.rs:2
   Static exposure: reachable_unrevealed (warning, confidence 0.71)
+  Why reachable_unrevealed: no related test was found that reaches this change
   Changed behavior: if a >= b {
   Missing discriminator: Missing discriminator value: a == b
   Related test: tests/it.rs:8 test_inner_with_custom_assertion_macro

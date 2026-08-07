@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/parseint.py:parse:exception_path:error_path:keyerror_empty
   Changed behavior: raise KeyError("empty")
   Missing discriminator: A strong Python oracle reaches `parse`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an …

@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/rust_long_expression_display_bound/input/src/lib.rs:10
   Static exposure: propagation_unknown (note, confidence 0.66)
+  Why propagation_unknown: the change propagates but the downstream effect is unknown statically
   Changed behavior: decisions.iter().filter(|d| d.decision == "blocking").count() == 0
   Missing discriminator: Missing discriminator value: decisions.iter().filter(|d| d.decision == "blocking").count() == 0
   Related test: src/lib.rs:25 single_blocking_decision_reports_its_reason

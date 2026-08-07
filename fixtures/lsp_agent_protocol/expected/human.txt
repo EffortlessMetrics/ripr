@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/lsp_agent_protocol/input/src/lib.rs:2
   Static exposure: static_unknown (note, confidence 0.50)
+  Why static_unknown: the analysis could not determine a static exposure state
   Changed behavior: value + 2
   Missing discriminator: No strong discriminator was detected
   Related test: src/lib.rs:10 boundary_is_observed

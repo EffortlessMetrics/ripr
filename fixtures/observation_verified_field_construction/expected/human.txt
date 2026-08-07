@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/observation_verified_field_construction/input/src/lib.rs:9
   Static exposure: propagation_unknown (note, confidence 0.66)
+  Why propagation_unknown: the change propagates but the downstream effect is unknown statically
   Changed behavior: retries,
   Missing discriminator: No clear propagation path from changed behavior to an observable sink
   Related test: tests/item_tests.rs:4 config_has_three_retries

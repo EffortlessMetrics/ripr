@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: static_unknown (note, confidence 0.20)
+  Why static_unknown: the analysis could not determine a static exposure state
   Changed behavior: return lambda value: value + 2
   Missing discriminator: Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet.
   Related test: tests/test_mapper.py:4 test_make_mapper_adds_two

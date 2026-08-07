@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/assertion_shaped_control_production_owner/input/src/lib.rs:2
   Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: the evidence path is partially complete — see full form for details
   Changed behavior: amount >= 100
   Missing discriminator: No detected boundary input for the changed predicate
   Related test: tests/pricing.rs:8 discounted_total_at_boundary

@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: no_static_path (warning, confidence 0.40)
+  Why no_static_path: the changed behavior could not be traced to an observable output
   Canonical gap: gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10
   Changed behavior: return amount - 10
   Missing discriminator: No Python test references `apply_discount(`; add a pytest or unittest test that calls the changed owner.

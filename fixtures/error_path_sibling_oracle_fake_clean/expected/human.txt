@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/error_path_sibling_oracle_fake_clean/input/src/lib.rs:10
   Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Err(ParseError::TooLong);
   Missing discriminator: Missing discriminator value: ParseError::TooLong
   Related test: tests/validation.rs:8 valid_input_returns_valid

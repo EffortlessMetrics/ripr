@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/match_arm_blind/input/src/lib.rs:4
   Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: None =>
   Missing discriminator: No strong discriminator was detected
   Related test: tests/reason.rs:4 some_arm_returns_incremented_value

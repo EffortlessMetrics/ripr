@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/unwrap_err_sibling_variant/input/src/lib.rs:11
   Static exposure: reachable_unrevealed (warning, confidence 0.79)
+  Why reachable_unrevealed: no related test was found that reaches this change
   Changed behavior: return Err(CalcError::TooLarge);
   Missing discriminator: Missing discriminator value: CalcError::TooLarge
   Next step: Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.

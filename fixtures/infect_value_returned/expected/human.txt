@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/infect_value_returned/input/src/lib.rs:5
   Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: result + 1
   Missing discriminator: No strong discriminator was detected
   Related test: tests/score_tests.rs:4 score_uses_multiplier

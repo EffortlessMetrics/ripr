@@ -16,6 +16,7 @@ Start here:
   Language: typescript
   Language status: preview
   Static exposure: no_static_path (warning, confidence 0.40)
+  Why no_static_path: the changed behavior could not be traced to an observable output
   Changed behavior: return this.valid.has(token.trim());
   Missing discriminator: No trusted TypeScript method receiver relation for `validate`. Direct `new ClassName(...)` receiver calls are supported, but factories, dependency injection, mocked modules, protot…
   Next step: TypeScript preview advisory: method receiver relation is missing context; use a direct `new ClassName(...)` receiver observer when safe, and keep factories, dependency injection, m…

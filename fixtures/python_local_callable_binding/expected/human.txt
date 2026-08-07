@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/stop.py:stop_after_attempt.__call__:return_value:return_value:attempt_number>=self.max_attempt_number
   Changed behavior: return attempt_number >= self.max_attempt_number
   Missing discriminator: Related Python test reaches `__call__` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the returned value.

@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/observation_unverified_call_deletion/input/src/lib.rs:10
   Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: cache.insert("result_key", result)
   Missing discriminator: No strong discriminator was detected
   Related test: tests/store_tests.rs:4 store_result_runs_without_panic

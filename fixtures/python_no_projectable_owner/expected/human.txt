@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/constants.py:<module>:predicate_boundary:predicate:base_discount=12
   Changed behavior: BASE_DISCOUNT = 12
   Missing discriminator: Only heuristic Python test links were found for `<module>`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion.

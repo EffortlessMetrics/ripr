@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: static_unknown (note, confidence 0.20)
+  Why static_unknown: the analysis could not determine a static exposure state
   Changed behavior: return client.total_with_tax()
   Missing discriminator: Static limit `mocked_module`: a related Python test uses patch/mock/monkeypatch module syntax; the preview adapter does not resolve runtime substitution semantics.
   Related test: tests/test_service.py:7 test_fetch_total_uses_client_total

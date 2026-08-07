@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/snapshot_oracle/input/src/lib.rs:2
   Static exposure: weakly_exposed (warning, confidence 0.84)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if code <= 299 {
   Missing discriminator: Missing discriminator value: code == 299
   Related test: tests/rendering.rs:4 renders_error_status_snapshot

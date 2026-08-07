@@ -12,6 +12,7 @@ Start here:
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/rust_constructor_field_observation/input/src/lib.rs:15
   Static exposure: propagation_unknown (note, confidence 0.66)
+  Why propagation_unknown: the change propagates but the downstream effect is unknown statically
   Changed behavior: storage,
   Missing discriminator: No clear propagation path from changed behavior to an observable sink
   Related test: tests/lower.rs:4 lower_ast_preserves_storage

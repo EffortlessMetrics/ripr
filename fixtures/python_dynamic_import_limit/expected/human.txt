@@ -16,6 +16,7 @@ Start here:
   Language: python
   Language status: preview
   Static exposure: static_unknown (note, confidence 0.20)
+  Why static_unknown: the analysis could not determine a static exposure state
   Changed behavior: return importlib.import_module(module_name).handle(payload, strict=True)
   Missing discriminator: Static limit `missing_import_graph`: the changed line uses dynamic import syntax such as `importlib.import_module(...)` or `__import__(...)`; the Python preview adapter does not bu…
   Related test: tests/test_plugin_loader.py:4 test_run_plugin_returns_payload_status
