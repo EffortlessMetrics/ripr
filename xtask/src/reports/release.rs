@@ -16,7 +16,7 @@ const AGENT_VERIFY_OUT: &str = "target/ripr/release-readiness/agent-verify.json"
 const AGENT_RECEIPT_OUT: &str = "target/ripr/release-readiness/agent-receipt.json";
 const BOUNDARY_BEFORE_OUT: &str = "target/ripr/release-readiness/before.repo-exposure.json";
 const BOUNDARY_AFTER_OUT: &str = "target/ripr/release-readiness/after.repo-exposure.json";
-const BOUNDARY_GAP_SEAM_ID: &str = "67fc764ba37d77bd";
+pub(crate) const BOUNDARY_GAP_SEAM_ID: &str = "67fc764ba37d77bd";
 const BEFORE_EXPOSURE: &str =
     "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json";
 const AFTER_EXPOSURE: &str =
@@ -47,11 +47,11 @@ struct ReleaseReadinessCheck {
 }
 
 #[derive(Clone, Debug)]
-struct CommandResult {
-    status: Option<i32>,
-    success: bool,
-    stdout: String,
-    stderr: String,
+pub(crate) struct CommandResult {
+    pub(crate) status: Option<i32>,
+    pub(crate) success: bool,
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
 }
 
 struct PublicCliReceipt<'a> {
@@ -73,10 +73,10 @@ struct PublicCliJourney {
     details: Vec<String>,
 }
 
-struct AuthenticRepoExposureFixture {
-    root: PathBuf,
-    before_commit: String,
-    after_commit: String,
+pub(crate) struct AuthenticRepoExposureFixture {
+    pub(crate) root: PathBuf,
+    pub(crate) before_commit: String,
+    pub(crate) after_commit: String,
 }
 
 pub(crate) fn release_readiness(args: &[String]) -> Result<(), String> {
@@ -360,13 +360,13 @@ fn package_install_check(version: &str, crate_version: Option<&str>) -> ReleaseR
     }
 }
 
-struct PackageInstallResult {
-    success: bool,
-    artifacts: Vec<String>,
-    details: Vec<String>,
+pub(crate) struct PackageInstallResult {
+    pub(crate) success: bool,
+    pub(crate) artifacts: Vec<String>,
+    pub(crate) details: Vec<String>,
 }
 
-fn run_packaged_install(
+pub(crate) fn run_packaged_install(
     version: &str,
     crate_version: &str,
 ) -> Result<PackageInstallResult, String> {
@@ -1736,7 +1736,7 @@ fn agent_verify_fixture_check(
 /// `installed_ripr_binary()` path would not resolve there. Resolve it before
 /// the journey begins; `fs::canonicalize` always returns an absolute path on
 /// success.
-fn absolute_installed_binary(binary: &Path) -> Result<PathBuf, String> {
+pub(crate) fn absolute_installed_binary(binary: &Path) -> Result<PathBuf, String> {
     fs::canonicalize(binary).map_err(|err| format!("canonicalize installed binary failed: {err}"))
 }
 
@@ -1756,7 +1756,8 @@ fn run_authentic_repo_exposure_journey(binary: &Path) -> Result<Vec<String>, Str
     Ok(details)
 }
 
-fn create_authentic_repo_exposure_fixture() -> Result<AuthenticRepoExposureFixture, String> {
+pub(crate) fn create_authentic_repo_exposure_fixture()
+-> Result<AuthenticRepoExposureFixture, String> {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock is before Unix epoch: {err}"))?
@@ -1864,24 +1865,67 @@ fn run_authentic_repo_exposure_journey_in_fixture(
     binary: &Path,
     fixture: &AuthenticRepoExposureFixture,
 ) -> Result<Vec<String>, String> {
+    let mut details = produce_authentic_chain_in_fixture(
+        binary,
+        &fixture.root,
+        &fixture.before_commit,
+        &fixture.after_commit,
+    )?;
+    // Retention is the caller's contract (see the chain's doc comment): the
+    // positive journey copies the five canonical artifacts into the
+    // release-readiness evidence directory.
+    for (source, destination) in [
+        ("before.repo-exposure.json", BOUNDARY_BEFORE_OUT),
+        ("after.repo-exposure.json", BOUNDARY_AFTER_OUT),
+        ("analysis-outcome.json", AGENT_ANALYSIS_OUTCOME_OUT),
+        ("agent-verify.json", AGENT_VERIFY_OUT),
+        ("agent-receipt.json", AGENT_RECEIPT_OUT),
+    ] {
+        fs::copy(fixture.root.join(source), destination).map_err(|err| {
+            format!("retain authentic artifact {source} at {destination} failed: {err}")
+        })?;
+    }
+    details.push(
+        "producer artifacts, canonical analysis outcome, verify output, and receipt retained under target/ripr/release-readiness".to_string(),
+    );
+    Ok(details)
+}
+
+/// Run the full producer-authentic readiness chain — before/after
+/// repo-exposure artifacts, canonical analysis outcome, agent verify, and
+/// agent receipt — inside one controlled external fixture with the installed
+/// candidate binary. Shared by the positive release-readiness journey
+/// (retention above) and the #2824 negative corpus, which re-produces the
+/// chain inside each cloned case workspace so artifact root binding stays
+/// honest. The installed binary remains the only artifact validator here.
+///
+/// Contract boundary: this function PRODUCES the chain artifacts inside
+/// `root` and never copies them out — retention is deliberately the caller's
+/// decision because the two callers retain differently (the positive journey
+/// copies the five canonical artifacts to `target/ripr/release-readiness/`;
+/// the negative corpus retains per-case receipts under its own case
+/// directories). The returned vector is human-readable report detail for the
+/// readiness markdown, not a machine-checked contract; the machine-checkable
+/// behavior is the produced artifact set plus the passing verify/receipt
+/// chain, exercised end-to-end by `cargo xtask release-readiness` and the
+/// negative-corpus acceptance run (a direct unit test would need a real
+/// installed producer binary, so no lighter honest pin exists in-process).
+pub(crate) fn produce_authentic_chain_in_fixture(
+    binary: &Path,
+    root: &Path,
+    before_commit: &str,
+    after_commit: &str,
+) -> Result<Vec<String>, String> {
     let before_name = "before.repo-exposure.json";
     let after_name = "after.repo-exposure.json";
-    checkout_fixture_commit(&fixture.root, &fixture.before_commit)?;
-    let _before = run_producer_check(binary, &fixture.root, before_name)?;
-    checkout_fixture_commit(&fixture.root, &fixture.after_commit)?;
-    let _after = run_producer_check(binary, &fixture.root, after_name)?;
-    validate_authentic_artifact(
-        &fixture.root.join(before_name),
-        &fixture.before_commit,
-        "before",
-    )?;
-    validate_authentic_artifact(
-        &fixture.root.join(after_name),
-        &fixture.after_commit,
-        "after",
-    )?;
-    let before_value = read_json_value(&fixture.root.join(before_name))?;
-    let after_value = read_json_value(&fixture.root.join(after_name))?;
+    checkout_fixture_commit(root, before_commit)?;
+    let _before = run_producer_check(binary, root, before_name)?;
+    checkout_fixture_commit(root, after_commit)?;
+    let _after = run_producer_check(binary, root, after_name)?;
+    validate_authentic_artifact(&root.join(before_name), before_commit, "before")?;
+    validate_authentic_artifact(&root.join(after_name), after_commit, "after")?;
+    let before_value = read_json_value(&root.join(before_name))?;
+    let after_value = read_json_value(&root.join(after_name))?;
     let before_input = artifact_string(&before_value, &["artifact", "analysis", "input_identity"])?;
     let after_input = artifact_string(&after_value, &["artifact", "analysis", "input_identity"])?;
     let before_snapshot = artifact_string(&before_value, &["artifact", "snapshot_identity"])?;
@@ -1892,7 +1936,7 @@ fn run_authentic_repo_exposure_journey_in_fixture(
                 .to_string(),
         );
     }
-    run_analysis_outcome_check(binary, &fixture.root)?;
+    run_analysis_outcome_check(binary, root)?;
     let verify_args = vec![
         "agent".to_string(),
         "verify".to_string(),
@@ -1904,19 +1948,14 @@ fn run_authentic_repo_exposure_journey_in_fixture(
         after_name.to_string(),
         "--json".to_string(),
     ];
-    let verify = run_command_in_dir(
-        binary,
-        &verify_args,
-        &fixture.root,
-        "authentic agent verify",
-    )?;
+    let verify = run_command_in_dir(binary, &verify_args, root, "authentic agent verify")?;
     if !verify.success {
         return Err(format!(
             "authentic agent verify failed: {}",
             command_details(&verify).join("; ")
         ));
     }
-    fs::write(fixture.root.join("agent-verify.json"), &verify.stdout)
+    fs::write(root.join("agent-verify.json"), &verify.stdout)
         .map_err(|err| format!("write authentic agent verify artifact failed: {err}"))?;
     let receipt_args = vec![
         "agent".to_string(),
@@ -1931,41 +1970,28 @@ fn run_authentic_repo_exposure_journey_in_fixture(
         "--out".to_string(),
         "agent-receipt.json".to_string(),
     ];
-    let receipt = run_command_in_dir(
-        binary,
-        &receipt_args,
-        &fixture.root,
-        "authentic agent receipt",
-    )?;
-    if !receipt.success || !fixture.root.join("agent-receipt.json").is_file() {
+    let receipt = run_command_in_dir(binary, &receipt_args, root, "authentic agent receipt")?;
+    if !receipt.success || !root.join("agent-receipt.json").is_file() {
         return Err(format!(
             "authentic agent receipt failed: {}",
             command_details(&receipt).join("; ")
         ));
     }
-    for (source, destination) in [
-        (before_name, BOUNDARY_BEFORE_OUT),
-        (after_name, BOUNDARY_AFTER_OUT),
-        ("analysis-outcome.json", AGENT_ANALYSIS_OUTCOME_OUT),
-        ("agent-verify.json", AGENT_VERIFY_OUT),
-        ("agent-receipt.json", AGENT_RECEIPT_OUT),
-    ] {
-        fs::copy(fixture.root.join(source), destination).map_err(|err| {
-            format!("retain authentic artifact {source} at {destination} failed: {err}")
-        })?;
-    }
     Ok(vec![
-        format!("authentic fixture before commit: {}", fixture.before_commit),
-        format!("authentic fixture after commit: {}", fixture.after_commit),
+        format!("authentic fixture before commit: {before_commit}"),
+        format!("authentic fixture after commit: {after_commit}"),
         format!("before input identity: {before_input}"),
         format!("after input identity: {after_input}"),
         format!("before snapshot identity: {before_snapshot}"),
         format!("after snapshot identity: {after_snapshot}"),
-        "producer artifacts, canonical analysis outcome, verify output, and receipt retained under target/ripr/release-readiness".to_string(),
     ])
 }
 
-fn run_producer_check(binary: &Path, root: &Path, artifact_name: &str) -> Result<Value, String> {
+pub(crate) fn run_producer_check(
+    binary: &Path,
+    root: &Path,
+    artifact_name: &str,
+) -> Result<Value, String> {
     let args = vec![
         "check".to_string(),
         "--root".to_string(),
@@ -2012,7 +2038,7 @@ fn run_analysis_outcome_check(binary: &Path, root: &Path) -> Result<(), String> 
         .map_err(|err| format!("write analysis outcome artifact failed: {err}"))
 }
 
-fn validate_authentic_artifact(
+pub(crate) fn validate_authentic_artifact(
     path: &Path,
     expected_head: &str,
     label: &str,
@@ -2041,7 +2067,7 @@ fn validate_authentic_artifact(
     Ok(())
 }
 
-fn artifact_string<'a>(value: &'a Value, path: &[&str]) -> Result<&'a str, String> {
+pub(crate) fn artifact_string<'a>(value: &'a Value, path: &[&str]) -> Result<&'a str, String> {
     let mut current = value;
     for key in path {
         current = current
@@ -2053,7 +2079,7 @@ fn artifact_string<'a>(value: &'a Value, path: &[&str]) -> Result<&'a str, Strin
         .ok_or_else(|| format!("artifact {} is not a string", path.join(".")))
 }
 
-fn checkout_fixture_commit(root: &Path, commit: &str) -> Result<(), String> {
+pub(crate) fn checkout_fixture_commit(root: &Path, commit: &str) -> Result<(), String> {
     let result = run_fixture_git_command(
         root,
         &["checkout", "--quiet", "--detach", commit],
@@ -2068,7 +2094,7 @@ fn checkout_fixture_commit(root: &Path, commit: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn fixture_head(root: &Path) -> Result<String, String> {
+pub(crate) fn fixture_head(root: &Path) -> Result<String, String> {
     let result = run_fixture_git_command(root, &["rev-parse", "HEAD"], "read fixture HEAD")?;
     if !result.success {
         return Err(format!(
@@ -2083,7 +2109,7 @@ fn fixture_head(root: &Path) -> Result<String, String> {
     Ok(head.to_string())
 }
 
-fn run_fixture_git_command(
+pub(crate) fn run_fixture_git_command(
     root: &Path,
     args: &[&str],
     operation: &str,
@@ -2102,7 +2128,7 @@ fn run_fixture_git_command(
     Ok(result)
 }
 
-fn run_command_in_dir(
+pub(crate) fn run_command_in_dir(
     program: impl AsRef<Path>,
     args: &[String],
     cwd: &Path,
@@ -2800,7 +2826,7 @@ fn md_escape_inline(value: &str) -> String {
     value.replace('|', "\\|").replace('\n', " ")
 }
 
-fn command_details(result: &CommandResult) -> Vec<String> {
+pub(crate) fn command_details(result: &CommandResult) -> Vec<String> {
     let mut details = Vec::new();
     details.push(match result.status {
         Some(code) => format!("exit code: {code}"),
@@ -2848,7 +2874,7 @@ enum PackageVersion {
 /// `extension-version-match` claims it compared the extension to the crate
 /// version, so this must return the real version or `None` — never a value it
 /// merely found nearby.
-fn read_crate_version(manifest: &Path, workspace_manifest: &Path) -> Option<String> {
+pub(crate) fn read_crate_version(manifest: &Path, workspace_manifest: &Path) -> Option<String> {
     let text = crate::read_text_lossy(manifest).ok()?;
     match package_version(&text, "package")? {
         PackageVersion::Literal(version) => Some(version),
@@ -2956,7 +2982,7 @@ fn inline_table_inherits_workspace(value: &str) -> bool {
     })
 }
 
-fn git_worktree_is_clean() -> Result<bool, String> {
+pub(crate) fn git_worktree_is_clean() -> Result<bool, String> {
     let result = run_command("git", &["status", "--porcelain"])?;
     if !result.success {
         return Err(command_details(&result).join("; "));
@@ -2964,7 +2990,7 @@ fn git_worktree_is_clean() -> Result<bool, String> {
     Ok(result.stdout.trim().is_empty())
 }
 
-fn installed_ripr_binary() -> PathBuf {
+pub(crate) fn installed_ripr_binary() -> PathBuf {
     Path::new(INSTALL_ROOT)
         .join("bin")
         .join(format!("ripr{}", std::env::consts::EXE_SUFFIX))
@@ -2979,7 +3005,7 @@ fn read_json_status(path: &Path) -> Result<String, String> {
         .ok_or_else(|| format!("{} is missing status", crate::normalize_path(path)))
 }
 
-fn read_json_value(path: &Path) -> Result<Value, String> {
+pub(crate) fn read_json_value(path: &Path) -> Result<Value, String> {
     let text = crate::read_text_lossy(path)?;
     serde_json::from_str(&text).map_err(|err| {
         format!(
