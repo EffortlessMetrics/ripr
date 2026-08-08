@@ -1,7 +1,7 @@
 {
   "inputs": {
     "after": "target/ripr/test-agent-verify/after.repo-exposure.json",
-    "agent_verify_json": "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
+    "agent_verify_json": "target/ripr/test-agent-verify/agent-verify.json",
     "before": "target/ripr/test-agent-verify/before.repo-exposure.json"
   },
   "provenance": {
@@ -28,7 +28,7 @@
     "ripr_version": "<ripr_version>",
     "seam_id": "67fc764ba37d77bd",
     "verify_artifact": {
-      "path": "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
+      "path": "target/ripr/test-agent-verify/agent-verify.json",
       "sha256": "sha256:2358acd39a58ccb7acc5b64b8cf0ea8ce835677a48f7e7d035c05f51d56dea87"
     },
     "workflow_artifact": null

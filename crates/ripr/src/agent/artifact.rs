@@ -277,6 +277,7 @@ pub(crate) fn validate_repo_exposure_artifact(
         producer_version: identity.producer.version,
         analysis_mode: identity.analysis.mode,
         analysis_profile: identity.analysis.profile,
+        content_sha256: identity.content_sha256,
     })
 }
 
@@ -297,6 +298,10 @@ pub(crate) struct ValidatedArtifact {
     pub(crate) producer_version: String,
     pub(crate) analysis_mode: String,
     pub(crate) analysis_profile: String,
+    /// The validated exact-bytes content commitment declared by the artifact
+    /// envelope. Verify output binds this value so a later byte change to the
+    /// artifact is detectable downstream (#2922 PR B).
+    pub(crate) content_sha256: String,
 }
 
 /// Validate that two producer artifacts describe comparable analyses. The
@@ -1049,6 +1054,7 @@ mod tests {
             producer_version: "0.11.0".to_string(),
             analysis_mode: "draft".to_string(),
             analysis_profile: "draft".to_string(),
+            content_sha256: format!("sha256:{}", "0".repeat(64)),
         }
     }
 

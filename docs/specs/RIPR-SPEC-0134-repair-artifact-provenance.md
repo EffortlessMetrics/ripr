@@ -66,20 +66,35 @@ supplied verify JSON must exactly match that recomputed output, including its
 currentness and movement fields. Hand-authored or altered movement evidence is
 rejected before receipt issuance.
 
+Verify schema `0.2` (#2922) binds the result to the exact artifact bytes it
+compared: canonical output carries `inputs.before_content_sha256` and
+`inputs.after_content_sha256`, the validated `artifact.content_sha256`
+commitments of the pair. The receipt's canonical recomputation therefore
+rejects a verify result replayed against different or mutated artifact bytes —
+including mutations invisible to the movement render — with one typed
+`[not_canonical]` reason, and rejects any verify JSON whose schema version is
+not the canonical one with `[unsupported_schema]` before any artifact work. A
+verify result produced while the pair was current is stale after repository
+movement and is rejected on the same canonical comparison; a fresh verify
+after movement succeeds but discloses `historical_noncurrent`.
+
 ## Non-claims
 
 - The envelope is not a digital signature or proof against a compromised RIPR
   process.
 - `agent verify` still compares static before/after evidence only; it does not
   execute tests or runtime mutation testing.
-- Command execution, configuration binding, receipt signatures, and replay
-  protection remain follow-up slices under #1941.
+- The schema `0.2` content-commitment binding (#2922) is byte-level replay
+  defense, not a signature: it detects replayed, stale, or mutated evidence,
+  but command execution binding, configuration binding, and receipt signatures
+  remain follow-up slices under #1941.
 
 ## Non-Goals
 
 - No runtime test or mutation execution.
-- No receipt signature, remote attestation, replay protection, or merge-policy
-  change.
+- No receipt signature, remote attestation, or merge-policy change. The #2922
+  replay defense is a content-commitment byte binding enforced by the existing
+  canonical comparison, not a new trust authority.
 - No configuration or command-execution binding beyond the producer metadata
   recorded here.
 
@@ -90,7 +105,11 @@ rejected before receipt issuance.
   dirty-worktree disclosure, tampered bytes, incomparable input identities,
   unsupported schema, malformed typed seam, plausible uncommitted JSON,
   fabricated verify JSON, altered verify movement, incomparable base revision,
-  and incomparable analysis inputs.
+  incomparable analysis inputs, verify replay against mutated artifact bytes,
+  tampered pair-binding fields, unsupported verify schema versions, stale
+  verify after repository movement, a receipt target absent from both states,
+  and an unmoved retained target whose receipt stays `unchanged` while a
+  different seam moves.
 - The editor repair-loop fixture consumes bound artifacts and records explicit
   currentness.
 
@@ -110,10 +129,16 @@ an unsupported schema fails before movement calculation.
 
 - `crates/ripr/src/agent/artifact.rs` tests the fixed commitment protocol and
   duplicate-field rejection.
+- `crates/ripr/src/app/agent_receipt.rs` tests the fail-closed verify schema
+  gate (`[unsupported_schema]`) ahead of any artifact IO.
 - `crates/ripr/tests/cli_smoke.rs` tests valid, tampered, fabricated, and
   editor-loop cases, plus receipt rejection of fabricated and altered verify
-  output, incomparable base revisions, incomparable analysis inputs, and
-  byte-different re-renderings of canonical verify output.
+  output, incomparable base revisions, incomparable analysis inputs,
+  byte-different re-renderings of canonical verify output, verify replay
+  against mutated artifact bytes, tampered pair-binding digests and status,
+  older/newer verify schema versions, stale verify replay after repository
+  movement, an absent receipt target, and the unmoved-retained-target
+  projection honesty case.
 
 ## Implementation Mapping
 
@@ -122,7 +147,9 @@ an unsupported schema fails before movement calculation.
 - `crates/ripr/src/cli/commands.rs` validates both inputs before movement.
 - `crates/ripr/src/app/agent_receipt.rs` validates inputs and recomputes
   agent-verify output before receipt issuance.
-- `crates/ripr/src/output/outcome/render_json.rs` discloses currentness.
+- `crates/ripr/src/output/outcome/render_json.rs` discloses currentness and
+  renders the artifact content-commitment binding (`AgentVerifyArtifactBinding`
+  in `crates/ripr/src/output/outcome/mod.rs`).
 
 ## Metrics
 

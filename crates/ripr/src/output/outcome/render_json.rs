@@ -1,7 +1,7 @@
 use super::{
-    AGENT_VERIFY_SCHEMA_VERSION, TARGETED_TEST_OUTCOME_SCHEMA_VERSION, TargetedTestOutcomeMovement,
-    TargetedTestOutcomeReport, TargetedTestOutcomeSeam, review, stage_delta_json,
-    targeted_test_outcome_gap_summary_json,
+    AGENT_VERIFY_SCHEMA_VERSION, AgentVerifyArtifactBinding, TARGETED_TEST_OUTCOME_SCHEMA_VERSION,
+    TargetedTestOutcomeMovement, TargetedTestOutcomeReport, TargetedTestOutcomeSeam, review,
+    stage_delta_json, targeted_test_outcome_gap_summary_json,
 };
 use serde_json::Value;
 
@@ -39,6 +39,7 @@ pub(crate) fn render_targeted_test_outcome_json(
 pub(crate) fn render_agent_verify_json_with_currentness(
     report: &TargetedTestOutcomeReport,
     artifact_currentness: Option<&str>,
+    binding: &AgentVerifyArtifactBinding,
 ) -> Result<String, String> {
     let improved = report
         .moved
@@ -63,7 +64,9 @@ pub(crate) fn render_agent_verify_json_with_currentness(
         "status": "advisory",
         "inputs": {
             "before": report.before_path.as_str(),
-            "after": report.after_path.as_str()
+            "after": report.after_path.as_str(),
+            "before_content_sha256": binding.before_content_sha256.as_str(),
+            "after_content_sha256": binding.after_content_sha256.as_str()
         },
         "artifact_currentness": artifact_currentness,
         "summary": {

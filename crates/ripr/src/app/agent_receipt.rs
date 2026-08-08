@@ -15,6 +15,24 @@ pub(crate) fn validate_agent_receipt_verify_json(
     let verify: serde_json::Value = serde_json::from_str(verify_json).map_err(|err| {
         receipt_verify_input_error("malformed", format!("verify JSON is not valid JSON: {err}"))
     })?;
+    // Fail closed on schema identity before any other check (#2922 PR B):
+    // only the current agent-verify schema carries the artifact
+    // content-commitment binding the canonical comparison relies on. Older
+    // documents are unverifiable-by-shape and newer ones are unknown; both
+    // get one bounded typed rejection.
+    let schema_version = verify
+        .get("schema_version")
+        .and_then(serde_json::Value::as_str);
+    if schema_version != Some(output::outcome::AGENT_VERIFY_SCHEMA_VERSION) {
+        return Err(receipt_verify_input_error(
+            "unsupported_schema",
+            format!(
+                "agent receipt verify JSON has unsupported schema version `{}`; expected `{}` from ripr agent verify",
+                schema_version.unwrap_or("<missing>"),
+                output::outcome::AGENT_VERIFY_SCHEMA_VERSION
+            ),
+        ));
+    }
     let input_paths = output::agent_receipt::agent_receipt_input_paths_from_value(&verify)
         .map_err(|err| receipt_verify_input_error("malformed", err))?;
     let before_path =
@@ -87,9 +105,18 @@ pub(crate) fn validate_agent_receipt_verify_json(
         input_paths.after.clone(),
     )
     .map_err(|err| receipt_verify_input_error("movement_recompute", err))?;
+    // Recompute the same artifact binding the producer emits (#2922 PR B);
+    // the canonical byte comparison below is the single authority that
+    // rejects a verify JSON replayed against different or mutated artifact
+    // bytes.
+    let binding = output::outcome::AgentVerifyArtifactBinding {
+        before_content_sha256: before_identity.content_sha256.clone(),
+        after_content_sha256: after_identity.content_sha256.clone(),
+    };
     let canonical = output::outcome::render_agent_verify_json_with_currentness(
         &report,
         Some(artifact_currentness),
+        &binding,
     )
     .map_err(|err| receipt_verify_input_error("canonical_render", err))?;
     // Fail-closed on bytes, not on parsed values: the supplied document must be
@@ -155,4 +182,46 @@ fn read_snapshot(path: &Path, label: &str) -> Result<String, String> {
 
 fn receipt_verify_input_error(kind: &str, detail: impl std::fmt::Display) -> String {
     format!("agent receipt verify input [{kind}]: {detail}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn receipt_verify_rejects_unsupported_schema_before_any_io() -> Result<(), String> {
+        // The schema gate fires before path, artifact, or Git work, so an
+        // unsupported document is rejected for one bounded reason even when
+        // nothing else about the input could be read (#2922 PR B).
+        for (case, document) in [
+            ("missing schema_version", r#"{"tool":"ripr"}"#),
+            ("older schema 0.1", r#"{"schema_version":"0.1"}"#),
+            ("newer schema", r#"{"schema_version":"9.9"}"#),
+            ("non-string schema", r#"{"schema_version":2}"#),
+        ] {
+            match validate_agent_receipt_verify_json(Path::new("."), document) {
+                Err(error) if error.contains("[unsupported_schema]") => {}
+                Err(error) => {
+                    return Err(format!(
+                        "{case}: expected [unsupported_schema], got a different rejection: {error}"
+                    ));
+                }
+                Ok(_) => {
+                    return Err(format!(
+                        "{case}: unsupported verify schema must be rejected, not validated"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_verify_malformed_json_stays_typed_malformed() -> Result<(), String> {
+        match validate_agent_receipt_verify_json(Path::new("."), "{not json") {
+            Err(error) if error.contains("[malformed]") => Ok(()),
+            Err(error) => Err(format!("expected [malformed], got: {error}")),
+            Ok(_) => Err("malformed verify JSON must be rejected".to_string()),
+        }
+    }
 }

@@ -224,7 +224,18 @@ fn render_agent_verify(options: &AgentVerifyOptions) -> Result<String, String> {
         output::outcome::display_path(&options.before),
         output::outcome::display_path(&options.after),
     )?;
-    output::outcome::render_agent_verify_json_with_currentness(&report, Some(artifact_currentness))
+    // Bind the verify result to the exact artifact bytes it compared (#2922
+    // PR B): the validated content commitments ride in canonical output so a
+    // later byte change to either artifact is detectable downstream.
+    let binding = output::outcome::AgentVerifyArtifactBinding {
+        before_content_sha256: before_identity.content_sha256,
+        after_content_sha256: after_identity.content_sha256,
+    };
+    output::outcome::render_agent_verify_json_with_currentness(
+        &report,
+        Some(artifact_currentness),
+        &binding,
+    )
 }
 
 fn run_agent_verify_execute(options: AgentVerifyExecuteOptions) -> Result<(), String> {

@@ -24,11 +24,22 @@ pub(crate) use render_json::{
 use review::review_attention_class;
 
 pub(crate) const TARGETED_TEST_OUTCOME_SCHEMA_VERSION: &str = "0.1";
-// #2646: verify output has not changed structurally since the initial 0.1
-// release. Unlike receipt (0.5) and packet (0.4), which gained fields,
-// the verify JSON shape is stable. The version stays at 0.1 until a
-// breaking change lands (e.g. field removal/rename or type change).
-pub(crate) const AGENT_VERIFY_SCHEMA_VERSION: &str = "0.1";
+// #2922 PR B: version 0.2 adds the artifact content-commitment binding
+// (`inputs.before_content_sha256` / `inputs.after_content_sha256`) so a
+// verify result is bound to the exact artifact bytes it compared; the
+// receipt path fails closed on older or newer schema versions. The shape is
+// otherwise unchanged from 0.1 (#2646).
+pub(crate) const AGENT_VERIFY_SCHEMA_VERSION: &str = "0.2";
+
+/// The exact-bytes content commitments of the validated before/after
+/// artifacts a verify result was computed from (#2922 PR B). Every canonical
+/// agent-verify render carries this binding: it is the replay defense that
+/// lets a downstream consumer detect artifact bytes changed after verify.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentVerifyArtifactBinding {
+    pub(crate) before_content_sha256: String,
+    pub(crate) after_content_sha256: String,
+}
 
 const SEAM_GRIP_CLASS_ORDER: &[&str] = &[
     "strongly_gripped",
@@ -1253,11 +1264,25 @@ mod tests {
             "after.json".to_string(),
         )?;
 
-        let json = render_json::render_agent_verify_json_with_currentness(&report, None)?;
+        let json = render_json::render_agent_verify_json_with_currentness(
+            &report,
+            None,
+            &test_agent_verify_binding(),
+        )?;
         let value: Value = serde_json::from_str(&json)
             .map_err(|err| format!("agent verify JSON should parse: {err}"))?;
         assert_eq!(value["schema_version"], AGENT_VERIFY_SCHEMA_VERSION);
         assert_eq!(value["status"], "advisory");
+        // The canonical verify result binds the exact artifact content
+        // commitments it compared (#2922 PR B).
+        assert_eq!(
+            value["inputs"]["before_content_sha256"],
+            test_agent_verify_binding().before_content_sha256.as_str()
+        );
+        assert_eq!(
+            value["inputs"]["after_content_sha256"],
+            test_agent_verify_binding().after_content_sha256.as_str()
+        );
         assert_eq!(value["summary"]["improved"], 1);
         assert_eq!(value["summary"]["regressed"], 1);
         assert_eq!(value["summary"]["unchanged"], 1);
@@ -1454,7 +1479,11 @@ mod tests {
             "check_output_finding"
         );
 
-        let verify_json = render_json::render_agent_verify_json_with_currentness(&report, None)?;
+        let verify_json = render_json::render_agent_verify_json_with_currentness(
+            &report,
+            None,
+            &test_agent_verify_binding(),
+        )?;
         let verify: Value = serde_json::from_str(&verify_json)
             .map_err(|err| format!("agent verify JSON should parse: {err}"))?;
         assert_eq!(verify["summary"]["gap_movement"]["closed"], 1);
@@ -2164,6 +2193,13 @@ mod tests {
             evidence_source: "legacy_fields".to_string(),
             evidence_path: BTreeMap::new(),
             related_tests_total: 0,
+        }
+    }
+
+    fn test_agent_verify_binding() -> AgentVerifyArtifactBinding {
+        AgentVerifyArtifactBinding {
+            before_content_sha256: format!("sha256:{}", "b".repeat(64)),
+            after_content_sha256: format!("sha256:{}", "c".repeat(64)),
         }
     }
 }

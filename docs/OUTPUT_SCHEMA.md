@@ -44,7 +44,7 @@ map is:
 | `ripr doctor --json` | `schema_version` | `0.2` |
 | `ripr agent packet` | `schema_version` | `0.4` |
 | `ripr agent receipt` | `schema_version` | `0.5` |
-| `ripr agent verify` | `schema_version` | `0.1` (stable) |
+| `ripr agent verify` | `schema_version` | `0.2` |
 | `ripr agent status` | `schema_version` | `0.1` |
 | `ripr agent review-summary` | `schema_version` | `0.1` |
 | `ripr receipt write/check` | `schema_version` | `0.1` |
@@ -6278,12 +6278,14 @@ JSON shape:
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "status": "advisory",
   "inputs": {
     "before": "target/ripr/workflow/before.repo-exposure.json",
-    "after": "target/ripr/workflow/after.repo-exposure.json"
+    "after": "target/ripr/workflow/after.repo-exposure.json",
+    "before_content_sha256": "sha256:<64-hex-digest>",
+    "after_content_sha256": "sha256:<64-hex-digest>"
   },
   "artifact_currentness": "current",
   "summary": {
@@ -6350,9 +6352,19 @@ JSON shape:
 
 Field contract:
 
-- `schema_version` - currently `"0.1"`.
+- `schema_version` - currently `"0.2"`. Version `0.2` added the artifact
+  content-commitment binding (`inputs.before_content_sha256` /
+  `inputs.after_content_sha256`) so a verify result is bound to the exact
+  artifact bytes it compared; `agent receipt` fails closed on any other
+  schema version.
 - `status` - always `"advisory"`; this is an agent verification hint, not a CI
   policy.
+- `inputs.before` / `inputs.after` - the compared snapshot paths.
+- `inputs.before_content_sha256` / `inputs.after_content_sha256` - the
+  validated `artifact.content_sha256` commitments of the compared artifacts.
+  This is the replay binding: a consumer that revalidates the artifacts can
+  detect any byte change after verify, including one invisible to the
+  movement render.
 - `artifact_currentness` - the pair's repository identity disclosure:
   `current`, `dirty_worktree`, or `historical_noncurrent`. It does not claim
   that tests ran or that the static gap is correct.

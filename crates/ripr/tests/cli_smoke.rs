@@ -275,7 +275,7 @@ fn write_fabricated_agent_verify_json(
         path,
         format!(
             r#"{{
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "status": "advisory",
   "inputs": {{"before": "{}", "after": "{}"}},
@@ -360,6 +360,39 @@ fn recommit_repo_exposure_json(mut raw: String) -> String {
     raw
 }
 
+/// The validated content commitment declared by a bound repo-exposure
+/// artifact. Tamper-control cases retain this digest pair (original vs
+/// mutated) in their failure messages (#2922 PR B).
+fn repo_exposure_artifact_content_digest(
+    path: &Path,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path)?)?;
+    value
+        .pointer("/artifact/content_sha256")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            format!(
+                "artifact {} is missing artifact.content_sha256",
+                path.display()
+            )
+            .into()
+        })
+}
+
+fn sha256_hex_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let digest = hasher.finalize();
+    format!(
+        "sha256:{}",
+        digest
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    )
+}
+
 fn bind_repo_exposure_fixture_with_worktree(
     root: &Path,
     source: &Path,
@@ -400,6 +433,28 @@ fn normalize_generated_at(text: String) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn normalize_agent_verify_fixture(text: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let mut value: serde_json::Value = serde_json::from_str(text)?;
+    // The bound artifact content commitments embed the live repository head
+    // (#2922 PR B), so the golden cannot pin them; normalize both sides.
+    if let Some(inputs) = value
+        .get_mut("inputs")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in ["before_content_sha256", "after_content_sha256"] {
+            if inputs.contains_key(key) {
+                inputs.insert(
+                    key.to_string(),
+                    serde_json::Value::String("<content_sha256>".to_string()),
+                );
+            }
+        }
+    }
+    let mut rendered = serde_json::to_string_pretty(&value)?;
+    rendered.push('\n');
+    Ok(rendered)
 }
 
 fn normalize_agent_receipt_fixture(text: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -2006,7 +2061,22 @@ fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std:
         after_artifact_path,
         "--json",
     ])?;
-    assert_stdout_matches_fixture(&verify, &format!("{base}/agent-verify.json"))?;
+    assert_success(&verify);
+    // The verify JSON binds the exact artifact content commitments (#2922
+    // PR B), which embed the live repository head, so the static golden can
+    // only pin the digest-normalized shape.
+    let expected_verify =
+        std::fs::read_to_string(workspace_root().join(format!("{base}/agent-verify.json")))?;
+    let actual_verify = String::from_utf8(verify.stdout.clone())?;
+    assert_eq!(
+        normalize_agent_verify_fixture(&actual_verify)?,
+        normalize_agent_verify_fixture(&expected_verify)?,
+        "agent verify fixture drifted"
+    );
+    // The receipt path re-binds the exact artifact bytes, so it must consume
+    // the live canonical verify output — never the digest-normalized golden.
+    let verify_artifact_path = "target/ripr/test-agent-verify/agent-verify.json";
+    std::fs::write(artifact_dir.join("agent-verify.json"), &verify.stdout)?;
 
     let out_dir = unique_temp_workspace("agent-receipt-fixture");
     std::fs::create_dir_all(&out_dir)?;
@@ -2017,7 +2087,7 @@ fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std:
         "--root",
         ".",
         "--verify-json",
-        "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
+        verify_artifact_path,
         "--seam-id",
         seam_id,
         "--json",
@@ -2559,7 +2629,7 @@ fn agent_verify_compares_before_after_repo_exposure_json() -> Result<(), Box<dyn
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.1""#));
+    assert!(stdout.contains(r#""schema_version": "0.2""#));
     assert!(stdout.contains(r#""improved": 1"#));
     assert!(stdout.contains(r#""change": "improved""#));
     assert!(stdout.contains(r#""seam_id": "seam-a""#));
@@ -3437,6 +3507,400 @@ fn agent_receipt_rejects_rerendered_verify_json() -> Result<(), Box<dyn std::err
     ]);
     assert_failure(&output);
     assert!(String::from_utf8_lossy(&output.stderr).contains("not canonical output"));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+/// Shared setup for the #2922 PR B verify/receipt negative corpus: a
+/// comparable moving before/after pair bound to the fixture repository plus
+/// the authentic canonical agent-verify output captured from the binary.
+/// Returns (before, after, verify JSON path, verify JSON text).
+fn write_moving_pair_and_verify(
+    root: &Path,
+    before_seam_json: &str,
+    after_seam_json: &str,
+) -> Result<(PathBuf, PathBuf, PathBuf, String), Box<dyn std::error::Error>> {
+    let before = root.join("before.repo-exposure.json");
+    let after = root.join("after.repo-exposure.json");
+    write_bound_repo_exposure_fixture(root, &before, before_seam_json)?;
+    advance_fixture_head(root, "after movement")?;
+    write_bound_repo_exposure_fixture(root, &after, after_seam_json)?;
+    let verify = root.join("agent-verify.json");
+    let verify_output = run_ripr(&[
+        "agent",
+        "verify",
+        "--root",
+        &root.display().to_string(),
+        "--before",
+        &before.display().to_string(),
+        "--after",
+        &after.display().to_string(),
+        "--json",
+    ]);
+    assert_success(&verify_output);
+    std::fs::write(&verify, &verify_output.stdout)?;
+    let verify_text = String::from_utf8(verify_output.stdout)?;
+    Ok((before, after, verify, verify_text))
+}
+
+fn run_agent_receipt_command(
+    root: &Path,
+    verify: &Path,
+    seam_id: &str,
+    out: Option<&Path>,
+) -> Output {
+    let mut args = vec![
+        "agent".to_string(),
+        "receipt".to_string(),
+        "--root".to_string(),
+        root.display().to_string(),
+        "--verify-json".to_string(),
+        verify.display().to_string(),
+        "--seam-id".to_string(),
+        seam_id.to_string(),
+        "--json".to_string(),
+    ];
+    if let Some(out) = out {
+        args.push("--out".to_string());
+        args.push(out.display().to_string());
+    }
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_ripr(&refs)
+}
+
+#[test]
+fn agent_verify_binds_artifact_content_commitments() -> Result<(), Box<dyn std::error::Error>> {
+    // Positive control for #2922 PR B: canonical verify output is bound to
+    // the exact content commitments of the validated before/after artifacts.
+    let root = unique_temp_workspace("agent-verify-binding");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let (before, after, _verify, verify_text) = write_moving_pair_and_verify(
+        &root,
+        r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#,
+        r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"strongly_gripped"}"#,
+    )?;
+    let verify: serde_json::Value = serde_json::from_str(&verify_text)?;
+    let before_digest = repo_exposure_artifact_content_digest(&before)?;
+    let after_digest = repo_exposure_artifact_content_digest(&after)?;
+    assert_eq!(json_pointer_str(&verify, "/schema_version")?, "0.2");
+    assert_eq!(
+        json_pointer_str(&verify, "/inputs/before_content_sha256")?,
+        before_digest
+    );
+    assert_eq!(
+        json_pointer_str(&verify, "/inputs/after_content_sha256")?,
+        after_digest
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_receipt_rejects_verify_replayed_against_mutated_pair()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Verify replay defense (#2922 PR B): a verify JSON produced for pair
+    // A/B must not receipt pair A/B' when B' differs from B by any byte —
+    // even when the mutation is invisible to the movement render.
+    let root = unique_temp_workspace("agent-receipt-replay-mutated");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let (before, after, verify, _verify_text) = write_moving_pair_and_verify(
+        &root,
+        r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#,
+        r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"strongly_gripped"}"#,
+    )?;
+
+    // Positive control: the authentic chain receipts before any mutation.
+    let control_out = root.join("agent-receipt-control.json");
+    let control = run_agent_receipt_command(&root, &verify, "seam-a", Some(&control_out));
+    assert_success(&control);
+
+    // Mutation: change bytes the movement comparison never reads
+    // (`run_status` is not part of the artifact validator's governed fields
+    // or the seam payload), then recommit so the artifact stays valid.
+    let original_digest = repo_exposure_artifact_content_digest(&after)?;
+    let mutation = "set after artifact run_status to `stalled` and recommit its content commitment (invisible to the movement render)";
+    let mutated = std::fs::read_to_string(&after)?.replace(
+        "\"run_status\": \"complete\"",
+        "\"run_status\": \"stalled\"",
+    );
+    assert_ne!(
+        mutated,
+        std::fs::read_to_string(&after)?,
+        "mutation must change the after artifact bytes"
+    );
+    std::fs::write(&after, recommit_repo_exposure_json(mutated))?;
+    let mutated_digest = repo_exposure_artifact_content_digest(&after)?;
+    assert_ne!(
+        original_digest, mutated_digest,
+        "mutation must change the after artifact content commitment"
+    );
+
+    // Control: the mutated pair is still fully valid and verifiable — only
+    // the replayed verify JSON is bound to the pre-mutation bytes.
+    let fresh_verify = run_ripr(&[
+        "agent",
+        "verify",
+        "--root",
+        &root.display().to_string(),
+        "--before",
+        &before.display().to_string(),
+        "--after",
+        &after.display().to_string(),
+        "--json",
+    ]);
+    assert_success(&fresh_verify);
+
+    let replay_out = root.join("agent-receipt-replay.json");
+    let replay = run_agent_receipt_command(&root, &verify, "seam-a", Some(&replay_out));
+    assert_failure(&replay);
+    let stderr = String::from_utf8_lossy(&replay.stderr);
+    assert!(
+        stderr.contains("[not_canonical]"),
+        "mutation: {mutation}; original after digest {original_digest}; mutated after digest {mutated_digest}; expected failure kind [not_canonical]; actual stderr: {stderr}"
+    );
+    assert!(
+        !replay_out.exists(),
+        "a rejected replay must not leave an authoritative receipt artifact at {}",
+        replay_out.display()
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_receipt_rejects_tampered_pair_binding_fields() -> Result<(), Box<dyn std::error::Error>> {
+    // Verify commitment/tamper negatives (#2922 PR B): the bound artifact
+    // digest and the verify status are governed output; altering either must
+    // fail for one bounded reason.
+    let root = unique_temp_workspace("agent-receipt-binding-tamper");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let (_before, after, _verify, verify_text) = write_moving_pair_and_verify(
+        &root,
+        r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#,
+        r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"strongly_gripped"}"#,
+    )?;
+
+    // Case 1: flip one hex digit of the bound after-artifact digest.
+    let bound_digest = repo_exposure_artifact_content_digest(&after)?;
+    let first_hex = bound_digest
+        .as_bytes()
+        .get(7)
+        .copied()
+        .ok_or("bound digest is too short")? as char;
+    let flipped = format!(
+        "sha256:{}{}",
+        if first_hex == '0' { '1' } else { '0' },
+        &bound_digest[8..]
+    );
+    assert_ne!(bound_digest, flipped, "digest flip must change the digest");
+    let tampered = root.join("agent-verify-tampered-digest.json");
+    std::fs::write(&tampered, verify_text.replace(&bound_digest, &flipped))?;
+    let output = run_agent_receipt_command(&root, &tampered, "seam-a", None);
+    assert_failure(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("[not_canonical]"),
+        "mutation: flipped one hex digit of the verify JSON after_content_sha256; original digest {bound_digest}; mutated digest {flipped}; expected failure kind [not_canonical]; actual stderr: {stderr}"
+    );
+
+    // Case 2: a failed verify cannot be represented as a successful one
+    // (and vice versa): the status field is governed canonical output.
+    let failed = root.join("agent-verify-failed-status.json");
+    std::fs::write(
+        &failed,
+        verify_text.replace("\"status\": \"advisory\"", "\"status\": \"failed\""),
+    )?;
+    let output = run_agent_receipt_command(&root, &failed, "seam-a", None);
+    assert_failure(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("[not_canonical]"),
+        "mutation: rewrote verify JSON status advisory -> failed; expected failure kind [not_canonical]; actual stderr: {stderr}"
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_receipt_rejects_unsupported_verify_schema() -> Result<(), Box<dyn std::error::Error>> {
+    // Schema-version fail-closed (#2922 PR B): verify JSON from an older or
+    // newer schema than the canonical 0.2 binding shape is rejected for one
+    // bounded typed reason before any artifact work.
+    let root = unique_temp_workspace("agent-receipt-schema");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let (_before, _after, verify, verify_text) = write_moving_pair_and_verify(
+        &root,
+        r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#,
+        r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"strongly_gripped"}"#,
+    )?;
+
+    // Positive control: the canonical 0.2 output receipts.
+    let control = run_agent_receipt_command(&root, &verify, "seam-a", None);
+    assert_success(&control);
+
+    for (label, version) in [("older", "0.1"), ("newer", "9.9")] {
+        let rewritten = root.join(format!("agent-verify-schema-{label}.json"));
+        std::fs::write(
+            &rewritten,
+            verify_text.replace(
+                "\"schema_version\": \"0.2\"",
+                &format!("\"schema_version\": \"{version}\""),
+            ),
+        )?;
+        let output = run_agent_receipt_command(&root, &rewritten, "seam-a", None);
+        assert_failure(&output);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("[unsupported_schema]"),
+            "mutation: rewrote verify JSON schema_version 0.2 -> {version} ({label} schema); expected failure kind [unsupported_schema]; actual stderr: {stderr}"
+        );
+    }
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_receipt_rejects_stale_verify_after_repository_movement()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Stale verify + receipt replay negatives (#2922 PR B): a verify result
+    // produced while the pair was current must not receipt after the
+    // repository moves; the replayed receipt re-validation recomputes
+    // currentness and the canonical comparison fails closed.
+    let root = unique_temp_workspace("agent-receipt-stale-verify");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let (_before, _after, verify, _verify_text) = write_moving_pair_and_verify(
+        &root,
+        r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#,
+        r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"strongly_gripped"}"#,
+    )?;
+    let verify_head = concrete_fixture_repository_head(&root)?;
+    let verify_digest = sha256_hex_bytes(&std::fs::read(&verify)?);
+
+    // Positive control: the fresh chain receipts.
+    let control_out = root.join("agent-receipt-control.json");
+    let control = run_agent_receipt_command(&root, &verify, "seam-a", Some(&control_out));
+    assert_success(&control);
+
+    // Repository movement after verify: the same verify JSON is now stale.
+    advance_fixture_head(&root, "post-verify movement")?;
+    let replay_head = concrete_fixture_repository_head(&root)?;
+    assert_ne!(
+        verify_head, replay_head,
+        "fixture must move after the verify result was produced"
+    );
+
+    let replay_out = root.join("agent-receipt-replay.json");
+    let replay = run_agent_receipt_command(&root, &verify, "seam-a", Some(&replay_out));
+    assert_failure(&replay);
+    let stderr = String::from_utf8_lossy(&replay.stderr);
+    assert!(
+        stderr.contains("[not_canonical]"),
+        "mutation: repository advanced after verify (head {verify_head} -> {replay_head}); replayed verify digest {verify_digest}; expected failure kind [not_canonical]; actual stderr: {stderr}"
+    );
+    // The human surface cannot strengthen the typed failure: nothing is
+    // rendered to stdout and no receipt artifact is left behind (#2922 PR B).
+    assert!(
+        replay.stdout.is_empty(),
+        "a rejected receipt replay must render nothing to stdout"
+    );
+    assert!(
+        !replay_out.exists(),
+        "a rejected receipt replay must not leave an authoritative receipt artifact at {}",
+        replay_out.display()
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_receipt_rejects_target_absent_from_both_states() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Movement-outcome cell (#2922): the retained verify target seam does
+    // not exist in either state. Verify compares the presented pair fine;
+    // the receipt for the absent target fails for one bounded reason.
+    let root = unique_temp_workspace("agent-receipt-absent-target");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let (_before, _after, verify, _verify_text) = write_moving_pair_and_verify(
+        &root,
+        r#"{"seam_id":"seam-z","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#,
+        r#"{"seam_id":"seam-z","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"strongly_gripped"}"#,
+    )?;
+
+    let output = run_agent_receipt_command(&root, &verify, "seam-retained-target", None);
+    assert_failure(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(
+            "agent receipt seam_id seam-retained-target was not found in agent verify JSON"
+        ),
+        "mutation: requested a receipt for a target seam absent from both states; expected the seam-selection rejection; actual stderr: {stderr}"
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_receipt_keeps_unmoved_target_unchanged_when_another_seam_moves()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Movement-outcome cell (#2922): the after state moves seam-y while the
+    // retained verify target seam-x does not move. The typed receipt
+    // projection for seam-x must stay `unchanged`; movement on a different
+    // item can never strengthen the retained target's receipt.
+    let root = unique_temp_workspace("agent-receipt-unmoved-target");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let (_before, _after, verify, verify_text) = write_moving_pair_and_verify(
+        &root,
+        r#"{"seam_id":"seam-x","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}, {"seam_id":"seam-y","kind":"predicate_boundary","file":"src/report.rs","line":21,"grip_class":"weakly_gripped"}"#,
+        r#"{"seam_id":"seam-x","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}, {"seam_id":"seam-y","kind":"predicate_boundary","file":"src/report.rs","line":21,"grip_class":"strongly_gripped"}"#,
+    )?;
+    // Control: the verify result really did record movement on seam-y only.
+    let verify_value: serde_json::Value = serde_json::from_str(&verify_text)?;
+    let moved: Vec<&str> = verify_value["changed_seams"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|seam| seam["seam_id"].as_str())
+        .collect();
+    assert_eq!(
+        moved,
+        vec!["seam-y"],
+        "control: only seam-y should move in this fixture"
+    );
+
+    let output = run_agent_receipt_command(&root, &verify, "seam-x", None);
+    assert_success(&output);
+    let receipt: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(
+        json_pointer_str(&receipt, "/seam/change")?,
+        "unchanged",
+        "the unmoved retained target must not be reported as moved"
+    );
+    assert_eq!(
+        json_pointer_str(&receipt, "/seam/before")?,
+        json_pointer_str(&receipt, "/seam/after")?,
+        "the unmoved retained target must keep equal before/after classes"
+    );
+    assert_eq!(
+        json_pointer_str(&receipt, "/summary/receipt_state")?,
+        "receipt_movement_unchanged",
+        "the typed receipt state must not be upgraded by movement on seam-y"
+    );
+    assert_eq!(
+        json_pointer_str(&receipt, "/summary/next_action/kind")?,
+        "unchanged",
+        "the next-action projection must not be upgraded by movement on seam-y"
+    );
+    assert_eq!(
+        json_pointer_str(&receipt, "/provenance/movement")?,
+        "unchanged"
+    );
     std::fs::remove_dir_all(root)?;
     Ok(())
 }

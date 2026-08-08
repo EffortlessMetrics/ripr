@@ -3,11 +3,13 @@
   "changed_seams": [],
   "inputs": {
     "after": "target/ripr/test-agent-verify/after.repo-exposure.json",
-    "before": "target/ripr/test-agent-verify/before.repo-exposure.json"
+    "after_content_sha256": "sha256:f1509f8b790adbb6954ee1122eb4f2560d467465c531890f46c7d2ca5ca284a6",
+    "before": "target/ripr/test-agent-verify/before.repo-exposure.json",
+    "before_content_sha256": "sha256:8d4a7ba887007763b7c6215335b3df56e67288531fe40745dc78ccbdebbef3de"
   },
   "new_gaps": [],
   "resolved_gaps": [],
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "status": "advisory",
   "summary": {
     "changed": 0,
