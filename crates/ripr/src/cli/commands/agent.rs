@@ -203,6 +203,10 @@ fn render_agent_verify(options: &AgentVerifyOptions) -> Result<String, String> {
     )?;
     crate::agent::artifact::validate_comparable_pair(&before_identity, &after_identity)
         .map_err(|error| format!("agent verify artifacts are incomparable: {error}"))?;
+    crate::agent::artifact::validate_pair_lineage(&options.root, &before_identity, &after_identity)
+        .map_err(|error| format!("agent verify artifacts are incomparable: {error}"))?;
+    crate::agent::artifact::validate_verify_movement(&before_identity, &after_identity)
+        .map_err(|error| format!("agent verify {error}"))?;
     let artifact_currentness = match (&before_identity.currentness, &after_identity.currentness) {
         (
             crate::agent::artifact::ArtifactCurrentness::Current,

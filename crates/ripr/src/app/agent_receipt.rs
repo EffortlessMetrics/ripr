@@ -48,6 +48,27 @@ pub(crate) fn validate_agent_receipt_verify_json(
             format!("agent receipt verify JSON references incomparable artifacts: {reason}"),
         ));
     }
+    // The receipt path re-runs the same pair and lineage authority as agent
+    // verify (#2922 PR A) so a replayed or fabricated verify JSON cannot
+    // bypass ordering or movement requirements.
+    if let Err(reason) =
+        crate::agent::artifact::validate_pair_lineage(root, &before_identity, &after_identity)
+    {
+        return Err(receipt_verify_input_error(
+            "incomparable_lineage",
+            format!("agent receipt verify JSON references incomparable artifacts: {reason}"),
+        ));
+    }
+    if let Err(reason) =
+        crate::agent::artifact::validate_verify_movement(&before_identity, &after_identity)
+    {
+        return Err(receipt_verify_input_error(
+            "no_movement",
+            format!(
+                "agent receipt verify JSON references artifacts without repository movement: {reason}"
+            ),
+        ));
+    }
     let artifact_currentness = match (&before_identity.currentness, &after_identity.currentness) {
         (
             crate::agent::artifact::ArtifactCurrentness::Current,

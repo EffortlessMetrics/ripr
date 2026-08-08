@@ -310,6 +310,30 @@ fn init_git_fixture_repo(root: &Path) -> Result<(), Box<dyn std::error::Error>> 
     Ok(())
 }
 
+/// Move the fixture repository to a new empty commit so a later-bound
+/// repo-exposure artifact is lineage-ordered after an earlier one (#2922).
+fn advance_fixture_head(root: &Path, message: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let commit = run_command(
+        "git",
+        Some(root),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-m",
+            message,
+        ],
+    )?;
+    assert!(
+        commit.status.success(),
+        "movement commit failed: {commit:?}"
+    );
+    Ok(())
+}
+
 fn recommit_repo_exposure_json(mut raw: String) -> String {
     let placeholder = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
     let key = "\"content_sha256\"";
@@ -2405,6 +2429,14 @@ fn agent_repair_phases_materialize_snapshots_and_verify_json()
     });
     std::fs::write(&after_snapshot, serde_json::to_vec(&stale_after)?)?;
 
+    // Simulate the agent edit step between phases: the after snapshot must
+    // observe movement, disclosed through the dirty worktree, because a fully
+    // current same-revision pair is rejected as no-movement (#2922).
+    std::fs::write(
+        root.join("tests/pricing.rs"),
+        "use boundary_gap_fixture::discounted_total;\n\n#[test]\nfn below_threshold_has_no_discount() {\n    assert_eq!(discounted_total(50, 100), 50);\n}\n\n#[test]\nfn far_above_threshold_discounts() {\n    assert_eq!(discounted_total(10_000, 100), 9_990);\n}\n\n#[test]\nfn at_threshold_discounts() {\n    assert_eq!(discounted_total(100, 100), 90);\n}\n",
+    )?;
+
     let after = run_ripr(&[
         "agent",
         "repair",
@@ -2493,6 +2525,9 @@ fn agent_verify_compares_before_after_repo_exposure_json() -> Result<(), Box<dyn
       "missing_discriminators": [{"value": "threshold equality", "reason": "not observed"}]
     }"#,
     )?;
+    // Movement is required for a fully current pair (#2922): advance the
+    // fixture so the after artifact is bound to a descended revision.
+    advance_fixture_head(&root, "after movement")?;
     write_bound_repo_exposure_fixture(
         &root,
         &after,
@@ -2878,6 +2913,121 @@ fn agent_verify_rejects_malformed_typed_seam() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
+fn agent_verify_rejects_same_revision_pair_without_movement()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-verify-no-movement");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let before = root.join("before.repo-exposure.json");
+    let after = root.join("after.repo-exposure.json");
+    // Even an apparent grip improvement is unverifiable when both fully
+    // current artifacts are bound to the same clean revision (#2922).
+    write_bound_repo_exposure_fixture(
+        &root,
+        &before,
+        r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#,
+    )?;
+    write_bound_repo_exposure_fixture(
+        &root,
+        &after,
+        r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"strongly_gripped"}"#,
+    )?;
+
+    let output = run_ripr(&[
+        "agent",
+        "verify",
+        "--root",
+        &root.display().to_string(),
+        "--before",
+        &before.display().to_string(),
+        "--after",
+        &after.display().to_string(),
+        "--json",
+    ]);
+    assert_failure(&output);
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("no repository movement"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_verify_rejects_reversed_revision_pair() -> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-verify-reversed");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let earlier = root.join("earlier.repo-exposure.json");
+    let later = root.join("later.repo-exposure.json");
+    let seam = r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#;
+    write_bound_repo_exposure_fixture(&root, &earlier, seam)?;
+    advance_fixture_head(&root, "after movement")?;
+    write_bound_repo_exposure_fixture(&root, &later, seam)?;
+
+    // Both artifacts are individually valid and mutually comparable; only the
+    // lineage check sees that the after input is not descended from the
+    // before input (#2922).
+    let output = run_ripr(&[
+        "agent",
+        "verify",
+        "--root",
+        &root.display().to_string(),
+        "--before",
+        &later.display().to_string(),
+        "--after",
+        &earlier.display().to_string(),
+        "--json",
+    ]);
+    assert_failure(&output);
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("revisions are reversed"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_receipt_rejects_lineage_reversed_pair() -> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-receipt-reversed");
+    std::fs::create_dir_all(&root)?;
+    init_git_fixture_repo(&root)?;
+    let earlier = root.join("earlier.repo-exposure.json");
+    let later = root.join("later.repo-exposure.json");
+    let seam = r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#;
+    write_bound_repo_exposure_fixture(&root, &earlier, seam)?;
+    advance_fixture_head(&root, "after movement")?;
+    write_bound_repo_exposure_fixture(&root, &later, seam)?;
+    // Name the later artifact as the receipt's before input: the receipt path
+    // re-runs the pair lineage authority and must not become a bypass (#2922).
+    let verify = root.join("fabricated-agent-verify.json");
+    write_fabricated_agent_verify_json(&verify, &later, &earlier)?;
+
+    let output = run_ripr(&[
+        "agent",
+        "receipt",
+        "--root",
+        &root.display().to_string(),
+        "--verify-json",
+        &verify.display().to_string(),
+        "--seam-id",
+        "seam-a",
+        "--json",
+    ]);
+    assert_failure(&output);
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("[incomparable_lineage]"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn agent_receipt_writes_one_seam_handoff_json() -> Result<(), Box<dyn std::error::Error>> {
     let root = unique_temp_workspace("agent-receipt");
     std::fs::create_dir_all(&root)?;
@@ -2891,6 +3041,9 @@ fn agent_receipt_writes_one_seam_handoff_json() -> Result<(), Box<dyn std::error
         &before,
         r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#,
     )?;
+    // Movement is required for a fully current pair (#2922): advance the
+    // fixture so the after artifact is bound to a descended revision.
+    advance_fixture_head(&root, "after movement")?;
     write_bound_repo_exposure_fixture(
         &root,
         &after,
@@ -2971,6 +3124,10 @@ fn agent_receipt_rejects_fabricated_verify_json() -> Result<(), Box<dyn std::err
         &before,
         r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#,
     )?;
+    // Movement is required for a fully current pair (#2922): advance the
+    // fixture so the artifact pair stays admissible and the intended
+    // canonical-output check is what rejects the fabricated verify JSON.
+    advance_fixture_head(&root, "after movement")?;
     write_bound_repo_exposure_fixture(
         &root,
         &after,
@@ -3187,6 +3344,9 @@ fn agent_receipt_rejects_tampered_verify_json() -> Result<(), Box<dyn std::error
         &before,
         r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#,
     )?;
+    // Movement is required for a fully current pair (#2922): advance the
+    // fixture so the after artifact is bound to a descended revision.
+    advance_fixture_head(&root, "after movement")?;
     write_bound_repo_exposure_fixture(
         &root,
         &after,
@@ -3238,6 +3398,9 @@ fn agent_receipt_rejects_rerendered_verify_json() -> Result<(), Box<dyn std::err
         &before,
         r#"{"seam_id":"seam-a","kind":"predicate_boundary","file":"src/pricing.rs","line":42,"grip_class":"weakly_gripped"}"#,
     )?;
+    // Movement is required for a fully current pair (#2922): advance the
+    // fixture so the after artifact is bound to a descended revision.
+    advance_fixture_head(&root, "after movement")?;
     write_bound_repo_exposure_fixture(
         &root,
         &after,
@@ -8679,6 +8842,17 @@ fn producer_verify_packet(
     ]);
     assert_success(&snapshot);
     std::fs::write(root.join("before.json"), &snapshot.stdout)?;
+    // Movement is required for a fully current pair (#2922): advance the
+    // fixture so the executed verify route compares ordered revisions.
+    advance_fixture_head(&root, "after movement")?;
+    let snapshot = run_ripr(&[
+        "check",
+        "--root",
+        &root_arg,
+        "--format",
+        "repo-exposure-json",
+    ]);
+    assert_success(&snapshot);
     std::fs::write(root.join("after.json"), &snapshot.stdout)?;
 
     let verify = "ripr agent verify --root . --before before.json --after after.json --json";

@@ -240,6 +240,25 @@ pub(crate) fn validate_repo_exposure_artifact(
         &["status", "--porcelain", "--untracked-files=no"],
     )
     .map(|status| !status.trim().is_empty())?;
+    // Lineage presence (#2922 PR A): a well-formed head that does not name a
+    // commit held by the checked repository is rejected, not merely disclosed
+    // as historical. Git liveness is established by the HEAD and status reads
+    // above, so a failed `cat-file` here means the object is absent.
+    match git_object_type(&expected_root, &identity.repository.head)? {
+        Some(kind) if kind == "commit" => {}
+        Some(kind) => {
+            return Err(format!(
+                "agent verify {label} artifact repository head `{}` names a {kind}, not a commit",
+                identity.repository.head
+            ));
+        }
+        None => {
+            return Err(format!(
+                "agent verify {label} artifact repository head `{}` is not present in the checked repository",
+                identity.repository.head
+            ));
+        }
+    }
     let currentness = if actual_head == identity.repository.head {
         if identity.analysis.worktree == "dirty" || actual_worktree_dirty {
             ArtifactCurrentness::DirtyWorktree
@@ -329,6 +348,59 @@ pub(crate) fn validate_comparable_pair(
     Ok(())
 }
 
+/// Pair lineage authority (#2922 PR A): comparability is necessary but not
+/// sufficient for an ordered before/after reading. The after revision must
+/// descend from the before revision in the checked repository. A
+/// same-revision pair is lineage-valid (a commit is its own ancestor);
+/// whether movement is required is a verify-layer decision
+/// (`validate_verify_movement`). Reversed and unrelated histories fail for
+/// distinct bounded reasons.
+pub(crate) fn validate_pair_lineage(
+    root: &Path,
+    before: &ValidatedArtifact,
+    after: &ValidatedArtifact,
+) -> Result<(), String> {
+    if before.repository_head == after.repository_head {
+        return Ok(());
+    }
+    if git_merge_base_is_ancestor(root, &before.repository_head, &after.repository_head)? {
+        return Ok(());
+    }
+    if git_merge_base_is_ancestor(root, &after.repository_head, &before.repository_head)? {
+        return Err(format!(
+            "repository revisions are reversed: after head {} does not descend from before head {}",
+            after.repository_head, before.repository_head
+        ));
+    }
+    Err(format!(
+        "repository revisions are unrelated: before head {} and after head {} share no ancestry",
+        before.repository_head, after.repository_head
+    ))
+}
+
+/// Verify-layer movement contract (#2922 PR A). A pair of fully current
+/// artifacts bound to the same revision cannot contain movement: the input
+/// identity is equal and the observed clean state is identical, so any
+/// reported change would be unverifiable. Dirty-worktree and historical pairs
+/// stay admissible here because their currentness is already disclosed as
+/// non-current downstream; the comparability authority
+/// (`validate_comparable_pair`) deliberately keeps same-revision pairs valid.
+pub(crate) fn validate_verify_movement(
+    before: &ValidatedArtifact,
+    after: &ValidatedArtifact,
+) -> Result<(), String> {
+    if before.repository_head == after.repository_head
+        && before.currentness == ArtifactCurrentness::Current
+        && after.currentness == ArtifactCurrentness::Current
+    {
+        return Err(format!(
+            "no repository movement between before and after artifacts: both are current at revision {}",
+            before.repository_head
+        ));
+    }
+    Ok(())
+}
+
 #[derive(serde::Deserialize)]
 struct RepoExposureDocument {
     schema_version: String,
@@ -395,11 +467,7 @@ fn display_root(root: &Path) -> String {
 }
 
 fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(root)
-        .output()
-        .map_err(|err| format!("run git {:?} in {} failed: {err}", args, root.display()))?;
+    let output = git_spawn(root, args)?;
     if !output.status.success() {
         return Err(format!(
             "git {:?} in {} failed with {}: {}",
@@ -411,6 +479,16 @@ fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
     }
     String::from_utf8(output.stdout)
         .map_err(|err| format!("git {args:?} returned non-UTF-8 output: {err}"))
+}
+
+/// The single process-spawn site for every git adapter in this module: the
+/// process-policy gate allows exactly one command spawn here.
+fn git_spawn(root: &Path, args: &[&str]) -> Result<std::process::Output, String> {
+    Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .map_err(|err| format!("run git {:?} in {} failed: {err}", args, root.display()))
 }
 
 /// Resolve the commit that Git reports for a repository root.
@@ -428,6 +506,41 @@ pub(crate) fn current_git_head(root: &Path) -> Result<String, String> {
         ));
     }
     Ok(head.to_string())
+}
+
+/// The object type Git reports for a well-formed revision, or `None` when the
+/// object is absent. Callers must establish repository liveness first: any
+/// non-zero `git cat-file` exit is read as absence, not as an infrastructure
+/// verdict.
+fn git_object_type(root: &Path, revision: &str) -> Result<Option<String>, String> {
+    let output = git_spawn(root, &["cat-file", "-t", revision])?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let kind = String::from_utf8(output.stdout)
+        .map_err(|err| format!("git cat-file returned non-UTF-8 output: {err}"))?;
+    Ok(Some(kind.trim().to_string()))
+}
+
+/// `git merge-base --is-ancestor` as a boolean: exit 0 is "is an ancestor",
+/// exit 1 is "is not", and anything else is an infrastructure error rather
+/// than an ancestry verdict.
+fn git_merge_base_is_ancestor(
+    root: &Path,
+    ancestor: &str,
+    descendant: &str,
+) -> Result<bool, String> {
+    let output = git_spawn(root, &["merge-base", "--is-ancestor", ancestor, descendant])?;
+    match output.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => Err(format!(
+            "git merge-base --is-ancestor {ancestor} {descendant} in {} failed with {}: {}",
+            root.display(),
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        )),
+    }
 }
 
 fn is_full_sha(value: &str) -> bool {
@@ -1019,6 +1132,61 @@ mod tests {
     }
 
     #[test]
+    fn comparable_pair_rejects_base_revision_drift() {
+        let before = comparable_artifact();
+        let mut after = before.clone();
+        after.base_revision = Some("base:other".to_string());
+
+        assert!(matches!(
+            validate_comparable_pair(&before, &after),
+            Err(error) if error.contains("base revisions differ")
+        ));
+    }
+
+    #[test]
+    fn comparable_pair_rejects_analysis_mode_drift() {
+        let before = comparable_artifact();
+        let mut after = before.clone();
+        // Keep the profile aligned with the drifted mode so only the mode
+        // check fires.
+        after.analysis_mode = "release".to_string();
+        after.analysis_profile = "release".to_string();
+
+        assert!(matches!(
+            validate_comparable_pair(&before, &after),
+            Err(error) if error.contains("analysis modes differ")
+        ));
+    }
+
+    #[test]
+    fn verify_movement_rejects_only_a_fully_current_same_revision_pair() {
+        let before = comparable_artifact();
+        let after = before.clone();
+        // The comparability authority deliberately keeps the same-revision
+        // pair valid; movement is a verify-layer requirement (#2922 PR A).
+        assert_eq!(validate_comparable_pair(&before, &after), Ok(()));
+        assert!(matches!(
+            validate_verify_movement(&before, &after),
+            Err(error) if error.contains("no repository movement")
+        ));
+
+        // A disclosed non-current observation stays admissible at this layer.
+        let mut dirty_after = after.clone();
+        dirty_after.currentness = ArtifactCurrentness::DirtyWorktree;
+        assert_eq!(validate_verify_movement(&before, &dirty_after), Ok(()));
+        let mut historical_after = after.clone();
+        historical_after.currentness = ArtifactCurrentness::Historical;
+        assert_eq!(validate_verify_movement(&before, &historical_after), Ok(()));
+
+        // A distinct revision carries movement regardless of currentness.
+        let mut moved_after = after.clone();
+        moved_after.repository_head = "b".repeat(40);
+        moved_after.snapshot_identity =
+            format!("snapshot:input:stable;revision:{}", "b".repeat(40));
+        assert_eq!(validate_verify_movement(&before, &moved_after), Ok(()));
+    }
+
+    #[test]
     fn repo_exposure_identity_changes_with_controlled_git_revision() -> Result<(), String> {
         let root = temporary_git_root()?;
         let result = (|| -> Result<(), String> {
@@ -1384,6 +1552,198 @@ mod tests {
                     document["artifact"]["repository"]["head"] = json!(tampered_head);
                 })?;
                 expect_identity_rejection(case, mutated, "invalid repository HEAD")?;
+            }
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_validation_rejects_repository_head_absent_from_the_repository()
+    -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let placeholder_raw = repo_exposure_raw_with_placeholder(&root)?;
+            let document: Value = serde_json::from_str(&placeholder_raw)
+                .map_err(|error| format!("parse placeholder document: {error}"))?;
+            let original_head = document["artifact"]["repository"]["head"]
+                .as_str()
+                .ok_or_else(|| "fixture document omitted repository head".to_string())?
+                .to_string();
+            let input_identity = document["artifact"]["analysis"]["input_identity"]
+                .as_str()
+                .ok_or_else(|| "fixture document omitted input identity".to_string())?
+                .to_string();
+
+            // A well-formed 40-hex head the repository does not hold: flip one
+            // hex digit of the real head so the mutation stays well-formed
+            // but cannot name the real commit. The snapshot identity is
+            // updated to match so only the presence check fires.
+            let absent_head = format!(
+                "{}{}",
+                if original_head.starts_with('0') {
+                    "1"
+                } else {
+                    "0"
+                },
+                &original_head[1..]
+            );
+            if absent_head == original_head {
+                return Err("absent-head mutation must differ from the original head".to_string());
+            }
+            let absent_snapshot = repo_exposure_snapshot_identity(&input_identity, &absent_head);
+            let mutated = validate_mutated_identity(&root, &document, |document| {
+                document["artifact"]["repository"]["head"] = json!(absent_head.as_str());
+                document["artifact"]["snapshot_identity"] = json!(absent_snapshot.as_str());
+            })?;
+            match mutated {
+                Err(error) if error.contains("is not present in the checked repository") => {}
+                Err(error) => {
+                    return Err(format!(
+                        "absent head: unexpected rejection reason: {error} (original head {original_head}, mutated head {absent_head})"
+                    ));
+                }
+                Ok(_) => {
+                    return Err(format!(
+                        "absent head: mutated artifact must be rejected (original head {original_head}, mutated head {absent_head}, mutated snapshot {absent_snapshot})"
+                    ));
+                }
+            }
+
+            // A well-formed object the repository holds that is not a commit.
+            let tree = run_git(&root, &["rev-parse", "HEAD^{tree}"])?
+                .trim()
+                .to_string();
+            let tree_snapshot = repo_exposure_snapshot_identity(&input_identity, &tree);
+            let mutated = validate_mutated_identity(&root, &document, |document| {
+                document["artifact"]["repository"]["head"] = json!(tree.as_str());
+                document["artifact"]["snapshot_identity"] = json!(tree_snapshot.as_str());
+            })?;
+            match mutated {
+                Err(error) if error.contains("names a tree, not a commit") => {}
+                Err(error) => {
+                    return Err(format!(
+                        "non-commit head: unexpected rejection reason: {error} (original head {original_head}, mutated head {tree})"
+                    ));
+                }
+                Ok(_) => {
+                    return Err(format!(
+                        "non-commit head: mutated artifact must be rejected (original head {original_head}, mutated head {tree})"
+                    ));
+                }
+            }
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    fn commit_empty(root: &Path, message: &str) -> Result<(), String> {
+        run_git(
+            root,
+            &[
+                "-c",
+                "commit.gpgSign=false",
+                "commit",
+                "--quiet",
+                "--allow-empty",
+                "-m",
+                message,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Build and validate a canonical artifact bound to the repository's
+    /// current HEAD.
+    fn validated_artifact_at_head(root: &Path, label: &str) -> Result<ValidatedArtifact, String> {
+        let placeholder_raw = repo_exposure_raw_with_placeholder(root)?;
+        let raw = commit_content(&placeholder_raw)?;
+        validate_repo_exposure_artifact(root, &raw, label)
+    }
+
+    #[test]
+    fn pair_lineage_rejects_reversed_revisions() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let before = validated_artifact_at_head(&root, "test before")?;
+            commit_empty(&root, "after")?;
+            let after = validated_artifact_at_head(&root, "test after")?;
+            // Positive control: ordered movement is lineage-valid.
+            validate_pair_lineage(&root, &before, &after)
+                .map_err(|error| format!("ordered revisions must be lineage-valid: {error}"))?;
+            // Comparability alone does not catch a swapped pair: the artifacts
+            // stay mutually comparable, so only the lineage check can fire.
+            validate_comparable_pair(&after, &before)
+                .map_err(|error| format!("swapped pair must stay comparable: {error}"))?;
+            match validate_pair_lineage(&root, &after, &before) {
+                Err(error) if error.contains("revisions are reversed") => {}
+                Err(error) => {
+                    return Err(format!(
+                        "reversed pair: unexpected rejection reason: {error}"
+                    ));
+                }
+                Ok(()) => {
+                    return Err(format!(
+                        "reversed pair must be rejected (ordered before head {}, ordered after head {})",
+                        before.repository_head, after.repository_head
+                    ));
+                }
+            }
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    #[test]
+    fn pair_lineage_rejects_unrelated_revisions() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let before = validated_artifact_at_head(&root, "test before")?;
+            // An orphan branch shares no history with the before commit while
+            // both objects stay present in the checked repository.
+            run_git(&root, &["checkout", "--orphan", "unrelated-lineage"])?;
+            run_git(
+                &root,
+                &[
+                    "-c",
+                    "commit.gpgSign=false",
+                    "commit",
+                    "--quiet",
+                    "-m",
+                    "unrelated after",
+                ],
+            )?;
+            let after = validated_artifact_at_head(&root, "test after")?;
+            validate_comparable_pair(&before, &after)
+                .map_err(|error| format!("unrelated pair must stay comparable: {error}"))?;
+            match validate_pair_lineage(&root, &before, &after) {
+                Err(error) if error.contains("revisions are unrelated") => {}
+                Err(error) => {
+                    return Err(format!(
+                        "unrelated pair: unexpected rejection reason: {error}"
+                    ));
+                }
+                Ok(()) => {
+                    return Err(format!(
+                        "unrelated pair must be rejected (before head {}, after head {})",
+                        before.repository_head, after.repository_head
+                    ));
+                }
             }
             Ok(())
         })();
