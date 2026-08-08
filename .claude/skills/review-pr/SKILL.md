@@ -15,6 +15,7 @@ validates the closed marker set; normal review still judges whether the written
 procedure and actual behavior earn those declarations.
 
 - `review_contract:exact_head_binding`
+- `review_contract:non_mutating_inspection_workspace`
 - `review_contract:semantic_owner_and_consumers`
 - `review_contract:wrong_behavior_oracle_challenge`
 - `review_contract:rendered_behavior`
@@ -50,6 +51,39 @@ The same candidate may receive two deliberate passes:
 Publication adds remote evidence; it does not erase an earlier valid source and
 oracle inspection.
 
+# Inspection workspace
+
+Review is a read of a committed Git object. Binding an exact head must not mutate
+a checkout the reviewer does not own.
+
+Prefer routes that materialize nothing:
+
+```bash
+gh pr view <n> --json headRefOid,baseRefName,body,files
+gh pr diff <n>
+git fetch origin pull/<n>/head          # updates FETCH_HEAD only
+git show <sha>:<path>
+git diff <base>...<sha> -- <path>
+```
+
+When the review genuinely needs a materialized tree — exercising the real CLI,
+LSP, packaging, or generated output under `review_contract:rendered_behavior` —
+take a dedicated worktree or clone and work only inside it:
+
+```bash
+git worktree add --detach <own-path> <sha>
+```
+
+Never run `git checkout`, `git switch`, `git reset`, or any other HEAD-moving
+command in a shared root checkout or a sibling candidate worktree. Those belong
+to their writer, and a clean tree at the moment you look is not evidence that
+they are idle. Remove a review-created worktree when the pass ends.
+
+This is the reader half of the operating law in `CLAUDE.md`: one writer mutates
+each candidate branch or worktree, while readers, researchers, reviewers, and
+tools inspect it. It adds no reservation, lease, lock, or sibling-monitoring
+surface, and none may be introduced to satisfy it.
+
 # When to enter
 
 Use `review-pr` when:
@@ -64,7 +98,7 @@ The lead Claude context may perform the pass directly. Delegate only when anothe
 
 # Workflow
 
-1. **Bind the subject.** Retain repository, PR or branch, exact `reviewed_head_sha`, base and integration basis, issue/claim boundary, acceptance, non-goals, and review time. Re-read the head before posting. A moved head invalidates affected review dimensions.
+1. **Bind the subject.** Retain repository, PR or branch, exact `reviewed_head_sha`, base and integration basis, issue/claim boundary, acceptance, non-goals, and review time. Re-read the head before posting. A moved head invalidates affected review dimensions. Bind it from an inspection workspace you own; see **Inspection workspace**.
 2. **Read the whole current-head change.** Inspect the complete diff, changed-file inventory, PR body, governing issue/spec/ADR/policy, semantic owner, and real consumers. Trace changed data and decisions into rendered/public behavior rather than stopping at the edited function.
 3. **Create a claim/evidence map.** For each material behavior or public claim, name the owner, consumer, positive evidence, discriminating alternate/negative evidence, and explicit limitation or non-claim.
 4. **Review the applicable lanes.** Explain why any load-bearing lane is not applicable.
@@ -102,6 +136,7 @@ The lead Claude context may perform the pass directly. Delegate only when anothe
 - Raw source-string checks do not prove rendered command/help/output behavior.
 - PR prose and docs cannot strengthen runtime/schema authority.
 - `mergeStateStatus: BLOCKED` does not identify a human approval dependency.
+- A clean working tree in someone else's checkout is not permission to move its HEAD.
 
 # Required review record
 

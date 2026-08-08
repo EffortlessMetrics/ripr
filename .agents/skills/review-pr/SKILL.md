@@ -15,6 +15,7 @@ set; normal review still verifies whether the prose and behavior actually honor
 it.
 
 - `review_contract:exact_head_binding`
+- `review_contract:non_mutating_inspection_workspace`
 - `review_contract:semantic_owner_and_consumers`
 - `review_contract:wrong_behavior_oracle_challenge`
 - `review_contract:rendered_behavior`
@@ -50,6 +51,40 @@ The procedure may run twice on the same candidate lifecycle:
 Publication does not erase a valid candidate review. It adds remote evidence
 that must be inspected before the disposition can advance.
 
+# Inspection workspace
+
+Reviewing means reading a committed Git object. Binding an exact head must never
+mutate a checkout the reviewer does not own.
+
+Routes that materialize nothing are the default:
+
+```bash
+gh pr view <n> --json headRefOid,baseRefName,body,files
+gh pr diff <n>
+git fetch origin pull/<n>/head          # writes FETCH_HEAD only
+git show <sha>:<path>
+git diff <base>...<sha> -- <path>
+```
+
+Exercising the real CLI, LSP, packaging, or generated output under
+`review_contract:rendered_behavior` does require a materialized tree. Take one
+that belongs to the review and work only inside it:
+
+```bash
+git worktree add --detach <own-path> <sha>
+```
+
+`git checkout`, `git switch`, `git reset`, and every other HEAD-moving command are
+prohibited in a shared root checkout or a sibling candidate worktree. Those are
+owned by their writer, and a clean tree at the instant of observation does not
+establish that the writer is idle. Remove a review-created worktree at the end of
+the pass.
+
+This is the reader half of the `AGENTS.md` operating law: one writer mutates each
+candidate branch or worktree while readers, researchers, reviewers, and tools
+inspect it. It introduces no reservation, lease, lock, or sibling-monitoring
+surface, and none may be added to satisfy it.
+
 # Entry boundary
 
 Use this procedure when a coherent candidate exists and one of these is true:
@@ -70,7 +105,7 @@ A differently named reviewer is optional. Use another agent only when it changes
    - base branch and exact integration basis when known;
    - controlling issue, claim boundary, acceptance, and non-goals;
    - review timestamp.
-   Re-read the head before posting the disposition. A moved head makes the prior review stale for affected dimensions.
+   Re-read the head before posting the disposition. A moved head makes the prior review stale for affected dimensions. Bind the subject from an inspection workspace the review owns; see **Inspection workspace**.
 2. **Read the complete current-head change.** Inspect the full diff, changed-file inventory, PR body, issue, applicable specs/ADRs/policy, and the owning production path. Follow changed values into actual consumers and rendered/public surfaces; do not review the patch in isolation.
 3. **Map claims to evidence.** For each material production or public claim, identify:
    - semantic owner;
@@ -113,6 +148,7 @@ A differently named reviewer is optional. Use another agent only when it changes
 - Source-text assertions do not prove rendered help, CLI routing, or public output.
 - Documentation and PR prose do not override runtime/schema/code authority.
 - `mergeStateStatus: BLOCKED` is not a causal diagnosis and never proves a human approval requirement.
+- A clean working tree in a checkout the review does not own is not permission to move its HEAD.
 
 # Required inspection record
 

@@ -29,8 +29,9 @@ const REVIEW_ROUTE_REQUIRED_MARKERS: [(&str, &str); 4] = [
     ("finish-pr", "review_route:finish_pr_requires_review_ready"),
 ];
 
-const REVIEW_PR_REQUIRED_MARKERS: [&str; 16] = [
+const REVIEW_PR_REQUIRED_MARKERS: [&str; 17] = [
     "review_contract:exact_head_binding",
+    "review_contract:non_mutating_inspection_workspace",
     "review_contract:semantic_owner_and_consumers",
     "review_contract:wrong_behavior_oracle_challenge",
     "review_contract:rendered_behavior",
