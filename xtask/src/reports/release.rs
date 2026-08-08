@@ -734,7 +734,7 @@ fn external_cli_fixture_root() -> Result<PathBuf, String> {
     )))
 }
 
-fn release_temp_root() -> Result<PathBuf, String> {
+pub(crate) fn release_temp_root() -> Result<PathBuf, String> {
     let configured = std::env::temp_dir();
     let current = std::env::current_dir()
         .map_err(|err| format!("read current directory for release fixture failed: {err}"))?;

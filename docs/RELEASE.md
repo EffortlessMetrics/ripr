@@ -106,6 +106,7 @@ cargo doc --workspace --no-deps
 cargo xtask check-product-copy
 cargo xtask check-generated-clean
 cargo xtask release-readiness --version 0.11.0   # the version you are cutting
+cargo xtask release-negative-corpus --version 0.11.0   # readiness-chain authority negatives (#2824)
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```

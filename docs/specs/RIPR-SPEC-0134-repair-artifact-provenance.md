@@ -147,6 +147,29 @@ after movement succeeds but discloses `historical_noncurrent`.
   different seam moves.
 - The editor repair-loop fixture consumes bound artifacts and records explicit
   currentness.
+- The integrated installed-candidate negative corpus (`cargo xtask
+  release-negative-corpus --version <version>`, #2824) runs the packaged
+  candidate through the authentic readiness chain in a controlled external
+  fixture and injects exactly one mutation per case — artifact identity,
+  revision, snapshot, and commitment mutations; pair comparability, lineage,
+  and movement mutations; verify schema, replay, staleness, and tamper
+  mutations; and receipt issuance failures. Each case asserts the process
+  exit status first and the closed reason token second, restores the original
+  bytes/state byte-exactly (verified by digest), and reruns the original
+  command to a passing control before a per-case failure receipt is retained
+  under `target/ripr/release-negative-corpus/`. Output-contract breaches
+  (stdout rendered on a rejection, a rejected issuance creating or updating
+  its out file, a stale prior receipt digest drifting, a retained mutation
+  source missing) are recorded as first-class receipt `violations`, and any
+  recorded violation fails the case even when every outcome token matched.
+  The report summary discloses matrix completeness from the case registry:
+  a slice that lands only some case families reports
+  `run_status: "families_deferred"` with explicit `covered_families` /
+  `deferred_families` lists; the full matrix reports `run_status:
+  "complete"`. Deferred negatives without a
+  real producer on main (migration claims of fresh production, binary/artifact
+  inventory disagreement) are recorded as explicit `not_applicable`
+  dispositions, never fabricated rejections.
 
 ## Acceptance Examples
 
@@ -183,6 +206,15 @@ an unsupported schema fails before movement calculation.
   older/newer verify schema versions, stale verify replay after repository
   movement, an absent receipt target, and the unmoved-retained-target
   projection honesty case.
+- `xtask/src/reports/release_negative.rs` (#2824) is the integrated
+  installed-candidate negative corpus: it shares the release-readiness
+  package/install and authentic-journey helpers (the installed binary stays
+  the only validator), and its unit tests pin the mutation/receipt machinery
+  — recommit binding and stale-commitment detection, unique-anchor
+  replacement, hex-identity shifting, exit-status-before-token rejection
+  evaluation, receipt finalization, the required case matrix, the deferred
+  `not_applicable` dispositions, fail-closed fixture copying, and the
+  JSON/Markdown report shape.
 
 ## Implementation Mapping
 
@@ -194,6 +226,11 @@ an unsupported schema fails before movement calculation.
 - `crates/ripr/src/output/outcome/render_json.rs` discloses currentness and
   renders the artifact content-commitment binding (`AgentVerifyArtifactBinding`
   in `crates/ripr/src/output/outcome/mod.rs`).
+- `xtask/src/reports/release_negative.rs` orchestrates the #2824 negative
+  corpus (fixture cloning, one-mutation injection, execution, retention,
+  byte-exact restoration, reporting); it owns no validation authority itself
+  and reuses the `xtask/src/reports/release.rs` candidate-install and
+  authentic-chain helpers.
 
 ## Metrics
 
