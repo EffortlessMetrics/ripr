@@ -19,6 +19,22 @@ are scoped or reviewed.
   run next. Both now match `fixtures/boundary_gap/expected/human.txt`, which is
   the same example.
 
+- `ripr explain` and `ripr context` now reject a mistyped flag with a
+  suggestion. Neither parser routed through the shared unknown-argument
+  helper: `ripr context --fromm` failed with a bare
+  `unexpected context argument "--fromm"` — no suggestion and no help
+  pointer — and `ripr explain --fromm` did not report an argument error at
+  all, because the positional-selector arm accepted any token, so `--fromm`
+  was taken as the finding selector and analysis ran against it. Both parsers
+  now use the shared helper, and `explain`'s positional arm rejects a
+  `-`-prefixed token unless it is selector-shaped, so a `file:line` selector
+  whose path begins with `-` still resolves. Output becomes
+  `unknown context argument "--fromm". Did you mean \`--from\`? Run \`ripr context --help\`.`
+
+  Both commands are also registered in the help lookup and the command-path
+  list the flag-parity guard iterates, which previously omitted them from both
+  sides and so could not see the gap.
+
 - Human output no longer restates the `Missing discriminator` label inside its
   own value. The classifier builds these entries as
   `Missing discriminator value: <value>`, so the digest rendered

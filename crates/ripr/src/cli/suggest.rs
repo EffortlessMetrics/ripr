@@ -327,6 +327,33 @@ mod tests {
         assert_eq!(known_flags("thing", help_text), vec!["--root", "--json"]);
     }
 
+    /// `explain` and `context` had documented help bodies but no entry in
+    /// `help_text_for`, so `closest_flag` returned `None` at its very first
+    /// step and every mistyped flag on the two drill-down commands fell to the
+    /// bare no-suggestion branch. They are the commands the human digest tells
+    /// the reader to run next, so the slip is likely there.
+    ///
+    /// The guard test below could not catch this: it iterates
+    /// `REGISTERED_COMMAND_PATHS`, and these paths were missing from that list
+    /// too, so the omission was invisible from both sides.
+    #[test]
+    fn explain_and_context_suggest_their_own_documented_flags() {
+        for (command, typo, expected) in [
+            ("explain", "--fromm", "--from"),
+            ("explain", "--mod", "--mode"),
+            ("context", "--fromm", "--from"),
+            ("context", "--perl-fact", "--perl-facts"),
+        ] {
+            assert_eq!(
+                unknown_argument(command, typo),
+                format!(
+                    "unknown {command} argument {typo:?}. \
+                     Did you mean `{expected}`? Run `ripr {command} --help`."
+                ),
+            );
+        }
+    }
+
     /// Every command path the CLI reports errors for must resolve to a help
     /// body that documents at least one flag, otherwise `unknown_argument`
     /// silently degrades to the no-suggestion branch forever.

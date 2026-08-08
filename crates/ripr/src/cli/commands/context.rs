@@ -88,7 +88,7 @@ pub(in crate::cli) fn context(args: &[String]) -> Result<(), String> {
                 help::print_context_help();
                 return Ok(());
             }
-            other => return Err(format!("unexpected context argument {other:?}")),
+            other => return Err(crate::cli::suggest::unknown_argument("context", other)),
         }
         i += 1;
     }
@@ -150,7 +150,23 @@ mod tests {
     fn context_rejects_unknown_argument() {
         assert_eq!(
             context(&args(&["--unknown", "value"])),
-            Err("unexpected context argument \"--unknown\"".to_string())
+            Err("unknown context argument \"--unknown\". Run `ripr context --help`.".to_string())
+        );
+    }
+
+    /// Exercised through the parser, not `unknown_argument` directly: wiring
+    /// the help lookup is worthless if the parser never consults it, and this
+    /// arm previously returned a bare `format!` that bypassed the suggestion
+    /// helper entirely.
+    #[test]
+    fn context_suggests_the_nearest_flag_for_a_typo() {
+        assert_eq!(
+            context(&args(&["--fromm", "artifact.json"])),
+            Err(
+                "unknown context argument \"--fromm\". Did you mean `--from`? \
+                 Run `ripr context --help`."
+                    .to_string()
+            )
         );
     }
 

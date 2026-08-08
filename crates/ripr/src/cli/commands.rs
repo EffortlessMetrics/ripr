@@ -3276,6 +3276,20 @@ fn sanitize_ref_for_path(value: &str) -> String {
     }
 }
 
+/// Whether a `-`-prefixed positional token is a `file:line` selector rather
+/// than a mistyped flag.
+///
+/// Only consulted for tokens beginning with `-`, so a `probe:...` finding id
+/// cannot reach here and is not checked — the caller's short-circuit already
+/// accepts every non-`-` token. `app/selector.rs::selector_matches_file_line`
+/// splits on the last `:` and imposes no constraint on the path, so the file
+/// part may legitimately begin with `-`; only the line part must be numeric.
+fn is_dash_prefixed_file_line_selector(value: &str) -> bool {
+    value.rsplit_once(':').is_some_and(|(file, line)| {
+        !file.is_empty() && !line.is_empty() && line.bytes().all(|byte| byte.is_ascii_digit())
+    })
+}
+
 pub(super) fn explain(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput::default();
     let mut explicit = CheckInputExplicit::default();
@@ -3333,8 +3347,20 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
                 help::print_explain_help();
                 return Ok(());
             }
-            value if selector.is_none() => selector = Some(value.to_string()),
-            other => return Err(format!("unexpected explain argument {other:?}")),
+            // The selector is positional, so a mistyped flag used to be
+            // accepted as one: analysis ran against `--fromm` as if it were a
+            // finding id instead of reporting the typo. A `-` prefix alone
+            // cannot decide that, though — `app/selector.rs` splits `file:line`
+            // on the last `:` and accepts any path, so a file named
+            // `-generated.rs` gives the valid selector `-generated.rs:42`.
+            // Reject a `-`-prefixed token only when it is not selector-shaped.
+            value
+                if selector.is_none()
+                    && (!value.starts_with('-') || is_dash_prefixed_file_line_selector(value)) =>
+            {
+                selector = Some(value.to_string());
+            }
+            other => return Err(unknown_argument("explain", other)),
         }
         i += 1;
     }
@@ -8148,11 +8174,63 @@ language = "rust"
         );
     }
 
+    /// The regression this guards is not a missing suggestion but a missing
+    /// *error*: the positional-selector arm accepted any token, so a mistyped
+    /// flag became the finding selector and `explain` ran a full analysis
+    /// against `--fromm` as if it were a finding id. A flag-shaped token must
+    /// be rejected as a flag, with the suggestion the parser now routes to.
+    #[test]
+    fn explain_suggests_the_nearest_flag_instead_of_taking_a_typo_as_the_selector() {
+        assert_eq!(
+            explain(&args(&["--fromm", "artifact.json"])),
+            Err(
+                "unknown explain argument \"--fromm\". Did you mean `--from`? \
+                 Run `ripr explain --help`."
+                    .to_string()
+            )
+        );
+    }
+
+    /// A `file:line` selector may legitimately begin with `-`, because
+    /// `app/selector.rs` splits on the last `:` and accepts any path. Guarding
+    /// the positional arm on the `-` prefix alone would reject
+    /// `-generated.rs:42`, a previously usable selector, with no `--`
+    /// end-of-options escape to recover it. The token must reach selector
+    /// handling, while a genuine typo still gets the suggestion.
+    #[test]
+    fn explain_keeps_dash_prefixed_file_line_selectors() {
+        let unknown_argument_error =
+            "unknown explain argument \"-generated.rs:42\". Run `ripr explain --help`.";
+        let result = explain(&args(&["-generated.rs:42"]));
+        assert_ne!(
+            result,
+            Err(unknown_argument_error.to_string()),
+            "a dash-prefixed file:line selector must not be treated as a flag"
+        );
+        assert!(
+            !matches!(&result, Err(message) if message.contains("unknown explain argument")),
+            "unexpected unknown-argument rejection: {result:?}"
+        );
+
+        assert_eq!(
+            explain(&args(&["--fromm", "artifact.json"])),
+            Err(
+                "unknown explain argument \"--fromm\". Did you mean `--from`? \
+                 Run `ripr explain --help`."
+                    .to_string()
+            )
+        );
+    }
+
+    /// Also pins that the `!value.starts_with('-')` guard on the positional
+    /// arm did not cost `explain` its selector: `probe:...` is still accepted
+    /// there, so the rejected token is the trailing `"extra"`. Were the guard
+    /// wrong, this error would name `probe:...` instead.
     #[test]
     fn explain_rejects_unexpected_argument_after_selector() {
         assert_eq!(
             explain(&args(&["probe:src_lib_rs:10:return_value", "extra"])),
-            Err("unexpected explain argument \"extra\"".to_string())
+            Err("unknown explain argument \"extra\". Run `ripr explain --help`.".to_string())
         );
     }
 
