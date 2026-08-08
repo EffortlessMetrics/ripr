@@ -3102,11 +3102,13 @@ impl Backend {
         &self,
         _params: LSPAny,
     ) -> LspResult<Option<LSPAny>> {
-        let latest = self.latest_analysis.lock().ok();
-        let snapshot = match latest {
-            Some(guard) => guard.clone(),
-            None => None,
-        };
+        // A poisoned lock and an empty slot both fail closed to `no_snapshot`;
+        // `and_then` flattens the stored `Option<Arc<AnalysisSnapshot>>`.
+        let snapshot = self
+            .latest_analysis
+            .lock()
+            .ok()
+            .and_then(|guard| (*guard).clone());
         let Some(snapshot) = snapshot else {
             return Ok(Some(serde_json::json!({
                 "error": {
@@ -3142,6 +3144,12 @@ impl Backend {
         Ok(Some(serde_json::json!({
             "kind": "actionable_items",
             "status": "ok",
+            // `snapshot_id` echoes the refresh-transaction generation
+            // identity (`RefreshMetadata::snapshot_id`). This is an interim
+            // compatibility state for the first #1603 slice — it is NOT
+            // #1602's immutable snapshot-handle contract, and neither
+            // responses nor docs may represent it as that contract. The
+            // immutable handle binding lands with #1602.
             "snapshot_id": snapshot.refresh.snapshot_id,
             "selected_count": result.selected.len(),
             "omitted_count": result.omitted.len(),
@@ -8124,5 +8132,208 @@ mod quarantine_message_tests {
         let message = quarantine_restored_log_message(Path::new("/workspace/src/lib.rs"));
         assert!(message.contains("/workspace/src/lib.rs"));
         assert!(message.contains("restored"));
+    }
+}
+
+#[cfg(test)]
+mod list_actionable_items_tests {
+    use super::*;
+    use crate::lsp::diagnostic_budget::{
+        DiagnosticBudget, DiagnosticDeliverySelection, DiagnosticDeliveryUnavailableReason,
+    };
+    use crate::lsp::state::RefreshMetadata;
+    use tower_lsp_server::LspService;
+    use tower_lsp_server::ls_types::{Diagnostic, Uri};
+
+    struct HandlerHarness {
+        service: LspService<Backend>,
+        // Keep the socket alive for the whole test, mirroring the other LSP
+        // handler test harnesses in this crate.
+        _socket: tower_lsp_server::ClientSocket,
+        runtime: tokio::runtime::Runtime,
+    }
+
+    fn handler_harness() -> Result<HandlerHarness, String> {
+        let (service, socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| format!("failed to start test runtime: {error}"))?;
+        Ok(HandlerHarness {
+            service,
+            _socket: socket,
+            runtime,
+        })
+    }
+
+    fn snapshot_with_selection(selection: Option<DiagnosticDeliverySelection>) -> AnalysisSnapshot {
+        AnalysisSnapshot {
+            root: PathBuf::from("/workspace"),
+            input_identity: None,
+            base: Some("main".to_string()),
+            mode: crate::app::Mode::Draft,
+            refresh: RefreshMetadata {
+                snapshot_id: Some("snapshot:test-handler".to_string()),
+                ..RefreshMetadata::default()
+            },
+            findings: Vec::new(),
+            analysis_outcome: None,
+            diagnostic_profile: LspDiagnosticProfile::Full,
+            classified_seams: Vec::new(),
+            gap_artifacts: Vec::new(),
+            gap_artifact_rejections: Vec::new(),
+            diagnostics_by_uri: BTreeMap::new(),
+            delivery_selection: selection.map(Arc::new),
+            seams_deferred: false,
+            partial_scope: None,
+            component_outcomes: Vec::new(),
+            out_of_scope_test_file_findings: 0,
+        }
+    }
+
+    fn install_snapshot(
+        harness: &HandlerHarness,
+        snapshot: AnalysisSnapshot,
+    ) -> Result<(), String> {
+        *harness
+            .service
+            .inner()
+            .latest_analysis
+            .lock()
+            .map_err(|error| format!("latest analysis lock poisoned: {error}"))? =
+            Some(Arc::new(snapshot));
+        Ok(())
+    }
+
+    fn call_handler(harness: &HandlerHarness) -> Result<serde_json::Value, String> {
+        harness
+            .runtime
+            .block_on(
+                harness
+                    .service
+                    .inner()
+                    .ripr_list_actionable_items(serde_json::Value::Null),
+            )
+            .map_err(|error| format!("handler returned an LSP error: {error}"))?
+            .ok_or_else(|| "handler returned no payload".to_string())
+    }
+
+    /// A gap-ledger diagnostic whose budget eligibility is explicit, matching
+    /// the delivery-selection parity fixtures.
+    fn actionable_diagnostic(id: &str) -> Diagnostic {
+        Diagnostic {
+            message: format!("diagnostic {id}"),
+            data: Some(serde_json::json!({
+                "diagnostic_id": id,
+                "gap_id": id,
+                "headline_eligible": true,
+            })),
+            ..Default::default()
+        }
+    }
+
+    /// A real `Applied` selection produced by the shared budget evaluator
+    /// over one actionable diagnostic — no fabricated budget result.
+    fn applied_selection() -> Result<DiagnosticDeliverySelection, String> {
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<Uri>()
+            .map_err(|error| format!("parse test URI: {error}"))?;
+        let mut diagnostics_by_uri = BTreeMap::new();
+        diagnostics_by_uri.insert(uri, vec![actionable_diagnostic("gap:1")]);
+        Ok(DiagnosticDeliverySelection::evaluate(
+            &diagnostics_by_uri,
+            &DiagnosticBudget::default(),
+            "snapshot:test-profile",
+            "evidence:test",
+        ))
+    }
+
+    #[test]
+    fn list_actionable_items_without_snapshot_fails_closed() -> Result<(), String> {
+        let harness = handler_harness()?;
+        let response = call_handler(&harness)?;
+
+        assert_eq!(response["error"]["kind"], "no_snapshot");
+        assert_eq!(response["error"]["recovery_route"], "refresh");
+        assert!(response["error"]["message"].is_string());
+        // An error response must not present a snapshot identity.
+        assert!(response.get("snapshot_id").is_none());
+        assert!(response.get("kind").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn list_actionable_items_analysis_in_flight_fails_closed() -> Result<(), String> {
+        let harness = handler_harness()?;
+        install_snapshot(&harness, snapshot_with_selection(None))?;
+        let response = call_handler(&harness)?;
+
+        assert_eq!(response["error"]["kind"], "analysis_in_flight");
+        assert_eq!(response["error"]["recovery_route"], "refresh");
+        assert!(response["error"]["message"].is_string());
+        assert!(response.get("snapshot_id").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn list_actionable_items_unavailable_delivery_fails_closed() -> Result<(), String> {
+        let selection = DiagnosticDeliverySelection {
+            budget: DiagnosticBudget::default(),
+            outcome: DiagnosticDeliveryOutcome::Unavailable {
+                reason: DiagnosticDeliveryUnavailableReason::Evaluation,
+                detail: "test fixture: budget evaluation rejected".to_string(),
+            },
+        };
+        let harness = handler_harness()?;
+        install_snapshot(&harness, snapshot_with_selection(Some(selection)))?;
+        let response = call_handler(&harness)?;
+
+        assert_eq!(response["error"]["kind"], "analysis_in_flight");
+        assert_eq!(response["error"]["recovery_route"], "refresh");
+        assert!(
+            response["error"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("unavailable"))
+        );
+        assert!(response.get("snapshot_id").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn list_actionable_items_applied_returns_bounded_envelope() -> Result<(), String> {
+        let harness = handler_harness()?;
+        install_snapshot(
+            &harness,
+            snapshot_with_selection(Some(applied_selection()?)),
+        )?;
+        let response = call_handler(&harness)?;
+
+        assert_eq!(response["kind"], "actionable_items");
+        assert_eq!(response["status"], "ok");
+        // The interim generation identity propagates from the committed
+        // snapshot (see the handler's interim-binding comment; the immutable
+        // #1602 handle contract is a later slice).
+        assert_eq!(response["snapshot_id"], "snapshot:test-handler");
+        assert_eq!(response["selected_count"], 1);
+        assert_eq!(response["omitted_count"], 0);
+        assert_eq!(response["total_count"], 1);
+        assert!(
+            response["budget_identity"]
+                .as_str()
+                .is_some_and(|identity| identity.contains("snapshot:test-profile"))
+        );
+        assert_eq!(response["complete_evidence_identity"], "evidence:test");
+        assert_eq!(
+            response["continuation_or_inspect_route"],
+            "ripr/listActionableItems"
+        );
+        // Read-only invariants are part of every success envelope.
+        assert_eq!(response["allowed_edit_surface"], "read_only");
+        assert_eq!(
+            response["must_not_change"],
+            serde_json::json!(["source_edits", "workspace_edit", "autonomous_repair"])
+        );
+        assert!(response.get("error").is_none());
+        Ok(())
     }
 }

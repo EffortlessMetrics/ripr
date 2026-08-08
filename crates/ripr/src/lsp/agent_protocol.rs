@@ -496,7 +496,10 @@ impl RiprAgentCapability {
     }
 
     /// Capability with at least one handler implemented (#1603).
-    /// The snapshot_id is the existing generation counter (sufficient for v0.1).
+    /// `snapshot_id` is the existing refresh generation identity: an interim
+    /// compatibility state for this first slice, NOT #1602's immutable
+    /// snapshot-handle contract. It must not be represented as that contract
+    /// in responses or docs; the immutable handle binding lands with #1602.
     pub(crate) fn v0_1_implemented() -> Self {
         Self {
             implementation_state: RiprAgentImplementationState::Implemented,
@@ -822,18 +825,52 @@ mod tests {
     #[test]
     fn capability_advertises_only_implemented_handlers() -> Result<(), String> {
         let capability = capability_fixture()?;
-        // #1603: listActionableItems is now implemented, so it must be advertised.
-        if !capability
-            .supported_requests
-            .contains(&RiprAgentRequest::ListActionableItems)
-        {
-            return Err("ripr/listActionableItems must be in supported_requests".to_string());
+        // #1603: listActionableItems is the only implemented handler, so the
+        // advertised surface must equal it exactly — direct vector equality,
+        // not containment plus a loop over the same vector.
+        if capability.supported_requests != vec![RiprAgentRequest::ListActionableItems] {
+            return Err(format!(
+                "supported_requests drifted from the implemented handler: {:?}",
+                capability.supported_requests
+            ));
         }
-        // Unimplemented handlers must NOT be advertised.
-        for req in &capability.supported_requests {
-            if *req != RiprAgentRequest::ListActionableItems {
-                return Err(format!("unsupported request advertised: {:?}", req));
-            }
+        if capability.supported_profiles != vec![RiprAgentProfile::Actionable] {
+            return Err(format!(
+                "supported_profiles drifted from the implemented profile: {:?}",
+                capability.supported_profiles
+            ));
+        }
+        // Lock the rest of the v0_1_implemented contract: the interim
+        // generation identity and cancellation are advertised, every other
+        // surface stays fail-closed, and the claim boundary names exactly
+        // what is implemented.
+        if capability.implementation_state != RiprAgentImplementationState::Implemented {
+            return Err("implementation_state must be `implemented`".to_string());
+        }
+        if !capability.snapshot_handles {
+            return Err(
+                "snapshot_handles must advertise the interim generation identity".to_string(),
+            );
+        }
+        if !capability.cancellation {
+            return Err("cancellation must be advertised".to_string());
+        }
+        if capability.continuations {
+            return Err("continuations must remain fail-closed".to_string());
+        }
+        if capability.work_done_progress {
+            return Err("work_done_progress must remain fail-closed".to_string());
+        }
+        if capability.diagnostic_modes != vec![RiprAgentDiagnosticMode::Push] {
+            return Err("diagnostic_modes drifted from push-only".to_string());
+        }
+        if capability.claim_boundary
+            != "ripr/listActionableItems is implemented; all other riprAgent requests remain reserved."
+        {
+            return Err(format!(
+                "claim_boundary drifted: {}",
+                capability.claim_boundary
+            ));
         }
         // The capability must remain read-only.
         if capability.source_edit_capability != RiprAgentSourceEditCapability::None {
