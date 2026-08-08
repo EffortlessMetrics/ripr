@@ -48,7 +48,7 @@ const REVIEW_PR_REQUIRED_MARKERS: [&str; 16] = [
     "review_contract:blocked_is_not_human_cause",
 ];
 
-const PROVIDERS: [(&str, &str, &str, &str, Option<&str>); 2] = [
+const PROVIDERS: [(&str, &str, &str, &str, Option<&str>); 3] = [
     (
         "codex",
         "AGENTS.md",
@@ -61,6 +61,17 @@ const PROVIDERS: [(&str, &str, &str, &str, Option<&str>); 2] = [
         "CLAUDE.md",
         ".claude/skills",
         ".agents/skills",
+        None,
+    ),
+    // ZCode reads AGENTS.md and uses the same .agents/skills tree as Codex.
+    // It has no separate override file and no separate skill root; the
+    // provider entry validates that the shared AGENTS.md carries the root
+    // route marker and that the skill tree is complete for this provider too.
+    (
+        "zcode",
+        "AGENTS.md",
+        ".agents/skills",
+        ".claude/skills",
         None,
     ),
 ];

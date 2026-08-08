@@ -17,7 +17,9 @@ substantive exact-head inspection → review-pr
 published or existing PR convergence → finish-pr
 ```
 
-- `review_route:root_to_review_pr`
+The root route marker `review_route:root_to_review_pr` lives in `AGENTS.md`
+itself, shared by every provider that reads it (Codex and ZCode); this override
+file carries only Codex-specific framing.
 
 A candidate that appears ready moves through `review-pr` before `finish-pr` may
 arm merge. Reading automated comments, seeing no unresolved threads, or seeing

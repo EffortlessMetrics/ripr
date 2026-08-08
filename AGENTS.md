@@ -565,20 +565,65 @@ Preserve the user's original goal, constraints, non-goals, assumptions, and
 acceptance predicates. The durable issue, specification, plan, policy, receipt,
 and closeout graph is the repository's source of truth for long-running work.
 
-Use the seven Codex procedures under `.agents/skills/**` as the operational
-entrypoints. Select the narrowest procedure for the current claim, and keep one
-current branch/worktree/PR per coherent claim. Commit the coherent candidate,
-run the pre-publication `review-pr` pass, and let a `REVIEW_INCOMPLETE` candidate
-enter `finish-pr` only for publication. Re-run `review-pr` on the exact published
-head with current remote evidence; only `REVIEW_READY` may enter `finish-pr`
-merge convergence. A waiting PR is still in flight; advance a distinct claim
-when useful and revisit it after a material transition.
+Use the seven operational procedures under `.agents/skills/**` as the
+entrypoints for any agent that reads this file (Codex, ZCode, and any future
+provider that consumes `AGENTS.md`). Select the narrowest procedure for the
+current claim, and keep one current branch/worktree/PR per coherent claim.
+Commit the coherent candidate, run the pre-publication `review-pr` pass, and
+let a `REVIEW_INCOMPLETE` candidate enter `finish-pr` only for publication.
+Re-run `review-pr` on the exact published head with current remote evidence;
+only `REVIEW_READY` may enter `finish-pr` merge convergence. A waiting PR is
+still in flight; advance a distinct claim when useful and revisit it after a
+material transition.
+
+- `review_route:root_to_review_pr`
 
 Use focused readers or reviewers only when they add a different source,
 oracle, context, threat model, platform reach, or verification method. Their
 findings are leads until checked against current repository and GitHub evidence.
 Reasonable, reversible engineering choices should proceed without an owner
 pause.
+
+### ZCode routing
+
+ZCode continuously loads root `AGENTS.md` as its only project instruction file.
+Nested `AGENTS.md`, `@import`, `@include`, and `CLAUDE.md` are not continuously
+merged by ZCode, so all routing must live in this file. The seven procedures
+under `.agents/skills/**` are the source skill set; ZCode imports them as
+`$skills` rather than through a third prose tree.
+
+```text
+For a high-level repository outcome:
+  use /goal for the runtime objective
+  invoke the $deliver-goal skill
+
+For one issue/PR claim:
+  invoke $deliver-pr or the earliest applicable atomic skill
+  ($prepare-issue, $prepare-proof, $build-candidate)
+
+Before merge convergence:
+  invoke $review-pr on the exact published head
+  repair or evidence-refute every finding on the same candidate
+  resolve review threads
+  then use $finish-pr to arm normal auto-merge
+```
+
+ZCode constraints that follow from its native contract and the review boundary
+above:
+
+- `/goal` is session-level runtime state with independent completion
+  verification; it does not replace issue acceptance, exact-head review,
+  required GitHub checks, or release authority.
+- Full Access, Auto Edit, or Goal Mode does not authorize direct or admin
+  merge. The path through `$review-pr` → `$finish-pr` is mandatory.
+- Use native `Explore` for read-only source/authority mapping and
+  `general-purpose` for self-contained implementation or verification tasks.
+  Do not invent a checked-in ZCode role conveyor, fixed persona graph, or
+  candidate tournament.
+- A merged PR with an incomplete high-level goal must continue through
+  `$deliver-goal`.
+- `check-agent-skills` validates the source-side route and skill set; it does
+  not claim that a user's local ZCode import or settings are enabled.
 
 Keep PR head, integration basis, squash result, proof, review, and release
 state as separate judgments. Refresh only the proof/review dimensions affected
