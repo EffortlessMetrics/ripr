@@ -138,6 +138,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: src/lib.rs:2
   Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: the evidence path is partially complete — see full form for details
   Changed behavior: if amount >= discount_threshold {
   Missing discriminator: amount == discount_threshold
   Related test: tests/pricing.rs:4 below_threshold_has_no_discount
@@ -146,6 +147,10 @@ Start here:
     - reach yes: Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
     - 12 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root . --diff diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
+  ripr context --root . --diff diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
 
 More:
   Full evidence: rerun with --format human-full

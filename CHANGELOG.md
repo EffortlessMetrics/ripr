@@ -11,6 +11,14 @@ are scoped or reviewed.
 
 ### Fixed
 
+- The README's example output was missing two lines the renderer has been
+  emitting: the `Why <class>:` classification hint, and the whole
+  `Next: drill into the top finding:` block naming the `explain` and `context`
+  commands. The second is the most actionable thing on screen — the product's
+  own advertisement of its output omitted the step that tells a reader what to
+  run next. Both now match `fixtures/boundary_gap/expected/human.txt`, which is
+  the same example.
+
 - Human output no longer restates the `Missing discriminator` label inside its
   own value. The classifier builds these entries as
   `Missing discriminator value: <value>`, so the digest rendered
