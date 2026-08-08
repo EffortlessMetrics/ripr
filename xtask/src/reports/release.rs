@@ -3146,6 +3146,11 @@ mod tests {
     /// the journey — the relative spawn below is exactly what failed.
     #[test]
     fn authentic_journey_requires_absolute_binary_from_external_cwd() -> Result<(), String> {
+        // The relative-path assertions below resolve against the process
+        // cwd, so serialize against tests that temporarily change it; a
+        // concurrent `set_current_dir` (or a deleted temp cwd) would make
+        // the checkout-relative stub vanish mid-test.
+        let _cwd_guard = crate::acquire_test_cwd_write_guard();
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|err| format!("read clock failed: {err}"))?
