@@ -207,17 +207,10 @@ fn render_agent_verify(options: &AgentVerifyOptions) -> Result<String, String> {
         .map_err(|error| format!("agent verify artifacts are incomparable: {error}"))?;
     crate::agent::artifact::validate_verify_movement(&before_identity, &after_identity)
         .map_err(|error| format!("agent verify {error}"))?;
-    let artifact_currentness = match (&before_identity.currentness, &after_identity.currentness) {
-        (
-            crate::agent::artifact::ArtifactCurrentness::Current,
-            crate::agent::artifact::ArtifactCurrentness::Current,
-        ) => "current",
-        (
-            crate::agent::artifact::ArtifactCurrentness::Historical,
-            crate::agent::artifact::ArtifactCurrentness::Historical,
-        ) => "historical_noncurrent",
-        _ => "dirty_worktree",
-    };
+    let artifact_currentness = crate::agent::artifact::pair_currentness_label(
+        &before_identity.currentness,
+        &after_identity.currentness,
+    );
     let report = output::outcome::targeted_test_outcome_report_from_json(
         &before_json,
         &after_json,

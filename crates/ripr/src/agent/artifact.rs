@@ -351,6 +351,40 @@ pub(crate) enum ArtifactCurrentness {
     Historical,
 }
 
+/// Pair-level currentness disclosure for `agent verify` / `agent receipt`
+/// output (#3027). This is the single authority both renderers call, so the
+/// receipt's canonical byte comparison always recomputes the same token the
+/// verify path emitted. The pair token must state what each side actually
+/// is: the previous `_ => "dirty_worktree"` fallthrough mislabeled every
+/// mixed pair — including the expected clean historical-before/current-after
+/// transaction — as a dirty worktree. `dirty_worktree` itself stays reserved
+/// for per-artifact evidence; a pair with a dirty side names which side.
+///
+/// There is deliberately no `unavailable` token: per-artifact validation
+/// (`validate_repo_exposure_artifact`) always classifies into one of the
+/// three variants and rejects an unclassifiable artifact before pair
+/// rendering, so no production path could produce it.
+pub(crate) fn pair_currentness_label(
+    before: &ArtifactCurrentness,
+    after: &ArtifactCurrentness,
+) -> &'static str {
+    match (before, after) {
+        (ArtifactCurrentness::Current, ArtifactCurrentness::Current) => "current",
+        (ArtifactCurrentness::Historical, ArtifactCurrentness::Historical) => {
+            "historical_noncurrent"
+        }
+        (ArtifactCurrentness::Historical, ArtifactCurrentness::Current) => {
+            "historical_before_current_after"
+        }
+        (ArtifactCurrentness::Current, ArtifactCurrentness::Historical) => {
+            "current_before_historical_after"
+        }
+        (ArtifactCurrentness::DirtyWorktree, ArtifactCurrentness::DirtyWorktree) => "dirty_both",
+        (ArtifactCurrentness::DirtyWorktree, _) => "dirty_before",
+        (_, ArtifactCurrentness::DirtyWorktree) => "dirty_after",
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ValidatedArtifact {
     pub(crate) currentness: ArtifactCurrentness,
@@ -1210,6 +1244,33 @@ mod tests {
             validate_comparable_pair(&before, &after),
             Err(error) if error.contains("base revisions differ")
         ));
+    }
+
+    #[test]
+    fn pair_currentness_label_covers_the_closed_vocabulary() {
+        use ArtifactCurrentness::{Current, DirtyWorktree, Historical};
+        // The full 3x3 pair matrix (#3027). Two cells are unreachable through
+        // the CLI verify path but stay truthful in the shared mapping: a
+        // fully current pair fails the movement gate, and a
+        // current-before/historical-after pair fails the lineage gate.
+        let cases = [
+            ((Current, Current), "current"),
+            ((Historical, Historical), "historical_noncurrent"),
+            ((Historical, Current), "historical_before_current_after"),
+            ((Current, Historical), "current_before_historical_after"),
+            ((DirtyWorktree, Current), "dirty_before"),
+            ((DirtyWorktree, Historical), "dirty_before"),
+            ((Current, DirtyWorktree), "dirty_after"),
+            ((Historical, DirtyWorktree), "dirty_after"),
+            ((DirtyWorktree, DirtyWorktree), "dirty_both"),
+        ];
+        for ((before, after), expected) in cases {
+            assert_eq!(
+                pair_currentness_label(&before, &after),
+                expected,
+                "({before:?}, {after:?})"
+            );
+        }
     }
 
     #[test]

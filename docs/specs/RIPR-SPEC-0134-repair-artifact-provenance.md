@@ -68,8 +68,21 @@ analysis-input identities before movement calculation. It adds
 advisory output with one of:
 
 - `current`;
-- `dirty_worktree`;
-- `historical_noncurrent`.
+- `historical_noncurrent`;
+- `historical_before_current_after`;
+- `current_before_historical_after`;
+- `dirty_before`;
+- `dirty_after`;
+- `dirty_both`.
+
+The pair token states what each side of the pair is (#3027): a dirty side is
+named (`dirty_before`, `dirty_after`, or `dirty_both`) rather than every mixed
+pair collapsing into one dirty label, and the clean expected transaction —
+the repository moved past the before artifact while the after artifact is
+current — is `historical_before_current_after`. A fully current pair fails
+the movement gate and a current-before/historical-after pair fails the
+lineage gate, so `current` and `current_before_historical_after` close the
+vocabulary without being reachable verify outcomes today.
 
 When Git identity is unavailable, the producer discloses `unavailable` in the
 artifact and the verifier rejects it as unsuitable evidence.
@@ -83,11 +96,16 @@ rejected before receipt issuance.
 Verify schema `0.2` (#2922) binds the result to the exact artifact bytes it
 compared: canonical output carries `inputs.before_content_sha256` and
 `inputs.after_content_sha256`, the validated `artifact.content_sha256`
-commitments of the pair. The receipt's canonical recomputation therefore
+commitments of the pair. Schema `0.3` (#3027) keeps that binding and corrects
+the pair-level `artifact_currentness` value domain, a breaking family change
+for consumers dispatching on the old catch-all `dirty_worktree` pair token.
+The receipt's canonical recomputation therefore
 rejects a verify result replayed against different or mutated artifact bytes —
 including mutations invisible to the movement render — with one typed
 `[not_canonical]` reason, and rejects any verify JSON whose schema version is
 not the canonical one with `[unsupported_schema]` before any artifact work. A
+0.2 document that is canonical in every other way is rejected the same way;
+there is no migration path, only a fresh verify. A
 verify result produced while the pair was current is stale after repository
 movement and is rejected on the same canonical comparison; a fresh verify
 after movement succeeds but discloses `historical_noncurrent`.
@@ -98,7 +116,8 @@ after movement succeeds but discloses `historical_noncurrent`.
   process.
 - `agent verify` still compares static before/after evidence only; it does not
   execute tests or runtime mutation testing.
-- The schema `0.2` content-commitment binding (#2922) is byte-level replay
+- The schema `0.2`/`0.3` content-commitment binding (#2922, #3027) is
+  byte-level replay
   defense, not a signature: it detects replayed, stale, or mutated evidence,
   but command execution binding, configuration binding, and receipt signatures
   remain follow-up slices under #1941.
@@ -116,7 +135,9 @@ after movement succeeds but discloses `historical_noncurrent`.
 
 - Producer output tests cover identity and streaming output.
 - CLI smoke tests cover a valid bound pair, a historical comparable pair,
-  dirty-worktree disclosure, tampered bytes, incomparable input identities,
+  mixed pair-currentness disclosure (historical-before/current-after,
+  dirty-before, dirty-after, and dirty-both, #3027), tampered bytes,
+  incomparable input identities,
   unsupported schema, malformed typed seam, plausible uncommitted JSON,
   fabricated verify JSON, altered verify movement, incomparable base revision,
   incomparable analysis inputs, verify replay against mutated artifact bytes,
@@ -129,10 +150,12 @@ after movement succeeds but discloses `historical_noncurrent`.
 
 ## Acceptance Examples
 
-### Current bound pair
+### Historical-before/current-after bound pair
 
-Two snapshots from the same root with the same base identity and current HEAD
-produce advisory movement with `artifact_currentness = "current"`.
+A before snapshot bound to a superseded revision and an after snapshot bound to
+the current HEAD — the expected clean before/after transaction — produce
+advisory movement with
+`artifact_currentness = "historical_before_current_after"` (#3027).
 
 ### Tampered or fabricated input
 
@@ -142,7 +165,8 @@ an unsupported schema fails before movement calculation.
 ## Test Mapping
 
 - `crates/ripr/src/agent/artifact.rs` tests the fixed commitment protocol and
-  duplicate-field rejection, plus the portable input-identity contract (#2823):
+  duplicate-field rejection, plus the closed pair-currentness vocabulary
+  (`pair_currentness_label`, #3027) and the portable input-identity contract (#2823):
   identity portability across equivalent checkout roots, concrete-root
   rejection at an equivalent clone, revision-only snapshot movement, semantic
   input drift (mode, base, config, manifest, lockfile), the scoped

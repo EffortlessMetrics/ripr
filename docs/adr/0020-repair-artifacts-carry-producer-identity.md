@@ -28,9 +28,16 @@ Repo-exposure snapshots consumed by `agent verify` carry a producer-owned
 
 The producer computes the commitment in a bounded-memory two-pass writer.
 `agent verify` parses and validates this envelope, checks root and revision
-compatibility, verifies the commitment, and reports `current`,
-`dirty_worktree`, or `historical_noncurrent` currentness. Invalid or
-unavailable identities fail before static movement is calculated.
+compatibility, verifies the commitment, and reports pair currentness. Invalid
+or unavailable identities fail before static movement is calculated.
+
+Amendment (#3027): the pair token originally collapsed every mixed pair into
+`dirty_worktree`. The closed pair vocabulary is now `current`,
+`historical_noncurrent`, `historical_before_current_after`,
+`current_before_historical_after`, `dirty_before`, `dirty_after`, and
+`dirty_both`, computed by one shared mapping in
+`crates/ripr/src/agent/artifact.rs`; `dirty_worktree` stays reserved for
+per-artifact evidence.
 
 This is an integrity/currentness boundary, not a signature system and not
 runtime mutation proof. Signature, command execution, and receipt issuance

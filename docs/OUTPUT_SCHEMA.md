@@ -44,7 +44,7 @@ map is:
 | `ripr doctor --json` | `schema_version` | `0.2` |
 | `ripr agent packet` | `schema_version` | `0.4` |
 | `ripr agent receipt` | `schema_version` | `0.5` |
-| `ripr agent verify` | `schema_version` | `0.2` |
+| `ripr agent verify` | `schema_version` | `0.3` |
 | `ripr agent status` | `schema_version` | `0.1` |
 | `ripr agent review-summary` | `schema_version` | `0.1` |
 | `ripr receipt write/check` | `schema_version` | `0.1` |
@@ -6296,7 +6296,7 @@ JSON shape:
 
 ```json
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "tool": "ripr",
   "status": "advisory",
   "inputs": {
@@ -6370,11 +6370,14 @@ JSON shape:
 
 Field contract:
 
-- `schema_version` - currently `"0.2"`. Version `0.2` added the artifact
+- `schema_version` - currently `"0.3"`. Version `0.2` added the artifact
   content-commitment binding (`inputs.before_content_sha256` /
   `inputs.after_content_sha256`) so a verify result is bound to the exact
-  artifact bytes it compared; `agent receipt` fails closed on any other
-  schema version.
+  artifact bytes it compared. Version `0.3` (#3027) corrects the pair-level
+  `artifact_currentness` value domain — a closed-vocabulary correction that
+  removes the old catch-all `dirty_worktree` pair token — so consumers
+  dispatching on 0.2 values must re-verify; `agent receipt` fails closed on
+  any other schema version and never migrates a 0.2 document.
 - `status` - always `"advisory"`; this is an agent verification hint, not a CI
   policy.
 - `inputs.before` / `inputs.after` - the compared snapshot paths.
@@ -6383,8 +6386,12 @@ Field contract:
   This is the replay binding: a consumer that revalidates the artifacts can
   detect any byte change after verify, including one invisible to the
   movement render.
-- `artifact_currentness` - the pair's repository identity disclosure:
-  `current`, `dirty_worktree`, or `historical_noncurrent`. It does not claim
+- `artifact_currentness` - the pair's repository identity disclosure, one of:
+  `current`, `historical_noncurrent`, `historical_before_current_after`,
+  `current_before_historical_after`, `dirty_before`, `dirty_after`, or
+  `dirty_both`. A dirty side names the side (`dirty_before`, `dirty_after`,
+  or `dirty_both`); the clean expected transaction is
+  `historical_before_current_after`. It does not claim
   that tests ran or that the static gap is correct.
 - `summary.improved` - matched seams whose after `SeamGripClass` ranks higher
   than before.

@@ -29,7 +29,12 @@ pub(crate) const TARGETED_TEST_OUTCOME_SCHEMA_VERSION: &str = "0.1";
 // verify result is bound to the exact artifact bytes it compared; the
 // receipt path fails closed on older or newer schema versions. The shape is
 // otherwise unchanged from 0.1 (#2646).
-pub(crate) const AGENT_VERIFY_SCHEMA_VERSION: &str = "0.2";
+// #3027: version 0.3 corrects the pair-level `artifact_currentness` value
+// domain (mixed pairs were mislabeled `dirty_worktree`; the closed
+// vocabulary now names each side). A consumer dispatching on 0.2 values
+// breaks, so this is a breaking family change: 0.2 documents keep their own
+// version and are NOT current evidence — there is no migration path.
+pub(crate) const AGENT_VERIFY_SCHEMA_VERSION: &str = "0.3";
 
 /// The exact-bytes content commitments of the validated before/after
 /// artifacts a verify result was computed from (#2922 PR B). Every canonical
