@@ -1683,10 +1683,20 @@ fn agent_verify_fixture_check(
                 &command,
                 "installed binary path is not usable inside the external fixture",
                 Vec::new(),
-                vec![err],
+                vec![format!(
+                    "installed binary {} could not be resolved to the executable actually used: {err}",
+                    crate::normalize_path(binary)
+                )],
             );
         }
     };
+    // The journey spawns this resolved executable from the external fixture
+    // working directory, so the receipt must name it rather than the
+    // checkout-relative input path.
+    let command = format!(
+        "{} check --root . --mode draft --format repo-exposure-json; agent verify; agent receipt",
+        crate::normalize_path(&binary)
+    );
     match run_authentic_repo_exposure_journey(&binary) {
         Ok(details) => readiness_check(
             "agent-verify-boundary-fixture",
@@ -1723,18 +1733,11 @@ fn agent_verify_fixture_check(
 
 /// The authentic producer journey spawns the installed binary with the
 /// external fixture as its working directory, so the checkout-relative
-/// `installed_ripr_binary()` path would not resolve there. Resolve it to an
-/// absolute path before the journey begins.
+/// `installed_ripr_binary()` path would not resolve there. Resolve it before
+/// the journey begins; `fs::canonicalize` always returns an absolute path on
+/// success.
 fn absolute_installed_binary(binary: &Path) -> Result<PathBuf, String> {
-    let resolved = fs::canonicalize(binary)
-        .map_err(|err| format!("canonicalize installed binary failed: {err}"))?;
-    if !resolved.is_absolute() {
-        return Err(format!(
-            "installed binary did not resolve to an absolute path: {}",
-            crate::normalize_path(&resolved)
-        ));
-    }
-    Ok(resolved)
+    fs::canonicalize(binary).map_err(|err| format!("canonicalize installed binary failed: {err}"))
 }
 
 fn run_authentic_repo_exposure_journey(binary: &Path) -> Result<Vec<String>, String> {
@@ -3135,21 +3138,82 @@ mod tests {
         Ok(())
     }
 
+    /// Reproduce the defect mechanism from the clean-main #2823 failure: a
+    /// checkout-relative binary path does not resolve when the child process
+    /// runs from an unrelated external working directory (os error 2), while
+    /// the resolved absolute path spawns from anywhere. Under the old
+    /// implementation — which passed the checkout-relative path straight to
+    /// the journey — the relative spawn below is exactly what failed.
     #[test]
-    fn authentic_journey_binary_resolves_to_absolute_path() -> Result<(), String> {
-        let resolved = super::absolute_installed_binary(Path::new("Cargo.toml"))?;
-        if !resolved.is_absolute() {
-            return Err(format!(
-                "resolved binary path {} is not absolute",
-                resolved.display()
-            ));
-        }
-        if !resolved.ends_with("Cargo.toml") {
-            return Err(format!(
-                "resolved binary path {} lost its file name",
-                resolved.display()
-            ));
-        }
+    fn authentic_journey_requires_absolute_binary_from_external_cwd() -> Result<(), String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("read clock failed: {err}"))?
+            .as_nanos();
+        let stub_dir = Path::new("../target/ripr-release-test")
+            .join(format!("absolute-binary-{}-{stamp}", std::process::id()));
+        let external_dir = super::release_temp_root()?.join(format!(
+            "ripr-release-external-cwd-{}-{stamp}",
+            std::process::id()
+        ));
+        let result = (|| -> Result<(), String> {
+            fs::create_dir_all(&stub_dir)
+                .map_err(|err| format!("create stub dir failed: {err}"))?;
+            fs::create_dir_all(&external_dir)
+                .map_err(|err| format!("create external cwd failed: {err}"))?;
+            let stub = stub_dir.join(format!("ripr-stub{}", std::env::consts::EXE_SUFFIX));
+            let current_exe =
+                std::env::current_exe().map_err(|err| format!("read current exe failed: {err}"))?;
+            fs::copy(&current_exe, &stub)
+                .map_err(|err| format!("copy stub binary failed: {err}"))?;
+            let relative = Path::new("../target").join(
+                stub.strip_prefix("../target")
+                    .map_err(|err| format!("relativize stub path failed: {err}"))?,
+            );
+            if relative.is_absolute() || !relative.exists() {
+                return Err(format!(
+                    "stub path {} must be checkout-relative and exist",
+                    relative.display()
+                ));
+            }
+            let args = vec!["--list".to_string()];
+            // Pre-fix mechanism: the relative path cannot resolve from the
+            // unrelated external cwd, so the spawn itself fails. Pin the
+            // not-found error class specifically: a spawn that fails for any
+            // other reason (permissions, sandbox policy) is a different
+            // defect, and an unexpected success means the platform's
+            // relative-path semantics changed and this test must be
+            // revisited rather than silently passing.
+            match super::run_command_in_dir(&relative, &args, &external_dir, "stub") {
+                Ok(outcome) => {
+                    return Err(format!(
+                        "checkout-relative stub unexpectedly spawned from an external cwd: {outcome:?}"
+                    ));
+                }
+                Err(error) if error.contains("os error 2") || error.contains("No such file") => {}
+                Err(error) => {
+                    return Err(format!(
+                        "relative stub spawn failed for an unexpected reason: {error}"
+                    ));
+                }
+            }
+            // Post-fix: the resolved absolute path spawns from the same cwd.
+            let resolved = super::absolute_installed_binary(&relative)?;
+            if !resolved.is_absolute() {
+                return Err(format!(
+                    "resolved binary path {} is not absolute",
+                    resolved.display()
+                ));
+            }
+            super::run_command_in_dir(&resolved, &args, &external_dir, "resolved stub")
+                .map_err(|err| format!("resolved absolute stub must spawn from any cwd: {err}"))?;
+            Ok(())
+        })();
+        let cleanup_stub = fs::remove_dir_all(&stub_dir);
+        let cleanup_external = fs::remove_dir_all(&external_dir);
+        result?;
+        cleanup_stub.map_err(|err| format!("remove stub dir failed: {err}"))?;
+        cleanup_external.map_err(|err| format!("remove external cwd failed: {err}"))?;
         Ok(())
     }
 
