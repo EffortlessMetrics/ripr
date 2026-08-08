@@ -6825,6 +6825,18 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::agent_receipt_rejects_incomparable_analysis_inputs",
   "crates/ripr/tests/cli_smoke.rs::agent_receipt_rejects_rerendered_verify_json",
   "crates/ripr/tests/cli_smoke.rs::editor_agent_loop_fixture_outputs_match_expected",
+  "xtask/src/reports/release_negative.rs::tests::release_negative_args_parse_version",
+  "xtask/src/reports/release_negative.rs::tests::release_negative_args_require_version",
+  "xtask/src/reports/release_negative.rs::tests::recommit_binds_mutated_bytes_and_detects_stale_commitment",
+  "xtask/src/reports/release_negative.rs::tests::rejection_evaluation_checks_exit_status_before_the_token",
+  "xtask/src/reports/release_negative.rs::tests::rejection_evaluation_discriminates_repository_root_from_snapshot_mismatch",
+  "xtask/src/reports/release_negative.rs::tests::replace_once_requires_a_unique_anchor",
+  "xtask/src/reports/release_negative.rs::tests::restore_state_recovers_bytes_and_head_after_mutation",
+  "xtask/src/reports/release_negative.rs::tests::restore_state_rejects_digest_mismatch_and_unreturnable_head",
+  "xtask/src/reports/release_negative.rs::tests::family_coverage_discloses_the_deferred_families",
+  "xtask/src/reports/release_negative.rs::tests::case_receipt_finalize_requires_the_full_chain",
+  "xtask/src/reports/release_negative.rs::tests::corpus_covers_every_landed_case_once",
+  "xtask/src/reports/release_negative.rs::tests::deferred_dispositions_record_both_unproducible_negatives",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
@@ -6838,6 +6850,7 @@ code = [
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/output/repo_exposure.rs",
   "crates/ripr/src/output/outcome/render_json.rs",
+  "xtask/src/reports/release_negative.rs",
   ".allow/spec-system/slices/receipt-verify-input-validation.v1.toml",
 ]
 outputs = [
