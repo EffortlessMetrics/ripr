@@ -12,6 +12,7 @@ pub(in crate::analysis) fn find_related_tests<'a>(
     probe: &Probe,
     owner_fn: Option<&FunctionSummary>,
     index: &'a RustIndex,
+    workspace_complete: bool,
 ) -> Vec<(&'a TestSummary, RelationReason)> {
     let mut related: Vec<(&TestSummary, RelationReason)> = Vec::new();
     let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
@@ -23,6 +24,31 @@ pub(in crate::analysis) fn find_related_tests<'a>(
         .and_then(|s| s.to_str())
         .unwrap_or("");
     let owner_package_prefix = owner_fn.and_then(|owner| package_prefix(&owner.file));
+
+    // #2971 ambiguity rule: a call to `owner_name` can bypass the
+    // package-prefix guard only when (a) the owner name is unique in the
+    // workspace AND (b) the index spans the whole workspace. When multiple
+    // crates define functions with the same name, a bare call in crate_b
+    // calling `score()` cannot be attributed to crate_a::score — that is the
+    // token-coincidence false-exposed family.
+    //
+    // (b) is not a property of the analysis mode. The diff path indexes only
+    // the changed files whenever `include_unchanged_tests` is false — Deep and
+    // Ready included — and only the changed packages under Draft/Fast, so a
+    // same-named function in an unindexed file is absent from the count and
+    // the name would falsely appear unique. The caller therefore derives
+    // `workspace_complete` from the file selection that actually built the
+    // index, and anything narrower fails closed. This follows the
+    // owner_shape.rs precedent of scanning index.functions for same-name
+    // collision.
+    let owner_name_is_unique = workspace_complete
+        && !owner_name.is_empty()
+        && index
+            .functions
+            .iter()
+            .filter(|f| f.name == owner_name)
+            .count()
+            == 1;
 
     // For module-level struct/field probes (owner_fn is None) derive the package
     // prefix from the probe's source file so cross-crate spurious matches are
@@ -41,8 +67,20 @@ pub(in crate::analysis) fn find_related_tests<'a>(
         .collect();
 
     for test in &index.tests {
+        // Compute calls_owner BEFORE the package-prefix guard so a cross-crate
+        // test that genuinely calls a uniquely-named owner is not filtered out
+        // before the strong signal can save it.
+        let calls_owner = !owner_name.is_empty()
+            && (test.calls.iter().any(|call| call.name == owner_name)
+                || body_contains_owner_call(&test.body, owner_name));
+
+        // #2971: Only apply the package-prefix guard to weak signals — tests
+        // that do not directly call the owner, OR tests that call a bare name
+        // that is ambiguous across crates. A cross-crate test that calls a
+        // uniquely-named owner is genuinely related and must not be suppressed.
         if let Some(prefix) = &owner_package_prefix
             && !normalize_path(&test.file).starts_with(prefix)
+            && !(calls_owner && owner_name_is_unique)
         {
             continue;
         }
@@ -52,9 +90,6 @@ pub(in crate::analysis) fn find_related_tests<'a>(
         {
             continue;
         }
-        let calls_owner = !owner_name.is_empty()
-            && (test.calls.iter().any(|call| call.name == owner_name)
-                || body_contains_owner_call(&test.body, owner_name));
 
         // Signal: a test's assertion observed_tokens intersect the probe's
         // long-enough identifier tokens. Only fires when the probe has no named
@@ -146,6 +181,27 @@ fn package_prefix(path: &Path) -> Option<String> {
     None
 }
 
+/// True when `body` mentions `owner_name` immediately followed by `(`.
+///
+/// A fallback for tests whose `calls` facts did not capture the call, e.g. a
+/// path-qualified `crate_under_test::internal::inner(10, 3)`.
+///
+/// The boundary check rejects a longer identifier that merely ends in
+/// `owner_name` (`compute_score(`), but deliberately does **not** reject a
+/// preceding `.`. A receiver is not evidence of a different function: the
+/// owner is frequently an impl method, and `ledger.apply(5)` is the only way a
+/// test can call `Ledger::apply` at all. #3047 tried rejecting `.` to suppress
+/// cross-crate `other.compute_hash(...)` matches and downgraded every
+/// method-owner fixture from `direct_owner_call` to `owner_named_test`.
+///
+/// That suppression is also unnecessary. `CallFact` carries no receiver or
+/// path information (`analysis/extract/calls.rs` keeps only the bare trailing
+/// identifier), so receiver identity cannot be recovered here — but the
+/// cross-crate bypass is already gated on the owner name being unique across
+/// `index.functions`, and `syntax/ra.rs` indexes impl methods alongside free
+/// functions. A same-named method on another type is therefore itself in the
+/// index, the name is not unique, and the bypass never fires. The uniqueness
+/// gate subsumes the receiver concern.
 fn body_contains_owner_call(body: &str, owner_name: &str) -> bool {
     if owner_name.is_empty() {
         return false;
@@ -178,6 +234,10 @@ mod tests {
     fn given_owner_function_when_tests_share_name_across_packages_then_filters_to_package() {
         let owner = function("crates/crate_a/src/lib.rs", "score");
         let index = RustIndex {
+            functions: vec![
+                function("crates/crate_a/src/lib.rs", "score"),
+                function("crates/crate_b/src/lib.rs", "score"),
+            ],
             tests: vec![
                 test(
                     "crates/crate_b/tests/score.rs",
@@ -194,9 +254,144 @@ mod tests {
         };
         let probe = probe("crates/crate_a/src/lib.rs", "score + 1");
 
-        let related = find_related_tests(&probe, Some(&owner), &index);
+        let related = find_related_tests(&probe, Some(&owner), &index, true);
 
         assert_eq!(related.len(), 1);
+        assert_eq!(related[0].0.name, "crate_a_score_test");
+    }
+
+    /// #2971 / #3033 positive control: a cross-crate test that calls a
+    /// **uniquely-named** owner is retained via `DirectOwnerCall`. The owner
+    /// name `compute_hash` appears once in the workspace, so the bare call in
+    /// a separate crate's integration test is unambiguously calling the owner.
+    #[test]
+    fn given_unique_owner_when_cross_crate_test_calls_owner_then_retained() {
+        let owner = function("crates/digest/src/lib.rs", "compute_hash");
+        let index = RustIndex {
+            functions: vec![owner.clone()],
+            tests: vec![test_with_call(
+                "crates/digest-tests/tests/integration.rs",
+                "hash_integration_test",
+                "let result = compute_hash(b\"input\");",
+                "compute_hash",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = probe("crates/digest/src/lib.rs", "compute_hash(input)");
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true);
+
+        assert_eq!(
+            related.len(),
+            1,
+            "cross-crate test calling unique owner should be retained"
+        );
+        assert_eq!(related[0].0.name, "hash_integration_test");
+        assert_eq!(related[0].1, RelationReason::DirectOwnerCall);
+    }
+
+    /// An impl-method owner is reachable only through a receiver, so a `.`
+    /// before the name must not disqualify the call. The `propagate_*` goldens
+    /// are exactly this shape — owner `Ledger::apply`, test body
+    /// `ledger.apply(5);` — and a `.`-rejecting matcher silently downgraded
+    /// them from `direct_owner_call` to `owner_named_test`, weakening the
+    /// relation on every method owner in the corpus.
+    #[test]
+    fn given_method_owner_when_test_calls_through_receiver_then_direct_owner_call() {
+        let owner = function("src/lib.rs", "apply");
+        let index = RustIndex {
+            functions: vec![owner.clone()],
+            tests: vec![TestSummary {
+                name: "changes_balance".to_string(),
+                file: PathBuf::from("tests/ledger_tests.rs"),
+                start_line: 1,
+                end_line: 4,
+                body: "let mut ledger = Ledger::new(100);\nledger.apply(5);".to_string(),
+                // Body-only: the receiver form is what must be credited.
+                calls: Vec::new(),
+                assertions: Vec::new(),
+                literals: Vec::new(),
+                attrs: Vec::new(),
+            }],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/lib.rs", "self.persist(amount * 9)");
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true);
+
+        assert_eq!(related.len(), 1, "method owner must keep its calling test");
+        assert_eq!(related[0].1, RelationReason::DirectOwnerCall);
+    }
+
+    /// #2971 scope control: the same workspace as the positive control above,
+    /// reached through a partial index. The diff path indexes only the changed
+    /// files whenever `include_unchanged_tests` is false, and only the changed
+    /// packages under Draft/Fast, so a name seen once in that index is not
+    /// evidence that it is unique in the workspace. The bypass must not fire:
+    /// a sibling crate's unindexed same-named function would otherwise be
+    /// credited as the owner — the token-coincidence false-`exposed` family.
+    #[test]
+    fn given_incomplete_index_when_cross_crate_test_calls_owner_then_filtered() {
+        let owner = function("crates/digest/src/lib.rs", "compute_hash");
+        let index = RustIndex {
+            functions: vec![owner.clone()],
+            tests: vec![test_with_call(
+                "crates/digest-tests/tests/integration.rs",
+                "hash_integration_test",
+                "let result = compute_hash(b\"input\");",
+                "compute_hash",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = probe("crates/digest/src/lib.rs", "compute_hash(input)");
+
+        // The only difference from the positive control.
+        let related = find_related_tests(&probe, Some(&owner), &index, false);
+
+        assert!(
+            related.is_empty(),
+            "a partial index cannot establish name uniqueness, so the \
+             package-prefix guard must stay unconditional"
+        );
+    }
+
+    /// #2971 / #3033 negative control: a cross-crate test calling an
+    /// **ambiguously-named** function is filtered by the package-prefix guard.
+    /// Both crate_a and crate_b define `score`, so a bare `score()` call in
+    /// crate_b cannot be attributed to crate_a::score.
+    #[test]
+    fn given_ambiguous_owner_when_cross_crate_test_calls_same_name_then_filtered() {
+        let owner = function("crates/crate_a/src/lib.rs", "score");
+        let crate_b_fn = function("crates/crate_b/src/lib.rs", "score");
+        let index = RustIndex {
+            functions: vec![owner.clone(), crate_b_fn],
+            tests: vec![
+                test_with_call(
+                    "crates/crate_b/tests/score.rs",
+                    "crate_b_calls_score",
+                    "score(42)",
+                    "score",
+                ),
+                test(
+                    "crates/crate_a/tests/score.rs",
+                    "crate_a_score_test",
+                    "score(1)",
+                ),
+            ],
+            ..RustIndex::default()
+        };
+        let probe = probe("crates/crate_a/src/lib.rs", "score + 1");
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true);
+
+        // The crate_a test is in-package and passes; the crate_b test is
+        // cross-crate and filtered despite calling `score()` because the name
+        // is ambiguous across crates.
+        assert_eq!(
+            related.len(),
+            1,
+            "ambiguous-name cross-crate test must be filtered"
+        );
         assert_eq!(related[0].0.name, "crate_a_score_test");
     }
 
@@ -212,7 +407,7 @@ mod tests {
         };
         let probe = probe("src/lib.rs", "score + 1");
 
-        let related = find_related_tests(&probe, Some(&owner), &index);
+        let related = find_related_tests(&probe, Some(&owner), &index, true);
 
         assert_eq!(related.len(), 2);
         assert_eq!(related[0].0.file, PathBuf::from("tests/a_case.rs"));
@@ -232,7 +427,7 @@ mod tests {
         };
         let probe = probe("src/lib.rs", "vat >= threshold");
 
-        let related = find_related_tests(&probe, Some(&owner), &index);
+        let related = find_related_tests(&probe, Some(&owner), &index, true);
 
         assert_eq!(related.len(), 1);
         assert_eq!(related[0].0.name, "vat_boundary_is_checked_by_macro");
@@ -262,7 +457,7 @@ mod tests {
         };
         let probe = probe("src/internal.rs", "if a >= b");
 
-        let related = find_related_tests(&probe, Some(&owner), &index);
+        let related = find_related_tests(&probe, Some(&owner), &index, true);
 
         assert!(
             related.is_empty(),
@@ -290,7 +485,7 @@ mod tests {
         };
         let probe = probe("src/internal.rs", "if a >= b");
 
-        let related = find_related_tests(&probe, Some(&owner), &index);
+        let related = find_related_tests(&probe, Some(&owner), &index, true);
 
         assert_eq!(related.len(), 1);
         assert_eq!(related[0].1, RelationReason::DirectOwnerCall);
@@ -355,6 +550,26 @@ mod tests {
             calls: vec![CallFact {
                 line: 1,
                 name: "score".to_string(),
+                text: body.to_string(),
+            }],
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+        }
+    }
+
+    /// Like `test` but with a configurable call name — needed for cross-crate
+    /// tests where the owner name is not hardcoded to `"score"`.
+    fn test_with_call(file: &str, name: &str, body: &str, call_name: &str) -> TestSummary {
+        TestSummary {
+            name: name.to_string(),
+            file: PathBuf::from(file),
+            start_line: 1,
+            end_line: 4,
+            body: body.to_string(),
+            calls: vec![CallFact {
+                line: 1,
+                name: call_name.to_string(),
                 text: body.to_string(),
             }],
             assertions: Vec::new(),
@@ -448,7 +663,7 @@ mod tests {
         // Struct field probe: expression contains `open_in` (7 chars, >= 5)
         let probe = struct_field_probe("crates/ripr/src/config.rs", "open_in");
 
-        let related = find_related_tests(&probe, None, &index);
+        let related = find_related_tests(&probe, None, &index, true);
 
         assert_eq!(related.len(), 1);
         assert_eq!(related[0].0.name, "repo_lane_deserializes_fields_correctly");
@@ -489,8 +704,8 @@ mod tests {
         let probe_open_in = struct_field_probe("crates/ripr/src/config.rs", "open_in");
         let probe_open_cap = struct_field_probe("crates/ripr/src/config.rs", "open_cap");
 
-        let related_in = find_related_tests(&probe_open_in, None, &index);
-        let related_cap = find_related_tests(&probe_open_cap, None, &index);
+        let related_in = find_related_tests(&probe_open_in, None, &index, true);
+        let related_cap = find_related_tests(&probe_open_cap, None, &index, true);
 
         assert_eq!(
             related_in.len(),
@@ -537,7 +752,7 @@ mod tests {
         // Probe expression is `port` (4 chars) — below the >= 5 threshold.
         let probe = struct_field_probe("crates/ripr/src/scheduler.rs", "port");
 
-        let related = find_related_tests(&probe, None, &index);
+        let related = find_related_tests(&probe, None, &index, true);
 
         assert!(
             related.is_empty(),
@@ -574,7 +789,7 @@ mod tests {
         // assertions_reference_owner signal must NOT fire.
         let probe = probe("src/lib.rs", "amount >= discount_threshold");
 
-        let related = find_related_tests(&probe, Some(&owner), &index);
+        let related = find_related_tests(&probe, Some(&owner), &index, true);
 
         assert!(
             related.is_empty(),
@@ -597,7 +812,7 @@ mod tests {
             "pub(crate) state: GateWatchdogState",
         );
 
-        let related = find_related_tests(&probe, None, &index);
+        let related = find_related_tests(&probe, None, &index, true);
         let Some((test, reason)) = related.first() else {
             return Err(
                 "absolute root probe did not match its relative companion test".to_string(),
@@ -626,7 +841,7 @@ mod tests {
             "pub(crate) state: State",
         );
 
-        let related = find_related_tests(&probe, None, &index);
+        let related = find_related_tests(&probe, None, &index, true);
         if !related.is_empty() {
             return Err(format!("cross-crate test must stay unrelated: {related:?}"));
         }

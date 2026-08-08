@@ -1357,6 +1357,22 @@ impl RustAdapter {
         let mut changed_rust_files = 0usize;
         let mut candidate_lines = BTreeSet::new();
 
+        // #2971: The cross-crate calls_owner bypass in find_related_tests
+        // requires a workspace-complete function index. In Instant/Draft/Fast
+        // mode, index.functions is scoped to changed files or changed packages,
+        // so a same-named function in an unchanged file would be absent from
+        // the uniqueness count — fail-closed by treating the index as
+        // incomplete for those modes.
+        //
+        // The mode alone does not decide this. `select_rust_files_for_mode`
+        // returns the changed files only whenever `include_unchanged_tests` is
+        // false, including under Deep and Ready, so keying on the mode would
+        // still mark a changed-files-only index complete. Ask the selection
+        // that actually built the index instead: it is a deduplicated subset
+        // of `analyzable_rust_files`, so an equal length means nothing was
+        // dropped. Any narrower selection leaves the index partial.
+        let workspace_index_complete = index_files.len() == analyzable_rust_files.len();
+
         for changed in analyzable_changed_files
             .iter()
             .filter(|file| self.accepts_path(&file.path))
@@ -1378,7 +1394,8 @@ impl RustAdapter {
             for probe in probes {
                 candidate_lines.insert((probe.location.file.clone(), probe.location.line));
                 cancellation::checkpoint()?;
-                let mut finding = classifier::classify_probe(&probe, &index);
+                let mut finding =
+                    classifier::classify_probe(&probe, &index, workspace_index_complete);
                 finding.language = Some(LanguageId::Rust);
                 // `language_status` is omitted for Rust per RIPR-SPEC-0026.
                 // RIPR-SPEC-0114: when the direct-call classifier finds no related
@@ -1524,7 +1541,7 @@ impl RustAdapter {
         for path in &production_files {
             let probes = probes::probes_for_repo_file(&options.root, path, &index);
             for probe in probes {
-                let mut finding = classifier::classify_probe(&probe, &index);
+                let mut finding = classifier::classify_probe(&probe, &index, true);
                 finding.language = Some(LanguageId::Rust);
                 // `language_status` is omitted for Rust per RIPR-SPEC-0026.
                 // RIPR-SPEC-0114 + 0115 + 0117: no_static_path limitation

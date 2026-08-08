@@ -10,9 +10,9 @@ use super::probes::parser_expression_for_probe;
 use super::rust_index::RustIndex;
 use crate::domain::*;
 
-pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
+pub fn classify_probe(probe: &Probe, index: &RustIndex, workspace_complete: bool) -> Finding {
     let owner_fn = resolve_owner_function(probe, index);
-    let related_tests = find_related_tests(probe, owner_fn, index);
+    let related_tests = find_related_tests(probe, owner_fn, index, workspace_complete);
     // RIPR-SPEC-0133: detect assertion-shaped owners (oracles) here, where the
     // full index is available; the context carries the verdict so guidance can
     // be reframed. The exposure class is never changed by this flag.
@@ -79,7 +79,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.related_tests.len(), 1);
         assert_eq!(finding.related_tests[0].name, "crate_a_score_test");
@@ -126,7 +126,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.class, ExposureClass::NoStaticPath);
         assert_eq!(finding.ripr.reach.state, StageState::No);
@@ -175,7 +175,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.ripr.reach.state, StageState::Yes);
         assert_eq!(finding.related_tests.len(), 1);
@@ -210,7 +210,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.class, ExposureClass::InfectionUnknown);
         assert!(finding.unknown_has_stop_reason());
@@ -251,7 +251,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.class, ExposureClass::PropagationUnknown);
         assert!(finding.unknown_has_stop_reason());
@@ -287,7 +287,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.class, ExposureClass::StaticUnknown);
         assert!(finding.unknown_has_stop_reason());
@@ -328,7 +328,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Yes);
         assert_eq!(
@@ -370,7 +370,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
         // RIPR-SPEC-0107: ErrorPath now in needs_token_confirmation. A broad
@@ -428,7 +428,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
         // The smoke-only assertion score(1).unwrap() contains no token from the
@@ -479,7 +479,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
         // The broad error assertion "assert!(score(1).is_err())" contains no
@@ -547,7 +547,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
@@ -588,7 +588,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ErrorVariant);
@@ -623,7 +623,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::EventCall);
@@ -655,7 +655,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::StructField);
@@ -687,7 +687,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::MatchArm);
@@ -728,7 +728,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
@@ -786,7 +786,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ErrorVariant);
@@ -838,7 +838,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::StructField);
@@ -884,7 +884,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
@@ -930,7 +930,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert!(finding.flow_sinks.is_empty());
         assert_eq!(finding.ripr.propagate.state, StageState::Unknown);
@@ -979,7 +979,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::Unknown);
@@ -1011,7 +1011,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
@@ -1047,7 +1047,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ErrorVariant);
@@ -1083,7 +1083,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::Unknown);
@@ -1141,7 +1141,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.class, ExposureClass::WeaklyExposed);
         assert_eq!(finding.ripr.infect.state, StageState::Weak);
@@ -1206,7 +1206,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.ripr.infect.state, StageState::Yes);
         assert!(finding.activation.missing_discriminators.is_empty());
@@ -1266,7 +1266,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert!(finding.activation.observed_values.iter().any(|fact| {
             fact.context == ValueContext::FunctionArgument && fact.value == "token = \"\""
@@ -1365,7 +1365,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         let step = finding.recommended_next_step.as_deref().unwrap_or("");
         assert!(
@@ -1440,7 +1440,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert!(
             !finding
@@ -1580,7 +1580,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
         if finding.class != ExposureClass::Exposed {
             return Err(format!("parser payload was not discriminated: {finding:?}"));
         }
@@ -1639,7 +1639,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
         if finding.class != ExposureClass::WeaklyExposed {
             return Err(format!(
                 "argument identifier falsely confirmed call effect: {finding:?}"
