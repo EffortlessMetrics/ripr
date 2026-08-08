@@ -536,9 +536,9 @@ mod tests {
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
         FlowSinkFact, FlowSinkKind, LanguageFileCount, LanguageId, LanguageStatus,
-        MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId,
-        RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
-        Summary, SymbolId, ValueContext, ValueFact,
+        MISSING_DISCRIMINATOR_VALUE_PREFIX, MissingDiscriminatorFact, OracleKind, OracleStrength,
+        Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation,
+        StageEvidence, StageState, Summary, SymbolId, ValueContext, ValueFact,
     };
     use std::path::PathBuf;
 
@@ -977,6 +977,53 @@ mod tests {
                 "non-exposed digest must not use the observed-advisory label; got:\n{digest}"
             );
         }
+    }
+
+    /// RIPR-SPEC-0122: the digest line carries the discriminator value alone.
+    /// `decision.rs` builds value-shaped entries as
+    /// `Missing discriminator value: <value>`, which the renderer used to print
+    /// verbatim under its own label, producing
+    /// `Missing discriminator: Missing discriminator value: X`.
+    #[test]
+    fn digest_missing_discriminator_line_does_not_restate_its_label() {
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.missing = vec![format!(
+            "{MISSING_DISCRIMINATOR_VALUE_PREFIX}AuthError::RevokedToken"
+        )];
+
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+
+        assert!(
+            digest.contains("  Missing discriminator: AuthError::RevokedToken\n"),
+            "digest must print the value alone; got:\n{digest}"
+        );
+        assert!(
+            !digest.contains("Missing discriminator: Missing discriminator"),
+            "digest must not restate its own label; got:\n{digest}"
+        );
+    }
+
+    /// The same field also carries prose entries, which have no value prefix
+    /// and must survive the strip untouched.
+    #[test]
+    fn digest_missing_discriminator_line_keeps_prose_entries_verbatim() {
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.missing = vec!["No strong discriminator was detected".to_string()];
+
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+
+        assert!(
+            digest.contains("  Missing discriminator: No strong discriminator was detected\n"),
+            "prose entries must render unchanged; got:\n{digest}"
+        );
     }
 
     #[test]

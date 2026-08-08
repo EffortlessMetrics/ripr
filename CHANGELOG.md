@@ -11,6 +11,15 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Human output no longer restates the `Missing discriminator` label inside its
+  own value. The classifier builds these entries as
+  `Missing discriminator value: <value>`, so the digest rendered
+  `Missing discriminator: Missing discriminator value: AuthError::RevokedToken`.
+  It now renders `Missing discriminator: AuthError::RevokedToken`. Entries that
+  are not value-shaped ("No strong discriminator was detected") are unchanged,
+  as is every non-human format. 18 `human.txt` goldens re-blessed as
+  `formatting_only`.
+
 - `Cargo.lock` now resolves the current workspace manifest. The `serial_test`
   dev-dependency was added without refreshing the lock, so `cargo` commands
   that pass `--locked` — including release qualification and lock-resolving

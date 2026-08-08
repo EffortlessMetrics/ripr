@@ -14,7 +14,7 @@ Start here:
   Static exposure: propagation_unknown (note, confidence 0.66)
   Why propagation_unknown: the change propagates but the downstream effect is unknown statically
   Changed behavior: capacity > threshold
-  Missing discriminator: Missing discriminator value: capacity == threshold
+  Missing discriminator: capacity == threshold
   Related test: src/lib.rs:10 above_threshold_gets_reduced
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
   Evidence:

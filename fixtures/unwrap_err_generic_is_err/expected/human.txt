@@ -14,7 +14,7 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.92)
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Err(CalcError::Negative);
-  Missing discriminator: Missing discriminator value: CalcError::Negative
+  Missing discriminator: CalcError::Negative
   Related test: tests/errors.rs:6 negative_input_returns_some_error
   Next step: Assert the exact error variant or payload instead of only is_err().
   Evidence:

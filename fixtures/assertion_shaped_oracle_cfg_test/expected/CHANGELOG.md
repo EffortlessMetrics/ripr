@@ -83,3 +83,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0122: render the missing-discriminator value without restating the label
+
+Command:
+`cargo xtask goldens bless assertion_shaped_oracle_cfg_test --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

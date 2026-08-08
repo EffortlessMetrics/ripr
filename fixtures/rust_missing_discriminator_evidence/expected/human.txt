@@ -14,7 +14,7 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.92)
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: Err(PricingError::Other)
-  Missing discriminator: Missing discriminator value: PricingError::Other
+  Missing discriminator: PricingError::Other
   Related test: tests/pricing.rs:4 rejects_boundary
   Next step: Strengthen the related assertion so it discriminates the changed behavior.
   Evidence:

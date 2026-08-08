@@ -14,7 +14,7 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.92)
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: retries: 1,
-  Missing discriminator: Missing discriminator value: retries: 1,
+  Missing discriminator: retries: 1,
   Related test: tests/item_tests.rs:4 config_exists
   Next step: Strengthen the related assertion so it discriminates the changed behavior.
   Evidence:

@@ -14,7 +14,7 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.92)
   Why weakly_exposed: the evidence path is partially complete — see full form for details
   Changed behavior: amount >= discount_threshold
-  Missing discriminator: Missing discriminator value: amount == discount_threshold
+  Missing discriminator: amount == discount_threshold
   Related test: src/lib.rs:14 below_threshold_has_no_discount
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence:

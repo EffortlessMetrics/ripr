@@ -14,7 +14,7 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.66)
   Why weakly_exposed: the evidence path is partially complete — see full form for details
   Changed behavior: normalized.len() > path.len()
-  Missing discriminator: Missing discriminator value: normalized.len() == path.len()
+  Missing discriminator: normalized.len() == path.len()
   Related test: src/lib.rs:23 normalized_paths_have_native_separators
   Next step: The changed owner is an assertion helper (its body is dominated by assert*/expect calls and nothing outside tests calls it), so exact-equality advice for code under test may not ap…
   Evidence:

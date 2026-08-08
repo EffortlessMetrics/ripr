@@ -146,7 +146,7 @@ pub(in crate::analysis) fn missing_evidence(
         activation
             .missing_discriminators
             .iter()
-            .map(|fact| format!("Missing discriminator value: {}", fact.value)),
+            .map(|fact| format!("{MISSING_DISCRIMINATOR_VALUE_PREFIX}{}", fact.value)),
     );
     missing.sort();
     missing.dedup();

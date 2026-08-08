@@ -14,7 +14,7 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.84)
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if code <= 299 {
-  Missing discriminator: Missing discriminator value: code == 299
+  Missing discriminator: code == 299
   Related test: tests/rendering.rs:4 renders_error_status_snapshot
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence:

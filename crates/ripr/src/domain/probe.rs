@@ -228,6 +228,19 @@ pub struct MissingDiscriminatorFact {
     pub flow_sink: Option<FlowSinkFact>,
 }
 
+/// Prefix the classifier puts on the value-shaped entries of `Finding.missing`.
+///
+/// The field mixes value-shaped entries (`Missing discriminator value: X`,
+/// built from a [`MissingDiscriminatorFact`]) with prose entries ("No strong
+/// discriminator was detected"), so consumers that already print a
+/// "Missing discriminator" label must strip this prefix to avoid restating it.
+/// Shared here because the classifier writes it and the renderers read it.
+///
+/// Crate-private: this is an internal formatting convention, not a contract
+/// embedders may bind to. `lib.rs` re-exports `pub mod domain`, so a `pub`
+/// constant here would publish the exact wording as library API.
+pub(crate) const MISSING_DISCRIMINATOR_VALUE_PREFIX: &str = "Missing discriminator value: ";
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FindingCanonicalGap {
     pub id: String,

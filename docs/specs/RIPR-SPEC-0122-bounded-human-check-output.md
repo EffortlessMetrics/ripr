@@ -107,6 +107,17 @@ The digest's discriminator line label reflects the discriminator state:
   unconditional `Missing discriminator` header would contradict the exposure
   class. Rust `exposed` findings carry no such entry and are unaffected.
 
+The line carries the discriminator value alone; the label is not restated
+inside it. `Finding.missing` mixes value-shaped entries, which the classifier
+builds as `Missing discriminator value: <value>`, with prose entries such as
+`No strong discriminator was detected`. Rendering a value-shaped entry verbatim
+under the label produced
+`Missing discriminator: Missing discriminator value: AuthError::RevokedToken`,
+so the renderer strips that prefix and emits
+`Missing discriminator: AuthError::RevokedToken`. Prose entries carry no such
+prefix and are rendered unchanged. This governs the human digest only; no
+machine format reads the label.
+
 The bounded renderer selects at most one visible unsuppressed finding. The
 selector is deterministic:
 

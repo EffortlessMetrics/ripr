@@ -1,6 +1,7 @@
 use crate::config::RiprConfig;
 use crate::domain::{
-    ExposureClass, Finding, LanguageId, LanguageStatus, RevealEvidence, StageState,
+    ExposureClass, Finding, LanguageId, LanguageStatus, MISSING_DISCRIMINATOR_VALUE_PREFIX,
+    RevealEvidence, StageState,
 };
 use crate::output::agent_seam_packets::{
     allowed_edit_surface_for_gap_route, gap_record_packet_do_not_do,
@@ -69,6 +70,15 @@ pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &Ripr
         } else {
             "Missing discriminator"
         };
+        // `decision.rs` builds these entries as `Missing discriminator value:
+        // <value>`, which restates the label the renderer is about to print:
+        // `Missing discriminator: Missing discriminator value: X`. Print the
+        // value alone. Entries that are not value-shaped ("No strong
+        // discriminator was detected") carry no such prefix and are unchanged.
+        // `evidence_lines.rs` strips the same prefix for the same reason.
+        let missing = missing
+            .strip_prefix(MISSING_DISCRIMINATOR_VALUE_PREFIX)
+            .unwrap_or(missing);
         out.push_str(&format!("  {label}: {}\n", one_line(missing)));
     }
     if let Some(test) = finding.related_tests.first() {

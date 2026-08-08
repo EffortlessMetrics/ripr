@@ -47,6 +47,9 @@ pub use probe::{
     MissingDiscriminatorFact, ORACLE_ALIGNMENT_VALUES, Probe, ProbeFamily, RelatedTest, StopReason,
     ValueContext, ValueFact,
 };
+// Internal formatting convention, not library API: `lib.rs` re-exports
+// `pub mod domain`, so this stays crate-private.
+pub(crate) use probe::MISSING_DISCRIMINATOR_VALUE_PREFIX;
 pub use summary::{LanguageFileCount, Summary};
 pub use support::{ProbeId, SourceLocation, SymbolId};
 pub use test_evidence_summary::{TestEvidenceEntry, TestEvidenceSummary};

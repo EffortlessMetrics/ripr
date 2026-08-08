@@ -139,7 +139,7 @@ Start here:
   File: src/lib.rs:2
   Static exposure: weakly_exposed (warning, confidence 0.92)
   Changed behavior: if amount >= discount_threshold {
-  Missing discriminator: Missing discriminator value: amount == discount_threshold
+  Missing discriminator: amount == discount_threshold
   Related test: tests/pricing.rs:4 below_threshold_has_no_discount
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence:

@@ -14,7 +14,7 @@ Start here:
   Static exposure: reachable_unrevealed (warning, confidence 0.79)
   Why reachable_unrevealed: no related test was found that reaches this change
   Changed behavior: retries: 1,
-  Missing discriminator: Missing discriminator value: retries: 1,
+  Missing discriminator: retries: 1,
   Next step: Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
   Evidence:
     - reach yes: Related tests appear to reach default_config: decimal_observation_does_not_name_retries
