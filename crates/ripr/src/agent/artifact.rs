@@ -451,8 +451,10 @@ pub(crate) enum ContentCommitmentRejection {
     Duplicate,
     /// The governed field is present but its value is not a JSON string.
     MalformedValue,
-    /// The governed string value never terminates. Unreachable after the
-    /// structured parse succeeds; retained as scanner defense-in-depth.
+    /// The governed string value never terminates. Unreachable through
+    /// `content_sha256_with_placeholder` after the structured parse succeeds;
+    /// retained as scanner defense-in-depth and exercised directly by
+    /// `commitment_scanner_reports_unterminated_string_defense_in_depth`.
     UnterminatedValue,
     /// The governed string is not a `sha256:<64 hex>` digest.
     InvalidDigestShape,
@@ -480,8 +482,8 @@ impl std::fmt::Display for ContentCommitmentRejection {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum PathSegment {
-    Key(String),
+enum PathSegment<'a> {
+    Key(&'a str),
     Index,
 }
 
@@ -527,7 +529,7 @@ impl<'a> CommitmentScanner<'a> {
 
     fn scan_value(
         &mut self,
-        path: &mut Vec<PathSegment>,
+        path: &mut Vec<PathSegment<'a>>,
     ) -> Result<(), ContentCommitmentRejection> {
         self.skip_whitespace();
         match self.peek() {
@@ -547,7 +549,7 @@ impl<'a> CommitmentScanner<'a> {
 
     fn scan_object(
         &mut self,
-        path: &mut Vec<PathSegment>,
+        path: &mut Vec<PathSegment<'a>>,
     ) -> Result<(), ContentCommitmentRejection> {
         self.position += 1;
         self.skip_whitespace();
@@ -567,7 +569,7 @@ impl<'a> CommitmentScanner<'a> {
             }
             self.position += 1;
             let governed = path.len() == 1
-                && matches!(&path[0], PathSegment::Key(parent) if parent == "artifact")
+                && matches!(&path[0], PathSegment::Key(parent) if *parent == "artifact")
                 && key == "content_sha256";
             if governed {
                 self.scan_governed_value()?;
@@ -592,7 +594,7 @@ impl<'a> CommitmentScanner<'a> {
 
     fn scan_array(
         &mut self,
-        path: &mut Vec<PathSegment>,
+        path: &mut Vec<PathSegment<'a>>,
     ) -> Result<(), ContentCommitmentRejection> {
         self.position += 1;
         self.skip_whitespace();
@@ -632,12 +634,14 @@ impl<'a> CommitmentScanner<'a> {
         Ok(())
     }
 
-    /// Scan a string token and return its raw (still escaped) contents.
-    fn scan_string(&mut self) -> Result<String, ContentCommitmentRejection> {
+    /// Scan a string token and return its raw (still escaped) contents as a
+    /// borrow of the input. Keys and string values are never heap-allocated:
+    /// a tens-of-megabytes artifact scans with zero per-string allocations.
+    fn scan_string(&mut self) -> Result<&'a str, ContentCommitmentRejection> {
         self.position += 1;
         let start = self.position;
         let end = self.scan_string_end()?;
-        Ok(self.raw[start..end].to_string())
+        Ok(&self.raw[start..end])
     }
 
     /// Advance past the closing quote and return its position.
@@ -756,6 +760,29 @@ mod tests {
             return Err(error);
         }
         Ok(root)
+    }
+
+    #[test]
+    fn commitment_scanner_reports_unterminated_string_defense_in_depth() {
+        // Unreachable through `content_sha256_with_placeholder`: the
+        // structured serde parse rejects truncated JSON as `MalformedJson`
+        // before the scanner runs. Exercise the scanner's own contract
+        // directly so the documented defense-in-depth variant stays real.
+        let mut scanner = CommitmentScanner {
+            raw: "\"unterminated",
+            position: 1,
+            spans: Vec::new(),
+        };
+        assert!(matches!(
+            scanner.scan_string_end(),
+            Err(ContentCommitmentRejection::UnterminatedValue)
+        ));
+        // And through the public path the same input is malformed JSON.
+        let truncated = r#"{"artifact":{"content_sha256":"sha256:0000"#;
+        assert!(matches!(
+            content_sha256_with_placeholder(truncated),
+            Err(ContentCommitmentRejection::MalformedJson(_))
+        ));
     }
 
     #[test]
