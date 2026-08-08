@@ -505,6 +505,7 @@ fn write_agent_repo_exposure_snapshot(root: &Path, path: &Path) -> Result<(), St
         root.to_path_buf(),
         "ready".to_string(),
         None,
+        &config,
     )?;
     if let Some(parent) = path
         .parent()

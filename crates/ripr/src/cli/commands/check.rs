@@ -345,6 +345,7 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 input.root.clone(),
                 input.mode.as_str().to_string(),
                 input.base.clone(),
+                &config,
             )?;
         let stdout = std::io::stdout();
         let mut handle = stdout.lock();

@@ -1743,6 +1743,37 @@ pub(crate) fn workspace_named_file_identities(root: &Path) -> (Option<String>, O
     )
 }
 
+/// Fail-closed portable variant for the repo-exposure artifact input identity
+/// (#2823). The collector strips the checkout root from each collected path
+/// (falling back to the absolute spelling on a strip miss), so the ordinary
+/// identity above is root-relative in practice but can silently reintroduce a
+/// root-bound absolute path on a miss. This variant instead degrades the
+/// whole identity to `None` when any collected path is still absolute after
+/// collection — a `None` renders into the caller's canonical string as a
+/// stable, root-independent placeholder, never as checkout-instance evidence.
+pub(crate) fn workspace_named_file_identities_relative(
+    root: &Path,
+) -> (Option<String>, Option<String>) {
+    let mut files = [Vec::new(), Vec::new()];
+    collect_named_workspace_files_by_name(root, root, &mut files);
+    let [manifest_files, lockfile_files] = files;
+    (
+        workspace_file_identity_portable(manifest_files),
+        workspace_file_identity_portable(lockfile_files),
+    )
+}
+
+/// Portable identity: collected paths must already be root-relative. A path
+/// that is still absolute means the collector's root strip missed; fail
+/// closed rather than hash the absolute — and therefore root-bound —
+/// spelling into a supposedly portable identity.
+fn workspace_file_identity_portable(files: Vec<(PathBuf, Vec<u8>)>) -> Option<String> {
+    if files.iter().any(|(path, _)| path.is_absolute()) {
+        return None;
+    }
+    workspace_file_identity(files)
+}
+
 fn workspace_file_identity(mut files: Vec<(PathBuf, Vec<u8>)>) -> Option<String> {
     files.sort_by(|left, right| left.0.cmp(&right.0));
     let mut input = String::new();
@@ -2341,6 +2372,48 @@ mod tests {
         assert_ne!(baseline.lockfile_hash, updated.lockfile_hash);
         assert_ne!(baseline.filename(), updated.filename());
         let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    /// (#2823) The portable identity fails closed: collected paths are
+    /// root-relative by construction (the collector strips the checkout
+    /// root), so a path that is still absolute means the strip missed, and
+    /// the whole identity must degrade to `None` instead of hashing the
+    /// root-bound absolute spelling into a supposedly portable identity.
+    #[test]
+    fn workspace_relative_file_identity_fails_closed_on_strip_miss() -> Result<(), String> {
+        let relative_files = vec![(PathBuf::from("Cargo.toml"), b"[workspace]\n".to_vec())];
+        // The plain identity accepts whatever spelling it is given (that is
+        // its contract for a single live checkout).
+        if workspace_file_identity(relative_files.clone()).is_none() {
+            return Err("the plain identity must hash relative paths".to_string());
+        }
+        let portable = workspace_file_identity_portable(relative_files.clone());
+        if portable != workspace_file_identity(relative_files) {
+            return Err(
+                "root-relative collected paths must produce the same portable and plain identities"
+                    .to_string(),
+            );
+        }
+        // An absolute collected path — the strip-miss shape — must NOT fall
+        // back to an absolute-path identity: the whole computation degrades.
+        let strip_missed = vec![(
+            PathBuf::from("/checkout/a/Cargo.toml"),
+            b"[workspace]\n".to_vec(),
+        )];
+        if workspace_file_identity_portable(strip_missed.clone()).is_some() {
+            return Err(
+                "a still-absolute collected path must degrade the portable identity to None, not an absolute-path identity"
+                    .to_string(),
+            );
+        }
+        if workspace_file_identity_portable(strip_missed.clone())
+            == workspace_file_identity(strip_missed)
+        {
+            return Err(
+                "a strip miss must not silently reproduce the absolute-path identity".to_string(),
+            );
+        }
         Ok(())
     }
 

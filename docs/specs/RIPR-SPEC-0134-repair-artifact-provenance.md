@@ -39,9 +39,23 @@ identity envelope. The envelope has `kind = "repo_exposure"`, identity schema
 mode, base revision, worktree state, bounded analysis-input identity,
 snapshot identity, creation command/profile, and `content_sha256`.
 
-The analysis-input identity covers the selected root, base, mode, named
-workspace inputs, and analyzer version without exposing configuration bytes.
-The content commitment uses the `raw_json_placeholder_v1` rule: hash the exact
+The analysis-input identity is portable semantic/configuration identity
+(#2823): an explicitly versioned `input:v2:fnv1a64:<16 lowercase hex>`
+covering the
+identity version, mode, profile (bound to mode by this producer), base, named
+workspace inputs (manifest and lockfile content identities), the
+repo-exposure producer-consumed configuration boundary (exactly the three
+oracle-strength fields — the Rust-only seam inventory consumes nothing else
+from `ripr.toml`), and analyzer version — never the
+concrete checkout root or a host-specific path spelling. Equivalent checkouts
+of the same commit under different roots share one input identity; the
+concrete root remains separate envelope evidence (`repository.root`) that the
+verifier compares with exact canonical-path equality. Only the current
+`input:v2:` identity version with the exact digest shape validates as current
+evidence; any other version is rejected as an unsupported input identity
+version, any malformed digest shape as a malformed input identity digest, and
+a previous-version migration boundary stays deferred until a real migration
+producer exists. The content commitment uses the `raw_json_placeholder_v1` rule: hash the exact
 artifact bytes after replacing the one `content_sha256` value with the fixed
 zero digest placeholder. The producer emits the resulting digest in the final
 artifact. This rule is stable, bounded-memory, and detects later byte changes.
@@ -128,7 +142,13 @@ an unsupported schema fails before movement calculation.
 ## Test Mapping
 
 - `crates/ripr/src/agent/artifact.rs` tests the fixed commitment protocol and
-  duplicate-field rejection.
+  duplicate-field rejection, plus the portable input-identity contract (#2823):
+  identity portability across equivalent checkout roots, concrete-root
+  rejection at an equivalent clone, revision-only snapshot movement, semantic
+  input drift (mode, base, config, manifest, lockfile), the scoped
+  producer-consumed config boundary (unconsumed typescript/perl/languages
+  settings stay comparable), rerun byte-stability, the root-bound v1 removal
+  experiment, and previous-version plus malformed-digest identity rejection.
 - `crates/ripr/src/app/agent_receipt.rs` tests the fail-closed verify schema
   gate (`[unsupported_schema]`) ahead of any artifact IO.
 - `crates/ripr/tests/cli_smoke.rs` tests valid, tampered, fabricated, and

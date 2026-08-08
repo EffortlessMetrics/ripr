@@ -13,6 +13,15 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub(crate) const ARTIFACT_IDENTITY_SCHEMA_VERSION: &str = "1";
+/// Version of the repo-exposure analysis input-identity algorithm (#2823).
+/// The emitted identity is `input:{INPUT_IDENTITY_VERSION}:<digest>`. The
+/// version is explicit in the emitted bytes so an algorithm change is a new
+/// identity shape, never a silent re-meaning of an existing one. v2 removes
+/// the concrete checkout root (and any host-specific path spelling) from the
+/// fingerprint: `analysis.input_identity` is portable semantic/configuration
+/// identity, while `repository.root` stays the concrete checkout-instance
+/// evidence validated separately.
+pub(crate) const INPUT_IDENTITY_VERSION: &str = "v2";
 pub(crate) const CONTENT_COMMITMENT_CANONICALIZATION: &str = "raw_json_placeholder_v1";
 pub(crate) const CONTENT_SHA256_PLACEHOLDER: &str =
     "sha256:0000000000000000000000000000000000000000000000000000000000000000";
@@ -26,25 +35,41 @@ pub(crate) struct RepoExposureArtifactContext {
 }
 
 impl RepoExposureArtifactContext {
+    /// Build the portable semantic input identity for one repo-exposure run.
+    ///
+    /// The v2 canonical string covers exactly the inputs that affect analysis
+    /// meaning: identity version, mode, profile (this producer binds profile
+    /// to mode; both are stated explicitly), base semantics, analysis format,
+    /// manifest and lockfile content identities (root-relative, so equivalent
+    /// checkouts under different roots agree), the repo-exposure
+    /// producer-consumed configuration boundary
+    /// (`crate::config::repo_exposure_config_identity_hash` — the three
+    /// oracle-strength fields only), and the analyzer version.
+    /// The concrete checkout root is deliberately absent: it is emitted as
+    /// `repository.root` and validated with exact canonical-path equality.
     pub(crate) fn for_repo_exposure(
         root: PathBuf,
         mode: String,
         base_revision: Option<String>,
+        config: &crate::config::RiprConfig,
     ) -> Result<Self, String> {
         let canonical_root = canonical_root(&root)?;
         let (manifest_identity, lockfile_identity) =
-            crate::analysis::seam_cache::workspace_named_file_identities(&canonical_root);
+            crate::analysis::seam_cache::workspace_named_file_identities_relative(&canonical_root);
         let input_canonical = format!(
-            "root={};base={:?};mode={};format=repo-exposure-json;manifest={:?};lockfile={:?};analyzer={}",
-            display_root(&canonical_root),
-            base_revision,
+            "identity_version={};mode={};profile={};base={:?};format=repo-exposure-json;manifest={:?};lockfile={:?};config={};analyzer={}",
+            INPUT_IDENTITY_VERSION,
             mode,
+            mode,
+            base_revision,
             manifest_identity,
             lockfile_identity,
+            crate::config::repo_exposure_config_identity_hash(config),
             env!("CARGO_PKG_VERSION"),
         );
         let input_identity = format!(
-            "input:{}",
+            "input:{}:{}",
+            INPUT_IDENTITY_VERSION,
             crate::config::config_fingerprint(&input_canonical)
         );
         Ok(Self {
@@ -194,6 +219,44 @@ pub(crate) fn validate_repo_exposure_artifact(
     {
         return Err(format!(
             "agent verify {label} artifact has invalid or unknown producer identity"
+        ));
+    }
+    // Version gate (#2823): only the current input-identity algorithm
+    // validates as current evidence. A previous-version identity (for example
+    // the v1 `input:<digest>` form that embedded the absolute checkout root)
+    // is rejected with an explicit bounded reason rather than silently
+    // accepted; a compatibility/migration boundary for earlier versions is
+    // deferred until a real migration producer exists (#2921 deferred
+    // negatives — no fabricated migration authority here).
+    let supported_prefix = format!("input:{INPUT_IDENTITY_VERSION}:");
+    let Some(algorithm_and_digest) = identity
+        .analysis
+        .input_identity
+        .strip_prefix(&supported_prefix)
+    else {
+        return Err(format!(
+            "agent verify {label} artifact has unsupported input identity version `{}` (expected `{supported_prefix}<digest>`)",
+            identity.analysis.input_identity
+        ));
+    };
+    // Shape gate: the producer emits exactly `fnv1a64:<16 lowercase hex>`.
+    // Anything else carrying the current version prefix is malformed, not
+    // merely "a different digest", and is rejected with its own bounded
+    // reason so a shape failure is never confused with a version failure.
+    let Some(digest) = algorithm_and_digest.strip_prefix("fnv1a64:") else {
+        return Err(format!(
+            "agent verify {label} artifact has malformed input identity digest `{}` (expected `{supported_prefix}fnv1a64:<16 lowercase hex>`)",
+            identity.analysis.input_identity
+        ));
+    };
+    if digest.len() != 16
+        || !digest
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    {
+        return Err(format!(
+            "agent verify {label} artifact has malformed input identity digest `{}` (expected `{supported_prefix}fnv1a64:<16 lowercase hex>`)",
+            identity.analysis.input_identity
         ));
     }
     let expected_root = canonical_root(root)?;
@@ -1210,10 +1273,12 @@ mod tests {
                     "before",
                 ],
             )?;
+            let config = crate::config::RiprConfig::default();
             let before = RepoExposureArtifactContext::for_repo_exposure(
                 root.clone(),
                 "draft".to_string(),
                 None,
+                &config,
             )?;
             let before_artifact = repo_exposure_artifact_metadata(&before, "sha256:test")?;
 
@@ -1233,6 +1298,7 @@ mod tests {
                 root.clone(),
                 "draft".to_string(),
                 None,
+                &config,
             )?;
             let after_artifact = repo_exposure_artifact_metadata(&after, "sha256:test")?;
 
@@ -1304,6 +1370,7 @@ mod tests {
             root.to_path_buf(),
             "draft".to_string(),
             None,
+            &crate::config::RiprConfig::default(),
         )?;
         let identity = repo_exposure_artifact_metadata(&context, CONTENT_SHA256_PLACEHOLDER)?;
         let document = json!({
@@ -1848,6 +1915,578 @@ mod tests {
                     "a declared-dirty artifact must stay DirtyWorktree on a clean worktree"
                         .to_string(),
                 );
+            }
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    /// A temp path that does not exist yet, for `git clone` targets.
+    fn fresh_temp_path(label: &str) -> Result<PathBuf, String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("clock error: {error}"))?
+            .as_nanos();
+        Ok(std::env::temp_dir().join(format!("ripr-artifact-{label}-{stamp}")))
+    }
+
+    /// Clone `source` into a fresh temp path so two checkouts share the same
+    /// commit, manifest, and lockfile contents under different roots.
+    fn clone_git_root(source: &Path) -> Result<PathBuf, String> {
+        let destination = fresh_temp_path("clone")?;
+        let output = git_spawn(
+            source,
+            &[
+                "clone",
+                "--quiet",
+                &source.display().to_string(),
+                &destination.display().to_string(),
+            ],
+        )?;
+        if !output.status.success() {
+            let _ = std::fs::remove_dir_all(&destination);
+            return Err(format!(
+                "git clone {} -> {} failed: {}",
+                source.display(),
+                destination.display(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        Ok(destination)
+    }
+
+    fn artifact_metadata(
+        root: &Path,
+        mode: &str,
+        base_revision: Option<String>,
+        config: &crate::config::RiprConfig,
+    ) -> Result<(RepoExposureArtifactContext, Value), String> {
+        let context = RepoExposureArtifactContext::for_repo_exposure(
+            root.to_path_buf(),
+            mode.to_string(),
+            base_revision,
+            config,
+        )?;
+        let metadata = repo_exposure_artifact_metadata(&context, "sha256:test")?;
+        Ok((context, metadata))
+    }
+
+    /// (#2823 test 1) Two equivalent checkouts of the same commit under
+    /// different temporary roots share one portable semantic input identity
+    /// and snapshot identity, while `repository.root` stays concrete
+    /// per-checkout evidence.
+    #[test]
+    fn repo_exposure_input_identity_is_portable_across_checkout_roots() -> Result<(), String> {
+        let root_a = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root_a)?;
+            let root_b = clone_git_root(&root_a)?;
+            let result = (|| -> Result<(), String> {
+                let config = crate::config::RiprConfig::default();
+                let (context_a, metadata_a) = artifact_metadata(&root_a, "draft", None, &config)?;
+                let (context_b, metadata_b) = artifact_metadata(&root_b, "draft", None, &config)?;
+                let prefix = format!("input:{INPUT_IDENTITY_VERSION}:");
+                if !context_a.input_identity.starts_with(&prefix) {
+                    return Err(format!(
+                        "input identity {} must carry the current version prefix {prefix}",
+                        context_a.input_identity
+                    ));
+                }
+                if context_a.input_identity != context_b.input_identity {
+                    return Err(format!(
+                        "equivalent checkouts must share one input identity: {} vs {}",
+                        context_a.input_identity, context_b.input_identity
+                    ));
+                }
+                if metadata_a["snapshot_identity"] != metadata_b["snapshot_identity"] {
+                    return Err(format!(
+                        "equivalent checkouts at the same revision must share one snapshot identity: {:?} vs {:?}",
+                        metadata_a["snapshot_identity"], metadata_b["snapshot_identity"]
+                    ));
+                }
+                if metadata_a["repository"]["root"] == metadata_b["repository"]["root"] {
+                    return Err(
+                        "distinct checkouts must keep distinct concrete repository roots"
+                            .to_string(),
+                    );
+                }
+                Ok(())
+            })();
+            let cleanup = std::fs::remove_dir_all(&root_b)
+                .map_err(|error| format!("remove clone root: {error}"));
+            result?;
+            cleanup?;
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root_a).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    /// (#2823 test 2) Portability of the semantic identity does not weaken
+    /// the concrete-instance check: an artifact emitted in root A is still
+    /// rejected when verified against an equivalent clone at root B, and by
+    /// the root-mismatch check specifically.
+    #[test]
+    fn repo_exposure_artifact_from_one_root_is_rejected_at_an_equivalent_clone()
+    -> Result<(), String> {
+        let root_a = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root_a)?;
+            let root_b = clone_git_root(&root_a)?;
+            let result = (|| -> Result<(), String> {
+                let raw = commit_content(&repo_exposure_raw_with_placeholder(&root_a)?)?;
+                // Positive control: the artifact validates at its own root.
+                validate_repo_exposure_artifact(&root_a, &raw, "test before")
+                    .map_err(|error| format!("artifact must validate at its own root: {error}"))?;
+                match validate_repo_exposure_artifact(&root_b, &raw, "test before") {
+                    Err(error)
+                        if error.contains("repository root")
+                            && error.contains("does not match") =>
+                    {
+                        Ok(())
+                    }
+                    Err(error) => Err(format!(
+                        "foreign clone: unexpected rejection reason (must be the repository root mismatch): {error}"
+                    )),
+                    Ok(_) => Err(
+                        "an artifact bound to root A must be rejected at equivalent clone B"
+                            .to_string(),
+                    ),
+                }
+            })();
+            let cleanup = std::fs::remove_dir_all(&root_b)
+                .map_err(|error| format!("remove clone root: {error}"));
+            result?;
+            cleanup?;
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root_a).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    /// (#2823 test 3) Revision-only movement in one root: the input identity
+    /// is unchanged (the revision is not a semantic input) while the snapshot
+    /// identity tracks the new head.
+    #[test]
+    fn repo_exposure_revision_movement_keeps_input_identity_and_moves_snapshot()
+    -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let config = crate::config::RiprConfig::default();
+            let (before, before_metadata) = artifact_metadata(&root, "draft", None, &config)?;
+            commit_empty(&root, "advance")?;
+            let (after, after_metadata) = artifact_metadata(&root, "draft", None, &config)?;
+            if before.input_identity != after.input_identity {
+                return Err(
+                    "revision-only movement must not change the portable input identity"
+                        .to_string(),
+                );
+            }
+            if before_metadata["repository"]["head"] == after_metadata["repository"]["head"] {
+                return Err("the fixture commit must move the repository head".to_string());
+            }
+            if before_metadata["snapshot_identity"] == after_metadata["snapshot_identity"] {
+                return Err("revision movement must change the snapshot identity".to_string());
+            }
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    /// (#2823 test 4) Movement of every semantic input — mode, base, config,
+    /// manifest content, lockfile content — changes the input identity. The
+    /// profile is bound to the mode by envelope validation
+    /// (`profile == mode`), so a distinct-profile construction cannot reach
+    /// the validator; the canonical string states `profile=` explicitly so a
+    /// future producer that separates the two is versioned honestly.
+    #[test]
+    fn repo_exposure_input_identity_tracks_every_semantic_input() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let config = crate::config::RiprConfig::default();
+            let baseline = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &config,
+            )?;
+            let expect_drift =
+                |case: &str, moved: &RepoExposureArtifactContext| -> Result<(), String> {
+                    if moved.input_identity == baseline.input_identity {
+                        return Err(format!("{case} must change the input identity"));
+                    }
+                    Ok(())
+                };
+
+            let moved_mode = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "deep".to_string(),
+                None,
+                &config,
+            )?;
+            expect_drift("mode movement", &moved_mode)?;
+
+            let moved_base = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                Some("origin/main".to_string()),
+                &config,
+            )?;
+            expect_drift("base revision movement", &moved_base)?;
+
+            let moved_config =
+                crate::config::tests_only_parse("[oracles]\nsnapshot_strength = \"strong\"\n")?;
+            if crate::config::check_artifact_config_identity_hash(&moved_config)
+                == crate::config::check_artifact_config_identity_hash(&config)
+            {
+                return Err(
+                    "the oracle-policy fixture must change the config identity hash".to_string(),
+                );
+            }
+            let moved_config_context = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &moved_config,
+            )?;
+            expect_drift("config identity movement", &moved_config_context)?;
+
+            std::fs::write(root.join("Cargo.toml"), "[workspace]\n# moved manifest\n")
+                .map_err(|error| format!("move manifest: {error}"))?;
+            let moved_manifest = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &config,
+            )?;
+            expect_drift("manifest content movement", &moved_manifest)?;
+
+            std::fs::write(root.join("Cargo.lock"), "# moved lockfile\nversion = 4\n")
+                .map_err(|error| format!("move lockfile: {error}"))?;
+            let moved_lockfile = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &config,
+            )?;
+            expect_drift("lockfile content movement", &moved_lockfile)?;
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    /// (#2823 review repair) The config boundary is scoped to what the
+    /// repo-exposure producer actually consumes: a config differing from the
+    /// default only in `typescript.resolve_tsconfig_paths`, `perl.*`, or
+    /// `languages.enabled` — inputs the Rust-only seam inventory never reads —
+    /// produces the SAME input identity (the pair stays comparable), while an
+    /// oracle-policy change still moves it (positive control, also covered by
+    /// test 4).
+    #[test]
+    fn repo_exposure_input_identity_ignores_unconsumed_config_fields() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let config = crate::config::RiprConfig::default();
+            let baseline = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &config,
+            )?;
+            // Negative controls: SPEC-0140 finding-affecting fields the seam
+            // inventory does not consume must NOT move the identity. First
+            // pin that each fixture really does move the diff-check config
+            // hash, so a vacuous fixture cannot hide a real regression.
+            let unconsumed = [
+                (
+                    "typescript.resolve_tsconfig_paths",
+                    "[typescript]\nresolve_tsconfig_paths = true\n",
+                ),
+                ("perl.timeout_ms", "[perl]\ntimeout_ms = 1234\n"),
+            ];
+            for (case, toml) in unconsumed {
+                let moved = crate::config::tests_only_parse(toml)?;
+                if crate::config::check_artifact_config_identity_hash(&moved)
+                    == crate::config::check_artifact_config_identity_hash(&config)
+                {
+                    return Err(format!(
+                        "{case} fixture must move the diff-check (SPEC-0140) config hash, otherwise this test proves nothing"
+                    ));
+                }
+                if crate::config::repo_exposure_config_identity_hash(&moved)
+                    != crate::config::repo_exposure_config_identity_hash(&config)
+                {
+                    return Err(format!(
+                        "{case} is not consumed by the repo-exposure producer and must not move its config identity"
+                    ));
+                }
+                let context = RepoExposureArtifactContext::for_repo_exposure(
+                    root.clone(),
+                    "draft".to_string(),
+                    None,
+                    &moved,
+                )?;
+                if context.input_identity != baseline.input_identity {
+                    return Err(format!(
+                        "{case} must leave the repo-exposure input identity unchanged (comparable pair)"
+                    ));
+                }
+            }
+            // `languages.enabled` is recorded elsewhere in the diff-check
+            // identity (SPEC-0140 CapturedElsewhere) and unconsumed by the
+            // Rust-only seam inventory, so it must not move this identity
+            // either.
+            let languages_moved = crate::config::tests_only_parse(
+                "[languages]\nenabled = [\"rust\", \"typescript\"]\n",
+            )?;
+            let languages_context = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &languages_moved,
+            )?;
+            if languages_context.input_identity != baseline.input_identity {
+                return Err(
+                    "languages.enabled must leave the repo-exposure input identity unchanged"
+                        .to_string(),
+                );
+            }
+            // Positive control: a consumed oracle field still moves it.
+            let oracles_moved =
+                crate::config::tests_only_parse("[oracles]\nsnapshot_strength = \"strong\"\n")?;
+            let oracles_context = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &oracles_moved,
+            )?;
+            if oracles_context.input_identity == baseline.input_identity {
+                return Err(
+                    "a consumed oracle-policy change must move the input identity".to_string(),
+                );
+            }
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    /// (#2823 test 5) A rerun at the same root and same revision is
+    /// byte-stable in both identities.
+    #[test]
+    fn repo_exposure_identity_is_byte_stable_across_equivalent_reruns() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let config = crate::config::RiprConfig::default();
+            let (first, first_metadata) = artifact_metadata(&root, "draft", None, &config)?;
+            let (second, second_metadata) = artifact_metadata(&root, "draft", None, &config)?;
+            if first.input_identity != second.input_identity {
+                return Err("same-root reruns must keep a byte-stable input identity".to_string());
+            }
+            if first_metadata["snapshot_identity"] != second_metadata["snapshot_identity"] {
+                return Err(
+                    "same-root same-revision reruns must keep a byte-stable snapshot identity"
+                        .to_string(),
+                );
+            }
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    /// (#2823 test 6, removal-experiment oracle) Reintroducing the absolute
+    /// root into the canonical string — the v1 algorithm, rebuilt here in the
+    /// test — fails the two-root portability property. This proves the
+    /// portability test discriminates: it would catch a regression that
+    /// re-binds the identity to the concrete checkout.
+    #[test]
+    fn repo_exposure_root_bound_identity_is_not_portable_across_checkout_roots()
+    -> Result<(), String> {
+        let root_a = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root_a)?;
+            let root_b = clone_git_root(&root_a)?;
+            let result = (|| -> Result<(), String> {
+                let v1_identity = |root: &Path| -> Result<String, String> {
+                    let canonical_root = canonical_root(root)?;
+                    // The v1 algorithm hashed absolute-path manifest/lockfile
+                    // identities as well; reproduce it faithfully.
+                    let (manifest_identity, lockfile_identity) =
+                        crate::analysis::seam_cache::workspace_named_file_identities(
+                            &canonical_root,
+                        );
+                    let input_canonical = format!(
+                        "root={};base={:?};mode={};format=repo-exposure-json;manifest={:?};lockfile={:?};analyzer={}",
+                        display_root(&canonical_root),
+                        None::<String>,
+                        "draft",
+                        manifest_identity,
+                        lockfile_identity,
+                        env!("CARGO_PKG_VERSION"),
+                    );
+                    Ok(format!(
+                        "input:{}",
+                        crate::config::config_fingerprint(&input_canonical)
+                    ))
+                };
+                let identity_a = v1_identity(&root_a)?;
+                let identity_b = v1_identity(&root_b)?;
+                if identity_a == identity_b {
+                    return Err(
+                        "the root-bound v1 algorithm must NOT be portable across checkout roots; \
+                         if it is, the portability test does not discriminate"
+                            .to_string(),
+                    );
+                }
+                // And the v2 identity must disagree with the v1 shape: the
+                // version prefix is a real algorithm boundary, not a relabel.
+                let config = crate::config::RiprConfig::default();
+                let (context_a, _) = artifact_metadata(&root_a, "draft", None, &config)?;
+                if context_a.input_identity == identity_a {
+                    return Err(
+                        "v2 must not reproduce the v1 digest for the same checkout".to_string()
+                    );
+                }
+                Ok(())
+            })();
+            let cleanup = std::fs::remove_dir_all(&root_b)
+                .map_err(|error| format!("remove clone root: {error}"));
+            result?;
+            cleanup?;
+            Ok(())
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root_a).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+
+    /// (#2823 test 7) A previous-version input identity — the v1
+    /// `input:<digest>` shape, or any non-`input:v2:` value — never validates
+    /// as current evidence, even when the artifact is otherwise internally
+    /// consistent; nor does a current-version identity whose digest is not
+    /// exactly `fnv1a64:<16 lowercase hex>`.
+    #[test]
+    fn repo_exposure_validation_rejects_unsupported_input_identity_version() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let placeholder_raw = repo_exposure_raw_with_placeholder(&root)?;
+            let document: Value = serde_json::from_str(&placeholder_raw)
+                .map_err(|error| format!("parse placeholder document: {error}"))?;
+            let head = document["artifact"]["repository"]["head"]
+                .as_str()
+                .ok_or_else(|| "fixture document omitted repository head".to_string())?
+                .to_string();
+            let legacy_identities = [
+                "input:fnv1a64:0123456789abcdef",
+                "input:legacy-unversioned",
+                "input:v1:fnv1a64:0123456789abcdef",
+                "input:v3:fnv1a64:0123456789abcdef",
+            ];
+            for legacy in legacy_identities {
+                let legacy_snapshot = repo_exposure_snapshot_identity(legacy, &head);
+                let mutated = validate_mutated_identity(&root, &document, |document| {
+                    document["artifact"]["analysis"]["input_identity"] = json!(legacy);
+                    document["artifact"]["snapshot_identity"] = json!(legacy_snapshot.as_str());
+                })?;
+                match mutated {
+                    Err(error) if error.contains("unsupported input identity version") => {}
+                    Err(error) => {
+                        return Err(format!(
+                            "legacy identity {legacy}: unexpected rejection reason (must name the unsupported input identity version): {error}"
+                        ));
+                    }
+                    Ok(_) => {
+                        return Err(format!(
+                            "legacy identity {legacy} must never validate as current evidence"
+                        ));
+                    }
+                }
+            }
+
+            // Shape gate: the current version prefix with anything but
+            // exactly `fnv1a64:<16 lowercase hex>` is malformed, not merely
+            // an unknown version, and gets its own bounded reason.
+            let malformed_identities = [
+                "input:v2:garbage",
+                "input:v2:fnv1a64:",
+                "input:v2:fnv1a64:0123456789abcde",
+                "input:v2:fnv1a64:0123456789abcdef0",
+                "input:v2:fnv1a64:0123456789ABCDEF",
+            ];
+            for malformed in malformed_identities {
+                let malformed_snapshot = repo_exposure_snapshot_identity(malformed, &head);
+                let mutated = validate_mutated_identity(&root, &document, |document| {
+                    document["artifact"]["analysis"]["input_identity"] = json!(malformed);
+                    document["artifact"]["snapshot_identity"] = json!(malformed_snapshot.as_str());
+                })?;
+                match mutated {
+                    Err(error) if error.contains("malformed input identity digest") => {}
+                    Err(error) => {
+                        return Err(format!(
+                            "malformed identity {malformed}: unexpected rejection reason (must name the malformed input identity digest): {error}"
+                        ));
+                    }
+                    Ok(_) => {
+                        return Err(format!(
+                            "malformed identity {malformed} must never validate as current evidence"
+                        ));
+                    }
+                }
+            }
+
+            // Positive control: the canonical producer shape validates, and a
+            // well-formed foreign digest reaches the later checks (here: the
+            // snapshot mismatch), proving the shape gate does not reject
+            // well-formed identities.
+            let well_formed = "input:v2:fnv1a64:fedcba9876543210";
+            let mutated = validate_mutated_identity(&root, &document, |document| {
+                document["artifact"]["analysis"]["input_identity"] = json!(well_formed);
+            })?;
+            match mutated {
+                Err(error) if error.contains("snapshot identity does not match") => {}
+                Err(error) => {
+                    return Err(format!(
+                        "well-formed identity: unexpected rejection reason (must pass the version and shape gates): {error}"
+                    ));
+                }
+                Ok(_) => {
+                    return Err(
+                        "well-formed identity with a stale snapshot must be rejected by the snapshot check, not accepted"
+                            .to_string(),
+                    );
+                }
             }
             Ok(())
         })();

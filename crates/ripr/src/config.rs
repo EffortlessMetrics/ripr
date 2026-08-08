@@ -220,6 +220,45 @@ pub(crate) fn check_artifact_config_identity_hash(config: &RiprConfig) -> String
     config_fingerprint(&pairs.join("\n"))
 }
 
+/// The exact `ripr.toml` fields the repo-exposure producer (the seam
+/// inventory in `crates/ripr/src/analysis/seam_inventory.rs`) consumes
+/// semantically. Verified against the producer: the seam walker is Rust-only
+/// and reads only the oracle-strength policy (via
+/// `rust_index::apply_oracle_policy`); it does not read `languages.enabled`,
+/// `rust.generated_file_patterns`, or any typescript/perl field, so those
+/// SPEC-0140 finding-affecting fields must NOT move the repo-exposure input
+/// identity (#2823 — two runs differing only in an unconsumed setting stay
+/// comparable). Closed set: when the producer starts consuming another config
+/// field, add it here in the same PR; do not widen the filter to whole
+/// sections.
+pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 3] = [
+    "oracles.broad_error_strength",
+    "oracles.mock_expectation_strength",
+    "oracles.snapshot_strength",
+];
+
+/// Canonical config identity for the repo-exposure artifact input identity
+/// (#2823): exactly the producer-consumed fields
+/// ([`REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS`]), canonically serialized through
+/// the same SPEC-0140 field enumerator (field name, normalized value,
+/// defaults materialized), sorted, and hashed. This is deliberately narrower
+/// than [`check_artifact_config_identity_hash`], which serves the diff-check
+/// pipeline and legitimately includes typescript/perl inputs the seam
+/// inventory never reads.
+pub(crate) fn repo_exposure_config_identity_hash(config: &RiprConfig) -> String {
+    let mut pairs = config
+        .check_artifact_identity_fields()
+        .into_iter()
+        .filter(|field| {
+            field.role == ConfigIdentityRole::FindingAffecting
+                && REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS.contains(&field.name)
+        })
+        .map(|field| format!("{}={}", field.name, field.value.clone().unwrap_or_default()))
+        .collect::<Vec<_>>();
+    pairs.sort();
+    config_fingerprint(&pairs.join("\n"))
+}
+
 pub(crate) fn apply_to_check_input(
     input: &mut CheckInput,
     config: &RiprConfig,

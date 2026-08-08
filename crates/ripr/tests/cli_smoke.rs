@@ -233,8 +233,8 @@ fn write_bound_repo_exposure_fixture(
     "canonicalization": "raw_json_placeholder_v1",
     "producer": {{"tool": "ripr", "version": "0.10.0"}},
     "repository": {{"root": "{root_identity}", "head": "{head}"}},
-    "analysis": {{"format": "repo-exposure-json", "mode": "draft", "base_revision": null, "input_identity": "input:fixture", "command": "ripr check --format repo-exposure-json", "profile": "draft", "worktree": "clean"}},
-    "snapshot_identity": "snapshot:input:fixture;revision:{head}",
+    "analysis": {{"format": "repo-exposure-json", "mode": "draft", "base_revision": null, "input_identity": "input:v2:fnv1a64:00000000000000f1", "command": "ripr check --format repo-exposure-json", "profile": "draft", "worktree": "clean"}},
+    "snapshot_identity": "snapshot:input:v2:fnv1a64:00000000000000f1;revision:{head}",
     "content_sha256": "{placeholder}"
   }},
   "scope": "repo",
@@ -413,8 +413,8 @@ fn bind_repo_exposure_fixture_with_worktree(
         "canonicalization": "raw_json_placeholder_v1",
         "producer": {"tool": "ripr", "version": "0.10.0"},
         "repository": {"root": root_identity, "head": head},
-        "analysis": {"format": "repo-exposure-json", "mode": "draft", "base_revision": null, "input_identity": "input:fixture", "command": "ripr check --format repo-exposure-json", "profile": "draft", "worktree": worktree},
-        "snapshot_identity": format!("snapshot:input:fixture;revision:{head}"),
+        "analysis": {"format": "repo-exposure-json", "mode": "draft", "base_revision": null, "input_identity": "input:v2:fnv1a64:00000000000000f1", "command": "ripr check --format repo-exposure-json", "profile": "draft", "worktree": worktree},
+        "snapshot_identity": format!("snapshot:input:v2:fnv1a64:00000000000000f1;revision:{head}"),
         "content_sha256": placeholder,
     });
     let raw = serde_json::to_string_pretty(&value)?;
@@ -2740,12 +2740,12 @@ fn agent_verify_rejects_incomparable_analysis_inputs() -> Result<(), Box<dyn std
             &format!("\"head\": \"{new_head}\""),
         )
         .replace(
-            &format!("snapshot:input:fixture;revision:{old_head}"),
-            &format!("snapshot:input:other;revision:{new_head}"),
+            &format!("snapshot:input:v2:fnv1a64:00000000000000f1;revision:{old_head}"),
+            &format!("snapshot:input:v2:fnv1a64:00000000000000f2;revision:{new_head}"),
         )
         .replace(
-            "\"input_identity\": \"input:fixture\"",
-            "\"input_identity\": \"input:other\"",
+            "\"input_identity\": \"input:v2:fnv1a64:00000000000000f1\"",
+            "\"input_identity\": \"input:v2:fnv1a64:00000000000000f2\"",
         );
     std::fs::write(&after, recommit_repo_exposure_json(altered))?;
 
@@ -3311,12 +3311,12 @@ fn agent_receipt_rejects_incomparable_analysis_inputs() -> Result<(), Box<dyn st
             &format!("\"head\": \"{new_head}\""),
         )
         .replace(
-            &format!("snapshot:input:fixture;revision:{old_head}"),
-            &format!("snapshot:input:other;revision:{new_head}"),
+            &format!("snapshot:input:v2:fnv1a64:00000000000000f1;revision:{old_head}"),
+            &format!("snapshot:input:v2:fnv1a64:00000000000000f2;revision:{new_head}"),
         )
         .replace(
-            "\"input_identity\": \"input:fixture\"",
-            "\"input_identity\": \"input:other\"",
+            "\"input_identity\": \"input:v2:fnv1a64:00000000000000f1\"",
+            "\"input_identity\": \"input:v2:fnv1a64:00000000000000f2\"",
         );
     std::fs::write(&after, recommit_repo_exposure_json(altered))?;
     let verify = root.join("fabricated-agent-verify.json");

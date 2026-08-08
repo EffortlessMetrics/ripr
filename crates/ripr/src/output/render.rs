@@ -81,6 +81,7 @@ pub(crate) fn render_check_with_config(
                     output.root.clone(),
                     output.mode.as_str().to_string(),
                     output.base.clone(),
+                    config,
                 )?;
             repo_exposure::render_repo_exposure_json_with_context(
                 &classified,
