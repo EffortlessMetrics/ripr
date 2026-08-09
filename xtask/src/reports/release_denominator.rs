@@ -24,6 +24,7 @@ const LIVE_TIMEOUT: Duration = Duration::from_secs(30);
 const GITHUB_CAPTURE_TIMEOUT: Duration = Duration::from_secs(45);
 const ACCEPTED_EXECUTION_EXCLUSION_ID: &str = "exclusion:2767:verification-execution";
 const EXECUTION_EXCLUSION_GRANULARITY: &str = "hunk_or_symbol";
+const ADJUDICATION_REVIEW_PREFIXES: &[&str] = &["review:2832:", "review:2825:"];
 
 const DISPOSITIONS: &[&str] = &[
     "include_product",
@@ -609,11 +610,11 @@ fn apply_adjudication(input: &str, decisions_path: &str, output: &str) -> Result
         if batch.id.trim().is_empty()
             || !batch_ids.insert(batch.id.clone())
             || batch.review_ref.trim().is_empty()
-            || !batch.review_ref.starts_with("review:2832:")
+            || !is_adjudication_review_ref(&batch.review_ref)
             || batch.rationale.trim().is_empty()
         {
             return Err(
-                "adjudication batches require unique id, review:2832:* review_ref, and rationale"
+                "adjudication batches require unique id, a well-formed review:<issue>:<slug> review_ref, and rationale"
                     .to_string(),
             );
         }
@@ -658,8 +659,7 @@ fn apply_adjudication(input: &str, decisions_path: &str, output: &str) -> Result
             || override_record.position > cutoff_position
             || override_record.batch_id.trim().is_empty()
             || !batch_ids.contains(&override_record.batch_id)
-            || override_record.review_ref.trim().is_empty()
-            || !override_record.review_ref.starts_with("review:2832:")
+            || !is_adjudication_review_ref(&override_record.review_ref)
             || override_record.delivered_delta.trim().is_empty()
             || override_record.challenged_disposition.trim().is_empty()
             || override_record.candidate_effect.trim().is_empty()
@@ -733,7 +733,8 @@ fn apply_adjudication(input: &str, decisions_path: &str, output: &str) -> Result
                 .extend(override_record.review_evidence.iter().cloned());
             record.review_refs.push(format!("override:{}", position));
             record.source_survivor_or_swarm_exclusion_effect = format!(
-                "#2832 {} reviewed commit {} at first-parent position {}: delivered delta: {}; challenged disposition: {}; accepted disposition: {}; candidate effect: {}.",
+                "#{} {} reviewed commit {} at first-parent position {}: delivered delta: {}; challenged disposition: {}; accepted disposition: {}; candidate effect: {}.",
+                adjudication_issue_tag(&batch.review_ref),
                 batch.id,
                 record.commit_sha,
                 position,
@@ -748,8 +749,12 @@ fn apply_adjudication(input: &str, decisions_path: &str, output: &str) -> Result
             );
         } else {
             record.source_survivor_or_swarm_exclusion_effect = format!(
-                "#2832 {} reviewed commit {} at first-parent position {}: {}",
-                batch.id, record.commit_sha, position, batch.rationale
+                "#{} {} reviewed commit {} at first-parent position {}: {}",
+                adjudication_issue_tag(&batch.review_ref),
+                batch.id,
+                record.commit_sha,
+                position,
+                batch.rationale
             );
             record.limitation_or_operator_decision = format!(
                 "This provisional disposition does not close the owning issue, prove candidate qualification, or claim source promotion. Residual acceptance remains with {}.",
@@ -1241,7 +1246,7 @@ fn validate_final_cut_authority(
             && !record.review_refs.is_empty()
         {
             reasons.push(format!(
-                "post-provisional record {} has no valid #2832 review authority",
+                "post-provisional record {} has no valid adjudication review authority",
                 record.commit_sha
             ));
         }
@@ -1281,14 +1286,34 @@ fn validate_final_cut_authority(
 }
 
 fn is_adjudication_review_ref(value: &str) -> bool {
-    let Some(suffix) = value.trim().strip_prefix("review:2832:") else {
+    let Some(prefix) = adjudication_review_prefix(value) else {
         return false;
     };
-    !suffix.is_empty()
-        && !suffix.chars().any(char::is_whitespace)
-        && suffix.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | '/')
+    is_adjudication_review_slug(&value[prefix.len()..])
+}
+
+fn is_adjudication_review_slug(slug: &str) -> bool {
+    // Established shape: hyphen-joined non-empty ASCII-alphanumeric segments
+    // (review:2832:batch-A-product, review:2825:batch-J-defer), bounded length.
+    !slug.is_empty()
+        && slug.len() <= 64
+        && slug.split('-').all(|segment| {
+            !segment.is_empty() && segment.chars().all(|c| c.is_ascii_alphanumeric())
         })
+}
+
+fn adjudication_review_prefix(value: &str) -> Option<&'static str> {
+    ADJUDICATION_REVIEW_PREFIXES
+        .iter()
+        .copied()
+        .find(|prefix| value.starts_with(prefix))
+}
+
+fn adjudication_issue_tag(review_ref: &str) -> &str {
+    review_ref
+        .strip_prefix("review:")
+        .and_then(|rest| rest.split(':').next())
+        .unwrap_or("unknown")
 }
 
 fn reconcile_provisional_decision_count(snapshot: &mut Snapshot, reasons: &mut Vec<String>) {
@@ -2512,48 +2537,51 @@ mod tests {
             ),
         )?;
         require(
-            report.records.len() == 262,
+            report.records.len() == 333,
             "current-main census record count changed",
         )?;
         require(
-            report.source.range_commits.len() == 262,
+            report.source.range_commits.len() == 333,
             "current-main census range count changed",
         )?;
         require(
-            report.source.candidate_tree_commits.len() == 230,
+            report.source.candidate_tree_commits.len() == 325,
             "current-main census candidate-tree count changed",
         )?;
         require(
             report.source.historical_base_sha == "c86807ecdbf359594ef88c0ff38b10b446139dca"
-                && report.source.candidate_sha == "0afa0144b0eec64ad0c0b2cd47d3bec4c2b3e26c"
+                && report.source.candidate_sha == "b8b1c9ec78b013dfac6dcf929447839132835971"
                 && report.source.range_commits.first().map(String::as_str)
                     == Some("fd1eec2ad8145678f0fb494a50bd181d6857b0c7")
                 && report.source.range_commits.last().map(String::as_str)
-                    == Some("0afa0144b0eec64ad0c0b2cd47d3bec4c2b3e26c"),
+                    == Some("b8b1c9ec78b013dfac6dcf929447839132835971"),
             "current-main identity changed",
         )?;
         require(
             report.range_digest
-                == "sha256:9c34712f2dc201455c8f43d07958494d1c701e51e20befd891672fee90ac18e7"
+                == "sha256:857911c214cd10a011ffc54fcf3226b81811a699a6e2364f10c03343c6a969c4"
                 && report.candidate_tree_digest
-                    == "sha256:2392d40f28fdd141b81a949cf019c1ad3850cf68bb2ab3cef5802fbdcde7c93b",
+                    == "sha256:025963fa597c4f2c068be06cea7576a43589ac49b34014c68119987f5bb59825",
             "current-main range or candidate-tree digest changed",
         )?;
         require(
             report.record_set_digest
-                == "sha256:3c5d6dccfaca1c9cc22ecefb5488c813c7bcf0b3805419103b56a15fe3731620",
+                == "sha256:4d8977b4a50e7697a5632f9e2e127bc83fde05640fddc09356dfc532bb72956a",
             "current-main record-set digest changed",
         )?;
         require(
-            report
+            !report
                 .counts_by_tree_state
-                .get("candidate_tree_state_pending")
-                == Some(&32)
-                && report.counts_by_tree_state.get("present_in_candidate") == Some(&230)
+                .contains_key("candidate_tree_state_pending")
+                && report.counts_by_tree_state.get("present_in_candidate") == Some(&325)
                 && report
+                    .counts_by_tree_state
+                    .get("absent_by_candidate_only_exclusion")
+                    == Some(&8)
+                && !report
                     .counts_by_disposition
-                    .get("operator_decision_required")
-                    == Some(&32),
+                    .contains_key("operator_decision_required")
+                && report.counts_by_disposition.get("safe_defer_post_0_11") == Some(&3),
             "current-main denominator counts changed",
         )?;
         let execution_record = report
@@ -2572,8 +2600,8 @@ mod tests {
             "accepted #2767 path-level exclusion was not retained on the execution record",
         )?;
         require(
-            report.counts_by_disposition.get("candidate_only_exclusion") == Some(&1),
-            "current-main census does not retain exactly one accepted execution exclusion",
+            report.counts_by_disposition.get("candidate_only_exclusion") == Some(&6),
+            "current-main census does not retain the accepted execution exclusion and the five whole-commit dependency exclusions",
         )?;
         let golden_defect = report
             .candidate_selection
@@ -2587,59 +2615,20 @@ mod tests {
                 "current-main census lost the golden-check defect authority".to_string()
             })?;
         require(
-            !golden_defect.resolved
-                && golden_defect
-                    .description
-                    .contains("Candidate inclusion of that fixing commit remains pending")
+            golden_defect.resolved
+                && golden_defect.description.contains("present_in_candidate")
                 && report.records.iter().any(|record| {
                     record.commit_sha == "c1fbf43274e187edbb8a1b2cd8ba2b6b3620ebcd"
-                        && record.candidate_tree_state == "candidate_tree_state_pending"
+                        && record.candidate_tree_state == "present_in_candidate"
                 }),
-            "golden-check defect was cleared before its fixing commit was adjudicated",
+            "golden-check defect was not closed with its adjudicated fixing commit",
         )?;
-        let pending = report
-            .records
-            .iter()
-            .filter(|record| record.candidate_tree_state == "candidate_tree_state_pending")
-            .map(|record| record.commit_sha.as_str())
-            .collect::<Vec<_>>();
         require(
-            pending
-                == vec![
-                    "15d59a262f7fe8b5927ab812efb81f6e90cf3ee6",
-                    "827c9e08f8abb87b0864b1ebb7b3135e78727bb3",
-                    "e7e6e6632f1fc2a0b19d30ed6dc76ef8a167c7c6",
-                    "c30a26831b75051813bfaa3dbd9378096ec6aa82",
-                    "e7c700ff423bf595429909280133978406dda93e",
-                    "ad98674c602431dd2d689392db1349e03538be11",
-                    "a9db152fe0c5d23bc2fe6613b524430478c9af16",
-                    "4e02f83e12090f93ba1bb590f7026fb1dcae92ae",
-                    "83e4f066d844a641d1e09100d794f1ebf6928861",
-                    "36105bbf7e33c2403b87a521bfdc404606700699",
-                    "41790837486f8ac1efcdaa7b601a0174300a148a",
-                    "c864308fc4845b133aa17f824f3af29b0e981de5",
-                    "ebc6391c3e37dbf2c52289f8f20d9feb660e6e57",
-                    "0253adaebfe9f4fdd3924d805d93dfc8142885b5",
-                    "5c8ad0e4dd7efd69d16a8d967253c1a958c9b230",
-                    "ebacc790bd1b157d0e29d516c815987b3deb9ddf",
-                    "b91848b678a3b72c98b6d637418dcd45701dae01",
-                    "24da79d85d6ad7f8db1d9ae251a35300f374ec40",
-                    "930936a6e78d5d5afaa51defd27ffa23ecaaf038",
-                    "5923689b0e89f02f35272bb7c987c7e6ccf3d5cc",
-                    "619f87ff70b75ea5f0754a3e7bc8f1e45eb9fc47",
-                    "8fe2bc394fb6dfabbb72e8dac294230767575fcc",
-                    "9594db7f95571eb03ac9cd1124df19a8bbca4cd0",
-                    "0e055f136dc7c3fd3fd409b4901bfae07a7d1823",
-                    "5077b486141b226e0c59b9bf09f0723c029c489f",
-                    "59d2b0178d4802cab5d8550a6ef6b1a726959f71",
-                    "c1fbf43274e187edbb8a1b2cd8ba2b6b3620ebcd",
-                    "d5dd29a740eaf6a8405a5e470b1fef2ea71e9db8",
-                    "388aa3c49cf639fe53f9dcbf24ef9c54e19e36ba",
-                    "3af35dae54277b470dc66239c7569a556ca15285",
-                    "f5f69e1bf92a1b4e5b8e18e83a305a495dc4b0f4",
-                    "0afa0144b0eec64ad0c0b2cd47d3bec4c2b3e26c",
-                ],
-            "current-main pending commit identities changed",
+            !report.records.iter().any(|record| {
+                record.candidate_tree_state == "candidate_tree_state_pending"
+                    || record.release_disposition == "operator_decision_required"
+            }),
+            "current-main census retains an unresolved row through the development cut",
         )?;
         Ok(())
     }
@@ -2657,7 +2646,7 @@ mod tests {
             .collect::<Vec<_>>();
         require(
             record_range == snapshot.source.range_commits
-                && snapshot.source.range_commits.len() == 262
+                && snapshot.source.range_commits.len() == 333
                 && snapshot
                     .source
                     .provisional_review_cutoff_sha
@@ -2669,10 +2658,10 @@ mod tests {
                             .iter()
                             .position(|commit| commit == cutoff)
                     })
-                    == Some(229)
+                    == Some(332)
                 && snapshot.source.range_commits.last().map(String::as_str)
-                    == Some("0afa0144b0eec64ad0c0b2cd47d3bec4c2b3e26c"),
-            "pinned 262-entry first-parent census does not match record order and cutoff",
+                    == Some("b8b1c9ec78b013dfac6dcf929447839132835971"),
+            "pinned 333-entry first-parent census does not match record order and cutoff",
         )
     }
 
@@ -2688,10 +2677,10 @@ mod tests {
                 .as_mut()
                 .ok_or_else(|| "current-main fixture has no candidate selection".to_string())?;
             selection.selected_cut_sha =
-                Some("fcbb30a7cf6a37027fa377abafb617632b2e6f57".to_string());
+                Some("b8b1c9ec78b013dfac6dcf929447839132835971".to_string());
             selection.final_cut_authority =
                 Some(crate::reports::candidate_control::FinalCutAuthority {
-                    cut_sha: "fcbb30a7cf6a37027fa377abafb617632b2e6f57".to_string(),
+                    cut_sha: "b8b1c9ec78b013dfac6dcf929447839132835971".to_string(),
                     record_set_digest: None,
                     provisional_decisions_remaining: 0,
                     unreviewed_post_provisional_records_through_cut: 0,
@@ -2745,6 +2734,10 @@ mod tests {
             .last()
             .map(|record| record.commit_sha.clone())
             .ok_or_else(|| "current-main fixture has no records".to_string())?;
+        // Move the provisional cutoff back so the final record is a
+        // post-provisional row whose review authority is under test.
+        snapshot.source.provisional_review_cutoff_sha =
+            Some("fcbb30a7cf6a37027fa377abafb617632b2e6f57".to_string());
         let post_cutoff = snapshot
             .records
             .last_mut()
@@ -2780,7 +2773,7 @@ mod tests {
             report
                 .reconciliation_reasons
                 .iter()
-                .any(|reason| reason.contains("no valid #2832 review authority")),
+                .any(|reason| reason.contains("no valid adjudication review authority")),
             "fabricated review reference was credited as final-cut review",
         )
     }
@@ -2804,6 +2797,24 @@ mod tests {
                 && unique.first() == Some(&1)
                 && unique.last() == Some(&230),
             "#2832 adjudication manifest does not cover the fixed cutoff exactly",
+        )?;
+        let manifest: AdjudicationManifest = serde_json::from_str(include_str!(
+            "../../../fixtures/release_denominator/2825-adjudication.json"
+        ))
+        .map_err(|error| error.to_string())?;
+        let positions = manifest
+            .batches
+            .iter()
+            .flat_map(|batch| batch.positions.iter().copied())
+            .collect::<Vec<_>>();
+        let unique = positions.iter().copied().collect::<BTreeSet<_>>();
+        require(
+            manifest.cutoff_sha == "b8b1c9ec78b013dfac6dcf929447839132835971"
+                && positions.len() == 333
+                && unique.len() == 333
+                && unique.first() == Some(&1)
+                && unique.last() == Some(&333),
+            "#2825 adjudication manifest does not cover the selected development cut exactly",
         )
     }
 
@@ -2813,6 +2824,19 @@ mod tests {
             "../../../fixtures/release_denominator/current-main-provisional.json"
         ))
         .map_err(|error| error.to_string())?;
+        // The adjudicated census pins the provisional cutoff at C (index 332)
+        // and has no pending rows; move the cutoff back to the reviewed prefix
+        // so the two parked rows are genuinely post-provisional.
+        snapshot.source.provisional_review_cutoff_sha =
+            Some("fcbb30a7cf6a37027fa377abafb617632b2e6f57".to_string());
+        for index in [230, 231] {
+            let record = snapshot
+                .records
+                .get_mut(index)
+                .ok_or_else(|| "provisional fixture is missing a post-cutoff row".to_string())?;
+            record.release_disposition = "operator_decision_required".to_string();
+            record.candidate_tree_state = "candidate_tree_state_pending".to_string();
+        }
         let baseline = project_candidate_tree(&snapshot.records, &snapshot.source.range_commits);
         let still_pending = snapshot
             .records
@@ -2827,7 +2851,7 @@ mod tests {
         let post_cutoff_sha = post_cutoff.commit_sha.clone();
         post_cutoff.release_disposition = "include_product".to_string();
         post_cutoff.candidate_tree_state = "present_in_candidate".to_string();
-        post_cutoff.review_refs = vec!["review:2832:post-cutoff-row".to_string()];
+        post_cutoff.review_refs = vec!["review:2825:post-cutoff-row".to_string()];
 
         let projected = project_candidate_tree(&snapshot.records, &snapshot.source.range_commits);
         require(
@@ -2845,6 +2869,43 @@ mod tests {
                 .iter()
                 .any(|commit_sha| commit_sha == &still_pending),
             "projection admitted a still-pending post-cutoff row",
+        )
+    }
+
+    #[test]
+    fn adjudication_review_refs_require_a_complete_slug_shape() -> Result<(), String> {
+        for accepted in [
+            "review:2832:batch-A-product",
+            "review:2832:exception-2767",
+            "review:2825:batch-E-product",
+            "review:2825:batch-J-defer",
+        ] {
+            require(
+                is_adjudication_review_ref(accepted),
+                format!("established review ref {accepted} was rejected"),
+            )?;
+        }
+        for rejected in [
+            "review:2825:",
+            "review:2825:bad value",
+            "review:2825:trailing ",
+            "review:2825:snake_case",
+            "review:2825:dot.slug",
+            "review:2825:path/slug",
+            "review:2825:-leading-hyphen",
+            "review:2825:trailing-hyphen-",
+            "review:2825:double--hyphen",
+            "review:9999:unknown-issue",
+        ] {
+            require(
+                !is_adjudication_review_ref(rejected),
+                format!("malformed review ref {rejected} was accepted"),
+            )?;
+        }
+        let overlong = format!("review:2825:{}", "a".repeat(65));
+        require(
+            !is_adjudication_review_ref(&overlong),
+            "overlong review-ref slug was accepted",
         )
     }
 

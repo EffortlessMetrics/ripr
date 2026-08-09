@@ -72,8 +72,11 @@ cutoff, into `operator_decision_required` with
 `candidate_tree_state_pending`. No blanket post-cutoff exclusion is accepted.
 
 `--apply-adjudication --input <ledger.json> --decisions <adjudication.json>
---output <ledger.json>` applies one reviewed, position-complete #2832
-adjudication manifest through the pinned cutoff. Each position receives a
+--output <ledger.json>` applies one reviewed, position-complete adjudication
+manifest through the pinned cutoff. Batch and override review references must
+use an accepted adjudication prefix (`review:2832:*` for the reviewed prefix,
+`review:2825:*` for the post-P development-denominator delta). Each position
+receives a
 closed disposition, a non-pending candidate-tree state, a batch review receipt,
 and a residual non-claim; rows after the cutoff remain untouched. The
 adjudicated candidate-tree commit list is projected from the resulting tree
@@ -103,22 +106,25 @@ decision; final output is ready only after every record is reconciled.
 ## Current-main evidence
 
 `fixtures/release_denominator/current-main-provisional.json` is the fixed
-captured census of `c86807ec..c30a2683` observed on 2026-08-03. After the
-#2832 manifest is applied it carries 234 first-parent records, 230 records
-present in the reviewed provisional tree, and four rows after the cutoff with
-`candidate_tree_state_pending`; zero records through the fixed cutoff retain
-`operator_decision_required`. Its fixed provisional review cutoff is
-`fcbb30a7cf6a37027fa377abafb617632b2e6f57`; later rows are retained as an
-observed delta, not silently excluded. Every record has replayable GitHub
+captured census of `c86807ec..b8b1c9ec` observed on 2026-08-08. After the
+reviewed-prefix manifest from issue #2832 (through `fcbb30a7`) and the post-P
+delta manifest from issue #2825 (through the selected development cut) are
+applied it carries 333
+first-parent records, 325 records present in the reviewed provisional tree,
+five whole-commit candidate-only dependency exclusions, three reviewed
+safe-deferral rows absent from the candidate tree, and zero rows through the
+cut with `operator_decision_required`. Its provisional review cutoff is the
+selected development cut `b8b1c9ec78b013dfac6dcf929447839132835971`; no rows
+after the cutoff exist in this census. Every record has replayable GitHub
 capture status and typed authority; captured references remain unreviewed
-authority until separately reviewed, while #2832 records the substantive
-commit disposition. The fixture pins range digest
-`sha256:b85b8314b5f738335ae63220fe5f0ea8ef4e6e1892124eea148ea49181168501`,
+authority until separately reviewed, while #2832 and #2825 record the
+substantive commit dispositions. The fixture pins range digest
+`sha256:857911c214cd10a011ffc54fcf3226b81811a699a6e2364f10c03343c6a969c4`,
 candidate-tree digest
-`sha256:2392d40f28fdd141b81a949cf019c1ad3850cf68bb2ab3cef5802fbdcde7c93b`,
+`sha256:025963fa597c4f2c068be06cea7576a43589ac49b34014c68119987f5bb59825`,
 and record-set digest
-`sha256:7b3e24c061fe8252b432dc852b8a84179571cacfba1013382795f23ff0ce901c`.
-It is a reviewed provisional input to later delta adjudication, not a final
+`sha256:4d8977b4a50e7697a5632f9e2e127bc83fde05640fddc09356dfc532bb72956a`.
+It is a reviewed provisional input to the final candidate decision, not a final
 release qualification.
 
 ## Cut-relative denominator boundary
@@ -141,7 +147,8 @@ requirement.
 
 For a selected cut, `final_cut_authority.record_set_digest` must equal the
 normalized report's `record_set_digest`. Post-provisional review credit is
-limited to nonblank structured `review:2832:<id>` references; arbitrary,
+limited to nonblank structured `review:2832:<id>` or `review:2825:<id>`
+references; arbitrary,
 whitespace-only, or unrelated record strings do not count as adjudication.
 When the selected cut equals the provisional cutoff, the post-cutoff record
 set is empty and its derived unreviewed count is zero without relying on an
@@ -154,7 +161,7 @@ shared fail-closed validator. It does not close the final candidate decision
 tracked by #1609 or the dependent release-editor lane #2769.
 
 The implementation and fixture contract are mapped in `.ripr/traceability.toml`
-under `RIPR-SPEC-0146`. Focused proof is provided by the twenty-nine tests named there
+under `RIPR-SPEC-0146`. Focused proof is provided by the thirty tests named there
 and the complete/reconcile-required fixtures under
 `fixtures/release_denominator/`; hosted CI is the authoritative execution
 proof for this PR. The complete fixture pins the #2767/#2788 and #2768/#2790
@@ -203,13 +210,14 @@ decision in a final ledger, or disagreeing with live observations produces
 
 ## Test Mapping
 
-The twenty-nine focused tests listed in `.ripr/traceability.toml` cover deterministic
+The thirty focused tests listed in `.ripr/traceability.toml` cover deterministic
 normalization, missing/duplicate/out-of-range/order/tree failures, final
 operator decisions, live drift, JSON/Markdown claim-boundary parity, typed
 reference authority, compatibility projection mismatch, contradictory
 identity, the two known issue/merge-PR pairs, deterministic ordering, changed mappings, final unreviewed
 references, malformed reference evidence, numeric compatibility projection
-ordering, manual-mapping reasons, reused reference identity, and the current-main
+ordering, manual-mapping reasons, reused reference identity, adjudication
+review-ref slug shape, and the current-main
 census pinned to the final corrective cutoff, counts, excluded commit
 identities, and record-set digest.
 

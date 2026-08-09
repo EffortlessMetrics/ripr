@@ -6643,6 +6643,7 @@ tests = [
   "xtask/src/reports/release_denominator.rs::tests::pending_cutoff_rows_are_not_candidate_exclusions",
   "xtask/src/reports/release_denominator.rs::tests::claim_refs_require_selected_claim_authority",
   "xtask/src/reports/release_denominator.rs::tests::github_body_reference_parser_handles_unicode_context",
+  "xtask/src/reports/release_denominator.rs::tests::adjudication_review_refs_require_a_complete_slug_shape",
 ]
 fixtures = [
   "fixtures/release_denominator/complete.json",
