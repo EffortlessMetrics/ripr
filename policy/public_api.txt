@@ -1,20 +1,236 @@
-# Public exports allowed from crates/ripr/src/lib.rs.
+# Recorded public API surface of the `ripr` crate.
+#
+# This is a RECORDING of the surface that already exists, not an endorsement
+# of it. Widening the gate to the transitive surface (#3052) made ~200 items
+# visible that the previous lib.rs-only collector never saw; nothing here was
+# newly exposed by that change. Narrowing any of it is separate work.
+#
+# A `#[macro_export]` macro appears as `pub macro ripr::<name>` even when its
+# declaring module is private: Rust exports it at the crate root regardless of
+# that module's visibility, so it is part of this surface.
+#
+# One line per module-level item reachable from `crates/ripr/src/lib.rs`
+# through `pub mod`, in the form `<kind> <path>`. The collector lives in
+# `xtask/src/public_api_surface.rs`.
+#
+# Not covered by this recording: public struct fields, enum variants, trait
+# items, and associated functions in `impl` blocks. A `pub use` is recorded as
+# the name it binds, not as the item it resolves to.
+#
+# Adding a line means accepting a public compatibility expectation. Removing
+# an item without removing its line fails the gate in the other direction.
 
-pub mod analysis;
-pub mod app;
-pub mod cli;
-pub mod config;
-pub mod domain;
-pub mod lsp;
-pub mod output;
-pub use analysis::LanguageRun;
-pub use analysis::LanguageRunStatus;
-pub use analysis::PartialDiffScope;
-pub use analysis::PartialDiffStopReason;
-pub use analysis::PreviewLanguageAdvisory;
-pub use app::{
-pub use app::{Mode, OutputFormat};
-pub use domain::{ExposureClass, Finding, Probe, ProbeFamily, RiprEvidence};
-pub use domain::{LanguageFileCount, Summary};
-pub use output::suppressions::CheckSuppressionOutcome;
-pub use output::suppressions::SuppressedCheckFinding;
+pub const ripr::lsp::diagnostic_budget::DEFAULT_MAX_INLINE_DETAIL_BYTES
+pub const ripr::lsp::diagnostic_budget::DEFAULT_MAX_ITEMS_PER_DOCUMENT
+pub const ripr::lsp::diagnostic_budget::DEFAULT_MAX_ITEMS_PER_WORKSPACE_RESPONSE
+pub const ripr::lsp::diagnostic_budget::DEFAULT_MAX_SERIALIZED_BYTES
+pub const ripr::lsp::diagnostic_budget::DIAGNOSTIC_BUDGET_SCHEMA_VERSION
+pub const ripr::lsp::diagnostic_budget::DIAGNOSTIC_BUDGET_SELECTION_VERSION
+pub const ripr::output::receipt_lifecycle::RECEIPT_FOUND
+pub const ripr::output::receipt_lifecycle::RECEIPT_GAP_MISMATCH
+pub const ripr::output::receipt_lifecycle::RECEIPT_MISSING
+pub const ripr::output::receipt_lifecycle::RECEIPT_MOVEMENT_IMPROVED
+pub const ripr::output::receipt_lifecycle::RECEIPT_MOVEMENT_UNCHANGED
+pub const ripr::output::receipt_lifecycle::RECEIPT_NOT_APPLICABLE
+pub const ripr::output::receipt_lifecycle::RECEIPT_STALE
+pub const ripr::output::start_here_state::START_HERE_ACTIONABLE_GAP
+pub const ripr::output::start_here_state::START_HERE_ADAPTER_UNAVAILABLE
+pub const ripr::output::start_here_state::START_HERE_CLEAN
+pub const ripr::output::start_here_state::START_HERE_LANGUAGE_DISABLED
+pub const ripr::output::start_here_state::START_HERE_MALFORMED_ARTIFACT
+pub const ripr::output::start_here_state::START_HERE_MISSING_ARTIFACTS
+pub const ripr::output::start_here_state::START_HERE_NO_ACTIONABLE_GAP
+pub const ripr::output::start_here_state::START_HERE_OUTPUT_STATES
+pub const ripr::output::start_here_state::START_HERE_PREVIEW_DISABLED
+pub const ripr::output::start_here_state::START_HERE_PREVIEW_LIMITED
+pub const ripr::output::start_here_state::START_HERE_SERVER_UNAVAILABLE
+pub const ripr::output::start_here_state::START_HERE_STALE_EVIDENCE
+pub const ripr::output::start_here_state::START_HERE_TIMEOUT_PARTIAL
+pub const ripr::output::start_here_state::START_HERE_UNSAFE_COMMAND
+pub const ripr::output::start_here_state::START_HERE_UNSAFE_PATH
+pub const ripr::output::start_here_state::START_HERE_UNSUPPORTED_SCHEMA
+pub const ripr::output::start_here_state::START_HERE_WRONG_ROOT
+pub enum ripr::analysis::AnalysisMode
+pub enum ripr::analysis::LanguageRunStatus
+pub enum ripr::app::Mode
+pub enum ripr::lsp::diagnostic_budget::DiagnosticBudgetEligibility
+pub enum ripr::lsp::diagnostic_budget::DiagnosticBudgetError
+pub enum ripr::lsp::diagnostic_budget::DiagnosticOverflowReason
+pub enum ripr::lsp::diagnostic_budget::OmittedDiagnosticReason
+pub fn ripr::analysis::run_analysis
+pub fn ripr::analysis::run_repo_analysis
+pub fn ripr::app::render_check
+pub fn ripr::cli::run
+pub fn ripr::lsp::diagnostic_budget::build_budget_items_from_diagnostics
+pub fn ripr::lsp::diagnostic_budget::evaluate_diagnostic_budget
+pub fn ripr::lsp::serve
+pub fn ripr::output::github::render
+pub fn ripr::output::human::render
+pub fn ripr::output::human::render_finding
+pub fn ripr::output::receipt_lifecycle::normalize_receipt_lifecycle_state
+pub fn ripr::output::receipt_lifecycle::receipt_lifecycle_state
+pub fn ripr::output::receipt_lifecycle::receipt_lifecycle_state_from_movement
+pub fn ripr::output::receipt_lifecycle::receipt_lifecycle_state_from_presence
+pub fn ripr::output::receipt_lifecycle::receipt_lifecycle_state_from_receipt_value
+pub fn ripr::output::receipt_lifecycle::receipt_lifecycle_state_is_present
+pub fn ripr::output::start_here_state::normalize_start_here_output_state
+pub fn ripr::output::start_here_state::start_here_output_state_is_known
+pub fn ripr::set_verbose
+pub mod ripr::analysis
+pub mod ripr::app
+pub mod ripr::app::pr_summary
+pub mod ripr::cli
+pub mod ripr::config
+pub mod ripr::domain
+pub mod ripr::domain::context_packet
+pub mod ripr::lsp
+pub mod ripr::lsp::diagnostic_budget
+pub mod ripr::output
+pub mod ripr::output::github
+pub mod ripr::output::human
+pub mod ripr::output::json
+pub mod ripr::output::receipt_lifecycle
+pub mod ripr::output::start_here_state
+pub struct ripr::analysis::AnalysisOptions
+pub struct ripr::analysis::AnalysisResult
+pub struct ripr::analysis::LanguageRun
+pub struct ripr::analysis::PreviewLanguageAdvisory
+pub struct ripr::app::CheckInput
+pub struct ripr::app::CheckOutput
+pub struct ripr::domain::context_packet::ContextPacket
+pub struct ripr::domain::context_packet::ContextPacketProbe
+pub struct ripr::domain::context_packet::ContextPacketRipr
+pub struct ripr::lsp::diagnostic_budget::DiagnosticBudget
+pub struct ripr::lsp::diagnostic_budget::DiagnosticBudgetItem
+pub struct ripr::lsp::diagnostic_budget::DiagnosticBudgetResult
+pub struct ripr::lsp::diagnostic_budget::DiagnosticSelectionKey
+pub struct ripr::lsp::diagnostic_budget::OmittedDiagnosticItem
+pub struct ripr::lsp::diagnostic_budget::SelectedDiagnosticItem
+pub use ripr::CheckInput
+pub use ripr::CheckOutput
+pub use ripr::CheckSuppressionOutcome
+pub use ripr::ExposureClass
+pub use ripr::Finding
+pub use ripr::LanguageFileCount
+pub use ripr::LanguageRun
+pub use ripr::LanguageRunStatus
+pub use ripr::Mode
+pub use ripr::OutputFormat
+pub use ripr::PartialDiffScope
+pub use ripr::PartialDiffStopReason
+pub use ripr::PreviewLanguageAdvisory
+pub use ripr::Probe
+pub use ripr::ProbeFamily
+pub use ripr::RiprEvidence
+pub use ripr::Summary
+pub use ripr::SuppressedCheckFinding
+pub use ripr::analysis::PARTIAL_DIFF_LANGUAGE_TIER_VERSION
+pub use ripr::analysis::PARTIAL_DIFF_SELECTION_VERSION
+pub use ripr::analysis::PartialDiffScope
+pub use ripr::analysis::PartialDiffStopReason
+pub use ripr::app::OutputFormat
+pub use ripr::app::check_workspace
+pub use ripr::app::check_workspace_repo
+pub use ripr::app::check_workspace_repo_with_config
+pub use ripr::app::check_workspace_with_config
+pub use ripr::app::check_workspace_worktree_with_config
+pub use ripr::app::collect_context
+pub use ripr::app::collect_context_with_config
+pub use ripr::app::collect_context_with_input
+pub use ripr::app::explain_finding
+pub use ripr::app::explain_finding_with_config
+pub use ripr::app::explain_finding_with_input
+pub use ripr::app::pr_summary::PrEvidenceSummaryJson
+pub use ripr::app::pr_summary::build_pr_evidence_summary
+pub use ripr::app::pr_summary::render_evidence_summary_md
+pub use ripr::app::pr_summary::render_pr_evidence_summary_json
+pub use ripr::app::repo_seam_inventory_input
+pub use ripr::check_workspace
+pub use ripr::collect_context
+pub use ripr::config::CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION
+pub use ripr::config::CheckInputExplicit
+pub use ripr::config::ConfigIdentityRole
+pub use ripr::config::ConfigSeverity
+pub use ripr::config::LspDiagnosticProfile
+pub use ripr::config::OraclePolicy
+pub use ripr::config::PerlConfig
+pub use ripr::config::RiprConfig
+pub use ripr::config::SeverityConfig
+pub use ripr::config::TypescriptConfig
+pub use ripr::domain::ActivationEvidence
+pub use ripr::domain::AttributionBasis
+pub use ripr::domain::CancellationPolicy
+pub use ripr::domain::CandidateRelation
+pub use ripr::domain::CanonicalDelta
+pub use ripr::domain::CanonicalEvidenceState
+pub use ripr::domain::CommandAuthorityBoundary
+pub use ripr::domain::CommandCostClass
+pub use ripr::domain::CommandExecutionMode
+pub use ripr::domain::CommandPlatform
+pub use ripr::domain::CommandRole
+pub use ripr::domain::CommandSpec
+pub use ripr::domain::CommandSpecValidationError
+pub use ripr::domain::ComparisonConfidence
+pub use ripr::domain::ComparisonCoverage
+pub use ripr::domain::Confidence
+pub use ripr::domain::DeltaAttribution
+pub use ripr::domain::DeltaKind
+pub use ripr::domain::DiagnosticConfidence
+pub use ripr::domain::DiagnosticFixSite
+pub use ripr::domain::DiagnosticSourceLocation
+pub use ripr::domain::DiagnosticWitness
+pub use ripr::domain::DiagnosticWitnessLimitation
+pub use ripr::domain::EnvironmentAssignment
+pub use ripr::domain::EnvironmentPolicy
+pub use ripr::domain::ExpectedResultParser
+pub use ripr::domain::ExposureClass
+pub use ripr::domain::Finding
+pub use ripr::domain::FindingCanonicalGap
+pub use ripr::domain::FixInstructionState
+pub use ripr::domain::FixInstructionSummary
+pub use ripr::domain::FlowSinkFact
+pub use ripr::domain::FlowSinkKind
+pub use ripr::domain::GapState
+pub use ripr::domain::LanguageFileCount
+pub use ripr::domain::LanguageId
+pub use ripr::domain::LanguageStatus
+pub use ripr::domain::MissingDiscriminatorFact
+pub use ripr::domain::NetworkPolicy
+pub use ripr::domain::ORACLE_ALIGNMENT_VALUES
+pub use ripr::domain::OracleKind
+pub use ripr::domain::OracleStrength
+pub use ripr::domain::OwnerKind
+pub use ripr::domain::Probe
+pub use ripr::domain::ProbeFamily
+pub use ripr::domain::ProbeId
+pub use ripr::domain::RelatedTest
+pub use ripr::domain::RelationConfidence
+pub use ripr::domain::RelationReason
+pub use ripr::domain::RevealEvidence
+pub use ripr::domain::RiprEvidence
+pub use ripr::domain::SourceLocation
+pub use ripr::domain::StageEvidence
+pub use ripr::domain::StageState
+pub use ripr::domain::StaticLimitKind
+pub use ripr::domain::StdinPolicy
+pub use ripr::domain::StopReason
+pub use ripr::domain::Summary
+pub use ripr::domain::SymbolId
+pub use ripr::domain::TestEvidenceEntry
+pub use ripr::domain::TestEvidenceSummary
+pub use ripr::domain::VERIFICATION_EXECUTION_RESULT_SCHEMA_VERSION
+pub use ripr::domain::ValueContext
+pub use ripr::domain::ValueFact
+pub use ripr::domain::VerificationCurrentnessV1
+pub use ripr::domain::VerificationExecutionResultV1
+pub use ripr::domain::VerificationExecutionResultValidationError
+pub use ripr::domain::VerificationProcessDispositionV1
+pub use ripr::domain::command_spec_sha256
+pub use ripr::domain::compare_fixture_delta
+pub use ripr::explain_finding
+pub use ripr::explain_finding_with_input
+pub use ripr::lsp::DiagnosticBatch
+pub use ripr::lsp::workspace_diagnostic_batches
+pub use ripr::output::json::render
+pub use ripr::output::json::render_context_packet
+pub use ripr::render_check

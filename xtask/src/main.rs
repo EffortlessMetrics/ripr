@@ -30,6 +30,7 @@ mod evidence_quality;
 mod fixture_contracts;
 mod no_panic;
 mod policy;
+mod public_api_surface;
 mod repo_readiness;
 mod types;
 pub(crate) use types::*;
@@ -234,6 +235,7 @@ use policy::{
     check_no_panic_family, check_positioning_language, check_process_policy, check_product_copy,
     check_proof_packs, check_static_language, check_workflows,
 };
+use public_api_surface::public_api_surface;
 #[cfg(test)]
 use repo_readiness::{PrReadyStep, pr_ready_next_action, pr_ready_status_from_report_status};
 use repo_readiness::{
@@ -11497,7 +11499,7 @@ mod repair_packet_authority_guard_tests {
 
 fn check_public_api() -> Result<(), String> {
     let allowed = read_public_api_allowlist("policy/public_api.txt")?;
-    let actual = public_api_exports(Path::new("crates/ripr/src/lib.rs"))?;
+    let actual = public_api_surface(Path::new("crates/ripr/src/lib.rs"), "ripr")?;
     let allowed_set = allowed.iter().cloned().collect::<BTreeSet<_>>();
     let actual_set = actual.iter().cloned().collect::<BTreeSet<_>>();
     let mut violations = Vec::new();
@@ -11512,7 +11514,7 @@ fn check_public_api() -> Result<(), String> {
     for line in &allowed {
         if !actual_set.contains(line) {
             violations.push(format!(
-                "public API allowlist entry is missing from crates/ripr/src/lib.rs: {line}"
+                "public API allowlist entry is no longer reachable from the ripr crate root: {line}"
             ));
         }
     }
@@ -11521,15 +11523,16 @@ fn check_public_api() -> Result<(), String> {
         PolicyReportSpec {
             report_file: "public-api.md",
             check: "check-public-api",
-            why_it_matters: "The crate is the published product surface, so accidental public exports create compatibility expectations.",
+            why_it_matters: "The crate is the published product surface, so accidental public exports create compatibility expectations. This gate records every module-level `pub` item reachable from the crate root through `pub mod`, including items declared outside lib.rs (#3052). A `#[macro_export]` macro is recorded as `pub macro ripr::<name>` even when its declaring module is private, because Rust exports it at the crate root regardless of that module's visibility. It does not cover public struct fields, enum variants, trait items, or associated functions in `impl` blocks, and it does not resolve names: a `pub use` is recorded as the name it binds, and a glob re-export is recorded as a glob because a syntax walk cannot expand it.",
             fix_kind: FixKind::ReviewerDecisionRequired,
             recommended_fixes: &[
-                "Keep new implementation modules private unless they are part of the crate contract.",
+                "Keep new implementation modules and items private unless they are part of the crate contract.",
                 "If the public export is intentional, update policy/public_api.txt and explain the contract in the PR.",
                 "Prefer output DTOs and app APIs over exposing internal analyzer structures directly.",
+                "Avoid `pub use path::*`: the gate cannot expand a glob, so it records the glob itself.",
             ],
             rerun_command: "cargo xtask check-public-api",
-            exception_template: Some("pub mod example;"),
+            exception_template: Some("pub const ripr::example::EXAMPLE"),
         },
         &violations,
     )
@@ -11561,18 +11564,6 @@ fn read_public_api_allowlist(path: &str) -> Result<Vec<String>, String> {
         entries.push(trimmed.to_string());
     }
     Ok(entries)
-}
-
-fn public_api_exports(path: &Path) -> Result<Vec<String>, String> {
-    let text = read_text_lossy(path)?;
-    let mut exports = Vec::new();
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("pub mod ") || trimmed.starts_with("pub use ") {
-            exports.push(trimmed.to_string());
-        }
-    }
-    Ok(exports)
 }
 
 fn read_pipe_records(path: &str, field_count: usize) -> Result<Vec<Vec<String>>, String> {
