@@ -73,6 +73,27 @@ issuance. Never copy a historical blanket no-execution sentence, and never
 claim correctness, test adequacy, mutation adequacy, requirement satisfaction,
 or merge safety.
 
+The two history-preserving joins have separate identities and parent order:
+
+```text
+J = source promotion
+J.parent[0] = exact SOURCE_PARENT
+J.parent[1] = exact SWARM_PARENT
+
+K = post-publication back-sync
+K.parent[0] = exact swarm main before back-sync
+K.parent[1] = exact released source main
+```
+
+The promotion head must itself be `J`; an appended repair commit, squash,
+rebase, cherry-pick, or tree-equivalent reconstruction fails the promotion
+contract. After public verification, review and transport `K` under an
+expected-head guard. If swarm policy has merge commits disabled, use a
+narrowly approved temporary exception for this one ancestry-preserving
+back-sync and restore the ordinary policy immediately afterward. See
+[`swarm-development.md`](swarm-development.md#promotion-back-to-source) for
+the operator commands and the separate J/K proof boundaries.
+
 ## Preparing a version bump
 
 From a clean swarm checkout, use the gated version command instead of editing
