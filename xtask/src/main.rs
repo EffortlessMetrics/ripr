@@ -32,6 +32,7 @@ mod no_panic;
 mod policy;
 mod public_api_surface;
 mod repo_readiness;
+mod schema_pattern;
 mod types;
 pub(crate) use types::*;
 mod reports;

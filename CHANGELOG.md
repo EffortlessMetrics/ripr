@@ -85,6 +85,13 @@ are scoped or reviewed.
   `policy/public_api.txt` is unchanged: none of these corrections moves the
   `ripr` crate's own recorded surface.
 
+- The `fabricated_result` case in `fixtures/assurance_vocabulary/assurance/corpus.json`
+  omitted `runtime_mutation`, so it failed the assurance schema for a missing
+  required field rather than for the producer-bound digest mismatch it exists to
+  demonstrate. The field is now present and the case discriminates on its
+  intended axis
+  ([#2923](https://github.com/EffortlessMetrics/ripr-swarm/issues/2923)).
+
 - Human output no longer restates the `Missing discriminator` label inside its
   own value. The classifier builds these entries as
   `Missing discriminator value: <value>`, so the digest rendered
@@ -163,6 +170,33 @@ are scoped or reviewed.
   command string, schema version, or existing field changed. A shell-neutral
   argv form (#1617) and a PowerShell variant (#2964) remain separate work
   ([#2963](https://github.com/EffortlessMetrics/ripr-swarm/issues/2963)).
+
+- Published schemas that had only a reverse-direction `schema_version` check are
+  now bound to real producer bytes by the verification-contract registry. The
+  Rust repair trust corpus of record (`metrics/rust-repair-trust/corpus.json`)
+  validates as itself rather than through a copy; the `command_spec` and
+  `verification_command_spec` shapes in `schemas/ripr/repair-assurance.schema.json`
+  validate against the `command_specs` a generated agent packet actually emits;
+  and the design-only `RepairAssuranceV1` envelope validates against the
+  assurance vocabulary corpus records that carry a `record` and are not marked
+  `invalid`, making a claim that `fixtures/assurance_vocabulary/SPEC.md`
+  previously stated but nothing enforced. Patch-shaped cases and advertised
+  negatives stay outside that walk and are covered by their own tests, so the
+  subject count does not imply coverage it lacks. Each pair carries a negative mutation that must fail.
+  `docs/verification/schema-producer-audit.md` records the producer, canonical
+  subject, negative mutation, and explicit exemption for every published schema
+  — including the `riprAgent` protocol schemas, which remain reserved and
+  routed to [#3009](https://github.com/EffortlessMetrics/ripr-swarm/issues/3009)
+  ([#2923](https://github.com/EffortlessMetrics/ripr-swarm/issues/2923)).
+
+- The contract validator now evaluates `oneOf`, `if`/`then`/`else`, `not`,
+  `minItems`, `maxItems`, `uniqueItems`, `maximum`, and `pattern`. Conditional
+  requirements and identity commitments — 40-character head SHAs, `sha256:`
+  digests, and the relative `working_directory` constraint — were declared by
+  the published schemas and enforced by nothing. `pattern` support is
+  fail-closed: an uninterpretable expression is reported as a violation instead
+  of assumed to match
+  ([#2923](https://github.com/EffortlessMetrics/ripr-swarm/issues/2923)).
 
 - `[profile.dev]` now uses `debug = "line-tables-only"` instead of the cargo
   default (`debug = "full"`). Line tables give backtraces with file:line

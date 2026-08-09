@@ -255,7 +255,7 @@
       },
       "then": {
         "properties": {
-          "status": { "const": "advisory" }
+          "status": { "enum": ["advisory", "error"] }
         }
       }
     },
@@ -272,7 +272,7 @@
       },
       "then": {
         "properties": {
-          "status": { "const": "incomplete" }
+          "status": { "enum": ["incomplete", "error"] }
         }
       }
     },

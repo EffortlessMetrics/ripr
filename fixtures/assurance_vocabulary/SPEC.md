@@ -15,8 +15,20 @@ execution, receipt issuance, and external runtime evidence.
 cargo xtask fixtures assurance_vocabulary
 ```
 
-The assurance corpus is inspected against
-`schemas/ripr/repair-assurance.schema.json` by the assurance contract checks.
+Corpus cases that carry a `record` and are not marked `invalid` are validated
+against `schemas/ripr/repair-assurance.schema.json` by
+`cargo xtask check-verification-contracts --check`, which registers
+`/cases/*/record` as a contract subject.
+
+Two kinds of case are deliberately outside that walk, and neither is silently
+dropped. A case exposing only `record_patch` — `malformed_command_spec` — has no
+`/record` to select; its negative proof is
+`assurance_corpus_rejects_an_absolute_command_working_directory`. A case marked
+`invalid` is an advertised negative rather than a positive subject; counting it
+as passing would claim coverage the walk does not perform, so
+`assurance_corpus_invalid_cases_declare_their_authority` requires each one to
+name either a schema-rejectable patch or the narrower authority that rejects
+it.
 The typed `VerificationExecutionResultV1` validator covers the command-spec,
 root, HEAD, disposition, and commitment boundaries; this PR does not execute
 any command from the corpus.

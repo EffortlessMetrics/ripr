@@ -34,6 +34,8 @@ Machine-readable schemas live under `schemas/`:
 | [`schemas/ripr/review-comments.schema.json`](../../schemas/ripr/review-comments.schema.json) | `ripr review-comments` guidance output. |
 | [`schemas/ripr/gate-decision.schema.json`](../../schemas/ripr/gate-decision.schema.json) | `ripr gate evaluate` decision output and its structured repair route. |
 | [`schemas/ripr/check.schema.json`](../../schemas/ripr/check.schema.json) | `ripr check --json` primary findings and typed analysis-outcome output. |
+| [`schemas/ripr/repair-assurance.schema.json`](../../schemas/ripr/repair-assurance.schema.json) | Design-only `RepairAssuranceV1` envelope and the producer-owned command-spec and execution-result shapes. |
+| [`schemas/ripr/rust-repair-trust-corpus.schema.json`](../../schemas/ripr/rust-repair-trust-corpus.schema.json) | Authorized Rust repair attempt corpus of record. |
 
 The schema set and valid fixture packets are checked by:
 
@@ -41,6 +43,10 @@ The schema set and valid fixture packets are checked by:
 cargo xtask check-verification-contracts
 cargo xtask check-verification-contracts --check
 ```
+
+[Schema producer audit](schema-producer-audit.md) records, for every published
+schema, which producer emits the bytes it describes, which canonical subject and
+negative mutation prove that, and which schemas carry an explicit exemption.
 
 ## Adoption Boundary
 
