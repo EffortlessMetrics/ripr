@@ -1412,7 +1412,7 @@ pub(crate) fn dogfood_run(scenario: &DogfoodScenario) -> Result<DogfoodRun, Stri
     if errors.is_empty() {
         let root = normalize_path(&scenario.root);
         let diff = normalize_path(&scenario.diff);
-        match run_fixture_check(&root, &diff, FixtureCheckFormat::Json) {
+        match run_fixture_check(&root, &diff, FixtureCheckFormat::Json, None) {
             Ok(json) => {
                 let normalized = normalize_fixture_json_output(&json);
                 findings = json_number_after(&normalized, "\"findings\":").unwrap_or(0);
@@ -1429,7 +1429,7 @@ pub(crate) fn dogfood_run(scenario: &DogfoodScenario) -> Result<DogfoodRun, Stri
             Err(err) => errors.push(err),
         }
 
-        match run_fixture_check(&root, &diff, FixtureCheckFormat::Human) {
+        match run_fixture_check(&root, &diff, FixtureCheckFormat::Human, None) {
             Ok(human) => {
                 let normalized = normalize_fixture_human_output(&human);
                 let path = actual_dir.join("human.txt");
@@ -2877,7 +2877,7 @@ pub(crate) fn dogfood_language_preview_run(
     if errors.is_empty() {
         let root = normalize_path(&scenario.root);
         let diff = normalize_path(&scenario.diff);
-        match run_fixture_check(&root, &diff, FixtureCheckFormat::Json) {
+        match run_fixture_check(&root, &diff, FixtureCheckFormat::Json, None) {
             Ok(json) => {
                 let normalized = normalize_fixture_json_output(&json);
                 if let Err(err) = fs::write(&json_path, &normalized) {
@@ -2937,7 +2937,7 @@ pub(crate) fn dogfood_language_preview_run(
             Err(err) => errors.push(err),
         }
 
-        match run_fixture_check(&root, &diff, FixtureCheckFormat::Human) {
+        match run_fixture_check(&root, &diff, FixtureCheckFormat::Human, None) {
             Ok(human) => {
                 human_output = normalize_fixture_human_output(&human);
                 if let Err(err) = fs::write(&human_path, &human_output) {

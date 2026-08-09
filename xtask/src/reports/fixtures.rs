@@ -10,7 +10,7 @@
 //! `evidence_promotion`, and `tests.rs`) compile unchanged.
 
 use crate::no_panic::contains_word;
-use crate::run::{run, run_output_owned};
+use crate::run::{run, run_output_owned, run_output_owned_with_envs};
 use crate::{
     collect_pr_changes, forbidden_static_terms, has_markdown_heading, json_escape, markdown_cell,
     normalize_path, read_text_lossy, ripr_debug_binary, write_json_string_array, write_report,
@@ -19,15 +19,17 @@ use rayon::prelude::*;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 /// Result of a single fixture run: violation lines + optional run output.
 type FixtureResult = Result<(Vec<String>, Option<FixtureRun>), String>;
 
 pub(crate) fn fixtures_impl(name: Option<&String>) -> Result<(), String> {
-    // Build once per invocation (#2110): every scenario then invokes the
-    // fresh worktree binary directly instead of paying `cargo run` + link
-    // check per scenario.
-    run("cargo", &["build", "-p", "ripr"])?;
+    // The build that #2110 placed here now belongs to `ripr_fixture_binary`,
+    // which every scenario already goes through and which builds exactly once
+    // per process (#3054). Keeping a copy here would leave the invariant
+    // looking like an entry-point courtesy rather than a property of reaching
+    // the binary at all.
     let fixture_dirs = fixture_dirs()?;
     let selected = match name {
         Some(value) => vec![fixture_dir_for_name(value)?],
@@ -240,6 +242,8 @@ fn collect_golden_runs() -> Result<GoldenRunSet, String> {
 }
 
 fn goldens_bless(name: &str, reason: &str) -> Result<(), String> {
+    // Argument validation precedes the fixture run, so a malformed invocation
+    // costs neither a build nor a discarded cache (#3054 review).
     validate_bless_reason(reason)?;
     let fixture = fixture_dir_for_name(name)?;
     if !fixture.exists() {
@@ -426,7 +430,7 @@ pub(crate) fn fixture_contract_violations(path: &Path) -> Result<Vec<String>, St
 }
 
 #[derive(Debug)]
-struct FixtureRun {
+pub(crate) struct FixtureRun {
     name: String,
     actual_dir: PathBuf,
     check_json: PathBuf,
@@ -436,6 +440,11 @@ struct FixtureRun {
 }
 
 impl FixtureRun {
+    #[cfg(test)]
+    pub(crate) fn comparisons_all_match(&self) -> bool {
+        self.comparisons.iter().all(|comparison| comparison.matches)
+    }
+
     fn comparison_violations(&self) -> Vec<String> {
         self.comparisons
             .iter()
@@ -500,7 +509,7 @@ struct GoldenRunSet {
     violations: Vec<String>,
 }
 
-fn run_fixture(path: &Path) -> Result<FixtureRun, String> {
+pub(crate) fn run_fixture(path: &Path) -> Result<FixtureRun, String> {
     let run = run_fixture_outputs(path)?;
     let expected = path.join("expected");
     let comparisons = fixture_golden_comparisons(
@@ -568,7 +577,50 @@ fn validate_bless_output(run: &FixtureRun, fixture: &Path) -> Result<(), String>
     Ok(())
 }
 
-fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
+/// Environment variable `ripr` reads to relocate its fact cache base
+/// (`crates/ripr/src/analysis/seam_cache.rs`, `CACHE_DIR_ENV`).
+const FIXTURE_CACHE_DIR_ENV: &str = "RIPR_CACHE_DIR";
+
+/// Where a fixture run's fact cache lives.
+///
+/// #3054: `ripr` derives its default cache base from the workspace root it is
+/// analyzing, and a fixture run is rooted at `<fixture>/input`. Left to the
+/// default, each fixture writes into its own `input/target/ripr/cache` inside
+/// the corpus, so the repository-level `target/ripr/cache` that CI clears is not
+/// the cache a fixture run reads. Rather than infer 222 scattered locations and
+/// delete inside the tracked corpus, the runner dictates one: an absolute,
+/// per-fixture directory under the repository build tree. The path is then a
+/// fact the runner owns, not a guess about the child.
+///
+/// Per fixture rather than per corpus so the three output surfaces of one
+/// fixture still share a warm cache within a single run.
+pub(crate) fn fixture_cache_dir(name: &str) -> Result<PathBuf, String> {
+    let dir = Path::new("target")
+        .join("ripr")
+        .join("fixture-cache")
+        .join(name);
+    std::path::absolute(&dir)
+        .map_err(|err| format!("resolve fixture cache dir {}: {err}", normalize_path(&dir)))
+}
+
+/// Discard a fixture's cached facts so the run recomputes them under the binary
+/// this process just built.
+///
+/// A cache that could not be removed is reported, not swallowed: a gate that
+/// cannot distinguish "cleared" from "a lock or permission denied the clear" is
+/// the false-confidence surface #3054 is about.
+fn clear_fixture_cache(dir: &Path) -> Result<(), String> {
+    match fs::remove_dir_all(dir) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(format!(
+            "failed to clear fixture fact cache {}: {err}",
+            normalize_path(dir)
+        )),
+    }
+}
+
+pub(crate) fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
     let name = fixture_name(path)?;
     let diff = path.join("diff.patch");
     let input = path.join("input");
@@ -599,10 +651,17 @@ fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
     let root = normalize_path(&input);
     let diff_file = normalize_path(&diff);
 
+    // #3054: clear before the first surface, then let all three share the warm
+    // entry. The clear must happen here, next to the runs it governs, so no
+    // command entry point can reach the fixture corpus without it.
+    let cache_dir = fixture_cache_dir(&name)?;
+    clear_fixture_cache(&cache_dir)?;
+
     let json = normalize_fixture_json_output(&run_fixture_check(
         &root,
         &diff_file,
         FixtureCheckFormat::Json,
+        Some(&cache_dir),
     )?);
     fs::write(&check_json, json).map_err(|err| {
         format!(
@@ -615,6 +674,7 @@ fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
         &root,
         &diff_file,
         FixtureCheckFormat::Human,
+        Some(&cache_dir),
     )?);
     fs::write(&human_txt, human).map_err(|err| {
         format!(
@@ -627,6 +687,7 @@ fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
         &root,
         &diff_file,
         FixtureCheckFormat::HumanFull,
+        Some(&cache_dir),
     )?);
     fs::write(&human_full_txt, human_full).map_err(|err| {
         format!(
@@ -652,26 +713,61 @@ pub(crate) enum FixtureCheckFormat {
     HumanFull,
 }
 
-/// The worktree-absolute debug binary, built once per fixtures/dogfood
-/// run (#2110): each scenario previously paid a `cargo run` spawn plus
-/// link check; the absolute path keeps a long `../` from resolving to a
-/// stale binary in the enclosing checkout.
+/// Memoized result of the one `cargo build -p ripr` this process owes the
+/// fixture corpus. See [`ripr_fixture_binary`].
+static RIPR_BINARY_BUILD: OnceLock<Result<(), String>> = OnceLock::new();
+
+/// The worktree-absolute debug binary, built once per xtask process (#2110,
+/// #3054): each scenario previously paid a `cargo run` spawn plus link check;
+/// the absolute path keeps a long `../` from resolving to a stale binary in the
+/// enclosing checkout.
+///
+/// #3054: this used to build only `if !binary.exists()`, so a `target/debug/ripr`
+/// left by an earlier build was reused verbatim and `goldens check` could report
+/// zero drift while validating previous code. The build now belongs to this
+/// function — the single place every fixture, golden, drift, and dogfood spawn
+/// reaches the binary through — rather than to individual command entry points,
+/// where a newly added entry point (as `golden-drift` was) silently opts out.
 pub(crate) fn ripr_fixture_binary() -> Result<String, String> {
     // ripr_debug_binary() honors CARGO_TARGET_DIR (#2176 review): the
     // routed CI jobs set it, so `cargo build` writes there.
-    let binary = ripr_debug_binary();
-    if !binary.exists() {
-        run("cargo", &["build", "-p", "ripr"])?;
-    }
+    ripr_fixture_binary_built_by(ripr_debug_binary(), &RIPR_BINARY_BUILD, &|| {
+        run("cargo", &["build", "-p", "ripr"]).map(|_status| ())
+    })
+}
+
+/// Resolve `binary` after ensuring `build` has run exactly once for `build_once`.
+///
+/// The build is unconditional with respect to the binary already existing — that
+/// is the whole point of #3054 — and memoized with respect to the process, so the
+/// rayon-parallel fixture runs do not queue one `cargo build` per fixture behind
+/// the package lock. A failed build is remembered and re-reported; it never
+/// degrades into "resolved a path that may be stale".
+fn ripr_fixture_binary_built_by(
+    binary: PathBuf,
+    build_once: &OnceLock<Result<(), String>>,
+    build: &(dyn Fn() -> Result<(), String> + Sync),
+) -> Result<String, String> {
+    build_once.get_or_init(build).clone()?;
     std::path::absolute(&binary)
         .map(|path| path.to_string_lossy().to_string())
         .map_err(|err| format!("resolve {} failed: {err}", binary.display()))
 }
 
+/// Run `ripr check` for one fixture surface.
+///
+/// `cache_dir` pins the child's fact cache. Fixture-corpus runs pass `Some`,
+/// because `ripr` resolves its cache from the `--root` it is given: without a
+/// pin, a fixture's cache lands in `<fixture>/input/target/ripr/cache` and no
+/// amount of clearing at the repository root touches it (#3054). Dogfood scenarios
+/// pass `None` — they analyze real repositories whose workspace cache is
+/// content-keyed on sources that change with the edit under test, so relocating
+/// it would buy nothing and cost every dogfood run a cold analysis.
 pub(crate) fn run_fixture_check(
     root: &str,
     diff_file: &str,
     format: FixtureCheckFormat,
+    cache_dir: Option<&Path>,
 ) -> Result<String, String> {
     let binary = ripr_fixture_binary()?;
     let mut args = vec![
@@ -691,7 +787,13 @@ pub(crate) fn run_fixture_check(
             args.push("human-full".to_string());
         }
     }
-    run_output_owned(&binary, &args)
+    match cache_dir {
+        Some(dir) => {
+            let value = dir.to_string_lossy().into_owned();
+            run_output_owned_with_envs(&binary, &args, &[(FIXTURE_CACHE_DIR_ENV, &value)])
+        }
+        None => run_output_owned(&binary, &args),
+    }
 }
 
 fn fixture_golden_comparisons(
@@ -1762,6 +1864,22 @@ fn fixtures_new(name: &str) -> Result<(), String> {
 }
 #[cfg(test)]
 mod tests {
+    /// Unique per process and per call. Fixed names under the shared temp
+    /// directory collide when two `cargo test` processes run at once — two
+    /// worktrees on one machine is the ordinary case here — and one process
+    /// then deletes the path the other just created, failing the gate for an
+    /// infrastructure reason. `xtask/src/run.rs` already builds temp paths this
+    /// way.
+    fn unique_temp_path(label: &str) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let nonce = COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "ripr-xtask-3054-{label}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
     use super::*;
 
     #[test]
@@ -1800,5 +1918,163 @@ mod tests {
         let input = r#"{"path":"src/lib.rs","count":42}"#;
         let out = normalize_fixture_json_output(input);
         assert_eq!(out, input);
+    }
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// #3054 root cause: the previous guard was `if !binary.exists()`, so a
+    /// `target/debug/ripr` left by an earlier build was reused and the golden
+    /// gates validated previous code. The binary existing must not skip the
+    /// build.
+    #[test]
+    fn ripr_binary_build_runs_even_when_the_binary_is_already_present() -> Result<(), String> {
+        let dir = unique_temp_path("present");
+        fs::create_dir_all(&dir).map_err(|err| format!("create {}: {err}", dir.display()))?;
+        let binary = dir.join(format!("ripr{}", std::env::consts::EXE_SUFFIX));
+        fs::write(&binary, b"stale").map_err(|err| format!("write {}: {err}", binary.display()))?;
+        assert!(binary.exists(), "probe must start from an existing binary");
+
+        let builds = AtomicUsize::new(0);
+        let cell = OnceLock::new();
+        let resolved = ripr_fixture_binary_built_by(binary.clone(), &cell, &|| {
+            builds.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        })?;
+
+        assert_eq!(
+            builds.load(Ordering::SeqCst),
+            1,
+            "an existing binary must still be rebuilt"
+        );
+        assert!(
+            resolved.ends_with(&format!("ripr{}", std::env::consts::EXE_SUFFIX)),
+            "resolved path should name the binary: {resolved}"
+        );
+        fs::remove_dir_all(&dir).map_err(|err| format!("cleanup {}: {err}", dir.display()))
+    }
+
+    /// The build is unconditional per process, not per spawn: `collect_golden_runs`
+    /// reaches the binary once per fixture through rayon, and one `cargo build`
+    /// per fixture would serialise the corpus behind the package lock.
+    #[test]
+    fn ripr_binary_build_runs_once_per_process() -> Result<(), String> {
+        let binary = unique_temp_path("once");
+        let builds = AtomicUsize::new(0);
+        let cell = OnceLock::new();
+        let build = || {
+            builds.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        };
+
+        ripr_fixture_binary_built_by(binary.clone(), &cell, &build)?;
+        ripr_fixture_binary_built_by(binary, &cell, &build)?;
+
+        assert_eq!(
+            builds.load(Ordering::SeqCst),
+            1,
+            "the build must be memoised across spawns"
+        );
+        Ok(())
+    }
+
+    /// A failed build must not degrade into "here is a path to whatever is on
+    /// disk" — that is exactly the stale-artifact validation #3054 removes.
+    #[test]
+    fn ripr_binary_build_failure_is_reported_instead_of_a_path() -> Result<(), String> {
+        let binary = unique_temp_path("failure");
+        let cell = OnceLock::new();
+
+        let first = ripr_fixture_binary_built_by(binary.clone(), &cell, &|| {
+            Err("cargo build -p ripr failed with exit status: 101".to_string())
+        });
+        // A remembered failure stays a failure: a later spawn must not read a
+        // memoised `Ok` out of a build that never succeeded.
+        let second = ripr_fixture_binary_built_by(binary, &cell, &|| Ok(()));
+
+        for result in [first, second] {
+            let Err(err) = result else {
+                return Err("a failed build must not resolve a binary path".to_string());
+            };
+            assert!(
+                err.contains("cargo build -p ripr failed"),
+                "the build failure must be reported verbatim: {err}"
+            );
+        }
+        Ok(())
+    }
+
+    /// #3054: the cache a fixture run reads is resolved from its `--root`, which
+    /// is `<fixture>/input`. A cache path that sits inside the fixture — or at
+    /// the repository root, which the fixture run never consults — is the wrong
+    /// target.
+    #[test]
+    fn fixture_cache_dir_is_absolute_and_outside_the_fixture_workspace() -> Result<(), String> {
+        let dir = fixture_cache_dir("propagate_swallowed_ok")?;
+
+        assert!(dir.is_absolute(), "cache dir must be absolute: {dir:?}");
+        let normalized = normalize_path(&dir);
+        assert!(
+            normalized.ends_with("target/ripr/fixture-cache/propagate_swallowed_ok"),
+            "cache dir must be per-fixture under the build tree: {normalized}"
+        );
+        assert!(
+            !normalized.contains("fixtures/propagate_swallowed_ok"),
+            "cache dir must not live inside the tracked fixture corpus: {normalized}"
+        );
+        assert!(
+            !normalized.ends_with("target/ripr/cache"),
+            "the repository cache root is not the cache a fixture run reads: {normalized}"
+        );
+
+        let other = fixture_cache_dir("propagate_value_returned")?;
+        assert_ne!(
+            dir, other,
+            "each fixture must own its cache so one fixture cannot serve another's facts"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn clear_fixture_cache_removes_entries_and_tolerates_absence() -> Result<(), String> {
+        let dir = unique_temp_path("clear");
+        let entry = dir.join("repo-file-facts").join("0.2").join("stale.json");
+        let parent = entry
+            .parent()
+            .ok_or_else(|| "seeded cache entry should have a parent".to_string())?;
+        fs::create_dir_all(parent).map_err(|err| format!("create {}: {err}", parent.display()))?;
+        fs::write(&entry, b"{}").map_err(|err| format!("write {}: {err}", entry.display()))?;
+
+        clear_fixture_cache(&dir)?;
+        assert!(!entry.exists(), "a stale cache entry must not survive");
+        assert!(!dir.exists(), "the cache directory must be removed");
+
+        clear_fixture_cache(&dir)?;
+        Ok(())
+    }
+
+    /// A removal that failed must not be indistinguishable from one that
+    /// succeeded: swallowing the error leaves the gate claiming a fresh cache it
+    /// never got.
+    #[test]
+    fn clear_fixture_cache_reports_a_removal_failure() -> Result<(), String> {
+        let path = unique_temp_path("not-a-dir");
+        fs::write(&path, b"occupied").map_err(|err| format!("write {}: {err}", path.display()))?;
+
+        let Err(err) = clear_fixture_cache(&path) else {
+            let _ = fs::remove_file(&path);
+            return Err("clearing a non-directory must be reported, not swallowed".to_string());
+        };
+        assert!(
+            err.contains("failed to clear fixture fact cache"),
+            "the failure must name what could not be cleared: {err}"
+        );
+        fs::remove_file(&path).map_err(|err| format!("cleanup {}: {err}", path.display()))
+    }
+
+    /// The pin only works if it names the variable `ripr` resolves its cache base
+    /// from (`CACHE_DIR_ENV` in `crates/ripr/src/analysis/seam_cache.rs`).
+    #[test]
+    fn fixture_cache_pin_names_the_variable_ripr_resolves() {
+        assert_eq!(FIXTURE_CACHE_DIR_ENV, "RIPR_CACHE_DIR");
     }
 }

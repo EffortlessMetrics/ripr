@@ -7378,6 +7378,84 @@ fn with_repo_cwd<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> 
     result
 }
 
+/// #3054, the binding this gate rests on: the directory the fixture runner
+/// clears must be the directory the `ripr` child actually writes its facts to.
+///
+/// `ripr` derives its default cache base from the workspace root it analyses, and
+/// a fixture run is rooted at `<fixture>/input` — so before this fix the runner
+/// cleared the repository cache while every fixture read and wrote its own
+/// `input/target/ripr/cache`. Nothing observed the mismatch, which is why the
+/// clear could be inert and still look correct.
+///
+/// This runs the real production path against a real fixture and asserts all
+/// three legs: a seeded stale entry is discarded, facts appear under the cleared
+/// directory, and nothing lands inside the fixture workspace.
+#[test]
+fn fixture_run_writes_its_facts_into_the_cache_the_runner_cleared() -> Result<(), String> {
+    fn file_count(dir: &Path) -> Result<usize, String> {
+        let mut total = 0;
+        let entries = fs::read_dir(dir).map_err(|err| format!("read {}: {err}", dir.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|err| format!("read entry in {}: {err}", dir.display()))?;
+            let path = entry.path();
+            if path.is_dir() {
+                total += file_count(&path)?;
+            } else {
+                total += 1;
+            }
+        }
+        Ok(total)
+    }
+
+    with_repo_cwd(|| {
+        let name = "all_no_path_disclosure";
+        let fixture = PathBuf::from("fixtures").join(name);
+        let workspace_cache = fixture
+            .join("input")
+            .join("target")
+            .join("ripr")
+            .join("cache");
+        let _ = fs::remove_dir_all(fixture.join("input").join("target"));
+
+        let cache_dir = super::fixture_cache_dir(name)?;
+        let stale = cache_dir
+            .join("repo-file-facts")
+            .join("0.2")
+            .join("stale-3054.json");
+        let stale_parent = stale
+            .parent()
+            .ok_or_else(|| "seeded cache entry should have a parent".to_string())?;
+        fs::create_dir_all(stale_parent)
+            .map_err(|err| format!("create {}: {err}", stale_parent.display()))?;
+        fs::write(&stale, b"{\"stale\":true}")
+            .map_err(|err| format!("write {}: {err}", stale.display()))?;
+
+        super::run_fixture_outputs(&fixture)?;
+
+        assert!(
+            !stale.exists(),
+            "a fixture run must discard cached facts computed by a previous binary: {}",
+            stale.display()
+        );
+        assert!(
+            cache_dir.is_dir(),
+            "the fixture run must write its facts under the cleared cache: {}",
+            cache_dir.display()
+        );
+        assert!(
+            file_count(&cache_dir)? > 0,
+            "the cleared cache must be the cache the child populates, but {} is empty",
+            cache_dir.display()
+        );
+        assert!(
+            !workspace_cache.exists(),
+            "no fixture cache may land inside the fixture workspace: {}",
+            workspace_cache.display()
+        );
+        Ok(())
+    })
+}
+
 fn targeted_static_seam(id: &str, grip_class: &str) -> StaticSeamRecord {
     StaticSeamRecord {
         seam_id: id.to_string(),
@@ -46124,6 +46202,57 @@ fn count_policy_gates_have_no_stale_bounds() -> Result<(), String> {
         check_process_policy()?;
         check_network_policy()?;
         check_local_context()?;
+        Ok(())
+    })
+}
+
+/// Bind the #3054 claim one level above `run_fixture_outputs`: the
+/// golden-comparing entry point must also consume the cache the runner cleared.
+///
+/// `goldens_check`, `goldens_bless`, and `golden_drift` all reach a fixture only
+/// through `collect_golden_runs -> run_fixture -> run_fixture_outputs`, and the
+/// rebuild lives in `ripr_fixture_binary`, the single function every spawn
+/// reaches the binary through. Asserting here covers the aggregate wrappers
+/// without running all 222 fixtures: a stale entry seeded into the pinned cache
+/// must be gone after a golden-comparing run, and that run must still agree with
+/// its committed goldens.
+#[test]
+fn golden_comparison_runs_consume_the_cache_the_runner_cleared() -> Result<(), String> {
+    with_repo_cwd(|| {
+        let name = "all_no_path_disclosure";
+        let fixture = PathBuf::from("fixtures").join(name);
+        let leaked = fixture.join("input").join("target");
+        let _ = fs::remove_dir_all(&leaked);
+
+        let cache_dir = super::fixture_cache_dir(name)?;
+        let stale = cache_dir
+            .join("repo-file-facts")
+            .join("0.2")
+            .join("stale-3054-golden.json");
+        let stale_parent = stale
+            .parent()
+            .ok_or_else(|| "seeded cache entry should have a parent".to_string())?;
+        fs::create_dir_all(stale_parent)
+            .map_err(|err| format!("create {}: {err}", stale_parent.display()))?;
+        fs::write(&stale, b"{\"stale\":true}")
+            .map_err(|err| format!("write {}: {err}", stale.display()))?;
+
+        let run = super::run_fixture(&fixture)?;
+
+        assert!(
+            !stale.exists(),
+            "a golden-comparing run must discard cached facts computed by a previous binary: {}",
+            stale.display()
+        );
+        assert!(
+            !leaked.exists(),
+            "a golden-comparing run must not write its cache into the tracked corpus: {}",
+            leaked.display()
+        );
+        assert!(
+            run.comparisons_all_match(),
+            "the fixture must still agree with its committed goldens after the cache clear"
+        );
         Ok(())
     })
 }

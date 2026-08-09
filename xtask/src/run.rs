@@ -44,14 +44,17 @@ pub(crate) struct ProcessError {
 pub(crate) fn capture_process_output(
     program: &str,
     args: &[String],
+    envs: &[(&str, &str)],
 ) -> Result<Vec<u8>, ProcessError> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|error| ProcessError {
-            kind: ProcessErrorKind::Launch,
-            message: format!("failed to launch {program}: {error}"),
-        })?;
+    let mut command = Command::new(program);
+    command.args(args);
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    let output = command.output().map_err(|error| ProcessError {
+        kind: ProcessErrorKind::Launch,
+        message: format!("failed to launch {program}: {error}"),
+    })?;
     if output.status.success() {
         Ok(output.stdout)
     } else {
@@ -224,7 +227,21 @@ pub(crate) fn run_output(program: &str, args: &[&str]) -> Result<String, String>
 }
 
 pub(crate) fn run_output_owned(program: &str, args: &[String]) -> Result<String, String> {
-    let output = capture_process_output(program, args).map_err(|error| error.message)?;
+    run_output_owned_with_envs(program, args, &[])
+}
+
+/// `run_output_owned` with an explicit child environment overlay.
+///
+/// Callers that must pin a child's environment — for example a fixture run that
+/// pins `RIPR_CACHE_DIR` so the cache it writes is the cache the caller cleared
+/// (#3054) — use this instead of mutating the xtask process environment, which
+/// the rayon-parallel fixture runs share.
+pub(crate) fn run_output_owned_with_envs(
+    program: &str,
+    args: &[String],
+    envs: &[(&str, &str)],
+) -> Result<String, String> {
+    let output = capture_process_output(program, args, envs).map_err(|error| error.message)?;
     Ok(String::from_utf8_lossy(&output).into_owned())
 }
 
@@ -882,8 +899,9 @@ mod tests {
         CapturedOutput, POST_KILL_DRAIN_GRACE, capture_output, capture_output_with_timeout,
         capture_stdout_to_file_with_timeout, command_success_owned, drain_stream_reader_bounded,
         parse_env_timeout_secs, read_stream_with_latency_progress, run, run_in_dir, run_output,
-        run_output_optional, run_output_owned, run_output_owned_with_timeout, run_owned,
-        spawn_stream_reader_channel, terminate_after_timeout, timeout_was_enforced,
+        run_output_optional, run_output_owned, run_output_owned_with_envs,
+        run_output_owned_with_timeout, run_owned, spawn_stream_reader_channel,
+        terminate_after_timeout, timeout_was_enforced,
     };
     use crate::acquire_test_cwd_read_guard;
     use std::fs;
@@ -970,6 +988,51 @@ mod tests {
         };
         if !err.contains("failed with") {
             return Err(format!("failure message should include status: {err}"));
+        }
+        Ok(())
+    }
+
+    /// Fixture runs pin `RIPR_CACHE_DIR` through this overlay so the cache the
+    /// child writes is the cache the runner cleared (#3054). `git var
+    /// GIT_AUTHOR_IDENT` echoes `GIT_AUTHOR_NAME` back, which makes the child's
+    /// view of the environment observable without a shell.
+    #[test]
+    fn run_output_owned_with_envs_overlays_the_child_environment() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
+        // Echo the variable through the platform shell rather than through
+        // `git`. Both earlier attempts used `git var`, and both failed on a CI
+        // runner for reasons that had nothing to do with env overlaying:
+        // `GIT_AUTHOR_IDENT` needs `user.name`/`user.email` from ambient config
+        // (exit 128), and `GIT_EDITOR` exits 1 with empty output when no editor
+        // resolves. A shell `echo` always exits 0 and prints exactly what the
+        // child environment holds, so this asserts the overlay and nothing else.
+        #[cfg(windows)]
+        let (program, args) = (
+            "cmd",
+            vec!["/C".to_string(), "echo %RIPR_ENV_PROBE%".to_string()],
+        );
+        #[cfg(not(windows))]
+        let (program, args) = (
+            "sh",
+            vec![
+                "-c".to_string(),
+                "printf %s \"$RIPR_ENV_PROBE\"".to_string(),
+            ],
+        );
+
+        let overlaid =
+            run_output_owned_with_envs(program, &args, &[("RIPR_ENV_PROBE", "ripr-env-overlay")])?;
+        if !overlaid.contains("ripr-env-overlay") {
+            return Err(format!(
+                "the overlaid value should reach the child: {overlaid}"
+            ));
+        }
+
+        let plain = run_output_owned(program, &args)?;
+        if plain.contains("ripr-env-overlay") {
+            return Err(format!(
+                "an empty overlay must not set the variable: {plain}"
+            ));
         }
         Ok(())
     }

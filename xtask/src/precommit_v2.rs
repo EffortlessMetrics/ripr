@@ -357,7 +357,7 @@ fn run_clippy(root: &Path, report: &mut PrecommitReport, args: Vec<String>) -> R
 
 fn repository_root() -> Result<PathBuf, PrecommitError> {
     let args = vec!["rev-parse".to_string(), "--show-toplevel".to_string()];
-    let output = capture_process_output("git", &args).map_err(|error| {
+    let output = capture_process_output("git", &args, &[]).map_err(|error| {
         PrecommitError::new(
             match error.kind {
                 ProcessErrorKind::Launch => PrecommitFailureKind::Infrastructure,
@@ -792,7 +792,7 @@ fn git_text(root: &Path, args: &[&str], context: &str) -> Result<String, Precomm
 
 fn git_bytes(root: &Path, args: &[&str], context: &str) -> Result<Vec<u8>, PrecommitError> {
     let owned = git_args(root, args);
-    capture_process_output("git", &owned).map_err(|error| {
+    capture_process_output("git", &owned, &[]).map_err(|error| {
         PrecommitError::new(
             match error.kind {
                 ProcessErrorKind::Launch => PrecommitFailureKind::Infrastructure,
@@ -1504,7 +1504,7 @@ mod tests {
         fn git_text(&self, args: &[&str]) -> Result<String, String> {
             let mut owned = vec!["-C".to_string(), self.path.display().to_string()];
             owned.extend(args.iter().map(|arg| (*arg).to_string()));
-            let bytes = capture_process_output("git", &owned)
+            let bytes = capture_process_output("git", &owned, &[])
                 .map_err(|error| format!("git fixture failed: {}", error.message))?;
             Ok(String::from_utf8_lossy(&bytes).trim().to_string())
         }
