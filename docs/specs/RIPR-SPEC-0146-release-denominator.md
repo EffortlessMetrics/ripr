@@ -113,9 +113,11 @@ applied it carries 333
 first-parent records, 325 records present in the reviewed provisional tree,
 five whole-commit candidate-only dependency exclusions, three reviewed
 safe-deferral rows absent from the candidate tree, and zero rows through the
-cut with `operator_decision_required`. Its provisional review cutoff is the
-selected development cut `b8b1c9ec78b013dfac6dcf929447839132835971`; no rows
-after the cutoff exist in this census. Every record has replayable GitHub
+cut with `operator_decision_required`. Its provisional review cutoff stays at
+the reviewed prefix `fcbb30a7cf6a37027fa377abafb617632b2e6f57`; the 103
+post-cutoff rows through the selected development cut are adjudicated with
+`review:2825:*` authority, so the post-provisional review check remains
+meaningful. Every record has replayable GitHub
 capture status and typed authority; captured references remain unreviewed
 authority until separately reviewed, while #2832 and #2825 record the
 substantive commit dispositions. The fixture pins range digest

@@ -2658,7 +2658,7 @@ mod tests {
                             .iter()
                             .position(|commit| commit == cutoff)
                     })
-                    == Some(332)
+                    == Some(229)
                 && snapshot.source.range_commits.last().map(String::as_str)
                     == Some("b8b1c9ec78b013dfac6dcf929447839132835971"),
             "pinned 333-entry first-parent census does not match record order and cutoff",
@@ -2734,10 +2734,8 @@ mod tests {
             .last()
             .map(|record| record.commit_sha.clone())
             .ok_or_else(|| "current-main fixture has no records".to_string())?;
-        // Move the provisional cutoff back so the final record is a
+        // The provisional cutoff stays at P, so the final record is a
         // post-provisional row whose review authority is under test.
-        snapshot.source.provisional_review_cutoff_sha =
-            Some("fcbb30a7cf6a37027fa377abafb617632b2e6f57".to_string());
         let post_cutoff = snapshot
             .records
             .last_mut()
@@ -2824,11 +2822,9 @@ mod tests {
             "../../../fixtures/release_denominator/current-main-provisional.json"
         ))
         .map_err(|error| error.to_string())?;
-        // The adjudicated census pins the provisional cutoff at C (index 332)
-        // and has no pending rows; move the cutoff back to the reviewed prefix
-        // so the two parked rows are genuinely post-provisional.
-        snapshot.source.provisional_review_cutoff_sha =
-            Some("fcbb30a7cf6a37027fa377abafb617632b2e6f57".to_string());
+        // The adjudicated census pins the provisional cutoff at P (index 229)
+        // and has no pending rows; park two post-provisional rows as pending
+        // to reproduce the post-cutoff projection boundary.
         for index in [230, 231] {
             let record = snapshot
                 .records

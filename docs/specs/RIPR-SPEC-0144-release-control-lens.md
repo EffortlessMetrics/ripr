@@ -133,7 +133,8 @@ Each selected claim carries `claim_id`, `owner_issue`,
 `required_for_candidate`, one resolution (`pending`, `landed`,
 `accepted_defer`, `candidate_exclusion`, or `failed`), evidence/commit/artifact
 references, `candidate_effect`, an explicit `non_claim` when deferred or
-excluded, and `reviewed`. Generic issue references or an `acceptance_owner`
+excluded, and `reviewed`. A `landed` claim must bind at least one delivery
+commit or artifact; generic issue references or an `acceptance_owner`
 field cannot establish selected-claim satisfaction.
 
 The staged candidate states are fail-closed and ordered:

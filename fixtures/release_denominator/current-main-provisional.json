@@ -7,7 +7,7 @@
     "stage": "provisional",
     "freshness": "current",
     "historical_base_sha": "c86807ecdbf359594ef88c0ff38b10b446139dca",
-    "provisional_review_cutoff_sha": "b8b1c9ec78b013dfac6dcf929447839132835971",
+    "provisional_review_cutoff_sha": "fcbb30a7cf6a37027fa377abafb617632b2e6f57",
     "github_repository": "EffortlessMetrics/ripr-swarm",
     "candidate_ref": "origin/main",
     "candidate_sha": "b8b1c9ec78b013dfac6dcf929447839132835971",
@@ -676,32 +676,40 @@
   },
   "candidate_selection": {
     "schema_version": "0.1",
-    "selected_cut_sha": null,
+    "selected_cut_sha": "b8b1c9ec78b013dfac6dcf929447839132835971",
     "selected_claims": [
       {
         "claim_id": "claim:lifecycle",
         "owner_issue": 2822,
         "required_for_candidate": true,
-        "resolution": "pending",
+        "resolution": "accepted_defer",
         "evidence_refs": [
-          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2822"
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2822",
+          "https://github.com/EffortlessMetrics/ripr-swarm/pull/2845",
+          "https://github.com/EffortlessMetrics/ripr-swarm/pull/2862"
         ],
         "commit_refs": [],
         "artifact_refs": [],
         "candidate_effect": "include",
-        "non_claim": null,
+        "non_claim": "0.11.0 includes the landed lifecycle stop-totality core (#2845, #2862) but does not claim the residual criteria: typed terminal stop results, session-scoped notification disposal, the named focused lifecycle tests, and real-Electron host proof (#2978) are deferred post-0.11 with #2822 remaining open as their owner.",
         "reviewed": true
       },
       {
         "claim_id": "claim:packaged-editor",
         "owner_issue": 2528,
         "required_for_candidate": true,
-        "resolution": "pending",
+        "resolution": "landed",
         "evidence_refs": [
-          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2528"
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2528",
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2423"
         ],
-        "commit_refs": [],
-        "artifact_refs": [],
+        "commit_refs": [
+          "eec4e7512ba65b6f8336cc48de93eeb11ecac73b",
+          "07eb18e544b6dadb7fa10aaf30a28c7d11888a6e"
+        ],
+        "artifact_refs": [
+          "target/ripr/release-readiness/ (vsix-packaging-path, extension-version-match, packaged-cli-journey checks on C)"
+        ],
         "candidate_effect": "include",
         "non_claim": null,
         "reviewed": true
@@ -710,11 +718,19 @@
         "claim_id": "claim:diff-input-honesty",
         "owner_issue": 2829,
         "required_for_candidate": true,
-        "resolution": "pending",
+        "resolution": "landed",
         "evidence_refs": [
-          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2829"
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2829",
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2654"
         ],
-        "commit_refs": [],
+        "commit_refs": [
+          "c30a26831b75051813bfaa3dbd9378096ec6aa82",
+          "a9db152fe0c5d23bc2fe6613b524430478c9af16",
+          "4e02f83e12090f93ba1bb590f7026fb1dcae92ae",
+          "36105bbf7e33c2403b87a521bfdc404606700699",
+          "ebacc790bd1b157d0e29d516c815987b3deb9ddf",
+          "3af35dae54277b470dc66239c7569a556ca15285"
+        ],
         "artifact_refs": [],
         "candidate_effect": "include",
         "non_claim": null,
@@ -724,11 +740,19 @@
         "claim_id": "claim:packet-honesty",
         "owner_issue": 2830,
         "required_for_candidate": true,
-        "resolution": "pending",
+        "resolution": "landed",
         "evidence_refs": [
-          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2830"
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2830",
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2657",
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2658"
         ],
-        "commit_refs": [],
+        "commit_refs": [
+          "d5dd29a740eaf6a8405a5e470b1fef2ea71e9db8",
+          "388aa3c49cf639fe53f9dcbf24ef9c54e19e36ba",
+          "f5f69e1bf92a1b4e5b8e18e83a305a495dc4b0f4",
+          "0afa0144b0eec64ad0c0b2cd47d3bec4c2b3e26c",
+          "1df6c475e6a3924e6331f7775f80e430377bb1f9"
+        ],
         "artifact_refs": [],
         "candidate_effect": "include",
         "non_claim": null,
@@ -738,12 +762,34 @@
         "claim_id": "claim:producer-authentic-readiness",
         "owner_issue": 2792,
         "required_for_candidate": true,
-        "resolution": "pending",
+        "resolution": "landed",
         "evidence_refs": [
-          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2792"
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2792",
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2823",
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2824",
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2921",
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2922"
         ],
-        "commit_refs": [],
-        "artifact_refs": [],
+        "commit_refs": [
+          "f2cdf86a",
+          "ddb343e1",
+          "c610a094",
+          "5f1557da",
+          "f590e535",
+          "7e3609f7",
+          "85065f56",
+          "3f7c9e53",
+          "b3ac8e1c",
+          "3b7927e4",
+          "f57e08b5",
+          "b8b1c9ec"
+        ],
+        "artifact_refs": [
+          "target/ripr/reports/release-readiness.json",
+          "target/ripr/reports/release-negative-corpus.json",
+          "target/ripr/release-readiness/ (retained installed-candidate chain)",
+          "target/ripr/release-negative-corpus/cases/ (28 per-case receipts)"
+        ],
         "candidate_effect": "include",
         "non_claim": null,
         "reviewed": true
@@ -752,12 +798,18 @@
         "claim_id": "claim:installed-cli",
         "owner_issue": 2834,
         "required_for_candidate": true,
-        "resolution": "pending",
+        "resolution": "landed",
         "evidence_refs": [
           "https://github.com/EffortlessMetrics/ripr-swarm/issues/2834"
         ],
-        "commit_refs": [],
-        "artifact_refs": [],
+        "commit_refs": [
+          "f57e94e550e567a7cdd1c3df7764dbce70998e8c",
+          "c610a094aa357da43dda421aa801f484b09a1d3d",
+          "3e9bf32a0642e88fd31b3903e6822ea12f4ec6ce"
+        ],
+        "artifact_refs": [
+          "target/ripr/release-readiness/install/bin/ripr (installed candidate, digest recorded in readiness details)"
+        ],
         "candidate_effect": "include",
         "non_claim": null,
         "reviewed": true
@@ -766,11 +818,18 @@
         "claim_id": "claim:review-control",
         "owner_issue": 2341,
         "required_for_candidate": true,
-        "resolution": "pending",
+        "resolution": "landed",
         "evidence_refs": [
-          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2341"
+          "https://github.com/EffortlessMetrics/ripr-swarm/issues/2341",
+          "https://github.com/EffortlessMetrics/ripr-swarm/pull/3049",
+          "https://github.com/EffortlessMetrics/ripr-swarm/pull/3053",
+          "https://github.com/EffortlessMetrics/ripr-swarm/pull/3066",
+          "https://github.com/EffortlessMetrics/ripr-swarm/pull/3069",
+          "https://github.com/EffortlessMetrics/ripr-swarm/pull/3071"
         ],
-        "commit_refs": [],
+        "commit_refs": [
+          "68bbb69204262a9e37fa6fc29e6e34ac728f06d5"
+        ],
         "artifact_refs": [],
         "candidate_effect": "include",
         "non_claim": null,
@@ -797,7 +856,7 @@
         "claim_id": "claim:final-candidate-identity",
         "owner_issue": 2833,
         "required_for_candidate": true,
-        "resolution": "pending",
+        "resolution": "accepted_defer",
         "evidence_refs": [
           "https://github.com/EffortlessMetrics/ripr-swarm/issues/2833",
           "https://github.com/EffortlessMetrics/ripr-swarm/issues/1609"
@@ -805,7 +864,7 @@
         "commit_refs": [],
         "artifact_refs": [],
         "candidate_effect": "materialize_and_lock",
-        "non_claim": null,
+        "non_claim": "The hard cut freezes C, S, and E only; it does not materialize or lock the final candidate tree identity. #2833 materializes and reconciles the candidate tree from the frozen cut and #1609 creates the immutable candidate ref; both consume this receipt without reconstruction.",
         "reviewed": true
       },
       {
@@ -859,10 +918,17 @@
       }
     ],
     "denominator_decisions_remaining": 0,
-    "denominator_decisions_remaining_through_selected_cut": null,
-    "final_cut_authority": null,
+    "denominator_decisions_remaining_through_selected_cut": 0,
+    "final_cut_authority": {
+      "cut_sha": "b8b1c9ec78b013dfac6dcf929447839132835971",
+      "record_set_digest": "sha256:4d8977b4a50e7697a5632f9e2e127bc83fde05640fddc09356dfc532bb72956a",
+      "provisional_decisions_remaining": 0,
+      "unreviewed_post_provisional_records_through_cut": 0,
+      "final_cut_decisions_remaining": 0,
+      "reviewed_through_selected_cut": true
+    },
     "projection": {
-      "reproducible": false,
+      "reproducible": true,
       "candidate_tree_sha": null,
       "candidate_tree_parent_sha": null,
       "exclusion_digest": null,

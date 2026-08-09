@@ -7921,6 +7921,8 @@ tests = [
   "xtask/src/reports/candidate_control.rs::tests::missing_cut_and_projection_are_not_hard_cut_eligible",
   "xtask/src/reports/candidate_control.rs::tests::mismatched_materialization_and_manifest_do_not_qualify",
   "xtask/src/reports/candidate_control.rs::tests::blank_landed_reference_is_not_scope_closed",
+  "xtask/src/reports/candidate_control.rs::tests::landed_claim_with_only_an_issue_reference_is_not_scope_closed",
+  "xtask/src/reports/candidate_control.rs::tests::landed_claim_with_an_artifact_binding_alone_closes_scope",
   "xtask/src/reports/candidate_control.rs::tests::whitespace_non_claim_is_not_scope_closed",
   "xtask/src/reports/candidate_control.rs::tests::optional_failed_claim_is_not_scope_closed",
   "xtask/src/reports/candidate_control.rs::tests::blank_projection_digests_do_not_materialize",

@@ -96,9 +96,9 @@
       "manifest_tree_sha": "dddddddddddddddddddddddddddddddddddddddd"
     },
     {
-      "name": "landed claim has a blank evidence reference",
+      "name": "landed claim has only an issue reference",
       "expected_status": "scope_pending",
-      "selected_claim_evidence_refs": [" "]
+      "clear_landed_binding": true
     },
     {
       "name": "accepted defer has a whitespace-only non-claim",

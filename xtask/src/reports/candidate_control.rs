@@ -251,14 +251,10 @@ pub(crate) fn evaluate(selection: Option<&CandidateSelection>) -> CandidateState
             scope_closed = false;
         }
         if claim.resolution == "landed"
-            && !references_are_non_blank(&[
-                &claim.evidence_refs,
-                &claim.commit_refs,
-                &claim.artifact_refs,
-            ])
+            && !references_are_non_blank(&[&claim.commit_refs, &claim.artifact_refs])
         {
             reasons.push(format!(
-                "landed selected claim `{}` has no evidence, commit, or artifact reference",
+                "landed selected claim `{}` has no commit or artifact binding; a bare issue reference cannot establish delivery",
                 claim.claim_id
             ));
             scope_closed = false;
@@ -785,6 +781,46 @@ mod tests {
     }
 
     #[test]
+    fn landed_claim_with_only_an_issue_reference_is_not_scope_closed() -> Result<(), String> {
+        let mut value = selection()?;
+        value.selected_claims[0].commit_refs.clear();
+        value.selected_claims[0].artifact_refs.clear();
+        let state = evaluate(Some(&value));
+        if state.status != "scope_pending"
+            || !state
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("no commit or artifact binding"))
+        {
+            return Err(format!(
+                "issue-only landed claim should remain scope_pending with a binding reason, got {}: {:?}",
+                state.status, state.reasons
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn landed_claim_with_an_artifact_binding_alone_closes_scope() -> Result<(), String> {
+        let mut value = selection()?;
+        value.selected_claims[0].commit_refs.clear();
+        value.selected_claims[0].artifact_refs =
+            vec!["target/ripr/reports/release-readiness.json".to_string()];
+        let bound = evaluate(Some(&value));
+        let mut baseline = selection()?;
+        baseline.selected_claims[0].artifact_refs =
+            vec!["target/ripr/reports/release-readiness.json".to_string()];
+        let baseline = evaluate(Some(&baseline));
+        if bound.status == "scope_pending" || bound.status != baseline.status {
+            return Err(format!(
+                "artifact-bound landed claim should close scope like the commit-bound baseline, got {} vs {}",
+                bound.status, baseline.status
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn whitespace_non_claim_is_not_scope_closed() -> Result<(), String> {
         let mut value = selection()?;
         value.selected_claims[0].resolution = "accepted_defer".to_string();
@@ -868,6 +904,8 @@ mod tests {
         #[serde(default)]
         selected_claim_evidence_refs: Option<Vec<String>>,
         #[serde(default)]
+        clear_landed_binding: bool,
+        #[serde(default)]
         unresolved_defect: bool,
         #[serde(default)]
         #[serde(alias = "denominator_decisions_remaining")]
@@ -932,6 +970,10 @@ mod tests {
             }
             if let Some(evidence_refs) = case.selected_claim_evidence_refs {
                 selection.selected_claims[0].evidence_refs = evidence_refs;
+            }
+            if case.clear_landed_binding {
+                selection.selected_claims[0].commit_refs.clear();
+                selection.selected_claims[0].artifact_refs.clear();
             }
             if case.unresolved_defect {
                 selection
