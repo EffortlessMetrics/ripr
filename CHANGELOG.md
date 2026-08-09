@@ -35,6 +35,20 @@ are scoped or reviewed.
   list the flag-parity guard iterates, which previously omitted them from both
   sides and so could not see the gap.
 
+- The release external-cwd journey test no longer flakes with `Text file busy`
+  under the full `reports::release` filter. It published its spawnable stub with
+  `fs::copy` from the running test binary, which holds a writable descriptor open
+  across a multi-megabyte transfer. `ETXTBSY` is raised while any process holds
+  the file open for writing, and `FD_CLOEXEC` closes an inherited descriptor at
+  `exec`, not during the fork/exec window — so a peer test forking inside that
+  transfer left the stub transiently un-executable. This is the same mechanism
+  recorded for the doctor atomic-publication test (#2441), but it is removed
+  rather than retried here: the stub is now published by hard link, so no
+  writable descriptor ever exists on the executed inode and the precondition for
+  `ETXTBSY` cannot arise. A staged copy-then-rename fallback covers hosts without
+  hard links. Test-only change; no `ripr` behavior is affected
+  ([#3051](https://github.com/EffortlessMetrics/ripr-swarm/issues/3051)).
+
 - Human output no longer restates the `Missing discriminator` label inside its
   own value. The classifier builds these entries as
   `Missing discriminator value: <value>`, so the digest rendered

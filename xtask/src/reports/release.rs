@@ -3164,6 +3164,248 @@ mod tests {
         Ok(())
     }
 
+    /// Publish a spawnable copy of `source` at `stub` without any process ever
+    /// holding a writable descriptor on the published inode.
+    ///
+    /// `execve` fails with `ETXTBSY` while *any* process holds the target file
+    /// open for writing, and `FD_CLOEXEC` closes an inherited descriptor *at*
+    /// `exec` rather than during the fork/exec window (the same mechanism
+    /// documented on `probe_published_tool` in `crates/ripr/src/output/doctor.rs`
+    /// for #2441). A peer test forking inside a multi-megabyte `fs::copy` of the
+    /// running test binary is exactly that, which made the journey test below
+    /// flake with `Text file busy` under the full `reports::release` filter
+    /// (#3051). Hard-linking publishes the already-built, already-executing
+    /// inode, so the precondition for `ETXTBSY` never exists.
+    ///
+    /// The staged copy-then-rename fallback covers hosts where linking is
+    /// unavailable (cross-device, or a filesystem without hard links). Both
+    /// paths live under the same `target` root, so it is not expected to run; it
+    /// still narrows the exposure to this fixture's own descriptor, which is
+    /// closed and synced before the executable path exists.
+    fn publish_spawnable_stub(source: &Path, stub: &Path) -> Result<(), String> {
+        let link_error = match fs::hard_link(source, stub) {
+            Ok(()) => return Ok(()),
+            Err(err) => err,
+        };
+        let staged = stub.with_extension("staged");
+        let _ = fs::remove_file(&staged);
+        fs::copy(source, &staged).map_err(|err| {
+            format!("stage stub binary failed after link error ({link_error}): {err}")
+        })?;
+        let staged_file =
+            fs::File::open(&staged).map_err(|err| format!("open staged stub failed: {err}"))?;
+        staged_file
+            .sync_all()
+            .map_err(|err| format!("sync staged stub failed: {err}"))?;
+        drop(staged_file);
+        fs::rename(&staged, stub).map_err(|err| format!("publish staged stub failed: {err}"))
+    }
+
+    /// Primary discriminator for #3051, on every platform: publication must
+    /// link the source rather than write a second copy of its bytes. A link
+    /// shares storage with its source, so mutating the source through a fresh
+    /// handle is observable through the published path; a written copy is a
+    /// snapshot and is not. Only the link form guarantees that no descriptor
+    /// was ever opened for writing on the path that is about to be executed.
+    ///
+    /// Source and stub are created in the same directory, so the cross-device
+    /// fallback cannot legitimately fire here.
+    #[test]
+    fn spawnable_stub_publication_links_the_source_instead_of_copying_it() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_write_guard();
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("read clock failed: {err}"))?
+            .as_nanos();
+        let dir = Path::new("../target/ripr-release-test")
+            .join(format!("linked-publication-{}-{stamp}", std::process::id()));
+        fs::create_dir_all(&dir).map_err(|err| format!("create stub dir failed: {err}"))?;
+        let result = (|| -> Result<(), String> {
+            let source = dir.join("source-payload");
+            let stub = dir.join("published-payload");
+            fs::write(&source, b"stub-payload-original")
+                .map_err(|err| format!("write source payload failed: {err}"))?;
+
+            // Establish whether this filesystem can link at all, using a probe
+            // separate from the code under test. `publish_spawnable_stub`
+            // advertises a staged copy-and-rename fallback for mounts without
+            // hard links, so requiring link semantics unconditionally would
+            // report that supported fallback as a failure.
+            let probe_source = dir.join("link-probe-source");
+            let probe_link = dir.join("link-probe-link");
+            fs::write(&probe_source, b"probe")
+                .map_err(|err| format!("write link probe failed: {err}"))?;
+            let links_supported = fs::hard_link(&probe_source, &probe_link).is_ok();
+
+            publish_spawnable_stub(&source, &stub)?;
+
+            fs::write(&source, b"stub-payload-relinked")
+                .map_err(|err| format!("rewrite source payload failed: {err}"))?;
+            let published =
+                fs::read(&stub).map_err(|err| format!("read published payload failed: {err}"))?;
+
+            if links_supported {
+                // The discriminating case, and the one every supported CI host
+                // takes: a link shares storage, so rewriting the source is
+                // visible through the published path. A written copy is a
+                // snapshot and is not — which is exactly the descriptor held
+                // open across the transfer that this fixture must not reopen.
+                if published != b"stub-payload-relinked" {
+                    return Err(
+                        "published stub did not track its source on a link-capable filesystem, \
+                         so publication wrote a second copy of the bytes through a descriptor \
+                         held open across the transfer — the ETXTBSY fork/exec window this \
+                         fixture must not reopen (#3051)"
+                            .to_string(),
+                    );
+                }
+            } else {
+                // Fallback contract: the staged copy is closed and synced before
+                // the executable path exists, so it is a snapshot of the source
+                // as published. Requiring it to track later writes would assert
+                // link semantics the fallback never promised.
+                if published != b"stub-payload-original" {
+                    return Err(format!(
+                        "staged fallback published {published:?}, expected a byte-exact snapshot \
+                         of the source as it stood at publication (#3051)"
+                    ));
+                }
+                if !stub.exists() {
+                    return Err("staged fallback did not publish the stub path".to_string());
+                }
+            }
+            Ok(())
+        })();
+        let cleanup = fs::remove_dir_all(&dir);
+        result?;
+        cleanup.map_err(|err| format!("remove stub dir failed: {err}"))
+    }
+
+    /// Discriminator for #3051: the stub the journey test execs must be
+    /// published as a link to the running binary, never written byte by byte.
+    /// Sharing the source inode is what proves no writable descriptor was ever
+    /// opened on the path that is about to be executed; the copy this replaced
+    /// held one open for the whole multi-megabyte transfer, which is the
+    /// necessary condition for the `ETXTBSY` flake.
+    #[cfg(unix)]
+    #[test]
+    fn spawnable_stub_is_published_without_ever_opening_a_writer() -> Result<(), String> {
+        use std::os::unix::fs::MetadataExt;
+
+        // The stub directory is checkout-relative, matching the journey test's
+        // location so the link stays on the same device as `current_exe`.
+        let _cwd_guard = crate::acquire_test_cwd_write_guard();
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("read clock failed: {err}"))?
+            .as_nanos();
+        let dir = Path::new("../target/ripr-release-test")
+            .join(format!("linked-stub-{}-{stamp}", std::process::id()));
+        fs::create_dir_all(&dir).map_err(|err| format!("create stub dir failed: {err}"))?;
+        let result = (|| -> Result<(), String> {
+            let source =
+                std::env::current_exe().map_err(|err| format!("read current exe failed: {err}"))?;
+            let stub = dir.join(format!("ripr-stub{}", std::env::consts::EXE_SUFFIX));
+
+            publish_spawnable_stub(&source, &stub)?;
+
+            let source_meta =
+                fs::metadata(&source).map_err(|err| format!("stat source failed: {err}"))?;
+            let stub_meta =
+                fs::metadata(&stub).map_err(|err| format!("stat stub failed: {err}"))?;
+            if source_meta.dev() != stub_meta.dev() || source_meta.ino() != stub_meta.ino() {
+                return Err(
+                    "published stub is a distinct inode, so its bytes were written through a \
+                     descriptor held open across the transfer — the ETXTBSY fork/exec window \
+                     this fixture must not reopen (#3051)"
+                        .to_string(),
+                );
+            }
+            if source_meta.nlink() < 2 {
+                return Err("published stub did not add a link to the source inode".to_string());
+            }
+            Ok(())
+        })();
+        let cleanup = fs::remove_dir_all(&dir);
+        result?;
+        cleanup.map_err(|err| format!("remove stub dir failed: {err}"))
+    }
+
+    /// Bind the discriminator above to the real error: an open writer is
+    /// exactly what makes a published binary un-executable, and a hard link —
+    /// which never has one — executes. Without this the inode assertion is an
+    /// unexplained stylistic preference rather than the removal of a necessary
+    /// condition. This holds before and after the fix; it is the invariant, not
+    /// the regression.
+    ///
+    /// It spawns through `run_command_in_dir`, the same seam the journey test
+    /// uses, and pins the busy-executable error text the way the neighbouring
+    /// relative-spawn assertion pins the not-found class. `run_command_in_dir`
+    /// stringifies the `io::Error`, so the `ErrorKind` is not available here;
+    /// reconstructing that classification in xtask would fork the policy
+    /// `doctor_spawn_failure_is_retryable` already owns.
+    #[cfg(unix)]
+    #[test]
+    fn an_open_writer_is_what_makes_a_published_binary_unexecutable() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_write_guard();
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("read clock failed: {err}"))?
+            .as_nanos();
+        let dir = Path::new("../target/ripr-release-test")
+            .join(format!("writer-blocks-exec-{}-{stamp}", std::process::id()));
+        fs::create_dir_all(&dir).map_err(|err| format!("create stub dir failed: {err}"))?;
+        let result = (|| -> Result<(), String> {
+            let source =
+                std::env::current_exe().map_err(|err| format!("read current exe failed: {err}"))?;
+
+            // A written stub with a live writable descriptor: the pre-fix state.
+            // Spawn through absolute paths. `run_command_in_dir` runs the child
+            // with its cwd set to `dir`, and these stub paths are
+            // checkout-relative, so a relative spawn fails with `ENOENT` before
+            // reaching `exec` — the #2823 defect the neighbouring journey test
+            // pins deliberately. Reaching the `exec` stage at all is the whole
+            // point here, so resolve first (#3051).
+            let written = dir.join("written-stub");
+            fs::copy(&source, &written).map_err(|err| format!("copy written stub: {err}"))?;
+            let writer = fs::OpenOptions::new()
+                .write(true)
+                .open(&written)
+                .map_err(|err| format!("open writer on written stub: {err}"))?;
+            let args = vec!["--list".to_string()];
+            let written_absolute = fs::canonicalize(&written)
+                .map_err(|err| format!("resolve written stub failed: {err}"))?;
+            let busy = super::run_command_in_dir(&written_absolute, &args, &dir, "written stub");
+            drop(writer);
+            match busy {
+                Ok(outcome) => {
+                    return Err(format!(
+                        "a stub with an open writer unexpectedly executed: {outcome:?}"
+                    ));
+                }
+                Err(error) if error.contains("os error 26") || error.contains("Text file busy") => {
+                }
+                Err(error) => {
+                    return Err(format!(
+                        "expected a busy-executable failure while a writer is open, got: {error}"
+                    ));
+                }
+            }
+
+            // A linked stub never has a writer, so it executes unconditionally.
+            let linked = dir.join("linked-stub");
+            fs::hard_link(&source, &linked).map_err(|err| format!("link stub: {err}"))?;
+            let linked_absolute = fs::canonicalize(&linked)
+                .map_err(|err| format!("resolve linked stub failed: {err}"))?;
+            super::run_command_in_dir(&linked_absolute, &args, &dir, "linked stub")
+                .map_err(|err| format!("linked stub must execute: {err}"))?;
+            Ok(())
+        })();
+        let cleanup = fs::remove_dir_all(&dir);
+        result?;
+        cleanup.map_err(|err| format!("remove stub dir failed: {err}"))
+    }
+
     /// Reproduce the defect mechanism from the clean-main #2823 failure: a
     /// checkout-relative binary path does not resolve when the child process
     /// runs from an unrelated external working directory (os error 2), while
@@ -3195,8 +3437,10 @@ mod tests {
             let stub = stub_dir.join(format!("ripr-stub{}", std::env::consts::EXE_SUFFIX));
             let current_exe =
                 std::env::current_exe().map_err(|err| format!("read current exe failed: {err}"))?;
-            fs::copy(&current_exe, &stub)
-                .map_err(|err| format!("copy stub binary failed: {err}"))?;
+            // Link rather than copy: a copy holds a writable descriptor open
+            // across a multi-megabyte transfer, and a peer test forking inside
+            // that window leaves the stub un-executable with `ETXTBSY` (#3051).
+            publish_spawnable_stub(&current_exe, &stub)?;
             let relative = Path::new("../target").join(
                 stub.strip_prefix("../target")
                     .map_err(|err| format!("relativize stub path failed: {err}"))?,
