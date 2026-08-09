@@ -2435,6 +2435,54 @@ fn agent_start_writes_source_edit_free_workflow_packet() -> Result<(), Box<dyn s
 }
 
 #[test]
+fn agent_start_packet_discloses_that_generated_commands_assume_bash()
+-> Result<(), Box<dyn std::error::Error>> {
+    let out_dir = unique_temp_workspace("agent-start-shell-disclosure");
+    let out = out_dir
+        .to_str()
+        .ok_or("workflow output path should be utf-8")?;
+
+    let output = run_ripr_in_workspace(&[
+        "agent",
+        "start",
+        "--root",
+        "fixtures/boundary_gap/input",
+        "--seam-id",
+        "67fc764ba37d77bd",
+        "--out",
+        out,
+    ])?;
+    assert_success(&output);
+
+    let commands_md = std::fs::read_to_string(out_dir.join("commands.md"))?;
+    let workflow_json = std::fs::read_to_string(out_dir.join("workflow.json"))?;
+
+    // The commands are already fenced as ```bash, so a bare `bash` substring is
+    // not evidence. Require the prose disclosure ahead of the first fence.
+    let disclosure = commands_md
+        .find("Generated commands are bash command lines.")
+        .ok_or_else(|| format!("commands.md must disclose the bash assumption:\n{commands_md}"))?;
+    let first_fence = commands_md
+        .find("```bash")
+        .ok_or("commands.md must still fence commands as bash")?;
+    assert!(
+        disclosure < first_fence,
+        "bash disclosure must precede the first copyable command in commands.md"
+    );
+    assert!(
+        commands_md.contains("PowerShell"),
+        "commands.md must name the shells that do not accept these commands:\n{commands_md}"
+    );
+    assert!(
+        workflow_json.contains(r#""command_shell": "bash""#),
+        "workflow.json must name the shell its command strings assume:\n{workflow_json}"
+    );
+
+    std::fs::remove_dir_all(out_dir)?;
+    Ok(())
+}
+
+#[test]
 fn agent_repair_phases_materialize_snapshots_and_verify_json()
 -> Result<(), Box<dyn std::error::Error>> {
     let root = unique_temp_workspace("agent-repair-phases");
