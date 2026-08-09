@@ -12,6 +12,7 @@ mod positioning_language;
 mod process;
 mod product_copy;
 pub(crate) mod proof_packs;
+mod release_targets;
 mod static_language;
 mod workflows;
 
@@ -29,5 +30,6 @@ pub(crate) use positioning_language::check_positioning_language;
 pub(crate) use process::check_process_policy;
 pub(crate) use product_copy::check_product_copy;
 pub(crate) use proof_packs::check_proof_packs;
+pub(crate) use release_targets::check_release_targets;
 pub(crate) use static_language::check_static_language;
 pub(crate) use workflows::check_workflows;

@@ -198,6 +198,28 @@ are scoped or reviewed.
   of assumed to match
   ([#2923](https://github.com/EffortlessMetrics/ripr-swarm/issues/2923)).
 
+- `policy/release-targets.toml` records the committed release-candidate
+  membership graph, and `cargo xtask check-release-targets` validates it
+  offline. The manifest distinguishes the release goal, claim blockers,
+  qualification/proof blockers, release companions, conditional candidates, and
+  release-referenced rolling work, and records umbrella parents with an explicit
+  `counted_in` and justification so parent/leaf double counting cannot be
+  silent. Eight rules are enforced — schema, release identity, role uniqueness,
+  committed disjointness, conditional/rolling exclusion, prerequisite ordering,
+  parent accounting, and referential closure — each with a fixture that violates
+  exactly that rule. Reports land at
+  `target/ripr/reports/release-targets.{json,md}`, and the check runs inside
+  `cargo xtask precommit` and the CI policy-check pass.
+
+  The checker deliberately does not parse release-goal issue prose. Those bodies
+  write some membership as en-dash ranges (`#2665 / #2968-#2970`), so a prose
+  parser would silently miss the members inside a range and then report a clean
+  graph over issues it never saw. The manifest is the parsed authority; the goal
+  bodies remain human-validated documentation. This check is network-free and
+  does not compare against live GitHub milestones, does not qualify a candidate,
+  and does not represent publication
+  ([#3013](https://github.com/EffortlessMetrics/ripr-swarm/issues/3013)).
+
 - `[profile.dev]` now uses `debug = "line-tables-only"` instead of the cargo
   default (`debug = "full"`). Line tables give backtraces with file:line
   resolution without the full variable-debuginfo cost, cutting link time and
