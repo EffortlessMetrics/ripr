@@ -5531,24 +5531,28 @@ release/publish changes, `serde_json` `preserve_order`, and broad refactoring.
 
 Campaign ID: `release-control-0-11`
 
-Status: in progress
+Status: historical / superseded
 
-Tracker: issues #2766, #2767, #2768, and #2769, under release authority
-#2379 and candidate manifest authority #1609.
+Tracker: issues #2766, #2767, #2768, and #2769, under the historical release
+authority #2379 and candidate manifest authority #1609. **Superseded for the
+live 0.11.0 release train** by the transaction-boundary live-head decision in
+`docs/release-candidates/0.11.0-live-head-selection.json`; these slices remain
+audit evidence and are not an active C/T publication path.
 
-The campaign makes the temporary 0.11 writer cutoff and merge-eligibility
-boundary explicit without restoring singleton active-goal authority. It is
-sequenced as a read-only release lens, an execution-surface candidate scope
-decision, a deterministic supplemental denominator, and exact-candidate
-qualification evidence. No slice publishes, tags, signs, integrates source,
-or mutates GitHub state.
+The campaign made the temporary 0.11 writer cutoff and merge-eligibility
+boundary explicit without restoring singleton active-goal authority. Its
+read-only release lens, execution-surface scope decision, supplemental
+denominator, and exact-candidate evidence remain audit records. The active
+sequence is the live-head authority reset, exact `SWARM_PARENT` pin, exact-head
+qualification, source preflight, history-preserving join, metadata, artifact
+proof, ship packet, authorized publication, and back-sync.
 
 | Work item | Status | Summary |
 | --- | --- | --- |
 | `control/release-lens` | landed | #2766 / PR #2773: fixture-backed `cargo xtask release-control` normalizes current-authority input, assigns closed PR dispositions, and fails closed on stale or incomplete evidence. |
 | `release/execution-scope` | landed | #2767 / PR #2788: accepted Outcome A is machine-readable as a complete candidate-only exclusion while development `main` remains unchanged. |
 | `release/supplemental-denominator` | in progress | #2768 / PR #2790 and the landed #2868 snapshot establish the 234-record captured range through `c30a2683`; the fresh #2831 B slice adds GitHub-backed typed capture/import, fixed provisional review cutoff `fcbb30a7`, optional #2766/#2871 claim references, and fail-closed `candidate_tree_state_pending` rows. All 234 records remain operator decisions until #2832 adjudication; no blanket post-cutoff exclusion or candidate qualification is claimed. |
-| `release/exact-candidate-bundle` | blocked | #2769: qualify one immutable #1609 candidate only after the scope and denominator are resolved. |
+| `release/exact-candidate-bundle` | superseded | Historical #2769/#1609 C/T qualification path; the active release qualifies the exact transaction-boundary live swarm head. |
 | `campaign/release-control-closeout` | planned | Reconcile live state, retain proof and claim boundaries, clean campaign-created artifacts, and capture successor work. |
 
 The durable sequence and first-slice acceptance criteria are in

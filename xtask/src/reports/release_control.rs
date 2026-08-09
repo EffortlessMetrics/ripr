@@ -1,4 +1,9 @@
-//! Read-only release-selection lens for the temporary 0.11 convergence window.
+//! Read-only historical release-selection lens for the former 0.11 C/T window.
+//!
+//! The active 0.11.0 publication candidate is the exact transaction-boundary
+//! `ripr-swarm/main` SHA recorded by the live-head authority receipt. This
+//! report remains useful for bounded PR disposition and freshness observations
+//! but never selects, qualifies, or publishes that head.
 //!
 //! The command deliberately consumes an explicit snapshot. Live collection is
 //! kept separate from normalization so a captured board can be replayed in CI

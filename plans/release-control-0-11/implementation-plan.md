@@ -1,4 +1,11 @@
-# 0.11 Release Control Lens
+# 0.11 Release Control Lens (historical implementation record)
+
+> **Superseded for the live 0.11.0 release train.** The active authority is
+> [`docs/release-candidates/0.11.0-live-head-selection.json`](../../docs/release-candidates/0.11.0-live-head-selection.json):
+> `0.11.0 candidate = the exact ripr-swarm/main commit selected at the release
+> transaction boundary`. This plan retains the earlier C/T machinery as
+> historical implementation evidence; it no longer selects the publication
+> candidate.
 
 This campaign operationalizes the temporary release-selection boundary tracked
 by [#2766](https://github.com/EffortlessMetrics/ripr-swarm/issues/2766) without
@@ -18,57 +25,51 @@ updated only when a bounded capture is intentionally refreshed; earlier
 observations are retained as race evidence rather than treated as current
 authority.
 
-## Objective
+## Superseding live-head authority
 
-For the temporary 0.11 release window, make work selection and candidate
-readiness consume one explicit, fail-closed release lens over the selected
-claim set, the development cut, candidate-tree projection, and the accepted
-#2379 graph. The live portfolio and open-PR inventory remain inputs for
-ownership and disposition reconciliation; they are not a repository-wide
-convergence requirement.
-
-## Candidate-relative hard-cut authority
-
-The hard cut is relative to one selected development cut `C` and one selected
-candidate claim set `S`. Define the candidate-only exclusion set as `E` and
-the reproducible candidate projection as `T = project(C, E)`. The readiness
-predicate is:
+The active release transaction selects one exact swarm parent from the current
+`ripr-swarm/main` ref:
 
 ```text
-candidate_required_claims_pending == 0
+SWARM_PARENT = exact ripr-swarm/main SHA selected at the transaction boundary
+0.11.0 candidate = SWARM_PARENT
 ```
 
-This is true only when every claim in `S` is landed at or before `C`,
-explicitly excluded from `T`, or explicitly deferred with a truthful release
-non-claim; no known unresolved defect invalidates the selected claims; every
-commit through `C` has a reviewed disposition and candidate-tree state; and
-the projection from `C` to `T` is reproducible. The denominator is therefore
-cut-relative and must not chase later development commits.
+The pin is immutable and records the exact source parent, merge base, reachable
+and first-parent counts, ordered SHA digest, PR dispositions, toolchain, and
+claims. Later movement of `main` is outside 0.11.0. Repin is permitted only
+when exact-candidate qualification finds a release-invalidating semantic or
+policy failure, or source preflight proves the selected tree cannot satisfy a
+required survivor. Main movement alone never repins.
 
-An open-PR count is informational. Open release-labelled PRs, later-release
-implementation, corrective experiments, and work that merges after `C` do not
-block this candidate unless they belong to `S` or disclose a defect that
-invalidates `T`. Release control does not close, relabel, rebase, pause, or
-seize independently owned lanes to manufacture readiness.
+The live-head rule ships all work reachable from the selected head. It does
+not construct a candidate-only projection, remove hunks from a shared file, or
+lock a T-bound denominator. The old hard-cut receipts are retained as
+historical audit evidence and are superseded by the checked-in live-head
+decision.
 
-The control and dashboard vocabulary is candidate-relative:
+The release-control report remains useful for read-only PR disposition and
+freshness observations, but its historical candidate-selection fields are not
+the active publication authority. The next transaction is complete only when
+the exact pin receipt exists and both exact-head swarm qualification and fresh
+source preflight consume that same pair.
 
-```text
-selected_candidate_claims
-candidate_required_claims_pending
-candidate_claims_landed
-candidate_claims_excluded
-candidate_claims_deferred
-candidate_defects_unresolved
-   denominator_decisions_remaining_through_provisional_cutoff
-candidate_cut_selected
-candidate_ref_created
-```
+After the pin, no further `ripr-swarm/main` merge enters 0.11.0 until the
+ancestry-preserving source release back-sync completes. Branch development may
+continue, but later merges belong to the next release. The final pin receipt
+must re-audit the selected tree's verification behavior rather than copying a
+historical blanket no-execution claim: record commands actually executed,
+evidence emitted, and any `RepairReceiptV2` issuance. Correctness, test
+adequacy, mutation adequacy, requirement satisfaction, and merge safety remain
+non-claims.
 
-`open_release_pr_count` may be reported as context, but it is never a hard-cut
-gate.
+## Historical candidate-relative machinery
 
-## Multi-slice sequence
+The following C/T vocabulary and fixtures document the authority that governed
+the earlier hard-cut transaction. They are retained for audit and regression
+coverage only; they must not be used to select, qualify, or publish 0.11.0.
+
+## Historical multi-slice sequence (superseded)
 
 | Slice | Tracker | Production/evidence seam | Exit condition |
 | --- | --- | --- | --- |
@@ -229,7 +230,7 @@ candidate-tree digest
 and record-set digest
 `sha256:172ef3d76ae3db47b8f7abedae9151ce971d3941b5a9eeb18b4c824d25c9530d`.
 
-## Non-goals and safety boundary
+## Historical non-goals and safety boundary
 
 - no singleton active-goal restoration or automatic backlog priority;
 - no issue closure, relabeling, merge of concurrent PRs, branch deletion,
@@ -240,13 +241,26 @@ and record-set digest
 - no exact-candidate qualification until a cut-relative selected claim set,
   denominator, reproducible projection, and immutable candidate identity exist.
 
-## Closeout requirements
+## Live-head reset exit requirements
 
-Before marking this campaign complete, select and record development cut `C`,
-claim set `S`, candidate exclusions `E`, candidate tree `T`, and the exact
-immutable candidate ref. Adjudicate every commit through `C`, record merged
-heads and proof per selected slice, distinguish infrastructure gaps from
-product failures, qualify only `T`, hand that exact identity to source, and
-leave builder-ready follow-ups for anything outside the candidate claim
-boundary. Re-read the live board for ownership and defect discovery, but do
-not require the repository-wide open-PR count to reach zero.
+The authority-reset PR is complete only when one merged decision leaves the
+checked-in control plane with no active C/T publication rule, records the live
+head selection law in the machine-readable receipt, and truthfully moves
+already-merged current-head work into 0.11.0 membership. The historical
+hard-cut and candidate-freeze receipts remain unchanged and are linked as
+superseded evidence.
+
+After that merge, the release transaction must:
+
+1. hold source `main` and record the exact `SOURCE_PARENT`;
+2. record the exact `SWARM_PARENT` and create one immutable ref pointing to it;
+3. regenerate merge base, all-reachable and first-parent counts, ordered SHA
+   digest, PR dispositions, claims, and non-claims from those heads;
+4. run exact-head swarm qualification and source preflight against the same
+   pins;
+5. construct and prove one ordered two-parent source join, then continue with
+   metadata, artifact proof, ship packet, explicit publication authorization,
+   publication verification, and ancestry-preserving back-sync.
+
+Main movement alone never repins the candidate. The reset itself does not
+qualify, integrate, version, tag, publish, sign, or mutate marketplaces.

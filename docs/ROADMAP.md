@@ -70,9 +70,10 @@ first-profile compatibility alias without turning preview evidence into
 runtime or repair-packet authority. Follow-up #2764 records the remaining
 producer-through-renderer placement regression. See the [Campaign 36 closeout](handoffs/2026-07-29-preview-projection-honesty-closeout.md).
 
-The next active release-control campaign is now tracked by #2766 and its
-dependent #2767/#2768/#2769 slices. It keeps the temporary 0.11 writer cutoff
-and merge eligibility bound to the live #2379 graph, with captured-input
+The historical release-control campaign is tracked by #2766 and its
+dependent #2767/#2768/#2769 slices. Those slices are historical audit evidence;
+the active 0.11.0 authority now selects the exact live swarm head at the
+transaction boundary, with captured-input
 reports that fail closed on stale authority. It does not restore singleton
 active-goal authority or perform candidate qualification or publication. See
 the [Campaign 37 plan](../plans/release-control-0-11/implementation-plan.md).
@@ -516,11 +517,13 @@ release notes are staged as unreleased in [CHANGELOG.md](../CHANGELOG.md); the
 swarm repository therefore uses 0.10.0 as the current release frame without
 claiming a published crates.io release. The 0.9.0 language-adapter frame below
 is historical, and the 0.11.0 replacement freeze is a staged next-release
-candidate, not current release authority.
+candidate, not current release authority. The active 0.11.0 selection rule is
+the exact transaction-boundary live swarm head in
+`release-candidates/0.11.0-live-head-selection.json`.
 
-### `0.11.0` - Replacement freeze (staged)
+### `0.11.0` - Replacement freeze (historical, superseded)
 
-The [0.11.0 replacement freeze](release-candidates/0.11.0-replacement-freeze.json)
+The [historical 0.11.0 replacement freeze](release-candidates/0.11.0-replacement-freeze.json)
 and its [handoff](handoffs/2026-07-23-0.11.0-replacement-freeze.md) are the
 next-release planning frame. They preserve the separation between static
 movement and externally run verification, and explicitly defer convenience,

@@ -935,15 +935,15 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/release-control.{json,md}",
             false,
             false,
-            "Replays a captured temporary 0.11 release lens; missing or contradictory authority input fails closed and the command never merges, closes, or publishes.",
+            "Replays the historical captured 0.11 release lens for PR dispositions; missing or contradictory authority input fails closed and the command never selects the live-head candidate, merges, closes, or publishes.",
         ),
         command_entry(
             "release-control --live",
-            "report_only",
+            "external_state_read",
             "target/ripr/reports/release-control.{json,md}",
             false,
             false,
-            "Collects current GitHub/main observations through bounded read-only adapters; incomplete portfolio or claim authority remains reconcile_required.",
+            "Collects current GitHub/main observations through bounded read-only adapters; incomplete portfolio or claim authority remains reconcile_required, and the report never substitutes for the transaction-boundary live-head pin.",
         ),
         command_entry(
             "release-denominator --input <ledger.json>",
@@ -951,7 +951,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/release-denominator.{json,md}",
             false,
             false,
-            "Validates a captured supplemental release denominator ledger without qualifying the candidate.",
+            "Validates a captured historical supplemental release denominator ledger without selecting or qualifying the live-head candidate.",
         ),
         command_entry(
             "release-denominator --live --input <ledger.json>",
@@ -959,7 +959,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/release-denominator.{json,md}",
             false,
             false,
-            "Reconciles a supplemental release denominator ledger with bounded live Git facts.",
+            "Reconciles a historical supplemental release denominator ledger with bounded live Git facts; it does not select the active release head.",
         ),
         command_entry(
             "release-denominator --capture-github --input <ledger.json> --output <capture.json>",

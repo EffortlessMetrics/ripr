@@ -443,14 +443,14 @@ fn the_repository_manifest_passes_every_rule() {
     let Ok(text) = read else { return };
     let outcome = evaluate_release_targets(RELEASE_TARGETS_MANIFEST_PATH, &text);
     assert_eq!(outcome.violations, Vec::<String>::new());
-    assert_eq!(outcome.releases.len(), 3);
+    assert_eq!(outcome.releases.len(), 4);
     assert_eq!(
         outcome
             .releases
             .iter()
             .map(|release| release.version.as_str())
             .collect::<Vec<_>>(),
-        vec!["0.11.1", "0.12.0", "0.13.0"]
+        vec!["0.11.0", "0.11.1", "0.12.0", "0.13.0"]
     );
     // Fixed at the live denominators verified on 2026-08-08. If a membership
     // edit lands, this number must move deliberately.
@@ -460,7 +460,7 @@ fn the_repository_manifest_passes_every_rule() {
             .iter()
             .map(|release| release.committed_total)
             .collect::<Vec<_>>(),
-        vec![3, 19, 16]
+        vec![3, 1, 19, 16]
     );
     // Exact, not `>=`: a loose bound lets a record appear silently, which is
     // the drift this manifest exists to surface. Nine parents declare

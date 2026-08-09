@@ -1,4 +1,4 @@
-# RIPR-SPEC-0144: Temporary 0.11 Release-Control Lens
+# RIPR-SPEC-0144: Release-Control Lens and Live-Head Authority
 
 Status: accepted
 
@@ -10,8 +10,10 @@ Linked issues:
 
 - [#2766](https://github.com/EffortlessMetrics/ripr-swarm/issues/2766) — bind
   0.11 work selection and merge eligibility to the live #2379 graph.
-- [#2379](https://github.com/EffortlessMetrics/ripr-swarm/issues/2379) — exact
-  0.11 candidate authority.
+- [#2379](https://github.com/EffortlessMetrics/ripr-swarm/issues/2379) — live
+  0.11.0 release authority and exact transaction-boundary head.
+- [`0.11.0-live-head-selection.json`](../release-candidates/0.11.0-live-head-selection.json)
+  — checked-in superseding decision.
 
 Support-tier impact:
 
@@ -26,12 +28,11 @@ Policy impact:
 
 ## Problem
 
-The 0.11 release authority and its writer cutoff are currently expressed in
-issue prose, while the live repository continues to receive independent work.
-An open-ended session can therefore select a useful PR outside the accepted
-release graph without recording whether that PR is required, deferred, or
-blocked for the candidate. A green check on such a PR is not a release
-disposition.
+The old 0.11 hard-cut authority selected a development cut `C` and a
+candidate-only projection `T`. That authority is historical. The live release
+must instead select the exact `ripr-swarm/main` SHA at the release transaction
+boundary, pin it immutably, and qualify that same object. An open-ended session
+must not let later main movement silently enter the release.
 
 ## Behavior
 
@@ -61,7 +62,32 @@ The report is advisory and report-only. It does not close issues, relabel
 items, merge or rebase PRs, create or delete branches, select a candidate,
 qualify a release, or mutate development `main`.
 
-## Candidate-relative hard-cut boundary
+## Active live-head boundary
+
+The active publication candidate is one exact transaction-boundary head:
+
+```text
+SWARM_PARENT = exact ripr-swarm/main SHA selected at the release transaction boundary
+0.11.0 candidate = SWARM_PARENT
+```
+
+The pin receipt records the exact immutable ref, source parent, merge base,
+all-reachable and first-parent counts, ordered SHA-list digest, PR dispositions,
+toolchain, claims, and non-claims. Exact swarm qualification and source
+preflight must consume those values unchanged. Later `main` movement is outside
+0.11.0. Repinning is allowed only for a release-invalidating exact-candidate or
+source-preflight failure; movement alone never repins. The historical
+`release-control --live` report is an observation/disposition producer, not the
+active pin producer. The future pin producer must bind the named swarm remote
+to `EffortlessMetrics/ripr-swarm` and fail closed on a different origin.
+
+The live-head rule includes all history reachable from the selected head. It
+does not construct candidate-only tree `T`, remove selected hunks, or make a
+T-bound denominator a publication authority. The hard-cut and replacement
+freeze receipts remain historical audit evidence and are explicitly superseded
+by the checked-in live-head decision.
+
+## Historical candidate-relative hard-cut boundary
 
 The open-PR inventory and each row's `merge_eligible` value are work-selection
 and ownership observations. Neither is a repository-wide candidate-readiness
@@ -84,7 +110,7 @@ projection from `C` to `T` must be reproducible. Commits and PRs outside `S`
 may remain open or land after `C` without affecting this candidate. They are
 relevant only if they disclose a defect that invalidates `T`.
 
-The candidate control vocabulary is
+The historical candidate-control vocabulary is
 `selected_candidate_claims`, `candidate_required_claims_pending`,
 `candidate_claims_landed`, `candidate_claims_excluded`,
 `candidate_claims_deferred`, `candidate_defects_unresolved`,
@@ -97,7 +123,7 @@ through the selected cut, and zero final-cut decisions; its review flag must be
 true. An informational `open_release_pr_count` must not be used as a readiness
 predicate.
 
-The release-control snapshot may carry an optional `candidate_selection` DTO.
+The release-control snapshot may carry an optional historical `candidate_selection` DTO.
 When it is absent, candidate state is `scope_pending`; the ordinary PR lens
 remains replayable for disposition work, but it cannot imply candidate
 readiness. The DTO is the #2766 authority for the selected claim set:
@@ -176,9 +202,11 @@ inputs do not prove those facts; the resulting report is therefore
 `reconcile_required` until an approved source supplies them. PR rows carry a
 number, title, open state, head SHA, `main` base ref, and explicit
 disposition/reason.
-An optional `candidate_selection` object carries the #2766 selected-claim
-authority and candidate-state inputs described above; its absence is
-`scope_pending`, not a successful empty selection.
+An optional `candidate_selection` object carries the historical #2766
+selected-claim authority and candidate-state inputs described above; its
+absence is `scope_pending`, not a successful empty selection. This compatibility
+input is not the active 0.11.0 release authority; the live-head transaction
+receipt is authoritative for the current train.
 
 The fixture corpus in `fixtures/release_control/` is manifest-only and is
 validated by `cargo xtask check-fixture-contracts`. It includes a complete
@@ -229,7 +257,11 @@ reconciliation-required state or any per-PR disposition.
   source handoff, version bump, tag, publication, signing, or marketplace;
 - no repository-wide convergence requirement or open-PR-zero gate;
 - no issue closure, merge queue, branch operation, or GitHub mutation;
-- no replacement for #2379, #1609, #1704, or #1706.
+- no replacement for #2379, #1609, #1704, or #1706;
+- no historical candidate-only C-to-T construction as the active 0.11.0 path;
+- exact live-head qualification and source preflight remain required after pinning;
+- no source integration, versioning, tagging, publication, or marketplace
+  mutation.
 
 ## Acceptance Examples
 

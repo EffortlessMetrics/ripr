@@ -1,4 +1,4 @@
-# RIPR-SPEC-0146: Release supplemental denominator ledger
+# RIPR-SPEC-0146: Historical Release Supplemental Denominator Ledger
 
 Status: accepted
 
@@ -10,12 +10,15 @@ Related release-control work: #2767, #1609, #2379
 
 The supplemental denominator report records every commit in a captured
 first-parent release range and gives each record an explicit reviewed
-disposition. It is a reconciliation aid for the 0.11 release process, not a
-candidate qualification or publication decision.
+disposition. It is retained as historical reconciliation evidence for the
+former C/T release-control model, not an active 0.11.0 candidate or publication
+authority. The active release selects the exact live swarm head at the
+transaction boundary; the later pin receipt regenerates counts and the ordered
+SHA digest from the final pinned heads.
 
 ## Input contract
 
-`release-denominator --input <ledger.json>` accepts a versioned
+`release-denominator --input <ledger.json>` accepts a versioned historical
 `release_denominator_snapshot` containing the historical base, candidate ref
 and SHA, the pinned `source.github_repository`, an optional fixed
 `provisional_review_cutoff_sha`, ordered range
@@ -27,7 +30,7 @@ records its kind, number, source, one evidence URL or stable GitHub identity,
 the observed commit SHA, review state, and any limitation. The legacy
 `pr_refs` and `issue_refs` fields remain compatibility projections derived
 from `references[]`; they are not reference authority. An optional
-`candidate_selection` object carries the #2766/#2871 selected-claim authority;
+`candidate_selection` object carries the historical #2766/#2871 selected-claim authority;
 claim references are rejected when that authority is absent or does not name
 the claim. A structurally invalid selected-claim authority also rejects its
 claim references; readiness state remains owned by the shared candidate
@@ -51,9 +54,10 @@ When a provisional cutoff is present, normalization derives the count of
 records. A supplied candidate-selection count is reconciled against the
 derived value; disagreement is not silently accepted.
 
-`--live --input <ledger.json>` additionally compares the captured candidate
-SHA, first-parent range, and candidate-tree commit set with bounded live Git
-observations. It does not replace the reviewed ledger.
+`--live --input <ledger.json>` additionally compares the captured historical
+candidate SHA, first-parent range, and candidate-tree commit set with bounded
+live Git observations. It does not replace the reviewed ledger or select the
+active live-head release candidate.
 
 `--capture-github --input <ledger.json> --output <capture.json>` reads the
 exact ledger range and captures all-state PR merge identities plus PR-body

@@ -11990,10 +11990,10 @@ Field contract:
 The Markdown sibling prints the same check table, per-check details, artifacts,
 and next commands for release review.
 
-## Release Control Lens Report
+## Historical Release Control Lens Report
 
 `cargo xtask release-control --input <captured-snapshot.json>` replays a
-captured temporary 0.11 release-control snapshot. `cargo xtask release-control
+captured historical 0.11 release-control snapshot. `cargo xtask release-control
 --live` collects current `origin/main`, open PRs, and #2379 through bounded
 read-only adapters. Both paths write:
 
@@ -12064,7 +12064,10 @@ candidate, or publishes release artifacts.
 The open-PR inventory is informational and must not be used as a candidate
 readiness gate. Candidate readiness is a separate, cut-relative decision over
 selected claims, candidate-only exclusions, the reviewed denominator through
-development cut `C`, and a reproducible candidate tree. The candidate control
+historical development cut `C`, and a reproducible historical candidate tree.
+Those fields are retained for audit only; the active 0.11.0 publication
+candidate is the exact transaction-boundary live swarm head recorded in
+`docs/release-candidates/0.11.0-live-head-selection.json`. The candidate control
 artifact must report `candidate_required_claims_pending` and the associated
 landed, excluded, deferred, unresolved-defect, denominator, cut, and immutable
 candidate-reference state. An `open_release_pr_count`, if displayed, is
@@ -15552,7 +15555,7 @@ schema version.
 
 Do not emit mutation-runtime terms such as `killed` or `survived` in static JSON.
 
-## Temporary 0.11 candidate execution-scope report
+## Historical 0.11 candidate execution-scope report
 
 `cargo xtask release-scope --input <scope.json>` writes:
 
@@ -15563,10 +15566,10 @@ target/ripr/reports/release-scope.md
 
 The JSON envelope has `schema_version: "0.1"`, `kind: "release-scope"`, a
 `status` of `ready` or `reconcile_required`, the captured `decision`, verified
-`source` commit/path observations, a `candidate_tree_delta`, boolean `checks`,
+`source` commit/path observations, a historical `candidate_tree_delta`, boolean `checks`,
 `reconciliation_reasons`, and explicit `authority_boundary` and
 `must_not_claim` fields. `candidate_tree_delta.candidate_tree_constructed` is
-always `false`: this report verifies a candidate-only disposition but does not
+always `false`: this historical report verifies a candidate-only disposition but does not
 construct, mutate, merge, qualify, or publish a candidate tree. Markdown is a
 projection of the same normalized report and cannot strengthen a
 `reconcile_required` result.

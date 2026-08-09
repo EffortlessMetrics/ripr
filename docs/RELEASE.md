@@ -26,6 +26,53 @@ For every public version claim, record the boundary explicitly:
 `rehearsal | promoted | tagged | published`, with the source SHA, the public
 tag/release URL in `EffortlessMetrics/ripr`, and the promotion evidence.
 
+## Live-history release train
+
+For the 0.11.0 release train, and as the standard two-repository pattern for
+future releases, use this authority sequence:
+
+```text
+develop in ripr-swarm
+→ select exact ripr-swarm/main at the transaction boundary
+→ create an immutable swarm pin and hold ripr/main
+→ qualify that exact swarm head
+→ preflight the exact source/swarm pair
+→ construct and prove one ordered two-parent source join
+→ merge source with source parent 1 and swarm parent 2
+→ establish metadata and build source artifacts
+→ produce the immutable ship packet
+→ explicitly authorize publication
+→ publish and verify each channel
+→ ancestry-preserving source-to-swarm back-sync
+→ re-baseline the next release and resume swarm development
+```
+
+The selected swarm head includes all history reachable from that exact commit.
+Do not squash, rebase, cherry-pick, or reconstruct a tree-equivalent source
+join. The promotion PR head must itself be the reviewed join, with source as
+parent 1 and the selected swarm head as parent 2. The back-sync must preserve
+the source release ancestry through a controlled merge exception or another
+explicitly reviewed ancestry-preserving path, even when swarm branch settings
+normally disable merge commits.
+
+After the swarm pin, later `ripr-swarm/main` merges are outside the release and
+must not move the pin. Development may continue on branches, but no main merge
+enters the release until source publication and the back-sync complete. Repin
+only for an exact-candidate semantic or policy failure, or a source-preflight
+failure that prevents a required survivor or release contract. Main movement
+alone never repins.
+
+The ship packet is evidence, not authorization. Only source issue `#1470`
+authorizes tagging, publication, signing, marketplace mutation, or other
+external release operations. Re-baseline 0.11.1 only after 0.11.0 publication
+and closeout; merged current-head work belongs to 0.11.0 rather than 0.11.1.
+
+The release claims must be regenerated from the selected tree. Distinguish
+commands actually executed, evidence emitted, and any `RepairReceiptV2`
+issuance. Never copy a historical blanket no-execution sentence, and never
+claim correctness, test adequacy, mutation adequacy, requirement satisfaction,
+or merge safety.
+
 ## Preparing a version bump
 
 From a clean swarm checkout, use the gated version command instead of editing

@@ -1,4 +1,4 @@
-# Release target manifest (#3013 Slice B).
+# Release target manifest (#3013 Slice B; live-head 0.11.0 reset).
 #
 # This file is the checked-in membership authority for release-candidate
 # scope. `cargo xtask check-release-targets` validates it offline and
@@ -15,6 +15,12 @@
 # that reason. A gate reporting a clean graph over members it never saw is a
 # false-confidence surface. The goal bodies are human-validated documentation;
 # this file is the parsed input.
+#
+# For 0.11.0, this manifest records the issue graph and membership anchors;
+# the publication candidate itself is the exact transaction-boundary
+# `ripr-swarm/main` SHA recorded by
+# `docs/release-candidates/0.11.0-live-head-selection.json`. It must not be
+# interpreted as a C-to-T projection or a floating-main candidate.
 #
 # Scope limit, stated so it is not mistaken for completeness:
 #
@@ -58,10 +64,19 @@ control_issue = 3013
 # --------------------------------------------------------------------------
 
 [[release]]
+version = "0.11.0"
+milestone = "0.11.0 candidate"
+goal_issue = 2379
+claim_blockers = [2923, 2963]
+proof_blockers = []
+companions = []
+conditional_issues = []
+
+[[release]]
 version = "0.11.1"
 milestone = "0.11.1 candidate"
 goal_issue = 3004
-claim_blockers = [2923, 2963]
+claim_blockers = []
 proof_blockers = []
 companions = []
 conditional_issues = [2977, 2978]

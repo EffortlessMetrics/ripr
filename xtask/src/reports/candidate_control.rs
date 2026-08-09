@@ -1,8 +1,14 @@
-//! Candidate-relative release state owned by the temporary #2766 control lens.
+//! Historical candidate-relative release state owned by the former #2766
+//! control lens.
 //!
 //! This is deliberately separate from the open-PR disposition report. A
 //! complete PR inventory can be useful while candidate scope is still
 //! unresolved, and an open-PR count is never a hard-cut predicate.
+//!
+//! The active 0.11.0 authority is the exact transaction-boundary live swarm
+//! head recorded by `docs/release-candidates/0.11.0-live-head-selection.json`.
+//! These DTOs remain for audit and compatibility checks; they are not active
+//! publication selection authority.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;

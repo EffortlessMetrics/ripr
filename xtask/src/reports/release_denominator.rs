@@ -1,4 +1,5 @@
-//! Deterministic supplemental-denominator ledger for the temporary 0.11 release.
+//! Deterministic historical supplemental-denominator ledger for the former
+//! 0.11 C/T release model. It is not active live-head selection authority.
 //!
 //! Captured ledgers are replayable without GitHub. The optional live mode
 //! compares the captured range and candidate-tree identities with bounded

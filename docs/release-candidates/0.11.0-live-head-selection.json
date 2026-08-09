@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_swarm_live_head_release_authority",
+  "release_line": "0.11.0",
+  "authority_issue": 2379,
+  "status": "authority_reset_pending_transaction_pin",
+  "selection_rule": "0.11.0 candidate = the exact ripr-swarm/main commit selected at the release transaction boundary",
+  "selection_ref": "origin/main",
+  "selected_swarm_parent": null,
+  "immutable_ref": null,
+  "source_parent": null,
+  "merge_base": null,
+  "counts": {
+    "all_reachable": null,
+    "first_parent": null
+  },
+  "ordered_swarm_range_sha256": null,
+  "required_claims": [
+    "current selected live head is qualified before source integration",
+    "exact source/swarm parents are pinned before preflight",
+    "the source join preserves both histories"
+  ],
+  "non_claims": [
+    "the authority reset does not select a floating head",
+    "the authority reset does not authorize source integration or publication",
+    "the historical hard-cut and candidate-only receipts are retained as audit evidence",
+    "0.11.1 is re-baselined only after 0.11.0 publication"
+  ],
+  "supersedes": [
+    "docs/release-candidates/0.11.0-hard-cut.json",
+    "docs/release-candidates/0.11.0-replacement-freeze.json",
+    "candidate-only C-to-T construction as the active release path",
+    "T-bound denominator lock as the active release authority"
+  ],
+  "reason": "After the exact live swarm history is selected and pinned at the transaction boundary, 0.11.0 will include all work reachable from that head; later work remains outside the immutable pin.",
+  "pin_update_rule": "After this authority reset merges, replace the null transaction fields with one exact SWARM_PARENT and immutable ref. Repin only for a release-invalidating exact-candidate or source-preflight failure; main movement alone never repins.",
+  "status_transition": {
+    "authority_reset_pending_transaction_pin": "selected_swarm_parent, immutable_ref, source_parent, merge_base, counts, and digest are all null; no membership or qualification claim is permitted",
+    "pinned_exact_head": "all transaction fields are present and mutually bound; exact-head qualification and source preflight may begin",
+    "invalidation": "any missing or mismatched binding, or an allowed release-invalidating proof failure, returns to a new reviewed pin transaction"
+  },
+  "post_pin_branch_policy": "After SWARM_PARENT is pinned, no further ripr-swarm/main merge enters 0.11.0 until the ancestry-preserving source release back-sync completes. Branch development may continue, but later merges belong to the next release.",
+  "ancestry_policy": {
+    "source_join_parent_2": "the exact selected SWARM_PARENT and its complete reachable history",
+    "forbidden": ["squash", "rebase", "cherry-pick", "tree-equivalent reconstruction"],
+    "back_sync": "preserve source release ancestry in the controlled source-to-swarm merge"
+  },
+  "pin_recipe": {
+    "immutable_ref_format": "refs/ripr/release-0.11.0-<SWARM_PARENT>",
+    "ordered_range_basis": "first-parent commits from MERGE_BASE (exclusive) to SWARM_PARENT (inclusive)",
+    "ordered_range_command": "git rev-list --first-parent --reverse MERGE_BASE..SWARM_PARENT",
+    "digest_encoding": "sha256 over the UTF-8 bytes of the newline-terminated SHA list exactly as emitted by the command",
+    "required_bindings": ["SOURCE_PARENT", "SWARM_PARENT", "MERGE_BASE", "immutable_ref", "ordered_swarm_range_sha256"],
+    "missing_or_mismatched_binding": "fail closed; qualification and source preflight may not proceed",
+    "remote_binding": "the pin producer must verify origin resolves to EffortlessMetrics/ripr-swarm before recording the SHA"
+  },
+  "execution_claim_audit": {
+    "status": "required_at_final_swarm_parent",
+    "rule": "Do not copy forward the historical no-execution sentence. Re-audit the selected tree and distinguish commands actually executed, evidence emitted, and any RepairReceiptV2 issuance.",
+    "always_non_claimed": [
+      "correctness proof",
+      "test adequacy proof",
+      "mutation adequacy proof",
+      "requirement satisfaction proof",
+      "merge safety proof"
+    ]
+  }
+}

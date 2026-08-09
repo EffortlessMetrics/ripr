@@ -1,4 +1,4 @@
-# RIPR-SPEC-0145: 0.11 candidate execution-surface scope
+# RIPR-SPEC-0145: Historical 0.11 candidate execution-surface scope
 
 Status: accepted
 
@@ -9,9 +9,13 @@ PR #2396 merged the `ripr agent verify-execute` surface into development
 verification commands or issue `RepairReceiptV2`. Candidate selection must make
 that boundary explicit without rewriting development history.
 
+This specification is retained for audit of the former C/T authority. It is
+not the active 0.11.0 publication rule; the live-head decision is recorded in
+`docs/release-candidates/0.11.0-live-head-selection.json`.
+
 ## Behavior
 
-The candidate-only scope report replays a captured Outcome A decision, verifies
+The historical candidate-only scope report replays a captured Outcome A decision, verifies
 that the named #2396 commit and its complete changed-path inventory are
 available, checks that the candidate parent has not drifted, and records the
 execution paths excluded from the candidate. It keeps #2332 open and never
