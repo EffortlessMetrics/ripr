@@ -10,6 +10,7 @@ The selected PR has an exact current candidate, a current `review-pr` dispositio
 # Route markers
 
 - `review_route:finish_pr_requires_review_ready`
+- `review_route:finish_pr_resolves_repaired_threads`
 
 # Entry condition
 
@@ -32,16 +33,17 @@ A committed candidate with `REVIEW_INCOMPLETE` may enter so the PR can be publis
 4. Locate the current-head `review-pr` inspection record. If it is absent, stale, covers another head, or merely summarizes comments and CI, run `review-pr` before declaring readiness.
 5. Classify findings as valid source defect, test/oracle defect, stale, incorrect, infrastructure/instrument failure, missing review/proof, or not established.
 6. Repair valid findings in the same candidate. Refute incorrect findings with source-backed evidence. Resolve only after a repair or reply exists.
-7. Refresh only proof and review dimensions affected by the repair, then obtain a current `review-pr` disposition for the exact head.
-8. Keep three subjects separate:
+7. Resolve every thread that now carries a landed repair or a source-backed reply, as merge preparation. Unresolved threads block the merge independently of review sufficiency, so a candidate can be `REVIEW_READY` with every required check green and still refuse to merge. This does not weaken step 6: a thread with neither a repair nor a reply stays open, and resolving to clear a blocker rather than because the finding is addressed is a false-confidence action. Read the thread state back after acting, and treat a rejected call or a still-unresolved thread as blocking rather than assuming the request succeeded. The reply and the resolve are separate operations that fail separately: a batch that posts no reply but still resolves leaves the thread closed with the evidence missing, which reads as addressed and is not. Order them accordingly — confirm the reply exists before resolving, and leave the thread open when that confirmation fails, so a lost reply cannot close an unrepaired finding.
+8. Refresh only proof and review dimensions affected by the repair, then obtain a current `review-pr` disposition for the exact head.
+9. Keep three subjects separate:
    - PR head: implementation and review;
    - integration basis: current base or queue predecessors;
    - squash/merge-group result: combined-tree interaction.
-9. Do not update a behind-only branch. Reconcile only an actual conflict, explicit stack change, material prerequisite change, or failed integration proof.
-10. Do not treat green CI, zero unresolved threads, or unavailable automated reviewers as substantive review. Do not infer a human approval dependency from `mergeStateStatus: BLOCKED`; identify the exact active rule, required actor, unsatisfied requirement, and evidence source.
-11. When GitHub owns the next transition, yield instead of polling unchanged state. Arm auto-merge only for the exact published head when `review-pr` says `REVIEW_READY` and required proof is current.
-12. After merge, verify current `main`, update issue and parent acceptance, refresh generated evidence, and close only acceptance-complete issues.
-13. After deliberate closure or supersession, name the winning candidate and preserve residual work.
+10. Do not update a behind-only branch. Reconcile only an actual conflict, explicit stack change, material prerequisite change, or failed integration proof.
+11. Do not treat green CI, zero unresolved threads, or unavailable automated reviewers as substantive review. Do not infer a human approval dependency from `mergeStateStatus: BLOCKED`; identify the exact active rule, required actor, unsatisfied requirement, and evidence source. Read **both** authorities, because they can disagree: classic branch protection (`repos/{owner}/{repo}/branches/{branch}/protection`) and repository rulesets (`repos/{owner}/{repo}/rules/branches/{branch}`, then the named ruleset). A requirement reported as disabled in branch protection may still be enforced by an active ruleset — `required_conversation_resolution: false` alongside a ruleset `required_review_thread_resolution: true` is a real configuration on this repository.
+12. When GitHub owns the next transition, yield instead of polling unchanged state. Arm auto-merge only for the exact published head when `review-pr` says `REVIEW_READY` and required proof is current.
+13. After merge, verify current `main`, update issue and parent acceptance, refresh generated evidence, and close only acceptance-complete issues.
+14. After deliberate closure or supersession, name the winning candidate and preserve residual work.
 
 # Review independence
 

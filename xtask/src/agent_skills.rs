@@ -16,7 +16,7 @@ const SKILLS: [&str; 7] = [
 
 const ROOT_REVIEW_ROUTE_MARKER: &str = "review_route:root_to_review_pr";
 
-const REVIEW_ROUTE_REQUIRED_MARKERS: [(&str, &str); 4] = [
+const REVIEW_ROUTE_REQUIRED_MARKERS: [(&str, &str); 5] = [
     (
         "build-candidate",
         "review_route:build_candidate_to_review_pr",
@@ -27,6 +27,10 @@ const REVIEW_ROUTE_REQUIRED_MARKERS: [(&str, &str); 4] = [
     ),
     ("deliver-pr", "review_route:deliver_pr_to_review_pr"),
     ("finish-pr", "review_route:finish_pr_requires_review_ready"),
+    (
+        "finish-pr",
+        "review_route:finish_pr_resolves_repaired_threads",
+    ),
 ];
 
 const REVIEW_PR_REQUIRED_MARKERS: [&str; 17] = [

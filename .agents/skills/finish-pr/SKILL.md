@@ -10,6 +10,7 @@ The selected PR has an exact current head, a current `review-pr` disposition, al
 # Route markers
 
 - `review_route:finish_pr_requires_review_ready`
+- `review_route:finish_pr_resolves_repaired_threads`
 
 # Entry condition
 
@@ -39,16 +40,17 @@ A committed candidate with `REVIEW_INCOMPLETE` may enter so the procedure can pu
    - missing proof/review;
    - not established.
 6. Repair valid findings through the same candidate. For an incorrect finding, reply with source-backed evidence. Resolve only after the reply or repair exists.
-7. Refresh only proof and review dimensions affected by the repair, then obtain a new or amended `review-pr` disposition for the exact head.
-8. Distinguish candidate-head proof from integration proof:
+7. As merge preparation, resolve every thread that now holds a landed repair or a source-backed reply. Unresolved threads are a merge blocker in their own right, separate from whether review was sufficient: a candidate can hold `REVIEW_READY`, pass every required check, and still be refused. This does not soften the previous step. A thread with neither a repair nor a reply stays open, and resolving in order to clear a blocker rather than because the finding is addressed is a false-confidence action. Read each thread's state back after acting; a rejected call or a thread still reported unresolved keeps merge preparation blocked, and neither may be assumed to have succeeded. The reply and the resolve are independent operations that fail independently — a batch that posts no reply yet still resolves leaves the thread closed with its evidence missing, which reads as addressed while nothing was recorded. Sequence them so this cannot happen: confirm the reply exists before issuing the resolve, and leave the thread open when that confirmation fails, so a lost reply never closes an unrepaired finding.
+8. Refresh only proof and review dimensions affected by the repair, then obtain a new or amended `review-pr` disposition for the exact head.
+9. Distinguish candidate-head proof from integration proof:
    - the PR head is the implementation/review subject;
    - current `main` or queued predecessors are the integration basis;
    - the squash/merge-group result is the combined-tree subject.
-9. Do not update a behind-only branch. Reconcile only an actual conflict, explicit stack change, material prerequisite change, or failed combined-tree proof.
-10. Do not infer review from an empty thread list, reviewer quota/unavailability, or green required checks. Do not infer a human approval requirement from `mergeStateStatus: BLOCKED`; identify the exact rule and evidence source first.
-11. When GitHub owns the next transition, return an in-flight result instead of polling unchanged state. Auto-merge may be armed only for the exact published head with `REVIEW_READY` and current required proof.
-12. After merge, verify `main`, update issue acceptance, parent state, generated evidence, and any residual work. Close only acceptance-complete issues.
-13. After deliberate closure or supersession, record the winning candidate and preserved residual work.
+10. Do not update a behind-only branch. Reconcile only an actual conflict, explicit stack change, material prerequisite change, or failed combined-tree proof.
+11. Do not infer review from an empty thread list, reviewer quota/unavailability, or green required checks. Do not infer a human approval requirement from `mergeStateStatus: BLOCKED`; identify the exact rule and evidence source first. Query both authorities, since they can disagree: classic branch protection (`repos/{owner}/{repo}/branches/{branch}/protection`) and repository rulesets (`repos/{owner}/{repo}/rules/branches/{branch}`, then the named ruleset). Branch protection can report a requirement as disabled while an active ruleset enforces it — `required_conversation_resolution: false` beside a ruleset `required_review_thread_resolution: true` is a live configuration here.
+12. When GitHub owns the next transition, return an in-flight result instead of polling unchanged state. Auto-merge may be armed only for the exact published head with `REVIEW_READY` and current required proof.
+13. After merge, verify `main`, update issue acceptance, parent state, generated evidence, and any residual work. Close only acceptance-complete issues.
+14. After deliberate closure or supersession, record the winning candidate and preserved residual work.
 
 # Review law
 
