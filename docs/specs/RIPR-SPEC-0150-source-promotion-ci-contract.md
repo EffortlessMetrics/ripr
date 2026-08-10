@@ -1,0 +1,68 @@
+# RIPR-SPEC-0150: Source-promotion CI contract
+
+Status: proposed
+
+## Problem
+
+The exact-J verifier is useful only when the source PR invokes it against the
+live PR head and makes the history-preserving merge method unambiguous. A valid
+join somewhere in ancestry, a stale PR body, or a flattened equivalent tree
+must not produce a promotion success.
+
+## Behavior
+
+The `Source Promotion Contract` workflow runs only for a pull request whose body
+contains `<!-- source-promotion: true -->`. It checks out the exact PR head with
+full history and consumes one tracked
+`docs/release/source-promotion/contract-inputs.json` manifest naming exact
+`source_main`, `join_head`, `preflight`, and `resolution_manifest` values.
+`join_head` must equal the live PR head. The workflow runs
+`cargo xtask source-promotion verify` and emits one normalized
+`ripr.source_promotion_contract.v1` receipt plus the verifier JSON/Markdown
+receipts. Every receipt is bound to the PR head and input digests and is
+uploaded under a SHA-containing artifact name.
+
+The workflow summary repeats the ordered parent graph, candidate/source SHAs,
+merge base, tree, receipt digests, preflight conflict/survivor/version state,
+and the only supported copy-safe command:
+
+```bash
+gh pr merge <PR> --repo EffortlessMetrics/ripr \
+  --merge \
+  --match-head-commit <JOIN_SHA>
+```
+
+The summary explicitly requires Create a merge commit and forbids squash and
+rebase. The command is printed only; the workflow never executes it. A manual
+workflow-dispatch lane reruns the verifier with `--main-head` and requires the
+exact J object to remain reachable from merged source `main`.
+
+## Required evidence
+
+- unrelated PRs skip without a success claim;
+- a stale or substituted `join_head`, body command SHA, receipt path, or source
+  parent fails closed;
+- a valid two-parent join passes the verifier;
+- a single-parent or equivalent-tree flattened history fails post-merge;
+- uploaded receipts retain exact heads, ordered parents, input digests, checks,
+  failure reasons, and claim boundaries.
+
+## Non-goals
+
+No automatic merge, publication, release, tag, signing, secret use, settings,
+branch-protection mutation, ref mutation, or product-correctness claim.
+
+## Implementation mapping
+
+- Workflow: `.github/workflows/source-promotion-contract.yml`
+- Operator contract: `docs/SOURCE_PROMOTION.md`
+- Exact verifier: `xtask/src/reports/source_promotion_verify.rs`
+- Input manifest: `docs/release/source-promotion/contract-inputs.json` on each
+  promotion branch (the permanent workflow does not carry release-specific
+  SHAs).
+
+## Metrics
+
+The workflow receipt denominator is the number of promotion-specific runs; a
+skipped unrelated PR is not a passing promotion result. GitHub check state and
+receipt status remain distinct evidence axes.

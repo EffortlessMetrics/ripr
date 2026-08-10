@@ -6082,6 +6082,27 @@ outputs = ["fixtures/source_promotion_verification/expected/check.json"]
 metrics = ["unit_test_pass_rate"]
 
 [[behavior]]
+id = "RIPR-SPEC-0150"
+name = "source-promotion exact-head CI contract"
+spec = "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md"
+tests = [
+  "xtask/src/command.rs::tests::source_promotion_workflow_is_exact_head_and_read_only",
+  "xtask/src/reports/source_promotion_verify.rs::tests::range_and_main_reachability_fail_closed",
+  "xtask/src/reports/source_promotion_verify.rs::tests::synthetic_join_rejects_graph_and_tree_adversaries",
+]
+fixtures = ["fixtures/source_promotion_verification"]
+code = [
+  ".github/workflows/source-promotion-contract.yml",
+  "xtask/src/command.rs",
+  "xtask/src/reports/source_promotion_verify.rs",
+]
+outputs = [
+  "docs/SOURCE_PROMOTION.md",
+  ".github/workflows/source-promotion-contract.yml",
+]
+metrics = ["unit_test_pass_rate"]
+
+[[behavior]]
 id = "RIPR-SPEC-0149"
 name = "exact source-promotion graph and resolution verification"
 spec = "docs/specs/RIPR-SPEC-0149-source-promotion-verifier.md"

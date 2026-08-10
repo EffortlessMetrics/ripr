@@ -1531,6 +1531,43 @@ mod tests {
         }
         Ok(())
     }
+
+    #[test]
+    fn source_promotion_workflow_is_exact_head_and_read_only() -> Result<(), String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest has no repository parent".to_string())?;
+        let workflow =
+            std::fs::read_to_string(root.join(".github/workflows/source-promotion-contract.yml"))
+                .map_err(|error| format!("failed to read source-promotion workflow: {error}"))?;
+        for needle in [
+            "fetch-depth: 0",
+            "ref: ${{ github.event.pull_request.head.sha }}",
+            "join_head",
+            "--match-head-commit $PR_HEAD",
+            "cargo xtask source-promotion verify",
+            "--main-head \"$MAIN_HEAD\"",
+            "actions/upload-artifact@v7",
+            "permissions:\n  contents: read",
+            "<!-- source-promotion: true -->",
+            "This workflow never executes the merge command",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "source-promotion workflow lost required contract: {needle}"
+                ));
+            }
+        }
+        if workflow
+            .lines()
+            .any(|line| line.trim_start().starts_with("gh pr merge"))
+        {
+            return Err(
+                "source-promotion workflow must print, not execute, gh pr merge".to_string(),
+            );
+        }
+        Ok(())
+    }
 }
 #[path = "command/help.rs"]
 mod help;

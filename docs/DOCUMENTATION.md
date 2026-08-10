@@ -120,6 +120,7 @@ Current how-to docs:
 - [Installation verification](INSTALLATION_VERIFICATION.md)
 - [Source-promotion runbook](SOURCE_PROMOTION.md)
 - [Source-promotion verification contract](specs/RIPR-SPEC-0149-source-promotion-verifier.md)
+- [Source-promotion CI contract](specs/RIPR-SPEC-0150-source-promotion-ci-contract.md)
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md)
 - [First successful PR demo](demo/first-successful-pr.md)
 - [Start-here convergence receipts](handoffs/2026-05-22-start-here-surface-convergence-receipts.md)
