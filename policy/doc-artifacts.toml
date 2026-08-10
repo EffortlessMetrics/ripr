@@ -505,3 +505,11 @@ path = "docs/specs/RIPR-SPEC-0149-source-promotion-verifier.md"
 status = "proposed"
 owner = "release"
 standalone_reason = "Exact-J graph/tree verifier and deterministic reviewed-resolution manifest contract for ripr#1493."
+
+[[artifact]]
+id = "RIPR-SPEC-0150"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md"
+status = "proposed"
+owner = "release"
+standalone_reason = "Exact PR-head source-promotion workflow, SHA-bound receipts, merge-command guard, and manual post-merge reachability contract for ripr#1494."

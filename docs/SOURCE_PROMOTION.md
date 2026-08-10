@@ -285,3 +285,50 @@ J rather than being reconstructed as source commits.
 The verifier is read-only and does not construct J, resolve conflicts, publish,
 or perform the later ancestry-preserving K back-sync; K verification is a
 separate follow-up contract.
+
+## Source Promotion Contract workflow
+
+Promotion PRs opt into the source-side contract check with this exact body
+marker:
+
+```text
+<!-- source-promotion: true -->
+```
+
+The promotion branch must commit a tracked
+`docs/release/source-promotion/contract-inputs.json` file with this shape:
+
+```json
+{
+  "schema": "ripr.source_promotion_ci_inputs.v1",
+  "source_main": "<exact-40-character-source-parent-SHA>",
+  "join_head": "<exact-40-character-J-SHA>",
+  "preflight": "docs/release/0.11.0/source-promotion-preflight.json",
+  "resolution_manifest": "docs/release/0.11.0/source-promotion-resolution.json"
+}
+```
+
+The `Source Promotion Contract` workflow checks out the exact PR head with
+full history, requires `join_head` to equal that head, verifies the tracked
+receipt paths and exact source parent, runs the read-only verifier, and uploads
+the JSON/Markdown receipts under an artifact name containing the PR-head SHA.
+It also requires the PR body to contain the live-head guarded merge command and
+these warnings:
+
+```text
+Use Create a merge commit.
+Do not use Squash and merge.
+Do not use Rebase and merge.
+```
+
+PRs without the marker skip this job; a skipped job is not a promotion pass.
+The workflow has read-only contents permission and never executes the printed
+merge command or changes refs, settings, branch protection, tags, releases,
+publication channels, or secrets. Promotion branches must not change any
+workflow other than this permanent contract workflow.
+
+After the protected merge, manually dispatch the same workflow from `main` with
+the exact preflight and resolution paths, `J`, the original source parent, and
+the merged source-main SHA. The dispatch lane passes `--main-head` to the
+verifier and fails when an equivalent flattened tree is present without the
+exact join object remaining reachable.
