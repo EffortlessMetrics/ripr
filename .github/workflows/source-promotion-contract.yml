@@ -70,6 +70,7 @@ jobs:
           test "$(git rev-parse --verify "$BASE_SHA^{commit}")" = "$BASE_SHA" || fail "base SHA is not an exact commit"
           test -f "$INPUTS_PATH" || fail "missing $INPUTS_PATH"
           test "$(git ls-files --error-unmatch "$INPUTS_PATH")" = "$INPUTS_PATH" || fail "$INPUTS_PATH must be tracked"
+          jq -e '.schema == "ripr.source_promotion_ci_inputs.v1"' "$INPUTS_PATH" >/dev/null || fail "unsupported promotion-input schema"
 
           source_main=$(jq -er '.source_main | select(type == "string" and test("^[0-9a-f]{40}$"))' "$INPUTS_PATH") || fail "source_main must be an exact lowercase SHA"
           join_head=$(jq -er '.join_head | select(type == "string" and test("^[0-9a-f]{40}$"))' "$INPUTS_PATH") || fail "join_head must be an exact lowercase SHA"
