@@ -121,18 +121,17 @@ jobs:
           test "$join_head" = "$PR_HEAD" || fail "declared join_head does not equal the live PR head"
 
           printf '%s\n' "$PR_BODY" | grep -Fq '<!-- source-promotion: true -->' || fail "promotion marker is missing"
-          merge_lines=$(printf '%s\n' "$PR_BODY" | grep -F 'gh pr merge' || true)
-          test -n "$merge_lines" || fail "copy-safe gh pr merge command is missing"
-          test "$(printf '%s\n' "$merge_lines" | sed '/^$/d' | wc -l)" -eq 1 || fail "exactly one canonical merge command is required"
-          while IFS= read -r merge_line; do
-            case "$merge_line" in
-              *"gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr"*"--merge"*) ;;
-              *) fail "merge command must bind numeric PR $PR_NUMBER and repo EffortlessMetrics/ripr" ;;
-            esac
-            printf '%s\n' "$merge_line" | grep -Fq -- '--squash' && fail "squash strategy is forbidden"
-            printf '%s\n' "$merge_line" | grep -Fq -- '--rebase' && fail "rebase strategy is forbidden"
-            test "$(printf '%s\n' "$merge_line" | grep -o -- '--merge' | wc -l)" -eq 1 || fail "exactly one --merge strategy is required"
-          done <<< "$merge_lines"
+          merge_count=$(printf '%s\n' "$PR_BODY" | grep -oF 'gh pr merge' | wc -l)
+          test "$merge_count" -eq 1 || fail "exactly one canonical merge command is required"
+          merge_block=$(printf '%s\n' "$PR_BODY" | awk '/```bash/{inside=1;next} inside && /```/{exit} inside')
+          merge_command=$(printf '%s\n' "$merge_block" | sed 's/\\$//' | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')
+          case "$merge_command" in
+            "gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr --merge --match-head-commit $PR_HEAD") ;;
+            *) fail "merge command must bind numeric PR $PR_NUMBER, repo EffortlessMetrics/ripr, --merge, and the live head" ;;
+          esac
+          printf '%s\n' "$merge_command" | grep -Fq -- '--squash' && fail "squash strategy is forbidden"
+          printf '%s\n' "$merge_command" | grep -Fq -- '--rebase' && fail "rebase strategy is forbidden"
+          test "$(printf '%s\n' "$merge_command" | grep -o -- '--merge' | wc -l)" -eq 1 || fail "exactly one --merge strategy is required"
           printf '%s\n' "$PR_BODY" | grep -Fq -- "--match-head-commit $PR_HEAD" || fail "merge command is not bound to the live PR head"
           printf '%s\n' "$PR_BODY" | grep -Fq 'Use Create a merge commit.' || fail "merge-commit warning is missing"
           printf '%s\n' "$PR_BODY" | grep -Fq 'Do not use Squash and merge.' || fail "squash warning is missing"

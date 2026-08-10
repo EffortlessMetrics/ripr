@@ -1548,7 +1548,8 @@ mod tests {
             "ref: ${{ github.event.pull_request.head.sha }}",
             "join_head",
             "--match-head-commit $PR_HEAD",
-            "cargo xtask source-promotion verify",
+            "Build verifier from trusted base source",
+            "\"$TRUSTED_VERIFIER\" source-promotion verify",
             "--main-head \"$MAIN_HEAD\"",
             "actions/upload-artifact@v7",
             "permissions:\n  contents: read",
@@ -1598,7 +1599,8 @@ mod tests {
         for needle in [
             "gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr",
             "merge command must bind numeric PR",
-            "while IFS= read -r merge_line",
+            "merge_command=$(printf '%s\\n' \"$merge_block\"",
+            "exactly one canonical merge command is required",
         ] {
             if !workflow.contains(needle) {
                 return Err(format!("workflow lacks merge-command guard: {needle}"));
@@ -1635,6 +1637,24 @@ mod tests {
         ] {
             if !workflow.contains(needle) {
                 return Err(format!("workflow lacks merge-strategy guard: {needle}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_accepts_documented_multiline_merge_command() -> Result<(), String>
+    {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "awk '/```bash/{inside=1;next} inside && /```/{exit} inside'",
+            "sed 's/\\\\$//' | tr '\\n' ' '",
+            "gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr --merge --match-head-commit $PR_HEAD",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "workflow lacks multiline merge acceptance: {needle}"
+                ));
             }
         }
         Ok(())
