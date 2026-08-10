@@ -931,7 +931,7 @@ mod tests {
     fn canonical_receipt_and_empty_ancestry_serialization_are_stable() -> Result<(), String> {
         let value = serde_json::json!({"schema": PREFLIGHT_SCHEMA, "mode": "two_parent_join"});
         let bytes = canonical_receipt_bytes(&value)?;
-        if bytes != br#"{"schema":"ripr.source_promotion_preflight.v1","mode":"two_parent_join"}"# {
+        if bytes != br#"{"mode":"two_parent_join","schema":"ripr.source_promotion_preflight.v1"}"# {
             return Err(format!("unexpected canonical receipt bytes: {bytes:?}"));
         }
         if digest_lines(&[]) == digest_bytes(b"") {

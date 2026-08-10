@@ -19,7 +19,8 @@ version observations, and deterministic invalidation rules. Its automatic
 
 Preflight is evidence only: it does not create the join, adjudicate conflicts,
 change release metadata, or authorize publication. Canonical receipt bytes are
-the UTF-8 JSON bytes emitted by `serde_json::to_vec` from the parsed receipt;
+the UTF-8 JSON bytes emitted by `serde_json::to_vec` from the parsed receipt,
+with object keys serialized in deterministic lexical order;
 `preflight_sha256` covers exactly those bytes. Any changed input requires a new
 receipt and reviewed resolution manifest whose binding matches those bytes.
 
