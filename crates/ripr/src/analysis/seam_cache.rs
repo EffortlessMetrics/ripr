@@ -2397,10 +2397,14 @@ mod tests {
         }
         // An absolute collected path — the strip-miss shape — must NOT fall
         // back to an absolute-path identity: the whole computation degrades.
-        let strip_missed = vec![(
-            PathBuf::from("/checkout/a/Cargo.toml"),
-            b"[workspace]\n".to_vec(),
-        )];
+        let strip_missed_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("strip-miss")
+            .join("Cargo.toml");
+        if !strip_missed_path.is_absolute() {
+            return Err("the strip-miss fixture must be absolute on this platform".to_string());
+        }
+        let strip_missed = vec![(strip_missed_path, b"[workspace]\n".to_vec())];
         if workspace_file_identity_portable(strip_missed.clone()).is_some() {
             return Err(
                 "a still-absolute collected path must degrade the portable identity to None, not an absolute-path identity"
