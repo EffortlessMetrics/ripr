@@ -80,9 +80,9 @@ fn output_path_from_args(args: &[String]) -> Option<PathBuf> {
 fn verify(options: &Options) -> Result<Value, String> {
     let preflight_bytes = fs::read(&options.preflight)
         .map_err(|error| format!("failed to read preflight receipt: {error}"))?;
-    let preflight_digest = digest_bytes(&preflight_bytes);
     let preflight: Value = serde_json::from_slice(&preflight_bytes)
         .map_err(|error| format!("malformed preflight receipt: {error}"))?;
+    let preflight_digest = digest_bytes(&canonical_receipt_bytes(&preflight)?);
     validate_preflight(&preflight, &options.source_main)?;
     let manifest_bytes = fs::read(&options.manifest)
         .map_err(|error| format!("failed to read resolution manifest: {error}"))?;
@@ -826,11 +826,17 @@ fn lines(value: String) -> Vec<String> {
 }
 fn digest_lines(values: &[String]) -> String {
     let mut hasher = Sha256::new();
+    if values.is_empty() {
+        hasher.update(b"<empty>\n");
+    }
     for value in values {
         hasher.update(value.as_bytes());
         hasher.update([b'\n']);
     }
     format!("sha256:{:x}", hasher.finalize())
+}
+fn canonical_receipt_bytes(value: &Value) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(value).map_err(|error| format!("failed to canonicalize receipt: {error}"))
 }
 fn digest_bytes(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
@@ -917,6 +923,19 @@ mod tests {
     fn ordered_digest_is_not_commutative() -> Result<(), String> {
         if digest_lines(&["a".into(), "b".into()]) == digest_lines(&["b".into(), "a".into()]) {
             return Err("ordered digest ignored order".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn canonical_receipt_and_empty_ancestry_serialization_are_stable() -> Result<(), String> {
+        let value = serde_json::json!({"schema": PREFLIGHT_SCHEMA, "mode": "two_parent_join"});
+        let bytes = canonical_receipt_bytes(&value)?;
+        if bytes != br#"{"schema":"ripr.source_promotion_preflight.v1","mode":"two_parent_join"}"# {
+            return Err(format!("unexpected canonical receipt bytes: {bytes:?}"));
+        }
+        if digest_lines(&[]) == digest_bytes(b"") {
+            return Err("empty ancestry must use the explicit sentinel serialization".into());
         }
         Ok(())
     }

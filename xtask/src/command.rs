@@ -1456,7 +1456,7 @@ fn levenshtein(lhs: &str, rhs: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_catalog, help_message, levenshtein};
+    use super::{command_catalog, help_message, levenshtein, XtaskCommand};
 
     #[test]
     fn top_level_help_pins_start_here_front_door_language() -> Result<(), String> {
@@ -1511,6 +1511,25 @@ mod tests {
         assert_eq!(levenshtein("check-pr", "check-pr"), 0);
         assert_eq!(levenshtein("chek-pr", "check-pr"), 1);
         assert_eq!(levenshtein("réport", "report"), 1);
+    }
+
+    #[test]
+    fn source_promotion_verify_cli_entrypoint() -> Result<(), String> {
+        let command = XtaskCommand::parse([
+            "source-promotion".to_string(),
+            "verify".to_string(),
+            "--preflight".to_string(),
+            "preflight.json".to_string(),
+        ]);
+        match command {
+            XtaskCommand::SourcePromotion(args) => {
+                if args != ["verify", "--preflight", "preflight.json"] {
+                    return Err(format!("unexpected source-promotion args: {args:?}"));
+                }
+            }
+            other => return Err(format!("source-promotion did not dispatch: {other:?}")),
+        }
+        Ok(())
     }
 }
 #[path = "command/help.rs"]

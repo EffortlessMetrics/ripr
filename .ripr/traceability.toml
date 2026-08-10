@@ -6100,12 +6100,14 @@ tests = [
   "xtask/src/reports/source_promotion_verify.rs::tests::metadata_main_and_caller_state_contracts_are_executable",
   "xtask/src/reports/source_promotion_verify.rs::tests::synthetic_join_rejects_graph_and_tree_adversaries",
   "xtask/src/reports/source_promotion_verify.rs::tests::parse_failures_write_rejection_receipts_when_output_is_known",
+  "xtask/src/command.rs::tests::source_promotion_verify_cli_entrypoint",
 ]
 fixtures = ["fixtures/source_promotion_verification"]
 code = [
   "xtask/src/reports/source_promotion_verify.rs",
   "xtask/src/command.rs",
   "xtask/src/dispatch.rs",
+  "xtask/src/reports/mod.rs",
 ]
 outputs = [
   "target/ripr/source-promotion/source-promotion-verification.json",

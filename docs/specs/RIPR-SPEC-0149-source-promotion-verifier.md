@@ -57,6 +57,7 @@ adequacy, release readiness, publication, or K back-sync verification.
 ## Test Mapping
 
 Executable proof lives in
+`xtask/src/command.rs::tests::source_promotion_verify_cli_entrypoint`,
 `xtask/src/reports/source_promotion_verify.rs::tests`, including exact identity,
 canonical manifest and inventory, range/tree/parent adversaries, replacement
 refs, metadata mutation, caller-state snapshots, structured rejection, and
@@ -65,7 +66,8 @@ valid end-to-end receipt tests. The mapping is maintained in
 
 ## Implementation Mapping
 
-The command is registered through `xtask/src/command.rs`, dispatched by
+The command is registered through `xtask/src/command.rs` and
+`xtask/src/reports/mod.rs`, dispatched by
 `xtask/src/dispatch.rs`, and implemented in
 `xtask/src/reports/source_promotion_verify.rs`. Outputs are written to
 `target/ripr/source-promotion/source-promotion-verification.json` and `.md`.

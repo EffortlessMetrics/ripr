@@ -18,13 +18,16 @@ version observations, and deterministic invalidation rules. Its automatic
 `preview_tree` is never a final resolution.
 
 Preflight is evidence only: it does not create the join, adjudicate conflicts,
-change release metadata, or authorize publication. Any changed input requires
-a new byte-identical receipt and a new reviewed resolution manifest.
+change release metadata, or authorize publication. Canonical receipt bytes are
+the UTF-8 JSON bytes emitted by `serde_json::to_vec` from the parsed receipt;
+`preflight_sha256` covers exactly those bytes. Any changed input requires a new
+receipt and reviewed resolution manifest whose binding matches those bytes.
 
 ## Required Evidence
 
 The receipt must preserve the exact identities, repository checks, range
-denominators and digests, conflict and candidate inventories, reviewed tree,
+denominators and digests (each commit id plus LF in listed order; an empty
+sequence is the literal `<empty>\n`), conflict and candidate inventories, reviewed tree,
 version observations, and invalidation rules named above. Immutable swarm refs
 must use the producer-controlled `refs/ripr/` namespace and an exact SHA pin.
 
