@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 const PREFLIGHT_SCHEMA: &str = "ripr.source_promotion_preflight.v1";
@@ -420,7 +420,7 @@ fn verify_graph(options: &Options, preflight: &Value) -> Result<Graph, String> {
     if tree != dry_tree {
         return Err("J tree does not equal reviewed resolved tree".to_string());
     }
-    let manifest_tree = tree;
+    let manifest_tree = tree.clone();
     if object_field(preflight, "dry_merge")?
         .get("preview_tree")
         .and_then(Value::as_str)
@@ -628,6 +628,7 @@ fn digest_bytes(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use std::sync::{Mutex, OnceLock};
 
     static CWD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
