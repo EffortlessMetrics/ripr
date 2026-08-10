@@ -1,4 +1,5 @@
 mod annotations;
+mod back_sync;
 mod badges;
 mod bun;
 mod candidate_control;
@@ -39,6 +40,7 @@ mod targeted_test;
 mod test_oracles;
 
 pub(crate) use annotations::ripr_annotations;
+pub(crate) use back_sync::back_sync;
 #[cfg(test)]
 pub(crate) use badges::{
     BADGE_ENDPOINT_FILES, BadgeArtifactJob, BadgeBasisReport, BadgeBasisSignal,

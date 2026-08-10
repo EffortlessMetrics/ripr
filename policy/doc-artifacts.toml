@@ -116,7 +116,7 @@ owner = "language-adapter-swarm"
 id = "RIPR-PROP-0018"
 kind = "proposal"
 path = "docs/proposals/RIPR-PROP-0018-perl-repair-routing-lane.md"
-status = "proposed"
+status = "accepted"
 owner = "language-adapter-swarm"
 
 [[artifact]]
@@ -667,3 +667,11 @@ path = "docs/adr/0021-static-and-executed-assurance-axes.md"
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "Durable trust-boundary decision for #1978: static artifact movement, executed commands, receipt issuance, and external runtime mutation remain independent assurance axes."
+
+[[artifact]]
+id = "RIPR-SPEC-0149"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0149-back-sync-verifier.md"
+status = "accepted"
+owner = "release-swarm"
+standalone_reason = "Issue #3100 defines the exact-object, ancestry-preserving source-to-swarm back-sync verifier and deterministic closeout receipts required before ordinary swarm development resumes."

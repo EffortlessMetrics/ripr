@@ -469,3 +469,14 @@ force-push, squash, rebase, or merge unrelated work during this exception.
 second. They are separate proof boundaries and neither substitutes for the
 other. Normal swarm development resumes only after `K` is reachable from
 `ripr-swarm/main`.
+
+For a repeatable read-only check at either side of transport, run
+`cargo xtask back-sync verify` with the exact `SWARM_BEFORE`, released source
+head (and its published tag target), reviewed `BACK_SYNC_TREE`, exact `K`, both
+repository roots, and the before/temporary-exception/after policy evidence.
+The command writes deterministic JSON/Markdown receipts, fails closed when
+the expected head is neither `SWARM_BEFORE` nor `K`, and does not construct or
+transport the join. It records all-reachable swarm ancestry as evidence and
+keeps source publication workflows/settings ancestry-only; ordinary squash
+PR commits remain distinct from the intentional two-parent J/K repo-sync
+joins.

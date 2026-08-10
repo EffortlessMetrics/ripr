@@ -6514,6 +6514,26 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0149"
+name = "history-preserving back-sync verifier"
+spec = "docs/specs/RIPR-SPEC-0149-back-sync-verifier.md"
+tests = [
+  "xtask/src/reports/back_sync.rs::tests::abbreviated_inputs_are_rejected",
+  "xtask/src/reports/back_sync.rs::tests::synthetic_graph_adversarial_cases_invoke_verifier",
+]
+fixtures = []
+code = [
+  "xtask/src/reports/back_sync.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+]
+outputs = [
+  "docs/BACK_SYNC_VERIFIER.md",
+  "docs/specs/RIPR-SPEC-0149-back-sync-verifier.md",
+]
+metrics = ["unit_test_pass_rate"]
+
+[[behavior]]
 id = "RIPR-SPEC-0148"
 name = "exact source-promotion preflight"
 spec = "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md"
