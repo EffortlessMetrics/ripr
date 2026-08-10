@@ -22,6 +22,10 @@ on:
         description: Exact 40-character source parent SHA
         required: true
         type: string
+      source_parent:
+        description: Exact trusted verifier source SHA
+        required: true
+        type: string
       main_head:
         description: Exact merged source-main SHA for post-merge reachability
         required: true
@@ -51,6 +55,24 @@ jobs:
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build verifier from trusted base source
+        id: trusted-verifier
+        env:
+          SOURCE_PARENT: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          trusted_dir="$RUNNER_TEMP/ripr-trusted-verifier"
+          trusted_target="$RUNNER_TEMP/ripr-trusted-target"
+          git clone --no-checkout "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "$trusted_dir"
+          git -C "$trusted_dir" fetch --no-tags origin "$SOURCE_PARENT"
+          git -C "$trusted_dir" checkout --detach "$SOURCE_PARENT"
+          test "$(git -C "$trusted_dir" rev-parse HEAD)" = "$SOURCE_PARENT"
+          CARGO_TARGET_DIR="$trusted_target" cargo build --manifest-path "$trusted_dir/Cargo.toml" --bin xtask
+          verifier="$trusted_target/debug/xtask"
+          test -x "$verifier"
+          echo "path=$verifier" >> "$GITHUB_OUTPUT"
+          echo "sha=$SOURCE_PARENT" >> "$GITHUB_OUTPUT"
 
       - name: Verify promotion inputs and PR-head binding
         id: inputs
@@ -101,11 +123,15 @@ jobs:
           printf '%s\n' "$PR_BODY" | grep -Fq '<!-- source-promotion: true -->' || fail "promotion marker is missing"
           merge_lines=$(printf '%s\n' "$PR_BODY" | grep -F 'gh pr merge' || true)
           test -n "$merge_lines" || fail "copy-safe gh pr merge command is missing"
+          test "$(printf '%s\n' "$merge_lines" | sed '/^$/d' | wc -l)" -eq 1 || fail "exactly one canonical merge command is required"
           while IFS= read -r merge_line; do
             case "$merge_line" in
               *"gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr"*"--merge"*) ;;
               *) fail "merge command must bind numeric PR $PR_NUMBER and repo EffortlessMetrics/ripr" ;;
             esac
+            printf '%s\n' "$merge_line" | grep -Fq -- '--squash' && fail "squash strategy is forbidden"
+            printf '%s\n' "$merge_line" | grep -Fq -- '--rebase' && fail "rebase strategy is forbidden"
+            test "$(printf '%s\n' "$merge_line" | grep -o -- '--merge' | wc -l)" -eq 1 || fail "exactly one --merge strategy is required"
           done <<< "$merge_lines"
           printf '%s\n' "$PR_BODY" | grep -Fq -- "--match-head-commit $PR_HEAD" || fail "merge command is not bound to the live PR head"
           printf '%s\n' "$PR_BODY" | grep -Fq 'Use Create a merge commit.' || fail "merge-commit warning is missing"
@@ -121,6 +147,7 @@ jobs:
             echo "join_head=$join_head" >> "$GITHUB_OUTPUT"
             echo "preflight=$preflight" >> "$GITHUB_OUTPUT"
             echo "resolution_manifest=$resolution_manifest" >> "$GITHUB_OUTPUT"
+            echo "source_parent=$BASE_SHA" >> "$GITHUB_OUTPUT"
           }
 
       - name: Run the exact full-history verifier
@@ -128,11 +155,15 @@ jobs:
         env:
           PREFLIGHT: ${{ steps.inputs.outputs.preflight }}
           RESOLUTION_MANIFEST: ${{ steps.inputs.outputs.resolution_manifest }}
+          TRUSTED_VERIFIER_SHA: ${{ steps.trusted-verifier.outputs.sha }}
           JOIN_HEAD: ${{ steps.inputs.outputs.join_head }}
           SOURCE_MAIN: ${{ steps.inputs.outputs.source_main }}
+          SOURCE_PARENT: ${{ steps.inputs.outputs.source_parent }}
+          TRUSTED_VERIFIER: ${{ steps.trusted-verifier.outputs.path }}
         run: |
           set +e
-          cargo xtask source-promotion verify \
+          test "$(git -C "$RUNNER_TEMP/ripr-trusted-verifier" rev-parse HEAD)" = "$SOURCE_PARENT"
+          "$TRUSTED_VERIFIER" source-promotion verify \
             --preflight "$PREFLIGHT" \
             --resolution-manifest "$RESOLUTION_MANIFEST" \
             --join-head "$JOIN_HEAD" \
@@ -197,6 +228,7 @@ jobs:
             --arg head_sha "$PR_HEAD" \
             --arg source_main "${SOURCE_MAIN:-not_available}" \
             --arg join_head "${JOIN_HEAD:-not_available}" \
+            --arg trusted_verifier_sha "${TRUSTED_VERIFIER_SHA:-not_available}" \
             --arg preflight "$PREFLIGHT" \
             --arg resolution_manifest "$RESOLUTION_MANIFEST" \
             --arg preflight_sha256 "$preflight_sha256" \
@@ -210,15 +242,14 @@ jobs:
             --argjson parents "$parents" \
             --argjson checks "$checks" \
             --argjson failure_reasons "$failure_reasons" \
-            '{schema:$schema,status:$status,pr_number:$pr_number,base_sha:$base_sha,head_sha:$head_sha,source_main:$source_main,join_head:$join_head,inputs:{preflight:$preflight,resolution_manifest:$resolution_manifest},preflight_sha256:$preflight_sha256,resolution_manifest_sha256:$resolution_sha256,parents:$parents,tree:$tree,merge_base:$merge_base,inventory:{conflicts:($conflict_count|tonumber? // $conflict_count),source_survivors:($survivor_count|tonumber? // $survivor_count),swarm_exclusions:($exclusion_count|tonumber? // $exclusion_count)},version_state:$version_state,checks:$checks,failure_reasons:$failure_reasons,claim_boundary:["Exact PR head, ordered two-parent ancestry, reviewed tree, metadata identity, and receipt bindings only.","No merge, publication, tag, release, settings, branch-protection, or product-correctness claim."]}' > "$contract"
+            '{schema:$schema,status:$status,pr_number:$pr_number,base_sha:$base_sha,head_sha:$head_sha,source_main:$source_main,join_head:$join_head,trusted_verifier_sha:$trusted_verifier_sha,inputs:{preflight:$preflight,resolution_manifest:$resolution_manifest},preflight_sha256:$preflight_sha256,resolution_manifest_sha256:$resolution_manifest_sha256,parents:$parents,tree:$tree,merge_base:$merge_base,inventory:{conflicts:($conflict_count|tonumber? // $conflict_count),source_survivors:($survivor_count|tonumber? // $survivor_count),swarm_exclusions:($exclusion_count|tonumber? // $exclusion_count)},version_state:$version_state,checks:$checks,failure_reasons:$failure_reasons,claim_boundary:["Exact PR head, ordered two-parent ancestry, reviewed tree, metadata identity, and receipt bindings only.","No merge, publication, tag, release, settings, branch-protection, or product-correctness claim."]}' > "$contract"
           {
             echo "## Source Promotion Contract"
             echo ""
             echo "- normalized status: **$status**"
             echo "- PR head / candidate SHA: `$PR_HEAD`"
             echo "- source parent SHA: `${SOURCE_MAIN:-not_available}`"
-            echo "- ordered parent graph: `$parents`"
-            echo "- merge base: `$merge_base`"
+            echo "- trusted verifier source SHA: `${TRUSTED_VERIFIER_SHA:-not_available}`"
             echo "- reviewed tree: `$tree`"
             echo "- preflight SHA-256: `$preflight_sha256`"
             echo "- resolution manifest SHA-256: `$resolution_sha256`"
@@ -265,6 +296,25 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Build verifier from trusted source parent
+        id: trusted-verifier
+        env:
+          SOURCE_PARENT: ${{ inputs.source_parent }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_PARENT" = "$(printf '%s' "$SOURCE_PARENT" | grep -E '^[0-9a-f]{40}$')"
+          trusted_dir="$RUNNER_TEMP/ripr-trusted-verifier"
+          trusted_target="$RUNNER_TEMP/ripr-trusted-target"
+          git clone --no-checkout "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "$trusted_dir"
+          git -C "$trusted_dir" fetch --no-tags origin "$SOURCE_PARENT"
+          git -C "$trusted_dir" checkout --detach "$SOURCE_PARENT"
+          test "$(git -C "$trusted_dir" rev-parse HEAD)" = "$SOURCE_PARENT"
+          CARGO_TARGET_DIR="$trusted_target" cargo build --manifest-path "$trusted_dir/Cargo.toml" --bin xtask
+          verifier="$trusted_target/debug/xtask"
+          test -x "$verifier"
+          echo "path=$verifier" >> "$GITHUB_OUTPUT"
+          echo "sha=$SOURCE_PARENT" >> "$GITHUB_OUTPUT"
+
       - name: Verify exact J reaches merged source main
         env:
           PREFLIGHT: ${{ inputs.preflight }}
@@ -272,13 +322,16 @@ jobs:
           JOIN_HEAD: ${{ inputs.join_head }}
           SOURCE_MAIN: ${{ inputs.source_main }}
           MAIN_HEAD: ${{ inputs.main_head }}
+          SOURCE_PARENT: ${{ inputs.source_parent }}
+          TRUSTED_VERIFIER: ${{ steps.trusted-verifier.outputs.path }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$MAIN_HEAD" || {
             echo "post-merge contract rejected: checkout is not the declared merged main head" >&2
             exit 1
           }
-          cargo xtask source-promotion verify \
+          test "$(git -C "$RUNNER_TEMP/ripr-trusted-verifier" rev-parse HEAD)" = "$SOURCE_PARENT"
+          "$TRUSTED_VERIFIER" source-promotion verify \
             --preflight "$PREFLIGHT" \
             --resolution-manifest "$RESOLUTION_MANIFEST" \
             --join-head "$JOIN_HEAD" \

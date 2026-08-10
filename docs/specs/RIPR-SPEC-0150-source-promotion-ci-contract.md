@@ -46,6 +46,8 @@ exact J object to remain reachable from merged source `main`.
 - a single-parent or equivalent-tree flattened history fails post-merge;
 - uploaded receipts retain exact heads, ordered parents, input digests, checks,
   failure reasons, and claim boundaries.
+- the verifier is built from the trusted source-parent SHA in an isolated target
+  and invoked against the candidate checkout; the candidate cannot supply it.
 
 ## Non-Goals
 
@@ -53,6 +55,7 @@ exact J object to remain reachable from merged source `main`.
 
 - A marked promotion PR with canonical, tracked regular-file receipts and a numeric, repository-bound `gh pr merge` command passes the PR-head verifier lane.
 - Symlinked or checkout-escaping receipt inputs, placeholder or wrong-repository merge commands, and flattened ancestry are rejected.
+- Duplicate or mixed merge strategies are rejected, and the sole command must use `--merge`.
 - An unrelated PR skips the promotion lane honestly, while manual `--main-head` verification proves the post-merge ancestry contract.
 
 No automatic merge, publication, release, tag, signing, secret use, settings,

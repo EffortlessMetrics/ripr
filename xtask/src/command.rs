@@ -1608,6 +1608,39 @@ mod tests {
     }
 
     #[test]
+    fn source_promotion_workflow_rejects_candidate_verifier_bypass() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "Build verifier from trusted base source",
+            "git -C \"$trusted_dir\" checkout --detach \"$SOURCE_PARENT\"",
+            "cargo build --manifest-path \"$trusted_dir/Cargo.toml\" --bin xtask",
+            "TRUSTED_VERIFIER",
+            "rev-parse HEAD)\" = \"$SOURCE_PARENT",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!("workflow lacks trusted-verifier guard: {needle}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_rejects_mixed_merge_strategies() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "exactly one canonical merge command is required",
+            "--squash",
+            "--rebase",
+            "exactly one --merge strategy is required",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!("workflow lacks merge-strategy guard: {needle}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn source_promotion_workflow_disables_checkout_credentials_before_code() -> Result<(), String> {
         let workflow = source_promotion_workflow()?;
         let count = workflow.matches("persist-credentials: false").count();

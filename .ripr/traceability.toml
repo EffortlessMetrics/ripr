@@ -6089,6 +6089,8 @@ tests = [
   "xtask/src/command.rs::tests::source_promotion_workflow_is_exact_head_and_read_only",
   "xtask/src/command.rs::tests::source_promotion_workflow_rejects_symlink_and_path_escape_inputs",
   "xtask/src/command.rs::tests::source_promotion_workflow_rejects_placeholder_and_wrong_repo_commands",
+  "xtask/src/command.rs::tests::source_promotion_workflow_rejects_candidate_verifier_bypass",
+  "xtask/src/command.rs::tests::source_promotion_workflow_rejects_mixed_merge_strategies",
   "xtask/src/command.rs::tests::source_promotion_workflow_disables_checkout_credentials_before_code",
   "xtask/src/command.rs::tests::source_promotion_workflow_refutes_crlf_rewrite_thread",
   "xtask/src/reports/source_promotion_verify.rs::tests::range_and_main_reachability_fail_closed",
