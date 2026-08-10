@@ -1,0 +1,19 @@
+{
+  "schema_version": "0.1",
+  "fixture": "source_promotion_verification",
+  "spec": "RIPR-SPEC-0149",
+  "mode": "focused",
+  "claim": "The exact source-promotion verifier accepts only the declared history-preserving join and emits parity receipts.",
+  "witnesses": {
+    "accepted_direct_join": true,
+    "rejected_tree_equivalent_squash": true,
+    "rejected_rebase_and_cherry_pick": true,
+    "rejected_substituted_parent": true,
+    "rejected_ambiguous_merge_base": true,
+    "rejected_preview_substitution": true,
+    "rejected_post_main": true,
+    "caller_state_unchanged": true,
+    "json_markdown_receipt_parity": true
+  },
+  "proof_boundary": "Graph, tree, metadata, range, resolution inventory, receipt, and caller-state identity only; no semantic conflict, publication, release-readiness, or merge claim."
+}
