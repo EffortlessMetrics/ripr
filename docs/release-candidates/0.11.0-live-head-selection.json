@@ -54,7 +54,7 @@
     "digest_encoding": "sha256 over the UTF-8 bytes of the newline-terminated SHA list exactly as emitted by the command",
     "required_bindings": ["SOURCE_PARENT", "SWARM_PARENT", "MERGE_BASE", "protected_candidate_tag", "pin_ruleset_receipt", "ordered_swarm_range_sha256"],
     "missing_or_mismatched_binding": "fail closed; qualification and source preflight may not proceed",
-    "remote_binding": "the pin producer must verify origin resolves to EffortlessMetrics/ripr-swarm, the active release-transaction-pins tag ruleset matches ripr-release-*, and both update and deletion rules are active before recording the SHA"
+    "remote_binding": "the pin producer must verify origin resolves to EffortlessMetrics/ripr-swarm, the active release-transaction-pins tag ruleset matches refs/tags/ripr-release-*, and both update and deletion rules are active before recording the SHA"
   },
   "execution_claim_audit": {
     "status": "required_at_final_swarm_parent",

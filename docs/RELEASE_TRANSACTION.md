@@ -225,7 +225,15 @@ PIN_RULESET_ID="$(gh api repos/EffortlessMetrics/ripr-swarm/rulesets --paginate 
 test "$(printf '%s\n' "$PIN_RULESET_ID" | awk 'NF {count++} END {print count + 0}')" -eq 1
 PIN_RULESET="$PACKET_ROOT/pin-ruleset.json"
 gh api "repos/EffortlessMetrics/ripr-swarm/rulesets/${PIN_RULESET_ID}" > "$PIN_RULESET"
-jq -e --arg tag "ripr-release-*" '(.target == "tag" and .enforcement == "active") and (any(.conditions.ref_name.include[]?; . == $tag)) and (any(.rules[]?; .type == "update")) and (any(.rules[]?; .type == "deletion"))' "$PIN_RULESET" >/dev/null
+# GitHub's REST ruleset examples use fully qualified refs (for example,
+# `refs/heads/main`), and its rule-suite API documents `refs/tags/` as the
+# tag-ref prefix. See https://docs.github.com/en/rest/orgs/rules and
+# https://docs.github.com/en/rest/repos/rule-suites. Keep the candidate tag
+# name below unqualified (`ripr-release-...`), but require this repository's
+# fail-closed policy contract to cover only the tag namespace. The checked-in
+# fixture/test proves that local contract; it does not prove GitHub server
+# acceptance or rejection. Verify live settings through the read-only receipt.
+jq -e --arg tag "refs/tags/ripr-release-*" '(.target == "tag" and .enforcement == "active") and (.conditions.ref_name.include == [$tag]) and (any(.rules[]?; .type == "update")) and (any(.rules[]?; .type == "deletion"))' "$PIN_RULESET" >/dev/null
 ```
 
 ```bash
@@ -240,8 +248,9 @@ assert_live_pin_guard() {
 ```
 
 The exact ruleset receipt is a prerequisite, not a suggestion. If the named
-active tag ruleset, its `ripr-release-*` pattern, or both update/deletion rules
-are absent, stop before W; do not substitute an unprotected custom ref.
+active tag ruleset, its exact `refs/tags/ripr-release-*` pattern, or both
+update/deletion rules are absent, stop before W; do not substitute an
+unprotected custom ref.
 
 ```bash
 set -euo pipefail
