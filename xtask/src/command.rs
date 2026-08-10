@@ -1456,7 +1456,7 @@ fn levenshtein(lhs: &str, rhs: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_catalog, help_message, levenshtein, XtaskCommand};
+    use super::{XtaskCommand, command_catalog, help_message, levenshtein};
 
     #[test]
     fn top_level_help_pins_start_here_front_door_language() -> Result<(), String> {
