@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const PREFLIGHT_SCHEMA: &str = "ripr.source_promotion_preflight.v1";
@@ -27,6 +27,7 @@ const METADATA_SURFACES: &[&str] = &[
 
 #[derive(Clone, Debug)]
 struct Options {
+    repo: PathBuf,
     preflight: PathBuf,
     manifest: PathBuf,
     join: String,
@@ -42,6 +43,7 @@ pub(crate) fn source_promotion_verify(args: &[String]) -> Result<(), String> {
             if let Some(out) = output_path_from_args(args) {
                 let options = Options {
                     preflight: PathBuf::new(),
+                    repo: std::env::current_dir().unwrap_or_default(),
                     manifest: PathBuf::new(),
                     join: String::new(),
                     source_main: String::new(),
@@ -89,10 +91,11 @@ fn verify(options: &Options) -> Result<Value, String> {
     validate_manifest(&manifest, &preflight, &preflight_digest)?;
 
     let graph = verify_graph(options, &preflight)?;
-    verify_metadata(&options.join, &options.source_main)?;
+    verify_metadata(&options.repo, &options.join, &options.source_main)?;
     if let Some(main) = &options.main {
-        git_exact_commit(main, "--main-head")?;
+        git_exact_commit(&options.repo, main, "--main-head")?;
         require_ancestor(
+            &options.repo,
             &options.join,
             main,
             "declared join is not reachable from merged source main",
@@ -247,6 +250,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         validate_identity("--main-head", value)?;
     }
     Ok(Options {
+        repo: std::env::current_dir().map_err(|error| error.to_string())?,
         preflight: PathBuf::from(required("--preflight")?),
         manifest: PathBuf::from(required("--resolution-manifest")?),
         join,
@@ -469,8 +473,11 @@ struct Graph {
 }
 
 fn verify_graph(options: &Options, preflight: &Value) -> Result<Graph, String> {
-    git_exact_commit(&options.join, "--join-head")?;
-    let parents_line = git(&["rev-list", "--parents", "-n", "1", &options.join])?;
+    git_exact_commit(&options.repo, &options.join, "--join-head")?;
+    let parents_line = git(
+        &options.repo,
+        &["rev-list", "--parents", "-n", "1", &options.join],
+    )?;
     let parts: Vec<_> = parents_line.split_whitespace().collect();
     if parts.len() != 3 || parts[0] != options.join {
         return Err("head_is_declared_join failed: join must have exactly two parents".to_string());
@@ -483,18 +490,29 @@ fn verify_graph(options: &Options, preflight: &Value) -> Result<Graph, String> {
         );
     }
     require_ancestor(
+        &options.repo,
         source,
         &options.join,
         "source parent is not an ancestor of J",
     )?;
-    require_ancestor(swarm, &options.join, "swarm parent is not an ancestor of J")?;
-    let merge_base = git(&["merge-base", source, swarm])?.trim().to_string();
+    require_ancestor(
+        &options.repo,
+        swarm,
+        &options.join,
+        "swarm parent is not an ancestor of J",
+    )?;
+    let merge_base = git(&options.repo, &["merge-base", source, swarm])?
+        .trim()
+        .to_string();
     if merge_base != string_field(preflight, "merge_base")? {
         return Err("merge base differs from preflight".to_string());
     }
-    let tree = git(&["rev-parse", &format!("{}^{{tree}}", options.join)])?
-        .trim()
-        .to_string();
+    let tree = git(
+        &options.repo,
+        &["rev-parse", &format!("{}^{{tree}}", options.join)],
+    )?
+    .trim()
+    .to_string();
     let dry_tree = object_field(preflight, "dry_merge")?
         .get("reviewed_resolved_tree")
         .and_then(Value::as_str)
@@ -516,8 +534,8 @@ fn verify_graph(options: &Options, preflight: &Value) -> Result<Graph, String> {
             "automatic preview_tree was substituted for reviewed resolved tree".to_string(),
         );
     }
-    let source_range = recompute_range(&merge_base, source)?;
-    let swarm_range = recompute_range(&merge_base, swarm)?;
+    let source_range = recompute_range(&options.repo, &merge_base, source)?;
+    let swarm_range = recompute_range(&options.repo, &merge_base, swarm)?;
     compare_range(
         &source_range,
         object_field(preflight, "source_range")?,
@@ -539,19 +557,29 @@ fn verify_graph(options: &Options, preflight: &Value) -> Result<Graph, String> {
     })
 }
 
-fn recompute_range(base: &str, head: &str) -> Result<(Vec<String>, Vec<String>), String> {
-    let all = lines(git(&[
-        "rev-list",
-        "--topo-order",
-        "--reverse",
-        &format!("{base}..{head}"),
-    ])?);
-    let first = lines(git(&[
-        "rev-list",
-        "--first-parent",
-        "--reverse",
-        &format!("{base}..{head}"),
-    ])?);
+fn recompute_range(
+    repo: &Path,
+    base: &str,
+    head: &str,
+) -> Result<(Vec<String>, Vec<String>), String> {
+    let all = lines(git(
+        repo,
+        &[
+            "rev-list",
+            "--topo-order",
+            "--reverse",
+            &format!("{base}..{head}"),
+        ],
+    )?);
+    let first = lines(git(
+        repo,
+        &[
+            "rev-list",
+            "--first-parent",
+            "--reverse",
+            &format!("{base}..{head}"),
+        ],
+    )?);
     Ok((all, first))
 }
 
@@ -584,10 +612,10 @@ fn compare_range(
     Ok(())
 }
 
-fn verify_metadata(join: &str, source: &str) -> Result<(), String> {
+fn verify_metadata(repo: &Path, join: &str, source: &str) -> Result<(), String> {
     for path in METADATA_SURFACES {
-        let source_bytes = git_bytes(&["show", &format!("{source}:{path}")])?;
-        let join_bytes = git_bytes(&["show", &format!("{join}:{path}")])?;
+        let source_bytes = git_bytes(repo, &["show", &format!("{source}:{path}")])?;
+        let join_bytes = git_bytes(repo, &["show", &format!("{join}:{path}")])?;
         if source_bytes != join_bytes {
             return Err(format!("metadata byte identity failed for {path}"));
         }
@@ -658,18 +686,26 @@ fn render_markdown(report: &Value) -> Result<String, String> {
         ))
 }
 
-fn git_exact_commit(value: &str, name: &str) -> Result<(), String> {
-    let resolved = git(&["rev-parse", "--verify", &format!("{value}^{{commit}}")])?
-        .trim()
-        .to_string();
+fn git_exact_commit(repo: &Path, value: &str, name: &str) -> Result<(), String> {
+    let resolved = git(
+        repo,
+        &["rev-parse", "--verify", &format!("{value}^{{commit}}")],
+    )?
+    .trim()
+    .to_string();
     if resolved != value {
         return Err(format!("{name} is not an exact commit object"));
     }
     Ok(())
 }
 
-fn require_ancestor(ancestor: &str, descendant: &str, message: &str) -> Result<(), String> {
-    let output = git_command(["merge-base", "--is-ancestor", ancestor, descendant])
+fn require_ancestor(
+    repo: &Path,
+    ancestor: &str,
+    descendant: &str,
+    message: &str,
+) -> Result<(), String> {
+    let output = git_command(repo, ["merge-base", "--is-ancestor", ancestor, descendant])
         .output()
         .map_err(|error| format!("failed to test ancestry: {error}"))?;
     if !output.status.success() {
@@ -678,8 +714,8 @@ fn require_ancestor(ancestor: &str, descendant: &str, message: &str) -> Result<(
     Ok(())
 }
 
-fn git(args: &[&str]) -> Result<String, String> {
-    let output = git_command(args.iter().copied())
+fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
+    let output = git_command(repo, args.iter().copied())
         .output()
         .map_err(|error| format!("failed to execute git {}: {error}", args.join(" ")))?;
     if !output.status.success() {
@@ -693,8 +729,8 @@ fn git(args: &[&str]) -> Result<String, String> {
         .map_err(|error| format!("git returned non-UTF-8 output: {error}"))
 }
 
-fn git_bytes(args: &[&str]) -> Result<Vec<u8>, String> {
-    let output = git_command(args.iter().copied())
+fn git_bytes(repo: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+    let output = git_command(repo, args.iter().copied())
         .output()
         .map_err(|error| format!("failed to execute git {}: {error}", args.join(" ")))?;
     if !output.status.success() {
@@ -707,9 +743,12 @@ fn git_bytes(args: &[&str]) -> Result<Vec<u8>, String> {
     Ok(output.stdout)
 }
 
-fn git_command<'a>(args: impl IntoIterator<Item = &'a str>) -> Command {
+fn git_command<'a>(repo: &Path, args: impl IntoIterator<Item = &'a str>) -> Command {
     let mut command = Command::new("git");
-    command.arg("--no-replace-objects").args(args);
+    command
+        .current_dir(repo)
+        .arg("--no-replace-objects")
+        .args(args);
     command
 }
 
@@ -761,24 +800,6 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     static CWD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-    struct CwdGuard {
-        previous: PathBuf,
-    }
-
-    impl CwdGuard {
-        fn enter(path: &Path) -> Result<Self, String> {
-            let previous = std::env::current_dir().map_err(|error| error.to_string())?;
-            std::env::set_current_dir(path).map_err(|error| error.to_string())?;
-            Ok(Self { previous })
-        }
-    }
-
-    impl Drop for CwdGuard {
-        fn drop(&mut self) {
-            let _ = std::env::set_current_dir(&self.previous);
-        }
-    }
 
     #[test]
     fn identity_arguments_are_exact_and_lowercase() -> Result<(), String> {
@@ -913,6 +934,7 @@ mod tests {
     #[test]
     fn receipts_render_every_contract_field_and_rejections_are_structured() -> Result<(), String> {
         let options = Options {
+            repo: PathBuf::new(),
             preflight: PathBuf::new(),
             manifest: PathBuf::new(),
             join: "0123456789abcdef0123456789abcdef01234567".into(),
@@ -979,9 +1001,8 @@ mod tests {
                     &replacement,
                 ],
             )?;
-            let _cwd = CwdGuard::enter(&root)?;
-            let exact = git_exact_commit(&original, "--join-head");
-            let observed = git(&["rev-parse", &format!("{original}^{{tree}}")]);
+            let exact = git_exact_commit(&root, &original, "--join-head");
+            let observed = git(&root, &["rev-parse", &format!("{original}^{{tree}}")]);
             exact?;
             if observed?.trim() != original_tree {
                 return Err("replacement ref changed exact object view".into());
@@ -1024,25 +1045,42 @@ mod tests {
                 &root,
                 &["for-each-ref", "--format=%(refname)=%(objectname)"],
             )?;
-            let _cwd = CwdGuard::enter(&root)?;
-            if verify_metadata(&source, &source).is_err() {
+            let before_index = test_git_output(&root, &["diff", "--cached", "--binary"])?;
+            let before_worktree =
+                test_git_output(&root, &["status", "--porcelain=v2", "--branch"])?;
+            let before_remotes = test_git_output(&root, &["remote", "-v"])?;
+            if verify_metadata(&root, &source, &source).is_err() {
                 return Err("unchanged metadata was rejected".into());
             }
-            if verify_metadata(&mutated, &source).is_ok() {
+            if verify_metadata(&root, &mutated, &source).is_ok() {
                 return Err("metadata byte mutation was accepted".into());
             }
             let tree = test_git_output(&root, &["rev-parse", &format!("{source}^{{tree}}")])?;
             let unrelated_main =
                 test_git_output_with_input(&root, &["commit-tree", &tree], "unrelated main\n")?;
-            if require_ancestor(&mutated, &unrelated_main, "main unexpectedly reaches J").is_ok() {
+            if require_ancestor(
+                &root,
+                &mutated,
+                &unrelated_main,
+                "main unexpectedly reaches J",
+            )
+            .is_ok()
+            {
                 return Err("equivalent-tree main without J was accepted".into());
             }
             let after_refs = test_git_output(
                 &root,
                 &["for-each-ref", "--format=%(refname)=%(objectname)"],
             )?;
-            if before_refs != after_refs {
-                return Err("verification changed caller refs".into());
+            let after_index = test_git_output(&root, &["diff", "--cached", "--binary"])?;
+            let after_worktree = test_git_output(&root, &["status", "--porcelain=v2", "--branch"])?;
+            let after_remotes = test_git_output(&root, &["remote", "-v"])?;
+            if before_refs != after_refs
+                || before_index != after_index
+                || before_worktree != after_worktree
+                || before_remotes != after_remotes
+            {
+                return Err("verification changed caller repository state".into());
             }
             Ok(())
         })();
@@ -1066,7 +1104,12 @@ mod tests {
             test_git(&root, &["config", "user.email", "test@example.invalid"])?;
             test_git(&root, &["config", "user.name", "test"])?;
             fs::write(root.join("base.txt"), "base\n").map_err(|error| error.to_string())?;
-            test_git(&root, &["add", "base.txt"])?;
+            fs::create_dir_all(root.join("crates/ripr")).map_err(|error| error.to_string())?;
+            fs::create_dir_all(root.join("editors/vscode")).map_err(|error| error.to_string())?;
+            for path in METADATA_SURFACES {
+                fs::write(root.join(path), "stable\n").map_err(|error| error.to_string())?;
+            }
+            test_git(&root, &["add", "."])?;
             test_git(&root, &["commit", "--quiet", "-m", "base"])?;
             let base = test_git_output(&root, &["rev-parse", "HEAD"])?;
             fs::write(root.join("source.txt"), "source\n").map_err(|error| error.to_string())?;
@@ -1126,29 +1169,51 @@ mod tests {
             )
             .map_err(|error| error.to_string())?;
             let end_to_end_out = root.join("receipt");
-            let _cwd = CwdGuard::enter(&root)?;
-            let end_to_end_args = vec![
-                "verify".to_string(),
-                "--preflight".to_string(),
-                root.join("preflight.json").to_string_lossy().into_owned(),
-                "--resolution-manifest".to_string(),
-                root.join("manifest.json").to_string_lossy().into_owned(),
-                "--join-head".to_string(),
-                repair.clone(),
-                "--source-main".to_string(),
-                source.clone(),
-                "--out".to_string(),
-                end_to_end_out.to_string_lossy().into_owned(),
-            ];
-            if source_promotion_verify(&end_to_end_args).is_ok() {
-                return Err("end-to-end appended repair was accepted".into());
-            }
+            let rejected_options = Options {
+                repo: root.clone(),
+                preflight: root.join("preflight.json"),
+                manifest: root.join("manifest.json"),
+                join: repair.clone(),
+                source_main: source.clone(),
+                main: None,
+                out: end_to_end_out.clone(),
+            };
+            let rejected_reason = match verify(&rejected_options) {
+                Ok(_) => return Err("end-to-end appended repair was accepted".into()),
+                Err(reason) => reason,
+            };
+            write_report(
+                &end_to_end_out,
+                &failure_report(&rejected_options, &rejected_reason),
+            )?;
             let end_to_end_receipt = fs::read_to_string(end_to_end_out.join(REPORT_JSON))
                 .map_err(|error| error.to_string())?;
             if !end_to_end_receipt.contains("\"status\": \"rejected\"") {
                 return Err("end-to-end rejection receipt was not emitted".into());
             }
+            let valid_out = root.join("valid-receipt");
+            let valid_receipt_options = Options {
+                repo: root.clone(),
+                preflight: root.join("preflight.json"),
+                manifest: root.join("manifest.json"),
+                join: join.clone(),
+                source_main: source.clone(),
+                main: None,
+                out: valid_out.clone(),
+            };
+            let valid_report = verify(&valid_receipt_options)?;
+            write_report(&valid_out, &valid_report)?;
+            let valid_json = fs::read_to_string(valid_out.join(REPORT_JSON))
+                .map_err(|error| error.to_string())?;
+            let valid_markdown =
+                fs::read_to_string(valid_out.join(REPORT_MD)).map_err(|error| error.to_string())?;
+            if !valid_json.contains("\"status\": \"verified\"")
+                || !valid_markdown.contains("## Structured receipt")
+            {
+                return Err("valid end-to-end receipt was incomplete".into());
+            }
             let options = Options {
+                repo: root.clone(),
                 preflight: PathBuf::new(),
                 manifest: PathBuf::new(),
                 join: repair,
@@ -1173,6 +1238,38 @@ mod tests {
             };
             if verify_graph(&squash_options, &preflight).is_ok() {
                 return Err("tree-equivalent squash was accepted".into());
+            }
+            let cherry_pick = test_git_output_with_input(
+                &root,
+                &["commit-tree", &tree, "-p", &base],
+                "cherry-pick\n",
+            )?;
+            if verify_graph(
+                &Options {
+                    join: cherry_pick,
+                    ..valid_options.clone()
+                },
+                &preflight,
+            )
+            .is_ok()
+            {
+                return Err("rebased/cherry-picked history was accepted".into());
+            }
+            let substituted_parent = test_git_output_with_input(
+                &root,
+                &["commit-tree", &tree, "-p", &source, "-p", &base],
+                "substituted parent\n",
+            )?;
+            if verify_graph(
+                &Options {
+                    join: substituted_parent,
+                    ..valid_options.clone()
+                },
+                &preflight,
+            )
+            .is_ok()
+            {
+                return Err("substituted parent history was accepted".into());
             }
             let mut preview_substitution = preflight.clone();
             preview_substitution["dry_merge"]["preview_tree"] = Value::String(tree.clone());
