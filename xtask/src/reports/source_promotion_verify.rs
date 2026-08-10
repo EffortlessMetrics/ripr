@@ -475,7 +475,7 @@ fn recompute_range(base: &str, head: &str) -> Result<(Vec<String>, Vec<String>),
 
 fn compare_range(
     range: &(Vec<String>, Vec<String>),
-    expected: &Value,
+    expected: &Map<String, Value>,
     role: &str,
 ) -> Result<(), String> {
     let all_count = expected
