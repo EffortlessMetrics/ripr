@@ -1054,20 +1054,15 @@ mod tests {
             with(true, "error")
         );
 
-        // The incomplete case is asserted only at the level this change owns:
-        // the `status` branch must stop rejecting it. It is deliberately not
-        // asserted fully valid, because a separate divergence still rejects it
-        // — `check.schema.json` allows any non-empty `claim_boundary` while this
-        // schema pins it to one `const`, so a real incomplete outcome never
-        // projects cleanly. That is tracked on its own and is not silently
-        // absorbed here.
+        // The incomplete case is asserted fully valid: the producer emits one
+        // `claim_boundary` sentence unconditionally
+        // (`ANALYSIS_OUTCOME_CLAIM_BOUNDARY`, enforced on typed deserialize at
+        // crates/ripr/src/analysis_outcome.rs), and both schemas now pin that
+        // producer authority, so a real incomplete outcome projects cleanly.
         let incomplete_error = with(false, "error");
         assert!(
-            !incomplete_error
-                .iter()
-                .any(|violation| violation.contains(".status:")),
-            "no status violation may remain for an error packet retaining an \
-             incomplete analysis_outcome: {incomplete_error:#?}"
+            incomplete_error.is_empty(),
+            "an error packet retaining an incomplete analysis_outcome must validate: {incomplete_error:#?}"
         );
 
         // The discrimination that must survive the relaxation.
@@ -1234,6 +1229,39 @@ mod tests {
         assert!(violations.is_empty(), "{violations:#?}");
         assert_eq!(fixture["analysis_outcome"]["analysis_complete"], false);
         assert_eq!(fixture["findings"].as_array().map(Vec::len), Some(0));
+        Ok(())
+    }
+
+    /// #3072: `claim_boundary` is producer-owned — `AnalysisOutcome` assigns
+    /// one sentence unconditionally and rejects any other on typed deserialize
+    /// (crates/ripr/src/analysis_outcome.rs), so both schemas pin that const.
+    /// An invented boundary sentence must still be rejected: relaxing the pin
+    /// to free text would remove the check rather than correct it.
+    #[test]
+    fn check_schema_rejects_an_invented_claim_boundary() -> Result<(), String> {
+        let root = repo_root()?;
+        let schema = read_json(root.join("schemas/ripr/check.schema.json"))?;
+        let mut fixture =
+            read_json(root.join("tests/fixtures/verification/ripr/check-incomplete.valid.json"))?;
+        fixture["analysis_outcome"]["outcome"]["claim_boundary"] = serde_json::json!(
+            "Static analysis is incomplete; an empty findings array is not a clean result."
+        );
+        let mut violations = Vec::new();
+
+        validate_value_against_schema(
+            &fixture,
+            &schema,
+            &schema,
+            "invented claim_boundary".to_string(),
+            &mut violations,
+        );
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("claim_boundary")),
+            "an invented claim_boundary sentence must be rejected: {violations:#?}"
+        );
         Ok(())
     }
 
