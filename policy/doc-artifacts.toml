@@ -505,11 +505,3 @@ path = "docs/specs/RIPR-SPEC-0149-source-promotion-verifier.md"
 status = "proposed"
 owner = "release"
 standalone_reason = "Exact-J graph/tree verifier and deterministic reviewed-resolution manifest contract for ripr#1493."
-
-[[artifact]]
-id = "SOURCE-PROMOTION-RUNBOOK"
-kind = "guide"
-path = "docs/SOURCE_PROMOTION.md"
-status = "accepted"
-owner = "release"
-standalone_reason = "Documents repeatable preflight, exact-J verification, merge-commit-only transport, and post-merge reachability."

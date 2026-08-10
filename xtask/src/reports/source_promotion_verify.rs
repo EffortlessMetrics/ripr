@@ -717,8 +717,8 @@ mod tests {
                 &["commit-tree", &repair_tree, "-p", &join],
                 "repair\n",
             )?;
-            let source_range = recompute_range(&base, &source)?;
-            let swarm_range = recompute_range(&base, &swarm)?;
+            let source_range = test_recompute_range(&root, &base, &source)?;
+            let swarm_range = test_recompute_range(&root, &base, &swarm)?;
             let preflight = serde_json::json!({
                 "schema": PREFLIGHT_SCHEMA, "mode": "two_parent_join", "source_parent": source,
                 "swarm_parent": swarm, "swarm_ref": "refs/ripr/release-0.11.0", "swarm_ref_sha": swarm,
@@ -767,6 +767,23 @@ mod tests {
             return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
         }
         Ok(())
+    }
+
+    fn test_recompute_range(
+        repo: &Path,
+        base: &str,
+        head: &str,
+    ) -> Result<(Vec<String>, Vec<String>), String> {
+        let range = format!("{base}..{head}");
+        let all = lines(test_git_output(
+            repo,
+            &["rev-list", "--topo-order", "--reverse", &range],
+        )?);
+        let first = lines(test_git_output(
+            repo,
+            &["rev-list", "--first-parent", "--reverse", &range],
+        )?);
+        Ok((all, first))
     }
 
     fn test_git_output(repo: &Path, args: &[&str]) -> Result<String, String> {
