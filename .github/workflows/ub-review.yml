@@ -38,7 +38,7 @@ jobs:
       - name: ub-review
         env:
           CARGO_TARGET_DIR: target/ub-review-build
-        uses: EffortlessMetrics/ub-review@ca616b45de025cbd70fabb3849492385a00b4290
+        uses: EffortlessMetrics/ub-review@7b112d9cebe989e1e9d4b693dfe5c743dc4a22df
         with:
           # review-mode hides the internal mode/fail-on-gate/review_forward
           # knobs. advisory = comment only; gate = recommended CI gate;
