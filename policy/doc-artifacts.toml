@@ -489,3 +489,27 @@ path = "docs/specs/RIPR-SPEC-0110-receipt-gap-cross-reference.md"
 status = "accepted"
 owner = "product-swarm"
 standalone_reason = "Receipt-gap cross-reference (closes #1123 PR 4): adds optional --ledger flag to ripr receipt check; cross-references receipt's canonical_gap_id against live gap set from parse_gap_records_json; orphan_receipt/receipt_gap_mismatch exit non-zero; ledger-absent → not_available (never receipt_ok, fail-closed honesty rule); provides the real producer for labels deferred by #1130 no-fake-zero guard; 4 unit controls + 1 CLI smoke; no schema bump; no version bump."
+
+[[artifact]]
+id = "RIPR-SPEC-0148"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md"
+status = "accepted"
+owner = "release"
+standalone_reason = "Consumes the merged ripr-swarm#3102 exact source-promotion preflight contract."
+
+[[artifact]]
+id = "RIPR-SPEC-0149"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0149-source-promotion-verifier.md"
+status = "proposed"
+owner = "release"
+standalone_reason = "Exact-J graph/tree verifier and deterministic reviewed-resolution manifest contract for ripr#1493."
+
+[[artifact]]
+id = "SOURCE-PROMOTION-RUNBOOK"
+kind = "guide"
+path = "docs/SOURCE_PROMOTION.md"
+status = "accepted"
+owner = "release"
+standalone_reason = "Documents repeatable preflight, exact-J verification, merge-commit-only transport, and post-merge reachability."

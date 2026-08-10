@@ -6069,6 +6069,41 @@ metrics = [
   "unit_test_pass_rate",
 ]
 
+[[artifact]]
+id = "RIPR-SPEC-0148"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md"
+status = "accepted"
+owner = "release"
+
+[[artifact]]
+id = "RIPR-SPEC-0149"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0149-source-promotion-verifier.md"
+status = "proposed"
+owner = "release"
+
+[[behavior]]
+id = "RIPR-SPEC-0149"
+name = "exact source-promotion graph and resolution verification"
+spec = "docs/specs/RIPR-SPEC-0149-source-promotion-verifier.md"
+tests = [
+  "xtask/src/reports/source_promotion_verify.rs::tests::identity_arguments_are_exact_and_lowercase",
+  "xtask/src/reports/source_promotion_verify.rs::tests::ordered_digest_is_not_commutative",
+  "xtask/src/reports/source_promotion_verify.rs::tests::manifest_rejects_duplicate_rows",
+]
+fixtures = ["fixtures/source_promotion_verification"]
+code = [
+  "xtask/src/reports/source_promotion_verify.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+]
+outputs = [
+  "target/ripr/source-promotion/source-promotion-verification.json",
+  "target/ripr/source-promotion/source-promotion-verification.md",
+]
+metrics = ["unit_test_pass_rate"]
+
 [[behavior]]
 id = "RIPR-SPEC-0112"
 name = "bounded subprocess adapter boundary"

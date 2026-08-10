@@ -249,3 +249,39 @@ join before the metadata/version PR starts.
 A successful source promotion proves that reviewed swarm history and required
 source-only work coexist on source `main` with auditable ancestry. It does not
 prove release metadata, downstream compatibility, or publication.
+
+## Repeatable exact-J verification
+
+Retain the final `ripr.source_promotion_preflight.v1` receipt as immutable
+input, then author and review one deterministic
+`ripr.source_promotion_resolution.v1` manifest. The manifest binds the
+receipt's byte digest, exact parents and merge base, reviewed final tree, and
+one disposition with rationale and evidence reference for every conflict,
+source-survivor candidate, and swarm-exclusion candidate.
+
+Before merging the direct join, run:
+
+```bash
+cargo xtask source-promotion verify \
+  --preflight <exact-preflight.json> \
+  --resolution-manifest <exact-resolution.json> \
+  --join-head <exact-40-character-J-SHA> \
+  --source-main <exact-40-character-held-source-main-SHA> \
+  --out target/ripr/source-promotion
+```
+
+Merge with a merge commit only, guarded by the expected exact head. Do not
+squash, rebase, cherry-pick, or append repair commits to J. After the protected
+merge, rerun the command with `--main-head
+<exact-40-character-merged-source-main-SHA>` to prove exact J reaches merged
+source main. Keep the separate 0.11.0 metadata/version lane out of J.
+
+This rule applies to the intentional repository-sync commits J (source
+promotion) and the later K (ancestry-preserving back-sync). Ordinary swarm
+feature PRs may be squash-merged within `ripr-swarm`; those PR commits are
+already part of the selected parent-2 history and must remain reachable through
+J rather than being reconstructed as source commits.
+
+The verifier is read-only and does not construct J, resolve conflicts, publish,
+or perform the later ancestry-preserving K back-sync; K verification is a
+separate follow-up contract.
