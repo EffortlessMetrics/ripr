@@ -45,6 +45,7 @@ pub(crate) enum XtaskCommand {
     ReleaseServerArchive(Vec<String>),
     ReleaseServerManifest(Vec<String>),
     ReleaseUploadAssets(Vec<String>),
+    SourcePromotion(Vec<String>),
     TargetedTestOutcome(Vec<String>),
     MutationCalibration(Vec<String>),
     BunUbCalibration(Vec<String>),
@@ -177,6 +178,7 @@ impl XtaskCommand {
             "release-server-archive" => Self::ReleaseServerArchive(rest),
             "release-server-manifest" => Self::ReleaseServerManifest(rest),
             "release-upload-assets" => Self::ReleaseUploadAssets(rest),
+            "source-promotion" => Self::SourcePromotion(rest),
             "targeted-test-outcome" => Self::TargetedTestOutcome(rest),
             "mutation-calibration" => Self::MutationCalibration(rest),
             "bun-ub-calibration" => Self::BunUbCalibration(rest),
@@ -349,6 +351,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "release-server-archive --version <version> --target <triple> --executable <name> --archive <zip|tar.gz>",
         "release-server-manifest --version <version> --repository <owner/repo>",
         "release-upload-assets --version <version>",
+        "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
         "targeted-test-outcome --before <path> --after <path>",
         "mutation-calibration [root] --mutants-json <path>",
         "bun-ub-calibration [--corpus <path>] [--out <path>] [--out-md <path>]",
@@ -818,6 +821,13 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "GitHub release assets",
             true,
             "Uploads release assets; requires explicit release approval.",
+        ),
+        command_entry(
+            "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
+            "report_only",
+            "target/ripr/source-promotion/source-promotion-verification.{json,md} or explicit --out <dir>",
+            false,
+            "Verifies an exact history-preserving join, reviewed resolution manifest, ancestry digests, and metadata identity without constructing or mutating Git refs.",
         ),
         command_entry(
             "targeted-test-outcome --before <path> --after <path>",
@@ -1446,7 +1456,7 @@ fn levenshtein(lhs: &str, rhs: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_catalog, help_message, levenshtein};
+    use super::{XtaskCommand, command_catalog, help_message, levenshtein};
 
     #[test]
     fn top_level_help_pins_start_here_front_door_language() -> Result<(), String> {
@@ -1501,6 +1511,25 @@ mod tests {
         assert_eq!(levenshtein("check-pr", "check-pr"), 0);
         assert_eq!(levenshtein("chek-pr", "check-pr"), 1);
         assert_eq!(levenshtein("réport", "report"), 1);
+    }
+
+    #[test]
+    fn source_promotion_verify_cli_entrypoint() -> Result<(), String> {
+        let command = XtaskCommand::parse([
+            "source-promotion".to_string(),
+            "verify".to_string(),
+            "--preflight".to_string(),
+            "preflight.json".to_string(),
+        ]);
+        match command {
+            XtaskCommand::SourcePromotion(args) => {
+                if args != ["verify", "--preflight", "preflight.json"] {
+                    return Err(format!("unexpected source-promotion args: {args:?}"));
+                }
+            }
+            other => return Err(format!("source-promotion did not dispatch: {other:?}")),
+        }
+        Ok(())
     }
 }
 #[path = "command/help.rs"]

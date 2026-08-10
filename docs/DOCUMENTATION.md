@@ -118,6 +118,8 @@ Current how-to docs:
 - [Lane 4 PR / CI review cockpit tracker](lanes/LANE_4_PR_CI_REVIEW.md)
 - [Release](RELEASE.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
+- [Source-promotion runbook](SOURCE_PROMOTION.md)
+- [Source-promotion verification contract](specs/RIPR-SPEC-0149-source-promotion-verifier.md)
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md)
 - [First successful PR demo](demo/first-successful-pr.md)
 - [Start-here convergence receipts](handoffs/2026-05-22-start-here-surface-convergence-receipts.md)
