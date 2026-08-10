@@ -1647,7 +1647,8 @@ mod tests {
     {
         let workflow = source_promotion_workflow()?;
         for needle in [
-            "awk '/```bash/{inside=1;next} inside && /```/{exit} inside'",
+            "__RIPR_MERGE_BLOCK__",
+            "exactly one fenced bash block may contain the merge command",
             "sed 's/\\\\$//' | tr '\\n' ' '",
             "gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr --merge --match-head-commit $PR_HEAD",
         ] {
@@ -1656,6 +1657,33 @@ mod tests {
                     "workflow lacks multiline merge acceptance: {needle}"
                 ));
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_scans_all_bash_fences_for_merge_command() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "inside && /```/",
+            "if (block ~ /gh pr merge/)",
+            "merge_block_count",
+            "exactly one fenced bash block may contain the merge command",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "workflow lacks multi-fence merge parsing: {needle}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_rejects_multiple_merge_fences() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        if !workflow.contains("test \"$merge_block_count\" -eq 1") {
+            return Err("workflow does not reject multiple merge-containing fences".to_string());
         }
         Ok(())
     }

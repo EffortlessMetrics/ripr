@@ -123,7 +123,18 @@ jobs:
           printf '%s\n' "$PR_BODY" | grep -Fq '<!-- source-promotion: true -->' || fail "promotion marker is missing"
           merge_count=$(printf '%s\n' "$PR_BODY" | grep -oF 'gh pr merge' | wc -l)
           test "$merge_count" -eq 1 || fail "exactly one canonical merge command is required"
-          merge_block=$(printf '%s\n' "$PR_BODY" | awk '/```bash/{inside=1;next} inside && /```/{exit} inside')
+          merge_blocks=$(printf '%s\n' "$PR_BODY" | awk '
+            /```bash/ { inside=1; block=""; next }
+            inside && /```/ {
+              if (block ~ /gh pr merge/) print "__RIPR_MERGE_BLOCK__\n" block
+              inside=0
+              next
+            }
+            inside { block=block $0 "\n" }
+          ')
+          merge_block_count=$(printf '%s\n' "$merge_blocks" | grep -cF '__RIPR_MERGE_BLOCK__' || true)
+          test "$merge_block_count" -eq 1 || fail "exactly one fenced bash block may contain the merge command"
+          merge_block=$(printf '%s\n' "$merge_blocks" | sed '/^__RIPR_MERGE_BLOCK__$/d')
           merge_command=$(printf '%s\n' "$merge_block" | sed 's/\\$//' | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')
           case "$merge_command" in
             "gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr --merge --match-head-commit $PR_HEAD") ;;
