@@ -6092,6 +6092,7 @@ tests = [
   "xtask/src/reports/source_promotion_verify.rs::tests::merge_base_selection_rejects_ambiguous_history",
   "xtask/src/reports/source_promotion_verify.rs::tests::blank_output_directory_is_rejected",
   "xtask/src/reports/source_promotion_verify.rs::tests::ordered_digest_is_not_commutative",
+  "xtask/src/reports/source_promotion_verify.rs::tests::producer_receipt_and_empty_ancestry_serialization_are_stable",
   "xtask/src/reports/source_promotion_verify.rs::tests::manifest_rejects_duplicate_rows",
   "xtask/src/reports/source_promotion_verify.rs::tests::manifest_accepts_only_canonical_v1_field_names",
   "xtask/src/reports/source_promotion_verify.rs::tests::range_and_main_reachability_fail_closed",

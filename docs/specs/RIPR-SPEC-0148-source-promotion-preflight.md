@@ -19,16 +19,17 @@ version observations, and deterministic invalidation rules. Its automatic
 
 Preflight is evidence only: it does not create the join, adjudicate conflicts,
 change release metadata, or authorize publication. Canonical receipt bytes are
-the UTF-8 JSON bytes emitted by `serde_json::to_vec` from the parsed receipt,
-with object keys serialized in deterministic lexical order;
-`preflight_sha256` covers exactly those bytes. Any changed input requires a new
-receipt and reviewed resolution manifest whose binding matches those bytes.
+the exact UTF-8 bytes written by the producer, including pretty-print
+whitespace and the trailing LF; the verifier parses those bytes only after
+hashing them. `preflight_sha256` covers exactly the file bytes, not a
+reserialized JSON value. Any changed input requires a new receipt and reviewed
+resolution manifest whose binding matches those bytes.
 
 ## Required Evidence
 
 The receipt must preserve the exact identities, repository checks, range
-denominators and digests (each commit id plus LF in listed order; an empty
-sequence is the literal `<empty>\n`), conflict and candidate inventories, reviewed tree,
+denominators and digests (each commit id plus LF in listed order, including the
+producer's existing empty-stream behavior), conflict and candidate inventories, reviewed tree,
 version observations, and invalidation rules named above. Immutable swarm refs
 must use the producer-controlled `refs/ripr/` namespace and an exact SHA pin.
 

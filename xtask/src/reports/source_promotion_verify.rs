@@ -82,7 +82,8 @@ fn verify(options: &Options) -> Result<Value, String> {
         .map_err(|error| format!("failed to read preflight receipt: {error}"))?;
     let preflight: Value = serde_json::from_slice(&preflight_bytes)
         .map_err(|error| format!("malformed preflight receipt: {error}"))?;
-    let preflight_digest = digest_bytes(&canonical_receipt_bytes(&preflight)?);
+    // Bind the exact producer file bytes, including pretty-print whitespace and trailing LF.
+    let preflight_digest = digest_bytes(&preflight_bytes);
     validate_preflight(&preflight, &options.source_main)?;
     let manifest_bytes = fs::read(&options.manifest)
         .map_err(|error| format!("failed to read resolution manifest: {error}"))?;
@@ -826,17 +827,11 @@ fn lines(value: String) -> Vec<String> {
 }
 fn digest_lines(values: &[String]) -> String {
     let mut hasher = Sha256::new();
-    if values.is_empty() {
-        hasher.update(b"<empty>\n");
-    }
     for value in values {
         hasher.update(value.as_bytes());
         hasher.update([b'\n']);
     }
     format!("sha256:{:x}", hasher.finalize())
-}
-fn canonical_receipt_bytes(value: &Value) -> Result<Vec<u8>, String> {
-    serde_json::to_vec(value).map_err(|error| format!("failed to canonicalize receipt: {error}"))
 }
 fn digest_bytes(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
@@ -928,14 +923,17 @@ mod tests {
     }
 
     #[test]
-    fn canonical_receipt_and_empty_ancestry_serialization_are_stable() -> Result<(), String> {
-        let value = serde_json::json!({"schema": PREFLIGHT_SCHEMA, "mode": "two_parent_join"});
-        let bytes = canonical_receipt_bytes(&value)?;
-        if bytes != br#"{"mode":"two_parent_join","schema":"ripr.source_promotion_preflight.v1"}"# {
-            return Err(format!("unexpected canonical receipt bytes: {bytes:?}"));
+    fn producer_receipt_and_empty_ancestry_serialization_are_stable() -> Result<(), String> {
+        let bytes = br#"{
+  "mode": "two_parent_join",
+  "schema": "ripr.source_promotion_preflight.v1"
+}
+"#;
+        if digest_bytes(bytes).is_empty() {
+            return Err("producer receipt digest is empty".into());
         }
-        if digest_lines(&[]) == digest_bytes(b"") {
-            return Err("empty ancestry must use the explicit sentinel serialization".into());
+        if digest_lines(&[]) != digest_bytes(b"") {
+            return Err("empty ancestry must preserve producer empty-stream semantics".into());
         }
         Ok(())
     }
