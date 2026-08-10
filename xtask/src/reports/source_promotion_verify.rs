@@ -25,7 +25,7 @@ const METADATA_SURFACES: &[&str] = &[
     "CHANGELOG.md",
 ];
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Options {
     preflight: PathBuf,
     manifest: PathBuf,
@@ -37,6 +37,22 @@ struct Options {
 
 pub(crate) fn source_promotion_verify(args: &[String]) -> Result<(), String> {
     let options = parse_args(args)?;
+    match verify(&options) {
+        Ok(report) => write_report(&options.out, &report),
+        Err(reason) => {
+            let report = failure_report(&options, &reason);
+            let write_result = write_report(&options.out, &report);
+            match write_result {
+                Ok(()) => Err(reason),
+                Err(write_error) => Err(format!(
+                    "{reason}; failed to write rejection receipt: {write_error}"
+                )),
+            }
+        }
+    }
+}
+
+fn verify(options: &Options) -> Result<Value, String> {
     let preflight_bytes = fs::read(&options.preflight)
         .map_err(|error| format!("failed to read preflight receipt: {error}"))?;
     let preflight_digest = digest_bytes(&preflight_bytes);
@@ -49,7 +65,7 @@ pub(crate) fn source_promotion_verify(args: &[String]) -> Result<(), String> {
         .map_err(|error| format!("malformed resolution manifest: {error}"))?;
     validate_manifest(&manifest, &preflight, &preflight_digest)?;
 
-    let graph = verify_graph(&options, &preflight)?;
+    let graph = verify_graph(options, &preflight)?;
     verify_metadata(&options.join, &options.source_main)?;
     if let Some(main) = &options.main {
         git_exact_commit(main, "--main-head")?;
@@ -68,7 +84,10 @@ pub(crate) fn source_promotion_verify(args: &[String]) -> Result<(), String> {
     checks.insert("metadata_byte_identity".into(), Value::Bool(true));
     checks.insert(
         "main_reachability".into(),
-        Value::Bool(options.main.is_some()),
+        options.main.as_ref().map_or_else(
+            || Value::String("not_run".to_string()),
+            |_| Value::String("passed".to_string()),
+        ),
     );
     checks.insert("caller_state_mutated".into(), Value::Bool(false));
 
@@ -103,17 +122,62 @@ pub(crate) fn source_promotion_verify(args: &[String]) -> Result<(), String> {
             "No join construction, ref mutation, publication, release, or K back-sync verification.",
         ],
     });
-    let json = serde_json::to_string_pretty(&report)
+    Ok(report)
+}
+
+fn failure_report(options: &Options, reason: &str) -> Value {
+    serde_json::json!({
+        "schema": "ripr.source_promotion_verification.v1",
+        "status": "rejected",
+        "join_head": options.join,
+        "source_main": options.source_main,
+        "main_head": options.main,
+        "parents": [],
+        "tree": null,
+        "preflight_sha256": null,
+        "resolution_manifest_sha256": null,
+        "merge_base": null,
+        "swarm_reachability": {
+            "all_reachable_count": null,
+            "first_parent_count": null,
+            "all_reachable_sha256": null,
+            "first_parent_ordered_sha256": null,
+            "verified_through_parent_2": false,
+        },
+        "metadata_surfaces": METADATA_SURFACES,
+        "checks": {
+            "head_is_declared_join": "not_run",
+            "ordered_parents": "not_run",
+            "ancestry_and_digest": "not_run",
+            "reviewed_tree": "not_run",
+            "metadata_byte_identity": "not_run",
+            "main_reachability": "not_run",
+            "caller_state_mutated": "not_run",
+        },
+        "failure_reasons": [reason],
+        "invalidation_rules": [
+            "A rejected receipt is not evidence of a valid source promotion.",
+            "Changing any input or the exact Git object view requires a fresh verification receipt.",
+        ],
+        "non_claims": [
+            "No semantic conflict ruling or artifact adequacy claim.",
+            "No join construction, ref mutation, publication, release, or K back-sync verification.",
+        ],
+    })
+}
+
+fn write_report(out: &std::path::Path, report: &Value) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(report)
         .map_err(|error| format!("failed to serialize verification receipt: {error}"))?;
-    let markdown = render_markdown(&report)?;
-    fs::create_dir_all(&options.out)
-        .map_err(|error| format!("failed to create {}: {error}", options.out.display()))?;
-    fs::write(options.out.join(REPORT_JSON), format!("{json}\n"))
+    let markdown = render_markdown(report)?;
+    fs::create_dir_all(out)
+        .map_err(|error| format!("failed to create {}: {error}", out.display()))?;
+    fs::write(out.join(REPORT_JSON), format!("{json}\n"))
         .map_err(|error| format!("failed to write verification JSON: {error}"))?;
-    fs::write(options.out.join(REPORT_MD), markdown)
+    fs::write(out.join(REPORT_MD), markdown)
         .map_err(|error| format!("failed to write verification Markdown: {error}"))?;
-    println!("Wrote {}", options.out.join(REPORT_JSON).display());
-    println!("Wrote {}", options.out.join(REPORT_MD).display());
+    println!("Wrote {}", out.join(REPORT_JSON).display());
+    println!("Wrote {}", out.join(REPORT_MD).display());
     Ok(())
 }
 
@@ -262,7 +326,6 @@ fn validate_manifest(manifest: &Value, preflight: &Value, digest: &str) -> Resul
     }
     let bound = manifest
         .get("preflight_sha256")
-        .or_else(|| manifest.get("preflight_digest"))
         .and_then(Value::as_str)
         .ok_or_else(|| "resolution manifest is missing preflight_sha256".to_string())?;
     if bound != digest {
@@ -277,7 +340,6 @@ fn validate_manifest(manifest: &Value, preflight: &Value, digest: &str) -> Resul
     }
     let tree = manifest
         .get("reviewed_join_tree")
-        .or_else(|| manifest.get("reviewed_resolved_tree"))
         .and_then(Value::as_str)
         .ok_or_else(|| "resolution manifest is missing reviewed_join_tree".to_string())?;
     validate_hex("reviewed_join_tree", tree, 40)?;
@@ -290,7 +352,6 @@ fn validate_manifest(manifest: &Value, preflight: &Value, digest: &str) -> Resul
     }
     let rows = manifest
         .get("dispositions")
-        .or_else(|| manifest.get("resolutions"))
         .and_then(Value::as_array)
         .ok_or_else(|| "resolution manifest is missing dispositions".to_string())?;
     let dry = object_field(preflight, "dry_merge")?;
@@ -336,7 +397,6 @@ fn validate_manifest(manifest: &Value, preflight: &Value, digest: &str) -> Resul
             .ok_or_else(|| "resolution row is missing kind".to_string())?;
         let key = row
             .get("key")
-            .or_else(|| row.get("path"))
             .and_then(Value::as_str)
             .ok_or_else(|| "resolution row is missing key".to_string())?;
         let disposition = row
@@ -353,7 +413,6 @@ fn validate_manifest(manifest: &Value, preflight: &Value, digest: &str) -> Resul
         }
         if row
             .get("evidence")
-            .or_else(|| row.get("evidence_ref"))
             .and_then(Value::as_str)
             .is_none_or(|value| value.trim().is_empty())
         {
@@ -518,18 +577,54 @@ fn render_markdown(report: &Value) -> Result<String, String> {
     let status = string_field(report, "status")?;
     let join = string_field(report, "join_head")?;
     let source = string_field(report, "source_main")?;
-    let tree = string_field(report, "tree")?;
+    let tree = report
+        .get("tree")
+        .and_then(Value::as_str)
+        .unwrap_or("not available");
+    let preflight_digest = report
+        .get("preflight_sha256")
+        .and_then(Value::as_str)
+        .unwrap_or("not available");
     let parents = report
         .get("parents")
         .and_then(Value::as_array)
         .ok_or_else(|| "report parents missing".to_string())?;
-    Ok(format!(
+    let structured = serde_json::to_string_pretty(report)
+        .map_err(|error| format!("failed to serialize Markdown structured receipt: {error}"))?;
+    let main = report
+        .get("main_head")
+        .and_then(Value::as_str)
+        .unwrap_or("not supplied (post-merge reachability not_run)");
+    let merge_base = report
+        .get("merge_base")
+        .and_then(Value::as_str)
+        .unwrap_or("not available");
+    let reachability = report
+        .get("swarm_reachability")
+        .ok_or_else(|| "report swarm reachability missing".to_string())?;
+    let checks = report
+        .get("checks")
+        .ok_or_else(|| "report checks missing".to_string())?;
+    let failures = report
+        .get("failure_reasons")
+        .ok_or_else(|| "report failure reasons missing".to_string())?;
+    let invalidation = report
+        .get("invalidation_rules")
+        .ok_or_else(|| "report invalidation rules missing".to_string())?;
+    let non_claims = report
+        .get("non_claims")
+        .ok_or_else(|| "report non-claims missing".to_string())?;
+    let header = format!(
         "# Source-promotion verification\n\n- Schema: {schema}\n- Status: **{status}**\n- J: `{join}`\n- SOURCE_PARENT: `{source}`\n- Parents (ordered): `{}` then `{}`\n- Tree: `{tree}`\n- Preflight SHA-256: `{}`\n- Resolution manifest SHA-256: `{}`\n\n## Claim boundary\n\nThe receipt proves the exact two-parent Git graph, reviewed tree identity, ancestry denominators/digests, metadata byte identity, and optional merged-main reachability. It does not adjudicate semantic conflict resolutions, product correctness, release readiness, publication, or K back-sync.\n",
         parents.first().and_then(Value::as_str).unwrap_or(""),
         parents.get(1).and_then(Value::as_str).unwrap_or(""),
-        string_field(report, "preflight_sha256")?,
-        string_field(report, "resolution_manifest_sha256")?
-    ))
+        preflight_digest,
+        string_field(report, "resolution_manifest_sha256").unwrap_or("not available"),
+    );
+    Ok(header
+        + &format!(
+            "\n- MAIN_HEAD: `{main}`\n- MERGE_BASE: `{merge_base}`\n\n## Swarm reachability\n\n```json\n{reachability}\n```\n\n## Checks\n\n```json\n{checks}\n```\n\n## Failure reasons\n\n```json\n{failures}\n```\n\n## Invalidation rules\n\n```json\n{invalidation}\n```\n\n## Non-claims\n\n```json\n{non_claims}\n```\n\n## Structured receipt\n\n```json\n{structured}\n```\n"
+        ))
 }
 
 fn git_exact_commit(value: &str, name: &str) -> Result<(), String> {
@@ -543,8 +638,7 @@ fn git_exact_commit(value: &str, name: &str) -> Result<(), String> {
 }
 
 fn require_ancestor(ancestor: &str, descendant: &str, message: &str) -> Result<(), String> {
-    let output = Command::new("git")
-        .args(["merge-base", "--is-ancestor", ancestor, descendant])
+    let output = git_command(["merge-base", "--is-ancestor", ancestor, descendant])
         .output()
         .map_err(|error| format!("failed to test ancestry: {error}"))?;
     if !output.status.success() {
@@ -554,8 +648,7 @@ fn require_ancestor(ancestor: &str, descendant: &str, message: &str) -> Result<(
 }
 
 fn git(args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
-        .args(args)
+    let output = git_command(args.iter().copied())
         .output()
         .map_err(|error| format!("failed to execute git {}: {error}", args.join(" ")))?;
     if !output.status.success() {
@@ -570,8 +663,7 @@ fn git(args: &[&str]) -> Result<String, String> {
 }
 
 fn git_bytes(args: &[&str]) -> Result<Vec<u8>, String> {
-    let output = Command::new("git")
-        .args(args)
+    let output = git_command(args.iter().copied())
         .output()
         .map_err(|error| format!("failed to execute git {}: {error}", args.join(" ")))?;
     if !output.status.success() {
@@ -582,6 +674,12 @@ fn git_bytes(args: &[&str]) -> Result<Vec<u8>, String> {
         ));
     }
     Ok(output.stdout)
+}
+
+fn git_command<'a>(args: impl IntoIterator<Item = &'a str>) -> Command {
+    let mut command = Command::new("git");
+    command.arg("--no-replace-objects").args(args);
+    command
 }
 
 fn string_field<'a>(value: &'a Value, key: &str) -> Result<&'a str, String> {
@@ -672,11 +770,247 @@ mod tests {
     }
 
     #[test]
+    fn manifest_accepts_only_canonical_v1_field_names() -> Result<(), String> {
+        let preflight = serde_json::json!({
+            "schema": PREFLIGHT_SCHEMA,
+            "source_parent":"0000000000000000000000000000000000000000",
+            "swarm_parent":"1111111111111111111111111111111111111111",
+            "merge_base":"2222222222222222222222222222222222222222",
+            "dry_merge":{"reviewed_resolved_tree":"3333333333333333333333333333333333333333","reviewed_resolved_tree_verified":true,"conflicts":["x"]},
+            "source_survivor_candidates":[], "swarm_authority_resolution_candidates":[]
+        });
+        let digest = digest_bytes(
+            serde_json::to_string(&preflight)
+                .map_err(|error| error.to_string())?
+                .as_bytes(),
+        );
+        let canonical = serde_json::json!({
+            "schema": RESOLUTION_SCHEMA, "preflight_sha256": digest,
+            "source_parent":"0000000000000000000000000000000000000000",
+            "swarm_parent":"1111111111111111111111111111111111111111",
+            "merge_base":"2222222222222222222222222222222222222222",
+            "reviewed_join_tree":"3333333333333333333333333333333333333333",
+            "dispositions":[{"kind":"conflict","key":"x","disposition":"source","rationale":"reviewed","evidence":"review"}]
+        });
+        validate_manifest(&canonical, &preflight, &digest)?;
+        let mut missing = canonical.clone();
+        missing["dispositions"] = serde_json::json!([]);
+        if validate_manifest(&missing, &preflight, &digest).is_ok() {
+            return Err("missing inventory row accepted".into());
+        }
+        let mut extra = canonical.clone();
+        extra["dispositions"].as_array_mut().ok_or_else(|| "dispositions fixture malformed".to_string())?.push(serde_json::json!({
+            "kind":"conflict", "key":"extra", "disposition":"source", "rationale":"extra", "evidence":"extra"
+        }));
+        if validate_manifest(&extra, &preflight, &digest).is_ok() {
+            return Err("extra inventory row accepted".into());
+        }
+        for (canonical_name, alias) in [
+            ("preflight_sha256", "preflight_digest"),
+            ("reviewed_join_tree", "reviewed_resolved_tree"),
+            ("dispositions", "resolutions"),
+        ] {
+            let mut aliased = canonical.clone();
+            let value = aliased
+                .as_object_mut()
+                .and_then(|object| object.remove(canonical_name))
+                .ok_or_else(|| format!("missing canonical field {canonical_name}"))?;
+            aliased[alias] = value;
+            if validate_manifest(&aliased, &preflight, &digest).is_ok() {
+                return Err(format!("noncanonical alias accepted: {alias}"));
+            }
+        }
+        let mut row_alias = canonical.clone();
+        let key = row_alias["dispositions"][0]["key"].take();
+        row_alias["dispositions"][0]["path"] = key;
+        if validate_manifest(&row_alias, &preflight, &digest).is_ok() {
+            return Err("path alias accepted for resolution key".into());
+        }
+        let mut evidence_alias = canonical;
+        let evidence = evidence_alias["dispositions"][0]["evidence"].take();
+        evidence_alias["dispositions"][0]["evidence_ref"] = evidence;
+        if validate_manifest(&evidence_alias, &preflight, &digest).is_ok() {
+            return Err("evidence_ref alias accepted for resolution evidence".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn range_and_main_reachability_fail_closed() -> Result<(), String> {
+        let expected = serde_json::json!({
+            "all_reachable_count": 1, "first_parent_count": 1,
+            "all_reachable_sha256": digest_lines(&["a".into()]),
+            "first_parent_ordered_sha256": digest_lines(&["a".into()])
+        });
+        let expected = expected
+            .as_object()
+            .ok_or_else(|| "range fixture malformed".to_string())?;
+        compare_range(&(vec!["a".into()], vec!["a".into()]), expected, "source")?;
+        if compare_range(&(vec!["b".into()], vec!["a".into()]), expected, "source").is_ok() {
+            return Err("ancestry digest drift accepted".into());
+        }
+        if compare_range(
+            &(vec!["a".into(), "b".into()], vec!["a".into()]),
+            expected,
+            "source",
+        )
+        .is_ok()
+        {
+            return Err("ancestry count drift accepted".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn receipts_render_every_contract_field_and_rejections_are_structured() -> Result<(), String> {
+        let options = Options {
+            preflight: PathBuf::new(),
+            manifest: PathBuf::new(),
+            join: "0123456789abcdef0123456789abcdef01234567".into(),
+            source_main: "1123456789abcdef0123456789abcdef01234567".into(),
+            main: None,
+            out: PathBuf::new(),
+        };
+        let rejected = failure_report(&options, "synthetic failure");
+        let markdown = render_markdown(&rejected)?;
+        for field in [
+            "failure_reasons",
+            "invalidation_rules",
+            "non_claims",
+            "main_reachability",
+            "caller_state_mutated",
+        ] {
+            if !markdown.contains(field) {
+                return Err(format!("Markdown omitted {field}"));
+            }
+        }
+        if rejected.get("status").and_then(Value::as_str) != Some("rejected") {
+            return Err("rejection receipt did not carry rejected status".into());
+        }
+        if rejected["checks"]["main_reachability"] != "not_run" {
+            return Err("omitted main head was not explicit not_run".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn git_object_view_ignores_replacement_refs() -> Result<(), String> {
+        let _guard = CWD_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .map_err(|error| format!("cwd test lock poisoned: {error}"))?;
+        let root = std::env::temp_dir().join(format!("ripr-replace-{}", std::process::id()));
+        if root.exists() {
+            return Err("replacement fixture path already exists".into());
+        }
+        fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+        let result = (|| {
+            test_git(&root, &["init", "--quiet"])?;
+            test_git(&root, &["config", "user.email", "test@example.invalid"])?;
+            test_git(&root, &["config", "user.name", "test"])?;
+            fs::write(root.join("base.txt"), "base\n").map_err(|e| e.to_string())?;
+            test_git(&root, &["add", "base.txt"])?;
+            test_git(&root, &["commit", "--quiet", "-m", "base"])?;
+            let original = test_git_output(&root, &["rev-parse", "HEAD"])?;
+            let original_tree =
+                test_git_output(&root, &["rev-parse", &format!("{original}^{{tree}}")])?;
+            fs::write(root.join("replacement.txt"), "replacement\n").map_err(|e| e.to_string())?;
+            test_git(&root, &["add", "replacement.txt"])?;
+            let tree = test_git_output(&root, &["write-tree"])?;
+            let replacement = test_git_output_with_input(
+                &root,
+                &["commit-tree", &tree, "-p", &original],
+                "replacement\n",
+            )?;
+            test_git(
+                &root,
+                &[
+                    "update-ref",
+                    &format!("refs/replace/{original}"),
+                    &replacement,
+                ],
+            )?;
+            let old = std::env::current_dir().map_err(|e| e.to_string())?;
+            std::env::set_current_dir(&root).map_err(|e| e.to_string())?;
+            let exact = git_exact_commit(&original, "--join-head");
+            let observed = git(&["rev-parse", &format!("{original}^{{tree}}")]);
+            std::env::set_current_dir(old).map_err(|e| e.to_string())?;
+            exact?;
+            if observed?.trim() != original_tree {
+                return Err("replacement ref changed exact object view".into());
+            }
+            Ok(())
+        })();
+        let _ = fs::remove_dir_all(&root);
+        result
+    }
+
+    #[test]
+    fn metadata_main_and_caller_state_contracts_are_executable() -> Result<(), String> {
+        let _guard = CWD_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .map_err(|error| format!("cwd test lock poisoned: {error}"))?;
+        let root = std::env::temp_dir().join(format!("ripr-metadata-{}", std::process::id()));
+        if root.exists() {
+            return Err("metadata fixture path already exists".into());
+        }
+        fs::create_dir_all(root.join("crates/ripr"))
+            .and_then(|_| fs::create_dir_all(root.join("editors/vscode")))
+            .map_err(|error| error.to_string())?;
+        let result = (|| {
+            test_git(&root, &["init", "--quiet"])?;
+            test_git(&root, &["config", "user.email", "test@example.invalid"])?;
+            test_git(&root, &["config", "user.name", "test"])?;
+            for path in METADATA_SURFACES {
+                let file = root.join(path);
+                fs::write(file, "stable\n").map_err(|error| error.to_string())?;
+            }
+            test_git(&root, &["add", "."])?;
+            test_git(&root, &["commit", "--quiet", "-m", "base"])?;
+            let source = test_git_output(&root, &["rev-parse", "HEAD"])?;
+            fs::write(root.join("Cargo.toml"), "changed\n").map_err(|error| error.to_string())?;
+            test_git(&root, &["add", "Cargo.toml"])?;
+            test_git(&root, &["commit", "--quiet", "-m", "mutated"])?;
+            let mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
+            let before_refs = test_git_output(
+                &root,
+                &["for-each-ref", "--format=%(refname)=%(objectname)"],
+            )?;
+            let old = std::env::current_dir().map_err(|error| error.to_string())?;
+            std::env::set_current_dir(&root).map_err(|error| error.to_string())?;
+            if verify_metadata(&source, &source).is_err() {
+                return Err("unchanged metadata was rejected".into());
+            }
+            if verify_metadata(&mutated, &source).is_ok() {
+                return Err("metadata byte mutation was accepted".into());
+            }
+            let tree = test_git_output(&root, &["rev-parse", &format!("{source}^{{tree}}")])?;
+            let unrelated_main =
+                test_git_output_with_input(&root, &["commit-tree", &tree], "unrelated main\n")?;
+            if require_ancestor(&mutated, &unrelated_main, "main unexpectedly reaches J").is_ok() {
+                return Err("equivalent-tree main without J was accepted".into());
+            }
+            let after_refs = test_git_output(
+                &root,
+                &["for-each-ref", "--format=%(refname)=%(objectname)"],
+            )?;
+            std::env::set_current_dir(old).map_err(|error| error.to_string())?;
+            if before_refs != after_refs {
+                return Err("verification changed caller refs".into());
+            }
+            Ok(())
+        })();
+        let _ = fs::remove_dir_all(&root);
+        result
+    }
+
+    #[test]
     fn synthetic_join_rejects_appended_repair_head() -> Result<(), String> {
         let _guard = CWD_LOCK
             .get_or_init(|| Mutex::new(()))
             .lock()
-            .map_err(|_| "cwd test lock poisoned".to_string())?;
+            .map_err(|error| format!("cwd test lock poisoned: {error}"))?;
         let root = std::env::temp_dir().join(format!("ripr-source-verify-{}", std::process::id()));
         if root.exists() {
             return Err("synthetic fixture path already exists".to_string());
@@ -708,7 +1042,6 @@ mod tests {
                 &["commit-tree", &tree, "-p", &source, "-p", &swarm],
                 "join\n",
             )?;
-            let repair_tree = test_git_output(&root, &["rev-parse", &format!("{join}^{{tree}}")])?;
             fs::write(root.join("repair.txt"), "repair\n").map_err(|error| error.to_string())?;
             test_git(&root, &["add", "repair.txt"])?;
             let repair_tree = test_git_output(&root, &["write-tree"])?;
@@ -733,15 +1066,33 @@ mod tests {
                 preflight: PathBuf::new(),
                 manifest: PathBuf::new(),
                 join: repair,
-                source_main: source,
+                source_main: source.clone(),
                 main: None,
                 out: PathBuf::new(),
             };
+            let valid_options = Options {
+                join: join.clone(),
+                source_main: source.clone(),
+                ..options.clone()
+            };
             let old = std::env::current_dir().map_err(|error| error.to_string())?;
             std::env::set_current_dir(&root).map_err(|error| error.to_string())?;
+            verify_graph(&valid_options, &preflight)?;
+            let mut wrong_tree = preflight.clone();
+            wrong_tree["dry_merge"]["reviewed_resolved_tree"] =
+                Value::String("4444444444444444444444444444444444444444".into());
+            if verify_graph(&valid_options, &wrong_tree).is_ok() {
+                return Err("reviewed-tree mismatch was accepted".into());
+            }
+            let mut reversed = preflight.clone();
+            reversed["source_parent"] = Value::String(swarm.clone());
+            reversed["swarm_parent"] = Value::String(source.clone());
+            if verify_graph(&valid_options, &reversed).is_ok() {
+                return Err("reversed parent identities were accepted".into());
+            }
             let failed = verify_graph(&options, &preflight).is_err();
             std::env::set_current_dir(old).map_err(|error| error.to_string())?;
-            if !failed || repair_tree.is_empty() {
+            if !failed {
                 return Err("appended repair commit was accepted as J".to_string());
             }
             Ok(())
