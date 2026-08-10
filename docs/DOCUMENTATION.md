@@ -119,6 +119,8 @@ Current how-to docs:
 - [Lane 3 editor/LSP tracker](lanes/LANE_3_EDITOR_LSP.md)
 - [Lane 4 PR / CI review cockpit tracker](lanes/LANE_4_PR_CI_REVIEW.md)
 - [Release](RELEASE.md)
+- [Live-history release transaction runbook](RELEASE_TRANSACTION.md) - exact
+  two-repository release lifecycle, J/K transport, receipts, and stop rules
 - [Source-promotion preflight](SOURCE_PROMOTION_PREFLIGHT.md)
 - [Back-sync verifier](BACK_SYNC_VERIFIER.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)

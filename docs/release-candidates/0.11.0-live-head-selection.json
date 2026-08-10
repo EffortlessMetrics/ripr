@@ -3,11 +3,12 @@
   "kind": "ripr_swarm_live_head_release_authority",
   "release_line": "0.11.0",
   "authority_issue": 2379,
-  "status": "authority_reset_pending_transaction_pin",
+  "status": "active_selection_template",
   "selection_rule": "0.11.0 candidate = the exact ripr-swarm/main commit selected at the release transaction boundary",
-  "selection_ref": "origin/main",
+  "selection_ref": "origin/main at the transaction boundary only",
   "selected_swarm_parent": null,
-  "immutable_ref": null,
+  "local_verifier_ref": null,
+  "protected_candidate_tag": null,
   "source_parent": null,
   "merge_base": null,
   "counts": {
@@ -32,10 +33,11 @@
     "candidate-only C-to-T construction as the active release path",
     "T-bound denominator lock as the active release authority"
   ],
-  "reason": "After the exact live swarm history is selected and pinned at the transaction boundary, 0.11.0 will include all work reachable from that head; later work remains outside the immutable pin.",
-  "pin_update_rule": "After this authority reset merges, replace the null transaction fields with one exact SWARM_PARENT and immutable ref. Repin only for a release-invalidating exact-candidate or source-preflight failure; main movement alone never repins.",
+  "reason": "After the exact live swarm history is selected and pinned at the transaction boundary, 0.11.0 will include all work reachable from that head; later work remains outside the protected pin.",
+  "binding_rule": "This checked-in JSON is the active selection-rule/template authority. At W, copy it into the transaction packet, replace null fields in one producer update, validate all exact SHAs and receipts, and never treat origin/main after W as membership input.",
+  "pin_update_rule": "At W, replace the null transaction fields with one exact SWARM_PARENT, protected candidate tag, and ruleset receipt. Repin only for a release-invalidating exact-candidate or source-preflight failure; main movement alone never repins.",
   "status_transition": {
-    "authority_reset_pending_transaction_pin": "selected_swarm_parent, immutable_ref, source_parent, merge_base, counts, and digest are all null; no membership or qualification claim is permitted",
+    "active_selection_template": "selection rule is active; transaction fields remain null until W and no membership or qualification claim is permitted",
     "pinned_exact_head": "all transaction fields are present and mutually bound; exact-head qualification and source preflight may begin",
     "invalidation": "any missing or mismatched binding, or an allowed release-invalidating proof failure, returns to a new reviewed pin transaction"
   },
@@ -46,13 +48,13 @@
     "back_sync": "preserve source release ancestry in the controlled source-to-swarm merge"
   },
   "pin_recipe": {
-    "immutable_ref_format": "refs/ripr/release-0.11.0-<SWARM_PARENT>",
+    "protected_candidate_tag_format": "refs/tags/ripr-release-0.11.0-<SWARM_PARENT> (protected candidate tag; local verifier ref remains refs/ripr/release-0.11.0-<SWARM_PARENT>)",
     "ordered_range_basis": "first-parent commits from MERGE_BASE (exclusive) to SWARM_PARENT (inclusive)",
     "ordered_range_command": "git rev-list --first-parent --reverse MERGE_BASE..SWARM_PARENT",
     "digest_encoding": "sha256 over the UTF-8 bytes of the newline-terminated SHA list exactly as emitted by the command",
-    "required_bindings": ["SOURCE_PARENT", "SWARM_PARENT", "MERGE_BASE", "immutable_ref", "ordered_swarm_range_sha256"],
+    "required_bindings": ["SOURCE_PARENT", "SWARM_PARENT", "MERGE_BASE", "protected_candidate_tag", "pin_ruleset_receipt", "ordered_swarm_range_sha256"],
     "missing_or_mismatched_binding": "fail closed; qualification and source preflight may not proceed",
-    "remote_binding": "the pin producer must verify origin resolves to EffortlessMetrics/ripr-swarm before recording the SHA"
+    "remote_binding": "the pin producer must verify origin resolves to EffortlessMetrics/ripr-swarm, the active release-transaction-pins tag ruleset matches ripr-release-*, and both update and deletion rules are active before recording the SHA"
   },
   "execution_claim_audit": {
     "status": "required_at_final_swarm_parent",

@@ -28,6 +28,11 @@ tag/release URL in `EffortlessMetrics/ripr`, and the promotion evidence.
 
 ## Live-history release train
 
+Use the [live-history release transaction runbook](RELEASE_TRANSACTION.md) as
+the canonical operator sequence. This checklist remains the release-surface
+and packaging reference; the runbook owns exact pins, J/K expected-head guards,
+receipts, invalidation, publication authorization, and cleanup.
+
 For the 0.11.0 release train, and as the standard two-repository pattern for
 future releases, use this authority sequence:
 

@@ -7,6 +7,12 @@ trusted same-repo `ripr` pull requests. The release-facing repository remains
 Use this repository to prove routed CI and high-throughput agent development
 before promoting batches back to the source repository.
 
+For the complete release-boundary lifecycle, use the [live-history release
+transaction runbook](RELEASE_TRANSACTION.md). This page retains the swarm
+operator loop and repository-side promotion/back-sync details; the runbook is
+the canonical place for transaction pins, receipts, expected-head guards, and
+publication boundaries.
+
 ## Boundaries
 
 - New ordinary development PRs target `ripr-swarm`.
