@@ -89,6 +89,8 @@ jobs:
           test "$join_head" = "$PR_HEAD" || fail "declared join_head does not equal the live PR head"
 
           printf '%s\n' "$PR_BODY" | grep -Fq '<!-- source-promotion: true -->' || fail "promotion marker is missing"
+          printf '%s\n' "$PR_BODY" | grep -Fq 'gh pr merge' || fail "copy-safe gh pr merge command is missing"
+          printf '%s\n' "$PR_BODY" | grep -Fq -- '--merge' || fail "copy-safe command is missing --merge"
           printf '%s\n' "$PR_BODY" | grep -Fq -- "--match-head-commit $PR_HEAD" || fail "merge command is not bound to the live PR head"
           printf '%s\n' "$PR_BODY" | grep -Fq 'Use Create a merge commit.' || fail "merge-commit warning is missing"
           printf '%s\n' "$PR_BODY" | grep -Fq 'Do not use Squash and merge.' || fail "squash warning is missing"
