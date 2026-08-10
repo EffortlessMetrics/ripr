@@ -6069,19 +6069,17 @@ metrics = [
   "unit_test_pass_rate",
 ]
 
-[[artifact]]
+[[behavior]]
 id = "RIPR-SPEC-0148"
-kind = "spec"
-path = "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md"
-status = "accepted"
-owner = "release"
-
-[[artifact]]
-id = "RIPR-SPEC-0149"
-kind = "spec"
-path = "docs/specs/RIPR-SPEC-0149-source-promotion-verifier.md"
-status = "proposed"
-owner = "release"
+name = "source-promotion preflight receipt"
+spec = "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md"
+tests = [
+  "xtask/src/reports/source_promotion_verify.rs::tests::producer_receipt_and_empty_ancestry_serialization_are_stable",
+]
+fixtures = ["fixtures/source_promotion_verification"]
+code = ["xtask/src/reports/source_promotion_verify.rs"]
+outputs = ["fixtures/source_promotion_verification/expected/check.json"]
+metrics = ["unit_test_pass_rate"]
 
 [[behavior]]
 id = "RIPR-SPEC-0149"
@@ -6111,8 +6109,8 @@ code = [
   "xtask/src/reports/mod.rs",
 ]
 outputs = [
-  "target/ripr/source-promotion/source-promotion-verification.json",
-  "target/ripr/source-promotion/source-promotion-verification.md",
+  "fixtures/source_promotion_verification/expected/check.json",
+  "fixtures/source_promotion_verification/expected/human.txt",
 ]
 metrics = ["unit_test_pass_rate"]
 
