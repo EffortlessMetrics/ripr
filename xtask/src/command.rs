@@ -1532,14 +1532,17 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn source_promotion_workflow_is_exact_head_and_read_only() -> Result<(), String> {
+    fn source_promotion_workflow() -> Result<String, String> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .ok_or_else(|| "xtask manifest has no repository parent".to_string())?;
-        let workflow =
-            std::fs::read_to_string(root.join(".github/workflows/source-promotion-contract.yml"))
-                .map_err(|error| format!("failed to read source-promotion workflow: {error}"))?;
+        std::fs::read_to_string(root.join(".github/workflows/source-promotion-contract.yml"))
+            .map_err(|error| format!("failed to read source-promotion workflow: {error}"))
+    }
+
+    #[test]
+    fn source_promotion_workflow_is_exact_head_and_read_only() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
         for needle in [
             "fetch-depth: 0",
             "ref: ${{ github.event.pull_request.head.sha }}",
@@ -1565,6 +1568,66 @@ mod tests {
             return Err(
                 "source-promotion workflow must print, not execute, gh pr merge".to_string(),
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_rejects_symlink_and_path_escape_inputs() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "validate_tracked_regular_file",
+            "test ! -L \"$candidate\"",
+            "realpath -e \"$candidate\"",
+            "path is not canonical within GITHUB_WORKSPACE",
+            "path escapes the checkout",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "workflow lacks symlink/path-escape guard: {needle}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_rejects_placeholder_and_wrong_repo_commands() -> Result<(), String>
+    {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr",
+            "merge command must bind numeric PR",
+            "while IFS= read -r merge_line",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!("workflow lacks merge-command guard: {needle}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_disables_checkout_credentials_before_code() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        let count = workflow.matches("persist-credentials: false").count();
+        if count != 2 {
+            return Err(format!(
+                "expected both source-promotion checkouts to disable credentials, found {count}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_refutes_crlf_rewrite_thread() -> Result<(), String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest has no repository parent".to_string())?;
+        let attributes = std::fs::read_to_string(root.join(".gitattributes"))
+            .map_err(|error| format!("failed to read .gitattributes: {error}"))?;
+        if !attributes.contains("* text=auto eol=lf") {
+            return Err(".gitattributes does not enforce LF text checkout".to_string());
         }
         Ok(())
     }

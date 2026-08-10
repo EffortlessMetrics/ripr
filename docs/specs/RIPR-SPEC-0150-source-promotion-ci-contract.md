@@ -37,7 +37,7 @@ rebase. The command is printed only; the workflow never executes it. A manual
 workflow-dispatch lane reruns the verifier with `--main-head` and requires the
 exact J object to remain reachable from merged source `main`.
 
-## Required evidence
+## Required Evidence
 
 - unrelated PRs skip without a success claim;
 - a stale or substituted `join_head`, body command SHA, receipt path, or source
@@ -47,12 +47,29 @@ exact J object to remain reachable from merged source `main`.
 - uploaded receipts retain exact heads, ordered parents, input digests, checks,
   failure reasons, and claim boundaries.
 
-## Non-goals
+## Non-Goals
+
+## Acceptance Examples
+
+- A marked promotion PR with canonical, tracked regular-file receipts and a numeric, repository-bound `gh pr merge` command passes the PR-head verifier lane.
+- Symlinked or checkout-escaping receipt inputs, placeholder or wrong-repository merge commands, and flattened ancestry are rejected.
+- An unrelated PR skips the promotion lane honestly, while manual `--main-head` verification proves the post-merge ancestry contract.
 
 No automatic merge, publication, release, tag, signing, secret use, settings,
 branch-protection mutation, ref mutation, or product-correctness claim.
 
-## Implementation mapping
+## Test Mapping
+
+Executable proof lives in
+`xtask/src/command.rs::tests::source_promotion_workflow_is_exact_head_and_read_only`,
+`source_promotion_workflow_rejects_symlink_and_path_escape_inputs`,
+`source_promotion_workflow_rejects_placeholder_and_wrong_repo_commands`,
+`source_promotion_workflow_disables_checkout_credentials_before_code`, and
+`source_promotion_workflow_refutes_crlf_rewrite_thread`. The exact-J graph and
+flattened-history controls remain covered by the verifier tests mapped in
+`.ripr/traceability.toml`.
+
+## Implementation Mapping
 
 - Workflow: `.github/workflows/source-promotion-contract.yml`
 - Operator contract: `docs/SOURCE_PROMOTION.md`

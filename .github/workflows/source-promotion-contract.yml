@@ -48,6 +48,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -60,6 +61,21 @@ jobs:
           INPUTS_PATH: docs/release/source-promotion/contract-inputs.json
         run: |
           set -euo pipefail
+          workspace_real=$(realpath -e "$GITHUB_WORKSPACE")
+
+          validate_tracked_regular_file() {
+            local relative_path="$1"
+            case "$relative_path" in
+              /*|../*|*/../*|*\\..\\*) fail "path escapes the checkout: $relative_path" ;;
+            esac
+            local candidate="$GITHUB_WORKSPACE/$relative_path"
+            test -f "$candidate" || fail "path is not a regular file: $relative_path"
+            test ! -L "$candidate" || fail "path must not be a symlink: $relative_path"
+            local canonical
+            canonical=$(realpath -e "$candidate") || fail "path cannot be canonicalized: $relative_path"
+            test "$canonical" = "$workspace_real/$relative_path" || fail "path is not canonical within GITHUB_WORKSPACE: $relative_path"
+            test "$(git ls-files --error-unmatch "$relative_path")" = "$relative_path" || fail "path must be tracked: $relative_path"
+          }
 
           fail() {
             printf '%s\n' "source-promotion contract rejected: $1" >&2
@@ -68,8 +84,7 @@ jobs:
 
           test "$(git rev-parse HEAD)" = "$PR_HEAD" || fail "checkout is not the exact PR head"
           test "$(git rev-parse --verify "$BASE_SHA^{commit}")" = "$BASE_SHA" || fail "base SHA is not an exact commit"
-          test -f "$INPUTS_PATH" || fail "missing $INPUTS_PATH"
-          test "$(git ls-files --error-unmatch "$INPUTS_PATH")" = "$INPUTS_PATH" || fail "$INPUTS_PATH must be tracked"
+          validate_tracked_regular_file "$INPUTS_PATH"
           jq -e '.schema == "ripr.source_promotion_ci_inputs.v1"' "$INPUTS_PATH" >/dev/null || fail "unsupported promotion-input schema"
 
           source_main=$(jq -er '.source_main | select(type == "string" and test("^[0-9a-f]{40}$"))' "$INPUTS_PATH") || fail "source_main must be an exact lowercase SHA"
@@ -77,20 +92,21 @@ jobs:
           preflight=$(jq -er '.preflight | select(type == "string" and length > 0)' "$INPUTS_PATH") || fail "preflight path is missing"
           resolution_manifest=$(jq -er '.resolution_manifest | select(type == "string" and length > 0)' "$INPUTS_PATH") || fail "resolution_manifest path is missing"
 
-          for path in "$preflight" "$resolution_manifest"; do
-            case "$path" in
-              /*|../*|*/../*|*\\..\\*) fail "receipt path escapes the checkout: $path" ;;
-            esac
-            test -f "$path" || fail "receipt path does not exist: $path"
-            test "$(git ls-files --error-unmatch "$path")" = "$path" || fail "receipt path must be tracked: $path"
-          done
+          validate_tracked_regular_file "$preflight"
+          validate_tracked_regular_file "$resolution_manifest"
 
           test "$(git rev-parse --verify "$source_main^{commit}")" = "$source_main" || fail "source_main is not present in full history"
           test "$join_head" = "$PR_HEAD" || fail "declared join_head does not equal the live PR head"
 
           printf '%s\n' "$PR_BODY" | grep -Fq '<!-- source-promotion: true -->' || fail "promotion marker is missing"
-          printf '%s\n' "$PR_BODY" | grep -Fq 'gh pr merge' || fail "copy-safe gh pr merge command is missing"
-          printf '%s\n' "$PR_BODY" | grep -Fq -- '--merge' || fail "copy-safe command is missing --merge"
+          merge_lines=$(printf '%s\n' "$PR_BODY" | grep -F 'gh pr merge' || true)
+          test -n "$merge_lines" || fail "copy-safe gh pr merge command is missing"
+          while IFS= read -r merge_line; do
+            case "$merge_line" in
+              *"gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr"*"--merge"*) ;;
+              *) fail "merge command must bind numeric PR $PR_NUMBER and repo EffortlessMetrics/ripr" ;;
+            esac
+          done <<< "$merge_lines"
           printf '%s\n' "$PR_BODY" | grep -Fq -- "--match-head-commit $PR_HEAD" || fail "merge command is not bound to the live PR head"
           printf '%s\n' "$PR_BODY" | grep -Fq 'Use Create a merge commit.' || fail "merge-commit warning is missing"
           printf '%s\n' "$PR_BODY" | grep -Fq 'Do not use Squash and merge.' || fail "squash warning is missing"
@@ -245,6 +261,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
 
