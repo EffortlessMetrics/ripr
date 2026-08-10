@@ -6089,6 +6089,8 @@ name = "exact source-promotion graph and resolution verification"
 spec = "docs/specs/RIPR-SPEC-0149-source-promotion-verifier.md"
 tests = [
   "xtask/src/reports/source_promotion_verify.rs::tests::identity_arguments_are_exact_and_lowercase",
+  "xtask/src/reports/source_promotion_verify.rs::tests::merge_base_selection_rejects_ambiguous_history",
+  "xtask/src/reports/source_promotion_verify.rs::tests::blank_output_directory_is_rejected",
   "xtask/src/reports/source_promotion_verify.rs::tests::ordered_digest_is_not_commutative",
   "xtask/src/reports/source_promotion_verify.rs::tests::manifest_rejects_duplicate_rows",
   "xtask/src/reports/source_promotion_verify.rs::tests::manifest_accepts_only_canonical_v1_field_names",

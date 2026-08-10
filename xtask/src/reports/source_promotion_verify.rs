@@ -91,7 +91,8 @@ fn verify(options: &Options) -> Result<Value, String> {
     validate_manifest(&manifest, &preflight, &preflight_digest)?;
 
     let graph = verify_graph(options, &preflight)?;
-    verify_metadata(&options.repo, &options.join, &options.source_main)?;
+    let metadata_verified =
+        verify_metadata(&options.repo, &options.join, &options.source_main).map(|()| true)?;
     if let Some(main) = &options.main {
         git_exact_commit(&options.repo, main, "--main-head")?;
         require_ancestor(
@@ -103,11 +104,31 @@ fn verify(options: &Options) -> Result<Value, String> {
     }
 
     let mut checks = Map::new();
-    checks.insert("head_is_declared_join".into(), Value::Bool(true));
-    checks.insert("ordered_parents".into(), Value::Bool(true));
-    checks.insert("ancestry_and_digest".into(), Value::Bool(true));
-    checks.insert("reviewed_tree".into(), Value::Bool(true));
-    checks.insert("metadata_byte_identity".into(), Value::Bool(true));
+    let source = string_field(&preflight, "source_parent")?;
+    let swarm = string_field(&preflight, "swarm_parent")?;
+    let reviewed_tree = object_field(&preflight, "dry_merge")?
+        .get("reviewed_resolved_tree")
+        .and_then(Value::as_str);
+    checks.insert(
+        "head_is_declared_join".into(),
+        Value::Bool(graph.parents.len() == 2),
+    );
+    checks.insert(
+        "ordered_parents".into(),
+        Value::Bool(graph.parents.as_slice() == [source, swarm]),
+    );
+    checks.insert(
+        "ancestry_and_digest".into(),
+        Value::Bool(graph.ancestry_verified),
+    );
+    checks.insert(
+        "reviewed_tree".into(),
+        Value::Bool(reviewed_tree == Some(graph.tree.as_str())),
+    );
+    checks.insert(
+        "metadata_byte_identity".into(),
+        Value::Bool(metadata_verified),
+    );
     checks.insert(
         "main_reachability".into(),
         options.main.as_ref().map_or_else(
@@ -249,6 +270,13 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     if let Some(value) = &main {
         validate_identity("--main-head", value)?;
     }
+    let out = match values.get("--out") {
+        Some(value) if value.trim().is_empty() => {
+            return Err("--out must be a non-empty directory".to_string());
+        }
+        Some(value) => PathBuf::from(value),
+        None => PathBuf::from("target/ripr/source-promotion"),
+    };
     Ok(Options {
         repo: std::env::current_dir().map_err(|error| error.to_string())?,
         preflight: PathBuf::from(required("--preflight")?),
@@ -256,10 +284,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         join,
         source_main,
         main,
-        out: values
-            .get("--out")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("target/ripr/source-promotion")),
+        out,
     })
 }
 
@@ -305,8 +330,8 @@ fn validate_preflight(preflight: &Value, source_main: &str) -> Result<(), String
         return Err("preflight source_main is not bound to source parent".to_string());
     }
     let swarm_ref = string_field(preflight, "swarm_ref")?;
-    if !swarm_ref.starts_with("refs/") {
-        return Err("preflight swarm_ref is not immutable".to_string());
+    if !swarm_ref.starts_with("refs/ripr/") {
+        return Err("preflight swarm_ref is outside immutable refs/ripr namespace".to_string());
     }
     if string_field(preflight, "swarm_ref_sha")? != swarm {
         return Err("preflight immutable swarm ref is not bound to swarm parent".to_string());
@@ -470,6 +495,7 @@ struct Graph {
     swarm_first_count: usize,
     swarm_all_digest: String,
     swarm_first_digest: String,
+    ancestry_verified: bool,
 }
 
 fn verify_graph(options: &Options, preflight: &Value) -> Result<Graph, String> {
@@ -501,9 +527,10 @@ fn verify_graph(options: &Options, preflight: &Value) -> Result<Graph, String> {
         &options.join,
         "swarm parent is not an ancestor of J",
     )?;
-    let merge_base = git(&options.repo, &["merge-base", source, swarm])?
-        .trim()
-        .to_string();
+    let merge_base = unique_merge_base(&git(
+        &options.repo,
+        &["merge-base", "--all", source, swarm],
+    )?)?;
     if merge_base != string_field(preflight, "merge_base")? {
         return Err("merge base differs from preflight".to_string());
     }
@@ -554,7 +581,19 @@ fn verify_graph(options: &Options, preflight: &Value) -> Result<Graph, String> {
         swarm_first_count: swarm_range.1.len(),
         swarm_all_digest: digest_lines(&swarm_range.0),
         swarm_first_digest: digest_lines(&swarm_range.1),
+        ancestry_verified: true,
     })
+}
+
+fn unique_merge_base(output: &str) -> Result<String, String> {
+    let merge_bases = lines(output.to_string());
+    if merge_bases.len() != 1 {
+        return Err(format!(
+            "merge-base is ambiguous: expected exactly one best base, found {}",
+            merge_bases.len()
+        ));
+    }
+    Ok(merge_bases[0].clone())
 }
 
 fn recompute_range(
@@ -708,10 +747,14 @@ fn require_ancestor(
     let output = git_command(repo, ["merge-base", "--is-ancestor", ancestor, descendant])
         .output()
         .map_err(|error| format!("failed to test ancestry: {error}"))?;
-    if !output.status.success() {
-        return Err(message.to_string());
+    match output.status.code() {
+        Some(0) => Ok(()),
+        Some(1) => Err(message.to_string()),
+        _ => Err(format!(
+            "git merge-base --is-ancestor failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )),
     }
-    Ok(())
 }
 
 fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
@@ -798,8 +841,27 @@ mod tests {
     use super::*;
     use std::path::Path;
     use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     static CWD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn fixture_root(label: &str) -> Result<PathBuf, String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos();
+        for attempt in 0..32u32 {
+            let root = std::env::temp_dir().join(format!("ripr-{label}-{stamp}-{attempt}"));
+            match fs::create_dir(&root) {
+                Ok(()) => return Ok(root),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+        Err(format!(
+            "could not allocate collision-resistant {label} fixture path"
+        ))
+    }
 
     #[test]
     fn identity_arguments_are_exact_and_lowercase() -> Result<(), String> {
@@ -814,6 +876,41 @@ mod tests {
             }
         }
         validate_identity("--join-head", "0123456789abcdef0123456789abcdef01234567")
+    }
+
+    #[test]
+    fn merge_base_selection_rejects_ambiguous_history() -> Result<(), String> {
+        if unique_merge_base("base-one\nbase-two\n").is_ok() {
+            return Err("ambiguous merge-base output was accepted".into());
+        }
+        if unique_merge_base("").is_ok() {
+            return Err("missing merge-base output was accepted".into());
+        }
+        if unique_merge_base("base\n")? != "base" {
+            return Err("unique merge-base output changed".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn blank_output_directory_is_rejected() -> Result<(), String> {
+        let args = vec![
+            "verify".to_string(),
+            "--preflight".to_string(),
+            "preflight.json".to_string(),
+            "--resolution-manifest".to_string(),
+            "manifest.json".to_string(),
+            "--join-head".to_string(),
+            "0123456789abcdef0123456789abcdef01234567".to_string(),
+            "--source-main".to_string(),
+            "1123456789abcdef0123456789abcdef01234567".to_string(),
+            "--out".to_string(),
+            "   ".to_string(),
+        ];
+        if parse_args(&args).is_ok() {
+            return Err("blank --out was accepted".into());
+        }
+        Ok(())
     }
 
     #[test]
@@ -970,11 +1067,7 @@ mod tests {
             .get_or_init(|| Mutex::new(()))
             .lock()
             .map_err(|error| format!("cwd test lock poisoned: {error}"))?;
-        let root = std::env::temp_dir().join(format!("ripr-replace-{}", std::process::id()));
-        if root.exists() {
-            return Err("replacement fixture path already exists".into());
-        }
-        fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+        let root = fixture_root("replace")?;
         let result = (|| {
             test_git(&root, &["init", "--quiet"])?;
             test_git(&root, &["config", "user.email", "test@example.invalid"])?;
@@ -1019,10 +1112,7 @@ mod tests {
             .get_or_init(|| Mutex::new(()))
             .lock()
             .map_err(|error| format!("cwd test lock poisoned: {error}"))?;
-        let root = std::env::temp_dir().join(format!("ripr-metadata-{}", std::process::id()));
-        if root.exists() {
-            return Err("metadata fixture path already exists".into());
-        }
+        let root = fixture_root("metadata")?;
         fs::create_dir_all(root.join("crates/ripr"))
             .and_then(|_| fs::create_dir_all(root.join("editors/vscode")))
             .map_err(|error| error.to_string())?;
@@ -1094,11 +1184,7 @@ mod tests {
             .get_or_init(|| Mutex::new(()))
             .lock()
             .map_err(|error| format!("cwd test lock poisoned: {error}"))?;
-        let root = std::env::temp_dir().join(format!("ripr-source-verify-{}", std::process::id()));
-        if root.exists() {
-            return Err("synthetic fixture path already exists".to_string());
-        }
-        fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+        let root = fixture_root("source-verify")?;
         let result = (|| {
             test_git(&root, &["init", "--quiet"])?;
             test_git(&root, &["config", "user.email", "test@example.invalid"])?;
@@ -1301,10 +1387,7 @@ mod tests {
 
     #[test]
     fn parse_failures_write_rejection_receipts_when_output_is_known() -> Result<(), String> {
-        let root = std::env::temp_dir().join(format!("ripr-parse-receipt-{}", std::process::id()));
-        if root.exists() {
-            return Err("parse receipt fixture path already exists".into());
-        }
+        let root = fixture_root("parse-receipt")?;
         let result = (|| {
             let args = vec![
                 "verify".to_string(),

@@ -25,7 +25,8 @@ a new byte-identical receipt and a new reviewed resolution manifest.
 
 The receipt must preserve the exact identities, repository checks, range
 denominators and digests, conflict and candidate inventories, reviewed tree,
-version observations, and invalidation rules named above.
+version observations, and invalidation rules named above. Immutable swarm refs
+must use the producer-controlled `refs/ripr/` namespace and an exact SHA pin.
 
 ## Non-Goals
 

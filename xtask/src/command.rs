@@ -825,7 +825,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
         command_entry(
             "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
             "report_only",
-            "target/ripr/source-promotion/source-promotion-verification.{json,md}",
+            "target/ripr/source-promotion/source-promotion-verification.{json,md} or explicit --out <dir>",
             false,
             "Verifies an exact history-preserving join, reviewed resolution manifest, ancestry digests, and metadata identity without constructing or mutating Git refs.",
         ),
