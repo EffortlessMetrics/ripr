@@ -36,7 +36,24 @@ struct Options {
 }
 
 pub(crate) fn source_promotion_verify(args: &[String]) -> Result<(), String> {
-    let options = parse_args(args)?;
+    let options = match parse_args(args) {
+        Ok(options) => options,
+        Err(reason) => {
+            if let Some(out) = output_path_from_args(args) {
+                let options = Options {
+                    preflight: PathBuf::new(),
+                    manifest: PathBuf::new(),
+                    join: String::new(),
+                    source_main: String::new(),
+                    main: None,
+                    out,
+                };
+                let report = failure_report(&options, &reason);
+                write_report(&options.out, &report)?;
+            }
+            return Err(reason);
+        }
+    };
     match verify(&options) {
         Ok(report) => write_report(&options.out, &report),
         Err(reason) => {
@@ -50,6 +67,12 @@ pub(crate) fn source_promotion_verify(args: &[String]) -> Result<(), String> {
             }
         }
     }
+}
+
+fn output_path_from_args(args: &[String]) -> Option<PathBuf> {
+    args.windows(2)
+        .find(|pair| pair[0] == "--out" && !pair[1].trim().is_empty())
+        .map(|pair| PathBuf::from(&pair[1]))
 }
 
 fn verify(options: &Options) -> Result<Value, String> {
@@ -575,8 +598,16 @@ fn verify_metadata(join: &str, source: &str) -> Result<(), String> {
 fn render_markdown(report: &Value) -> Result<String, String> {
     let schema = string_field(report, "schema")?;
     let status = string_field(report, "status")?;
-    let join = string_field(report, "join_head")?;
-    let source = string_field(report, "source_main")?;
+    let join = report
+        .get("join_head")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("not available");
+    let source = report
+        .get("source_main")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("not available");
     let tree = report
         .get("tree")
         .and_then(Value::as_str)
@@ -730,6 +761,24 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
 
     static CWD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct CwdGuard {
+        previous: PathBuf,
+    }
+
+    impl CwdGuard {
+        fn enter(path: &Path) -> Result<Self, String> {
+            let previous = std::env::current_dir().map_err(|error| error.to_string())?;
+            std::env::set_current_dir(path).map_err(|error| error.to_string())?;
+            Ok(Self { previous })
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.previous);
+        }
+    }
 
     #[test]
     fn identity_arguments_are_exact_and_lowercase() -> Result<(), String> {
@@ -930,11 +979,9 @@ mod tests {
                     &replacement,
                 ],
             )?;
-            let old = std::env::current_dir().map_err(|e| e.to_string())?;
-            std::env::set_current_dir(&root).map_err(|e| e.to_string())?;
+            let _cwd = CwdGuard::enter(&root)?;
             let exact = git_exact_commit(&original, "--join-head");
             let observed = git(&["rev-parse", &format!("{original}^{{tree}}")]);
-            std::env::set_current_dir(old).map_err(|e| e.to_string())?;
             exact?;
             if observed?.trim() != original_tree {
                 return Err("replacement ref changed exact object view".into());
@@ -977,8 +1024,7 @@ mod tests {
                 &root,
                 &["for-each-ref", "--format=%(refname)=%(objectname)"],
             )?;
-            let old = std::env::current_dir().map_err(|error| error.to_string())?;
-            std::env::set_current_dir(&root).map_err(|error| error.to_string())?;
+            let _cwd = CwdGuard::enter(&root)?;
             if verify_metadata(&source, &source).is_err() {
                 return Err("unchanged metadata was rejected".into());
             }
@@ -995,7 +1041,6 @@ mod tests {
                 &root,
                 &["for-each-ref", "--format=%(refname)=%(objectname)"],
             )?;
-            std::env::set_current_dir(old).map_err(|error| error.to_string())?;
             if before_refs != after_refs {
                 return Err("verification changed caller refs".into());
             }
@@ -1006,7 +1051,7 @@ mod tests {
     }
 
     #[test]
-    fn synthetic_join_rejects_appended_repair_head() -> Result<(), String> {
+    fn synthetic_join_rejects_graph_and_tree_adversaries() -> Result<(), String> {
         let _guard = CWD_LOCK
             .get_or_init(|| Mutex::new(()))
             .lock()
@@ -1062,6 +1107,47 @@ mod tests {
                 "dry_merge": {"reviewed_resolved_tree": tree, "reviewed_resolved_tree_verified":true, "preview_tree": "", "conflicts":[]},
                 "source_survivor_candidates":[], "swarm_authority_resolution_candidates":[], "version_state":{}, "invalidation_rules":[]
             });
+            let preflight_bytes =
+                serde_json::to_vec(&preflight).map_err(|error| error.to_string())?;
+            fs::write(root.join("preflight.json"), &preflight_bytes)
+                .map_err(|error| error.to_string())?;
+            let manifest = serde_json::json!({
+                "schema": RESOLUTION_SCHEMA,
+                "preflight_sha256": digest_bytes(&preflight_bytes),
+                "source_parent": source,
+                "swarm_parent": swarm,
+                "merge_base": base,
+                "reviewed_join_tree": tree,
+                "dispositions": []
+            });
+            fs::write(
+                root.join("manifest.json"),
+                serde_json::to_vec(&manifest).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let end_to_end_out = root.join("receipt");
+            let _cwd = CwdGuard::enter(&root)?;
+            let end_to_end_args = vec![
+                "verify".to_string(),
+                "--preflight".to_string(),
+                root.join("preflight.json").to_string_lossy().into_owned(),
+                "--resolution-manifest".to_string(),
+                root.join("manifest.json").to_string_lossy().into_owned(),
+                "--join-head".to_string(),
+                repair.clone(),
+                "--source-main".to_string(),
+                source.clone(),
+                "--out".to_string(),
+                end_to_end_out.to_string_lossy().into_owned(),
+            ];
+            if source_promotion_verify(&end_to_end_args).is_ok() {
+                return Err("end-to-end appended repair was accepted".into());
+            }
+            let end_to_end_receipt = fs::read_to_string(end_to_end_out.join(REPORT_JSON))
+                .map_err(|error| error.to_string())?;
+            if !end_to_end_receipt.contains("\"status\": \"rejected\"") {
+                return Err("end-to-end rejection receipt was not emitted".into());
+            }
             let options = Options {
                 preflight: PathBuf::new(),
                 manifest: PathBuf::new(),
@@ -1075,9 +1161,25 @@ mod tests {
                 source_main: source.clone(),
                 ..options.clone()
             };
-            let old = std::env::current_dir().map_err(|error| error.to_string())?;
-            std::env::set_current_dir(&root).map_err(|error| error.to_string())?;
             verify_graph(&valid_options, &preflight)?;
+            let squash = test_git_output_with_input(
+                &root,
+                &["commit-tree", &tree, "-p", &source],
+                "squash\n",
+            )?;
+            let squash_options = Options {
+                join: squash,
+                ..valid_options.clone()
+            };
+            if verify_graph(&squash_options, &preflight).is_ok() {
+                return Err("tree-equivalent squash was accepted".into());
+            }
+            let mut preview_substitution = preflight.clone();
+            preview_substitution["dry_merge"]["preview_tree"] = Value::String(tree.clone());
+            preview_substitution["dry_merge"]["conflicts"] = serde_json::json!(["synthetic"]);
+            if verify_graph(&valid_options, &preview_substitution).is_ok() {
+                return Err("automatic preview tree substitution was accepted".into());
+            }
             let mut wrong_tree = preflight.clone();
             wrong_tree["dry_merge"]["reviewed_resolved_tree"] =
                 Value::String("4444444444444444444444444444444444444444".into());
@@ -1091,9 +1193,41 @@ mod tests {
                 return Err("reversed parent identities were accepted".into());
             }
             let failed = verify_graph(&options, &preflight).is_err();
-            std::env::set_current_dir(old).map_err(|error| error.to_string())?;
             if !failed {
                 return Err("appended repair commit was accepted as J".to_string());
+            }
+            Ok(())
+        })();
+        let _ = fs::remove_dir_all(&root);
+        result
+    }
+
+    #[test]
+    fn parse_failures_write_rejection_receipts_when_output_is_known() -> Result<(), String> {
+        let root = std::env::temp_dir().join(format!("ripr-parse-receipt-{}", std::process::id()));
+        if root.exists() {
+            return Err("parse receipt fixture path already exists".into());
+        }
+        let result = (|| {
+            let args = vec![
+                "verify".to_string(),
+                "--join-head".to_string(),
+                "not-a-sha".to_string(),
+                "--source-main".to_string(),
+                "not-a-sha".to_string(),
+                "--out".to_string(),
+                root.to_string_lossy().into_owned(),
+            ];
+            if source_promotion_verify(&args).is_ok() {
+                return Err("invalid identity unexpectedly accepted".into());
+            }
+            let receipt =
+                fs::read_to_string(root.join(REPORT_JSON)).map_err(|error| error.to_string())?;
+            let report: Value =
+                serde_json::from_str(&receipt).map_err(|error| error.to_string())?;
+            if report["status"] != "rejected" || report["checks"]["main_reachability"] != "not_run"
+            {
+                return Err("parse rejection receipt was not structured".into());
             }
             Ok(())
         })();

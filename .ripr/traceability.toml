@@ -6091,6 +6091,13 @@ tests = [
   "xtask/src/reports/source_promotion_verify.rs::tests::identity_arguments_are_exact_and_lowercase",
   "xtask/src/reports/source_promotion_verify.rs::tests::ordered_digest_is_not_commutative",
   "xtask/src/reports/source_promotion_verify.rs::tests::manifest_rejects_duplicate_rows",
+  "xtask/src/reports/source_promotion_verify.rs::tests::manifest_accepts_only_canonical_v1_field_names",
+  "xtask/src/reports/source_promotion_verify.rs::tests::range_and_main_reachability_fail_closed",
+  "xtask/src/reports/source_promotion_verify.rs::tests::receipts_render_every_contract_field_and_rejections_are_structured",
+  "xtask/src/reports/source_promotion_verify.rs::tests::git_object_view_ignores_replacement_refs",
+  "xtask/src/reports/source_promotion_verify.rs::tests::metadata_main_and_caller_state_contracts_are_executable",
+  "xtask/src/reports/source_promotion_verify.rs::tests::synthetic_join_rejects_graph_and_tree_adversaries",
+  "xtask/src/reports/source_promotion_verify.rs::tests::parse_failures_write_rejection_receipts_when_output_is_known",
 ]
 fixtures = ["fixtures/source_promotion_verification"]
 code = [
