@@ -373,6 +373,7 @@ pub(crate) fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "release_control"
                     | "release_denominator"
                     | "release_scope"
+                    | "source_promotion"
                     | "surface-projection-alignment"
                     | "swarm-plan-packet-corpus"
                     | "typescript-bun-ub-calibration"

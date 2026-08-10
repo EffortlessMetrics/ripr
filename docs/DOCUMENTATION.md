@@ -119,6 +119,7 @@ Current how-to docs:
 - [Lane 3 editor/LSP tracker](lanes/LANE_3_EDITOR_LSP.md)
 - [Lane 4 PR / CI review cockpit tracker](lanes/LANE_4_PR_CI_REVIEW.md)
 - [Release](RELEASE.md)
+- [Source-promotion preflight](SOURCE_PROMOTION_PREFLIGHT.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md)
 - [First successful PR demo](demo/first-successful-pr.md)

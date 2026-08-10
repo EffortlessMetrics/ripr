@@ -6514,6 +6514,41 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0148"
+name = "exact source-promotion preflight"
+spec = "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md"
+tests = [
+  "xtask/src/reports/source_promotion.rs::tests::requires_an_immutable_swarm_ref",
+  "xtask/src/reports/source_promotion.rs::tests::rejects_a_branch_or_wrongly_named_swarm_ref",
+  "xtask/src/reports/source_promotion.rs::tests::version_observation_reads_exact_parent_not_checkout_files",
+  "xtask/src/reports/source_promotion.rs::tests::repository_identity_serialization_has_no_checkout_path",
+  "xtask/src/reports/source_promotion.rs::tests::disposable_repo_creation_rejects_existing_path",
+  "xtask/src/reports/source_promotion.rs::tests::swarm_parent_must_be_ancestor_of_declared_main",
+  "xtask/src/reports/source_promotion.rs::tests::moved_or_missing_swarm_ref_is_rejected",
+  "xtask/src/reports/source_promotion.rs::tests::remote_identity_normalizes_git_urls",
+  "xtask/src/reports/source_promotion.rs::tests::disposable_preflight_keeps_authoritative_checkouts_unchanged",
+  "xtask/src/reports/source_promotion.rs::tests::disposable_dry_merge_reports_clean_non_conflicting_history",
+]
+fixtures = [
+  "fixtures/source_promotion/diverged-conflict.json",
+  "fixtures/source_promotion/SPEC.md",
+]
+code = [
+  "xtask/src/reports/source_promotion.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+  "xtask/src/reports/fixtures.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md",
+  "docs/SOURCE_PROMOTION_PREFLIGHT.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0147"
 name = "typed analysis outcome projection"
 spec = "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md"

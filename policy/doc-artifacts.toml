@@ -6,6 +6,14 @@ schema_version = "1.0"
 # to resolve.
 
 [[artifact]]
+id = "RIPR-SPEC-0148"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md"
+status = "accepted"
+owner = "release-control"
+standalone_reason = "Maintainer-facing source-promotion preflight contract: exact repository/parent identity, deterministic ancestry denominators and digests, disposable merge-tree conflict evidence, and explicit invalidation/non-goals; no join, version, publication, or back-sync mutation."
+
+[[artifact]]
 id = "RIPR-PROP-0009"
 kind = "proposal"
 path = "docs/proposals/RIPR-PROP-0009-first-run-ux-adoption-hardening.md"

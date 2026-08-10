@@ -33,6 +33,7 @@ mod repo;
 mod review_comments;
 mod rust_repair_trust;
 mod sarif;
+mod source_promotion;
 mod targeted_rerun;
 mod targeted_test;
 mod test_oracles;
@@ -125,6 +126,7 @@ pub(crate) use sarif::{
     build_sarif_policy_report, parse_sarif_policy_args, parse_sarif_policy_results,
     sarif_policy_report_json, sarif_policy_report_markdown,
 };
+pub(crate) use source_promotion::source_promotion;
 pub(crate) use targeted_rerun::targeted_rerun_benchmark;
 pub(crate) use targeted_test::targeted_test_outcome;
 pub(crate) use test_oracles::{test_efficiency_report, test_oracle_report};
