@@ -1771,7 +1771,36 @@ fn workspace_file_identity_portable(files: Vec<(PathBuf, Vec<u8>)>) -> Option<St
     if files.iter().any(|(path, _)| path.is_absolute()) {
         return None;
     }
-    workspace_file_identity(files)
+    workspace_file_identity(
+        files
+            .into_iter()
+            .map(|(path, bytes)| (path, normalize_workspace_file_bytes(bytes)))
+            .collect(),
+    )
+}
+
+/// Cargo manifests and lockfiles are text inputs whose CRLF/LF spelling does
+/// not change their semantic content. Normalize CRLF to LF only for the
+/// portable artifact identity so equivalent checkouts do not diverge when a
+/// Windows Git checkout applies `core.autocrlf`; preserve standalone CR so
+/// invalid text cannot collide with a valid LF input.
+fn normalize_workspace_file_bytes(bytes: Vec<u8>) -> Vec<u8> {
+    let mut normalized = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while let Some(&byte) = bytes.get(index) {
+        if byte == b'\r' {
+            if bytes.get(index + 1) == Some(&b'\n') {
+                index += 1;
+                normalized.push(b'\n');
+            } else {
+                normalized.push(byte);
+            }
+        } else {
+            normalized.push(byte);
+        }
+        index += 1;
+    }
+    normalized
 }
 
 fn workspace_file_identity(mut files: Vec<(PathBuf, Vec<u8>)>) -> Option<String> {
@@ -2419,6 +2448,32 @@ mod tests {
             );
         }
         Ok(())
+    }
+
+    #[test]
+    fn workspace_portable_identity_ignores_crlf_line_ending_spelling() -> Result<(), String> {
+        let canonical = vec![(
+            PathBuf::from("Cargo.toml"),
+            b"[workspace]\nmembers = [\"crates/app\"]\n# trailing comment\n".to_vec(),
+        )];
+        let mixed = vec![(
+            PathBuf::from("Cargo.toml"),
+            b"[workspace]\r\nmembers = [\"crates/app\"]\r\n# trailing comment\r\n".to_vec(),
+        )];
+        if workspace_file_identity_portable(canonical) == workspace_file_identity_portable(mixed) {
+            return Ok(());
+        }
+        Err("portable workspace identities must ignore CRLF versus LF spelling".to_string())
+    }
+
+    #[test]
+    fn workspace_portable_identity_does_not_collide_lone_cr_with_lf() -> Result<(), String> {
+        let lf = vec![(PathBuf::from("Cargo.toml"), b"[workspace]\n".to_vec())];
+        let lone_cr = vec![(PathBuf::from("Cargo.toml"), b"[workspace]\r".to_vec())];
+        if workspace_file_identity_portable(lf) != workspace_file_identity_portable(lone_cr) {
+            return Ok(());
+        }
+        Err("portable identities must not collapse standalone CR into LF".to_string())
     }
 
     #[test]

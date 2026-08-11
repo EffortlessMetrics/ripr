@@ -40,7 +40,7 @@ mode, base revision, worktree state, bounded analysis-input identity,
 snapshot identity, creation command/profile, and `content_sha256`.
 
 The analysis-input identity is portable semantic/configuration identity
-(#2823): an explicitly versioned `input:v2:fnv1a64:<16 lowercase hex>`
+(#2823): an explicitly versioned `input:v3:fnv1a64:<16 lowercase hex>`
 covering the
 identity version, mode, profile (bound to mode by this producer), base, named
 workspace inputs (manifest and lockfile content identities), the
@@ -51,7 +51,7 @@ concrete checkout root or a host-specific path spelling. Equivalent checkouts
 of the same commit under different roots share one input identity; the
 concrete root remains separate envelope evidence (`repository.root`) that the
 verifier compares with exact canonical-path equality. Only the current
-`input:v2:` identity version with the exact digest shape validates as current
+`input:v3:` identity version with the exact digest shape validates as current
 evidence; any other version is rejected as an unsupported input identity
 version, any malformed digest shape as a malformed input identity digest, and
 a previous-version migration boundary stays deferred until a real migration
@@ -238,3 +238,7 @@ an unsupported schema fails before movement calculation.
   provenance slice is available.
 - Future slices under #1941 must add execution, configuration, and receipt
   currentness metrics without reusing this field as runtime proof.
+For portable workspace identities, CRLF is normalized to LF before hashing;
+standalone CR bytes are preserved so invalid input cannot collide with valid LF
+input. Changing this normalization is an identity-algorithm change and requires
+a new identity version. The prior `input:v2:` shape is unsupported.

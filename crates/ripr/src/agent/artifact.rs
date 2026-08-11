@@ -16,12 +16,12 @@ pub(crate) const ARTIFACT_IDENTITY_SCHEMA_VERSION: &str = "1";
 /// Version of the repo-exposure analysis input-identity algorithm (#2823).
 /// The emitted identity is `input:{INPUT_IDENTITY_VERSION}:<digest>`. The
 /// version is explicit in the emitted bytes so an algorithm change is a new
-/// identity shape, never a silent re-meaning of an existing one. v2 removes
+/// identity shape, never a silent re-meaning of an existing one. v3 removes
 /// the concrete checkout root (and any host-specific path spelling) from the
 /// fingerprint: `analysis.input_identity` is portable semantic/configuration
 /// identity, while `repository.root` stays the concrete checkout-instance
 /// evidence validated separately.
-pub(crate) const INPUT_IDENTITY_VERSION: &str = "v2";
+pub(crate) const INPUT_IDENTITY_VERSION: &str = "v3";
 pub(crate) const CONTENT_COMMITMENT_CANONICALIZATION: &str = "raw_json_placeholder_v1";
 pub(crate) const CONTENT_SHA256_PLACEHOLDER: &str =
     "sha256:0000000000000000000000000000000000000000000000000000000000000000";
@@ -2452,8 +2452,8 @@ mod tests {
         Ok(())
     }
 
-    /// (#2823 test 7) A previous-version input identity — the v1
-    /// `input:<digest>` shape, or any non-`input:v2:` value — never validates
+    /// (#2823 test 7) A previous-version input identity — the v1 and v2
+    /// `input:<digest>` shape, or any non-`input:v3:` value — never validates
     /// as current evidence, even when the artifact is otherwise internally
     /// consistent; nor does a current-version identity whose digest is not
     /// exactly `fnv1a64:<16 lowercase hex>`.
@@ -2473,7 +2473,7 @@ mod tests {
                 "input:fnv1a64:0123456789abcdef",
                 "input:legacy-unversioned",
                 "input:v1:fnv1a64:0123456789abcdef",
-                "input:v3:fnv1a64:0123456789abcdef",
+                "input:v2:fnv1a64:0123456789abcdef",
             ];
             for legacy in legacy_identities {
                 let legacy_snapshot = repo_exposure_snapshot_identity(legacy, &head);
@@ -2500,11 +2500,11 @@ mod tests {
             // exactly `fnv1a64:<16 lowercase hex>` is malformed, not merely
             // an unknown version, and gets its own bounded reason.
             let malformed_identities = [
-                "input:v2:garbage",
-                "input:v2:fnv1a64:",
-                "input:v2:fnv1a64:0123456789abcde",
-                "input:v2:fnv1a64:0123456789abcdef0",
-                "input:v2:fnv1a64:0123456789ABCDEF",
+                "input:v3:garbage",
+                "input:v3:fnv1a64:",
+                "input:v3:fnv1a64:0123456789abcde",
+                "input:v3:fnv1a64:0123456789abcdef0",
+                "input:v3:fnv1a64:0123456789ABCDEF",
             ];
             for malformed in malformed_identities {
                 let malformed_snapshot = repo_exposure_snapshot_identity(malformed, &head);
@@ -2531,7 +2531,7 @@ mod tests {
             // well-formed foreign digest reaches the later checks (here: the
             // snapshot mismatch), proving the shape gate does not reject
             // well-formed identities.
-            let well_formed = "input:v2:fnv1a64:fedcba9876543210";
+            let well_formed = "input:v3:fnv1a64:fedcba9876543210";
             let mutated = validate_mutated_identity(&root, &document, |document| {
                 document["artifact"]["analysis"]["input_identity"] = json!(well_formed);
             })?;
