@@ -155,11 +155,58 @@ if missing:
     dispatch = dispatch.replace(anchor, "".join(missing) + anchor)
 write(dispatch_path, dispatch)
 
-# The interim sync is metadata-neutral. Swarm may reorganize version
-# inheritance, but every governed effective value remains source-equal.
+# The interim sync is metadata-neutral. Swarm's live tree is still at 0.10.0,
+# while source has already established 0.10.1. Normalize every governed version
+# surface to the source value before Cargo reconciles the dependency graph.
 source_crate = tomllib.loads(git_show(SOURCE, "crates/ripr/Cargo.toml"))
 source_version = source_crate["package"]["version"]
-root = tomllib.loads(Path("Cargo.toml").read_text(encoding="utf-8"))
+
+root_path = Path("Cargo.toml")
+root_text = root_path.read_text(encoding="utf-8")
+workspace_version_re = re.compile(
+    r'(?ms)(^\[workspace\.package\]\n(?:(?!^\[).)*?^version\s*=\s*")[^"]+(".*$)'
+)
+root_text, root_count = workspace_version_re.subn(
+    lambda match: match.group(1) + source_version + match.group(2),
+    root_text,
+    count=1,
+)
+if root_count != 1:
+    raise SystemExit(f"workspace version anchor changed: {root_count}")
+write(str(root_path), root_text)
+
+source_package = json.loads(git_show(SOURCE, "editors/vscode/package.json"))
+expected_extension = source_package["version"]
+package_path = Path("editors/vscode/package.json")
+candidate_package = json.loads(package_path.read_text(encoding="utf-8"))
+candidate_package["version"] = expected_extension
+write(str(package_path), json.dumps(candidate_package, indent=2, ensure_ascii=False) + "\n")
+
+npm_lock_path = Path("editors/vscode/package-lock.json")
+candidate_npm_lock = json.loads(npm_lock_path.read_text(encoding="utf-8"))
+candidate_npm_lock["version"] = expected_extension
+candidate_npm_lock["packages"][""]["version"] = expected_extension
+write(
+    str(npm_lock_path),
+    json.dumps(candidate_npm_lock, indent=2, ensure_ascii=False) + "\n",
+)
+
+cargo_lock_path = Path("Cargo.lock")
+cargo_lock_text = cargo_lock_path.read_text(encoding="utf-8")
+ripr_lock_re = re.compile(
+    r'(?ms)(^\[\[package\]\]\nname = "ripr"\nversion = ")[^"]+(".*$)'
+)
+cargo_lock_text, lock_count = ripr_lock_re.subn(
+    lambda match: match.group(1) + source_version + match.group(2),
+    cargo_lock_text,
+    count=1,
+)
+if lock_count != 1:
+    raise SystemExit(f"Cargo.lock ripr package anchor changed: {lock_count}")
+write(str(cargo_lock_path), cargo_lock_text)
+
+# Reparse and prove the normalized effective identities before the Rust proof.
+root = tomllib.loads(root_path.read_text(encoding="utf-8"))
 crate = tomllib.loads(Path("crates/ripr/Cargo.toml").read_text(encoding="utf-8"))
 candidate_version = crate["package"].get("version")
 if isinstance(candidate_version, dict):
@@ -168,23 +215,19 @@ if isinstance(candidate_version, dict):
     candidate_version = root["workspace"]["package"]["version"]
 if candidate_version != source_version:
     raise SystemExit(
-        f"crate version drift: source={source_version} candidate={candidate_version}"
+        f"crate version drift after normalization: source={source_version} candidate={candidate_version}"
     )
-source_package = json.loads(git_show(SOURCE, "editors/vscode/package.json"))
-candidate_package = json.loads(Path("editors/vscode/package.json").read_text())
-if candidate_package["version"] != source_package["version"]:
-    raise SystemExit("VS Code package version drift")
-candidate_npm_lock = json.loads(Path("editors/vscode/package-lock.json").read_text())
-expected_extension = source_package["version"]
+if candidate_package["version"] != expected_extension:
+    raise SystemExit("VS Code package version normalization failed")
 if candidate_npm_lock["version"] != expected_extension:
-    raise SystemExit("npm lock root version drift")
+    raise SystemExit("npm lock root version normalization failed")
 if candidate_npm_lock["packages"][""]["version"] != expected_extension:
-    raise SystemExit("npm packages[''] version drift")
-lock = tomllib.loads(Path("Cargo.lock").read_text(encoding="utf-8"))
+    raise SystemExit("npm packages[''] version normalization failed")
+lock = tomllib.loads(cargo_lock_path.read_text(encoding="utf-8"))
 ripr_versions = [
     package["version"]
     for package in lock["package"]
     if package.get("name") == "ripr"
 ]
 if ripr_versions != [source_version]:
-    raise SystemExit(f"Cargo.lock ripr version drift: {ripr_versions}")
+    raise SystemExit(f"Cargo.lock ripr version normalization failed: {ripr_versions}")
