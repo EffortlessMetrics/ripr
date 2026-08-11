@@ -8647,13 +8647,24 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
         {
             return Err("candidate tag must be strict, remote-bound, and commit-typed".to_owned());
         }
-        if !candidate.contains("target == \"tag\" and .enforcement == \"active\"")
-            || !candidate.contains("index(\"refs/tags/ripr-release-*\")")
+        if candidate.contains("rulesets?includes_parents=true")
+            || candidate.contains("message=${message}")
+            || candidate.contains("ruleset_shape=")
+            || !candidate.contains(
+                "https://api.github.com/repos/EffortlessMetrics/ripr-swarm/rulesets/${ruleset_id}",
+            )
+            || !candidate.contains("ruleset_id=\"20661783\"")
+            || !candidate.contains("(.id == $expected_id)")
+            || !candidate.contains(".target == \"tag\"")
+            || !candidate.contains(".enforcement == \"active\"")
+            || !candidate.contains("type == \"array\" and length == 1")
+            || !candidate.contains(".conditions.ref_name.exclude")
             || !candidate.contains("index(\"update\")")
             || !candidate.contains("index(\"deletion\")")
         {
             return Err(
-                "active protected tag ruleset update/deletion checks are missing".to_owned(),
+                "fixed ruleset endpoint or strict protected tag shape checks are missing"
+                    .to_owned(),
             );
         }
         let targets = [
@@ -8714,8 +8725,19 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
             "actual_sha=\"$(sha256sum",
             "assets[$target].sha256",
             "(.assets | keys == ($targets | sort))",
-            "curl --silent --show-error --location",
-            "ruleset API attempt",
+            "curl --silent --show-error --location --connect-timeout 10 --max-time 20 --dump-header",
+            "ruleset_transport_ok",
+            "^[0-9]{1,20}$",
+            "ruleset verification request failed",
+            "ruleset verification shape mismatch",
+            "ruleset_safe_summary",
+            "json_object",
+            "include_count",
+            "exclude_count",
+            "rule_count",
+            "rate_limit_remaining",
+            "rate_limit_reset",
+            "response_sha256",
             "ruleset_mode",
             "ruleset_source_url",
             "ruleset_response_sha256",
@@ -8810,6 +8832,84 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
         if validate(&broken).is_ok() {
             return Err(format!("negative fixture `{name}` was not rejected"));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn server_archive_ruleset_shape_fixtures_are_strict_and_discriminating() -> Result<(), String> {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "xtask manifest should have a repository parent".to_string())?;
+    let workflow =
+        fs::read_to_string(repo_root.join(".github/workflows/server-archive-qualification.yml"))
+            .map_err(|error| format!("failed to read qualification workflow: {error}"))?;
+    let predicate_marker = "if jq -e --argjson expected_id \"${ruleset_id}\" '";
+    let predicate_start = workflow
+        .find(predicate_marker)
+        .map(|offset| offset + predicate_marker.len())
+        .ok_or_else(|| "qualification workflow jq predicate marker is missing".to_string())?;
+    let predicate_end = workflow[predicate_start..]
+        .find("' \"${ruleset_file}\"")
+        .ok_or_else(|| "qualification workflow jq predicate terminator is missing".to_string())?;
+    let predicate = workflow[predicate_start..predicate_start + predicate_end].trim();
+    if predicate.is_empty() {
+        return Err("qualification workflow jq predicate is empty".to_string());
+    }
+
+    let fixture_root = temp_dir("server-ruleset-jq");
+    let run_predicate = |ruleset: &Value, name: &str| -> Result<bool, String> {
+        let path = fixture_root.join(name);
+        let input = serde_json::to_vec(ruleset)
+            .map_err(|error| format!("failed to serialize ruleset fixture: {error}"))?;
+        fs::write(&path, input)
+            .map_err(|error| format!("failed to write ruleset fixture: {error}"))?;
+        let path_text = path
+            .to_str()
+            .ok_or_else(|| "ruleset fixture path was not UTF-8".to_string())?;
+        let args = vec![
+            "-e".to_string(),
+            "--argjson".to_string(),
+            "expected_id".to_string(),
+            "20661783".to_string(),
+            predicate.to_string(),
+            path_text.to_string(),
+        ];
+        let _cwd_guard = super::acquire_test_cwd_read_guard();
+        command_success_owned("jq", &args)
+    };
+
+    let positive: Value = serde_json::from_str(include_str!(
+        "../../fixtures/release_control/server-ruleset-20661783.json"
+    ))
+    .map_err(|error| format!("failed to parse positive ruleset fixture: {error}"))?;
+    if !run_predicate(&positive, "positive.json")? {
+        return Err("workflow jq predicate rejected the actual positive fixture".to_string());
+    }
+
+    let negative: Value = serde_json::from_str(include_str!(
+        "../../fixtures/release_control/server-ruleset-20661783-invalid.json"
+    ))
+    .map_err(|error| format!("failed to parse negative ruleset fixture: {error}"))?;
+    if run_predicate(&negative, "negative.json")? {
+        return Err("workflow jq predicate accepted the negative fixture".to_string());
+    }
+
+    let mut wrong_exclude = positive.clone();
+    wrong_exclude["conditions"]["ref_name"]["exclude"] = serde_json::json!(["refs/tags/old"]);
+    if run_predicate(&wrong_exclude, "wrong-exclude.json")? {
+        return Err("workflow jq predicate accepted a nonempty exclude mutation".to_string());
+    }
+
+    let mut wrong_id = positive.clone();
+    wrong_id["id"] = serde_json::json!(20_661_784);
+    if run_predicate(&wrong_id, "wrong-id.json")? {
+        return Err("workflow jq predicate accepted an unexpected ruleset id".to_string());
+    }
+
+    let wrong_shape = serde_json::json!({"id": 20_661_783, "target": "tag"});
+    if run_predicate(&wrong_shape, "wrong-shape.json")? {
+        return Err("workflow jq predicate accepted a malformed ruleset shape".to_string());
     }
     Ok(())
 }

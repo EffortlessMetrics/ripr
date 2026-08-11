@@ -76,36 +76,57 @@ jobs:
             remote_sha="${resolved_sha}"
             test "$(git -C "${GITHUB_WORKSPACE}" cat-file -t "${remote_sha}")" = "commit"
 
+            ruleset_id="20661783"
+            ruleset_source_url="https://api.github.com/repos/EffortlessMetrics/ripr-swarm/rulesets/${ruleset_id}"
             ruleset_file="$(mktemp)"
+            ruleset_headers="$(mktemp)"
             ruleset_status=""
+            ruleset_rate_remaining="unknown"
+            ruleset_rate_reset="unknown"
+            ruleset_response_digest="unavailable"
             for attempt in 1 2 3; do
-              ruleset_status="$(curl --silent --show-error --location --connect-timeout 10 --max-time 20 --output "${ruleset_file}" --write-out '%{http_code}' "https://api.github.com/repos/${REPOSITORY}/rulesets?includes_parents=true" || true)"
+              : > "${ruleset_file}"
+              : > "${ruleset_headers}"
+              if ruleset_status="$(curl --silent --show-error --location --connect-timeout 10 --max-time 20 --dump-header "${ruleset_headers}" --output "${ruleset_file}" --write-out '%{http_code}' "${ruleset_source_url}")"; then
+                ruleset_transport_ok=true
+              else
+                ruleset_transport_ok=false
+              fi
+              ruleset_rate_remaining="$(awk 'BEGIN {IGNORECASE=1} /^x-ratelimit-remaining:/ {sub("\r", "", $2); print $2}' "${ruleset_headers}" | tail -n 1)"
+              ruleset_rate_reset="$(awk 'BEGIN {IGNORECASE=1} /^x-ratelimit-reset:/ {sub("\r", "", $2); print $2}' "${ruleset_headers}" | tail -n 1)"
+              [[ "${ruleset_rate_remaining}" =~ ^[0-9]{1,20}$ ]] || ruleset_rate_remaining=unknown
+              [[ "${ruleset_rate_reset}" =~ ^[0-9]{1,20}$ ]] || ruleset_rate_reset=unknown
+              if [[ "${ruleset_transport_ok}" == true ]]; then
+                ruleset_response_digest="$(sha256sum "${ruleset_file}" | awk '{print $1}')"
+              else
+                ruleset_response_digest=unavailable
+              fi
               if [[ "${ruleset_status}" == "200" ]]; then
                 break
               fi
-              message="$(jq -r '.message // empty' "${ruleset_file}" 2>/dev/null || true)"
-              echo "public ruleset API attempt ${attempt} returned HTTP ${ruleset_status:-transport-error}${message:+: ${message}}" >&2
+              echo "::warning::ruleset verification request failed: attempt=${attempt}/3 http_status=${ruleset_status:-transport-error} rate_limit_remaining=${ruleset_rate_remaining} rate_limit_reset=${ruleset_rate_reset} response_sha256=${ruleset_response_digest}" >&2
               sleep "$((attempt * 2))"
             done
             ruleset_verified=false
             if [[ "${ruleset_status}" == "200" ]]; then
-              while IFS= read -r ruleset_id; do
-                [[ -z "${ruleset_id}" ]] && continue
-                detail_file="$(mktemp)"
-                detail_status="$(curl --silent --show-error --location --connect-timeout 10 --max-time 20 --output "${detail_file}" --write-out '%{http_code}' "https://api.github.com/repos/${REPOSITORY}/rulesets/${ruleset_id}" || true)"
-                if [[ "${detail_status}" == "200" ]] && jq -e '
-                  (.target == "tag" and .enforcement == "active") and
-                  ((.conditions.ref_name.include // []) | index("refs/tags/ripr-release-*") != null) and
-                  (([.rules[]?.type] | index("update") != null) and ([.rules[]?.type] | index("deletion") != null))
-                ' "${detail_file}" >/dev/null; then
-                  ruleset_verified=true
-                  ruleset_mode="public-rest"
-                  ruleset_source_url="https://api.github.com/repos/${REPOSITORY}/rulesets/${ruleset_id}"
-                  ruleset_response_sha256="$(sha256sum "${detail_file}" | awk '{print $1}')"
-                  ruleset_id="${ruleset_id}"
-                  break
-                fi
-              done < <(jq -r '.[] | select(.target == "tag" and .enforcement == "active") | .id' "${ruleset_file}")
+              if jq -e --argjson expected_id "${ruleset_id}" '
+                (.id == $expected_id) and
+                (.target == "tag") and
+                (.enforcement == "active") and
+                (.conditions.ref_name.include | type == "array" and length == 1 and .[0] == "refs/tags/ripr-release-*") and
+                (.conditions.ref_name.exclude | type == "array" and length == 0) and
+                ([.rules[]?.type] | index("update") != null) and
+                ([.rules[]?.type] | index("deletion") != null)
+              ' "${ruleset_file}" >/dev/null; then
+                ruleset_verified=true
+                ruleset_mode="public-rest"
+                ruleset_response_sha256="${ruleset_response_digest}"
+              else
+                ruleset_safe_summary="$(jq -c 'if type == "object" then {json_object: true, include_count: ((.conditions.ref_name.include // []) | if type == "array" then length else 0 end), exclude_count: ((.conditions.ref_name.exclude // []) | if type == "array" then length else 0 end), rule_count: ((.rules // []) | if type == "array" then length else 0 end)} else {json_object: false, include_count: 0, exclude_count: 0, rule_count: 0} end' "${ruleset_file}" 2>/dev/null || echo '{"json_object":false,"include_count":0,"exclude_count":0,"rule_count":0}')"
+                echo "::error::ruleset verification shape mismatch: http_status=200 rate_limit_remaining=${ruleset_rate_remaining} rate_limit_reset=${ruleset_rate_reset} response_sha256=${ruleset_response_digest} summary=${ruleset_safe_summary}" >&2
+              fi
+            else
+              echo "::error::ruleset verification unavailable after 3 attempts: http_status=${ruleset_status:-transport-error} rate_limit_remaining=${ruleset_rate_remaining} rate_limit_reset=${ruleset_rate_reset} response_sha256=${ruleset_response_digest}" >&2
             fi
             test "${ruleset_verified}" = true
           fi

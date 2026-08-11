@@ -52,9 +52,13 @@ gh workflow run server-archive-qualification.yml \
 
 This workflow has `contents: read`, does not call `release-upload-assets`, and
 does not use `GH_TOKEN`, `github.token`, or repository secrets. When a tag is
-supplied, it verifies the public GitHub ruleset endpoint without credentials;
-bounded HTTP retries report rate-limit or transport diagnostics and fail closed
-if the public endpoint is unavailable. Its only writes are scoped
+supplied, it verifies the fixed public detail endpoint
+`/repos/EffortlessMetrics/ripr-swarm/rulesets/20661783` without credentials;
+the response must contain the expected ruleset id, active tag target, singleton
+`refs/tags/ripr-release-*` include, empty exclude, and both update/deletion
+rules. Bounded HTTP retries report status, rate-limit, and response-digest
+diagnostics on every failure, then fail closed if the endpoint or shape is
+unavailable. Its only writes are scoped
 GitHub Actions artifacts containing the archives, manifest, checksums, and
 qualification receipt. An Actions artifact is rehearsal evidence, not a
 GitHub Release asset and not publication proof. The existing
