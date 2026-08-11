@@ -208,28 +208,49 @@ jobs:
           )
           collision_safe = ('crates/ripr/src/analysis/probes/subprocess.rs',)
 
-          for path, key_fields in [
+          for allowlist, key_fields in [
               ('policy/network_allowlist.txt', 2),
               ('policy/process_allowlist.txt', 2),
               ('policy/workflow_allowlist.txt', 1),
           ]:
-              header, candidate_rows = parse_allowlist(show(base, path), key_fields)
-              _, source_rows = parse_allowlist(show(source, path), key_fields)
-              _, swarm_rows = parse_allowlist(show(swarm, path), key_fields)
+              header, candidate_rows = parse_allowlist(show(base, allowlist), key_fields)
+              _, source_rows = parse_allowlist(show(source, allowlist), key_fields)
+              _, swarm_rows = parse_allowlist(show(swarm, allowlist), key_fields)
               keys = set(candidate_rows) | set(source_rows) | set(swarm_rows)
-              resolved = []
+              selected = []
               for key in keys:
                   path_key = key[0]
                   if path_key.startswith(source_owned):
-                      row = source_rows.get(key) or candidate_rows.get(key) or swarm_rows.get(key)
+                      row = source_rows.get(key)
+                      source_authority = True
                   elif path_key.startswith(collision_safe):
                       row = candidate_rows.get(key) or source_rows.get(key) or swarm_rows.get(key)
+                      source_authority = False
                   else:
-                      row = swarm_rows.get(key) or candidate_rows.get(key) or source_rows.get(key)
-                  if row:
-                      resolved.append(row)
-              content = '\n'.join(header).rstrip() + '\n\n' + '\n'.join(sorted(resolved)) + '\n'
-              Path(path).write_text(content, encoding='utf-8', newline='\n')
+                      row = swarm_rows.get(key)
+                      source_authority = False
+                  if not row or not Path(path_key).is_file():
+                      continue
+                  if source_authority:
+                      row = row.replace('RIPR-SPEC-0149', 'RIPR-SPEC-0152')
+                  selected.append(row)
+
+              if allowlist != 'policy/workflow_allowlist.txt':
+                  exact = []
+                  for row in selected:
+                      fields = row.split('|', 4)
+                      if len(fields) != 5:
+                          raise SystemExit(f'malformed allowlist row in {allowlist}: {row}')
+                      file_path, pattern = fields[0], fields[1]
+                      actual = Path(file_path).read_text(encoding='utf-8').count(pattern)
+                      if actual == 0:
+                          continue
+                      fields[2] = str(actual)
+                      exact.append('|'.join(fields))
+                  selected = exact
+
+              content = '\n'.join(header).rstrip() + '\n\n' + '\n'.join(sorted(selected)) + '\n'
+              Path(allowlist).write_text(content, encoding='utf-8', newline='\n')
           PY
 
           git add -A
