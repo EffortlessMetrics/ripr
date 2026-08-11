@@ -10,6 +10,7 @@ SWARM = "335ae8a119872555e83e1f8dfcd23744d9e2a602"
 INDEX = Path("docs/specs/README.md")
 ROW_RE = re.compile(r"(?m)^\|\s*\[RIPR-SPEC-(\d{4})\]\([^\n]+\)\s*\|.*\|$")
 BLOCK_RE = re.compile(r"(?ms)^\[\[(?:behavior|artifact)\]\]\n.*?(?=^\[\[(?:behavior|artifact)\]\]\n|\Z)")
+ID_RE = re.compile(r'^id = "([^"]+)"$', re.M)
 
 MIGRATIONS = (
     (
@@ -49,6 +50,19 @@ def migrate_block_file(path: Path) -> None:
                 block = block.replace(old_id, new_id).replace(old_path, new_path)
         rendered.append(block.rstrip() + "\n")
     write(path, prefix.rstrip() + "\n\n" + "\n".join(rendered))
+
+
+def artifact_blocks(text: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for match in BLOCK_RE.finditer(text):
+        block = match.group(0).rstrip() + "\n"
+        identity = ID_RE.search(block)
+        if identity is None:
+            raise SystemExit("document-artifact block lacks id")
+        if identity.group(1) in result:
+            raise SystemExit(f"document-artifact ledger duplicates {identity.group(1)}")
+        result[identity.group(1)] = block
+    return result
 
 
 # Rename the two source-only contracts into unused IDs. Current swarm retains
@@ -98,6 +112,48 @@ for required in ("0112", "0149", "0151", "0152"):
 # at their original identities.
 migrate_block_file(Path(".ripr/traceability.toml"))
 migrate_block_file(Path("policy/doc-artifacts.toml"))
+
+# The artifact-ledger union necessarily discarded source 0149 when swarm's
+# unrelated 0149 block won the shared key, and source 0112 was never registered
+# in that ledger. Register both migrated contracts explicitly.
+artifact_path = Path("policy/doc-artifacts.toml")
+artifact_text = artifact_path.read_text(encoding="utf-8")
+artifacts = artifact_blocks(artifact_text)
+for identity in ("RIPR-SPEC-0151", "RIPR-SPEC-0152"):
+    if identity in artifacts:
+        raise SystemExit(f"migrated artifact identity already exists: {identity}")
+
+subprocess_block = '''[[artifact]]
+id = "RIPR-SPEC-0151"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0151-bounded-subprocess-adapter-boundary.md"
+status = "accepted"
+owner = "analysis-swarm"
+standalone_reason = "Accepted bounded subprocess-classification contract migrated from source RIPR-SPEC-0112 because current swarm independently owns that canonical ID for working-tree disclosure."
+'''
+source_artifacts = artifact_blocks(git_show(SOURCE, artifact_path.as_posix()))
+old_verifier = source_artifacts.get("RIPR-SPEC-0149")
+if old_verifier is None:
+    raise SystemExit("source ledger lacks the exact-J verifier artifact")
+verifier_block = old_verifier.replace("RIPR-SPEC-0149", "RIPR-SPEC-0152").replace(
+    "RIPR-SPEC-0149-source-promotion-verifier.md",
+    "RIPR-SPEC-0152-source-promotion-verifier.md",
+)
+if 'id = "RIPR-SPEC-0152"' not in verifier_block:
+    raise SystemExit("exact-J verifier artifact migration failed")
+artifact_text = (
+    artifact_text.rstrip()
+    + "\n\n"
+    + subprocess_block.rstrip()
+    + "\n\n"
+    + verifier_block.rstrip()
+    + "\n"
+)
+write(artifact_path, artifact_text)
+updated_artifacts = artifact_blocks(artifact_path.read_text(encoding="utf-8"))
+for identity in ("RIPR-SPEC-0151", "RIPR-SPEC-0152"):
+    if identity not in updated_artifacts:
+        raise SystemExit(f"migrated artifact identity was not registered: {identity}")
 
 # Update source-verifier documentation and fixture links. CHANGELOG.md is
 # intentionally excluded: it is historical release copy and remains byte-equal
