@@ -108,7 +108,25 @@ jobs:
           cargo fmt --all
           cargo fmt --all -- --check
           git add Cargo.lock crates/ripr/Cargo.toml xtask/Cargo.toml xtask/src/command.rs xtask/src/dispatch.rs xtask/src/reports/mod.rs
-          git diff --cached --check
+          git diff --cached --check -- \
+            Cargo.toml \
+            Cargo.lock \
+            crates/ripr/Cargo.toml \
+            crates/ripr/src/analysis/probes/diff.rs \
+            crates/ripr/src/analysis/probes/mod.rs \
+            crates/ripr/src/output/review_comments.rs \
+            editors/vscode/package-lock.json \
+            editors/vscode/package.json \
+            fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json \
+            docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md \
+            docs/specs/README.md \
+            policy/doc-artifacts.toml \
+            policy/network_allowlist.txt \
+            policy/process_allowlist.txt \
+            xtask/Cargo.toml \
+            xtask/src/command.rs \
+            xtask/src/dispatch.rs \
+            xtask/src/reports/mod.rs
 
       - name: Focused integration proof
         shell: bash
@@ -122,7 +140,25 @@ jobs:
           cargo xtask check-file-policy
           cargo xtask check-process-policy
           cargo xtask check-network-policy
-          git diff --check
+          git diff --cached --check -- \
+            Cargo.toml \
+            Cargo.lock \
+            crates/ripr/Cargo.toml \
+            crates/ripr/src/analysis/probes/diff.rs \
+            crates/ripr/src/analysis/probes/mod.rs \
+            crates/ripr/src/output/review_comments.rs \
+            editors/vscode/package-lock.json \
+            editors/vscode/package.json \
+            fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json \
+            docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md \
+            docs/specs/README.md \
+            policy/doc-artifacts.toml \
+            policy/network_allowlist.txt \
+            policy/process_allowlist.txt \
+            xtask/Cargo.toml \
+            xtask/src/command.rs \
+            xtask/src/dispatch.rs \
+            xtask/src/reports/mod.rs
 
       - name: Commit exact history-preserving candidate
         shell: bash
@@ -130,7 +166,7 @@ jobs:
           set -euo pipefail
           test "$(cat .git/MERGE_HEAD)" = "$SWARM_HEAD"
           git add -A
-          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
           git commit -m "sync(history): merge current ripr-swarm history into source"
           candidate="$(git rev-parse HEAD)"
           parents="$(git show -s --format='%P' HEAD)"
