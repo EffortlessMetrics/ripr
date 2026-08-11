@@ -7,9 +7,10 @@ Spec: RIPR-SPEC-0149
 The source-promotion verifier receives a source repository, a declared
 `refs/ripr/*` swarm ref, the exact join commit `J`, and a preflight manifest.
 The manifest records the merge base, ordered parents, reviewed tree, canonical
-v1 range, resolution inventory, and governed release-metadata identity. The
-fixture harness uses disposable repositories so the caller's refs, index,
-worktree, and remotes can be snapshotted before verification.
+`ripr.source_promotion_preflight.v1` range, resolution inventory, and governed
+release-metadata identity. The fixture harness uses disposable repositories so
+the caller's refs, index, worktree, and remotes can be snapshotted before
+verification.
 
 The governed source comparison consists of:
 
@@ -46,12 +47,13 @@ tests in `xtask/src/reports/source_promotion_verify.rs`.
 ## Then
 
 The valid direct join is accepted only when its merge base is unique, its
-ordered parents and canonical v1 range match the manifest, and J's tree equals
-the reviewed tree. J's governed versions must match `SOURCE_PARENT`, its npm
-lock-root fields must agree, and its `CHANGELOG.md` bytes must match
-`SOURCE_PARENT`. Dependency, feature, package-layout, script, and lock-graph
-changes remain permitted when those governed identities are unchanged.
-Resolution rows must be complete and in inventory.
+ordered parents and canonical `ripr.source_promotion_preflight.v1` range match
+the manifest, and J's tree equals the reviewed tree. J's governed versions must
+match `SOURCE_PARENT`, its npm lock-root fields must agree, and its
+`CHANGELOG.md` bytes must match `SOURCE_PARENT`. Dependency, feature,
+package-layout, script, and lock-graph changes remain permitted when those
+governed identities are unchanged. Resolution rows must be complete and in
+inventory.
 
 Rebase, cherry-pick, substituted-parent, squash/tree-equivalent,
 preview-substitution, ambiguous-merge-base, release-version drift,
