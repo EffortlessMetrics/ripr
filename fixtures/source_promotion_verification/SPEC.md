@@ -11,6 +11,15 @@ v1 range, resolution inventory, and governed release-metadata identity. The
 fixture harness uses disposable repositories so the caller's refs, index,
 worktree, and remotes can be snapshotted before verification.
 
+The governed source comparison consists of:
+
+- J's effective `ripr` crate version against `SOURCE_PARENT`;
+- J's `Cargo.lock` `ripr` package version against `SOURCE_PARENT`;
+- J's VS Code package version against `SOURCE_PARENT`;
+- J's npm lock root and `packages[""]` versions against each other and
+  `SOURCE_PARENT`; and
+- J's `CHANGELOG.md` bytes against `SOURCE_PARENT`.
+
 ## When
 
 Run the verifier against a direct two-parent join and against adversarial
@@ -23,8 +32,10 @@ identity:
 - reviewed-tree mismatch and automatic preview-tree substitution;
 - stale/tampered preflight bytes;
 - incomplete, duplicate, extra, or out-of-inventory resolution rows;
-- governed release-version or source-authoritative changelog changes and
-  merged-main equivalents that do not reach J;
+- each governed release-version field changing independently;
+- npm lock-root disagreement;
+- source-authoritative changelog changes with governed versions unchanged;
+- merged-main equivalents that do not reach J; and
 - floating, abbreviated, or uppercase identity arguments.
 
 The successful case must emit both the JSON and Markdown v2 receipts. Rejected
@@ -35,19 +46,26 @@ tests in `xtask/src/reports/source_promotion_verify.rs`.
 ## Then
 
 The valid direct join is accepted only when its merge base is unique, its
-ordered parents and canonical v1 range match the manifest, its tree,
-release-version identity, and source-authoritative changelog bytes are
-unchanged, and its resolution rows are complete and in inventory. Rebase,
-cherry-pick, substituted-parent, squash/tree-equivalent, preview-substitution,
-ambiguous-merge-base, and post-main histories are rejected with reason-bearing
-checks. Receipt booleans are derived from those verification results, and caller
-state is unchanged after every run.
+ordered parents and canonical v1 range match the manifest, and J's tree equals
+the reviewed tree. J's governed versions must match `SOURCE_PARENT`, its npm
+lock-root fields must agree, and its `CHANGELOG.md` bytes must match
+`SOURCE_PARENT`. Dependency, feature, package-layout, script, and lock-graph
+changes remain permitted when those governed identities are unchanged.
+Resolution rows must be complete and in inventory.
+
+Rebase, cherry-pick, substituted-parent, squash/tree-equivalent,
+preview-substitution, ambiguous-merge-base, release-version drift,
+source-authoritative changelog drift, and post-main histories are rejected with
+reason-bearing checks. Receipt booleans are derived from those verification
+results, and caller state is unchanged after every run.
 
 ## Must Not
 
 - Treat a tree-equivalent squash or cherry-pick as the declared history join.
 - Accept a floating ref, abbreviated object id, substituted parent, or
   ambiguous merge base.
+- Freeze complete manifests or lockfiles when only governed release identities
+  must remain source-equal.
 - Claim that main reachability ran after the verifier's terminal decision.
 - Mutate process-wide CWD or silently rewrite the caller's refs, index,
   worktree, or remotes.
