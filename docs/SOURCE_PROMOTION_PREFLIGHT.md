@@ -34,10 +34,12 @@ URL query/path tricks are rejected. Use `--source-remote`/`--swarm-remote` only
 for an explicitly reviewed mirror.
 The receipt records only the stable verification result for the Git common
 directory comparison; it does not serialize an operator's local checkout path.
-`SWARM_REF` is required, must use
-`refs/ripr/release-<version>-<SWARM_PARENT>`, and must resolve in the swarm
-repository to the exact `SWARM_PARENT`; a moved, missing, wrongly named, or
-wrong ref fails closed.
+`SWARM_REF` is required, must use the fully qualified protected candidate tag
+`refs/tags/ripr-release-<version>-<SWARM_PARENT>`, and must resolve in the
+supplied swarm repository to the exact `SWARM_PARENT`; a moved, missing,
+legacy-local-verifier, branch, short, wrongly named, or wrong ref fails closed.
+The local verifier ref (`refs/ripr/release-<version>-<SWARM_PARENT>`) is a
+separate release-transaction convenience and is not accepted as `SWARM_REF`.
 
 The command writes deterministic `source-promotion-preflight.json` and `.md`
 files. It records the merge base, separately named all-reachable and

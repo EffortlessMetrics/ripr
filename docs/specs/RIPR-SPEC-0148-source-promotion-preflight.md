@@ -69,9 +69,11 @@ It does not create a join or modify either authoritative checkout.
 ## Required Evidence
 
 - complete parent SHAs resolve exactly in their named repositories;
-- required immutable swarm ref uses
-  `refs/ripr/release-<version>-<SWARM_PARENT>` and resolves to exactly
-  SWARM_PARENT;
+- required protected candidate tag uses
+  `refs/tags/ripr-release-<version>-<SWARM_PARENT>` and resolves in the
+  supplied swarm repository to exactly SWARM_PARENT; the local verifier ref
+  `refs/ripr/release-<version>-<SWARM_PARENT>` is a separate release-control
+  value and is not accepted as the preflight input;
 - source parent equals the declared current source main;
 - swarm parent is an ancestor of the declared swarm main;
 - origin remotes identify the declared repositories;

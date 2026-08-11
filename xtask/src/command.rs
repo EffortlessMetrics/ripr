@@ -388,7 +388,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "release-denominator --capture-github --input <ledger.json> --output <capture.json>",
         "release-denominator --import-github --input <ledger.json> --capture <capture.json> --output <ledger.json>",
         "release-denominator --apply-adjudication --input <ledger.json> --decisions <adjudication.json> --output <ledger.json>",
-        "source-promotion preflight --source-parent <sha> --swarm-parent <sha> --swarm-ref <immutable-ref> --source-repo <path> --swarm-repo <path> --version <version> [--resolved-tree <full-tree-sha>] [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
+        "source-promotion preflight --source-parent <sha> --swarm-parent <sha> --swarm-ref <protected-tag-ref> --source-repo <path> --swarm-repo <path> --version <version> [--resolved-tree <full-tree-sha>] [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
         "back-sync verify --swarm-before <sha> --source-release-head <sha> --source-release-tag <tag> --join <sha> --tree <tree-sha> --swarm-repo <path> --source-repo <path> --version <version> --release-receipt <path> --policy-before <path> --policy-exception <path> --policy-after <path> [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
         "release-scope --input <scope.json>",
         "release-server-archive --version <version> --target <triple> --executable <name> --archive <zip|tar.gz>",
@@ -992,7 +992,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Applies a reviewed, range-complete #2832 adjudication manifest through the pinned provisional cutoff without qualifying a candidate.",
         ),
         command_entry(
-            "source-promotion preflight --source-parent <sha> --swarm-parent <sha> --swarm-ref <immutable-ref> --source-repo <path> --swarm-repo <path> --version <version> [--resolved-tree <full-tree-sha>] [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
+            "source-promotion preflight --source-parent <sha> --swarm-parent <sha> --swarm-ref <protected-tag-ref> --source-repo <path> --swarm-repo <path> --version <version> [--resolved-tree <full-tree-sha>] [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
             "external_state_read",
             "<out>/source-promotion-preflight.{json,md}",
             false,
