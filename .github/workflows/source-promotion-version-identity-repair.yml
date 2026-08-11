@@ -8,20 +8,20 @@ permissions:
   contents: write
 
 concurrency:
-  group: source-promotion-version-identity-1531
+  group: source-promotion-version-identity-1531-final
   cancel-in-progress: false
 
 jobs:
   repair:
     name: patch and prove verifier contract
-    if: github.head_ref == 'fix/source-promotion-version-identity-1531'
+    if: github.head_ref == 'fix/source-promotion-version-identity-1531-final'
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: fix/source-promotion-version-identity-1531
+          ref: fix/source-promotion-version-identity-1531-final
           fetch-depth: 0
           persist-credentials: true
 
@@ -71,6 +71,7 @@ jobs:
           python .github/scripts/patch_source_promotion_version_identity.py
           test ! -e .github/scripts/patch_source_promotion_version_identity.py
           test ! -e .github/workflows/source-promotion-version-identity-repair.yml
+          rm -f .github/repair-trigger-1531
 
       - name: Keep adversary setup outside the no-mutation measurement
         shell: bash
@@ -145,11 +146,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git branch --show-current)" = "fix/source-promotion-version-identity-1531"
+          test "$(git branch --show-current)" = "fix/source-promotion-version-identity-1531-final"
           git config user.name "EffortlessSteven"
           git config user.email "git@effortlesssteven.com"
           git add -A
           git diff --cached --check
           test -n "$(git diff --cached --name-only)"
           git commit -m "fix(promotion): verify staged version identity"
-          git push origin HEAD:fix/source-promotion-version-identity-1531
+          git push origin HEAD:fix/source-promotion-version-identity-1531-final
