@@ -58,21 +58,20 @@ def ordered_union(primary: list[str], secondary: list[str]) -> list[str]:
 def merge_behavior(identity: str, source_block: str, swarm_block: str) -> dict[str, Any]:
     source = parse_behavior(source_block)
     swarm = parse_behavior(swarm_block)
-    primary, secondary = (source, swarm) if identity == "RIPR-SPEC-0149" else (swarm, source)
     merged: dict[str, Any] = {}
-    for key in OrderedDict.fromkeys([*primary.keys(), *secondary.keys()]):
-        primary_value = primary.get(key)
-        secondary_value = secondary.get(key)
-        if isinstance(primary_value, list) or isinstance(secondary_value, list):
-            if not isinstance(primary_value, list) or not isinstance(secondary_value, list):
+    for key in OrderedDict.fromkeys([*swarm.keys(), *source.keys()]):
+        swarm_value = swarm.get(key)
+        source_value = source.get(key)
+        if isinstance(swarm_value, list) or isinstance(source_value, list):
+            if not isinstance(swarm_value, list) or not isinstance(source_value, list):
                 raise SystemExit(f"traceability field shape differs for {identity}.{key}")
-            if not all(isinstance(item, str) for item in [*primary_value, *secondary_value]):
+            if not all(isinstance(item, str) for item in [*swarm_value, *source_value]):
                 raise SystemExit(f"traceability list is not string-only for {identity}.{key}")
-            merged[key] = ordered_union(primary_value, secondary_value)
-        elif primary_value is not None:
-            merged[key] = primary_value
+            merged[key] = ordered_union(swarm_value, source_value)
+        elif swarm_value is not None:
+            merged[key] = swarm_value
         else:
-            merged[key] = secondary_value
+            merged[key] = source_value
     if merged.get("id") != identity:
         raise SystemExit(f"merged traceability identity drift for {identity}")
     return merged
@@ -109,10 +108,10 @@ counts: dict[str, int] = {}
 for identity, _ in working_blocks:
     counts[identity] = counts.get(identity, 0) + 1
 duplicates = {identity for identity, count in counts.items() if count > 1}
-expected = {"RIPR-SPEC-0112", "RIPR-SPEC-0148", "RIPR-SPEC-0149"}
+expected = {"RIPR-SPEC-0148"}
 if duplicates != expected:
     raise SystemExit(
-        f"unexpected duplicate traceability identities: expected={sorted(expected)} actual={sorted(duplicates)}"
+        f"unexpected duplicate traceability identities after source migrations: expected={sorted(expected)} actual={sorted(duplicates)}"
     )
 
 source_blocks = block_map(git_show(SOURCE))
