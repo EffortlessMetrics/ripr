@@ -164,7 +164,7 @@ new_assertions = '''            if verify_release_metadata(&root, &source, &sour
                 return Err("governed release-version mutation was accepted".into());
             }
             fs::write(root.join("CHANGELOG.md"), "# Changelog\\nchanged\\n")
-                .map_err(|error| error.to_string())?;
+              .map_err(|error| error.to_string())?;
             test_git(&root, &["add", "CHANGELOG.md"])?;
             test_git(&root, &["commit", "--quiet", "-m", "changelog-mutated"])?;
             let changelog_mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
@@ -209,6 +209,10 @@ fixture.write_text(fixture_text, encoding="utf-8")
 workflow = Path(".github/workflows/source-promotion-version-identity-repair.yml")
 if workflow.exists():
     workflow.unlink()
+
+trigger = Path(".github/repair-trigger-1531")
+if trigger.exists():
+    trigger.unlink()
 
 script = Path(".github/scripts/patch_source_promotion_version_identity.py")
 if script.exists():
