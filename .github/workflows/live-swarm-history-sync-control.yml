@@ -48,6 +48,7 @@ jobs:
           test "$(git rev-parse origin/main)" = "$SOURCE_PARENT"
           cp .github/scripts/resolve_live_swarm_history_sync.py /tmp/resolve_live_swarm_history_sync.py
           cp .github/scripts/reconcile_live_sync_command.py /tmp/reconcile_live_sync_command.py
+          cp .github/scripts/reconcile_live_sync_spec_identities.py /tmp/reconcile_live_sync_spec_identities.py
           cp .github/scripts/reconcile_live_sync_traceability.py /tmp/reconcile_live_sync_traceability.py
           git remote add swarm https://github.com/EffortlessMetrics/ripr-swarm.git
           git fetch --no-tags swarm "$SWARM_HEAD"
@@ -98,6 +99,7 @@ jobs:
             xtask/src/reports/mod.rs
           python /tmp/resolve_live_swarm_history_sync.py
           python /tmp/reconcile_live_sync_command.py
+          python /tmp/reconcile_live_sync_spec_identities.py
           python /tmp/reconcile_live_sync_traceability.py
           git add -A
           test -z "$(git diff --name-only --diff-filter=U)"
@@ -121,7 +123,11 @@ jobs:
             editors/vscode/package-lock.json \
             editors/vscode/package.json \
             fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json \
+            fixtures/source_promotion_verification/SPEC.md \
+            docs/DOCUMENTATION.md \
             docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md \
+            docs/specs/RIPR-SPEC-0151-bounded-subprocess-adapter-boundary.md \
+            docs/specs/RIPR-SPEC-0152-source-promotion-verifier.md \
             docs/specs/README.md \
             policy/doc-artifacts.toml \
             policy/network_allowlist.txt \
@@ -154,7 +160,11 @@ jobs:
             editors/vscode/package-lock.json \
             editors/vscode/package.json \
             fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json \
+            fixtures/source_promotion_verification/SPEC.md \
+            docs/DOCUMENTATION.md \
             docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md \
+            docs/specs/RIPR-SPEC-0151-bounded-subprocess-adapter-boundary.md \
+            docs/specs/RIPR-SPEC-0152-source-promotion-verifier.md \
             docs/specs/README.md \
             policy/doc-artifacts.toml \
             policy/network_allowlist.txt \
