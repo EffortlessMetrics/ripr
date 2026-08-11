@@ -48,6 +48,7 @@ jobs:
           test "$(git rev-parse origin/main)" = "$SOURCE_PARENT"
           cp .github/scripts/resolve_live_swarm_history_sync.py /tmp/resolve_live_swarm_history_sync.py
           cp .github/scripts/reconcile_live_sync_command.py /tmp/reconcile_live_sync_command.py
+          cp .github/scripts/reconcile_live_sync_traceability.py /tmp/reconcile_live_sync_traceability.py
           git remote add swarm https://github.com/EffortlessMetrics/ripr-swarm.git
           git fetch --no-tags swarm "$SWARM_HEAD"
           test "$(git rev-parse FETCH_HEAD)" = "$SWARM_HEAD"
@@ -97,6 +98,7 @@ jobs:
             xtask/src/reports/mod.rs
           python /tmp/resolve_live_swarm_history_sync.py
           python /tmp/reconcile_live_sync_command.py
+          python /tmp/reconcile_live_sync_traceability.py
           git add -A
           test -z "$(git diff --name-only --diff-filter=U)"
 
@@ -109,6 +111,7 @@ jobs:
           cargo fmt --all -- --check
           git add Cargo.lock crates/ripr/Cargo.toml xtask/Cargo.toml xtask/src/command.rs xtask/src/dispatch.rs xtask/src/reports/mod.rs
           git diff --cached --check -- \
+            .ripr/traceability.toml \
             Cargo.toml \
             Cargo.lock \
             crates/ripr/Cargo.toml \
@@ -141,6 +144,7 @@ jobs:
           cargo xtask check-process-policy
           cargo xtask check-network-policy
           git diff --cached --check -- \
+            .ripr/traceability.toml \
             Cargo.toml \
             Cargo.lock \
             crates/ripr/Cargo.toml \
