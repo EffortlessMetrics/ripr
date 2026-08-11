@@ -81,34 +81,39 @@ jobs:
 
           verifier = Path('xtask/src/reports/source_promotion_verify.rs')
           text = verifier.read_text(encoding='utf-8')
-          snapshot_anchor = '''            let before_refs = test_git_output(
-          '''
+          snapshot_anchor = '            let before_refs = test_git_output(\n'
+          late_start = '            fs::write(root.join("CHANGELOG.md"), "# Changelog\\\\nchanged\\\\n")\n'
+          late_end = '            let tree = test_git_output(&root, &["rev-parse", &format!("{source}^{{tree}}")])?;\n'
+          if text.count(snapshot_anchor) != 1:
+              raise SystemExit(f'expected one caller-state snapshot anchor, found {text.count(snapshot_anchor)}')
+          if text.count(late_start) != 1:
+              raise SystemExit(f'expected one changelog adversary start, found {text.count(late_start)}')
+          if text.count(late_end) != 1:
+              raise SystemExit(f'expected one post-adversary tree anchor, found {text.count(late_end)}')
+          start = text.index(late_start)
+          end = text.index(late_end, start)
+          late_block = text[start:end]
+          for required in [
+              'let changelog_mutated',
+              'verify_release_metadata(&root, &changelog_mutated, &source)',
+              'source-authoritative changelog mutation was accepted',
+          ]:
+              if required not in late_block:
+                  raise SystemExit(f'changelog adversary block missing {required!r}')
+
           adversary_setup = '''            fs::write(root.join("CHANGELOG.md"), "# Changelog\\nchanged\\n")
-              .map_err(|error| error.to_string())?;
+                .map_err(|error| error.to_string())?;
             test_git(&root, &["add", "CHANGELOG.md"])?;
             test_git(&root, &["commit", "--quiet", "-m", "changelog-mutated"])?;
             let changelog_mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
             test_git(&root, &["reset", "--quiet", "--hard", &mutated])?;
-          '''
-          late_block = '''            fs::write(root.join("CHANGELOG.md"), "# Changelog\\nchanged\\n")
-              .map_err(|error| error.to_string())?;
-            test_git(&root, &["add", "CHANGELOG.md"])?;
-            test_git(&root, &["commit", "--quiet", "-m", "changelog-mutated"])?;
-            let changelog_mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
-            if verify_release_metadata(&root, &changelog_mutated, &source).is_ok() {
-                return Err("source-authoritative changelog mutation was accepted".into());
-            }
-          '''
+'''
           measured_assertion = '''            if verify_release_metadata(&root, &changelog_mutated, &source).is_ok() {
                 return Err("source-authoritative changelog mutation was accepted".into());
             }
-          '''
-          if text.count(snapshot_anchor) != 1:
-              raise SystemExit(f'expected one caller-state snapshot anchor, found {text.count(snapshot_anchor)}')
-          if text.count(late_block) != 1:
-              raise SystemExit(f'expected one late changelog block, found {text.count(late_block)}')
+'''
+          text = text[:start] + measured_assertion + text[end:]
           text = text.replace(snapshot_anchor, adversary_setup + snapshot_anchor)
-          text = text.replace(late_block, measured_assertion)
           verifier.write_text(text, encoding='utf-8')
           PY
 
