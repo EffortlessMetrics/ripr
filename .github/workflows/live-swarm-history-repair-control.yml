@@ -13,29 +13,39 @@ concurrency:
 
 jobs:
   repair:
-    name: repair exact sync descendant
+    name: advance history-preserving sync to current heads
     if: github.head_ref == 'sync/live-swarm-history-repair-control-20260811'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
-      MERGE_CANDIDATE: 4f24950abe93f750e9c24885f332cfa5b29ebdc9
+      BASE_CANDIDATE: cbd7d4f0820fe88f44e248417c5723233fabd159
+      ORIGINAL_MERGE: 4f24950abe93f750e9c24885f332cfa5b29ebdc9
+      SOURCE_HEAD: f4972865aa953504c148233bcbbf7e50bdece2f9
+      SWARM_HEAD: ffea464bcc3faf21be20770da62ecc20cea19cf5
       PRODUCT_BRANCH: sync/live-swarm-history-335ae8a1
 
     steps:
-      - name: Checkout exact history-preserving candidate
+      - name: Checkout exact repaired descendant
         uses: actions/checkout@v6
         with:
           ref: sync/live-swarm-history-335ae8a1
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Bind repair to the proven merge object
+      - name: Bind immutable inputs and fetch both current heads
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$MERGE_CANDIDATE"
-          test "$(git show -s --format='%P' "$MERGE_CANDIDATE")" = "0b6073f88696ab70832dc7ea6410a0c285dc0f53 335ae8a119872555e83e1f8dfcd23744d9e2a602"
-          git merge-base --is-ancestor "$MERGE_CANDIDATE" HEAD
+          test "$(git rev-parse HEAD)" = "$BASE_CANDIDATE"
+          test "$(git show -s --format='%P' "$ORIGINAL_MERGE")" = "0b6073f88696ab70832dc7ea6410a0c285dc0f53 335ae8a119872555e83e1f8dfcd23744d9e2a602"
+          git merge-base --is-ancestor "$ORIGINAL_MERGE" "$BASE_CANDIDATE"
+          git fetch --no-tags origin "$SOURCE_HEAD"
+          git remote add swarm https://github.com/EffortlessMetrics/ripr-swarm.git
+          git fetch --no-tags swarm "$SWARM_HEAD"
+          test "$(git rev-parse "$SOURCE_HEAD^{commit}")" = "$SOURCE_HEAD"
+          test "$(git rev-parse "$SWARM_HEAD^{commit}")" = "$SWARM_HEAD"
+          git merge-base --is-ancestor 0b6073f88696ab70832dc7ea6410a0c285dc0f53 "$SOURCE_HEAD"
+          git merge-base --is-ancestor 335ae8a119872555e83e1f8dfcd23744d9e2a602 "$SWARM_HEAD"
 
       - name: Install governed toolchains
         uses: dtolnay/rust-toolchain@1.95
@@ -48,68 +58,240 @@ jobs:
           cache: npm
           cache-dependency-path: editors/vscode/package-lock.json
 
-      - name: Apply bounded review and catalog repair
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          client = Path('editors/vscode/src/client.ts')
-          text = client.read_text(encoding='utf-8')
-          replacements = {
-              'setupFilePath, stringValues, hasUnsafeShellMetacharacter':
-                  'setupFilePath, hasUnsafeShellMetacharacter',
-              'canProjectFirstUsefulAction, shouldInlineFirstUsefulAction':
-                  'canProjectFirstUsefulAction',
-              '  firstPrCommandIsSafe,\n': '',
-          }
-          for old, new in replacements.items():
-              if text.count(old) != 1:
-                  raise SystemExit(f'client import anchor changed: {old!r} count={text.count(old)}')
-              text = text.replace(old, new)
-          client.write_text(text, encoding='utf-8', newline='\n')
-
-          command = Path('xtask/src/command.rs')
-          text = command.read_text(encoding='utf-8')
-          old = (
-              '            "Runs the read-only exact-pair preflight producer or the v2 exact '
-              'history-preserving join verifier. Neither subcommand constructs a join, mutates '
-              'Git refs, changes versions, or publishes.\",\n'
-          )
-          new = (
-              '            "Depending on the subcommand, `preflight` writes deterministic exact-pair '
-              'receipts and `verify` writes deterministic v2 exact-J verification receipts. Neither '
-              'subcommand constructs a join, mutates Git refs, changes versions, or publishes.\",\n'
-          )
-          if text.count(old) != 1:
-              raise SystemExit(f'command catalog anchor changed: {text.count(old)}')
-          command.write_text(text.replace(old, new), encoding='utf-8', newline='\n')
-          PY
-
-      - name: Prove Rust catalog and editor compile
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo fmt --all
-          cargo fmt --all -- --check
-          cargo test -p xtask command_catalog_check_accepts_current_catalog -- --nocapture
-          npm ci --prefix editors/vscode
-          cargo xtask vscode-compile
-          git diff --check
-
-      - name: Commit and push exact descendant
+      - name: Merge current source ancestry and retain source authority
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "EffortlessSteven"
           git config user.email "git@effortlesssteven.com"
-          git add editors/vscode/src/client.ts xtask/src/command.rs
+
+          git merge --no-ff --no-commit -s ours "$SOURCE_HEAD"
+          git checkout "$SOURCE_HEAD" -- \
+            .github/workflows/source-promotion-contract.yml \
+            docs/SOURCE_PROMOTION.md \
+            docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md \
+            xtask/src/reports/source_promotion_verify.rs
+
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          source = 'f4972865aa953504c148233bcbbf7e50bdece2f9'
+
+          def show(path: str) -> str:
+              return subprocess.check_output(
+                  ['git', 'show', f'{source}:{path}'], text=True, encoding='utf-8'
+              )
+
+          def migrate_0149(text: str) -> str:
+              return (
+                  text.replace('RIPR-SPEC-0149', 'RIPR-SPEC-0152')
+                      .replace('RIPR-SPEC-0149-source-promotion-verifier.md',
+                               'RIPR-SPEC-0152-source-promotion-verifier.md')
+              )
+
+          Path('docs/specs/RIPR-SPEC-0152-source-promotion-verifier.md').write_text(
+              migrate_0149(show('docs/specs/RIPR-SPEC-0149-source-promotion-verifier.md')),
+              encoding='utf-8', newline='\n'
+          )
+          Path('fixtures/source_promotion_verification/SPEC.md').write_text(
+              migrate_0149(show('fixtures/source_promotion_verification/SPEC.md')),
+              encoding='utf-8', newline='\n'
+          )
+
+          for path in [
+              Path('docs/SOURCE_PROMOTION.md'),
+              Path('docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md'),
+              Path('xtask/src/reports/source_promotion_verify.rs'),
+          ]:
+              path.write_text(migrate_0149(path.read_text(encoding='utf-8')),
+                              encoding='utf-8', newline='\n')
+
+          command = Path('xtask/src/command.rs')
+          text = command.read_text(encoding='utf-8')
+          old = '            "actions/upload-artifact@v7",\n'
+          new = ('            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",\n'
+                 '            "(.conditions.ref_name.exclude // []) == []",\n')
+          if old not in text and 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7' not in text:
+              raise SystemExit('source workflow contract test anchor is absent')
+          if old in text:
+              if text.count(old) != 1:
+                  raise SystemExit(f'ambiguous upload-artifact test anchor: {text.count(old)}')
+              text = text.replace(old, new)
+          command.write_text(text, encoding='utf-8', newline='\n')
+          PY
+
+          git add -A
           git diff --cached --check
-          test -n "$(git diff --cached --name-only)"
-          git commit -m "fix(sync): reconcile editor imports and command catalog"
-          repaired="$(git rev-parse HEAD)"
-          git merge-base --is-ancestor "$MERGE_CANDIDATE" "$repaired"
+          git commit -m "sync(history): retain current source promotion authority"
+          source_merge="$(git rev-parse HEAD)"
+          test "$(git show -s --format='%P' "$source_merge")" = "$BASE_CANDIDATE $SOURCE_HEAD"
+          echo "SOURCE_MERGE=$source_merge" >> "$GITHUB_ENV"
+
+      - name: Merge current swarm ancestry and reconcile shared seams
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          git merge --no-ff --no-commit -X theirs "$SWARM_HEAD"
+          merge_status=$?
+          set -e
+          if test "$merge_status" -ne 0 && ! git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+            echo "swarm merge failed before creating MERGE_HEAD" >&2
+            exit "$merge_status"
+          fi
+
+          mapfile -d '' conflicts < <(git diff --name-only --diff-filter=U -z)
+          if test "${#conflicts[@]}" -gt 0; then
+            printf 'incremental conflict: %s\n' "${conflicts[@]}"
+            git checkout --theirs -- "${conflicts[@]}"
+            git add -- "${conflicts[@]}"
+          fi
+
+          git checkout "$SOURCE_MERGE" -- \
+            .github/workflows/source-promotion-contract.yml \
+            docs/SOURCE_PROMOTION.md \
+            docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md \
+            docs/specs/RIPR-SPEC-0152-source-promotion-verifier.md \
+            fixtures/source_promotion_verification/SPEC.md \
+            xtask/src/reports/source_promotion_verify.rs \
+            xtask/src/command.rs
+
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          base = 'cbd7d4f0820fe88f44e248417c5723233fabd159'
+          source = 'f4972865aa953504c148233bcbbf7e50bdece2f9'
+          swarm = 'ffea464bcc3faf21be20770da62ecc20cea19cf5'
+
+          def show(rev: str, path: str) -> str:
+              try:
+                  return subprocess.check_output(
+                      ['git', 'show', f'{rev}:{path}'], text=True, encoding='utf-8'
+                  )
+              except subprocess.CalledProcessError:
+                  return ''
+
+          # Current swarm owns the producer spec. Retain the source consumer's
+          # exact-byte identity and the collision-safe RIPR-SPEC-0152 link.
+          producer = show(swarm, 'docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md')
+          marker = '\n## Required Evidence\n'
+          if producer.count(marker) != 1:
+              raise SystemExit('RIPR-SPEC-0148 Required Evidence anchor changed')
+          bridge = (
+              '\nCanonical receipt identity is the exact UTF-8 file written by the producer,\n'
+              'including pretty-print whitespace and its trailing LF. The source verifier\n'
+              'hashes those bytes before parsing JSON; a reserialized equivalent is not the\n'
+              'same preflight input. The corresponding exact-J consumer contract is\n'
+              '[RIPR-SPEC-0152](RIPR-SPEC-0152-source-promotion-verifier.md).\n'
+          )
+          Path('docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md').write_text(
+              producer.replace(marker, bridge + marker), encoding='utf-8', newline='\n'
+          )
+
+          # The combined source+swarm command retains both subcommands. Apply
+          # the current protected-tag vocabulary and source workflow-test pins.
+          command = Path('xtask/src/command.rs')
+          text = command.read_text(encoding='utf-8')
+          text = text.replace('--swarm-ref <immutable-ref>', '--swarm-ref <protected-tag-ref>')
+          text = text.replace('--swarm-ref <swarm-ref>', '--swarm-ref <protected-tag-ref>')
+          old = '            "actions/upload-artifact@v7",\n'
+          new = ('            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",\n'
+                 '            "(.conditions.ref_name.exclude // []) == []",\n')
+          if old in text:
+              if text.count(old) != 1:
+                  raise SystemExit(f'ambiguous upload-artifact test anchor: {text.count(old)}')
+              text = text.replace(old, new)
+          command.write_text(text, encoding='utf-8', newline='\n')
+
+          def parse_allowlist(text: str, key_fields: int):
+              header, rows = [], {}
+              in_rows = False
+              for raw in text.splitlines():
+                  if raw and not raw.startswith('#'):
+                      in_rows = True
+                      parts = raw.split('|')
+                      key = tuple(parts[:key_fields])
+                      rows[key] = raw
+                  elif not in_rows:
+                      header.append(raw)
+              return header, rows
+
+          source_owned = (
+              '.github/workflows/source-promotion-contract.yml',
+              'xtask/src/reports/source_promotion_verify.rs',
+              'fixtures/source_promotion_verification/',
+          )
+          collision_safe = ('crates/ripr/src/analysis/probes/subprocess.rs',)
+
+          for path, key_fields in [
+              ('policy/network_allowlist.txt', 2),
+              ('policy/process_allowlist.txt', 2),
+              ('policy/workflow_allowlist.txt', 1),
+          ]:
+              header, candidate_rows = parse_allowlist(show(base, path), key_fields)
+              _, source_rows = parse_allowlist(show(source, path), key_fields)
+              _, swarm_rows = parse_allowlist(show(swarm, path), key_fields)
+              keys = set(candidate_rows) | set(source_rows) | set(swarm_rows)
+              resolved = []
+              for key in keys:
+                  path_key = key[0]
+                  if path_key.startswith(source_owned):
+                      row = source_rows.get(key) or candidate_rows.get(key) or swarm_rows.get(key)
+                  elif path_key.startswith(collision_safe):
+                      row = candidate_rows.get(key) or source_rows.get(key) or swarm_rows.get(key)
+                  else:
+                      row = swarm_rows.get(key) or candidate_rows.get(key) or source_rows.get(key)
+                  if row:
+                      resolved.append(row)
+              content = '\n'.join(header).rstrip() + '\n\n' + '\n'.join(sorted(resolved)) + '\n'
+              Path(path).write_text(content, encoding='utf-8', newline='\n')
+          PY
+
+          git add -A
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "unresolved merge paths remain" >&2
+            git diff --name-only --diff-filter=U >&2
+            exit 1
+          fi
+          git diff --cached --check
+          git commit -m "sync(history): advance imported swarm ancestry to current head"
+          final="$(git rev-parse HEAD)"
+          test "$(git show -s --format='%P' "$final")" = "$SOURCE_MERGE $SWARM_HEAD"
+          git merge-base --is-ancestor "$ORIGINAL_MERGE" "$final"
+          git merge-base --is-ancestor "$SOURCE_HEAD" "$final"
+          git merge-base --is-ancestor "$SWARM_HEAD" "$final"
+          echo "FINAL_HEAD=$final" >> "$GITHUB_ENV"
+
+      - name: Prove the reconciled current-head tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo check --workspace --all-targets --all-features
+          cargo test -p xtask source_promotion -- --nocapture
+          cargo test -p xtask command_catalog_check_accepts_current_catalog -- --nocapture
+          cargo xtask check-command-catalog
+          cargo xtask check-spec-format
+          cargo xtask check-traceability
+          cargo xtask check-doc-index
+          cargo xtask check-doc-artifacts
+          cargo xtask check-file-policy
+          cargo xtask check-process-policy
+          cargo xtask check-network-policy
+          cargo xtask check-workflows
+          npm ci --prefix editors/vscode
+          cargo xtask vscode-compile
+          git diff --check
+
+      - name: Push the exact current-history descendant
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FINAL_HEAD"
+          git merge-base --is-ancestor "$BASE_CANDIDATE" "$FINAL_HEAD"
           git push origin "HEAD:refs/heads/$PRODUCT_BRANCH"
           remote="$(git ls-remote origin "refs/heads/$PRODUCT_BRANCH" | awk '{print $1}')"
-          test "$remote" = "$repaired"
+          test "$remote" = "$FINAL_HEAD"
