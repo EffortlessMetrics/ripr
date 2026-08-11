@@ -47,6 +47,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse origin/main)" = "$SOURCE_PARENT"
           cp .github/scripts/resolve_live_swarm_history_sync.py /tmp/resolve_live_swarm_history_sync.py
+          cp .github/scripts/reconcile_live_sync_command.py /tmp/reconcile_live_sync_command.py
           git remote add swarm https://github.com/EffortlessMetrics/ripr-swarm.git
           git fetch --no-tags swarm "$SWARM_HEAD"
           test "$(git rev-parse FETCH_HEAD)" = "$SWARM_HEAD"
@@ -72,12 +73,14 @@ jobs:
           # Release authority and release copy remain source-owned.
           git checkout "$SOURCE_PARENT" -- CHANGELOG.md
 
-          # Product/runtime conflict surfaces are taken exactly from current
-          # swarm. Version fields are normalized to source in the resolver.
+          # Product/runtime and current command-authority conflict surfaces are
+          # taken exactly from current swarm. Version fields are normalized to
+          # source and source's v2 verifier is re-exposed by the resolvers.
           git checkout "$SWARM_HEAD" -- \
             Cargo.lock \
             crates/ripr/Cargo.toml \
             crates/ripr/src/analysis/probes/diff.rs \
+            crates/ripr/src/analysis/probes/mod.rs \
             crates/ripr/src/output/review_comments.rs \
             editors/vscode/package-lock.json \
             editors/vscode/package.json \
@@ -89,9 +92,11 @@ jobs:
             policy/network_allowlist.txt \
             policy/process_allowlist.txt \
             xtask/Cargo.toml \
+            xtask/src/command.rs \
             xtask/src/dispatch.rs \
             xtask/src/reports/mod.rs
           python /tmp/resolve_live_swarm_history_sync.py
+          python /tmp/reconcile_live_sync_command.py
           git add -A
           test -z "$(git diff --name-only --diff-filter=U)"
 
@@ -102,7 +107,7 @@ jobs:
           cargo check --workspace --all-targets --all-features
           cargo fmt --all
           cargo fmt --all -- --check
-          git add Cargo.lock crates/ripr/Cargo.toml xtask/Cargo.toml xtask/src/dispatch.rs xtask/src/reports/mod.rs
+          git add Cargo.lock crates/ripr/Cargo.toml xtask/Cargo.toml xtask/src/command.rs xtask/src/dispatch.rs xtask/src/reports/mod.rs
           git diff --cached --check
 
       - name: Focused integration proof
