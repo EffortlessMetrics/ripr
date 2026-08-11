@@ -1,0 +1,99 @@
+name: Live Swarm History Sync Control
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-swarm-history-sync-20260811
+  cancel-in-progress: false
+
+jobs:
+  construct:
+    name: construct exact two-parent sync candidate
+    if: github.head_ref == 'sync/live-swarm-history-control-20260811'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SOURCE_PARENT: 0b6073f88696ab70832dc7ea6410a0c285dc0f53
+      SWARM_HEAD: 335ae8a119872555e83e1f8dfcd23744d9e2a602
+      CANDIDATE_BRANCH: sync/live-swarm-history-335ae8a1
+
+    steps:
+      - name: Checkout source control branch
+        uses: actions/checkout@v6
+        with:
+          ref: sync/live-swarm-history-control-20260811
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Fetch exact live swarm history
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse origin/main)" = "$SOURCE_PARENT"
+          git remote add swarm https://github.com/EffortlessMetrics/ripr-swarm.git
+          git fetch --no-tags swarm "$SWARM_HEAD"
+          test "$(git rev-parse FETCH_HEAD)" = "$SWARM_HEAD"
+          git cat-file -e "$SOURCE_PARENT^{commit}"
+          git cat-file -e "$SWARM_HEAD^{commit}"
+          git merge-base "$SOURCE_PARENT" "$SWARM_HEAD" | tee merge-base.txt
+
+      - name: Attempt ordinary history-preserving merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git checkout --detach "$SOURCE_PARENT"
+          set +e
+          git merge --no-commit --no-ff "$SWARM_HEAD" > merge-output.txt 2>&1
+          merge_status=$?
+          set -e
+          printf '%s\n' "$merge_status" > merge-status.txt
+          if test "$merge_status" -ne 0; then
+            git diff --name-only --diff-filter=U | tee conflicts.txt
+            git ls-files -u > conflict-index.txt
+            git diff --cc > conflict-combined.diff
+            cat merge-output.txt
+            echo "Merge requires reviewed conflict resolution; no candidate was pushed." >&2
+            exit 1
+          fi
+          test -f .git/MERGE_HEAD
+          test "$(cat .git/MERGE_HEAD)" = "$SWARM_HEAD"
+          git commit -m "sync(history): merge current ripr-swarm history into source"
+          candidate="$(git rev-parse HEAD)"
+          parents="$(git show -s --format='%P' HEAD)"
+          test "$parents" = "$SOURCE_PARENT $SWARM_HEAD"
+          printf '%s\n' "$candidate" > candidate.sha
+          printf '%s\n' "$parents" > candidate.parents
+
+      - name: Upload diagnostic packet
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-swarm-history-sync-diagnostic
+          path: |
+            merge-base.txt
+            merge-output.txt
+            merge-status.txt
+            conflicts.txt
+            conflict-index.txt
+            conflict-combined.diff
+            candidate.sha
+            candidate.parents
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Push conflict-free exact candidate
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$(cat candidate.sha)"
+          git push origin "$candidate:refs/heads/$CANDIDATE_BRANCH"
+          remote="$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')"
+          test "$remote" = "$candidate"
