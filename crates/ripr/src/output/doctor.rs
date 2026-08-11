@@ -711,23 +711,49 @@ mod tests {
             "#!/bin/sh\ncase \"$PWD\" in\n  *selected-root) printf 'rustc 1.94.0 (target-root)\\n' ;;\n  *) printf 'rustc 1.96.0 (caller-root)\\n' ;;\nesac\n",
         )?;
 
-        let result = doctor_tool_check_with_command(
-            "rustc",
-            doctor_tool_command(
-                shim.to_str()
-                    .ok_or_else(|| "shim path is not UTF-8".to_string())?,
-            ),
-            DOCTOR_TOOL_TIMEOUT,
-            Some(&selected_root),
-        );
+        let result = {
+            // The probe verdict is only meaningful once the shim actually
+            // executed. Under full-suite load the spawn can fail transiently
+            // (ETXTBSY, #2242) or the 5s probe window can expire before the
+            // trivial shim is even scheduled (#3073); both outcomes carry no
+            // information about the selected root. Every definitive shim
+            // verdict — pass or version-gate failure — contains the shim's
+            // own `rustc 1.` version string, while no transient outcome does,
+            // so retry the transient class and assert only on a definitive
+            // verdict.
+            let shim = shim
+                .to_str()
+                .ok_or_else(|| "shim path is not UTF-8".to_string())?;
+            let mut attempt = 0usize;
+            loop {
+                attempt += 1;
+                let outcome = doctor_tool_check_with_command(
+                    "rustc",
+                    doctor_tool_command(shim),
+                    DOCTOR_TOOL_TIMEOUT,
+                    Some(&selected_root),
+                );
+                if attempt >= 5 || outcome.evidence.contains("rustc 1.") {
+                    break outcome;
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        };
         let _ = std::fs::remove_dir_all(&dir);
 
-        assert_eq!(result.status, DoctorStatus::Fail);
-        assert!(
-            result
-                .evidence
-                .contains("below the minimum supported Rust version")
-        );
+        if result.status != DoctorStatus::Fail {
+            return Err(format!(
+                "selected-root probe unexpectedly passed: {result:?}"
+            ));
+        }
+        if !result
+            .evidence
+            .contains("below the minimum supported Rust version")
+        {
+            return Err(format!(
+                "unexpected selected-root probe evidence: {result:?}"
+            ));
+        }
         Ok(())
     }
 
