@@ -532,6 +532,24 @@ fn render(first: &RunOutcome, second: &RunOutcome) -> String {
 
 #[cfg(test)]
 mod tests {
+    fn packaged_temp_wiring_is_complete(workflow: &str) -> bool {
+        let lines = workflow.lines().map(str::trim).collect::<Vec<_>>();
+        [
+            "$env:CARGO_TEMP_CONFIG = Join-Path $temp 'cargo-package-config.toml'",
+            "$env:CARGO_TARGET_DIR = Join-Path $temp 'cargo-target'",
+            "$env:TEMP = $env:CARGO_TEMP_DIR",
+            "$env:TMP = $env:CARGO_TEMP_DIR",
+            "$env:TMPDIR = $env:CARGO_TEMP_DIR",
+            "\"CARGO_TEMP_CONFIG=$env:CARGO_TEMP_CONFIG\" >> $env:GITHUB_ENV",
+            "\"CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR\" >> $env:GITHUB_ENV",
+            "\"TEMP=$env:TEMP\" >> $env:GITHUB_ENV",
+            "\"TMP=$env:TMP\" >> $env:GITHUB_ENV",
+            "\"TMPDIR=$env:TMPDIR\" >> $env:GITHUB_ENV",
+        ]
+        .iter()
+        .all(|required| lines.iter().any(|line| line.contains(required)))
+    }
+
     use super::*;
 
     /// Real bytes from a Windows lane run (#2393): cargo's `Running` lines are
@@ -1102,5 +1120,120 @@ mod tests {
         })();
         let _ = std::fs::remove_dir_all(&sandbox);
         result.map_err(|error| format!("failure receipts must survive checkout cleanup: {error}"))
+    }
+
+    #[test]
+    fn packaged_qualification_overrides_workspace_temp_for_package_builds() -> Result<(), String> {
+        let workflow = include_str!("../../.github/workflows/windows-packaged-qualification.yml");
+        let lines = workflow.lines().map(str::trim).collect::<Vec<_>>();
+        let isolate = lines
+            .iter()
+            .position(|line| line.starts_with("- name: Isolate package installation"))
+            .ok_or_else(|| "workflow must isolate package installation".to_string())?;
+        let package_line = lines
+            .iter()
+            .position(|line| line.contains(" package --target-dir"))
+            .ok_or_else(|| "workflow must package the exact crate".to_string())?;
+        let install_line = lines
+            .iter()
+            .position(|line| line.contains(" install --target-dir"))
+            .ok_or_else(|| "workflow must install the extracted crate".to_string())?;
+        if !(isolate < package_line && package_line < install_line) {
+            return Err("Cargo temp isolation must precede both package builds".to_string());
+        }
+        let package = lines[package_line].split_whitespace().collect::<Vec<_>>();
+        let install = lines[install_line].split_whitespace().collect::<Vec<_>>();
+        let position = |tokens: &[&str], token: &str| {
+            tokens
+                .iter()
+                .position(|candidate| *candidate == token)
+                .ok_or_else(|| format!("command must contain {token:?}"))
+        };
+        let package_command = position(&package, "package")?;
+        let package_target = position(&package, "--target-dir")?;
+        let package_name = position(&package, "-p")?;
+        let package_locked = position(&package, "--locked")?;
+        if !(package_command < package_target
+            && package_target < package_name
+            && package_name < package_locked
+            && package.get(package_name + 1) == Some(&"ripr"))
+        {
+            return Err(
+                "package command must order package, target-dir, -p ripr, and locked".to_string(),
+            );
+        }
+        let install_command = position(&install, "install")?;
+        let install_target = position(&install, "--target-dir")?;
+        let install_path = position(&install, "--path")?;
+        if !(install_command < install_target
+            && install_target < install_path
+            && install.get(install_path + 1) == Some(&"$packageDir.FullName"))
+        {
+            return Err(
+                "install command must order install, target-dir, and --path package dir"
+                    .to_string(),
+            );
+        }
+        if !packaged_temp_wiring_is_complete(workflow) {
+            return Err(
+                "Cargo temp process assignments and cross-step exports must be complete"
+                    .to_string(),
+            );
+        }
+        for required in [
+            "$env:CARGO_TEMP_DIR = Join-Path $temp 'cargo-temp'",
+            "$env:CARGO_TEMP_CONFIG = Join-Path $temp 'cargo-package-config.toml'",
+            "$env:CARGO_TARGET_DIR = Join-Path $temp 'cargo-target'",
+            "$env:TEMP = $env:CARGO_TEMP_DIR",
+            "$env:TMP = $env:CARGO_TEMP_DIR",
+            "$env:TMPDIR = $env:CARGO_TEMP_DIR",
+            "TEMP = { value = '$tomlTemp', force = true, relative = false }",
+            "TMP = { value = '$tomlTemp', force = true, relative = false }",
+            "TMPDIR = { value = '$tomlTemp', force = true, relative = false }",
+            "New-Item -ItemType Directory -Force -Path $env:CARGO_HOME, $env:CARGO_TARGET_DIR, $env:CARGO_TEMP_DIR",
+            "\"CARGO_TEMP_DIR=$env:CARGO_TEMP_DIR\" >> $env:GITHUB_ENV",
+            "\"CARGO_TEMP_CONFIG=$env:CARGO_TEMP_CONFIG\" >> $env:GITHUB_ENV",
+            "\"CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR\" >> $env:GITHUB_ENV",
+            "\"TEMP=$env:TEMP\" >> $env:GITHUB_ENV",
+            "\"TMP=$env:TMP\" >> $env:GITHUB_ENV",
+            "\"TMPDIR=$env:TMPDIR\" >> $env:GITHUB_ENV",
+            "cargo_temp_config = $env:CARGO_TEMP_CONFIG",
+            "temp = $env:TEMP",
+            "tmp = $env:TMP",
+            "tmpdir = $env:TMPDIR",
+        ] {
+            if !lines.iter().any(|line| line.contains(required)) {
+                return Err(format!("workflow must contain {required:?}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packaged_qualification_temp_contract_rejects_each_missing_export() {
+        let workflow = include_str!("../../.github/workflows/windows-packaged-qualification.yml");
+        let required = [
+            "$env:CARGO_TEMP_CONFIG = Join-Path $temp 'cargo-package-config.toml'",
+            "$env:CARGO_TARGET_DIR = Join-Path $temp 'cargo-target'",
+            "$env:TEMP = $env:CARGO_TEMP_DIR",
+            "$env:TMP = $env:CARGO_TEMP_DIR",
+            "$env:TMPDIR = $env:CARGO_TEMP_DIR",
+            "\"CARGO_TEMP_CONFIG=$env:CARGO_TEMP_CONFIG\" >> $env:GITHUB_ENV",
+            "\"CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR\" >> $env:GITHUB_ENV",
+            "\"TEMP=$env:TEMP\" >> $env:GITHUB_ENV",
+            "\"TMP=$env:TMP\" >> $env:GITHUB_ENV",
+            "\"TMPDIR=$env:TMPDIR\" >> $env:GITHUB_ENV",
+        ];
+        for missing in required {
+            let mutated = workflow.replacen(missing, "", 1);
+            assert!(
+                !mutated.contains(missing),
+                "negative fixture retained {missing:?}"
+            );
+            assert!(
+                !packaged_temp_wiring_is_complete(&mutated),
+                "contract must reject missing {missing:?}"
+            );
+        }
     }
 }

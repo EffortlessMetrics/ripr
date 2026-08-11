@@ -100,10 +100,31 @@ jobs:
           $temp = $env:QUAL_TEMP_ROOT
           $env:CARGO_HOME = Join-Path $temp 'cargo-home'
           $env:CARGO_TARGET_DIR = Join-Path $temp 'cargo-target'
+          $env:CARGO_TEMP_DIR = Join-Path $temp 'cargo-temp'
+          $env:CARGO_TEMP_CONFIG = Join-Path $temp 'cargo-package-config.toml'
+          # The repository config force-sets these variables to a relative
+          # checkout target. Package qualification must keep compiler/linker
+          # temporaries beside the external target directory instead.
+          $tomlTemp = $env:CARGO_TEMP_DIR.Replace("'", "''")
+          @"
+          [env]
+          TEMP = { value = '$tomlTemp', force = true, relative = false }
+          TMP = { value = '$tomlTemp', force = true, relative = false }
+          TMPDIR = { value = '$tomlTemp', force = true, relative = false }
+          "@ | Set-Content -Encoding utf8 $env:CARGO_TEMP_CONFIG
           "QUAL_TEMP_ROOT=$temp" >> $env:GITHUB_ENV
-          New-Item -ItemType Directory -Force -Path $env:CARGO_HOME, $env:CARGO_TARGET_DIR | Out-Null
+          New-Item -ItemType Directory -Force -Path $env:CARGO_HOME, $env:CARGO_TARGET_DIR, $env:CARGO_TEMP_DIR | Out-Null
+          $env:TEMP = $env:CARGO_TEMP_DIR
+          $env:TMP = $env:CARGO_TEMP_DIR
+          $env:TMPDIR = $env:CARGO_TEMP_DIR
           "CARGO_HOME=$env:CARGO_HOME" >> $env:GITHUB_ENV
           "CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR" >> $env:GITHUB_ENV
+          "CARGO_TEMP_DIR=$env:CARGO_TEMP_DIR" >> $env:GITHUB_ENV
+          "CARGO_TEMP_CONFIG=$env:CARGO_TEMP_CONFIG" >> $env:GITHUB_ENV
+          "TEMP=$env:TEMP" >> $env:GITHUB_ENV
+          "TMP=$env:TMP" >> $env:GITHUB_ENV
+          "TMPDIR=$env:TMPDIR" >> $env:GITHUB_ENV
+          [ordered]@{ cargo_home = $env:CARGO_HOME; cargo_target_dir = $env:CARGO_TARGET_DIR; cargo_temp_dir = $env:CARGO_TEMP_DIR; cargo_temp_config = $env:CARGO_TEMP_CONFIG; temp = $env:TEMP; tmp = $env:TMP; tmpdir = $env:TMPDIR } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $root 'cargo-environment.json')
           rustc -Vv | Tee-Object (Join-Path $root 'rustc-version.txt')
           cargo -V | Tee-Object (Join-Path $root 'cargo-version.txt')
           node --version | Tee-Object (Join-Path $root 'node-version.txt')
@@ -113,7 +134,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $root = $env:QUAL_ROOT
-          cargo package -p ripr --locked 2>&1 | Tee-Object (Join-Path $root 'cargo-package.log')
+          cargo --config $env:CARGO_TEMP_CONFIG package --target-dir $env:CARGO_TARGET_DIR -p ripr --locked 2>&1 | Tee-Object (Join-Path $root 'cargo-package.log')
           if ($LASTEXITCODE -ne 0) { throw "cargo package failed with exit $LASTEXITCODE" }
           $crate = Get-ChildItem (Join-Path $env:CARGO_TARGET_DIR 'package\*.crate') | Sort-Object LastWriteTime | Select-Object -Last 1
           if ($null -eq $crate) { throw 'cargo package did not produce a .crate' }
@@ -124,7 +145,7 @@ jobs:
           tar -xf $crate.FullName -C $packageRoot
           $packageDir = Get-ChildItem $packageRoot -Directory | Select-Object -First 1
           if ($null -eq $packageDir) { throw 'packaged source directory was not extracted' }
-          cargo install --path $packageDir.FullName --locked --root $installRoot --force 2>&1 | Tee-Object (Join-Path $root 'cargo-install.log')
+          cargo --config $env:CARGO_TEMP_CONFIG install --target-dir $env:CARGO_TARGET_DIR --path $packageDir.FullName --locked --root $installRoot --force 2>&1 | Tee-Object (Join-Path $root 'cargo-install.log')
           if ($LASTEXITCODE -ne 0) { throw "cargo install failed with exit $LASTEXITCODE" }
           $binary = Join-Path $installRoot 'bin\ripr.exe'
           if (-not (Test-Path $binary)) { throw "isolated binary missing: $binary" }
