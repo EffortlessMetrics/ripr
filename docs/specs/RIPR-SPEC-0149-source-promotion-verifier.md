@@ -22,6 +22,12 @@ conflict, source-survivor candidate, and swarm-exclusion candidate. Missing,
 duplicate, extra, or out-of-inventory rows are rejected; semantic rulings
 remain with the reviewer.
 
+The preflight `swarm_ref` must equal the exact fully-qualified protected
+candidate tag `refs/tags/ripr-release-<requested-version>-<SWARM_PARENT>`, and
+`swarm_ref_sha` must equal `SWARM_PARENT`. Legacy `refs/ripr/` refs, short or
+branch refs, wrong-version tags, wrong-SHA tags, and unrelated tag names fail
+closed.
+
 Verification proves the requested J has exactly ordered parents
 `SOURCE_PARENT` then `SWARM_PARENT`, both parents are ancestors, selected swarm
 commits remain reachable through parent 2, ancestry counts and ordered digests

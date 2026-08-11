@@ -326,9 +326,13 @@ fn validate_preflight(preflight: &Value, source_main: &str) -> Result<(), String
         return Err("preflight source_main is not bound to source parent".to_string());
     }
     let swarm_ref = string_field(preflight, "swarm_ref")?;
-    if !swarm_ref.starts_with("refs/ripr/") {
-        return Err("preflight swarm_ref is outside immutable refs/ripr namespace".to_string());
-    }
+    let requested_version = preflight
+        .get("version_state")
+        .and_then(|version_state| version_state.get("requested_version"))
+        .and_then(Value::as_str)
+        .filter(|version| !version.is_empty())
+        .ok_or_else(|| "missing string field requested_version".to_string())?;
+    validate_protected_candidate_tag_ref(swarm_ref, requested_version, swarm)?;
     if string_field(preflight, "swarm_ref_sha")? != swarm {
         return Err("preflight immutable swarm ref is not bound to swarm parent".to_string());
     }
@@ -364,6 +368,20 @@ fn validate_preflight(preflight: &Value, source_main: &str) -> Result<(), String
         let _ = preflight
             .get(key)
             .ok_or_else(|| format!("preflight is incomplete: missing {key}"))?;
+    }
+    Ok(())
+}
+
+fn validate_protected_candidate_tag_ref(
+    reference: &str,
+    version: &str,
+    parent: &str,
+) -> Result<(), String> {
+    let expected = format!("refs/tags/ripr-release-{version}-{parent}");
+    if reference != expected {
+        return Err(format!(
+            "preflight swarm_ref must be the exact fully-qualified protected candidate tag {expected}"
+        ));
     }
     Ok(())
 }
@@ -925,6 +943,56 @@ mod tests {
     }
 
     #[test]
+    fn protected_candidate_tag_ref_requires_exact_version_and_parent_binding() -> Result<(), String>
+    {
+        let version = "0.11.0";
+        let source = "0000000000000000000000000000000000000000";
+        let parent = "1111111111111111111111111111111111111111";
+        let valid_preflight = |reference: &str, requested_version: Option<&str>| {
+            serde_json::json!({
+                "schema": PREFLIGHT_SCHEMA,
+                "mode": "two_parent_join",
+                "source_parent": source,
+                "swarm_parent": parent,
+                "swarm_ref": reference,
+                "swarm_ref_sha": parent,
+                "source_main": source,
+                "merge_base": source,
+                "source_repository": {"common_dir_verified":true,"root_verified":true,"remote_verified":true},
+                "swarm_repository": {"common_dir_verified":true,"root_verified":true,"remote_verified":true},
+                "source_range": {},
+                "swarm_range": {},
+                "dry_merge": {"reviewed_resolved_tree": source,"reviewed_resolved_tree_verified":true},
+                "version_state": requested_version.map_or_else(|| serde_json::json!({}), |value| serde_json::json!({"requested_version": value})),
+                "invalidation_rules": []
+            })
+        };
+        let expected = format!("refs/tags/ripr-release-{version}-{parent}");
+        validate_preflight(&valid_preflight(&expected, Some(version)), source)?;
+
+        for reference in [
+            "refs/ripr/release-0.11.0-1111111111111111111111111111111111111111",
+            "ripr-release-0.11.0-1111111111111111111111111111111111111111",
+            "refs/heads/main",
+            "refs/tags/ripr-release-0.10.0-1111111111111111111111111111111111111111",
+            "refs/tags/ripr-release-0.11.0-2222222222222222222222222222222222222222",
+            "refs/tags/ripr-release-other-1111111111111111111111111111111111111111",
+        ] {
+            if validate_preflight(&valid_preflight(reference, Some(version)), source).is_ok() {
+                return Err(format!("invalid candidate ref was accepted: {reference}"));
+            }
+        }
+        for requested_version in [None, Some(""), Some("0.10.0")] {
+            if validate_preflight(&valid_preflight(&expected, requested_version), source).is_ok() {
+                return Err(format!(
+                    "missing or mismatched requested version was accepted: {requested_version:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn blank_output_directory_is_rejected() -> Result<(), String> {
         let args = vec![
             "verify".to_string(),
@@ -1294,13 +1362,14 @@ mod tests {
             let swarm_range = test_recompute_range(&root, &base, &swarm)?;
             let preflight = serde_json::json!({
                 "schema": PREFLIGHT_SCHEMA, "mode": "two_parent_join", "source_parent": source,
-                "swarm_parent": swarm, "swarm_ref": "refs/ripr/release-0.11.0", "swarm_ref_sha": swarm,
+                "swarm_parent": swarm, "swarm_ref": format!("refs/tags/ripr-release-0.11.0-{swarm}"), "swarm_ref_sha": swarm,
                 "source_main": source, "merge_base": base,
                 "source_repository": {"common_dir_verified":true,"root_verified":true,"remote_verified":true},
                 "swarm_repository": {"common_dir_verified":true,"root_verified":true,"remote_verified":true},
                 "source_range": range_json(&source_range), "swarm_range": range_json(&swarm_range),
                 "dry_merge": {"reviewed_resolved_tree": tree, "reviewed_resolved_tree_verified":true, "preview_tree": "", "conflicts":[]},
-                "source_survivor_candidates":[], "swarm_authority_resolution_candidates":[], "version_state":{}, "invalidation_rules":[]
+                "source_survivor_candidates":[], "swarm_authority_resolution_candidates":[],
+                "version_state":{"requested_version":"0.11.0"}, "invalidation_rules":[]
             });
             let preflight_bytes =
                 serde_json::to_vec(&preflight).map_err(|error| error.to_string())?;

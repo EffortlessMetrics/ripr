@@ -30,8 +30,12 @@ resolution manifest whose binding matches those bytes.
 The receipt must preserve the exact identities, repository checks, range
 denominators and digests (each commit id plus LF in listed order, including the
 producer's existing empty-stream behavior), conflict and candidate inventories, reviewed tree,
-version observations, and invalidation rules named above. Immutable swarm refs
-must use the producer-controlled `refs/ripr/` namespace and an exact SHA pin.
+version observations, and invalidation rules named above. The immutable swarm
+ref must be the exact fully-qualified protected candidate tag
+`refs/tags/ripr-release-<requested-version>-<SWARM_PARENT>` selected by the
+release transaction's active tag ruleset, and it must resolve to the exact
+`SWARM_PARENT` SHA. Legacy `refs/ripr/` refs, short tag names, branch refs, and
+other movable or mismatched refs are invalid.
 
 ## Non-Goals
 

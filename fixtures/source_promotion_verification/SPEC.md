@@ -4,8 +4,10 @@ Spec: RIPR-SPEC-0149
 
 ## Given
 
-The source-promotion verifier receives a source repository, a declared
-`refs/ripr/*` swarm ref, the exact join commit `J`, and a preflight manifest.
+The source-promotion verifier receives a source repository and a declared
+`swarm_ref` set to the exact fully-qualified protected candidate tag
+`refs/tags/ripr-release-<requested-version>-<SWARM_PARENT>`, the exact join commit `J`,
+and a preflight manifest.
 The manifest records the merge base, ordered parents, reviewed tree, canonical
 `ripr.source_promotion_preflight.v1` range, resolution inventory, and governed
 release-metadata identity. The fixture harness uses disposable repositories so
@@ -13,6 +15,12 @@ the caller's refs, index, worktree, and remotes can be snapshotted before
 verification.
 
 The governed source comparison consists of:
+
+- the contract's live remote proof that the fully-qualified candidate tag
+  exists in `EffortlessMetrics/ripr-swarm` and resolves directly to
+  `SWARM_PARENT`;
+- the contract's fixed public ruleset proof for ruleset `20661783`, including
+  the exact protected tag pattern plus update and deletion protections;
 
 - J's effective `ripr` crate version against `SOURCE_PARENT`;
 - J's `Cargo.lock` `ripr` package version against `SOURCE_PARENT`;
