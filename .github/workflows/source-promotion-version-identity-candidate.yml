@@ -1,0 +1,164 @@
+name: Source Promotion Version Identity Candidate
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: source-promotion-version-identity-1531-candidate
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: produce and prove final verifier candidate
+    if: github.head_ref == 'fix/source-promotion-version-identity-1531-candidate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/source-promotion-version-identity-1531-candidate
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: dtolnay/rust-toolchain@1.95
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-source-promotion-version-identity
+
+      - name: Prepare bounded patch harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          script = Path('.github/scripts/patch_source_promotion_version_identity.py')
+          text = script.read_text(encoding='utf-8')
+          anchor = 'text = text.replace("METADATA_SURFACES", "RELEASE_METADATA_SURFACES")\n'
+          replacement = (
+              anchor
+              + 'text = text.replace("RELEASE_RELEASE_METADATA_SURFACES", "RELEASE_METADATA_SURFACES")\n'
+          )
+          if text.count(anchor) != 1:
+              raise SystemExit(f'expected one constant-renaming anchor, found {text.count(anchor)}')
+          script.write_text(text.replace(anchor, replacement), encoding='utf-8')
+
+          manifest = Path('xtask/Cargo.toml')
+          manifest_text = manifest.read_text(encoding='utf-8')
+          dependency_anchor = 'serde_json = "1"\n'
+          if 'toml = "0.9"\n' not in manifest_text:
+              if manifest_text.count(dependency_anchor) != 1:
+                  raise SystemExit('xtask dependency insertion anchor changed')
+              manifest.write_text(
+                  manifest_text.replace(
+                      dependency_anchor,
+                      dependency_anchor + 'toml = "0.9"\n',
+                  ),
+                  encoding='utf-8',
+              )
+          PY
+
+      - name: Apply verifier authority repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/patch_source_promotion_version_identity.py
+          test ! -e .github/scripts/patch_source_promotion_version_identity.py
+          test ! -e .github/workflows/source-promotion-version-identity-repair.yml
+          rm -f .github/workflows/source-promotion-version-identity-candidate.yml
+          rm -f .github/repair-trigger-1531
+
+      - name: Keep all adversary construction outside the caller-state measurement
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          verifier = Path('xtask/src/reports/source_promotion_verify.rs')
+          text = verifier.read_text(encoding='utf-8')
+          snapshot_anchor = '            let before_refs = test_git_output(\n'
+          binding = '            let changelog_mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;\n'
+          write_prefix = '            fs::write(root.join("CHANGELOG.md")'
+          late_end = '            let tree = test_git_output(&root, &["rev-parse", &format!("{source}^{{tree}}")])?;\n'
+          if text.count(snapshot_anchor) != 1:
+              raise SystemExit(f'expected one caller-state snapshot anchor, found {text.count(snapshot_anchor)}')
+          if text.count(binding) != 1:
+              raise SystemExit(f'expected one changelog adversary binding, found {text.count(binding)}')
+          if text.count(late_end) != 1:
+              raise SystemExit(f'expected one post-adversary tree anchor, found {text.count(late_end)}')
+
+          binding_at = text.index(binding)
+          start = text.rfind(write_prefix, 0, binding_at)
+          if start < 0:
+              raise SystemExit('could not locate changelog adversary write before its binding')
+          end = text.index(late_end, binding_at)
+          late_block = text[start:end]
+          for required in [
+              'let changelog_mutated',
+              'verify_release_metadata(&root, &changelog_mutated, &source)',
+              'source-authoritative changelog mutation was accepted',
+          ]:
+              if required not in late_block:
+                  raise SystemExit(f'changelog adversary block missing {required!r}')
+
+          adversary_setup = '''            fs::write(root.join("CHANGELOG.md"), "# Changelog\\nchanged\\n")
+                .map_err(|error| error.to_string())?;
+            test_git(&root, &["add", "CHANGELOG.md"])?;
+            test_git(&root, &["commit", "--quiet", "-m", "changelog-mutated"])?;
+            let changelog_mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
+            test_git(&root, &["reset", "--quiet", "--hard", &mutated])?;
+'''
+          measured_assertion = '''            if verify_release_metadata(&root, &changelog_mutated, &source).is_ok() {
+                return Err("source-authoritative changelog mutation was accepted".into());
+            }
+'''
+          text = text[:start] + measured_assertion + text[end:]
+          text = text.replace(snapshot_anchor, adversary_setup + snapshot_anchor)
+          verifier.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Format and focused verifier proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo test -p xtask source_promotion -- --nocapture
+          cargo clippy -p xtask --all-targets -- -D warnings
+          git diff --check
+
+      - name: Repository policy proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo xtask check-spec-format
+          cargo xtask check-traceability
+          cargo xtask check-doc-index
+          cargo xtask check-doc-artifacts
+          cargo xtask check-file-policy
+
+      - name: Commit and push exact final candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "fix/source-promotion-version-identity-1531-candidate"
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add -A
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+          test ! -e .github/workflows/source-promotion-version-identity-candidate.yml
+          test ! -e .github/workflows/source-promotion-version-identity-repair.yml
+          test ! -e .github/scripts/patch_source_promotion_version_identity.py
+          test ! -e .github/repair-trigger-1531
+          git commit -m "fix(promotion): verify staged version identity"
+          git push origin HEAD:fix/source-promotion-version-identity-1531-candidate
