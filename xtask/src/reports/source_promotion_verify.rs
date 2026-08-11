@@ -156,9 +156,9 @@ fn verify(options: &Options) -> Result<Value, String> {
         "checks": checks,
         "failure_reasons": [],
         "invalidation_rules": [
-            "Changing the preflight bytes, resolution manifest, exact join, parent identities, reviewed tree, or verified main invalidates this receipt.",
+            "Changing the preflight bytes, resolution manifest, exact join, parent identities, reviewed tree, governed release-version identity, source-authoritative CHANGELOG.md bytes, or verified main invalidates this receipt.",
             "A descendant repair commit is not the declared join and must be verified with a fresh exact head.",
-            "This receipt proves Git graph and byte identity only; it does not adjudicate conflicts, product correctness, release readiness, or publication.",
+            "This receipt proves the exact Git graph, reviewed-tree identity, governed release-version identity, and source-authoritative CHANGELOG.md bytes only; it does not adjudicate conflicts, product correctness, release readiness, or publication.",
         ],
         "non_claims": [
             "No semantic conflict ruling or artifact adequacy claim.",
