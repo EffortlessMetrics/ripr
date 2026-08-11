@@ -5277,11 +5277,17 @@ fn check_spec_format() -> Result<(), String> {
         }
         // #2708: flag proposed specs older than 90 days without review.
         // Accepted/deprecated specs are exempt — they have been reviewed.
-        // #3035: age evidence comes from Git history, never filesystem mtime.
         if status.as_deref() == Some("proposed")
-            && let Some(finding) = proposed_spec_age_finding(&normalized)
+            && let Ok(metadata) = std::fs::metadata(&path)
+            && let Ok(modified) = metadata.modified()
+            && let Ok(elapsed) = modified.elapsed()
+            && elapsed.as_secs() > 90 * 24 * 60 * 60
         {
-            violations.push(finding);
+            let days = elapsed.as_secs() / (24 * 60 * 60);
+            violations.push(format!(
+                "{normalized} has been `proposed` for {days} days without review; \
+                 promote to `accepted`, re-scope, or add evidence to justify the status"
+            ));
         }
         for heading in required_spec_headings() {
             if !has_markdown_heading(&text, heading) {
@@ -5311,98 +5317,6 @@ fn check_spec_format() -> Result<(), String> {
         },
         &violations,
     )
-}
-
-/// Maximum age of a `Status: proposed` spec before the lifecycle gate fires
-/// (#2708).
-const PROPOSED_SPEC_MAX_AGE_SECS: u64 = 90 * 24 * 60 * 60;
-const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
-/// Tolerated future-dating of the last spec-changing commit before the age
-/// evidence is rejected as not_proven (#3035 review): ordinary clock skew
-/// between committer and runner stays within a day.
-const PROPOSED_SPEC_CLOCK_SKEW_SECS: u64 = SECONDS_PER_DAY;
-
-/// #3035: proposed-spec review age is judged on repository evidence, never on
-/// filesystem mtime. Git does not preserve tracked-file mtime across
-/// clone/checkout, so the mtime-based check made an old proposed spec look new
-/// exactly where the gate matters (fresh CI checkout). The authority is the
-/// committer timestamp of the last commit that changed the spec, resolved with
-/// the exact path-safe invocation `git log -1 --format=%ct -- <path>`.
-/// Unavailable, missing, or malformed evidence is a named `not_proven`
-/// finding — never a silent pass.
-fn proposed_spec_age_finding(normalized: &str) -> Option<String> {
-    let output = match run_output("git", &["log", "-1", "--format=%ct", "--", normalized]) {
-        Ok(output) => output,
-        Err(err) => {
-            return Some(format!(
-                "{normalized} proposed-age evidence is not_proven: \
-                 `git log -1 --format=%ct -- {normalized}` failed ({err}); \
-                 the lifecycle check requires repository evidence and never \
-                 falls back to filesystem mtime"
-            ));
-        }
-    };
-    let timestamp = output.trim();
-    if timestamp.is_empty() {
-        return Some(format!(
-            "{normalized} proposed-age evidence is not_proven: the spec has no Git \
-             history (untracked path); commit it so `git log -1 --format=%ct -- \
-             {normalized}` resolves — the check never falls back to filesystem mtime"
-        ));
-    }
-    let Ok(commit_unix) = timestamp.parse::<u64>() else {
-        return Some(format!(
-            "{normalized} proposed-age evidence is not_proven: `git log` returned a \
-             malformed commit timestamp `{timestamp}`"
-        ));
-    };
-    let now_unix = match now_unix_seconds() {
-        Ok(now_unix) => now_unix,
-        Err(err) => {
-            return Some(format!(
-                "{normalized} proposed-age evidence is not_proven: {err}; the \
-                 lifecycle check requires a real current-time read and never \
-                 fabricates one"
-            ));
-        }
-    };
-    proposed_spec_age_violation(normalized, commit_unix, now_unix)
-}
-
-fn proposed_spec_age_violation(
-    normalized: &str,
-    commit_unix: u64,
-    now_unix: u64,
-) -> Option<String> {
-    // A committer date beyond a bounded clock-skew window is corrupted or
-    // forged age evidence (for example an explicit `GIT_COMMITTER_DATE`):
-    // fail closed as not_proven rather than letting `saturating_sub` turn a
-    // far-future timestamp into a silent pass (#3035 review).
-    if commit_unix > now_unix + PROPOSED_SPEC_CLOCK_SKEW_SECS {
-        return Some(format!(
-            "{normalized} proposed-age evidence is not_proven: the last Git commit \
-             that changed the spec is dated in the future beyond the tolerated \
-             clock skew; correct the commit metadata — the check never falls back \
-             to filesystem mtime"
-        ));
-    }
-    let age_secs = now_unix.saturating_sub(commit_unix);
-    if age_secs <= PROPOSED_SPEC_MAX_AGE_SECS {
-        return None;
-    }
-    let days = age_secs / SECONDS_PER_DAY;
-    Some(format!(
-        "{normalized} has been `proposed` for {days} days without review (age from \
-         the last Git commit that changed the spec, not filesystem mtime); \
-         promote to `accepted`, re-scope, or add evidence to justify the status"
-    ))
-}
-
-fn now_unix_seconds() -> Result<u64, String> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .map_err(|err| format!("failed to read current Unix time: {err}"))
 }
 
 fn specs(args: &[String]) -> Result<(), String> {

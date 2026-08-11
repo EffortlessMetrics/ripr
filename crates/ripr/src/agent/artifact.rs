@@ -12,7 +12,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub(crate) use crate::output::schemas::ARTIFACT_IDENTITY_SCHEMA_VERSION;
+pub(crate) const ARTIFACT_IDENTITY_SCHEMA_VERSION: &str = "1";
 /// Version of the repo-exposure analysis input-identity algorithm (#2823).
 /// The emitted identity is `input:{INPUT_IDENTITY_VERSION}:<digest>`. The
 /// version is explicit in the emitted bytes so an algorithm change is a new

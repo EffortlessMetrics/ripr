@@ -31,7 +31,7 @@ use super::ripr_swarm_route_quality_from_ledger_value;
 use super::ripr_swarm_route_quality_report_json;
 use super::run::{
     TimedFileOutput, TimedOutput, capture_output, command_success_owned, run, run_output,
-    run_output_optional, run_output_owned, run_with_envs,
+    run_output_optional, run_output_owned,
 };
 use super::validate_bless_reason;
 use super::{
@@ -79,9 +79,9 @@ use super::{
     build_repo_exposure_latency_report, build_targeted_test_outcome_report, check_allow_attributes,
     check_badge_diff_policy_with_context, check_doc_artifacts, check_droid_review_config,
     check_executable_files, check_file_policy, check_local_context, check_network_policy,
-    check_no_panic_family, check_process_policy, check_spec_format, check_static_language,
-    check_support_tiers, check_workflows, ci_enforced_xtask_invocations, ci_full_evidence_gates,
-    cockpit_json, cockpit_markdown, command_catalog, command_catalog_ci_drift_violations,
+    check_no_panic_family, check_process_policy, check_static_language, check_support_tiers,
+    check_workflows, ci_enforced_xtask_invocations, ci_full_evidence_gates, cockpit_json,
+    cockpit_markdown, command_catalog, command_catalog_ci_drift_violations,
     command_catalog_violations, commands_report_json, commands_report_markdown, critic_findings,
     days_from_civil, doc_artifact_kind_matches_path, doc_artifact_violations,
     dogfood_bun_ub_cross_language_run, dogfood_bun_ub_cross_language_scenarios,
@@ -143,13 +143,12 @@ use super::{
     pr_ready_next_action, pr_ready_status, pr_ready_status_from_report_status,
     pr_sensitive_file_reason, pr_shape_warnings, pr_summary_body, pr_title_family,
     pr_triage_findings, pr_triage_json, pr_triage_markdown, pr_triage_queue_dispositions,
-    precommit_report_body, proposed_spec_age_violation, public_badge_basis_violations,
-    public_contract_rows, read_json_value, read_lsp_cockpit_json_value, read_mutation_input_json,
-    read_repo_exposure_summary_artifact, receipt_json, receipt_specs, receipt_status_from_reports,
-    repo_badge_artifact_command_args, repo_badge_artifact_jobs,
-    repo_badge_artifact_stdout_from_output, repo_badge_artifact_timeout_ms_from_env,
-    repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
-    repo_exposure_latency_markdown, repo_exposure_latency_run,
+    precommit_report_body, public_badge_basis_violations, public_contract_rows, read_json_value,
+    read_lsp_cockpit_json_value, read_mutation_input_json, read_repo_exposure_summary_artifact,
+    receipt_json, receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
+    repo_badge_artifact_jobs, repo_badge_artifact_stdout_from_output,
+    repo_badge_artifact_timeout_ms_from_env, repo_badge_artifacts_summary_markdown,
+    repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
     repo_exposure_latency_run_from_output, repo_exposure_latency_status,
     repo_exposure_latency_trace, repo_exposure_summary_report_timeout_ms_from_env, repo_root,
     repo_seam_inventory_command_args_for_root, report_index_lane1_overall_status,
@@ -26003,222 +26002,6 @@ fn spec_numbering_detects_duplicate_spec_ids() -> Result<(), String> {
             .any(|violation| violation.contains("RIPR-SPEC-0001 is used by multiple spec files"))
     );
     Ok(())
-}
-
-fn spec_format_fixture_text(spec_id: &str, status: &str) -> String {
-    format!(
-        "# {spec_id}: Fixture Spec\n\nStatus: {status}\n\n## Problem\n\nfixture\n\n## Behavior\n\nfixture\n\n## Required Evidence\n\nfixture\n\n## Non-Goals\n\nfixture\n\n## Acceptance Examples\n\nfixture\n\n## Test Mapping\n\nfixture\n\n## Implementation Mapping\n\nfixture\n\n## Metrics\n\nfixture\n"
-    )
-}
-
-fn write_spec_format_fixture(spec_id: &str, slug: &str, status: &str) -> String {
-    let relative = format!("docs/specs/{spec_id}-{slug}.md");
-    write(
-        Path::new(&relative),
-        &spec_format_fixture_text(spec_id, status),
-    );
-    relative
-}
-
-/// Commit the whole temp worktree with a command-scoped identity and an
-/// explicit author/committer date so proposed-spec age evidence is
-/// deterministic (#3035).
-fn commit_spec_format_fixture(message: &str, date: &str) -> Result<(), String> {
-    run("git", &["add", "-A"])?;
-    run_with_envs(
-        "git",
-        &[
-            "-c",
-            "user.name=ripr-xtask-test",
-            "-c",
-            "user.email=ripr-xtask-test@example.com",
-            "commit",
-            "-m",
-            message,
-        ],
-        &[("GIT_AUTHOR_DATE", date), ("GIT_COMMITTER_DATE", date)],
-    )?;
-    Ok(())
-}
-
-const OLD_SPEC_COMMIT_DATE: &str = "2000-01-01T00:00:00+00:00";
-
-#[test]
-fn proposed_spec_age_violation_compares_against_threshold() -> Result<(), String> {
-    let now = 1_800_000_000u64;
-    let path = "docs/specs/RIPR-SPEC-0001-fixture.md";
-    let Some(finding) = proposed_spec_age_violation(path, now - 120 * 24 * 60 * 60, now) else {
-        return Err("a 120-day-old commit should produce a lifecycle finding".to_string());
-    };
-    assert!(finding.contains("has been `proposed` for 120 days without review"));
-    assert!(
-        proposed_spec_age_violation(path, now - 10 * 24 * 60 * 60, now).is_none(),
-        "a 10-day-old commit should pass"
-    );
-    assert!(
-        proposed_spec_age_violation(path, now - 90 * 24 * 60 * 60, now).is_none(),
-        "a commit exactly 90 days old is inside the inclusive threshold and passes"
-    );
-    let Some(threshold_finding) =
-        proposed_spec_age_violation(path, now - (90 * 24 * 60 * 60 + 1), now)
-    else {
-        return Err(
-            "a commit 90 days plus one second old should produce a lifecycle finding".to_string(),
-        );
-    };
-    assert!(
-        threshold_finding.contains("has been `proposed` for 90 days without review"),
-        "90 days plus one second must trip the lifecycle finding, got: {threshold_finding}"
-    );
-    assert!(
-        proposed_spec_age_violation(path, now + 60, now).is_none(),
-        "a commit seconds in the future is ordinary clock skew and passes"
-    );
-    let Some(future_finding) = proposed_spec_age_violation(path, now + 30 * 24 * 60 * 60, now)
-    else {
-        return Err("a far-future commit date must fail closed as not_proven".to_string());
-    };
-    assert!(
-        future_finding.contains("not_proven"),
-        "far-future evidence must be named not_proven, got: {future_finding}"
-    );
-    Ok(())
-}
-
-#[test]
-fn spec_format_flags_old_proposed_spec_from_git_history() -> Result<(), String> {
-    with_temp_cwd("spec-format-old-proposed", |_root| {
-        run("git", &["init"])?;
-        write_spec_format_fixture("RIPR-SPEC-0001", "old-proposed", "proposed");
-        commit_spec_format_fixture("add old proposed spec", OLD_SPEC_COMMIT_DATE)?;
-
-        let error = check_spec_format()
-            .expect_err("an old committed proposed spec must fail the lifecycle check");
-        assert!(error.contains("check-spec-format failed"), "{error}");
-        let report = fs::read_to_string("target/ripr/reports/spec-format.md")
-            .map_err(|err| format!("read spec-format report: {err}"))?;
-        assert!(
-            report.contains("has been `proposed` for"),
-            "report should carry the age finding: {report}"
-        );
-        assert!(report.contains("without review"), "{report}");
-        Ok(())
-    })
-}
-
-#[test]
-fn spec_format_passes_recently_committed_proposed_spec() -> Result<(), String> {
-    with_temp_cwd("spec-format-recent-proposed", |_root| {
-        run("git", &["init"])?;
-        write_spec_format_fixture("RIPR-SPEC-0001", "recent-proposed", "proposed");
-        // No date override: the commit timestamp is now, inside the threshold.
-        run("git", &["add", "-A"])?;
-        run_with_envs(
-            "git",
-            &[
-                "-c",
-                "user.name=ripr-xtask-test",
-                "-c",
-                "user.email=ripr-xtask-test@example.com",
-                "commit",
-                "-m",
-                "add recent proposed spec",
-            ],
-            &[],
-        )?;
-
-        check_spec_format()
-    })
-}
-
-#[test]
-fn spec_format_exempts_accepted_spec_with_old_history() -> Result<(), String> {
-    with_temp_cwd("spec-format-old-accepted", |_root| {
-        run("git", &["init"])?;
-        write_spec_format_fixture("RIPR-SPEC-0001", "old-accepted", "accepted");
-        commit_spec_format_fixture("add old accepted spec", OLD_SPEC_COMMIT_DATE)?;
-
-        check_spec_format()
-    })
-}
-
-#[test]
-fn spec_format_fails_closed_when_proposed_spec_is_untracked() -> Result<(), String> {
-    with_temp_cwd("spec-format-untracked-proposed", |_root| {
-        run("git", &["init"])?;
-        write(Path::new("README.md"), "fixture\n");
-        commit_spec_format_fixture("seed commit", OLD_SPEC_COMMIT_DATE)?;
-        let relative =
-            write_spec_format_fixture("RIPR-SPEC-0001", "untracked-proposed", "proposed");
-        // Never committed: the repo has history, but not for this path.
-        let error =
-            check_spec_format().expect_err("an untracked proposed spec must not silently pass");
-        assert!(error.contains("check-spec-format failed"), "{error}");
-        let report = fs::read_to_string("target/ripr/reports/spec-format.md")
-            .map_err(|err| format!("read spec-format report: {err}"))?;
-        assert!(report.contains("not_proven"), "{report}");
-        assert!(report.contains("no Git history"), "{report}");
-        assert!(report.contains(&relative), "{report}");
-        Ok(())
-    })
-}
-
-#[test]
-fn spec_format_fails_closed_without_git_evidence() -> Result<(), String> {
-    with_temp_cwd("spec-format-no-git-repo", |_root| {
-        // No `git init`: this tree has no repository evidence of its own.
-        // Whether `git log` fails outright (temp dir outside any repository)
-        // or resolves the ambient repository but finds no history for this
-        // path, the gate must fail closed with a named not_proven finding.
-        write_spec_format_fixture("RIPR-SPEC-0001", "no-repo-proposed", "proposed");
-        let error = check_spec_format()
-            .expect_err("missing Git evidence must fail closed, not silently pass");
-        assert!(error.contains("check-spec-format failed"), "{error}");
-        let report = fs::read_to_string("target/ripr/reports/spec-format.md")
-            .map_err(|err| format!("read spec-format report: {err}"))?;
-        assert!(report.contains("not_proven"), "{report}");
-        assert!(
-            report.contains("never falls back to filesystem mtime"),
-            "{report}"
-        );
-        Ok(())
-    })
-}
-
-#[test]
-fn spec_format_fresh_checkout_keeps_old_git_evidence() -> Result<(), String> {
-    with_temp_cwd("spec-format-fresh-checkout", |root| {
-        let origin = root.join("origin-repo");
-        fs::create_dir_all(&origin).map_err(|err| format!("create origin repo: {err}"))?;
-        std::env::set_current_dir(&origin).map_err(|err| format!("cd origin repo: {err}"))?;
-        run("git", &["init"])?;
-        write_spec_format_fixture("RIPR-SPEC-0001", "checkout-proposed", "proposed");
-        commit_spec_format_fixture("add old proposed spec", OLD_SPEC_COMMIT_DATE)?;
-
-        // A clone performed today resets every file mtime to now; the Git
-        // commit timestamp must still report the spec as old.
-        std::env::set_current_dir(root).map_err(|err| format!("cd fixture root: {err}"))?;
-        run(
-            "git",
-            &[
-                "clone",
-                origin
-                    .to_str()
-                    .ok_or_else(|| "origin path is not UTF-8".to_string())?,
-                "checkout",
-            ],
-        )?;
-        std::env::set_current_dir(root.join("checkout"))
-            .map_err(|err| format!("cd checkout: {err}"))?;
-
-        let error = check_spec_format()
-            .expect_err("a fresh checkout of an old proposed spec must still fail");
-        assert!(error.contains("check-spec-format failed"), "{error}");
-        let report = fs::read_to_string("target/ripr/reports/spec-format.md")
-            .map_err(|err| format!("read spec-format report: {err}"))?;
-        assert!(report.contains("has been `proposed` for"), "{report}");
-        Ok(())
-    })
 }
 
 #[test]

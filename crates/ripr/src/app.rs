@@ -33,11 +33,10 @@ pub use check::{check_workspace, check_workspace_repo, repo_seam_inventory_input
 /// `crate::app::PERL_FACT_PACKET_SCHEMA`.
 pub(crate) const PERL_FACT_PACKET_SCHEMA: &str = "ripr-perl-facts-v1";
 
-pub(crate) use crate::analysis::repair_route::repair_route_readiness;
 /// The versioned envelope consumed by the producer-owned agent verification
-/// route and emitted by the agent seam packet renderer. Defined in the
-/// central registry (`output::schemas`, #2973) and re-exported here.
-pub(crate) use crate::output::schemas::AGENT_SEAM_PACKET_SCHEMA_VERSION;
+/// route and emitted by the agent seam packet renderer.
+pub(crate) const AGENT_SEAM_PACKET_SCHEMA_VERSION: &str = "0.4";
+pub(crate) use crate::analysis::repair_route::repair_route_readiness;
 pub(crate) use check::is_managed_perl_producer;
 pub use check::{
     check_workspace_repo_with_config, check_workspace_with_config,

@@ -9,7 +9,7 @@ use crate::app::Mode;
 use serde_json::Value;
 use std::path::Path;
 
-pub(crate) use crate::output::schemas::AGENT_WORKFLOW_SCHEMA_VERSION;
+pub(crate) const AGENT_WORKFLOW_SCHEMA_VERSION: &str = "0.1";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AgentWorkflowManifest {

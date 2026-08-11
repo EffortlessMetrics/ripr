@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use super::receipt_lifecycle::receipt_lifecycle_state_from_movement;
 
-pub(crate) use crate::output::schemas::AGENT_RECEIPT_SCHEMA_VERSION;
+pub(crate) const AGENT_RECEIPT_SCHEMA_VERSION: &str = "0.5";
 
 pub(crate) use crate::app::analysis_outcome_artifact::AnalysisOutcomeUnavailableStatus as AgentReceiptUnavailableStatus;
 
