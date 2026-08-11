@@ -11,10 +11,10 @@ import {
 } from 'vscode-languageclient/node';
 import { getConfig, RiprConfig } from './config';
 import { requestedServerVersion, resolveServer, ResolveFailure, ResolvedServer } from './serverResolver';
-import { setupFilePath, stringValues, hasUnsafeShellMetacharacter, normalizePath, sameWorkspaceRoot, rootMatchesWorkspace, objectField, stringField, boundedStringField, arrayLength, numberFieldValue } from './packetJson';
+import { setupFilePath, hasUnsafeShellMetacharacter, normalizePath, sameWorkspaceRoot, rootMatchesWorkspace, objectField, stringField, boundedStringField, arrayLength, numberFieldValue } from './packetJson';
 import { riprDocumentSelectorsForWorkspace, extensionVersion, traceFromConfig, currentWorkspaceRootState, workspaceRootStateNoWorkspace, workspaceRootStateLabel, workspaceRootStateDetail, workspaceRootPickItems } from './workspaceHelpers';
 import type { WorkspaceRootPickItem } from './workspaceHelpers';
-import { statusText, statusSummary, statusBarColors, canProjectFirstUsefulAction, shouldInlineFirstUsefulAction } from './statusRender';
+import { statusText, statusSummary, statusBarColors, canProjectFirstUsefulAction } from './statusRender';
 import type { RiprStatusKind, RiprStatusState, FirstUsefulActionStatus, StatusBarColors } from './statusRender';
 import {
   validateFirstPrPacket,
@@ -30,7 +30,6 @@ import {
   firstPrPacketCanBecomeStale,
   firstPrPacketStoredInTarget,
   diagnosticMatchesFirstPrPacket,
-  firstPrCommandIsSafe,
   firstPrPathIsWorkspaceLocal
 } from './firstPrProjection';
 import type { RiprFirstPrPacketState, RiprFirstPrPacketStatus } from './firstPrProjection';

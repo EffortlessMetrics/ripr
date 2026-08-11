@@ -997,7 +997,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "preflight or exact-J verification receipts under explicit --out or target/ripr/source-promotion",
             false,
             false,
-            "Runs the read-only exact-pair preflight producer or the v2 exact history-preserving join verifier. Neither subcommand constructs a join, mutates Git refs, changes versions, or publishes.",
+            "Depending on the subcommand, `preflight` writes deterministic exact-pair receipts and `verify` writes deterministic v2 exact-J verification receipts. Neither subcommand constructs a join, mutates Git refs, changes versions, or publishes.",
         ),
         command_entry(
             "back-sync verify --swarm-before <sha> --source-release-head <sha> --source-release-tag <tag> --join <sha> --tree <tree-sha> --swarm-repo <path> --source-repo <path> --version <version> --release-receipt <path> --policy-before <path> --policy-exception <path> --policy-after <path> [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
