@@ -74,8 +74,10 @@ for match in ROW_RE.finditer(source_index):
     identity = match.group(1)
     row = match.group(0)
     for old_id, new_id, old_path, new_path in MIGRATIONS:
-        if old_path in row:
-            row = row.replace(old_id, new_id).replace(old_path, new_path)
+        old_name = Path(old_path).name
+        new_name = Path(new_path).name
+        if old_name in row:
+            row = row.replace(old_id, new_id).replace(old_name, new_name)
             identity = new_id.rsplit("-", 1)[1]
     source_rows[identity] = row
 swarm_rows = {match.group(1): match.group(0) for match in ROW_RE.finditer(swarm_index)}
