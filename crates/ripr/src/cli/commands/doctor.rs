@@ -1091,6 +1091,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(all(feature = "lang-python", feature = "lang-typescript"))]
     fn language_runtime_probes_follow_detected_languages() -> Result<(), String> {
         // #2071: rust-only roots get no probes; a python root with pytest
         // markers gets python3 + pytest; a bun workspace adds bun.
@@ -1323,6 +1324,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "lang-python", feature = "lang-typescript"))]
     fn doctor_reports_unittest_and_package_only_ts_frameworks() -> Result<(), String> {
         // #2106 review: doctor output coverage for frameworks only visible
         // through the shared detectors.

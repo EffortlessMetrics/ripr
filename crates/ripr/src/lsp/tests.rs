@@ -2964,6 +2964,7 @@ fn code_action_response_omits_context_action_without_ripr_diagnostic() -> Result
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> Result<(), String> {
     let root = unique_lsp_test_root("gap-actions")?;
     std::fs::create_dir_all(root.path().join("src"))
@@ -3155,6 +3156,7 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn gap_code_actions_suppress_first_repair_packet_without_verify_or_receipt_command()
 -> Result<(), String> {
     let root = unique_lsp_test_root("gap-first-repair-requires-commands")?;
@@ -3210,6 +3212,7 @@ fn gap_code_actions_suppress_first_repair_packet_without_verify_or_receipt_comma
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn gap_code_actions_suppress_first_repair_packet_without_producer_discriminator()
 -> Result<(), String> {
     let root = unique_lsp_test_root("gap-first-repair-requires-discriminator")?;
@@ -3319,6 +3322,7 @@ fn gap_code_actions_suppress_python_agent_packet_without_actionable_python_gap_r
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn gap_code_actions_suppress_repair_actions_for_cross_language_target_unresolved()
 -> Result<(), String> {
     let root = unique_lsp_test_root("gap-cross-language-target-unresolved")?;
@@ -3391,6 +3395,7 @@ fn gap_code_actions_suppress_repair_actions_for_cross_language_target_unresolved
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn gap_code_actions_project_python_pytest_skeleton_and_target_file() -> Result<(), String> {
     let root = unique_lsp_test_root("gap-python-pytest-actions")?;
     std::fs::create_dir_all(root.path().join("src"))
@@ -3519,6 +3524,7 @@ fn gap_code_actions_project_python_pytest_skeleton_and_target_file() -> Result<(
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn gap_code_actions_omit_partial_or_invalid_typed_specs() -> Result<(), String> {
     let mut missing_verify = validated_gap_artifact();
     missing_verify.verify_command_specs.clear();
@@ -3742,6 +3748,7 @@ fn gap_code_actions_suppress_python_repair_card_without_target_file() -> Result<
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn editor_adoption_baseline_pins_gap_repair_action_contract() -> Result<(), String> {
     let root = unique_lsp_test_root("editor-adoption-gap-actions")?;
     std::fs::create_dir_all(root.path().join("src"))
@@ -4177,6 +4184,7 @@ fn code_action_response_only_filter_compounds_with_client_command_filter() -> Re
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn code_action_response_emitted_kinds_stay_within_the_advertised_set() -> Result<(), String> {
     // Kind parity invariant (#1750, RIPR-SPEC-0129): every kind emitted
     // across the seam, gap, finding, and refresh paths is in the advertised
@@ -4461,6 +4469,7 @@ fn code_action_response_actions_carry_versioned_data_payloads() -> Result<(), St
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn gap_code_actions_carry_distinct_action_ids_and_names() -> Result<(), String> {
     // #1892 review (action_id collisions): several constructors share one
     // command id on one diagnostic — the copy_context sites all use
@@ -5102,6 +5111,7 @@ fn gap_code_actions_stale_diagnostic_yields_disabled_stale_snapshot_action() -> 
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn gap_code_actions_disable_verify_route_when_verification_commands_missing() -> Result<(), String>
 {
     // Missing verification route (#1892): the gap record carries no safe
@@ -5155,6 +5165,7 @@ fn gap_code_actions_disable_verify_route_when_verification_commands_missing() ->
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn gap_code_actions_disable_receipt_route_when_receipt_command_missing() -> Result<(), String> {
     // Missing receipt route (#1892): the gap record carries a verify route
     // but no safe receipt command, so the receipt handoff is emitted inert
@@ -5201,6 +5212,7 @@ fn gap_code_actions_disable_receipt_route_when_receipt_command_missing() -> Resu
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn gap_code_actions_cross_language_unresolved_yields_disabled_preview_limitation()
 -> Result<(), String> {
     // Cross-language suppression (#1892): the producer-owned
@@ -5710,6 +5722,7 @@ async fn run_push_pull_parity_leg(profile: PushPullParityProfile) -> Result<(), 
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn push_and_pull_delivery_yield_identical_code_action_availability() -> Result<(), String> {
     // Push/pull action-availability parity (#1628 residual,
     // RIPR-SPEC-0129): both transports serve clones of the same committed

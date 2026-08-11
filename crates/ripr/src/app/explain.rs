@@ -190,6 +190,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lang-typescript")]
     fn explain_finding_renders_typescript_actionable_packet_field_note() -> Result<(), String> {
         let rendered = explain_fixture(
             "ts_repair_packet_complete",
@@ -211,6 +212,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lang-typescript")]
     fn explain_finding_renders_typescript_blocked_packet_limitation() -> Result<(), String> {
         let rendered = explain_fixture(
             "ts_static_limit",

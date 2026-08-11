@@ -1758,6 +1758,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lang-python")]
     fn gap_artifact_state_helpers_classify_status_preview_and_static_limits() -> Result<(), String>
     {
         let artifact = preview_gap_ledger();
@@ -2453,6 +2454,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lang-python")]
     fn actionable_gaps_report_rejects_disabled_language_in_later_packet() -> Result<(), String> {
         let mut artifact = actionable_gaps_report();
         let python_packet = json!({
@@ -2521,6 +2523,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lang-python")]
     fn preview_gap_ledger_validates_only_when_language_is_enabled() -> Result<(), String> {
         let artifact = preview_gap_ledger();
         let disabled = validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]));
@@ -2547,6 +2550,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lang-typescript")]
     fn javascript_preview_gap_ledger_is_enabled_by_typescript_adapter() -> Result<(), String> {
         let mut artifact = preview_gap_ledger();
         artifact["records"][0]["gap_id"] = json!("gap:js:pricing");
@@ -2576,6 +2580,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lang-python")]
     fn gap_ledger_summary_uses_all_records_for_actionability_and_preview_status()
     -> Result<(), String> {
         let mut artifact = preview_gap_ledger();
@@ -2637,6 +2642,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lang-python")]
     fn gap_ledger_validation_checks_languages_for_every_record() -> Result<(), String> {
         let mut artifact = preview_gap_ledger();
         artifact["records"]
@@ -2724,6 +2730,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lang-python")]
     fn validation_rejects_unregistered_static_limit_kind() {
         let mut artifact = preview_gap_ledger();
         artifact["records"][0]["static_limit_kind"] = json!("runtime_magic");

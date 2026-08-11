@@ -880,6 +880,7 @@ fn premium_customer_gets_discount() {
     }
 
     #[test]
+    #[cfg(feature = "lang-typescript")]
     fn typescript_repo_readiness_uses_preview_file_scope() -> Result<(), String> {
         let root = temp_dir("ts_readiness_scope");
         fs::create_dir_all(root.join("src"))

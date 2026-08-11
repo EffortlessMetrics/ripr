@@ -2267,6 +2267,7 @@ mod tests {
     /// oracle-policy change still moves it (positive control, also covered by
     /// test 4).
     #[test]
+    #[cfg(feature = "lang-typescript")]
     fn repo_exposure_input_identity_ignores_unconsumed_config_fields() -> Result<(), String> {
         let root = temporary_git_root()?;
         let result = (|| -> Result<(), String> {

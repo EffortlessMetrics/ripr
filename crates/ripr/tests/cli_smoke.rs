@@ -6139,6 +6139,7 @@ fn rerun_gap_groups_multiple_current_seams() -> Result<(), String> {
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn pilot_accepts_python_project_without_ripr_config() -> Result<(), String> {
     let root = workspace_root().join("fixtures/python/basic");
     let out_dir = unique_temp_workspace("pilot-python-basic");
@@ -6161,6 +6162,7 @@ fn pilot_accepts_python_project_without_ripr_config() -> Result<(), String> {
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn pilot_projects_python_repair_card_for_git_diff() -> Result<(), String> {
     let root = unique_temp_workspace("pilot-python-git");
     std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
@@ -6248,6 +6250,7 @@ fn pilot_projects_python_repair_card_for_git_diff() -> Result<(), String> {
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn check_detects_python_project_without_ripr_config() {
     let root = workspace_root().join("fixtures/python/basic");
     let diff = root.join("diff.patch");

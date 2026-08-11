@@ -833,6 +833,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "lang-python")]
     fn doctor_json_carries_enabled_languages() -> Result<(), String> {
         // #2072: generated CI consumes the typed languages surface.
         // Hermetic: a temp root with a configured enabled list, so the
