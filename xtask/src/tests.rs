@@ -172,8 +172,8 @@ use super::{
     ripr_swarm_readiness_markdown, ripr_swarm_readiness_next_actions, ripr_swarm_readiness_summary,
     routed_rust_workflow_contract_violations, run_ci_full_evidence_gates,
     run_repo_badge_artifact_command, sarif_policy_report_json, sarif_policy_report_markdown,
-    should_scan_static_language_path, should_skip_path, sorted_allowlist_content,
-    sorted_capability_blocks_content, sorted_command_catalog_content,
+    select_vscode_test_server, should_scan_static_language_path, should_skip_path,
+    sorted_allowlist_content, sorted_capability_blocks_content, sorted_command_catalog_content,
     sorted_markdown_index_table_content, sorted_traceability_behavior_blocks_content,
     spec_id_from_path, spec_ids_in_text, spec_numbering_violations, specs,
     static_language_allowlist_covers, static_language_violation_message, suggested_fixes_patch,
@@ -43683,6 +43683,28 @@ fn vscode_commands_use_extension_cwd_and_local_bins() {
             cwd: extension_dir,
         }
     );
+}
+
+#[test]
+fn vscode_e2e_preserves_installed_server_selection() -> Result<(), String> {
+    let root = std::env::temp_dir().join(format!(
+        "ripr-vscode-server-selection-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).map_err(|err| format!("create test directory: {err}"))?;
+    let installed = root.join("installed-ripr.exe");
+    let built = root.join("target-ripr.exe");
+    fs::write(&installed, b"packaged").map_err(|err| format!("write installed fixture: {err}"))?;
+
+    let selected = select_vscode_test_server(Some(&installed), &built)?;
+    assert_eq!(selected, (installed.clone(), false));
+    assert_eq!(select_vscode_test_server(None, &built)?, (built, true));
+    let missing = root.join("missing-ripr.exe");
+    let error = select_vscode_test_server(Some(&missing), &installed).unwrap_err();
+    assert!(error.contains("installed server binary"));
+
+    fs::remove_dir_all(&root).map_err(|err| format!("remove test directory: {err}"))?;
+    Ok(())
 }
 
 #[test]

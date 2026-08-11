@@ -124,6 +124,8 @@ Current how-to docs:
 - [Source-promotion preflight](SOURCE_PROMOTION_PREFLIGHT.md)
 - [Back-sync verifier](BACK_SYNC_VERIFIER.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
+- [Windows packaged qualification](WINDOWS_PACKAGED_QUALIFICATION.md) - exact
+  candidate Windows CLI and VSIX rehearsal with Actions-only receipts
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md)
 - [First successful PR demo](demo/first-successful-pr.md)
 - [Start-here convergence receipts](handoffs/2026-05-22-start-here-surface-convergence-receipts.md)

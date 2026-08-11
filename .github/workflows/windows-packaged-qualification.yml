@@ -1,0 +1,196 @@
+name: Windows Packaged Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: "Immutable candidate commit SHA (40 hexadecimal characters)"
+        required: true
+        type: string
+      candidate_ref:
+        description: "Immutable candidate tag/ref that must resolve to candidate_sha"
+        required: true
+        type: string
+
+# Actions-only rehearsal for #2769/#2379. This never creates a release,
+# uploads a release asset, publishes a VSIX, uses a secret, or changes a ref.
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-packaged-qualification-${{ inputs.candidate_sha }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: exact candidate packaged journeys
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      CANDIDATE_REF: ${{ inputs.candidate_ref }}
+      QUAL_ROOT: ${{ github.workspace }}\target\ripr\windows-packaged-qualification
+
+    steps:
+      - name: Initialize receipt root
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path $env:QUAL_ROOT | Out-Null
+
+      - name: Checkout immutable candidate
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify candidate and ref identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:CANDIDATE_SHA -notmatch '^[0-9a-fA-F]{40}$') { throw 'candidate_sha must be a full 40-character commit SHA' }
+          if ($env:CANDIDATE_REF -notmatch '^refs/tags/ripr-release-0\.11\.0-[0-9a-fA-F]{40}$') { throw 'candidate_ref must be refs/tags/ripr-release-0.11.0-<40 hex SHA>' }
+          $candidateTagSha = ($env:CANDIDATE_REF -split '-')[-1].ToLowerInvariant()
+          if ($candidateTagSha -ne $env:CANDIDATE_SHA.ToLowerInvariant()) { throw 'candidate_ref tag suffix must equal candidate_sha' }
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -ne $env:CANDIDATE_SHA.ToLowerInvariant()) { throw "checkout identity mismatch: HEAD=$head candidate_sha=$env:CANDIDATE_SHA" }
+          $remoteLine = git ls-remote --exit-code origin $env:CANDIDATE_REF
+          if ($LASTEXITCODE -ne 0) { throw "candidate tag was not found on origin: $env:CANDIDATE_REF" }
+          $remoteSha = ($remoteLine -split '\s+')[0].Trim()
+          if ($remoteSha -ne $head) { throw "origin tag does not resolve directly to candidate_sha: $env:CANDIDATE_REF -> $remoteSha" }
+          $refSha = (git rev-parse "$env:CANDIDATE_REF^{commit}").Trim()
+          if ($refSha -ne $head) { throw "local candidate ref does not resolve to candidate_sha: $env:CANDIDATE_REF -> $refSha" }
+          [ordered]@{ candidate_sha = $head; candidate_ref = $env:CANDIDATE_REF; candidate_parent = (git rev-parse "$head^"); repository = $env:GITHUB_REPOSITORY; workflow_run = $env:GITHUB_RUN_ID } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $env:QUAL_ROOT 'candidate-identity.json')
+
+      - name: Set up Rust and Node
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: 1.95.0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Isolate package installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $env:QUAL_ROOT
+          $temp = Join-Path $env:RUNNER_TEMP 'ripr-windows-packaged-qualification'
+          $env:CARGO_HOME = Join-Path $temp 'cargo-home'
+          $env:CARGO_TARGET_DIR = Join-Path $temp 'cargo-target'
+          "QUAL_TEMP_ROOT=$temp" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force -Path $env:CARGO_HOME, $env:CARGO_TARGET_DIR | Out-Null
+          "CARGO_HOME=$env:CARGO_HOME" >> $env:GITHUB_ENV
+          "CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR" >> $env:GITHUB_ENV
+          rustc -Vv | Tee-Object (Join-Path $root 'rustc-version.txt')
+          cargo -V | Tee-Object (Join-Path $root 'cargo-version.txt')
+          node --version | Tee-Object (Join-Path $root 'node-version.txt')
+
+      - name: Package and install exact crate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $env:QUAL_ROOT
+          cargo package -p ripr --locked 2>&1 | Tee-Object (Join-Path $root 'cargo-package.log')
+          if ($LASTEXITCODE -ne 0) { throw "cargo package failed with exit $LASTEXITCODE" }
+          $crate = Get-ChildItem (Join-Path $env:CARGO_TARGET_DIR 'package\*.crate') | Sort-Object LastWriteTime | Select-Object -Last 1
+          if ($null -eq $crate) { throw 'cargo package did not produce a .crate' }
+          $packageRoot = Join-Path $env:QUAL_TEMP_ROOT 'crate-source'; $installRoot = Join-Path $env:QUAL_TEMP_ROOT 'install'
+          New-Item -ItemType Directory -Force -Path $packageRoot, $installRoot | Out-Null
+          $crateHash = (Get-FileHash $crate.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          tar -tf $crate.FullName | Set-Content -Encoding utf8 (Join-Path $root 'crate-files.txt')
+          tar -xf $crate.FullName -C $packageRoot
+          $packageDir = Get-ChildItem $packageRoot -Directory | Select-Object -First 1
+          if ($null -eq $packageDir) { throw 'packaged source directory was not extracted' }
+          cargo install --path $packageDir.FullName --locked --root $installRoot --force 2>&1 | Tee-Object (Join-Path $root 'cargo-install.log')
+          if ($LASTEXITCODE -ne 0) { throw "cargo install failed with exit $LASTEXITCODE" }
+          $binary = Join-Path $installRoot 'bin\ripr.exe'
+          if (-not (Test-Path $binary)) { throw "isolated binary missing: $binary" }
+          $binaryPath = (Resolve-Path $binary).Path
+          if (-not $binaryPath.StartsWith($env:QUAL_TEMP_ROOT, [System.StringComparison]::OrdinalIgnoreCase)) { throw "installed binary escaped its runner-temp prefix: $binaryPath" }
+          $metadata = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages | Where-Object name -eq 'ripr' | Select-Object -First 1
+          $binaryHash = (Get-FileHash $binary -Algorithm SHA256).Hash.ToLowerInvariant()
+          [ordered]@{ crate = $crate.Name; crate_sha256 = $crateHash; package_dir = $packageDir.FullName; binary = $binaryPath; binary_sha256 = $binaryHash; version = $metadata.version } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $root 'crate-install-identity.json')
+          "RIPR_PACKAGED=$binaryPath" >> $env:GITHUB_ENV
+          "RIPR_PACKAGED_VERSION=$($metadata.version)" >> $env:GITHUB_ENV
+
+      - name: Run isolated packaged CLI journey
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $env:QUAL_ROOT; $fixture = Join-Path $root 'fixture'
+          New-Item -ItemType Directory -Force -Path (Join-Path $fixture 'src'), (Join-Path $fixture 'tests') | Out-Null
+          @'
+          [package]
+          name = "packaged-qualification-fixture"
+          version = "0.1.0"
+          edition = "2021"
+          '@ | Set-Content -Encoding utf8 (Join-Path $fixture 'Cargo.toml')
+          @'
+          pub fn boundary(value: i32) -> i32 {
+              if value >= 100 { value - 10 } else { value }
+          }
+          '@ | Set-Content -Encoding utf8 (Join-Path $fixture 'src\lib.rs')
+          @'
+          use packaged_qualification_fixture::boundary;
+          #[test]
+          fn below_boundary_is_unchanged() { assert_eq!(boundary(50), 50); }
+          '@ | Set-Content -Encoding utf8 (Join-Path $fixture 'tests\boundary.rs')
+          Push-Location $fixture
+          try { git init --initial-branch main | Out-Null; git config user.name 'ripr packaged qualification'; git config user.email 'ripr-packaged-qualification@example.invalid'; git add .; git commit -m 'fixture: baseline' | Out-Null; $base = (git rev-parse HEAD).Trim(); (Get-Content (Join-Path $fixture 'src\lib.rs') -Raw).Replace('value >= 100', 'value > 100') | Set-Content -Encoding utf8 (Join-Path $fixture 'src\lib.rs'); git add .; git commit -m 'fixture: changed boundary' | Out-Null; $head = (git rev-parse HEAD).Trim() } finally { Pop-Location }
+          function Invoke-CLI([string]$name, [string[]]$args) { $log = Join-Path $root "cli-$name.log"; Push-Location $fixture; try { & $env:RIPR_PACKAGED @args 2>&1 | Tee-Object $log; $code = $LASTEXITCODE } finally { Pop-Location }; if ($code -ne 0) { throw "packaged CLI $name failed with exit $code" } }
+          Invoke-CLI 'version' @('--version'); if ((Get-Content (Join-Path $root 'cli-version.log') -Raw) -notmatch [regex]::Escape($env:RIPR_PACKAGED_VERSION)) { throw 'packaged --version did not report the package version' }; Invoke-CLI 'help' @('--help'); Invoke-CLI 'doctor' @('doctor', '--root', $fixture, '--json'); if ($null -eq (Get-Content (Join-Path $root 'cli-doctor.log') -Raw | ConvertFrom-Json)) { throw 'doctor did not emit JSON' }
+          $artifact = Join-Path $root 'cli-check-artifact.json'; $checkLog = Join-Path $root 'cli-check.json'
+          Push-Location $fixture; try { & $env:RIPR_PACKAGED check --root $fixture --base $base --json --write-artifact $artifact 2>&1 | Tee-Object $checkLog; if ($LASTEXITCODE -ne 0) { throw "check failed with exit $LASTEXITCODE" } } finally { Pop-Location }
+          $check = Get-Content $checkLog -Raw | ConvertFrom-Json; $finding = $check.findings | Select-Object -First 1
+          if ($null -eq $finding -or [string]::IsNullOrWhiteSpace($finding.id)) { throw 'check emitted no finding selector for explain/context' }
+          Invoke-CLI 'explain' @('explain', '--root', $fixture, '--base', $base, '--from', $artifact, '--finding', $finding.id, '--json'); Invoke-CLI 'context' @('context', '--root', $fixture, '--base', $base, '--from', $artifact, '--finding', $finding.id, '--json')
+          Invoke-CLI 'pilot' @('pilot', '--root', $fixture, '--out', (Join-Path $root 'pilot'), '--max-seams', '5', '--timeout-ms', '240000')
+          $before = Join-Path $root 'outcome-before.json'; $after = Join-Path $root 'outcome-after.json'; '{"schema_version":"0.2","scope":"repo","seams":[]}' | Set-Content -Encoding utf8 $before; '{"schema_version":"0.2","scope":"repo","seams":[]}' | Set-Content -Encoding utf8 $after; Invoke-CLI 'outcome' @('outcome', '--before', $before, '--after', $after, '--format', 'json')
+          [ordered]@{ fixture = $fixture; base = $base; head = $head; finding = $finding.id; binary = $env:RIPR_PACKAGED; binary_sha256 = (Get-FileHash $env:RIPR_PACKAGED -Algorithm SHA256).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $root 'cli-journey.json')
+
+      - name: Package exact VSIX and inspect contents
+        shell: pwsh
+        working-directory: editors/vscode
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }; npm run compile; if ($LASTEXITCODE -ne 0) { throw 'VSIX compile failed' }; npm run package; if ($LASTEXITCODE -ne 0) { throw 'VSIX package failed' }
+          $vsix = Get-ChildItem dist\*.vsix | Select-Object -First 1; if ($null -eq $vsix) { throw 'VSIX package was not produced' }
+          $hash = (Get-FileHash $vsix.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); tar -tf $vsix.FullName | Set-Content -Encoding utf8 (Join-Path $env:QUAL_ROOT 'vsix-files.txt')
+          [ordered]@{ vsix = $vsix.Name; sha256 = $hash; bytes = $vsix.Length; candidate_sha = $env:CANDIDATE_SHA } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $env:QUAL_ROOT 'vsix-identity.json'); "RIPR_VSIX=$($vsix.FullName)" >> $env:GITHUB_ENV
+
+      - name: Run trusted packaged editor journey
+        shell: pwsh
+        working-directory: editors/vscode
+        run: |
+          $ErrorActionPreference = 'Stop'; $extract = Join-Path $env:QUAL_ROOT 'vsix-extracted'; New-Item -ItemType Directory -Force -Path $extract | Out-Null; Expand-Archive -LiteralPath $env:RIPR_VSIX -DestinationPath $extract -Force
+          $env:RIPR_TEST_EXTENSION_PATH = Join-Path $extract 'extension'; $env:RIPR_TEST_SERVER_PATH = $env:RIPR_PACKAGED; $env:RIPR_TEST_WORKSPACE_TRUST = 'trusted'; $env:RIPR_TEST_ARTIFACT_ROOT = Join-Path $env:QUAL_ROOT 'trusted-editor'
+          npm run test:e2e 2>&1 | Tee-Object (Join-Path $env:QUAL_ROOT 'editor-trusted.log'); if ($LASTEXITCODE -ne 0) { throw "trusted editor journey failed with exit $LASTEXITCODE" }
+          $owned = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like "*$env:QUAL_ROOT*" -and ($_.Name -match 'ripr|Code|electron') }; if ($owned) { $owned | Format-List Name,ProcessId,CommandLine; throw 'trusted editor journey left an owned process' }
+
+      - name: Run untrusted trust-boundary journey
+        shell: pwsh
+        working-directory: editors/vscode
+        run: |
+          $ErrorActionPreference = 'Stop'; $env:RIPR_TEST_EXTENSION_PATH = Join-Path $env:QUAL_ROOT 'vsix-extracted\extension'; $env:RIPR_TEST_SERVER_PATH = $env:RIPR_PACKAGED; $env:RIPR_TEST_WORKSPACE_TRUST = 'untrusted'; $env:RIPR_TEST_ARTIFACT_ROOT = Join-Path $env:QUAL_ROOT 'untrusted-editor'
+          npm run test:e2e 2>&1 | Tee-Object (Join-Path $env:QUAL_ROOT 'editor-untrusted.log'); if ($LASTEXITCODE -ne 0) { throw "untrusted editor journey failed with exit $LASTEXITCODE" }
+          $owned = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like "*$env:QUAL_ROOT*" -and ($_.Name -match 'ripr|Code|electron') }; if ($owned) { $owned | Format-List Name,ProcessId,CommandLine; throw 'untrusted editor journey left an owned process' }
+
+      - name: Write Actions-only qualification receipt
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'; $root = $env:QUAL_ROOT
+          [ordered]@{ schema_version = '0.1'; candidate_sha = $env:CANDIDATE_SHA; candidate_ref = $env:CANDIDATE_REF; publication = 'forbidden'; secrets = 'forbidden'; receipts = @(Get-ChildItem $root -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($root.Length + 1) } | Sort-Object); claim_boundary = 'Actions-only exact-candidate packaged CLI and VSIX journey evidence; no correctness, release, publication, signing, marketplace, or merge claim.' } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $root 'qualification-receipt.json')
+          Get-ChildItem $root -File -Recurse | ForEach-Object { Get-FileHash $_.FullName -Algorithm SHA256 } | Select-Object Path,Hash | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $root 'receipt-file-digests.json')
+
+      - name: Upload Actions-only receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-packaged-qualification-${{ inputs.candidate_sha }}
+          path: ${{ github.workspace }}/target/ripr/windows-packaged-qualification
+          if-no-files-found: error

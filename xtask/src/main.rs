@@ -975,21 +975,43 @@ fn vscode_test() -> Result<(), String> {
 }
 
 fn vscode_test_e2e() -> Result<(), String> {
-    run("cargo", &["build", "-p", "ripr"])?;
+    let provided_server = std::env::var_os("RIPR_TEST_SERVER_PATH")
+        .and_then(|value| (!value.is_empty()).then_some(value))
+        .map(PathBuf::from);
+    let (server_path, build_server) =
+        select_vscode_test_server(provided_server.as_deref(), &vscode_test_server_path()?)?;
+    if build_server {
+        run("cargo", &["build", "-p", "ripr"])?;
+    }
     vscode_compile()?;
-    let server_path = vscode_test_server_path()?;
     let workspace_path = vscode_test_workspace_path()?;
-    let envs = [
-        (
+    let mut envs = vec![(
+        "RIPR_TEST_WORKSPACE_PATH",
+        path_to_utf8(&workspace_path, "VS Code test workspace path")?,
+    )];
+    if provided_server.is_none() {
+        envs.push((
             "RIPR_TEST_SERVER_PATH",
             path_to_utf8(&server_path, "VS Code test server path")?,
-        ),
-        (
-            "RIPR_TEST_WORKSPACE_PATH",
-            path_to_utf8(&workspace_path, "VS Code test workspace path")?,
-        ),
-    ];
+        ));
+    }
     run_cwd_command_with_envs(&vscode_test_e2e_command(), &envs)
+}
+
+fn select_vscode_test_server(
+    provided: Option<&Path>,
+    built: &Path,
+) -> Result<(PathBuf, bool), String> {
+    if let Some(path) = provided {
+        if !path.is_file() {
+            return Err(format!(
+                "RIPR_TEST_SERVER_PATH does not name an installed server binary: {}",
+                path.display()
+            ));
+        }
+        return Ok((path.to_path_buf(), false));
+    }
+    Ok((built.to_path_buf(), true))
 }
 
 fn vscode_compile_command() -> CwdCommand {
