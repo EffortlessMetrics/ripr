@@ -51,6 +51,19 @@ map is:
 | badge JSON | `schema_version` | `0.8` |
 | `ripr cache status --json` | `schema_version` | `0.1` |
 
+The agent repair-loop artifact versions — `agent brief`, `agent packet`,
+`agent verify`, `agent receipt`, `agent workflow`, `agent status`,
+`agent review-summary`, targeted-test-outcome, repo-exposure (full and
+summary), and the artifact identity envelope — have a single definition
+site in the central registry `crates/ripr/src/output/schemas.rs` (#2973).
+The table rows above are a manual mirror of that registry: the registry's
+own drift test pins the code constants, but it does **not** validate this
+document, so a version bump is one registry edit plus a deliberate update
+of this table (and the artifact's section below) in the same PR. Each
+registry constant carries its changelog. The `ripr receipt write/check`
+artifact (RIPR-SPEC-0079) is a separate family whose version stays at
+`app::receipt::RECEIPT_SCHEMA_VERSION`.
+
 Bump rules below apply per contract: a breaking change to one family bumps
 that family's version only.
 
@@ -6548,7 +6561,7 @@ JSON shape:
 
 ```json
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "tool": "ripr",
   "status": "advisory",
   "analysis_outcome_status": "complete",
@@ -6623,8 +6636,7 @@ JSON shape:
     "next_action": {
       "kind": "improved",
       "summary": "Static grip improved.",
-      "recommended_action": "Keep the focused test and include this receipt in review.",
-      "safe_to_merge": false
+      "recommended_action": "Keep the focused test and include this receipt in review."
     }
   }
 }
@@ -6632,10 +6644,13 @@ JSON shape:
 
 Field contract:
 
-- `schema_version` - currently `"0.4"`. Version `0.2` added receipt
+- `schema_version` - currently `"0.5"`. Version `0.2` added receipt
   provenance fields; version `0.3` added structured next-action guidance;
   version `0.4` adds the producer-owned analysis-outcome envelope while
-  preserving the selected-seam and handoff fields from `0.1`.
+  preserving the selected-seam and handoff fields from `0.1`. Version `0.5`
+  preserves typed analysis outcomes (#2895) and drops the invariant-false
+  `safe_to_merge` field (#2595): the static receipt is review evidence, not
+  a merge policy.
 - `status` - `"advisory"` only when the producer outcome is complete;
   `"incomplete"` when the producer outcome is incomplete or unavailable; and
   `"invalid"` when the producer artifact is malformed, stale, or identity
@@ -6707,8 +6722,7 @@ Field contract:
 - `summary.next_action` - structured static guidance for agents and reviewers.
   `kind` is `improved`, `changed`, `regressed`, `unchanged`, `new_gap`,
   `resolved`, or `unknown`; `summary` is a short static movement statement;
-  `recommended_action` is the bounded next step; and `safe_to_merge` is always
-  `false` because the static receipt is review evidence, not a merge policy.
+  and `recommended_action` is the bounded next step.
 
 ## Assurance axes (design contract)
 
