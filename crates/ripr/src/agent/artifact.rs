@@ -1249,13 +1249,10 @@ mod tests {
     #[test]
     fn pair_currentness_label_covers_the_closed_vocabulary() {
         use ArtifactCurrentness::{Current, DirtyWorktree, Historical};
-        // The full 3x3 pair matrix (#3027). Two cells stay truthful in the
-        // shared mapping without being ordinary CLI verify outcomes: a fully
-        // current pair shares one revision and fails the movement gate, and a
-        // current-before/historical-after pair passes the lineage gate only
-        // when the after head descends from the live HEAD and is not the
-        // live HEAD itself (the lineage gate rejects reversed or unrelated
-        // ancestry, not that descendant arrangement).
+        // The full 3x3 pair matrix (#3027). Two cells are unreachable through
+        // the CLI verify path but stay truthful in the shared mapping: a
+        // fully current pair fails the movement gate, and a
+        // current-before/historical-after pair fails the lineage gate.
         let cases = [
             ((Current, Current), "current"),
             ((Historical, Historical), "historical_noncurrent"),

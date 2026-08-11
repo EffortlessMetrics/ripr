@@ -8,7 +8,28 @@ pub(crate) use format::parse_format;
 pub(crate) use mode::parse_mode;
 pub(crate) use value::expect_value;
 
+/// Whether argv requests the package version before a top-level command.
+///
+/// Only leading flags participate. A command-local contract such as
+/// `ripr lsp --version` must continue to reach that command.
+#[doc(hidden)]
+pub fn top_level_version_requested(args: &[String]) -> bool {
+    args.iter()
+        .skip(1)
+        .take_while(|arg| arg.starts_with('-'))
+        .any(|arg| matches!(arg.as_str(), "--version" | "-V"))
+}
+
 pub(super) fn parse_args(args: Vec<String>) -> Result<CliCommand, String> {
+    // Version is a process-level identity query. Resolve it before dispatch so
+    // an output-looking flag (or a help-looking flag) cannot turn a version
+    // request into analysis/help output. The CLI dispatch handles `--verbose`
+    // separately; keeping this precedence in the parser makes the same rule
+    // hold for library callers and installed-binary invocations.
+    if top_level_version_requested(&args) {
+        return Ok(CliCommand::Version);
+    }
+
     let command = args.get(1).map(|s| s.as_str());
     let command_args = args.get(2..).map_or_else(Vec::new, <[String]>::to_vec);
     CliCommand::from_parts(command, command_args)
@@ -111,6 +132,52 @@ mod tests {
                 "--result",
                 "agent-result.json"
             ])))
+        );
+    }
+
+    #[test]
+    fn top_level_version_predicate_stops_at_command_boundary() {
+        for argv in [
+            args(&["ripr", "--version"]),
+            args(&["ripr", "--help", "--version"]),
+            args(&["ripr", "-v", "--version"]),
+            args(&["ripr", "--version", "-v"]),
+        ] {
+            assert!(
+                top_level_version_requested(&argv),
+                "leading version flags should be top-level: {argv:?}"
+            );
+        }
+        for argv in [
+            args(&["ripr", "check", "--version"]),
+            args(&["ripr", "lsp", "--version"]),
+        ] {
+            assert!(
+                !top_level_version_requested(&argv),
+                "command-local version flags must not be intercepted: {argv:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn version_precedes_help_and_output_looking_flags() {
+        for argv in [
+            args(&["ripr", "--version", "--json"]),
+            args(&["ripr", "--json", "--version"]),
+            args(&["ripr", "--version", "--help"]),
+            args(&["ripr", "--verbose", "--version"]),
+        ] {
+            assert_eq!(
+                parse_args(argv),
+                Ok(CliCommand::Version),
+                "version must be resolved before other top-level-looking flags"
+            );
+        }
+
+        assert_eq!(
+            parse_args(args(&["ripr", "lsp", "--version"])),
+            Ok(CliCommand::Lsp(args(&["--version"]))),
+            "command-local LSP version remains distinct from top-level version"
         );
     }
 

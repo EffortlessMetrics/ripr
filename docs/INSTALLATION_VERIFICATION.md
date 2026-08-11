@@ -71,6 +71,15 @@ reports retained JSON artifacts alongside the receipt. A Windows-only or
 Linux-only receipt is not a cross-platform qualification: the release handoff
 must name the missing platform when the other hosted lane has not run.
 
+The installed binary's identity probe is intentionally narrower than every
+other CLI command: `ripr --version` and `ripr -V` must exit 0 and emit exactly
+`ripr <package version>` followed by one newline on stdout, with empty stderr.
+The top-level version flag takes precedence over leading help, JSON, and
+verbose-looking flags; it must not print help, parse repository configuration,
+analyze a workspace, or write artifacts. Command-local version contracts, such
+as `ripr lsp --version`, remain distinct. This is a package identity check,
+not release qualification.
+
 ## Previous Release Proof
 
 The `ripr 0.5.0` release was published and verified on 2026-05-10. The

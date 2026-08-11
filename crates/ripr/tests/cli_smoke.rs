@@ -60,6 +60,84 @@ fn run_command_with_env(
     spawn_command(program, Some(current_dir), args, env)
 }
 
+fn run_isolated_binary(
+    binary: &Path,
+    current_dir: &Path,
+    args: &[&str],
+    coverage_profile: Option<&Path>,
+) -> Result<Output, std::io::Error> {
+    let mut command = Command::new(binary);
+    command.current_dir(current_dir).env_clear();
+    if let Ok(path) = std::env::var("PATH") {
+        command.env("PATH", path);
+    }
+    if let Some(profile) = coverage_profile {
+        command.env("LLVM_PROFILE_FILE", profile);
+    }
+    command.args(args).output()
+}
+
+fn cleanup_temp_dir(path: Option<&Path>) -> Result<(), std::io::Error> {
+    if let Some(path) = path
+        && path.exists()
+    {
+        std::fs::remove_dir_all(path)?;
+    }
+    Ok(())
+}
+
+fn inherited_coverage_is_enabled() -> bool {
+    std::env::var_os("LLVM_PROFILE_FILE").is_some() || std::env::var_os("CARGO_LLVM_COV").is_some()
+}
+
+fn snapshot_tree(root: &Path) -> Result<Vec<String>, std::io::Error> {
+    fn visit(root: &Path, path: &Path, entries: &mut Vec<String>) -> Result<(), std::io::Error> {
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let child = entry.path();
+            let relative = child
+                .strip_prefix(root)
+                .map_err(std::io::Error::other)?
+                .to_string_lossy()
+                .replace('\\', "/");
+            let metadata = entry.metadata()?;
+            if metadata.is_dir() {
+                entries.push(format!("dir:{relative}"));
+                visit(root, &child, entries)?;
+            } else if metadata.is_file() {
+                let content = std::fs::read(&child)?;
+                entries.push(format!("file:{relative}:{}", sha256_hex_bytes(&content)));
+            } else {
+                entries.push(format!("other:{relative}"));
+            }
+        }
+        Ok(())
+    }
+
+    let mut entries = Vec::new();
+    visit(root, root, &mut entries)?;
+    entries.sort();
+    Ok(entries)
+}
+
+fn snapshot_diff(before: &[String], after: &[String]) -> String {
+    let removed = before
+        .iter()
+        .filter(|entry| !after.contains(entry))
+        .map(|entry| format!("- {entry}"))
+        .collect::<Vec<_>>();
+    let added = after
+        .iter()
+        .filter(|entry| !before.contains(entry))
+        .map(|entry| format!("+ {entry}"))
+        .collect::<Vec<_>>();
+    removed
+        .into_iter()
+        .chain(added)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn run_git(root: &Path, args: &[&str]) -> Result<(), String> {
     let output = run_command("git", Some(root), args)
         .map_err(|err| format!("failed to run git {args:?}: {err}"))?;
@@ -672,11 +750,180 @@ fn fixture_repository_head_rejects_whitespace_padded_success_output() -> Result<
 }
 
 #[test]
-fn version_runs() {
-    let output = run_ripr(&["--version"]);
-    assert_success(&output);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("ripr"));
+fn version_is_exact_and_precedes_help_or_output_flags() {
+    let expected = format!("ripr {}\n", env!("CARGO_PKG_VERSION"));
+    for args in [
+        &["--version"][..],
+        &["-V"][..],
+        &["--version", "--json"][..],
+        &["--json", "--version"][..],
+        &["--version", "--help"][..],
+        &["--verbose", "--version"][..],
+        &["--version", "--verbose"][..],
+    ] {
+        let output = run_ripr(args);
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "version argv {args:?} must emit only the package version"
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "version argv {args:?} emitted diagnostics: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let lsp = run_ripr(&["lsp", "--version"]);
+    assert_success(&lsp);
+    assert_eq!(
+        String::from_utf8_lossy(&lsp.stdout),
+        format!("ripr-lsp {}\n", env!("CARGO_PKG_VERSION")),
+        "command-local LSP version must retain its public output"
+    );
+    assert!(lsp.stderr.is_empty());
+}
+
+#[test]
+fn isolated_installed_binary_version_contract_is_side_effect_free() -> Result<(), String> {
+    let root = unique_temp_workspace("version-installed");
+    // Coverage runtimes own only this external directory; the product prefix
+    // below remains a strict snapshot and rejects every non-harness mutation.
+    let coverage_root =
+        inherited_coverage_is_enabled().then(|| unique_temp_workspace("version-installed-profile"));
+    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(profile_root) = &coverage_root {
+            std::fs::create_dir_all(profile_root)?;
+        }
+        let bin_dir = root.join("bin");
+        std::fs::create_dir_all(&bin_dir)?;
+        let source_binary = std::path::Path::new(env!("CARGO_BIN_EXE_ripr"));
+        let installed_binary = bin_dir.join(if cfg!(windows) { "ripr.exe" } else { "ripr" });
+        std::fs::copy(source_binary, &installed_binary)?;
+
+        let config_path = root.join("ripr.toml");
+        std::fs::write(&config_path, "this is not valid TOML\n")?;
+        let config_before = std::fs::read(&config_path)?;
+        let before = snapshot_tree(&root)?;
+        let artifact_path = root.join("target/ripr/reports/version.json");
+        let expected_version = format!("ripr {}\n", env!("CARGO_PKG_VERSION"));
+        let expected_lsp_version = format!("ripr-lsp {}\n", env!("CARGO_PKG_VERSION"));
+        let workspace_text = workspace_root().to_string_lossy().to_string();
+        let cases = [
+            vec!["--version"],
+            vec!["-V"],
+            vec!["--help", "--version"],
+            vec!["-v", "--version"],
+            vec!["--version", "-v"],
+            vec!["check", "--version"],
+            vec!["check", "--diff", "--version"],
+            vec!["lsp", "--version"],
+        ];
+
+        for args in cases {
+            let args = args.as_slice();
+            let profile = coverage_root
+                .as_ref()
+                .map(|root| root.join("ripr-%p-%m.profraw"));
+            let output = run_isolated_binary(&installed_binary, &root, args, profile.as_deref())?;
+            let stdout = String::from_utf8(output.stdout.clone())?;
+            let stderr = String::from_utf8(output.stderr.clone())?;
+            if args[0] == "lsp" {
+                if !output.status.success() || stdout != expected_lsp_version || !stderr.is_empty()
+                {
+                    return Err(format!(
+                        "isolated lsp version contract failed for {args:?}: status={:?}, stdout={stdout:?}, stderr={stderr:?}",
+                        output.status.code()
+                    )
+                    .into());
+                }
+            } else if args[0] == "check" {
+                let is_diff_file_case = args.len() == 3 && args[1] == "--diff";
+                let has_config_error = stderr.contains("invalid ripr.toml");
+                if output.status.success()
+                    || stdout.contains("ripr —")
+                    || stdout.contains(expected_version.trim_end())
+                    || stderr.contains(expected_version.trim_end())
+                {
+                    return Err(format!(
+                        "check version-like input escaped its command boundary for {args:?}: status={:?}, stdout={stdout:?}, stderr={stderr:?}",
+                        output.status.code()
+                    )
+                    .into());
+                }
+                if is_diff_file_case
+                    && !has_config_error
+                    && (!stderr.contains("resolved workspace root to ")
+                        || !stderr.contains("failed to read diff file --version"))
+                {
+                    return Err(format!(
+                        "check --diff --version did not report the expected workspace/diff diagnostic: status={:?}, stderr={stderr:?}",
+                        output.status.code()
+                    )
+                    .into());
+                }
+            } else if !output.status.success() || stdout != expected_version || !stderr.is_empty() {
+                return Err(format!(
+                    "isolated top-level version contract failed for {args:?}: status={:?}, stdout={stdout:?}, stderr={stderr:?}",
+                    output.status.code()
+                )
+                .into());
+            }
+
+            let after = snapshot_tree(&root)?;
+            if after != before {
+                return Err(format!(
+                    "version-like input changed the isolated cwd for {args:?}:\n{}",
+                    snapshot_diff(&before, &after)
+                )
+                .into());
+            }
+            if !config_path.exists() || artifact_path.exists() {
+                return Err(format!(
+                    "version-like input changed config/artifact paths for {args:?}"
+                )
+                .into());
+            }
+            let config_after = std::fs::read(&config_path)?;
+            if config_after != config_before {
+                return Err(format!(
+                    "version-like input changed the pre-existing config for {args:?}"
+                )
+                .into());
+            }
+            let is_diff_file_case = args.len() == 3 && args[1] == "--diff";
+            if !is_diff_file_case
+                && (stdout.contains(&workspace_text) || stderr.contains(&workspace_text))
+            {
+                return Err(format!(
+                    "version-like input depended on the workspace path for {args:?}"
+                )
+                .into());
+            }
+        }
+        Ok(())
+    })();
+    let cleanup = std::fs::remove_dir_all(&root);
+    let profile_cleanup = cleanup_temp_dir(coverage_root.as_deref());
+    match (result, cleanup, profile_cleanup) {
+        (Ok(()), Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(()), Ok(())) => Err(error.to_string()),
+        (Ok(()), Err(error), Ok(())) => Err(format!("cleanup failed: {error}")),
+        (Ok(()), Ok(()), Err(error)) => Err(format!("coverage cleanup failed: {error}")),
+        (Err(error), Err(cleanup_error), Ok(())) => Err(format!(
+            "version contract failed: {error}; cleanup failed: {cleanup_error}"
+        )),
+        (Err(error), Ok(()), Err(profile_error)) => Err(format!(
+            "version contract failed: {error}; coverage cleanup failed: {profile_error}"
+        )),
+        (Ok(()), Err(cleanup_error), Err(profile_error)) => Err(format!(
+            "cleanup failed: {cleanup_error}; coverage cleanup failed: {profile_error}"
+        )),
+        (Err(error), Err(cleanup_error), Err(profile_error)) => Err(format!(
+            "version contract failed: {error}; cleanup failed: {cleanup_error}; coverage cleanup failed: {profile_error}"
+        )),
+    }
 }
 
 #[test]

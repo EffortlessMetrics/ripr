@@ -532,6 +532,24 @@ fn render(first: &RunOutcome, second: &RunOutcome) -> String {
 
 #[cfg(test)]
 mod tests {
+    fn packaged_temp_wiring_is_complete(workflow: &str) -> bool {
+        let lines = workflow.lines().map(str::trim).collect::<Vec<_>>();
+        [
+            "$env:CARGO_TEMP_CONFIG = Join-Path $temp 'cargo-package-config.toml'",
+            "$env:CARGO_TARGET_DIR = Join-Path $temp 'cargo-target'",
+            "$env:TEMP = $env:CARGO_TEMP_DIR",
+            "$env:TMP = $env:CARGO_TEMP_DIR",
+            "$env:TMPDIR = $env:CARGO_TEMP_DIR",
+            "\"CARGO_TEMP_CONFIG=$env:CARGO_TEMP_CONFIG\" >> $env:GITHUB_ENV",
+            "\"CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR\" >> $env:GITHUB_ENV",
+            "\"TEMP=$env:TEMP\" >> $env:GITHUB_ENV",
+            "\"TMP=$env:TMP\" >> $env:GITHUB_ENV",
+            "\"TMPDIR=$env:TMPDIR\" >> $env:GITHUB_ENV",
+        ]
+        .iter()
+        .all(|required| lines.iter().any(|line| line.contains(required)))
+    }
+
     use super::*;
 
     /// Real bytes from a Windows lane run (#2393): cargo's `Running` lines are
@@ -922,5 +940,300 @@ mod tests {
                 .contains("unexpected argument \"extra.log\""),
             "a stray positional must be refused"
         );
+    }
+
+    #[test]
+    fn packaged_qualification_workflow_is_immutable_and_non_publishing() {
+        let workflow = include_str!("../../.github/workflows/windows-packaged-qualification.yml");
+        let lines = workflow
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect::<Vec<_>>();
+        let scalar = |key: &str| {
+            lines
+                .iter()
+                .find_map(|line| {
+                    line.strip_prefix(key)
+                        .and_then(|value| value.strip_prefix(':'))
+                })
+                .map(str::trim)
+                .map(|value| value.trim_matches('"').trim_matches('\''))
+        };
+        assert_eq!(scalar("contents"), Some("read"));
+        assert_eq!(scalar("persist-credentials"), Some("false"));
+        assert_eq!(scalar("ref"), Some("${{ inputs.candidate_sha }}"));
+        assert!(lines.iter().any(|line| line.starts_with("candidate_sha:")));
+        assert!(lines.iter().any(|line| line.starts_with("candidate_ref:")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("refs/tags/ripr-release-0\\.11\\.0-"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("$remoteLine = git ls-remote --exit-code origin"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("$remoteSha -ne $head"))
+        );
+        assert!(lines.iter().any(|line| line.contains("$refSha -ne $head")));
+        assert!(lines.iter().any(|line| {
+            line.contains("$candidateTagSha -ne $env:CANDIDATE_SHA.ToLowerInvariant()")
+        }));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("RIPR_TEST_SERVER_PATH = $env:RIPR_PACKAGED"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("if ($LASTEXITCODE -ne 0)"))
+        );
+        assert!(lines.iter().any(|line| line.starts_with("if (-not $binaryPath.StartsWith($env:QUAL_TEMP_ROOT")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("RIPR_TEST_SERVER_PATH"))
+        );
+        assert!(lines.iter().any(|line| {
+            line.contains("actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a")
+        }));
+        for forbidden in ["gh release", "vsce publish", "ovsx publish", "secrets."] {
+            assert!(
+                !lines.iter().any(|line| line.contains(forbidden)),
+                "workflow must not publish or use secrets: {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn packaged_qualification_receipts_survive_checkout_cleanup() -> Result<(), String> {
+        let workflow = include_str!("../../.github/workflows/windows-packaged-qualification.yml");
+        let lines = workflow.lines().map(str::trim).collect::<Vec<_>>();
+        let checkout = lines
+            .iter()
+            .position(|line| line.starts_with("- name: Checkout immutable candidate"))
+            .ok_or_else(|| "workflow must retain the immutable checkout step".to_string())?;
+        let before = lines
+            .iter()
+            .position(|line| line.starts_with("- name: Initialize receipt root before checkout"))
+            .ok_or_else(|| "workflow must initialize the early-failure receipt root".to_string())?;
+        let after = lines
+            .iter()
+            .position(|line| line.starts_with("- name: Initialize receipt root after checkout"))
+            .ok_or_else(|| "workflow must reinitialize the root after checkout".to_string())?;
+        if !(before < checkout && checkout < after) {
+            return Err("receipt-root initialization must bracket checkout".to_string());
+        }
+        if !lines
+            .iter()
+            .any(|line| line.contains("$receipts = Join-Path $base 'receipts'"))
+        {
+            return Err("receipt root must use the dedicated receipts child".to_string());
+        }
+        if !lines
+            .iter()
+            .any(|line| line.contains("$work = Join-Path $base 'work'"))
+        {
+            return Err("qualification work must use the dedicated work child".to_string());
+        }
+        if !lines
+            .iter()
+            .any(|line| line.contains("QUAL_ROOT=$receipts"))
+            || !lines
+                .iter()
+                .any(|line| line.contains("QUAL_TEMP_ROOT=$work"))
+        {
+            return Err("receipt and work roots must be exported separately".to_string());
+        }
+        let upload_path = lines
+            .iter()
+            .find(|line| line.starts_with("path:"))
+            .ok_or_else(|| "artifact upload must declare a bounded path".to_string())?;
+        if upload_path != &"path: ${{ runner.temp }}\\ripr-windows-packaged-qualification\\receipts"
+        {
+            return Err("artifact upload must target only the receipts root".to_string());
+        }
+        if upload_path.contains("\\work") || upload_path.contains("qualification\\receipts\\work") {
+            return Err("artifact upload must not include qualification work files".to_string());
+        }
+
+        if !lines.iter().any(|line| {
+            line.contains("path: ${{ runner.temp }}\\ripr-windows-packaged-qualification\\receipts")
+        }) {
+            return Err("artifact upload must use the durable receipt root".to_string());
+        }
+
+        // Model checkout cleaning the workspace while the receipt root lives
+        // in RUNNER_TEMP. A failure before identity verification must still
+        // leave a file for the always-run upload step to collect.
+        let sandbox = std::env::temp_dir().join(format!(
+            "ripr-windows-receipt-contract-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or(0)
+        ));
+        let workspace = sandbox.join("workspace");
+        let receipt_root = sandbox.join("runner-temp").join("receipts");
+        let work_root = sandbox.join("runner-temp").join("work");
+        if receipt_root == work_root
+            || receipt_root.starts_with(&work_root)
+            || work_root.starts_with(&receipt_root)
+        {
+            return Err("receipt and work roots must be distinct non-nested paths".to_string());
+        }
+        if std::fs::create_dir_all(workspace.join("target"))
+            .and(std::fs::create_dir_all(&receipt_root))
+            .and(std::fs::create_dir_all(&work_root))
+            .is_err()
+        {
+            return Err("unable to create checkout-cleanup test directories".to_string());
+        }
+        let failure_receipt = receipt_root.join("failure-receipt.txt");
+        let work_file = work_root.join(r"build\install\vsix.bin");
+        let result = (|| {
+            std::fs::remove_dir_all(&workspace)?;
+            std::fs::write(&failure_receipt, "identity verification failed")?;
+            std::fs::create_dir_all(work_file.parent().ok_or_else(|| {
+                std::io::Error::other("work-file parent directory was not available")
+            })?)?;
+            std::fs::write(&work_file, "not a receipt")?;
+            if !failure_receipt.is_file() {
+                return Err(std::io::Error::other("failure receipt was not retained"));
+            }
+            let uploaded = std::fs::read_dir(&receipt_root)?
+                .map(|entry| entry.map(|item| item.path()))
+                .collect::<Result<Vec<_>, _>>()?;
+            if uploaded.iter().any(|path| path == &work_file) {
+                return Err(std::io::Error::other(
+                    "artifact receipt root included a qualification work file",
+                ));
+            }
+            Ok::<(), std::io::Error>(())
+        })();
+        let _ = std::fs::remove_dir_all(&sandbox);
+        result.map_err(|error| format!("failure receipts must survive checkout cleanup: {error}"))
+    }
+
+    #[test]
+    fn packaged_qualification_overrides_workspace_temp_for_package_builds() -> Result<(), String> {
+        let workflow = include_str!("../../.github/workflows/windows-packaged-qualification.yml");
+        let lines = workflow.lines().map(str::trim).collect::<Vec<_>>();
+        let isolate = lines
+            .iter()
+            .position(|line| line.starts_with("- name: Isolate package installation"))
+            .ok_or_else(|| "workflow must isolate package installation".to_string())?;
+        let package_line = lines
+            .iter()
+            .position(|line| line.contains(" package --target-dir"))
+            .ok_or_else(|| "workflow must package the exact crate".to_string())?;
+        let install_line = lines
+            .iter()
+            .position(|line| line.contains(" install --target-dir"))
+            .ok_or_else(|| "workflow must install the extracted crate".to_string())?;
+        if !(isolate < package_line && package_line < install_line) {
+            return Err("Cargo temp isolation must precede both package builds".to_string());
+        }
+        let package = lines[package_line].split_whitespace().collect::<Vec<_>>();
+        let install = lines[install_line].split_whitespace().collect::<Vec<_>>();
+        let position = |tokens: &[&str], token: &str| {
+            tokens
+                .iter()
+                .position(|candidate| *candidate == token)
+                .ok_or_else(|| format!("command must contain {token:?}"))
+        };
+        let package_command = position(&package, "package")?;
+        let package_target = position(&package, "--target-dir")?;
+        let package_name = position(&package, "-p")?;
+        let package_locked = position(&package, "--locked")?;
+        if !(package_command < package_target
+            && package_target < package_name
+            && package_name < package_locked
+            && package.get(package_name + 1) == Some(&"ripr"))
+        {
+            return Err(
+                "package command must order package, target-dir, -p ripr, and locked".to_string(),
+            );
+        }
+        let install_command = position(&install, "install")?;
+        let install_target = position(&install, "--target-dir")?;
+        let install_path = position(&install, "--path")?;
+        if !(install_command < install_target
+            && install_target < install_path
+            && install.get(install_path + 1) == Some(&"$packageDir.FullName"))
+        {
+            return Err(
+                "install command must order install, target-dir, and --path package dir"
+                    .to_string(),
+            );
+        }
+        if !packaged_temp_wiring_is_complete(workflow) {
+            return Err(
+                "Cargo temp process assignments and cross-step exports must be complete"
+                    .to_string(),
+            );
+        }
+        for required in [
+            "$env:CARGO_TEMP_DIR = Join-Path $temp 'cargo-temp'",
+            "$env:CARGO_TEMP_CONFIG = Join-Path $temp 'cargo-package-config.toml'",
+            "$env:CARGO_TARGET_DIR = Join-Path $temp 'cargo-target'",
+            "$env:TEMP = $env:CARGO_TEMP_DIR",
+            "$env:TMP = $env:CARGO_TEMP_DIR",
+            "$env:TMPDIR = $env:CARGO_TEMP_DIR",
+            "TEMP = { value = '$tomlTemp', force = true, relative = false }",
+            "TMP = { value = '$tomlTemp', force = true, relative = false }",
+            "TMPDIR = { value = '$tomlTemp', force = true, relative = false }",
+            "New-Item -ItemType Directory -Force -Path $env:CARGO_HOME, $env:CARGO_TARGET_DIR, $env:CARGO_TEMP_DIR",
+            "\"CARGO_TEMP_DIR=$env:CARGO_TEMP_DIR\" >> $env:GITHUB_ENV",
+            "\"CARGO_TEMP_CONFIG=$env:CARGO_TEMP_CONFIG\" >> $env:GITHUB_ENV",
+            "\"CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR\" >> $env:GITHUB_ENV",
+            "\"TEMP=$env:TEMP\" >> $env:GITHUB_ENV",
+            "\"TMP=$env:TMP\" >> $env:GITHUB_ENV",
+            "\"TMPDIR=$env:TMPDIR\" >> $env:GITHUB_ENV",
+            "cargo_temp_config = $env:CARGO_TEMP_CONFIG",
+            "temp = $env:TEMP",
+            "tmp = $env:TMP",
+            "tmpdir = $env:TMPDIR",
+        ] {
+            if !lines.iter().any(|line| line.contains(required)) {
+                return Err(format!("workflow must contain {required:?}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packaged_qualification_temp_contract_rejects_each_missing_export() {
+        let workflow = include_str!("../../.github/workflows/windows-packaged-qualification.yml");
+        let required = [
+            "$env:CARGO_TEMP_CONFIG = Join-Path $temp 'cargo-package-config.toml'",
+            "$env:CARGO_TARGET_DIR = Join-Path $temp 'cargo-target'",
+            "$env:TEMP = $env:CARGO_TEMP_DIR",
+            "$env:TMP = $env:CARGO_TEMP_DIR",
+            "$env:TMPDIR = $env:CARGO_TEMP_DIR",
+            "\"CARGO_TEMP_CONFIG=$env:CARGO_TEMP_CONFIG\" >> $env:GITHUB_ENV",
+            "\"CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR\" >> $env:GITHUB_ENV",
+            "\"TEMP=$env:TEMP\" >> $env:GITHUB_ENV",
+            "\"TMP=$env:TMP\" >> $env:GITHUB_ENV",
+            "\"TMPDIR=$env:TMPDIR\" >> $env:GITHUB_ENV",
+        ];
+        for missing in required {
+            let mutated = workflow.replacen(missing, "", 1);
+            assert!(
+                !mutated.contains(missing),
+                "negative fixture retained {missing:?}"
+            );
+            assert!(
+                !packaged_temp_wiring_is_complete(&mutated),
+                "contract must reject missing {missing:?}"
+            );
+        }
     }
 }

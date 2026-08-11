@@ -211,7 +211,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask source-promotion preflight --source-parent <full-sha> --swarm-parent <full-sha> --swarm-ref <immutable-ref> --source-repo <path> --swarm-repo <path> --version <version> [--resolved-tree <full-tree-sha>] [--source-main <rev>] [--swarm-main <rev>] [--source-remote <owner/repo>] [--swarm-remote <owner/repo>] [--out <dir>]".to_string()
+    "usage: cargo xtask source-promotion preflight --source-parent <full-sha> --swarm-parent <full-sha> --swarm-ref <protected-tag-ref> --source-repo <path> --swarm-repo <path> --version <version> [--resolved-tree <full-tree-sha>] [--source-main <rev>] [--swarm-main <rev>] [--source-remote <owner/repo>] [--swarm-remote <owner/repo>] [--out <dir>]".to_string()
 }
 
 fn validate_sha(name: &str, object_kind: &str, value: &str) -> Result<(), String> {
@@ -224,7 +224,8 @@ fn validate_sha(name: &str, object_kind: &str, value: &str) -> Result<(), String
 }
 
 fn validate_swarm_ref(reference: &str, version: &str, parent: &str) -> Result<(), String> {
-    let expected = format!("refs/ripr/release-{version}-{parent}");
+    validate_sha("--swarm-parent", "commit", parent)?;
+    let expected = format!("refs/tags/ripr-release-{version}-{parent}");
     if reference != expected {
         return Err(format!(
             "--swarm-ref must use the governed immutable format {expected}"
@@ -1094,20 +1095,42 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_branch_or_wrongly_named_swarm_ref() -> Result<(), String> {
+    fn accepts_exact_protected_candidate_tag() -> Result<(), String> {
         let parent = "1111111111111111111111111111111111111111";
-        for reference in ["main", "refs/heads/main", "refs/ripr/release-0.11.0-wrong"] {
+        validate_swarm_ref(
+            "refs/tags/ripr-release-0.11.0-1111111111111111111111111111111111111111",
+            "0.11.0",
+            parent,
+        )
+    }
+
+    #[test]
+    fn rejects_legacy_branch_short_or_wrong_swarm_refs() -> Result<(), String> {
+        let parent = "1111111111111111111111111111111111111111";
+        for reference in [
+            "main",
+            "refs/heads/main",
+            "ripr-release-0.11.0-1111111111111111111111111111111111111111",
+            "refs/tags/ripr-release-0.11.0-wrong",
+            "refs/tags/ripr-release-0.10.0-1111111111111111111111111111111111111111",
+            "refs/ripr/release-0.11.0-1111111111111111111111111111111111111111",
+        ] {
             if validate_swarm_ref(reference, "0.11.0", parent).is_ok() {
                 return Err(format!(
                     "non-governed immutable ref was accepted: {reference}"
                 ));
             }
         }
-        validate_swarm_ref(
-            "refs/ripr/release-0.11.0-1111111111111111111111111111111111111111",
+        if validate_swarm_ref(
+            "refs/tags/ripr-release-0.11.0-deadbeef",
             "0.11.0",
-            parent,
+            "deadbeef",
         )
+        .is_ok()
+        {
+            return Err("short swarm parent was accepted in a protected tag".to_string());
+        }
+        Ok(())
     }
 
     #[test]
@@ -1456,7 +1479,7 @@ mod tests {
         test_git(&root, &["add", "file"])?;
         test_git(&root, &["commit", "--quiet", "-m", "one"])?;
         let first = test_git_output(&root, &["rev-parse", "HEAD"])?;
-        let reference = "refs/releases/test";
+        let reference = "refs/tags/ripr-release-0.11.0-test";
         test_git(&root, &["update-ref", reference, &first])?;
         fs::write(root.join("file"), "two\n").map_err(|error| error.to_string())?;
         test_git(&root, &["commit", "--quiet", "-am", "two"])?;
@@ -1468,7 +1491,14 @@ mod tests {
         if !moved.contains("not exact parent") {
             return Err(format!("unexpected moved-ref error: {moved}"));
         }
-        if exact_ref_commit(&root, "refs/releases/missing", &first, "swarm").is_ok() {
+        if exact_ref_commit(
+            &root,
+            "refs/tags/ripr-release-0.11.0-missing",
+            &first,
+            "swarm",
+        )
+        .is_ok()
+        {
             return Err("missing immutable ref was unexpectedly accepted".to_string());
         }
         fs::remove_dir_all(&root).map_err(|error| format!("cleanup failed: {error}"))?;
@@ -1606,11 +1636,11 @@ mod tests {
         )?;
         let source_head_before = test_git_output(&source, &["rev-parse", "HEAD"])?;
         let swarm_head_before = test_git_output(&swarm, &["rev-parse", "HEAD"])?;
-        let swarm_ref = "refs/releases/test-swarm";
-        test_git(&swarm, &["update-ref", swarm_ref, &swarm_parent])?;
+        let swarm_ref = format!("refs/tags/ripr-release-0.11.0-{swarm_parent}");
+        test_git(&swarm, &["update-ref", swarm_ref.as_str(), &swarm_parent])?;
         let receipt = build_receipt(&Options {
             source_parent,
-            swarm_parent,
+            swarm_parent: swarm_parent.clone(),
             swarm_ref: swarm_ref.to_string(),
             source_repo: source.clone(),
             swarm_repo: swarm.clone(),
@@ -1622,6 +1652,12 @@ mod tests {
             source_remote: "EffortlessMetrics/ripr".to_string(),
             swarm_remote: "EffortlessMetrics/ripr-swarm".to_string(),
         })?;
+        if receipt.swarm_ref != swarm_ref || receipt.swarm_ref_sha != swarm_parent {
+            return Err(format!(
+                "protected candidate tag did not resolve in supplied swarm repository: ref={:?}, sha={:?}",
+                receipt.swarm_ref, receipt.swarm_ref_sha
+            ));
+        }
         if receipt.mode != "two_parent_join" || receipt.dry_merge.status != "conflicts" {
             return Err(
                 "diverged fixture did not produce a conflicting two-parent receipt".to_string(),

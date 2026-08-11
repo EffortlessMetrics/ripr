@@ -124,9 +124,8 @@ Current how-to docs:
 - [Source-promotion preflight](SOURCE_PROMOTION_PREFLIGHT.md)
 - [Back-sync verifier](BACK_SYNC_VERIFIER.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
-- [Source-promotion runbook](SOURCE_PROMOTION.md)
-- [Source-promotion verification contract](specs/RIPR-SPEC-0152-source-promotion-verifier.md)
-- [Source-promotion CI contract](specs/RIPR-SPEC-0150-source-promotion-ci-contract.md)
+- [Windows packaged qualification](WINDOWS_PACKAGED_QUALIFICATION.md) - exact
+  candidate Windows CLI and VSIX rehearsal with Actions-only receipts
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md)
 - [First successful PR demo](demo/first-successful-pr.md)
 - [Start-here convergence receipts](handoffs/2026-05-22-start-here-surface-convergence-receipts.md)
