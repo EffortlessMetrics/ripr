@@ -20,18 +20,45 @@ if schema_count < 2:
     raise SystemExit(f"expected success/failure v1 schema fields, found {schema_count}")
 text = text.replace(schema_old, "ripr.source_promotion_verification.v2")
 
-mutation_anchor = '''            let mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
-            fs::write(root.join("CHANGELOG.md"), "# Changelog\\nchanged\\n")
+setup_block = '''            fs::write(root.join("CHANGELOG.md"), "# Changelog\\nchanged\\n")
+                .map_err(|error| error.to_string())?;
+            test_git(&root, &["add", "CHANGELOG.md"])?;
+            test_git(&root, &["commit", "--quiet", "-m", "changelog-mutated"])?;
+            let changelog_mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
+            test_git(&root, &["reset", "--quiet", "--hard", &mutated])?;
 '''
-mutation_replacement = '''            let mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
-            test_git(&root, &["reset", "--quiet", "--hard", &dependency_only])?;
-            fs::write(root.join("CHANGELOG.md"), "# Changelog\\nchanged\\n")
+text = replace_exact(text, setup_block, "", "existing changelog adversary setup")
+
+snapshot_anchor = '''            let before_refs = test_git_output(
+'''
+pre_snapshot = '''            test_git(&root, &["reset", "--quiet", "--hard", &dependency_only])?;
+            let before_refs = test_git_output(
 '''
 text = replace_exact(
     text,
-    mutation_anchor,
-    mutation_replacement,
-    "changelog adversary base",
+    snapshot_anchor,
+    pre_snapshot,
+    "dependency-only caller-state setup",
+)
+
+measured_assertion = '''            if verify_release_metadata(&root, &changelog_mutated, &source).is_ok() {
+                return Err("source-authoritative changelog mutation was accepted".into());
+            }
+'''
+late_block = '''            fs::write(root.join("CHANGELOG.md"), "# Changelog\\nchanged\\n")
+    .map_err(|error| error.to_string())?;
+  test_git(&root, &["add", "CHANGELOG.md"])?;
+  test_git(&root, &["commit", "--quiet", "-m", "changelog-mutated"])?;
+  let changelog_mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
+  if verify_release_metadata(&root, &changelog_mutated, &source).is_ok() {
+      return Err("source-authoritative changelog mutation was accepted".into());
+  }
+'''
+text = replace_exact(
+    text,
+    measured_assertion,
+    late_block,
+    "late changelog adversary block for trusted workflow relocation",
 )
 
 verifier.write_text(text, encoding="utf-8")
@@ -69,16 +96,6 @@ spec_text = replace_exact(
     "spec test mapping",
 )
 spec.write_text(spec_text, encoding="utf-8")
-
-fixture = Path("fixtures/source_promotion_verification/SPEC.md")
-fixture_text = fixture.read_text(encoding="utf-8")
-fixture_text = replace_exact(
-    fixture_text,
-    "governed release-version or source-authoritative changelog changes",
-    "governed release-version or source-authoritative changelog changes",
-    "fixture governed mutation wording",
-)
-fixture.write_text(fixture_text, encoding="utf-8")
 
 workflow = Path(".github/workflows/source-promotion-version-identity-repair.yml")
 if workflow.exists():
