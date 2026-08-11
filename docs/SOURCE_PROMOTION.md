@@ -57,6 +57,8 @@ remote to `SWARM_CANDIDATE`. The source promotion contract also verifies fixed
 public ruleset `20661783` has the exact `refs/tags/ripr-release-*` singleton
 pattern with active update and deletion protections. Missing, wrong-target,
 missing-ruleset, or mismatched-ruleset inputs fail closed.
+The governed candidate tag is expected to be lightweight: its direct ref must
+resolve to the candidate commit, rather than relying on an annotated tag object.
 
 Do not use a floating `swarm/main` ref as the reviewed candidate.
 

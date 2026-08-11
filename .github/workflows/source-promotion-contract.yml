@@ -239,14 +239,8 @@ jobs:
             checks=$(jq -c '.checks // {}' "$verification")
             failure_reasons=$(jq -c '.failure_reasons // []' "$verification")
           else
-            status=rejected
-            preflight_sha256=not_available
-            resolution_sha256=not_available
-            parents='[]'
-            tree=not_available
-            merge_base=not_available
-            checks='{}'
-            failure_reasons='["verifier did not produce a receipt"]'
+            status=rejected; preflight_sha256=not_available; resolution_sha256=not_available; parents='[]'
+            tree=not_available; merge_base=not_available; checks='{}'; failure_reasons='["verifier did not produce a receipt"]'
           fi
           if test -f "$PREFLIGHT"; then
             conflict_count=$(jq -r '(.dry_merge.conflicts // []) | length' "$PREFLIGHT")

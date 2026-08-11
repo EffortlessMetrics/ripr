@@ -982,7 +982,7 @@ mod tests {
                 return Err(format!("invalid candidate ref was accepted: {reference}"));
             }
         }
-        for requested_version in [None, Some("0.10.0")] {
+        for requested_version in [None, Some(""), Some("0.10.0")] {
             if validate_preflight(&valid_preflight(&expected, requested_version), source).is_ok() {
                 return Err(format!(
                     "missing or mismatched requested version was accepted: {requested_version:?}"
