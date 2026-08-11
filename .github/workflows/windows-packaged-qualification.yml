@@ -30,12 +30,20 @@ jobs:
       CARGO_TERM_COLOR: always
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
       CANDIDATE_REF: ${{ inputs.candidate_ref }}
-      QUAL_ROOT: ${{ github.workspace }}\target\ripr\windows-packaged-qualification
 
     steps:
-      - name: Initialize receipt root
+      - name: Initialize receipt root before checkout
         shell: pwsh
-        run: New-Item -ItemType Directory -Force -Path $env:QUAL_ROOT | Out-Null
+        run: |
+          # Keep receipts outside the checkout. actions/checkout cleans the
+          # workspace before populating the requested candidate, so a workspace
+          # receipt root created before checkout is not durable.
+          $base = Join-Path $env:RUNNER_TEMP 'ripr-windows-packaged-qualification'
+          $receipts = Join-Path $base 'receipts'
+          $work = Join-Path $base 'work'
+          "QUAL_ROOT=$receipts" >> $env:GITHUB_ENV
+          "QUAL_TEMP_ROOT=$work" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force -Path $receipts, $work | Out-Null
 
       - name: Checkout immutable candidate
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -43,6 +51,17 @@ jobs:
           ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Initialize receipt root after checkout
+        if: always()
+        shell: pwsh
+        run: |
+          $base = Join-Path $env:RUNNER_TEMP 'ripr-windows-packaged-qualification'
+          $receipts = Join-Path $base 'receipts'
+          $work = Join-Path $base 'work'
+          "QUAL_ROOT=$receipts" >> $env:GITHUB_ENV
+          "QUAL_TEMP_ROOT=$work" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force -Path $receipts, $work | Out-Null
 
       - name: Verify candidate and ref identity
         shell: pwsh
@@ -78,7 +97,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $root = $env:QUAL_ROOT
-          $temp = Join-Path $env:RUNNER_TEMP 'ripr-windows-packaged-qualification'
+          $temp = $env:QUAL_TEMP_ROOT
           $env:CARGO_HOME = Join-Path $temp 'cargo-home'
           $env:CARGO_TARGET_DIR = Join-Path $temp 'cargo-target'
           "QUAL_TEMP_ROOT=$temp" >> $env:GITHUB_ENV
@@ -166,24 +185,24 @@ jobs:
         shell: pwsh
         working-directory: editors/vscode
         run: |
-          $ErrorActionPreference = 'Stop'; $extract = Join-Path $env:QUAL_ROOT 'vsix-extracted'; New-Item -ItemType Directory -Force -Path $extract | Out-Null; Expand-Archive -LiteralPath $env:RIPR_VSIX -DestinationPath $extract -Force
-          $env:RIPR_TEST_EXTENSION_PATH = Join-Path $extract 'extension'; $env:RIPR_TEST_SERVER_PATH = $env:RIPR_PACKAGED; $env:RIPR_TEST_WORKSPACE_TRUST = 'trusted'; $env:RIPR_TEST_ARTIFACT_ROOT = Join-Path $env:QUAL_ROOT 'trusted-editor'
+          $ErrorActionPreference = 'Stop'; $extract = Join-Path $env:QUAL_TEMP_ROOT 'vsix-extracted'; New-Item -ItemType Directory -Force -Path $extract | Out-Null; Expand-Archive -LiteralPath $env:RIPR_VSIX -DestinationPath $extract -Force
+          $env:RIPR_TEST_EXTENSION_PATH = Join-Path $extract 'extension'; $env:RIPR_TEST_SERVER_PATH = $env:RIPR_PACKAGED; $env:RIPR_TEST_WORKSPACE_TRUST = 'trusted'; $env:RIPR_TEST_ARTIFACT_ROOT = Join-Path $env:QUAL_TEMP_ROOT 'trusted-editor'
           npm run test:e2e 2>&1 | Tee-Object (Join-Path $env:QUAL_ROOT 'editor-trusted.log'); if ($LASTEXITCODE -ne 0) { throw "trusted editor journey failed with exit $LASTEXITCODE" }
-          $owned = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like "*$env:QUAL_ROOT*" -and ($_.Name -match 'ripr|Code|electron') }; if ($owned) { $owned | Format-List Name,ProcessId,CommandLine; throw 'trusted editor journey left an owned process' }
+          $owned = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like "*$env:QUAL_TEMP_ROOT*" -and ($_.Name -match 'ripr|Code|electron') }; if ($owned) { $owned | Format-List Name,ProcessId,CommandLine; throw 'trusted editor journey left an owned process' }
 
       - name: Run untrusted trust-boundary journey
         shell: pwsh
         working-directory: editors/vscode
         run: |
-          $ErrorActionPreference = 'Stop'; $env:RIPR_TEST_EXTENSION_PATH = Join-Path $env:QUAL_ROOT 'vsix-extracted\extension'; $env:RIPR_TEST_SERVER_PATH = $env:RIPR_PACKAGED; $env:RIPR_TEST_WORKSPACE_TRUST = 'untrusted'; $env:RIPR_TEST_ARTIFACT_ROOT = Join-Path $env:QUAL_ROOT 'untrusted-editor'
+          $ErrorActionPreference = 'Stop'; $env:RIPR_TEST_EXTENSION_PATH = Join-Path $env:QUAL_TEMP_ROOT 'vsix-extracted\extension'; $env:RIPR_TEST_SERVER_PATH = $env:RIPR_PACKAGED; $env:RIPR_TEST_WORKSPACE_TRUST = 'untrusted'; $env:RIPR_TEST_ARTIFACT_ROOT = Join-Path $env:QUAL_TEMP_ROOT 'untrusted-editor'
           npm run test:e2e 2>&1 | Tee-Object (Join-Path $env:QUAL_ROOT 'editor-untrusted.log'); if ($LASTEXITCODE -ne 0) { throw "untrusted editor journey failed with exit $LASTEXITCODE" }
-          $owned = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like "*$env:QUAL_ROOT*" -and ($_.Name -match 'ripr|Code|electron') }; if ($owned) { $owned | Format-List Name,ProcessId,CommandLine; throw 'untrusted editor journey left an owned process' }
+          $owned = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like "*$env:QUAL_TEMP_ROOT*" -and ($_.Name -match 'ripr|Code|electron') }; if ($owned) { $owned | Format-List Name,ProcessId,CommandLine; throw 'untrusted editor journey left an owned process' }
 
       - name: Write Actions-only qualification receipt
         if: always()
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'; $root = $env:QUAL_ROOT
+          $ErrorActionPreference = 'Stop'; $root = $env:QUAL_ROOT; New-Item -ItemType Directory -Force -Path $root | Out-Null
           [ordered]@{ schema_version = '0.1'; candidate_sha = $env:CANDIDATE_SHA; candidate_ref = $env:CANDIDATE_REF; publication = 'forbidden'; secrets = 'forbidden'; receipts = @(Get-ChildItem $root -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($root.Length + 1) } | Sort-Object); claim_boundary = 'Actions-only exact-candidate packaged CLI and VSIX journey evidence; no correctness, release, publication, signing, marketplace, or merge claim.' } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $root 'qualification-receipt.json')
           Get-ChildItem $root -File -Recurse | ForEach-Object { Get-FileHash $_.FullName -Algorithm SHA256 } | Select-Object Path,Hash | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $root 'receipt-file-digests.json')
 
@@ -192,5 +211,5 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: windows-packaged-qualification-${{ inputs.candidate_sha }}
-          path: ${{ github.workspace }}/target/ripr/windows-packaged-qualification
+          path: ${{ runner.temp }}\ripr-windows-packaged-qualification\receipts
           if-no-files-found: error

@@ -992,4 +992,115 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn packaged_qualification_receipts_survive_checkout_cleanup() -> Result<(), String> {
+        let workflow = include_str!("../../.github/workflows/windows-packaged-qualification.yml");
+        let lines = workflow.lines().map(str::trim).collect::<Vec<_>>();
+        let checkout = lines
+            .iter()
+            .position(|line| line.starts_with("- name: Checkout immutable candidate"))
+            .ok_or_else(|| "workflow must retain the immutable checkout step".to_string())?;
+        let before = lines
+            .iter()
+            .position(|line| line.starts_with("- name: Initialize receipt root before checkout"))
+            .ok_or_else(|| "workflow must initialize the early-failure receipt root".to_string())?;
+        let after = lines
+            .iter()
+            .position(|line| line.starts_with("- name: Initialize receipt root after checkout"))
+            .ok_or_else(|| "workflow must reinitialize the root after checkout".to_string())?;
+        if !(before < checkout && checkout < after) {
+            return Err("receipt-root initialization must bracket checkout".to_string());
+        }
+        if !lines
+            .iter()
+            .any(|line| line.contains("$receipts = Join-Path $base 'receipts'"))
+        {
+            return Err("receipt root must use the dedicated receipts child".to_string());
+        }
+        if !lines
+            .iter()
+            .any(|line| line.contains("$work = Join-Path $base 'work'"))
+        {
+            return Err("qualification work must use the dedicated work child".to_string());
+        }
+        if !lines
+            .iter()
+            .any(|line| line.contains("QUAL_ROOT=$receipts"))
+            || !lines
+                .iter()
+                .any(|line| line.contains("QUAL_TEMP_ROOT=$work"))
+        {
+            return Err("receipt and work roots must be exported separately".to_string());
+        }
+        let upload_path = lines
+            .iter()
+            .find(|line| line.starts_with("path:"))
+            .ok_or_else(|| "artifact upload must declare a bounded path".to_string())?;
+        if upload_path != &"path: ${{ runner.temp }}\\ripr-windows-packaged-qualification\\receipts"
+        {
+            return Err("artifact upload must target only the receipts root".to_string());
+        }
+        if upload_path.contains("\\work") || upload_path.contains("qualification\\receipts\\work") {
+            return Err("artifact upload must not include qualification work files".to_string());
+        }
+
+        if !lines.iter().any(|line| {
+            line.contains("path: ${{ runner.temp }}\\ripr-windows-packaged-qualification\\receipts")
+        }) {
+            return Err("artifact upload must use the durable receipt root".to_string());
+        }
+
+        // Model checkout cleaning the workspace while the receipt root lives
+        // in RUNNER_TEMP. A failure before identity verification must still
+        // leave a file for the always-run upload step to collect.
+        let sandbox = std::env::temp_dir().join(format!(
+            "ripr-windows-receipt-contract-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or(0)
+        ));
+        let workspace = sandbox.join("workspace");
+        let receipt_root = sandbox.join("runner-temp").join("receipts");
+        let work_root = sandbox.join("runner-temp").join("work");
+        if receipt_root == work_root
+            || receipt_root.starts_with(&work_root)
+            || work_root.starts_with(&receipt_root)
+        {
+            return Err("receipt and work roots must be distinct non-nested paths".to_string());
+        }
+        if std::fs::create_dir_all(workspace.join("target"))
+            .and(std::fs::create_dir_all(&receipt_root))
+            .and(std::fs::create_dir_all(&work_root))
+            .is_err()
+        {
+            return Err("unable to create checkout-cleanup test directories".to_string());
+        }
+        let failure_receipt = receipt_root.join("failure-receipt.txt");
+        let work_file = work_root.join(r"build\install\vsix.bin");
+        let result = (|| {
+            std::fs::remove_dir_all(&workspace)?;
+            std::fs::write(&failure_receipt, "identity verification failed")?;
+            std::fs::create_dir_all(work_file.parent().ok_or_else(|| {
+                std::io::Error::other("work-file parent directory was not available")
+            })?)?;
+            std::fs::write(&work_file, "not a receipt")?;
+            if !failure_receipt.is_file() {
+                return Err(std::io::Error::other("failure receipt was not retained"));
+            }
+            let uploaded = std::fs::read_dir(&receipt_root)?
+                .map(|entry| entry.map(|item| item.path()))
+                .collect::<Result<Vec<_>, _>>()?;
+            if uploaded.iter().any(|path| path == &work_file) {
+                return Err(std::io::Error::other(
+                    "artifact receipt root included a qualification work file",
+                ));
+            }
+            Ok::<(), std::io::Error>(())
+        })();
+        let _ = std::fs::remove_dir_all(&sandbox);
+        result.map_err(|error| format!("failure receipts must survive checkout cleanup: {error}"))
+    }
 }
