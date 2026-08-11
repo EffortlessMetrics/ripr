@@ -77,6 +77,7 @@ jobs:
             policy/doc-artifacts.toml \
             policy/network_allowlist.txt \
             policy/process_allowlist.txt \
+            xtask/Cargo.toml \
             xtask/src/dispatch.rs \
             xtask/src/reports/mod.rs
           python /tmp/resolve_live_swarm_history_sync.py
@@ -90,7 +91,7 @@ jobs:
           cargo check --workspace --all-targets --all-features
           cargo fmt --all
           cargo fmt --all -- --check
-          git add Cargo.lock xtask/src/dispatch.rs xtask/src/reports/mod.rs
+          git add Cargo.lock xtask/Cargo.toml xtask/src/dispatch.rs xtask/src/reports/mod.rs
           git diff --cached --check
 
       - name: Focused integration proof
