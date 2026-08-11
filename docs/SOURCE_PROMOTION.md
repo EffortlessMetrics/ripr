@@ -52,9 +52,11 @@ Also record:
 `SWARM_REF` in the preflight receipt is not a floating branch or a local-only
 namespace. It must be the exact fully-qualified protected candidate tag
 `refs/tags/ripr-release-${VERSION}-${SWARM_CANDIDATE}` from the active swarm tag
-ruleset, and it must resolve to `SWARM_CANDIDATE`. The source verifier rejects
-legacy `refs/ripr/` refs, short tag names, branch refs, wrong-version tags, and
-wrong-SHA tags.
+ruleset, and it must resolve in the actual `EffortlessMetrics/ripr-swarm`
+remote to `SWARM_CANDIDATE`. The source promotion contract also verifies fixed
+public ruleset `20661783` has the exact `refs/tags/ripr-release-*` singleton
+pattern with active update and deletion protections. Missing, wrong-target,
+missing-ruleset, or mismatched-ruleset inputs fail closed.
 
 Do not use a floating `swarm/main` ref as the reviewed candidate.
 

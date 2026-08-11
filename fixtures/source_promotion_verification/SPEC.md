@@ -16,6 +16,12 @@ verification.
 
 The governed source comparison consists of:
 
+- the contract's live remote proof that the fully-qualified candidate tag
+  exists in `EffortlessMetrics/ripr-swarm` and resolves directly to
+  `SWARM_PARENT`;
+- the contract's fixed public ruleset proof for ruleset `20661783`, including
+  the exact protected tag pattern plus update and deletion protections;
+
 - J's effective `ripr` crate version against `SOURCE_PARENT`;
 - J's `Cargo.lock` `ripr` package version against `SOURCE_PARENT`;
 - J's VS Code package version against `SOURCE_PARENT`;

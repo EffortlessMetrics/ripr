@@ -948,7 +948,7 @@ mod tests {
         let version = "0.11.0";
         let source = "0000000000000000000000000000000000000000";
         let parent = "1111111111111111111111111111111111111111";
-        let valid_preflight = |reference: &str| {
+        let valid_preflight = |reference: &str, requested_version: Option<&str>| {
             serde_json::json!({
                 "schema": PREFLIGHT_SCHEMA,
                 "mode": "two_parent_join",
@@ -963,12 +963,12 @@ mod tests {
                 "source_range": {},
                 "swarm_range": {},
                 "dry_merge": {"reviewed_resolved_tree": source,"reviewed_resolved_tree_verified":true},
-                "version_state": {"requested_version": version},
+                "version_state": requested_version.map_or_else(|| serde_json::json!({}), |value| serde_json::json!({"requested_version": value})),
                 "invalidation_rules": []
             })
         };
         let expected = format!("refs/tags/ripr-release-{version}-{parent}");
-        validate_preflight(&valid_preflight(&expected), source)?;
+        validate_preflight(&valid_preflight(&expected, Some(version)), source)?;
 
         for reference in [
             "refs/ripr/release-0.11.0-1111111111111111111111111111111111111111",
@@ -978,8 +978,15 @@ mod tests {
             "refs/tags/ripr-release-0.11.0-2222222222222222222222222222222222222222",
             "refs/tags/ripr-release-other-1111111111111111111111111111111111111111",
         ] {
-            if validate_preflight(&valid_preflight(reference), source).is_ok() {
+            if validate_preflight(&valid_preflight(reference, Some(version)), source).is_ok() {
                 return Err(format!("invalid candidate ref was accepted: {reference}"));
+            }
+        }
+        for requested_version in [None, Some("0.10.0")] {
+            if validate_preflight(&valid_preflight(&expected, requested_version), source).is_ok() {
+                return Err(format!(
+                    "missing or mismatched requested version was accepted: {requested_version:?}"
+                ));
             }
         }
         Ok(())
