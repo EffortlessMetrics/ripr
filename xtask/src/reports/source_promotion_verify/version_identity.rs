@@ -34,8 +34,7 @@ pub(super) fn verify_release_metadata_identity(
     let join_changelog = git_bytes(repo, &["show", &format!("{join}:CHANGELOG.md")])?;
     if source_changelog != join_changelog {
         return Err(
-            "release metadata identity failed: CHANGELOG.md differs from source parent"
-                .to_string(),
+            "release metadata identity failed: CHANGELOG.md differs from source parent".to_string(),
         );
     }
     Ok(())
@@ -234,8 +233,7 @@ mod tests {
     const LOCK: &str = "version = 3\n[[package]]\nname = \"ripr\"\nversion = \"0.10.1\"\ndependencies = [\"rayon\"]\n";
     const PACKAGE: &str =
         "{\"name\":\"ripr\",\"version\":\"0.10.1\",\"scripts\":{\"compile\":\"tsc\"}}";
-    const PACKAGE_LOCK: &str =
-        "{\"name\":\"ripr\",\"version\":\"0.10.1\",\"packages\":{\"\":{\"name\":\"ripr\",\"version\":\"0.10.1\",\"dependencies\":{\"vscode-languageclient\":\"^9\"}}}}";
+    const PACKAGE_LOCK: &str = "{\"name\":\"ripr\",\"version\":\"0.10.1\",\"packages\":{\"\":{\"name\":\"ripr\",\"version\":\"0.10.1\",\"dependencies\":{\"vscode-languageclient\":\"^9\"}}}}";
 
     #[test]
     fn dependency_and_workspace_layout_changes_preserve_version_identity() -> Result<(), String> {
@@ -297,8 +295,7 @@ mod tests {
 
     #[test]
     fn npm_lock_root_and_package_root_must_agree() -> Result<(), String> {
-        let mismatched =
-            "{\"name\":\"ripr\",\"version\":\"0.10.1\",\"packages\":{\"\":{\"name\":\"ripr\",\"version\":\"0.10.2\"}}}";
+        let mismatched = "{\"name\":\"ripr\",\"version\":\"0.10.1\",\"packages\":{\"\":{\"name\":\"ripr\",\"version\":\"0.10.2\"}}}";
         let error = identity_from_documents(
             EXPLICIT_WORKSPACE,
             EXPLICIT_CRATE,

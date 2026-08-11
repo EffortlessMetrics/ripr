@@ -23,7 +23,7 @@ identity:
 - reviewed-tree mismatch and automatic preview-tree substitution;
 - stale/tampered preflight bytes;
 - incomplete, duplicate, extra, or out-of-inventory resolution rows;
-- governed metadata changes and merged-main equivalents that do not reach J;
+- governed release-version or source-authoritative changelog changes and merged-main equivalents that do not reach J;
 - floating, abbreviated, or uppercase identity arguments.
 
 The successful case must emit both the JSON and Markdown v1 receipts. Rejected
@@ -34,8 +34,7 @@ tests in `xtask/src/reports/source_promotion_verify.rs`.
 ## Then
 
 The valid direct join is accepted only when its merge base is unique, its
-ordered parents and canonical v1 range match the manifest, its tree and
-metadata are unchanged, and its resolution rows are complete and in
+ordered parents and canonical v1 range match the manifest, its tree, release-version identity, and source-authoritative changelog bytes are unchanged, and its resolution rows are complete and in
 inventory. Rebase, cherry-pick, substituted-parent, squash/tree-equivalent,
 preview-substitution, ambiguous-merge-base, and post-main histories are
 rejected with reason-bearing checks. Receipt booleans are derived from those

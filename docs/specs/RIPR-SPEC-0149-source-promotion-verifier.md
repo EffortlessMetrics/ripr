@@ -49,7 +49,7 @@ adequacy, release readiness, publication, or K back-sync verification.
 - A valid two-parent J with matching reviewed tree, metadata, ranges, and
   resolution inventory emits `verified` JSON and Markdown receipts.
 - Squash, rebase, cherry-pick, reversed-parent, substituted-parent,
-  tree-equivalent, preview-tree substitution, metadata drift, and appended
+  tree-equivalent, preview-tree substitution, release-version or source-authoritative changelog drift, and appended
   repair heads are rejected with deterministic failure reasons.
 - Omitting `--main-head` records reachability as `not_run`; an unrelated
   equivalent-tree main rejects the receipt.

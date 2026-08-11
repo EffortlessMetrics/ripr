@@ -11,19 +11,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod version_identity;
+use version_identity::{RELEASE_METADATA_SURFACES, verify_release_metadata_identity};
+
 const PREFLIGHT_SCHEMA: &str = "ripr.source_promotion_preflight.v1";
 const RESOLUTION_SCHEMA: &str = "ripr.source_promotion_resolution.v1";
 const REPORT_JSON: &str = "source-promotion-verification.json";
 const REPORT_MD: &str = "source-promotion-verification.md";
-
-const METADATA_SURFACES: &[&str] = &[
-    "Cargo.toml",
-    "crates/ripr/Cargo.toml",
-    "Cargo.lock",
-    "editors/vscode/package.json",
-    "editors/vscode/package-lock.json",
-    "CHANGELOG.md",
-];
 
 #[derive(Clone, Debug)]
 struct Options {
@@ -92,8 +86,9 @@ fn verify(options: &Options) -> Result<Value, String> {
     validate_manifest(&manifest, &preflight, &preflight_digest)?;
 
     let graph = verify_graph(options, &preflight)?;
-    let metadata_verified =
-        verify_metadata(&options.repo, &options.join, &options.source_main).map(|()| true)?;
+    let release_metadata_verified =
+        verify_release_metadata(&options.repo, &options.join, &options.source_main)
+            .map(|()| true)?;
     if let Some(main) = &options.main {
         git_exact_commit(&options.repo, main, "--main-head")?;
         require_ancestor(
@@ -127,8 +122,8 @@ fn verify(options: &Options) -> Result<Value, String> {
         Value::Bool(reviewed_tree == Some(graph.tree.as_str())),
     );
     checks.insert(
-        "metadata_byte_identity".into(),
-        Value::Bool(metadata_verified),
+        "release_version_identity".into(),
+        Value::Bool(release_metadata_verified),
     );
     checks.insert(
         "main_reachability".into(),
@@ -157,7 +152,7 @@ fn verify(options: &Options) -> Result<Value, String> {
             "first_parent_ordered_sha256": graph.swarm_first_digest,
             "verified_through_parent_2": true,
         },
-        "metadata_surfaces": METADATA_SURFACES,
+        "release_metadata_surfaces": RELEASE_METADATA_SURFACES,
         "checks": checks,
         "failure_reasons": [],
         "invalidation_rules": [
@@ -192,13 +187,13 @@ fn failure_report(options: &Options, reason: &str) -> Value {
             "first_parent_ordered_sha256": null,
             "verified_through_parent_2": false,
         },
-        "metadata_surfaces": METADATA_SURFACES,
+        "release_metadata_surfaces": RELEASE_METADATA_SURFACES,
         "checks": {
             "head_is_declared_join": "not_run",
             "ordered_parents": "not_run",
             "ancestry_and_digest": "not_run",
             "reviewed_tree": "not_run",
-            "metadata_byte_identity": "not_run",
+            "release_version_identity": "not_run",
             "main_reachability": "not_run",
             "caller_state_mutated": "not_run",
         },
@@ -652,15 +647,8 @@ fn compare_range(
     Ok(())
 }
 
-fn verify_metadata(repo: &Path, join: &str, source: &str) -> Result<(), String> {
-    for path in METADATA_SURFACES {
-        let source_bytes = git_bytes(repo, &["show", &format!("{source}:{path}")])?;
-        let join_bytes = git_bytes(repo, &["show", &format!("{join}:{path}")])?;
-        if source_bytes != join_bytes {
-            return Err(format!("metadata byte identity failed for {path}"));
-        }
-    }
-    Ok(())
+fn verify_release_metadata(repo: &Path, join: &str, source: &str) -> Result<(), String> {
+    verify_release_metadata_identity(repo, join, source)
 }
 
 fn render_markdown(report: &Value) -> Result<String, String> {
@@ -714,7 +702,7 @@ fn render_markdown(report: &Value) -> Result<String, String> {
         .get("non_claims")
         .ok_or_else(|| "report non-claims missing".to_string())?;
     let header = format!(
-        "# Source-promotion verification\n\n- Schema: {schema}\n- Status: **{status}**\n- J: `{join}`\n- SOURCE_PARENT: `{source}`\n- Parents (ordered): `{}` then `{}`\n- Tree: `{tree}`\n- Preflight SHA-256: `{}`\n- Resolution manifest SHA-256: `{}`\n\n## Claim boundary\n\nThe receipt proves the exact two-parent Git graph, reviewed tree identity, ancestry denominators/digests, metadata byte identity, and optional merged-main reachability. It does not adjudicate semantic conflict resolutions, product correctness, release readiness, publication, or K back-sync.\n",
+        "# Source-promotion verification\n\n- Schema: {schema}\n- Status: **{status}**\n- J: `{join}`\n- SOURCE_PARENT: `{source}`\n- Parents (ordered): `{}` then `{}`\n- Tree: `{tree}`\n- Preflight SHA-256: `{}`\n- Resolution manifest SHA-256: `{}`\n\n## Claim boundary\n\nThe receipt proves the exact two-parent Git graph, reviewed tree identity, ancestry denominators/digests, release-version identity and source-authoritative changelog bytes, and optional merged-main reachability. It does not adjudicate semantic conflict resolutions, product correctness, release readiness, publication, or K back-sync.\n",
         parents.first().and_then(Value::as_str).unwrap_or(""),
         parents.get(1).and_then(Value::as_str).unwrap_or(""),
         preflight_digest,
@@ -862,6 +850,49 @@ mod tests {
         Err(format!(
             "could not allocate collision-resistant {label} fixture path"
         ))
+    }
+
+    fn write_release_metadata_fixture(
+        root: &Path,
+        version: &str,
+        workspace_inherited: bool,
+    ) -> Result<(), String> {
+        fs::create_dir_all(root.join("crates/ripr")).map_err(|error| error.to_string())?;
+        fs::create_dir_all(root.join("editors/vscode")).map_err(|error| error.to_string())?;
+        let workspace = if workspace_inherited {
+            format!(
+                "[workspace]\nmembers = [\"crates/ripr\"]\n[workspace.package]\nversion = \"{version}\"\n[workspace.dependencies]\nserde = \"1\"\n"
+            )
+        } else {
+            "[workspace]\nmembers = [\"crates/ripr\"]\n".to_string()
+        };
+        let crate_manifest = if workspace_inherited {
+            "[package]\nname = \"ripr\"\nversion.workspace = true\n[dependencies]\nrayon = \"1\"\n"
+                .to_string()
+        } else {
+            format!(
+                "[package]\nname = \"ripr\"\nversion = \"{version}\"\n[dependencies]\nserde = \"1\"\n"
+            )
+        };
+        let lock = format!(
+            "version = 3\n[[package]]\nname = \"ripr\"\nversion = \"{version}\"\ndependencies = [\"serde\"]\n"
+        );
+        let package = format!(
+            "{{\"name\":\"ripr\",\"version\":\"{version}\",\"scripts\":{{\"compile\":\"tsc\"}}}}\n"
+        );
+        let package_lock = format!(
+            "{{\"name\":\"ripr\",\"version\":\"{version}\",\"lockfileVersion\":3,\"packages\":{{\"\":{{\"name\":\"ripr\",\"version\":\"{version}\",\"dependencies\":{{\"vscode-languageclient\":\"^9\"}}}}}}}}\n"
+        );
+        fs::write(root.join("Cargo.toml"), workspace).map_err(|error| error.to_string())?;
+        fs::write(root.join("crates/ripr/Cargo.toml"), crate_manifest)
+            .map_err(|error| error.to_string())?;
+        fs::write(root.join("Cargo.lock"), lock).map_err(|error| error.to_string())?;
+        fs::write(root.join("editors/vscode/package.json"), package)
+            .map_err(|error| error.to_string())?;
+        fs::write(root.join("editors/vscode/package-lock.json"), package_lock)
+            .map_err(|error| error.to_string())?;
+        fs::write(root.join("CHANGELOG.md"), "# Changelog\n").map_err(|error| error.to_string())?;
+        Ok(())
     }
 
     #[test]
@@ -1137,17 +1168,33 @@ mod tests {
             test_git(&root, &["init", "--quiet"])?;
             test_git(&root, &["config", "user.email", "test@example.invalid"])?;
             test_git(&root, &["config", "user.name", "test"])?;
-            for path in METADATA_SURFACES {
-                let file = root.join(path);
-                fs::write(file, "stable\n").map_err(|error| error.to_string())?;
-            }
+            write_release_metadata_fixture(&root, "0.10.1", false)?;
             test_git(&root, &["add", "."])?;
             test_git(&root, &["commit", "--quiet", "-m", "base"])?;
             let source = test_git_output(&root, &["rev-parse", "HEAD"])?;
-            fs::write(root.join("Cargo.toml"), "changed\n").map_err(|error| error.to_string())?;
-            test_git(&root, &["add", "Cargo.toml"])?;
-            test_git(&root, &["commit", "--quiet", "-m", "mutated"])?;
+            write_release_metadata_fixture(&root, "0.10.1", true)?;
+            test_git(&root, &["add", "."])?;
+            test_git(
+                &root,
+                &["commit", "--quiet", "-m", "dependency-and-layout-change"],
+            )?;
+            let dependency_only = test_git_output(&root, &["rev-parse", "HEAD"])?;
+            if verify_release_metadata(&root, &dependency_only, &source).is_err() {
+                return Err(
+                    "dependency/layout changes with unchanged effective versions were rejected"
+                        .into(),
+                );
+            }
+            write_release_metadata_fixture(&root, "0.10.2", true)?;
+            test_git(&root, &["add", "."])?;
+            test_git(&root, &["commit", "--quiet", "-m", "version-mutated"])?;
             let mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
+            fs::write(root.join("CHANGELOG.md"), "# Changelog\nchanged\n")
+                .map_err(|error| error.to_string())?;
+            test_git(&root, &["add", "CHANGELOG.md"])?;
+            test_git(&root, &["commit", "--quiet", "-m", "changelog-mutated"])?;
+            let changelog_mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
+            test_git(&root, &["reset", "--quiet", "--hard", &mutated])?;
             let before_refs = test_git_output(
                 &root,
                 &["for-each-ref", "--format=%(refname)=%(objectname)"],
@@ -1156,11 +1203,14 @@ mod tests {
             let before_worktree =
                 test_git_output(&root, &["status", "--porcelain=v2", "--branch"])?;
             let before_remotes = test_git_output(&root, &["remote", "-v"])?;
-            if verify_metadata(&root, &source, &source).is_err() {
-                return Err("unchanged metadata was rejected".into());
+            if verify_release_metadata(&root, &source, &source).is_err() {
+                return Err("unchanged release metadata was rejected".into());
             }
-            if verify_metadata(&root, &mutated, &source).is_ok() {
-                return Err("metadata byte mutation was accepted".into());
+            if verify_release_metadata(&root, &mutated, &source).is_ok() {
+                return Err("governed release-version mutation was accepted".into());
+            }
+            if verify_release_metadata(&root, &changelog_mutated, &source).is_ok() {
+                return Err("source-authoritative changelog mutation was accepted".into());
             }
             let tree = test_git_output(&root, &["rev-parse", &format!("{source}^{{tree}}")])?;
             let unrelated_main =
@@ -1209,9 +1259,7 @@ mod tests {
             fs::write(root.join("base.txt"), "base\n").map_err(|error| error.to_string())?;
             fs::create_dir_all(root.join("crates/ripr")).map_err(|error| error.to_string())?;
             fs::create_dir_all(root.join("editors/vscode")).map_err(|error| error.to_string())?;
-            for path in METADATA_SURFACES {
-                fs::write(root.join(path), "stable\n").map_err(|error| error.to_string())?;
-            }
+            write_release_metadata_fixture(&root, "0.10.1", false)?;
             test_git(&root, &["add", "."])?;
             test_git(&root, &["commit", "--quiet", "-m", "base"])?;
             let base = test_git_output(&root, &["rev-parse", "HEAD"])?;
