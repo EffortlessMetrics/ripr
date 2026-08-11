@@ -52,6 +52,10 @@ A committed candidate with `REVIEW_INCOMPLETE` may enter so the procedure can pu
 13. After merge, verify `main`, update issue acceptance, parent state, generated evidence, and any residual work. Close only acceptance-complete issues.
 14. After deliberate closure or supersession, record the winning candidate and preserved residual work.
 
+# Release-scope law
+
+For a pinned release, treat the reviewed immutable pin receipt as the sole membership authority: qualification, source preflight, and finalization consume its exact ref, ancestry, ordered SHA digest, PR dispositions, and manifests unchanged. Ordinary `main` or swarm movement never repins or changes membership; repin only after a release-invalidating exact-candidate qualification or source-preflight failure, with an explicit superseding receipt. Do not close, draft, lock, relabel, retarget, or otherwise mutate unrelated PRs to freeze scope; they remain open and may evolve, and post-pin merges do not retarget the release. Close only this selected PR for its own evidence-backed terminal disposition—never close-now/reopen-after-release.
+
 # Review law
 
 A differently named agent is not automatically independent. Use another reviewer when it changes the evidence, oracle, context, tools, platform access, or failure perspective. The accountable root verifies and integrates the result.

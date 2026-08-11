@@ -46,6 +46,13 @@ One coherent claim has one current candidate, current proof and review for the a
 - A behind-only branch needs no action.
 - Rebase or update only for an actual conflict, changed explicit prerequisite, material combined-tree failure, or repository policy that applies to this candidate.
 
+# Release-scope law
+
+- Pin release membership to the exact immutable head SHA, ancestry, and release manifests.
+- Treat the reviewed immutable pin receipt as the sole membership authority: qualification, source preflight, and finalization consume it unchanged. Ordinary `main` or swarm movement never repins or changes membership; repin only after a release-invalidating exact-candidate qualification or source-preflight failure, with an explicit superseding receipt.
+- Never close, draft, lock, relabel, retarget, or otherwise mutate an unrelated PR to freeze release scope; unrelated PRs stay open and may evolve.
+- A post-pin merge does not retarget the release. Close only this selected PR for its own evidence-backed terminal disposition; never close-now/reopen-after-release.
+
 # Proof and review currentness
 
 Track currentness by dimension rather than treating every SHA change as total invalidation:
