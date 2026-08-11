@@ -13,13 +13,14 @@ concurrency:
 
 jobs:
   construct:
-    name: construct exact two-parent sync candidate
+    name: construct and prove exact two-parent sync candidate
     if: github.head_ref == 'sync/live-swarm-history-control-20260811'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
       SOURCE_PARENT: 0b6073f88696ab70832dc7ea6410a0c285dc0f53
       SWARM_HEAD: 335ae8a119872555e83e1f8dfcd23744d9e2a602
+      MERGE_BASE: 36909460db013ed3a3238ee8b2fc3ccda1135c15
       CANDIDATE_BRANCH: sync/live-swarm-history-335ae8a1
 
     steps:
@@ -30,7 +31,17 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Fetch exact live swarm history
+      - name: Install governed Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95
+        with:
+          components: rustfmt, clippy
+
+      - name: Reuse compiler cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-live-history-sync
+
+      - name: Fetch and bind exact live histories
         shell: bash
         run: |
           set -euo pipefail
@@ -38,58 +49,285 @@ jobs:
           git remote add swarm https://github.com/EffortlessMetrics/ripr-swarm.git
           git fetch --no-tags swarm "$SWARM_HEAD"
           test "$(git rev-parse FETCH_HEAD)" = "$SWARM_HEAD"
+          test "$(git merge-base "$SOURCE_PARENT" "$SWARM_HEAD")" = "$MERGE_BASE"
           git cat-file -e "$SOURCE_PARENT^{commit}"
           git cat-file -e "$SWARM_HEAD^{commit}"
-          git merge-base "$SOURCE_PARENT" "$SWARM_HEAD" | tee merge-base.txt
+          printf '%s\n' "$SOURCE_PARENT" > source-parent.sha
+          printf '%s\n' "$SWARM_HEAD" > swarm-head.sha
+          printf '%s\n' "$MERGE_BASE" > merge-base.sha
 
-      - name: Attempt ordinary history-preserving merge
+      - name: Construct reviewed integration tree
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "EffortlessSteven"
           git config user.email "git@effortlesssteven.com"
           git checkout --detach "$SOURCE_PARENT"
-          set +e
-          git merge --no-commit --no-ff "$SWARM_HEAD" > merge-output.txt 2>&1
-          merge_status=$?
-          set -e
-          printf '%s\n' "$merge_status" > merge-status.txt
-          if test "$merge_status" -ne 0; then
-            git diff --name-only --diff-filter=U | tee conflicts.txt
-            git ls-files -u > conflict-index.txt
-            git diff --cc > conflict-combined.diff
-            cat merge-output.txt
-            echo "Merge requires reviewed conflict resolution; no candidate was pushed." >&2
-            exit 1
-          fi
+
+          # The exact ordinary merge has sixteen known conflicts. Resolve their
+          # overlapping hunks toward current swarm first, then restore source
+          # release authority and explicitly union control-plane registries.
+          git merge --no-commit --no-ff -X theirs "$SWARM_HEAD"
           test -f .git/MERGE_HEAD
           test "$(cat .git/MERGE_HEAD)" = "$SWARM_HEAD"
+          test -z "$(git diff --name-only --diff-filter=U)"
+
+          # Release copy remains source-owned in an interim history sync.
+          git checkout "$SOURCE_PARENT" -- CHANGELOG.md
+
+          # Start from the current producer contract; the integration script
+          # below restores the exact-byte consumer clauses and v2 verifier route.
+          git checkout "$SWARM_HEAD" -- \
+            docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md \
+            docs/swarm-development.md \
+            docs/specs/README.md \
+            policy/doc-artifacts.toml \
+            policy/network_allowlist.txt \
+            policy/process_allowlist.txt \
+            xtask/src/dispatch.rs \
+            xtask/src/reports/mod.rs
+
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import re
+          import subprocess
+          import tomllib
+          from collections import OrderedDict
+          from pathlib import Path
+
+          SOURCE = "0b6073f88696ab70832dc7ea6410a0c285dc0f53"
+          SWARM = "335ae8a119872555e83e1f8dfcd23744d9e2a602"
+
+          def git_show(rev: str, path: str) -> str:
+              return subprocess.check_output(
+                  ["git", "show", f"{rev}:{path}"], text=True
+              )
+
+          def write(path: str, text: str) -> None:
+              Path(path).write_text(text, encoding="utf-8", newline="\n")
+
+          # Preserve the current producer specification while restoring the
+          # exact-file-byte binding required by the source v2 verifier.
+          spec_path = "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md"
+          spec = Path(spec_path).read_text(encoding="utf-8")
+          exact_bytes = """
+          Canonical receipt identity is the exact UTF-8 file written by the
+          producer, including pretty-print whitespace and its trailing LF. The
+          source verifier hashes those bytes before parsing JSON; a reserialized
+          equivalent is not the same preflight input. The corresponding exact-J
+          consumer contract is [RIPR-SPEC-0149](RIPR-SPEC-0149-source-promotion-verifier.md).
+
+          """.lstrip()
+          marker = "## Required Evidence\n"
+          if "Canonical receipt identity is the exact UTF-8 file" not in spec:
+              if spec.count(marker) != 1:
+                  raise SystemExit("preflight spec insertion marker changed")
+              spec = spec.replace(marker, exact_bytes + marker)
+          write(spec_path, spec)
+
+          # Union the spec index by canonical numeric identity. Current swarm
+          # rows win for shared specs; source-only release specs are retained.
+          index_path = "docs/specs/README.md"
+          source_index = git_show(SOURCE, index_path)
+          swarm_index = git_show(SWARM, index_path)
+          row_re = re.compile(r"^\| \[RIPR-SPEC-(\d{4})\].*$", re.M)
+          rows: dict[str, str] = {
+              m.group(1): m.group(0) for m in row_re.finditer(source_index)
+          }
+          rows.update({m.group(1): m.group(0) for m in row_re.finditer(swarm_index)})
+          matches = list(row_re.finditer(swarm_index))
+          if not matches:
+              raise SystemExit("swarm spec index has no canonical rows")
+          prefix = swarm_index[: matches[0].start()]
+          suffix = swarm_index[matches[-1].end() :]
+          merged_rows = "\n".join(rows[key] for key in sorted(rows, key=int))
+          write(index_path, prefix + merged_rows + suffix)
+
+          # Union the artifact ledger by artifact id. Current swarm blocks win
+          # on shared identities; source-only release-control artifacts survive.
+          ledger_path = "policy/doc-artifacts.toml"
+          source_ledger = git_show(SOURCE, ledger_path)
+          swarm_ledger = git_show(SWARM, ledger_path)
+          block_re = re.compile(r"(?ms)^\[\[artifact\]\]\n.*?(?=^\[\[artifact\]\]\n|\Z)")
+          id_re = re.compile(r'^id = "([^"]+)"$', re.M)
+          def blocks(text: str) -> list[tuple[str, str]]:
+              result = []
+              for match in block_re.finditer(text):
+                  block = match.group(0).rstrip() + "\n"
+                  identity = id_re.search(block)
+                  if not identity:
+                      raise SystemExit("artifact block lacks id")
+                  result.append((identity.group(1), block))
+              return result
+          source_blocks = blocks(source_ledger)
+          swarm_blocks = blocks(swarm_ledger)
+          merged: OrderedDict[str, str] = OrderedDict(source_blocks)
+          for identity, block in swarm_blocks:
+              merged[identity] = block
+          first = block_re.search(swarm_ledger)
+          header = swarm_ledger[: first.start()] if first else 'schema_version = "1.0"\n\n'
+          write(ledger_path, header.rstrip() + "\n\n" + "\n".join(merged.values()))
+
+          # Allowlist files are line ledgers: retain one header and the sorted
+          # union of exact data rows from both repositories.
+          for allowlist in [
+              "policy/network_allowlist.txt",
+              "policy/process_allowlist.txt",
+          ]:
+              source_text = git_show(SOURCE, allowlist)
+              swarm_text = git_show(SWARM, allowlist)
+              source_lines = source_text.splitlines()
+              swarm_lines = swarm_text.splitlines()
+              header_lines = []
+              for line in swarm_lines:
+                  if line.startswith("#") or not line.strip():
+                      header_lines.append(line)
+                  else:
+                      break
+              rows = sorted(
+                  {
+                      line
+                      for line in source_lines + swarm_lines
+                      if line.strip() and not line.startswith("#")
+                  }
+              )
+              write(
+                  allowlist,
+                  "\n".join(header_lines).rstrip() + "\n\n" + "\n".join(rows) + "\n",
+              )
+
+          # Route the current preflight producer and the source v2 exact-J
+          # verifier through one source-promotion command surface.
+          reports_path = "xtask/src/reports/mod.rs"
+          reports = Path(reports_path).read_text(encoding="utf-8")
+          module_anchor = "mod source_promotion;\n"
+          if "mod source_promotion_verify;" not in reports:
+              if reports.count(module_anchor) != 1:
+                  raise SystemExit("source-promotion module anchor changed")
+              reports = reports.replace(
+                  module_anchor,
+                  module_anchor + "mod source_promotion_verify;\n",
+              )
+          export = "pub(crate) use source_promotion::source_promotion;\n"
+          wrapper = """pub(crate) fn source_promotion(args: &[String]) -> Result<(), String> {
+              match args.first().map(String::as_str) {
+                  Some("preflight") => source_promotion::source_promotion(args),
+                  Some("verify") => source_promotion_verify::source_promotion_verify(args),
+                  _ => Err("usage: cargo xtask source-promotion <preflight|verify> ...".to_string()),
+              }
+          }
+          """
+          if export in reports:
+              reports = reports.replace(export, wrapper)
+          elif "pub(crate) fn source_promotion(args:" not in reports:
+              raise SystemExit("source-promotion export anchor changed")
+          write(reports_path, reports)
+
+          # Current swarm dispatch is authoritative for new commands. Restore
+          # source-only variants only when the merged command enum still owns them.
+          command = Path("xtask/src/command.rs").read_text(encoding="utf-8")
+          dispatch_path = "xtask/src/dispatch.rs"
+          dispatch = Path(dispatch_path).read_text(encoding="utf-8")
+          source_only_arms = OrderedDict(
+              [
+                  ("PrBody", "        XtaskCommand::PrBody(args) => super::pr_body(&args),\n"),
+                  ("Closeout", "        XtaskCommand::Closeout(args) => super::closeout(&args),\n"),
+                  ("Goals", "        XtaskCommand::Goals(args) => super::goals(&args),\n"),
+                  ("CheckCampaign", "        XtaskCommand::CheckCampaign => super::check_campaign(),\n"),
+              ]
+          )
+          missing = []
+          for variant, arm in source_only_arms.items():
+              token = f"XtaskCommand::{variant}"
+              if token in command and token not in dispatch:
+                  missing.append(arm)
+          if missing:
+              anchor = "        XtaskCommand::Help(args) => print_help(&args),\n"
+              if dispatch.count(anchor) != 1:
+                  raise SystemExit("dispatch help anchor changed")
+              dispatch = dispatch.replace(anchor, "".join(missing) + anchor)
+          write(dispatch_path, dispatch)
+
+          # The interim sync is metadata-neutral. Swarm may reorganize version
+          # inheritance, but every governed effective value remains source-equal.
+          source_crate = tomllib.loads(git_show(SOURCE, "crates/ripr/Cargo.toml"))
+          source_version = source_crate["package"]["version"]
+          root = tomllib.loads(Path("Cargo.toml").read_text(encoding="utf-8"))
+          crate = tomllib.loads(Path("crates/ripr/Cargo.toml").read_text(encoding="utf-8"))
+          candidate_version = crate["package"].get("version")
+          if candidate_version is None:
+              candidate_version = root["workspace"]["package"]["version"]
+          if candidate_version != source_version:
+              raise SystemExit(
+                  f"crate version drift: source={source_version} candidate={candidate_version}"
+              )
+          source_package = json.loads(git_show(SOURCE, "editors/vscode/package.json"))
+          candidate_package = json.loads(Path("editors/vscode/package.json").read_text())
+          if candidate_package["version"] != source_package["version"]:
+              raise SystemExit("VS Code package version drift")
+          candidate_npm_lock = json.loads(Path("editors/vscode/package-lock.json").read_text())
+          expected_extension = source_package["version"]
+          if candidate_npm_lock["version"] != expected_extension:
+              raise SystemExit("npm lock root version drift")
+          if candidate_npm_lock["packages"][""]["version"] != expected_extension:
+              raise SystemExit("npm packages[''] version drift")
+          lock = tomllib.loads(Path("Cargo.lock").read_text(encoding="utf-8"))
+          ripr_versions = [
+              package["version"]
+              for package in lock["package"]
+              if package.get("name") == "ripr"
+          ]
+          if ripr_versions != [source_version]:
+              raise SystemExit(f"Cargo.lock ripr version drift: {ripr_versions}")
+          PY
+
+          git add -A
+          test -z "$(git diff --name-only --diff-filter=U)"
+
+      - name: Reconcile lock graph and format integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --workspace --all-targets --all-features
+          cargo fmt --all
+          cargo fmt --all -- --check
+          git add Cargo.lock xtask/src/dispatch.rs xtask/src/reports/mod.rs
+          git diff --cached --check
+
+      - name: Focused integration proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test -p xtask source_promotion -- --nocapture
+          cargo xtask check-spec-format
+          cargo xtask check-traceability
+          cargo xtask check-doc-index
+          cargo xtask check-doc-artifacts
+          cargo xtask check-file-policy
+          cargo xtask check-process-policy
+          cargo xtask check-network-policy
+          git diff --check
+
+      - name: Commit exact history-preserving candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat .git/MERGE_HEAD)" = "$SWARM_HEAD"
+          git add -A
+          git diff --cached --check
           git commit -m "sync(history): merge current ripr-swarm history into source"
           candidate="$(git rev-parse HEAD)"
           parents="$(git show -s --format='%P' HEAD)"
           test "$parents" = "$SOURCE_PARENT $SWARM_HEAD"
+          git merge-base --is-ancestor "$SOURCE_PARENT" "$candidate"
+          git merge-base --is-ancestor "$SWARM_HEAD" "$candidate"
           printf '%s\n' "$candidate" > candidate.sha
           printf '%s\n' "$parents" > candidate.parents
+          git rev-parse "$candidate^{tree}" > candidate.tree
 
-      - name: Upload diagnostic packet
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: live-swarm-history-sync-diagnostic
-          path: |
-            merge-base.txt
-            merge-output.txt
-            merge-status.txt
-            conflicts.txt
-            conflict-index.txt
-            conflict-combined.diff
-            candidate.sha
-            candidate.parents
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Push conflict-free exact candidate
-        if: success()
+      - name: Push exact candidate branch
         shell: bash
         run: |
           set -euo pipefail
@@ -97,3 +335,18 @@ jobs:
           git push origin "$candidate:refs/heads/$CANDIDATE_BRANCH"
           remote="$(git ls-remote origin "refs/heads/$CANDIDATE_BRANCH" | awk '{print $1}')"
           test "$remote" = "$candidate"
+
+      - name: Upload construction receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-swarm-history-sync-construction
+          path: |
+            source-parent.sha
+            swarm-head.sha
+            merge-base.sha
+            candidate.sha
+            candidate.parents
+            candidate.tree
+          if-no-files-found: warn
+          retention-days: 30
