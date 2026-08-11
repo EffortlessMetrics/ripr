@@ -69,8 +69,19 @@ jobs:
           test "$(cat .git/MERGE_HEAD)" = "$SWARM_HEAD"
           test -z "$(git diff --name-only --diff-filter=U)"
 
+          # Release authority and release copy remain source-owned.
           git checkout "$SOURCE_PARENT" -- CHANGELOG.md
+
+          # Product/runtime conflict surfaces are taken exactly from current
+          # swarm. Version fields are normalized to source in the resolver.
           git checkout "$SWARM_HEAD" -- \
+            Cargo.lock \
+            crates/ripr/Cargo.toml \
+            crates/ripr/src/analysis/probes/diff.rs \
+            crates/ripr/src/output/review_comments.rs \
+            editors/vscode/package-lock.json \
+            editors/vscode/package.json \
+            fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json \
             docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md \
             docs/swarm-development.md \
             docs/specs/README.md \
@@ -91,7 +102,7 @@ jobs:
           cargo check --workspace --all-targets --all-features
           cargo fmt --all
           cargo fmt --all -- --check
-          git add Cargo.lock xtask/Cargo.toml xtask/src/dispatch.rs xtask/src/reports/mod.rs
+          git add Cargo.lock crates/ripr/Cargo.toml xtask/Cargo.toml xtask/src/dispatch.rs xtask/src/reports/mod.rs
           git diff --cached --check
 
       - name: Focused integration proof
