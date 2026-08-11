@@ -8606,6 +8606,215 @@ jobs:
 }
 
 #[test]
+fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> Result<(), String> {
+    const QUALIFICATION_COMMIT_TYPE_COMMAND: &str = r#"git -C "${GITHUB_WORKSPACE}" cat-file -t"#;
+    let workflow_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join(".github/workflows/server-archive-qualification.yml");
+    let workflow = fs::read_to_string(&workflow_path)
+        .map_err(|err| format!("read {}: {err}", workflow_path.display()))?;
+
+    let validate = |candidate: &str| -> Result<(), String> {
+        if candidate.contains("actions/checkout@")
+            || candidate
+                .matches("git init \"${GITHUB_WORKSPACE}\"")
+                .count()
+                != 3
+            || candidate
+                .matches("-c credential.helper= -c http.extraheader= fetch")
+                .count()
+                != 3
+            || !candidate.contains("git -c credential.helper= -c http.extraheader= ls-remote")
+            || candidate
+                .matches("https://github.com/EffortlessMetrics/ripr-swarm.git")
+                .count()
+                != 4
+        {
+            return Err(
+                "candidate source must use three isolated unauthenticated git fetches".to_owned(),
+            );
+        }
+        if !candidate.contains("permissions:\n  contents: read")
+            || candidate.contains("contents: write")
+        {
+            return Err("workflow permissions must be read-only contents".to_owned());
+        }
+        if !candidate.contains("candidate_sha=\"${CANDIDATE_SHA,,}\"")
+            || !candidate.contains("git -c credential.helper= -c http.extraheader= ls-remote")
+            || !candidate.contains(QUALIFICATION_COMMIT_TYPE_COMMAND)
+            || !candidate.contains("test \"${CANDIDATE_TAG}\" = \"${tag}\"")
+            || !candidate.contains("^ripr-release-[0-9]+\\.[0-9]+\\.[0-9]+$")
+        {
+            return Err("candidate tag must be strict, remote-bound, and commit-typed".to_owned());
+        }
+        if !candidate.contains("target == \"tag\" and .enforcement == \"active\"")
+            || !candidate.contains("index(\"refs/tags/ripr-release-*\")")
+            || !candidate.contains("index(\"update\")")
+            || !candidate.contains("index(\"deletion\")")
+        {
+            return Err(
+                "active protected tag ruleset update/deletion checks are missing".to_owned(),
+            );
+        }
+        let targets = [
+            "x86_64-pc-windows-msvc",
+            "x86_64-unknown-linux-gnu",
+            "aarch64-unknown-linux-gnu",
+            "x86_64-apple-darwin",
+            "aarch64-apple-darwin",
+        ];
+        let Some(matrix) = candidate
+            .split("matrix:\n")
+            .nth(1)
+            .and_then(|rest| rest.split_once("\n\n    steps:"))
+            .map(|(matrix, _)| matrix)
+        else {
+            return Err("matrix block delimiters were not found".to_owned());
+        };
+        if targets
+            .iter()
+            .filter(|target| matrix.matches(*target).count() == 1)
+            .count()
+            != 5
+        {
+            return Err(
+                "the exact five-target matrix inventory is missing or duplicated".to_owned(),
+            );
+        }
+        if candidate
+            .matches("actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a")
+            .count()
+            != 2
+            || candidate
+                .matches("actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c")
+                .count()
+                != 1
+            || candidate.contains("release-upload-assets")
+            || candidate.contains("gh release")
+            || candidate.contains("gh api")
+            || candidate.contains("GH_TOKEN")
+            || candidate.contains("github.token")
+            || candidate.contains("secrets.")
+        {
+            return Err(
+                "workflow output must be Actions-artifact-only with no publication or secrets"
+                    .to_owned(),
+            );
+        }
+        for marker in [
+            "expected-archive-entries.txt",
+            "diff -u expected-archive-entries.txt actual-archive-entries.txt",
+            "Compare-Object $expectedEntries $actualEntries",
+            "expected-dist-files.txt",
+            "diff -u expected-dist-files.txt actual-dist-files.txt",
+            "archive: tar.gz",
+            "archive: zip",
+            "refs/tags/${tag}^{}",
+            "resolved_sha=\"${peeled_sha:-${remote_sha}}\"",
+            "actual_sha=\"$(sha256sum",
+            "assets[$target].sha256",
+            "(.assets | keys == ($targets | sort))",
+            "curl --silent --show-error --location",
+            "ruleset API attempt",
+            "ruleset_mode",
+            "ruleset_source_url",
+            "ruleset_response_sha256",
+            "ruleset_id",
+            "--arg repository \"${REPOSITORY}\"",
+            "release_assets_created: false",
+        ] {
+            if !candidate.contains(marker) {
+                return Err(format!(
+                    "structured runtime inventory marker missing `{marker}`"
+                ));
+            }
+        }
+        Ok(())
+    };
+
+    validate(&workflow)?;
+    for (name, broken) in [
+        (
+            "writable permissions",
+            workflow.replacen("contents: read", "contents: write", 1),
+        ),
+        (
+            "credential clearing",
+            workflow.replacen(
+                "-c credential.helper= -c http.extraheader= fetch",
+                "fetch",
+                1,
+            ),
+        ),
+        (
+            "fixed public repository",
+            workflow.replacen(
+                "https://github.com/EffortlessMetrics/ripr-swarm.git",
+                "https://github.com/${REPOSITORY}.git",
+                1,
+            ),
+        ),
+        (
+            "publication",
+            workflow.replacen(
+                "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+                "actions/upload-release-asset@deadbeef",
+                1,
+            ),
+        ),
+        (
+            "tag protection",
+            workflow.replacen("index(\"deletion\")", "index(\"create\")", 1),
+        ),
+        (
+            "manifest inventory",
+            workflow.replacen(
+                "diff -u expected-dist-files.txt actual-dist-files.txt",
+                "true",
+                1,
+            ),
+        ),
+        (
+            "tag syntax",
+            workflow.replacen(
+                "^ripr-release-[0-9]+\\.[0-9]+\\.[0-9]+$",
+                "^ripr-release-.*$",
+                1,
+            ),
+        ),
+        (
+            "matrix inventory",
+            workflow.replacen(
+                "          - target: x86_64-pc-windows-msvc\n",
+                "          - target: x86_64-pc-windows-msvc\n          - target: x86_64-pc-windows-msvc\n",
+                1,
+            ),
+        ),
+        (
+            "required marker",
+            workflow.replacen(
+                "release_assets_created: false",
+                "release_assets_created: true",
+                1,
+            ),
+        ),
+        (
+            "authenticated API",
+            workflow.replacen("curl --silent --show-error", "gh api", 1),
+        ),
+        (
+            "token credential",
+            workflow.replacen("ruleset_mode", "GH_TOKEN", 1),
+        ),
+    ] {
+        if validate(&broken).is_ok() {
+            return Err(format!("negative fixture `{name}` was not rejected"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn workflow_runtime_policy_ignores_node20_outside_extension_workflows() {
     let workflow = r#"
 jobs:
