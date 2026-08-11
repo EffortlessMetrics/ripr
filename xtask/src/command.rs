@@ -1552,6 +1552,7 @@ mod tests {
             "\"$TRUSTED_VERIFIER\" source-promotion verify",
             "--main-head \"$MAIN_HEAD\"",
             "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",
+            "(.conditions.ref_name.exclude // []) == []",
             "permissions:\n  contents: read",
             "<!-- source-promotion: true -->",
             "This workflow never executes the merge command",

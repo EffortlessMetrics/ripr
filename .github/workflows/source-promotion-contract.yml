@@ -181,6 +181,7 @@ jobs:
           printf '%s' "$ruleset" | jq -e '
             .id == 20661783 and .target == "tag" and .enforcement == "active" and
             .conditions.ref_name.include == ["refs/tags/ripr-release-*"] and
+            (.conditions.ref_name.exclude // []) == [] and
             ([.rules[]?.type] | index("update") != null) and
             ([.rules[]?.type] | index("deletion") != null)
           ' >/dev/null || { echo "live protected candidate-tag ruleset is missing or mismatched" >&2; exit 1; }
