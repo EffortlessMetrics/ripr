@@ -85,3 +85,20 @@ policy_path.write_text(
     encoding="utf-8",
     newline="\n",
 )
+
+# Source retained an HTTP-literal allowance for a projection module that no
+# longer contains the pattern in current swarm. A zero-subject allowance is
+# stale authority, not a reason to widen the merged policy.
+network_path = Path("policy/network_allowlist.txt")
+network_lines = network_path.read_text(encoding="utf-8").splitlines()
+stale_prefix = "crates/ripr/src/output/typescript_packet_projection.rs|http|"
+stale_rows = [line for line in network_lines if line.startswith(stale_prefix)]
+if len(stale_rows) != 1:
+    raise SystemExit(
+        f"expected one stale TypeScript projection network allowance, found {len(stale_rows)}"
+    )
+network_path.write_text(
+    "\n".join(line for line in network_lines if not line.startswith(stale_prefix)) + "\n",
+    encoding="utf-8",
+    newline="\n",
+)
