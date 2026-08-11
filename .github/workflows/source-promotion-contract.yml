@@ -48,13 +48,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out the exact PR head with full history
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable (master)
 
       - name: Build verifier from trusted base source
         id: trusted-verifier
@@ -117,6 +117,9 @@ jobs:
           validate_tracked_regular_file "$preflight"
           validate_tracked_regular_file "$resolution_manifest"
 
+          swarm_ref=$(jq -er '.swarm_ref | select(type == "string" and test("^refs/tags/ripr-release-[^/]+-[0-9a-f]{40}$"))' "$preflight") || fail "preflight swarm_ref must be the protected candidate tag ref"
+          swarm_parent=$(jq -er '.swarm_parent | select(type == "string" and test("^[0-9a-f]{40}$"))' "$preflight") || fail "preflight swarm_parent must be an exact lowercase SHA"
+
           test "$(git rev-parse --verify "$source_main^{commit}")" = "$source_main" || fail "source_main is not present in full history"
           test "$join_head" = "$PR_HEAD" || fail "declared join_head does not equal the live PR head"
 
@@ -157,14 +160,41 @@ jobs:
             echo "join_head=$join_head" >> "$GITHUB_OUTPUT"
             echo "preflight=$preflight" >> "$GITHUB_OUTPUT"
             echo "resolution_manifest=$resolution_manifest" >> "$GITHUB_OUTPUT"
+            echo "swarm_ref=$swarm_ref" >> "$GITHUB_OUTPUT"
+            echo "swarm_parent=$swarm_parent" >> "$GITHUB_OUTPUT"
             echo "source_parent=$BASE_SHA" >> "$GITHUB_OUTPUT"
           }
+
+      - name: Verify live swarm tag and protected ruleset
+        id: live-governance
+        env:
+          SWARM_REF: ${{ steps.inputs.outputs.swarm_ref }}
+          SWARM_PARENT: ${{ steps.inputs.outputs.swarm_parent }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          live_ref=$(git ls-remote --refs https://github.com/EffortlessMetrics/ripr-swarm.git "$SWARM_REF")
+          test "$(printf '%s\n' "$live_ref" | wc -l)" -eq 1 || { echo "protected candidate tag is missing or ambiguous" >&2; exit 1; }
+          test "$(printf '%s\n' "$live_ref" | awk '{print $1}')" = "$SWARM_PARENT" || { echo "protected candidate tag does not resolve to SWARM_PARENT" >&2; exit 1; }
+          ruleset_url="https://api.github.com/repos/EffortlessMetrics/ripr-swarm/rulesets/20661783"
+          ruleset=$(curl --fail --silent --show-error --location --header "Accept: application/vnd.github+json" --header "Authorization: Bearer $GH_TOKEN" "$ruleset_url")
+          printf '%s' "$ruleset" | jq -e '
+            .id == 20661783 and .target == "tag" and .enforcement == "active" and
+            .conditions.ref_name.include == ["refs/tags/ripr-release-*"] and
+            (.conditions.ref_name.exclude // []) == [] and
+            ([.rules[]?.type] | index("update") != null) and
+            ([.rules[]?.type] | index("deletion") != null)
+          ' >/dev/null || { echo "live protected candidate-tag ruleset is missing or mismatched" >&2; exit 1; }
+          echo "tag=passed" >> "$GITHUB_OUTPUT"
+          echo "ruleset=passed" >> "$GITHUB_OUTPUT"
 
       - name: Run the exact full-history verifier
         id: verify
         env:
           PREFLIGHT: ${{ steps.inputs.outputs.preflight }}
           RESOLUTION_MANIFEST: ${{ steps.inputs.outputs.resolution_manifest }}
+          LIVE_TAG: ${{ steps.live-governance.outputs.tag }}
+          LIVE_RULESET: ${{ steps.live-governance.outputs.ruleset }}
           TRUSTED_VERIFIER_SHA: ${{ steps.trusted-verifier.outputs.sha }}
           JOIN_HEAD: ${{ steps.inputs.outputs.join_head }}
           SOURCE_MAIN: ${{ steps.inputs.outputs.source_main }}
@@ -210,14 +240,8 @@ jobs:
             checks=$(jq -c '.checks // {}' "$verification")
             failure_reasons=$(jq -c '.failure_reasons // []' "$verification")
           else
-            status=rejected
-            preflight_sha256=not_available
-            resolution_sha256=not_available
-            parents='[]'
-            tree=not_available
-            merge_base=not_available
-            checks='{}'
-            failure_reasons='["verifier did not produce a receipt"]'
+            status=rejected; preflight_sha256=not_available; resolution_sha256=not_available; parents='[]'
+            tree=not_available; merge_base=not_available; checks='{}'; failure_reasons='["verifier did not produce a receipt"]'
           fi
           if test -f "$PREFLIGHT"; then
             conflict_count=$(jq -r '(.dry_merge.conflicts // []) | length' "$PREFLIGHT")
@@ -241,6 +265,8 @@ jobs:
             --arg trusted_verifier_sha "${TRUSTED_VERIFIER_SHA:-not_available}" \
             --arg preflight "$PREFLIGHT" \
             --arg resolution_manifest "$RESOLUTION_MANIFEST" \
+            --arg live_tag "${LIVE_TAG:-not_available}" \
+            --arg live_ruleset "${LIVE_RULESET:-not_available}" \
             --arg preflight_sha256 "$preflight_sha256" \
             --arg resolution_sha256 "$resolution_sha256" \
             --arg tree "$tree" \
@@ -252,7 +278,7 @@ jobs:
             --argjson parents "$parents" \
             --argjson checks "$checks" \
             --argjson failure_reasons "$failure_reasons" \
-            '{schema:$schema,status:$status,pr_number:$pr_number,base_sha:$base_sha,head_sha:$head_sha,source_main:$source_main,join_head:$join_head,trusted_verifier_sha:$trusted_verifier_sha,inputs:{preflight:$preflight,resolution_manifest:$resolution_manifest},preflight_sha256:$preflight_sha256,resolution_manifest_sha256:$resolution_manifest_sha256,parents:$parents,tree:$tree,merge_base:$merge_base,inventory:{conflicts:($conflict_count|tonumber? // $conflict_count),source_survivors:($survivor_count|tonumber? // $survivor_count),swarm_exclusions:($exclusion_count|tonumber? // $exclusion_count)},version_state:$version_state,checks:$checks,failure_reasons:$failure_reasons,claim_boundary:["Exact PR head, ordered two-parent ancestry, reviewed tree, metadata identity, and receipt bindings only.","No merge, publication, tag, release, settings, branch-protection, or product-correctness claim."]}' > "$contract"
+            '{schema:$schema,status:$status,pr_number:$pr_number,base_sha:$base_sha,head_sha:$head_sha,source_main:$source_main,join_head:$join_head,trusted_verifier_sha:$trusted_verifier_sha,inputs:{preflight:$preflight,resolution_manifest:$resolution_manifest},preflight_sha256:$preflight_sha256,resolution_manifest_sha256:$resolution_manifest_sha256,parents:$parents,tree:$tree,merge_base:$merge_base,inventory:{conflicts:($conflict_count|tonumber? // $conflict_count),source_survivors:($survivor_count|tonumber? // $survivor_count),swarm_exclusions:($exclusion_count|tonumber? // $exclusion_count)},version_state:$version_state,governance:{protected_candidate_tag:$live_tag,protected_ruleset:$live_ruleset},checks:$checks,failure_reasons:$failure_reasons,claim_boundary:["Exact PR head, ordered two-parent ancestry, reviewed tree, metadata identity, live protected tag and ruleset bindings only.","No merge, publication, tag, release, settings, branch-protection, or product-correctness claim."]}' > "$contract"
           {
             echo "## Source Promotion Contract"
             echo ""
@@ -285,7 +311,7 @@ jobs:
 
       - name: Upload SHA-bound promotion receipts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: source-promotion-contract-${{ github.event.pull_request.head.sha }}
           path: target/ripr/source-promotion
@@ -298,13 +324,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out source main with full history
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: main
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable (master)
 
       - name: Build verifier from trusted source parent
         id: trusted-verifier
@@ -359,7 +385,7 @@ jobs:
 
       - name: Upload SHA-bound post-merge receipts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: source-promotion-post-merge-${{ inputs.join_head }}-${{ inputs.main_head }}
           path: target/ripr/source-promotion

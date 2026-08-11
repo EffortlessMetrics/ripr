@@ -22,6 +22,15 @@ full history and consumes one tracked
 receipts. Every receipt is bound to the PR head and input digests and is
 uploaded under a SHA-containing artifact name.
 
+Before invoking the verifier, the workflow resolves the declared `swarm_ref`
+with `git ls-remote --refs` against the fixed public
+`EffortlessMetrics/ripr-swarm` remote and requires exactly one result whose SHA
+equals `SWARM_PARENT`. It also reads fixed public ruleset `20661783` and
+requires target `tag`, active enforcement, the singleton
+`refs/tags/ripr-release-*` pattern, and both active `update` and `deletion`
+rules. These checks are external provenance, not receipt-controlled
+self-consistency.
+
 The workflow summary repeats the ordered parent graph, candidate/source SHAs,
 merge base, tree, receipt digests, preflight conflict/survivor/version state,
 and the only supported copy-safe command:

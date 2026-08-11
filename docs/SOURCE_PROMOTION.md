@@ -49,6 +49,17 @@ Also record:
 - source-only commits and paths that must survive;
 - swarm-only workflows or settings that must not become source authority.
 
+`SWARM_REF` in the preflight receipt is not a floating branch or a local-only
+namespace. It must be the exact fully-qualified protected candidate tag
+`refs/tags/ripr-release-${VERSION}-${SWARM_CANDIDATE}` from the active swarm tag
+ruleset, and it must resolve in the actual `EffortlessMetrics/ripr-swarm`
+remote to `SWARM_CANDIDATE`. The source promotion contract also verifies fixed
+public ruleset `20661783` has the exact `refs/tags/ripr-release-*` singleton
+pattern with active update and deletion protections. Missing, wrong-target,
+missing-ruleset, or mismatched-ruleset inputs fail closed.
+The governed candidate tag is expected to be lightweight: its direct ref must
+resolve to the candidate commit, rather than relying on an annotated tag object.
+
 Do not use a floating `swarm/main` ref as the reviewed candidate.
 
 ## Choose the promotion mode
