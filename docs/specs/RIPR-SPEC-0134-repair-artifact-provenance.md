@@ -77,21 +77,12 @@ advisory output with one of:
 
 The pair token states what each side of the pair is (#3027): a dirty side is
 named (`dirty_before`, `dirty_after`, or `dirty_both`) rather than every mixed
-pair collapsing into one dirty label, and the expected transaction —
+pair collapsing into one dirty label, and the clean expected transaction —
 the repository moved past the before artifact while the after artifact is
-current — is `historical_before_current_after`. That token describes each
-side's repository currentness only; because a historical side collapses any
-remembered dirty state (#3056), it does not certify that both sides were
-clean. Two cells close the vocabulary without being ordinary verify outcomes:
-`current` is unreachable through `ripr agent verify`, because a fully current
-pair is bound to one shared revision and fails the movement gate; and
-`current_before_historical_after` is reachable only when the after artifact
-is bound to a descendant of the live verify-time HEAD that is not the HEAD
-itself (for example an artifact produced while a descendant branch was
-checked out in the same root; an artifact from another clone fails root
-validation before lineage) —
-the lineage gate rejects the pair when the after head does not descend from
-the before head, but it does not reject that descendant arrangement.
+current — is `historical_before_current_after`. A fully current pair fails
+the movement gate and a current-before/historical-after pair fails the
+lineage gate, so `current` and `current_before_historical_after` close the
+vocabulary without being reachable verify outcomes today.
 
 When Git identity is unavailable, the producer discloses `unavailable` in the
 artifact and the verifier rejects it as unsuitable evidence.
@@ -185,7 +176,7 @@ after movement succeeds but discloses `historical_noncurrent`.
 ### Historical-before/current-after bound pair
 
 A before snapshot bound to a superseded revision and an after snapshot bound to
-the current HEAD — the expected before/after transaction — produce
+the current HEAD — the expected clean before/after transaction — produce
 advisory movement with
 `artifact_currentness = "historical_before_current_after"` (#3027).
 
