@@ -75,12 +75,12 @@ jobs:
           old = (
               '            "Runs the read-only exact-pair preflight producer or the v2 exact '
               'history-preserving join verifier. Neither subcommand constructs a join, mutates '
-              'Git refs, changes versions, or publishes.",\n'
+              'Git refs, changes versions, or publishes.\",\n'
           )
           new = (
-              '            "When invoked as `preflight`, writes deterministic exact-pair receipts; '
-              'when invoked as `verify`, writes deterministic v2 exact-J verification receipts. '
-              'Neither subcommand constructs a join, mutates Git refs, changes versions, or publishes.",\n'
+              '            "Depending on the subcommand, `preflight` writes deterministic exact-pair '
+              'receipts and `verify` writes deterministic v2 exact-J verification receipts. Neither '
+              'subcommand constructs a join, mutates Git refs, changes versions, or publishes.\",\n'
           )
           if text.count(old) != 1:
               raise SystemExit(f'command catalog anchor changed: {text.count(old)}')
