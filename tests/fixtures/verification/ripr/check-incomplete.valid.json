@@ -52,7 +52,7 @@
           }
         }
       ],
-      "claim_boundary": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+      "claim_boundary": "Static analysis is incomplete; an empty findings array is not a clean result."
     }
   },
   "findings": []

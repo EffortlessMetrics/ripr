@@ -17696,93 +17696,57 @@ fn dogfood_gate_adoption_scenarios_have_checked_receipts() -> Result<(), String>
     })
 }
 
-/// #3065 contaminant: a repo-local canonical delta with unknown coverage, as
-/// `cargo xtask ripr-pr` leaves behind at `target/ripr/pr/canonical-delta.json`.
-const REPO_LOCAL_CANONICAL_DELTA_CONTAMINANT: &str = r#"{
-  "schema_version": "0.1",
-  "coverage": { "complete": false, "ambiguous_items": 0, "unknown_items": 1 },
-  "deltas": []
-}"#;
-
 #[test]
 fn dogfood_blocking_gate_report_is_self_contained() -> Result<(), String> {
     with_repo_cwd(|| {
-        // #3065: a canonical delta left in the repo root by `cargo xtask
-        // ripr-pr` must not enter the dogfood gate's causal comparison. Seed
-        // exactly that contaminant (restored on exit), then require the
-        // calibrated blocking scenario to still match its committed goldens.
-        let contaminant = Path::new("target")
-            .join("ripr")
-            .join("pr")
-            .join("canonical-delta.json");
-        let original = fs::read(&contaminant).ok();
-        if let Some(parent) = contaminant.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|err| format!("failed to create {}: {err}", normalize_path(parent)))?;
+        let scenario = dogfood_gate_adoption_scenarios()
+            .into_iter()
+            .find(|scenario| scenario.name == "calibrated-high-confidence-new-gap")
+            .ok_or_else(|| "calibrated blocking gate scenario is missing".to_string())?;
+        let run = dogfood_gate_adoption_run(&scenario)?;
+        if !run.errors.is_empty() {
+            return Err(format!(
+                "calibrated blocking gate dogfood drifted: {:?}",
+                run.errors
+            ));
         }
-        fs::write(&contaminant, REPO_LOCAL_CANONICAL_DELTA_CONTAMINANT)
-            .map_err(|err| format!("failed to seed {}: {err}", normalize_path(&contaminant)))?;
-        let outcome = dogfood_blocking_gate_report_is_self_contained_run();
-        let restore = match &original {
-            Some(bytes) => fs::write(&contaminant, bytes).map_err(|err| {
-                format!("failed to restore {}: {err}", normalize_path(&contaminant))
-            }),
-            None => fs::remove_file(&contaminant)
-                .map_err(|err| format!("failed to clear {}: {err}", normalize_path(&contaminant))),
-        };
-        restore?;
-        outcome
+        let markdown = fs::read_to_string(&run.markdown_path).map_err(|err| {
+            format!(
+                "failed to read calibrated gate Markdown {}: {err}",
+                normalize_path(&run.markdown_path)
+            )
+        })?;
+        for required in [
+            "Decision: blocked",
+            "  - Gap state: `actionable`",
+            "  - Gap: `gap:",
+            "  - Seam: `",
+            "  - Classification: `weakly_gripped`",
+            "  - Changed owner:",
+            "  - Changed behavior:",
+            "  - Why it remains open:",
+            "  - Near test:",
+            "  - Add:",
+            "  - Verify:",
+            "  - Receipt:",
+            "  - Inspect: `ripr agent brief --root . --seam-id",
+            "  - Boundary: `static_ripr_evidence_only`",
+        ] {
+            if !markdown.contains(required) {
+                return Err(format!(
+                    "blocking gate Markdown is not self-contained; missing {required:?}"
+                ));
+            }
+        }
+        for forbidden in ["gh run download", "pr-guidance"] {
+            if markdown.contains(forbidden) {
+                return Err(format!(
+                    "blocking gate Markdown still requires artifact archaeology: {forbidden:?}"
+                ));
+            }
+        }
+        Ok(())
     })
-}
-
-fn dogfood_blocking_gate_report_is_self_contained_run() -> Result<(), String> {
-    let scenario = dogfood_gate_adoption_scenarios()
-        .into_iter()
-        .find(|scenario| scenario.name == "calibrated-high-confidence-new-gap")
-        .ok_or_else(|| "calibrated blocking gate scenario is missing".to_string())?;
-    let run = dogfood_gate_adoption_run(&scenario)?;
-    if !run.errors.is_empty() {
-        return Err(format!(
-            "calibrated blocking gate dogfood drifted: {:?}",
-            run.errors
-        ));
-    }
-    let markdown = fs::read_to_string(&run.markdown_path).map_err(|err| {
-        format!(
-            "failed to read calibrated gate Markdown {}: {err}",
-            normalize_path(&run.markdown_path)
-        )
-    })?;
-    for required in [
-        "Decision: blocked",
-        "  - Gap state: `actionable`",
-        "  - Gap: `gap:",
-        "  - Seam: `",
-        "  - Classification: `weakly_gripped`",
-        "  - Changed owner:",
-        "  - Changed behavior:",
-        "  - Why it remains open:",
-        "  - Near test:",
-        "  - Add:",
-        "  - Verify:",
-        "  - Receipt:",
-        "  - Inspect: `ripr agent brief --root . --seam-id",
-        "  - Boundary: `static_ripr_evidence_only`",
-    ] {
-        if !markdown.contains(required) {
-            return Err(format!(
-                "blocking gate Markdown is not self-contained; missing {required:?}"
-            ));
-        }
-    }
-    for forbidden in ["gh run download", "pr-guidance"] {
-        if markdown.contains(forbidden) {
-            return Err(format!(
-                "blocking gate Markdown still requires artifact archaeology: {forbidden:?}"
-            ));
-        }
-    }
-    Ok(())
 }
 
 #[test]

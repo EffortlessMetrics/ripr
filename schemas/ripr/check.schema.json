@@ -130,9 +130,7 @@
           "type": "array",
           "items": { "$ref": "#/$defs/analysis_limitation" }
         },
-        "claim_boundary": {
-          "const": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
-        }
+        "claim_boundary": { "type": "string", "minLength": 1 }
       }
     },
     "analysis_identity": {

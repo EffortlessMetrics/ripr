@@ -142,7 +142,6 @@ where
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
     remove_stale_review_artifacts(repo)?;
-    let mut run_cause: Option<String> = None;
     if !has_changed_paths(repo, &options.base, &options.head)? && options.check_output.is_none() {
         write_empty_review_comments(repo, options)?;
     } else {
@@ -157,28 +156,13 @@ where
                 let receipt = review_comments_receipt(repo, options, status, Some(&err.message));
                 write_receipt_file(repo, &receipt)?;
                 write_error_review_comments(repo, options, &err.message, &receipt)?;
-                run_cause = Some(err.message);
             }
         }
     }
-    validate_review_comments(repo, options, true)
-        .map_err(|validation| with_run_cause(validation, run_cause.as_deref()))?;
+    validate_review_comments(repo, options, true)?;
     println!("Wrote {REVIEW_COMMENTS_JSON}");
     println!("Wrote {REVIEW_COMMENTS_MD}");
     Ok(())
-}
-
-/// #3070: when the producer run already failed (e.g. timed out), a later
-/// contract-validation failure must not present itself as the primary cause.
-/// Lead with the run failure so the operator sees the timeout first, with the
-/// validation diagnostics kept as downstream context.
-fn with_run_cause(validation_error: String, run_cause: Option<&str>) -> String {
-    match run_cause {
-        Some(cause) => format!(
-            "the ripr review-comments producer run failed before validation: {cause}\nvalidation diagnostics: {validation_error}"
-        ),
-        None => validation_error,
-    }
 }
 
 fn check_review_comments(repo: &Path, options: &ReviewCommentsOptions) -> Result<(), String> {
@@ -1443,26 +1427,6 @@ mod tests {
         assert_eq!(standalone["status"], "limited_timeout");
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
-    }
-
-    #[test]
-    fn validation_failure_names_the_run_cause() {
-        // #3070: a producer run that already failed (e.g. timed out) followed
-        // by a contract-validation failure must lead with the run cause, not
-        // surface only as a downstream schema mismatch.
-        let wrapped = with_run_cause(
-            "review comments contract violations:\n- status mismatch".to_string(),
-            Some("ripr review-comments timed out after 60 seconds"),
-        );
-        assert!(wrapped.contains("status mismatch"));
-        assert!(wrapped.contains("timed out after 60 seconds"));
-        let cause_pos = wrapped.find("timed out after 60 seconds");
-        let validation_pos = wrapped.find("status mismatch");
-        assert!(
-            matches!((cause_pos, validation_pos), (Some(cause), Some(validation)) if cause < validation),
-            "the run cause must lead the validation diagnostics: {wrapped}"
-        );
-        assert_eq!(with_run_cause("violation".to_string(), None), "violation");
     }
 
     #[test]

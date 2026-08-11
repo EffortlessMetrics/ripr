@@ -1590,33 +1590,14 @@ pub(crate) fn dogfood_gate_adoption_run_with_binary(
         )
     })?;
 
-    // #3065: evaluate against a private, empty root so repo-local
-    // `target/ripr/pr/` state (a canonical delta left by `cargo xtask ripr-pr`)
-    // cannot enter the gate's causal comparison — the gate loads
-    // `<root>/target/ripr/pr/canonical-delta.json` whenever it exists. The CLI
-    // surface stays byte-identical (`--root .` plus the same relative fixture
-    // paths), so rendered inputs and committed goldens are unchanged; only the
-    // process cwd moves to the private root, with the scenario's file inputs
-    // mirrored there under the same relative paths.
-    let gate_root = actual_dir.join("gate-root");
-    if gate_root.exists() {
-        fs::remove_dir_all(&gate_root).map_err(|err| {
-            format!(
-                "failed to clear gate adoption private root {}: {err}",
-                normalize_path(&gate_root)
-            )
-        })?;
-    }
-    mirror_gate_scenario_inputs(scenario, &gate_root)?;
-
     let json_path = actual_dir.join("gate-decision.json");
     let markdown_path = actual_dir.join("gate-decision.md");
-    let json_out = absolute_gate_out(&json_path)?;
-    let markdown_out = absolute_gate_out(&markdown_path)?;
-    let args = dogfood_gate_adoption_args(scenario, Path::new(&json_out), Path::new(&markdown_out));
-    let output = capture_output_in_dir(binary, &args, &gate_root, "ripr gate evaluate (dogfood)")?;
+    let args = dogfood_gate_adoption_args(scenario, &json_path, &markdown_path);
+    let args_ref = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let output = capture_output(binary, &args_ref, "ripr gate evaluate (dogfood)")?;
     let exit_success = output.status.success();
     let mut errors = Vec::new();
+
     if exit_success != scenario.expected_exit_success {
         let stderr = output.stderr.trim();
         if stderr.is_empty() {
@@ -1725,51 +1706,6 @@ pub(crate) fn dogfood_gate_adoption_run_with_binary(
         expected_exit_success: scenario.expected_exit_success,
         errors,
     })
-}
-
-/// Absolute form for the gate's `--out`/`--out-md`: the process cwd moves to
-/// the private gate root (#3065), so outputs must be addressed absolutely to
-/// land next to the scenario's other actual artifacts.
-fn absolute_gate_out(path: &Path) -> Result<String, String> {
-    std::path::absolute(path)
-        .map(|absolute| absolute.to_string_lossy().into_owned())
-        .map_err(|err| format!("resolve {} failed: {err}", normalize_path(path)))
-}
-
-/// Mirror the scenario's file inputs into the private gate root under their
-/// original relative paths, so the gate resolves the same bytes while its
-/// `<root>/target/ripr/pr/` defaults stay empty (#3065).
-fn mirror_gate_scenario_inputs(
-    scenario: &DogfoodGateScenario,
-    gate_root: &Path,
-) -> Result<(), String> {
-    for input in [
-        Some(scenario.pr_guidance),
-        scenario.labels_json,
-        scenario.baseline,
-        scenario.recommendation_calibration,
-        scenario.mutation_calibration,
-    ]
-    .into_iter()
-    .flatten()
-    {
-        let destination = gate_root.join(input);
-        if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent).map_err(|err| {
-                format!(
-                    "failed to create private gate root input directory {}: {err}",
-                    normalize_path(parent)
-                )
-            })?;
-        }
-        fs::copy(input, &destination).map_err(|err| {
-            format!(
-                "failed to mirror gate input {input} into {}: {err}",
-                normalize_path(gate_root)
-            )
-        })?;
-    }
-    Ok(())
 }
 
 pub(crate) fn dogfood_gate_adoption_args(
