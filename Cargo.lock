@@ -1711,6 +1711,7 @@ dependencies = [
  "ripr",
  "serde_json",
  "sha2",
+ "toml",
  "zip",
 ]
 
