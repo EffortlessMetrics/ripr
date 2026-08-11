@@ -25,8 +25,9 @@ remain with the reviewer.
 Verification proves the requested J has exactly ordered parents
 `SOURCE_PARENT` then `SWARM_PARENT`, both parents are ancestors, selected swarm
 commits remain reachable through parent 2, ancestry counts and ordered digests
-match preflight, J's tree equals the reviewed tree, governed metadata is byte
-identical to the source parent, and optional merged source main reaches J.
+match preflight, J's tree equals the reviewed tree, the governed effective
+release versions match the source parent, `CHANGELOG.md` remains byte-identical,
+and optional merged source main reaches J.
 Automatic `preview_tree` is never accepted as the reviewed tree. The command
 never constructs a join or mutates refs, the index, worktree, remotes,
 branches, tags, releases, credentials, publication channels, or K back-sync
@@ -34,8 +35,9 @@ state.
 
 ## Required Evidence
 
-The verifier emits deterministic JSON and Markdown receipts containing exact
-identities, ordered parents, tree and ancestry digests, checks, invalidation
+The verifier emits deterministic `ripr.source_promotion_verification.v2` JSON
+and Markdown receipts containing exact identities, ordered parents, tree and
+ancestry digests, checks, invalidation
 rules, non-claims, and structured failure reasons. Git object probes use an
 explicit repository root and disable replacement refs.
 
@@ -46,11 +48,13 @@ adequacy, release readiness, publication, or K back-sync verification.
 
 ## Acceptance Examples
 
-- A valid two-parent J with matching reviewed tree, metadata, ranges, and
-  resolution inventory emits `verified` JSON and Markdown receipts.
+- A valid two-parent J with matching reviewed tree, release-version identity,
+  source-authoritative changelog bytes, ranges, and resolution inventory emits
+  `verified` JSON and Markdown receipts.
 - Squash, rebase, cherry-pick, reversed-parent, substituted-parent,
-  tree-equivalent, preview-tree substitution, release-version or source-authoritative changelog drift, and appended
-  repair heads are rejected with deterministic failure reasons.
+  tree-equivalent, preview-tree substitution, release-version or
+  source-authoritative changelog drift, and appended repair heads are rejected
+  with deterministic failure reasons.
 - Omitting `--main-head` records reachability as `not_run`; an unrelated
   equivalent-tree main rejects the receipt.
 
@@ -60,7 +64,8 @@ Executable proof lives in
 `xtask/src/command.rs::tests::source_promotion_verify_cli_entrypoint`,
 `xtask/src/reports/source_promotion_verify.rs::tests`, including exact identity,
 canonical manifest and inventory, range/tree/parent adversaries, replacement
-refs, metadata mutation, caller-state snapshots, structured rejection, and
+refs, release-version and changelog mutation, caller-state snapshots, structured
+rejection, and
 valid end-to-end receipt tests. The mapping is maintained in
 `.ripr/traceability.toml`.
 

@@ -135,7 +135,7 @@ fn verify(options: &Options) -> Result<Value, String> {
     checks.insert("caller_state_mutated".into(), Value::Bool(false));
 
     let report = serde_json::json!({
-        "schema": "ripr.source_promotion_verification.v1",
+        "schema": "ripr.source_promotion_verification.v2",
         "status": "verified",
         "join_head": options.join,
         "source_main": options.source_main,
@@ -170,7 +170,7 @@ fn verify(options: &Options) -> Result<Value, String> {
 
 fn failure_report(options: &Options, reason: &str) -> Value {
     serde_json::json!({
-        "schema": "ripr.source_promotion_verification.v1",
+        "schema": "ripr.source_promotion_verification.v2",
         "status": "rejected",
         "join_head": options.join,
         "source_main": options.source_main,
@@ -1189,6 +1189,7 @@ mod tests {
             test_git(&root, &["add", "."])?;
             test_git(&root, &["commit", "--quiet", "-m", "version-mutated"])?;
             let mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
+            test_git(&root, &["reset", "--quiet", "--hard", &dependency_only])?;
             fs::write(root.join("CHANGELOG.md"), "# Changelog\nchanged\n")
                 .map_err(|error| error.to_string())?;
             test_git(&root, &["add", "CHANGELOG.md"])?;
