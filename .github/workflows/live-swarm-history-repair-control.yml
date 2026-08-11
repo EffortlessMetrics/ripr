@@ -1,0 +1,115 @@
+name: Live Swarm History Repair Control
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-swarm-history-repair-20260811
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: repair exact sync descendant
+    if: github.head_ref == 'sync/live-swarm-history-repair-control-20260811'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      MERGE_CANDIDATE: 4f24950abe93f750e9c24885f332cfa5b29ebdc9
+      PRODUCT_BRANCH: sync/live-swarm-history-335ae8a1
+
+    steps:
+      - name: Checkout exact history-preserving candidate
+        uses: actions/checkout@v6
+        with:
+          ref: sync/live-swarm-history-335ae8a1
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Bind repair to the proven merge object
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$MERGE_CANDIDATE"
+          test "$(git show -s --format='%P' "$MERGE_CANDIDATE")" = "0b6073f88696ab70832dc7ea6410a0c285dc0f53 335ae8a119872555e83e1f8dfcd23744d9e2a602"
+          git merge-base --is-ancestor "$MERGE_CANDIDATE" HEAD
+
+      - name: Install governed toolchains
+        uses: dtolnay/rust-toolchain@1.95
+        with:
+          components: rustfmt, clippy
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Apply bounded review and catalog repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          client = Path('editors/vscode/src/client.ts')
+          text = client.read_text(encoding='utf-8')
+          replacements = {
+              'setupFilePath, stringValues, hasUnsafeShellMetacharacter':
+                  'setupFilePath, hasUnsafeShellMetacharacter',
+              'canProjectFirstUsefulAction, shouldInlineFirstUsefulAction':
+                  'canProjectFirstUsefulAction',
+              '  firstPrCommandIsSafe,\n': '',
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f'client import anchor changed: {old!r} count={text.count(old)}')
+              text = text.replace(old, new)
+          client.write_text(text, encoding='utf-8', newline='\n')
+
+          command = Path('xtask/src/command.rs')
+          text = command.read_text(encoding='utf-8')
+          old = (
+              '            "Runs the read-only exact-pair preflight producer or the v2 exact '
+              'history-preserving join verifier. Neither subcommand constructs a join, mutates '
+              'Git refs, changes versions, or publishes.",\n'
+          )
+          new = (
+              '            "When invoked as `preflight`, writes deterministic exact-pair receipts; '
+              'when invoked as `verify`, writes deterministic v2 exact-J verification receipts. '
+              'Neither subcommand constructs a join, mutates Git refs, changes versions, or publishes.",\n'
+          )
+          if text.count(old) != 1:
+              raise SystemExit(f'command catalog anchor changed: {text.count(old)}')
+          command.write_text(text.replace(old, new), encoding='utf-8', newline='\n')
+          PY
+
+      - name: Prove Rust catalog and editor compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo test -p xtask command_catalog_check_accepts_current_catalog -- --nocapture
+          npm ci --prefix editors/vscode
+          cargo xtask vscode-compile
+          git diff --check
+
+      - name: Commit and push exact descendant
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add editors/vscode/src/client.ts xtask/src/command.rs
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "fix(sync): reconcile editor imports and command catalog"
+          repaired="$(git rev-parse HEAD)"
+          git merge-base --is-ancestor "$MERGE_CANDIDATE" "$repaired"
+          git push origin "HEAD:refs/heads/$PRODUCT_BRANCH"
+          remote="$(git ls-remote origin "refs/heads/$PRODUCT_BRANCH" | awk '{print $1}')"
+          test "$remote" = "$repaired"
