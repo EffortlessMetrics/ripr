@@ -14,7 +14,7 @@ use crate::output::agent_seam_packets;
 use serde_json::{Value, json};
 use std::path::Path;
 
-pub(crate) const AGENT_BRIEF_SCHEMA_VERSION: &str = "0.1";
+pub(crate) use crate::output::schemas::AGENT_BRIEF_SCHEMA_VERSION;
 
 pub(crate) fn render_agent_brief_json(
     root: &Path,

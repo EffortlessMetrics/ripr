@@ -54,8 +54,9 @@ impl TsFullRepoGuidance {
          yet modeled (named limitation).";
 }
 
-pub(crate) const REPO_EXPOSURE_SCHEMA_VERSION: &str = "0.3";
-pub(crate) const REPO_EXPOSURE_SUMMARY_SCHEMA_VERSION: &str = "0.1";
+pub(crate) use crate::output::schemas::{
+    REPO_EXPOSURE_SCHEMA_VERSION, REPO_EXPOSURE_SUMMARY_SCHEMA_VERSION,
+};
 
 /// Cap on related-tests rendered per seam in the JSON output. The
 /// existing `test_grip_evidence::find_related_tests` heuristic is

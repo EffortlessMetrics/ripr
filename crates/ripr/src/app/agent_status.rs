@@ -13,7 +13,7 @@ use serde_json::Value;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(crate) const AGENT_STATUS_SCHEMA_VERSION: &str = "0.1";
+pub(crate) use crate::output::schemas::AGENT_STATUS_SCHEMA_VERSION;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct AgentStatusArtifactDef {

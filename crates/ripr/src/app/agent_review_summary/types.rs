@@ -1,6 +1,6 @@
 use crate::app::agent_status::AgentStatusCommand;
 
-pub(crate) const AGENT_REVIEW_SUMMARY_SCHEMA_VERSION: &str = "0.1";
+pub(crate) use crate::output::schemas::AGENT_REVIEW_SUMMARY_SCHEMA_VERSION;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AgentReviewSummaryReport {
