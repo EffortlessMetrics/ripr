@@ -49,6 +49,13 @@ Also record:
 - source-only commits and paths that must survive;
 - swarm-only workflows or settings that must not become source authority.
 
+`SWARM_REF` in the preflight receipt is not a floating branch or a local-only
+namespace. It must be the exact fully-qualified protected candidate tag
+`refs/tags/ripr-release-${VERSION}-${SWARM_CANDIDATE}` from the active swarm tag
+ruleset, and it must resolve to `SWARM_CANDIDATE`. The source verifier rejects
+legacy `refs/ripr/` refs, short tag names, branch refs, wrong-version tags, and
+wrong-SHA tags.
+
 Do not use a floating `swarm/main` ref as the reviewed candidate.
 
 ## Choose the promotion mode
