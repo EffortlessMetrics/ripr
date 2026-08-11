@@ -106,19 +106,6 @@ jobs:
           ]:
               path.write_text(migrate_0149(path.read_text(encoding='utf-8')),
                               encoding='utf-8', newline='\n')
-
-          command = Path('xtask/src/command.rs')
-          text = command.read_text(encoding='utf-8')
-          old = '            "actions/upload-artifact@v7",\n'
-          new = ('            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",\n'
-                 '            "(.conditions.ref_name.exclude // []) == []",\n')
-          if old not in text and 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7' not in text:
-              raise SystemExit('source workflow contract test anchor is absent')
-          if old in text:
-              if text.count(old) != 1:
-                  raise SystemExit(f'ambiguous upload-artifact test anchor: {text.count(old)}')
-              text = text.replace(old, new)
-          command.write_text(text, encoding='utf-8', newline='\n')
           PY
 
           git add -A
@@ -173,8 +160,6 @@ jobs:
               except subprocess.CalledProcessError:
                   return ''
 
-          # Current swarm owns the producer spec. Retain the source consumer's
-          # exact-byte identity and the collision-safe RIPR-SPEC-0152 link.
           producer = show(swarm, 'docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md')
           marker = '\n## Required Evidence\n'
           if producer.count(marker) != 1:
@@ -190,8 +175,6 @@ jobs:
               producer.replace(marker, bridge + marker), encoding='utf-8', newline='\n'
           )
 
-          # The combined source+swarm command retains both subcommands. Apply
-          # the current protected-tag vocabulary and source workflow-test pins.
           command = Path('xtask/src/command.rs')
           text = command.read_text(encoding='utf-8')
           text = text.replace('--swarm-ref <immutable-ref>', '--swarm-ref <protected-tag-ref>')
