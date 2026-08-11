@@ -233,6 +233,13 @@ cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff pro
 cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250 --json
 ```
 
+The version smoke must print exactly `ripr <CARGO_PKG_VERSION>` with one
+trailing newline, exit 0, and leave stderr empty. `--version`/`-V` is a
+side-effect-free identity query and takes precedence over help, JSON, and
+verbose-looking flags; it must not emit the help screen or write analysis
+artifacts. Command-local version routes such as `ripr lsp --version` retain
+their existing output contract.
+
 ## Install And Release Proof
 
 Before calling an install or release-path PR complete, verify the crate package,

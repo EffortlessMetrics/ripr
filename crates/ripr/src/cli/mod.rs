@@ -12,7 +12,17 @@ mod parse;
 mod rerun;
 mod suggest;
 
-pub fn run(args: Vec<String>) -> Result<(), String> {
+pub fn run(mut args: Vec<String>) -> Result<(), String> {
+    let version_requested = parse::top_level_version_requested(&args);
+    // #2610: extract --verbose before command dispatch so it works with any
+    // subcommand. Version is a side-effect-free identity query, so it must not
+    // emit the verbose diagnostic even when callers append or prepend it.
+    if !version_requested && let Some(pos) = args.iter().position(|a| a == "--verbose" || a == "-v")
+    {
+        args.remove(pos);
+        crate::set_verbose(true);
+        eprintln!("ripr: verbose mode enabled");
+    }
     execute::execute(parse::parse_args(args)?)
 }
 
