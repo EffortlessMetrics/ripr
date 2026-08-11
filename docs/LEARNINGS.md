@@ -2063,3 +2063,23 @@ warnings to notices. Keep the mapping fail-closed for unknown values, but pin
 the exact warning and quiet paths. The same discipline applies to submodule and
 gate disclosures: preserve the non-claim and first actionable reason at the
 terminal boundary instead of requiring artifact archaeology.
+
+## 2026-08-10: A crosswalk between divergent vocabularies is not a bridge — it is a liability
+
+The `SeamKind` ↔ `ProbeFamily` crosswalk (#1937, #3016) was retracted in
+#3039 after a semantic audit found no production consumer and a headline
+mapping that was wrong by naming similarity: `CallPresence` (a present call
+site a test could observe) was mapped to `CallDeletion` (a diff-level
+removed-call detection), and the crosswalk itself admitted the round trip
+was lossy. Preview languages deliberately keep per-language behavior-kind
+vocabularies that diverge from the Rust seam names — Python renders
+`ErrorPath` as `exception_path` and its downstream projection may fold
+side-effect evidence into `call_or_output_effect` — so forcing them through the
+Rust `SeamKind` vocabulary would be a semantic downgrade, not a unification.
+`StaticUnknown` is a common preview fallback, while `CallDeletion` belongs to
+the Rust diff-probe producer rather than the preview classifiers; a mapping
+that returns `None` for either family is not a bridge. When a shared vocabulary
+is wanted, first check whether each side's names are deliberate; retract an
+unused "canonical bridge" rather than keep it as latent false-confidence
+surface. This is the token-coincidence family applied to taxonomy design:
+same-shape names do not imply same semantics.

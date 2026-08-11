@@ -140,8 +140,9 @@ programmatic error handling for library consumers.
 
 ### Cross-language divergence
 
-- `SeamKind` (7 variants) is Rust-only; preview adapters use `ProbeFamily`
-  (8 variants) with no crosswalk
+- `SeamKind` (7 variants) is Rust-only by decision (#3039); preview
+  adapters use `ProbeFamily` (8 variants) plus their own per-language
+  behavior-kind vocabularies, with no crosswalk
 - Perl has its own `OracleKind`/`OracleStrength` (12/5 vs domain 9/6)
 - Python/TS never emit `ReachableUnrevealed`, `InfectionUnknown`,
   `PropagationUnknown`
@@ -193,8 +194,10 @@ receipt, swarm, cache, policy}.rs` pattern. Zero golden drift is the proof.
 
 ### 7. Unify cross-language vocabulary (#1937, #1938, #1939)
 
-Either produce `SeamKind` from each adapter or document it as Rust-only.
-Reconcile Perl's oracle vocabulary. Extract the duplicated run-status logic.
+`SeamKind` is documented as Rust-only (#3039): the #1937 crosswalk was
+retracted because the vocabularies diverge by design and no production
+consumer needed it. Reconcile Perl's oracle vocabulary. Extract the
+duplicated run-status logic.
 
 ### 8. Add LSP debounce + fix dedup identity (#1908)
 

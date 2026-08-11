@@ -34,6 +34,13 @@ impl SeamId {
 /// later. `ValidationBranch` from the spec is intentionally absent
 /// until `analysis/test-grip-evidence-v1` adds detection — the model
 /// admits new variants additively.
+///
+/// `SeamKind` is Rust-only by decision (#3039). Preview-language adapters
+/// classify changed lines into the domain-wide `ProbeFamily` and keep
+/// their own per-language behavior-kind vocabularies for gap identity
+/// (e.g. Python renders `ErrorPath` as `exception_path`); no
+/// `SeamKind` ↔ `ProbeFamily` crosswalk exists because the vocabularies
+/// diverge by design and no consumer needs one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub(crate) enum SeamKind {
     PredicateBoundary,
@@ -619,107 +626,5 @@ mod tests {
             }
             other => Err(format!("expected BoundaryValue, got {}", other.as_str())),
         }
-    }
-}
-
-/// Crosswalk from `ProbeFamily` (the domain-wide probe vocabulary) to
-/// `SeamKind` (the Rust-seam-classification vocabulary).
-///
-/// Preview-language adapters use `ProbeFamily` but do not produce
-/// `SeamKind`. This mapping is the canonical bridge so that downstream
-/// consumers (repair routes, canonical gap IDs, evidence records) can
-/// translate between the two vocabularies (#1937).
-///
-/// `CallDeletion` has no `SeamKind` equivalent (it is a Rust-specific
-/// detection for removed call sites that do not map to a seam kind) and
-/// maps to `None`. `StaticUnknown` also maps to `None`.
-///
-/// Gated to test builds until the first production consumer lands: no
-/// production call site exists yet, and an unused `pub(crate)` function
-/// fails the workspace `dead_code` lint. A consumer must remove the
-/// `#[cfg(test)]` gate when it wires the crosswalk in.
-#[cfg(test)]
-pub(crate) fn seam_kind_from_probe_family(family: &crate::domain::ProbeFamily) -> Option<SeamKind> {
-    match family {
-        crate::domain::ProbeFamily::Predicate => Some(SeamKind::PredicateBoundary),
-        crate::domain::ProbeFamily::ReturnValue => Some(SeamKind::ReturnValue),
-        crate::domain::ProbeFamily::ErrorPath => Some(SeamKind::ErrorVariant),
-        crate::domain::ProbeFamily::FieldConstruction => Some(SeamKind::FieldConstruction),
-        crate::domain::ProbeFamily::SideEffect => Some(SeamKind::SideEffect),
-        crate::domain::ProbeFamily::MatchArm => Some(SeamKind::MatchArm),
-        // CallDeletion has no seam-kind equivalent (removed-call detection,
-        // not a behavioral seam). StaticUnknown is explicitly not a seam.
-        crate::domain::ProbeFamily::CallDeletion | crate::domain::ProbeFamily::StaticUnknown => {
-            None
-        }
-    }
-}
-
-/// Reverse crosswalk from `SeamKind` to `ProbeFamily`.
-///
-/// Every `SeamKind` has exactly one `ProbeFamily` equivalent, so this
-/// mapping is total (returns `ProbeFamily`, not `Option`).
-///
-/// Test-gated like `seam_kind_from_probe_family` until a production
-/// consumer lands; see that function's docs.
-#[cfg(test)]
-pub(crate) fn probe_family_from_seam_kind(kind: &SeamKind) -> crate::domain::ProbeFamily {
-    match kind {
-        SeamKind::PredicateBoundary => crate::domain::ProbeFamily::Predicate,
-        SeamKind::ReturnValue => crate::domain::ProbeFamily::ReturnValue,
-        SeamKind::ErrorVariant => crate::domain::ProbeFamily::ErrorPath,
-        SeamKind::FieldConstruction => crate::domain::ProbeFamily::FieldConstruction,
-        SeamKind::SideEffect => crate::domain::ProbeFamily::SideEffect,
-        SeamKind::MatchArm => crate::domain::ProbeFamily::MatchArm,
-        SeamKind::CallPresence => crate::domain::ProbeFamily::CallDeletion,
-    }
-}
-
-#[cfg(test)]
-mod crosswalk_tests {
-    use super::*;
-
-    #[test]
-    fn every_seam_kind_round_trips_through_probe_family() {
-        for kind in [
-            SeamKind::PredicateBoundary,
-            SeamKind::ErrorVariant,
-            SeamKind::ReturnValue,
-            SeamKind::FieldConstruction,
-            SeamKind::SideEffect,
-            SeamKind::MatchArm,
-            SeamKind::CallPresence,
-        ] {
-            let family = probe_family_from_seam_kind(&kind);
-            let back = seam_kind_from_probe_family(&family);
-            // CallPresence maps to CallDeletion which maps back to None
-            // (CallDeletion is a detection kind, not a seam kind per se).
-            // This is the one lossy case — document it explicitly.
-            if kind == SeamKind::CallPresence {
-                assert_eq!(
-                    back, None,
-                    "CallPresence -> CallDeletion -> None (documented lossy case)"
-                );
-            } else {
-                assert_eq!(
-                    back,
-                    Some(kind),
-                    "SeamKind {:?} must round-trip through ProbeFamily",
-                    kind
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn call_deletion_and_static_unknown_have_no_seam_kind() {
-        assert_eq!(
-            seam_kind_from_probe_family(&crate::domain::ProbeFamily::CallDeletion),
-            None
-        );
-        assert_eq!(
-            seam_kind_from_probe_family(&crate::domain::ProbeFamily::StaticUnknown),
-            None
-        );
     }
 }
