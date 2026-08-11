@@ -46416,3 +46416,293 @@ fn release_pin_ruleset_requires_fully_qualified_tag_ref() -> Result<(), String> 
     }
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// check-pr first-failure gate sequencing and report authority (#3036)
+// ---------------------------------------------------------------------------
+
+/// A deliberately wrong `run_check_pr_gates` that evaluates every closure
+/// fails the invocation-count oracles below: later gates must record zero
+/// invocations once an earlier gate has failed.
+#[test]
+fn check_pr_first_gate_failure_stops_later_gates() {
+    let invocations = [std::cell::Cell::new(0), std::cell::Cell::new(0)];
+    let run_a = || {
+        invocations[0].set(invocations[0].get() + 1);
+        Err("first gate exploded".to_string())
+    };
+    let run_b = || {
+        invocations[1].set(invocations[1].get() + 1);
+        Ok(())
+    };
+    let gates = [
+        super::CheckPrGate {
+            name: "gate-a",
+            reproduce: "run a",
+            run: &run_a,
+        },
+        super::CheckPrGate {
+            name: "gate-b",
+            reproduce: "run b",
+            run: &run_b,
+        },
+    ];
+    let published = std::cell::RefCell::new(Vec::new());
+    let result = super::run_check_pr_gates(&gates, &|failure| {
+        published
+            .borrow_mut()
+            .push(super::check_pr_report(Some(failure)));
+        Ok(())
+    });
+
+    assert_eq!(
+        [invocations[0].get(), invocations[1].get()],
+        [1, 0],
+        "later gates must not be invoked after the first failure"
+    );
+    assert!(
+        matches!(result, Err(ref err) if err.contains("check-pr gate `gate-a` failed") && err.contains("reproduce: run a")),
+        "the returned error must name the failed gate and reproduce command: {result:?}"
+    );
+    assert_eq!(
+        published.borrow().len(),
+        1,
+        "exactly one failure report is published"
+    );
+    let report = published.borrow()[0].clone();
+    assert!(report.contains("Status: fail"));
+    assert!(
+        !report.contains("Status: pass"),
+        "a failure report must never carry the success status"
+    );
+    assert!(report.contains("Gate: `gate-a`"));
+    assert!(report.contains("Reproduce: `run a`"));
+    assert!(report.contains("first gate exploded"));
+    assert!(
+        report.contains("Not run after the first failure:\n- `gate-b`\n"),
+        "the report must state that later gates were not run: {report}"
+    );
+}
+
+#[test]
+fn check_pr_middle_gate_failure_runs_earlier_and_skips_later() {
+    let invocations = [
+        std::cell::Cell::new(0),
+        std::cell::Cell::new(0),
+        std::cell::Cell::new(0),
+    ];
+    let run_a = || {
+        invocations[0].set(invocations[0].get() + 1);
+        Ok(())
+    };
+    let run_b = || {
+        invocations[1].set(invocations[1].get() + 1);
+        Err("middle gate exploded".to_string())
+    };
+    let run_c = || {
+        invocations[2].set(invocations[2].get() + 1);
+        Ok(())
+    };
+    let gates = [
+        super::CheckPrGate {
+            name: "gate-a",
+            reproduce: "run a",
+            run: &run_a,
+        },
+        super::CheckPrGate {
+            name: "gate-b",
+            reproduce: "run b",
+            run: &run_b,
+        },
+        super::CheckPrGate {
+            name: "gate-c",
+            reproduce: "run c",
+            run: &run_c,
+        },
+    ];
+    let published = std::cell::RefCell::new(Vec::new());
+    let result = super::run_check_pr_gates(&gates, &|failure| {
+        published
+            .borrow_mut()
+            .push(super::check_pr_report(Some(failure)));
+        Ok(())
+    });
+
+    assert_eq!(
+        [
+            invocations[0].get(),
+            invocations[1].get(),
+            invocations[2].get()
+        ],
+        [1, 1, 0],
+        "earlier gates run, the failed gate runs once, later gates never run"
+    );
+    assert!(result.is_err());
+    let report = published.borrow()[0].clone();
+    assert!(report.contains("Gate: `gate-b`"));
+    assert!(
+        report.contains("Not run after the first failure:\n- `gate-c`\n"),
+        "only the gates after the failure are listed as not run: {report}"
+    );
+}
+
+#[test]
+fn check_pr_all_gates_pass_publishes_no_failure_block() {
+    let run_a = || Ok(());
+    let gates = [super::CheckPrGate {
+        name: "gate-a",
+        reproduce: "run a",
+        run: &run_a,
+    }];
+    let published = std::cell::RefCell::new(Vec::new());
+    let result = super::run_check_pr_gates(&gates, &|failure| {
+        published
+            .borrow_mut()
+            .push(super::check_pr_report(Some(failure)));
+        Ok(())
+    });
+
+    assert!(matches!(result, Ok(())));
+    assert!(
+        published.borrow().is_empty(),
+        "no failure report may be published when every gate passes"
+    );
+    // The success artifact is pinned byte-for-byte so the shared composer
+    // cannot drift the long-standing pass report.
+    assert_eq!(
+        super::check_pr_report(None),
+        "# ripr check-pr report\n\nStatus: pass\n\nChecks:\n\n- `cargo xtask ci-fast`\n- `cargo clippy --workspace --all-targets -- -D warnings`\n- `cargo doc --workspace --no-deps`\n- `cargo xtask pr-summary`\n\nReports:\n\n- `target/ripr/reports/pr-summary.md`\n- `target/ripr/reports/check-pr.md`\n\nRelease/package gates are intentionally left to `cargo xtask ci-full` or release-specific workflows.\n"
+    );
+}
+
+#[test]
+fn check_pr_failure_report_handles_empty_error_text() {
+    let run_a = || Err(String::new());
+    let gates = [super::CheckPrGate {
+        name: "gate-a",
+        reproduce: "run a",
+        run: &run_a,
+    }];
+    let published = std::cell::RefCell::new(Vec::new());
+    let result = super::run_check_pr_gates(&gates, &|failure| {
+        published
+            .borrow_mut()
+            .push(super::check_pr_report(Some(failure)));
+        Ok(())
+    });
+    assert!(
+        result.is_err(),
+        "an empty gate error is still a failure, not a pass: {result:?}"
+    );
+
+    let report = published.borrow()[0].clone();
+    assert!(
+        report.contains("(gate produced no error output)"),
+        "an empty gate error must be explicit, not invisible: {report}"
+    );
+    assert!(
+        report.contains("(none — the failed gate was the last)"),
+        "a failure on the last gate has an explicit empty not-run list: {report}"
+    );
+    assert!(
+        report.contains("pr-summary.md` (not refreshed"),
+        "the failure path returns before pr_summary() runs, so the report must mark it stale: {report}"
+    );
+}
+
+#[test]
+fn check_pr_bounded_error_lines_are_crlf_normalized_and_capped() {
+    let fewer = super::bound_first_failure_lines("one\ntwo");
+    assert_eq!(
+        fewer, "one\n  two",
+        "fewer than five lines are all retained"
+    );
+
+    let more = super::bound_first_failure_lines("l1\nl2\nl3\nl4\nl5\nl6\nl7");
+    assert_eq!(
+        more,
+        "l1\n  l2\n  l3\n  l4\n  l5\n  (+2 more lines truncated)"
+    );
+    assert!(
+        !more.contains("l6"),
+        "more than five lines are bounded to five: {more}"
+    );
+    assert!(
+        more.contains("truncated"),
+        "dropped lines must leave an explicit marker, not silent truncation: {more}"
+    );
+
+    let crlf = super::bound_first_failure_lines("alpha\r\nbeta\r\n");
+    assert_eq!(crlf, "alpha\n  beta");
+    assert!(!crlf.contains('\r'), "CRLF input is normalized: {crlf:?}");
+}
+
+#[test]
+fn check_pr_failure_report_replaces_stale_success_report() -> Result<(), String> {
+    with_repo_cwd(|| {
+        // Preserve any pre-existing report so the test leaves no false
+        // failure artifact behind for a real check-pr reader.
+        let report_path = Path::new("target")
+            .join("ripr")
+            .join("reports")
+            .join("check-pr.md");
+        let original = fs::read(&report_path).ok();
+        let outcome = (|| -> Result<(), String> {
+            super::write_report("check-pr.md", &super::check_pr_report(None))?;
+            let run_a = || Err("stale-replacement probe".to_string());
+            let gates = [super::CheckPrGate {
+                name: "gate-a",
+                reproduce: "run a",
+                run: &run_a,
+            }];
+            let result = super::run_check_pr_gates(&gates, &|failure| {
+                super::write_report("check-pr.md", &super::check_pr_report(Some(failure)))
+            });
+            assert!(result.is_err());
+
+            let text = fs::read_to_string("target/ripr/reports/check-pr.md")
+                .map_err(|err| format!("read check-pr.md: {err}"))?;
+            assert!(
+                text.contains("Status: fail"),
+                "the failed current run must replace the stale success report"
+            );
+            assert!(!text.contains("Status: pass"));
+            Ok(())
+        })();
+        let restore = match &original {
+            Some(bytes) => fs::write(&report_path, bytes).map_err(|err| {
+                format!("failed to restore {}: {err}", normalize_path(&report_path))
+            }),
+            None => match fs::remove_file(&report_path) {
+                Ok(()) => Ok(()),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(err) => Err(format!(
+                    "failed to clear {}: {err}",
+                    normalize_path(&report_path)
+                )),
+            },
+        };
+        restore?;
+        outcome
+    })
+}
+
+#[test]
+fn check_pr_report_publication_failure_is_distinguishable() {
+    let run_a = || Err("gate exploded".to_string());
+    let gates = [super::CheckPrGate {
+        name: "gate-a",
+        reproduce: "run a",
+        run: &run_a,
+    }];
+    let result = super::run_check_pr_gates(&gates, &|_failure| Err("disk full".to_string()));
+
+    assert!(
+        matches!(result, Err(ref err) if err.contains("gate-a")
+            && err.contains("reproduce: run a")
+            && err.contains("gate exploded")
+            && err.contains("disk full")
+            && err.contains("publishing the failure report also failed")),
+        "a failed gate plus failed report publication must stay distinguishable and preserve the gate diagnostic and reproduce command: {result:?}"
+    );
+}
