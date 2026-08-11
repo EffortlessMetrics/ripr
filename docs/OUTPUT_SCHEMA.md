@@ -6307,7 +6307,7 @@ JSON shape:
     "before_content_sha256": "sha256:<64-hex-digest>",
     "after_content_sha256": "sha256:<64-hex-digest>"
   },
-  "artifact_currentness": "current",
+  "artifact_currentness": "historical_before_current_after",
   "summary": {
     "improved": 1,
     "changed": 0,
@@ -6392,9 +6392,10 @@ Field contract:
   `current`, `historical_noncurrent`, `historical_before_current_after`,
   `current_before_historical_after`, `dirty_before`, `dirty_after`, or
   `dirty_both`. A dirty side names the side (`dirty_before`, `dirty_after`,
-  or `dirty_both`); the clean expected transaction is
-  `historical_before_current_after`. It does not claim
-  that tests ran or that the static gap is correct.
+  or `dirty_both`); the expected transaction is
+  `historical_before_current_after`. The token states each side's repository
+  currentness; it does not certify that both sides were clean, and it does
+  not claim that tests ran or that the static gap is correct.
 - `summary.improved` - matched seams whose after `SeamGripClass` ranks higher
   than before.
 - `summary.changed` - matched seams whose class changed without ranking higher
