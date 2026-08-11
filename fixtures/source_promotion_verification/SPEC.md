@@ -4,9 +4,9 @@ Spec: RIPR-SPEC-0149
 
 ## Given
 
-The source-promotion verifier receives a source repository, a declared
-the exact fully-qualified protected candidate tag
-`refs/tags/ripr-release-<version>-<SWARM_PARENT>`, the exact join commit `J`,
+The source-promotion verifier receives a source repository and a declared
+`swarm_ref` set to the exact fully-qualified protected candidate tag
+`refs/tags/ripr-release-<requested-version>-<SWARM_PARENT>`, the exact join commit `J`,
 and a preflight manifest.
 The manifest records the merge base, ordered parents, reviewed tree, canonical
 `ripr.source_promotion_preflight.v1` range, resolution inventory, and governed
