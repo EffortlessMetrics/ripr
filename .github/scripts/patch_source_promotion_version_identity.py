@@ -164,13 +164,13 @@ new_assertions = '''            if verify_release_metadata(&root, &source, &sour
                 return Err("governed release-version mutation was accepted".into());
             }
             fs::write(root.join("CHANGELOG.md"), "# Changelog\\nchanged\\n")
-              .map_err(|error| error.to_string())?;
-            test_git(&root, &["add", "CHANGELOG.md"])?;
-            test_git(&root, &["commit", "--quiet", "-m", "changelog-mutated"])?;
-            let changelog_mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
-            if verify_release_metadata(&root, &changelog_mutated, &source).is_ok() {
-                return Err("source-authoritative changelog mutation was accepted".into());
-            }
+    .map_err(|error| error.to_string())?;
+  test_git(&root, &["add", "CHANGELOG.md"])?;
+  test_git(&root, &["commit", "--quiet", "-m", "changelog-mutated"])?;
+  let changelog_mutated = test_git_output(&root, &["rev-parse", "HEAD"])?;
+  if verify_release_metadata(&root, &changelog_mutated, &source).is_ok() {
+      return Err("source-authoritative changelog mutation was accepted".into());
+  }
 '''
 if text.count(old_assertions) != 1:
     raise SystemExit(f"expected metadata assertions once, found {text.count(old_assertions)}")
