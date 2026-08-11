@@ -34,6 +34,13 @@ impl SeamId {
 /// later. `ValidationBranch` from the spec is intentionally absent
 /// until `analysis/test-grip-evidence-v1` adds detection — the model
 /// admits new variants additively.
+///
+/// `SeamKind` is Rust-only by decision (#3039). Preview-language adapters
+/// classify changed lines into the domain-wide `ProbeFamily` and keep
+/// their own per-language behavior-kind vocabularies for gap identity
+/// (e.g. Python renders `ErrorPath` as `exception_path`); no
+/// `SeamKind` ↔ `ProbeFamily` crosswalk exists because the vocabularies
+/// diverge by design and no consumer needs one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub(crate) enum SeamKind {
     PredicateBoundary,
@@ -309,7 +316,16 @@ fn normalize_path(p: &Path) -> String {
 /// `std::collections::hash_map::DefaultHasher`, which is intentionally not
 /// stable across releases. The hash never reads time, walk order, process
 /// ID, or any other ambient state.
+///
+/// This uses the **same FNV-1a constants** as the Perl gap ID
+/// (`crates/ripr/src/analysis/language/perl/mod.rs:3249`), the canonical
+/// gap ID (`crates/ripr/src/analysis/canonical_gap.rs:128`), and the seam
+/// cache (`crates/ripr/src/analysis/seam_cache.rs:1411`). Deliberate
+/// parity: all gap/seam IDs across languages use one scheme. See #1722.
 fn compute_seam_id(file: &str, owner: &str, kind: SeamKind, byte_offset: usize) -> SeamId {
+    // FNV-1a constants — deliberate parity with Perl adapter
+    // (crates/ripr/src/analysis/language/perl/mod.rs). Both sides must use
+    // identical constants so Rust and Perl gap IDs are comparable (#1722).
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
 

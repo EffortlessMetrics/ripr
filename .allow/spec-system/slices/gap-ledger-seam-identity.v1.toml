@@ -1,0 +1,63 @@
+schema_version = "2.0"
+id = "ripr.slice.gap-ledger-seam-identity.v1"
+generation = 1
+
+source_issue = "issue:1962"
+design_reference = "RIPR-SPEC-0067#canonical-repair-route-eligibility"
+change_class = "behavior_change"
+
+claim_boundary = """
+Carries producer-owned typed seam identity and an optional exact inspection
+command from GapRecord input into the normalized gate repair route. Legacy
+rows remain readable but route-limited; duplicate or conflicting producer
+identities fail closed as a named ledger configuration error. Complete current
+full-scope rows can therefore participate in the existing explicitly configured
+gate path. This does not execute verification commands, issue receipts,
+redesign baseline or acknowledgement policy, or promote preview evidence.
+"""
+
+non_goals = [
+  "gate mode or default blocking policy changes",
+  "path, line, display, or evidence-ID identity fallback",
+  "verification command execution",
+  "receipt issuance or provenance binding",
+  "baseline and acknowledgement redesign",
+  "preview-language authority promotion",
+  "runtime mutation confirmation",
+]
+
+return_conditions = [
+  "Return to root if GapRecord seam identity is moved to a versioned producer envelope.",
+  "Return to root if a gate consumer reconstructs identity or inspection commands from presentation fields.",
+  "Return to root if legacy or ambiguous rows become silently policy-eligible.",
+]
+
+owned_seams = [
+  "seam:ripr:output:gap-ledger-route",
+  "seam:ripr:contract:gap-ledger-seam-identity",
+]
+
+shared_seams = [
+  "seam:ripr:output:gate-repair-route",
+  "seam:ripr:output:gap-ledger",
+  "seam:ripr:contract:gate-repair-route-eligibility",
+]
+
+forbidden_seams = [
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:agent:receipt-issuer",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0067#canonical-repair-route-eligibility"
+requirement_generation = 2
+
+[implementation_claim]
+status = "outstanding"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

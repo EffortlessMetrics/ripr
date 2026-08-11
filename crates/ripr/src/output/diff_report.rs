@@ -1,5 +1,7 @@
 use serde::Serialize;
+use std::path::{Component, Path};
 
+use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::CheckOutput;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -9,6 +11,32 @@ pub(crate) struct DiffChangedFile {
     pub(crate) removed_lines: Vec<usize>,
     pub(crate) added_count: usize,
     pub(crate) removed_count: usize,
+}
+
+/// Render a workspace-relative path for a portable output contract.
+///
+/// Emitted paths must use forward slashes on every host. The value reaching this
+/// function is a `PathBuf` that the #2099 confinement guard rebuilt with
+/// `PathBuf::push`, which joins with the platform separator — so on Windows a
+/// path git emitted as `src/lib.rs` is stored as `src\lib.rs`.
+///
+/// The components are re-joined with `/` rather than string-replacing `\`,
+/// because a backslash is a legal filename character on Unix: blind replacement
+/// would rewrite a real Unix filename that happens to contain one. Only `Normal`
+/// components can appear here — the confinement guard rejects parent, root, and
+/// prefix components before a path is registered — so dropping anything else
+/// cannot silently truncate a path that reaches this point.
+pub(crate) fn portable_relative_path(path: &Path) -> String {
+    path.components()
+        .filter_map(|component| match component {
+            Component::Normal(part) => Some(part.to_string_lossy()),
+            Component::CurDir
+            | Component::ParentDir
+            | Component::RootDir
+            | Component::Prefix(_) => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -106,6 +134,8 @@ pub(crate) struct DiffReport {
     pub(crate) base: String,
     pub(crate) head: String,
     pub(crate) mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) analysis_outcome: Option<DiffAnalysisOutcome>,
     pub(crate) runtime_status: DiffRuntimeStatus,
     pub(crate) receipt: DiffReceiptStatus,
     pub(crate) summary: DiffSummary,
@@ -118,6 +148,41 @@ pub(crate) struct DiffReport {
     /// is NOT a clean Rust-grade result. See RIPR-SPEC-0082.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) preview_languages: Vec<DiffPreviewLanguageAdvisory>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct DiffAnalysisOutcome {
+    pub(crate) analysis_complete: bool,
+    pub(crate) outcome: AnalysisOutcome,
+}
+
+impl From<AnalysisOutcome> for DiffAnalysisOutcome {
+    fn from(outcome: AnalysisOutcome) -> Self {
+        Self {
+            analysis_complete: outcome.kind.is_complete(),
+            outcome,
+        }
+    }
+}
+
+fn diff_projection_status(
+    outcome: Option<&AnalysisOutcome>,
+) -> (&'static str, &'static str, bool, &'static str) {
+    if outcome.is_some_and(|outcome| !outcome.kind.is_complete()) {
+        (
+            "diff_incomplete_full_repo_limited",
+            "diff_incomplete",
+            false,
+            "diff_incomplete/full_repo_limited",
+        )
+    } else {
+        (
+            "diff_complete_full_repo_limited",
+            "diff_complete",
+            true,
+            "diff_complete/full_repo_limited",
+        )
+    }
 }
 
 pub(crate) fn build_diff_report(
@@ -136,7 +201,11 @@ pub(crate) fn build_diff_report(
                 .canonical_gap
                 .as_ref()
                 .map(|canonical| canonical.id.clone()),
-            file: finding.probe.location.file.display().to_string(),
+            // Same portable contract as `changed_files[].path`. This value
+            // arrives as `.\src\lib.rs` on Windows — a host separator plus a
+            // leading `./` — so it also drops the redundant current-dir
+            // component and matches how `changed_files` renders the same file.
+            file: portable_relative_path(&finding.probe.location.file),
             line: finding.probe.location.line,
             classification: finding.class.as_str().to_string(),
             evidence: finding.evidence.clone(),
@@ -146,6 +215,8 @@ pub(crate) fn build_diff_report(
         .collect::<Vec<_>>();
     let changed_file_count = changed_files.len();
     let changed_seam_count = changed_seams.len();
+    let (run_status, diff_state, downstream_consumable, outcome_hint) =
+        diff_projection_status(output.analysis_outcome.as_ref());
     let unknown = output.summary.static_unknown
         + output.summary.infection_unknown
         + output.summary.propagation_unknown;
@@ -154,19 +225,20 @@ pub(crate) fn build_diff_report(
         schema_version: "0.1".to_string(),
         kind: "ripr_diff".to_string(),
         tool: output.tool.clone(),
-        run_status: "diff_complete_full_repo_limited".to_string(),
+        run_status: run_status.to_string(),
         root: output.root.display().to_string(),
         base: base.to_string(),
         head: head.to_string(),
         mode: output.mode.as_str().to_string(),
+        analysis_outcome: output.analysis_outcome.clone().map(Into::into),
         runtime_status: DiffRuntimeStatus {
-            state: "diff_complete_full_repo_limited".to_string(),
+            state: run_status.to_string(),
             diff: DiffPhaseStatus {
-                state: "diff_complete".to_string(),
+                state: diff_state.to_string(),
                 phase: "changed_surface_diff".to_string(),
                 changed_files: changed_file_count,
                 changed_seams: changed_seam_count,
-                downstream_consumable: true,
+                downstream_consumable,
             },
             full_repo_context: FullRepoContextStatus {
                 state: "full_repo_limited".to_string(),
@@ -179,7 +251,7 @@ pub(crate) fn build_diff_report(
         receipt: DiffReceiptStatus {
             state: "not_written".to_string(),
             path: receipt_path,
-            outcome_hint: "diff_complete/full_repo_limited".to_string(),
+            outcome_hint: outcome_hint.to_string(),
         },
         summary: DiffSummary {
             changed_files: changed_file_count,
@@ -228,6 +300,31 @@ pub(crate) fn render_diff_report_human(report: &DiffReport) -> String {
     out.push_str(&format!("root: {}\n", report.root));
     out.push_str(&format!("range: {}...{}\n", report.base, report.head));
     out.push_str(&format!("mode: {}\n", report.mode));
+    if let Some(outcome) = &report.analysis_outcome {
+        out.push_str(&format!(
+            "analysis outcome: {} ({}).\n",
+            outcome.outcome.kind.as_str(),
+            if outcome.analysis_complete {
+                "analysis complete"
+            } else {
+                "analysis incomplete"
+            }
+        ));
+        if !outcome.outcome.limitations.is_empty() {
+            out.push_str(
+                "zero findings is not a clean result because the analyzed scope is incomplete.\n",
+            );
+            for limitation in &outcome.outcome.limitations {
+                out.push_str(&format!(
+                    "limitation: {} at {}; recovery: {} — {}\n",
+                    limitation.kind.as_str(),
+                    limitation.producer_stage.as_str(),
+                    limitation.recovery.kind.as_str(),
+                    limitation.recovery.detail
+                ));
+            }
+        }
+    }
     out.push_str(&format!(
         "changed files: {}\nchanged seams: {}\n",
         report.summary.changed_files, report.summary.changed_seams
@@ -277,12 +374,76 @@ pub(crate) fn render_diff_report_human(report: &DiffReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis_outcome::{
+        AnalysisIdentity, AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome,
+        AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
+        AnalysisStage,
+    };
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Probe, ProbeFamily, ProbeId,
         RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, Summary, SymbolId,
     };
     use std::path::PathBuf;
+
+    /// Component joining, asserted on a path built the way the confinement guard
+    /// builds one: `PathBuf::push` per component, so the stored separator is the
+    /// platform's.
+    #[test]
+    fn portable_relative_path_joins_components_with_forward_slashes() {
+        let mut path = PathBuf::new();
+        for part in ["crates", "ripr", "src", "lib.rs"] {
+            path.push(part);
+        }
+        assert_eq!(
+            portable_relative_path(&path),
+            "crates/ripr/src/lib.rs",
+            "stored form was {path:?}"
+        );
+        assert_eq!(
+            portable_relative_path(Path::new("src/lib.rs")),
+            "src/lib.rs"
+        );
+        assert_eq!(portable_relative_path(Path::new("lib.rs")), "lib.rs");
+        // A redundant leading `./` is dropped so `changed_seams[].file` renders
+        // the same file identically to `changed_files[].path`, which never
+        // carries one.
+        assert_eq!(
+            portable_relative_path(Path::new("./src/lib.rs")),
+            "src/lib.rs"
+        );
+    }
+
+    /// The separator defect is only *observable* on Windows: there, and only
+    /// there, does a component-built `PathBuf` store a backslash. On Unix the
+    /// stored form is already `/`, so no Unix assertion can distinguish this
+    /// function from the previous `display()` rendering. Asserting that
+    /// explicitly is more honest than a cross-platform test that proves nothing
+    /// on one of them.
+    #[cfg(windows)]
+    #[test]
+    fn portable_relative_path_replaces_the_windows_separator() {
+        let mut path = PathBuf::new();
+        path.push("src");
+        path.push("lib.rs");
+        assert!(
+            path.display().to_string().contains('\\'),
+            "precondition: Windows stores a backslash, got {path:?}"
+        );
+        assert_eq!(portable_relative_path(&path), "src/lib.rs");
+    }
+
+    /// A backslash is a legal filename character on Unix, so it must survive as
+    /// data. This is why the implementation joins components instead of
+    /// string-replacing `\` — a blind replacement would rewrite a real filename.
+    #[cfg(unix)]
+    #[test]
+    fn portable_relative_path_keeps_a_unix_filename_containing_a_backslash() {
+        let mut path = PathBuf::new();
+        path.push("src");
+        path.push(r"od\d.rs");
+        assert_eq!(portable_relative_path(&path), r"src/od\d.rs");
+    }
 
     #[test]
     fn diff_report_preserves_diff_complete_full_repo_limited_status() -> Result<(), String> {
@@ -300,7 +461,12 @@ mod tests {
                 },
                 findings: vec![sample_finding()],
                 preview_language_advisories: Vec::new(),
+                language_runs: Vec::new(),
                 no_scope_provided: false,
+                unanalyzed_working_tree: false,
+                suppression: None,
+                analysis_outcome: None,
+                partial_scope: None,
             },
             "origin/main",
             "HEAD",
@@ -325,6 +491,82 @@ mod tests {
         assert!(human.contains("RIPR diff status: diff_complete_full_repo_limited"));
         assert!(human.contains("full repo context: full_repo_limited"));
         assert!(human.contains("receipt path: target/ripr/receipts/"));
+        Ok(())
+    }
+
+    #[test]
+    fn diff_report_projects_incomplete_analysis_outcome() -> Result<(), String> {
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::CombinedHunkUnsupported,
+            AnalysisStage::DiffParse,
+            AnalysisRecovery::new(
+                AnalysisRecoveryKind::UseTwoWayDiff,
+                "Re-run against a two-way diff of the merge result.",
+            )?,
+        )
+        .with_path("src/lib.rs")?
+        .with_affected_items(1)?;
+        let outcome = AnalysisOutcome::new(
+            AnalysisOutcomeKind::UnsupportedInput,
+            AnalysisIdentity {
+                input_identity: Some("sha256:fixture".to_string()),
+                ..AnalysisIdentity::default()
+            },
+            AnalysisOutcomeCounts {
+                changed_file_count: 1,
+                changed_line_count: 2,
+                ..AnalysisOutcomeCounts::default()
+            },
+            vec![limitation],
+        )?;
+        let report = build_diff_report(
+            &CheckOutput {
+                schema_version: "0.1".to_string(),
+                tool: "ripr".to_string(),
+                mode: Mode::Draft,
+                root: PathBuf::from("repo"),
+                base: None,
+                summary: Summary::default(),
+                findings: Vec::new(),
+                preview_language_advisories: Vec::new(),
+                language_runs: Vec::new(),
+                no_scope_provided: false,
+                unanalyzed_working_tree: false,
+                suppression: None,
+                analysis_outcome: Some(outcome),
+                partial_scope: None,
+            },
+            "origin/main",
+            "HEAD",
+            Vec::new(),
+            "target/ripr/receipts/test.json".to_string(),
+        );
+
+        let json = render_diff_report_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|error| format!("parse diff report: {error}"))?;
+        assert!(json.contains(r#""run_status": "diff_incomplete_full_repo_limited""#));
+        assert!(json.contains(r#""state": "diff_incomplete""#));
+        assert_eq!(
+            value["runtime_status"]["state"],
+            serde_json::Value::String("diff_incomplete_full_repo_limited".to_string())
+        );
+        assert_eq!(
+            value["runtime_status"]["diff"]["downstream_consumable"],
+            serde_json::Value::Bool(false)
+        );
+        assert!(json.contains(r#""outcome_hint": "diff_incomplete/full_repo_limited""#));
+        assert!(json.contains(r#""analysis_outcome""#));
+        assert!(json.contains(r#""analysis_complete": false"#));
+        assert!(json.contains(r#""outcome": {"#));
+        assert!(json.contains(r#""kind": "unsupported_input""#));
+        assert!(json.contains(r#""kind": "combined_hunk_unsupported""#));
+
+        let human = render_diff_report_human(&report);
+        assert!(human.contains("analysis outcome: unsupported_input (analysis incomplete)."));
+        assert!(human.contains("zero findings is not a clean result"));
+        assert!(human.contains("recovery: use_two_way_diff"));
+        assert!(human.contains("Re-run against a two-way diff"));
         Ok(())
     }
 
@@ -420,7 +662,12 @@ mod tests {
                     sample_paths: vec!["src/discount.ts".to_string()],
                     enabled: true,
                 }],
+                language_runs: Vec::new(),
                 no_scope_provided: false,
+                unanalyzed_working_tree: false,
+                suppression: None,
+                analysis_outcome: None,
+                partial_scope: None,
             },
             "origin/main",
             "HEAD",
@@ -464,7 +711,12 @@ mod tests {
                 summary: Summary::default(),
                 findings: vec![],
                 preview_language_advisories: Vec::new(),
+                language_runs: Vec::new(),
                 no_scope_provided: false,
+                unanalyzed_working_tree: false,
+                suppression: None,
+                analysis_outcome: None,
+                partial_scope: None,
             },
             "origin/main",
             "HEAD",

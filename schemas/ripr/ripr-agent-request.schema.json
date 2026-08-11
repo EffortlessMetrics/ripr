@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.effortlessmetrics.dev/ripr/ripr-agent-request.schema.json",
+  "title": "RIPR riprAgent request",
+  "description": "Closed request envelope reserved for the versioned riprAgent protocol.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "schema_version",
+    "request",
+    "mode",
+    "profile",
+    "snapshot_id",
+    "continuation_id"
+  ],
+  "properties": {
+    "protocol_version": { "const": "0.1" },
+    "schema_version": { "const": "0.1" },
+    "request": {
+      "enum": [
+        "ripr/workspaceStatus",
+        "ripr/refreshAnalysis",
+        "ripr/listActionableItems",
+        "ripr/getRepairPacket",
+        "ripr/getEvidenceContext",
+        "ripr/getTopLimitation",
+        "ripr/getReceiptStatus"
+      ]
+    },
+    "mode": { "enum": ["read_only", "refresh"] },
+    "profile": { "type": ["string", "null"], "enum": ["actionable", "full", null] },
+    "snapshot_id": { "type": ["string", "null"], "minLength": 1 },
+    "continuation_id": { "type": ["string", "null"], "minLength": 1 }
+  }
+}

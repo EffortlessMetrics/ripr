@@ -64,26 +64,27 @@ can answer these questions from the repository instead of from chat history:
 
 ## Current repo path
 
-This repo uses `.ripr/goals/active.toml` as the active execution manifest.
-Reusable proof-stack bootstraps may choose another repo-specific active-goal
-path, but `ripr` agents should follow the repo-local `.ripr` path unless a
-later PR changes the schema and documentation together.
+The `.ripr/goals/` scheduler was deleted in #1701. Live work selection now
+comes from GitHub issues, PRs, checks, reviews, and the local worktree; one
+PR's scope is its `ImplementationSliceV1` under `.allow/spec-system/slices/`.
+Normative behavior is RIPR-SPEC requirements.
 
-When the active manifest has no ready work items, agents should run
-`cargo xtask goals next` and follow the printed blocker boundary. A valid
-blocked-only manifest is not stale, and it is not permission to choose work from
-chat history as if it belonged to the blocked goal.
+When no PR is ready, reconcile the live state from GitHub:
 
-`cargo xtask pr-body --work-item <id>` can generate
-`target/ripr/reports/source-of-truth-pr-body.md` from one ready or active work
-item in the active-goal manifest. It refuses blocked or already done items so
-blocked state cannot become PR text by accident. It also requires linked
-artifact IDs to resolve through `policy/doc-artifacts.toml`, so a generated PR
-body cannot carry an unresolved proposal, spec, or plan reference into review.
-`cargo xtask closeout --goal <goal-id>` can generate a handoff scaffold under
-`docs/handoffs/` and an archive copy under `.ripr/goals/archive/`.
+```bash
+gh issue list --state open --limit 20
+gh pr list --state open
+git status --short
+```
 
-Both commands produce scaffolds. Support-tier impact, policy impact, proof
+A valid blocked-only state is not stale, and it is not permission to choose
+work from chat history. Resolve the named blocker in the issue graph.
+
+The retired `cargo xtask pr-body --work-item` and `cargo xtask closeout`
+commands generated scaffolds from the deleted goal manifest. Draft PR bodies
+from the issue's acceptance criteria and the diff instead.
+
+Both approaches produce scaffolds. Support-tier impact, policy impact, proof
 results, and final closeout status stay unchecked until the PR author reviews
 the actual diff and validation evidence.
 
@@ -105,8 +106,6 @@ cargo xtask check-spec-format
 cargo xtask check-traceability
 cargo xtask check-capabilities
 cargo xtask check-support-tiers
-cargo xtask check-goals
-cargo xtask goals next
 cargo xtask repo-contract-report
 ```
 

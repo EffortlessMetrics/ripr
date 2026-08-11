@@ -4,66 +4,40 @@ root: fixtures/python_class_method_owner/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-WARNING src/factory.py:4
+Changed file(s) by language: python: 1, rust: 0.
 
-Changed
-  after:          return cls(config["discount"] + 1)
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
-Probe
-  family: return_value
-  delta:  value
-  owner:  python:src/factory.py::PriceRule.from_config
-  canonical gap: gap:python:src/factory.py:PriceRule.from_config:return_value:return_value:cls_config[discount]+1
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/factory.py:4
+  Language: python
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Canonical gap: gap:python:src/factory.py:PriceRule.from_config:return_value:return_value:cls_config[discount]+1
+  Changed behavior: return cls(config["discount"] + 1)
+  Missing discriminator: Related Python test reaches `from_config` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the returned value.
+  Related test: tests/test_factory.py:4 test_price_rule_from_config
+  Suggested test file: tests/test_factory.py
+  Suggested test: test_price_rule_from_config
+  Test node: tests/test_factory.py::test_price_rule_from_config
+  Verify command: pytest tests/test_factory.py::test_price_rule_from_config (high)
+  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == cls(config["discount"] + 1)`.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `from_config`
+    - infection yes: Changed Python return expression can alter the owner return value: `return cls(config["discount"] + 1)`
+    - 5 more evidence line(s) hidden
 
-Language
-  language: python
-  status: preview
-  owner kind: class_method
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_class_method_owner/input --diff fixtures/python_class_method_owner/diff.patch --mode fast probe:src_factory.py:python_preview:ed4a25c1
+  ripr context --root fixtures/python_class_method_owner/input --diff fixtures/python_class_method_owner/diff.patch --mode fast --at probe:src_factory.py:python_preview:ed4a25c1
 
-Static exposure
-  weakly_exposed (warning, confidence 0.40)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `from_config`
-  - infection yes: Changed Python return expression can alter the owner return value: `return cls(config["discount"] + 1)`
-  - propagation yes: Changed Python return value is already at the owner output boundary.
-  - observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)
-  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == cls(config["discount"] + 1)`.
-  - local flow reaches returned value: return cls(config["discount"] + 1) (line 4)
-  - related test tests/test_factory.py:4 test_price_rule_from_config uses weak relational check oracle: assert PriceRule.from_config({"discount": 4}) is not None
-
-Weakness
-  - Related Python test reaches `from_config` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the returned value.
-  - missing discriminator return value == cls(config["discount"] + 1): changed Python returned-value at line 4 lacks a concrete repair discriminator
-
-Python repair card (preview/advisory)
-  card version: python_repair_card.v1
-  canonical gap: gap:python:src/factory.py:PriceRule.from_config:return_value:return_value:cls_config[discount]+1
-  authority: preview_advisory_only (python/preview)
-  repair action: strengthen_existing_test
-  changed owner: PriceRule.from_config
-  changed behavior: return_value changed at src/factory.py:4: `return cls(config["discount"] + 1)`
-  current test evidence: tests/test_factory.py:4 test_price_rule_from_config currently has oracle_strength=weak, oracle_kind=relational_check: assert PriceRule.from_config({"discount": 4}) is not None
-  missing discriminator: return value == cls(config["discount"] + 1)
-  recommended test shape: Strengthen the existing pytest exact return-value assertion for `return value == cls(config["discount"] + 1)`.
-  suggested assertion: Assert the returned value equals the expected value for the changed inputs.
-  suggested file: tests/test_factory.py
-  suggested test: test_price_rule_from_config
-  pytest node: tests/test_factory.py::test_price_rule_from_config
-  verify: pytest tests/test_factory.py::test_price_rule_from_config (high)
-  receipt: unavailable_until_python_gap_ledger
-  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
-  stop conditions:
-    - Stop if imports, fixtures, or test setup cannot call the changed owner.
-    - Stop if the expected value for the missing discriminator is ambiguous.
-    - Stop if adding the test appears to require a production-code edit.
-  limits:
-    - Syntax-first Python preview evidence only.
-    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
-    - Verify success alone is not a gap-closure receipt.
-
-Next step
-  Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == cls(config["discount"] + 1)`.
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

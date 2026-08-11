@@ -204,7 +204,6 @@ For spec and source-of-truth movement:
 ```bash
 cargo xtask specs next
 cargo xtask check-spec-numbering
-cargo xtask check-campaign
 cargo xtask check-traceability
 cargo xtask check-capabilities
 ```

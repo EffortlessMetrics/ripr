@@ -1,5 +1,7 @@
 # Support Tiers
 
+Artifact ID: `RIPR-SUPPORT-0001`
+
 This page answers the adoption question before the implementation question:
 
 ```text
@@ -26,6 +28,21 @@ the buyer-readable map over those artifacts.
 All tiers are static evidence tiers. None of them means runtime mutation
 adequacy, coverage adequacy, or general correctness.
 
+## Structural Validation Claim
+
+This compact table is the cargo-allow `spec-system` structural claim surface.
+It does not replace the buyer-facing support map below or promote any product
+surface. The active RIPR execution manifest remains outside cargo-allow's
+native active-goal validator until upstream compatibility issue
+`EffortlessMetrics/cargo-allow#2119` is resolved. The table's fixed vocabulary
+and shape are a transitional projection tracked by
+`EffortlessMetrics/cargo-allow#2120`. This projection does not create a second
+product-claim authority.
+
+| Surface | Tier | Claim | Proof command | Notes |
+| --- | --- | --- | --- | --- |
+| Source-of-truth artifact graph | advisory | cargo-allow validates registered artifact paths, kinds, lifecycle states, and links; it does not execute proof commands or validate RIPR's active-goal dialect. | `cargo-allow check --profile spec-system --config .allow/profiles/spec-system.toml --mode audit` | Advisory adoption; RIPR xtask remains the proof executor. |
+
 ## Current Support Map
 
 | Capability | Tier | Surface | Proof | Known limits |
@@ -42,6 +59,7 @@ adequacy, coverage adequacy, or general correctness.
 | TypeScript and JavaScript preview | `preview` | Opt-in CLI/report evidence, editor routing, and grouped generated CI | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [RIPR-SPEC-0027](../specs/RIPR-SPEC-0027-typescript-preview-static-facts.md), [Campaign 27 closeout](../handoffs/2026-05-13-campaign-27-closeout.md), [TypeScript preview completion closeout](../handoffs/2026-05-30-typescript-preview-completion-closeout.md), [Bun UB TypeScript preview closeout](../handoffs/2026-06-03-bun-ub-typescript-preview-closeout.md), [Post-0.8.1 TypeScript/Bun support decision](../handoffs/2026-06-05-post-081-typescript-bun-support-decision.md), TypeScript fixture families | Syntax-first; preview-labeled; no default blocking; owner ids and owner kinds are fixture-backed for current function, component, method, class-method, arrow-function, and module-initializer shapes; strict preview actionability, repair-loop receipts, route-quality metrics, and Bun Blob / ArrayBuffer cross-language evidence are advisory evidence only; static limits such as mocked modules are visible instead of hidden. |
 | Python repair routing | `usable alpha` | CLI, JSON, Markdown, SARIF, PR summary, LSP repair actions, agent packets, swarm queue/ingest, dogfood metrics, and before/after receipts | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [Python repair routing proposal](../proposals/RIPR-PROP-0017-python-repair-routing-lane.md), [RIPR-SPEC-0028](../specs/RIPR-SPEC-0028-python-preview-static-facts.md), [Python repair routing usable-alpha closeout](../handoffs/2026-05-31-python-repair-routing-usable-alpha-closeout.md), [capability matrix](../CAPABILITY_MATRIX.md), `cargo xtask dogfood`, `cargo xtask check-output-contracts`, `cargo xtask check-capabilities` | Scoped to selected static pytest/unittest repair routes with direct weak evidence, concrete missing discriminators, safe test locations, verify commands, stop conditions, bounded agent packets, and receipt movement. It remains advisory: no arbitrary imports, no default test execution, no generated tests, no provider calls, no mutation adequacy claim, no correctness proof, no default gate/RIPR Zero/baseline/public-badge role, and no production-code edit authorization. |
 | Python preview static facts | `preview` | Opt-in/advisory CLI/report owner, test, assertion/oracle, probe, related-test, RIPR-stage, static-limit, editor, and generated-CI grouping evidence | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [Python repair routing proposal](../proposals/RIPR-PROP-0017-python-repair-routing-lane.md), [RIPR-SPEC-0028](../specs/RIPR-SPEC-0028-python-preview-static-facts.md), [ADR 0009](../adr/0009-python-parser-substrate.md), [Campaign 27 closeout](../handoffs/2026-05-13-campaign-27-closeout.md), Python owner/test, assertion/oracle, probe, related-test, RIPR evidence, repair-class discriminator, and static-limit fixture families | Owner, test, assertion/oracle, core probe, conservative related-test, syntax-first RIPR evidence, selected repair-class missing-discriminator facts, and fail-closed static-limit facts are fixture-backed; generated CI grouping remains advisory and opt-in. Static-limit, heuristic-only, no-path, and already-observed states stay out of Python repair packets. |
+| Perl repair routing | `preview` | Opt-in `--perl-facts`, managed producer request, doctor checks, fixture baselines, and two-binary proof harness (advisory only) | [RIPR-PROP-0018](../proposals/RIPR-PROP-0018-perl-repair-routing-lane.md), [RIPR-SPEC-0064](../specs/RIPR-SPEC-0064-perl-fact-packet-contract.md), [ADR 0018](../adr/0018-perl-lsp-fact-substrate.md), [ADR 0019](../adr/0019-language-adapters-reuse-shared-packet-contract.md), Campaign 31 (#1379) | Production `lang-perl` plumbing, router recognition, packet ingestion, managed-producer request rendering, doctor preview, fixture baselines, and one fixture-scoped real producer two-binary proof exist. The canonical producer is `perl-ripr-facts`; `perllsp` and `perl-lsp` are compatibility wrappers only. The loop remains blocked on real-repo producer proof and >= 5 real Perl repo receipts; no public badge, gate, RIPR Zero, stable support, or repair-packet authority is claimed. |
 | Editor preview language routing | `preview` | VS Code/LSP | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [Lane 3 tracker](../lanes/LANE_3_EDITOR_LSP.md), [RIPR-SPEC-0036](../specs/RIPR-SPEC-0036-editor-preview-routing.md), [RIPR-SPEC-0037](../specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md), [Campaign 27 closeout](../handoffs/2026-05-13-campaign-27-closeout.md) | VS Code registers TypeScript/JavaScript/Python selectors and LSP diagnostics preserve preview metadata and static limits; `[languages]` remains the analysis gate and Rust editor behavior remains the default. |
 | Language-aware generated CI grouping | `preview` | Generated GitHub workflow | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [RIPR-SPEC-0038](../specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md), [Lane 4 tracker](../lanes/LANE_4_PR_CI_REVIEW.md), [Campaign 27 closeout](../handoffs/2026-05-13-campaign-27-closeout.md) | The generated summary groups TypeScript/Python advisory evidence only when `[languages]` enables preview adapters; Rust-default output and gate authority remain unchanged. |
 | Preview evidence policy promotion | `deferred` | Policy reports and future promotion packets | [Preview evidence policy boundary](../specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md), [preview promotion criteria](../policy/PREVIEW_PROMOTION_CRITERIA.md), [policy readiness closeout](../handoffs/2026-05-12-policy-readiness-closeout.md) | Preview evidence is visible and advisory by default; it is not gate, RIPR Zero, or baseline-check eligible without later explicit promotion and the required criteria. |

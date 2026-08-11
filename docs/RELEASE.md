@@ -2,6 +2,145 @@
 
 This document is the release checklist for publishing `ripr`.
 
+## Release identity (read this first)
+
+Two repositories, two different authorities (#24, #2025):
+
+```text
+ripr-swarm              = development trunk and no-publish rehearsal authority
+EffortlessMetrics/ripr  = public release and distribution authority
+```
+
+- Public tags and GitHub Releases (v0.8.0 and later) live **only** in
+  `EffortlessMetrics/ripr`. Do not create mirror tags in ripr-swarm for a
+  public release; temporary mirror tags once created were removed (see the
+  corrections on #1947 and #1959).
+- A swarm `CHANGELOG.md` entry may describe a published release; it must not
+  imply the corresponding public tag lives in this repository.
+- Swarm rehearsal (proof packs, manifest generation, smoke) is a separate
+  state from source publication (#1882): rehearsal artifacts are local
+  evidence, never release proof, and "zero swarm tag-trigger runs" means
+  rehearsal stayed read-only, not that a public release is missing.
+
+For every public version claim, record the boundary explicitly:
+`rehearsal | promoted | tagged | published`, with the source SHA, the public
+tag/release URL in `EffortlessMetrics/ripr`, and the promotion evidence.
+
+## Live-history release train
+
+Use the [live-history release transaction runbook](RELEASE_TRANSACTION.md) as
+the canonical operator sequence. This checklist remains the release-surface
+and packaging reference; the runbook owns exact pins, J/K expected-head guards,
+receipts, invalidation, publication authorization, and cleanup.
+
+For the 0.11.0 release train, and as the standard two-repository pattern for
+future releases, use this authority sequence:
+
+```text
+develop in ripr-swarm
+→ select exact ripr-swarm/main at the transaction boundary
+→ create an immutable swarm pin and hold ripr/main
+→ qualify that exact swarm head
+→ preflight the exact source/swarm pair
+→ construct and prove one ordered two-parent source join
+→ merge source with source parent 1 and swarm parent 2
+→ establish metadata and build source artifacts
+→ produce the immutable ship packet
+→ explicitly authorize publication
+→ publish and verify each channel
+→ ancestry-preserving source-to-swarm back-sync
+→ re-baseline the next release and resume swarm development
+```
+
+The selected swarm head includes all history reachable from that exact commit.
+Do not squash, rebase, cherry-pick, or reconstruct a tree-equivalent source
+join. The promotion PR head must itself be the reviewed join, with source as
+parent 1 and the selected swarm head as parent 2. The back-sync must preserve
+the source release ancestry through a controlled merge exception or another
+explicitly reviewed ancestry-preserving path, even when swarm branch settings
+normally disable merge commits.
+
+After the swarm pin, later `ripr-swarm/main` merges are outside the release and
+must not move the pin. Development may continue on branches, but no main merge
+enters the release until source publication and the back-sync complete. Repin
+only for an exact-candidate semantic or policy failure, or a source-preflight
+failure that prevents a required survivor or release contract. Main movement
+alone never repins.
+
+The ship packet is evidence, not authorization. Only source issue `#1470`
+authorizes tagging, publication, signing, marketplace mutation, or other
+external release operations. Re-baseline 0.11.1 only after 0.11.0 publication
+and closeout; merged current-head work belongs to 0.11.0 rather than 0.11.1.
+
+The release claims must be regenerated from the selected tree. Distinguish
+commands actually executed, evidence emitted, and any `RepairReceiptV2`
+issuance. Never copy a historical blanket no-execution sentence, and never
+claim correctness, test adequacy, mutation adequacy, requirement satisfaction,
+or merge safety.
+
+The two history-preserving joins have separate identities and parent order:
+
+```text
+J = source promotion
+J.parent[0] = exact SOURCE_PARENT
+J.parent[1] = exact SWARM_PARENT
+
+K = post-publication back-sync
+K.parent[0] = exact swarm main before back-sync
+K.parent[1] = exact released source main
+```
+
+The promotion head must itself be `J`; an appended repair commit, squash,
+rebase, cherry-pick, or tree-equivalent reconstruction fails the promotion
+contract. After public verification, review and transport `K` under an
+expected-head guard. If swarm policy has merge commits disabled, use a
+narrowly approved temporary exception for this one ancestry-preserving
+back-sync and restore the ordinary policy immediately afterward. See
+[`swarm-development.md`](swarm-development.md#promotion-back-to-source) for
+the operator commands and the separate J/K proof boundaries.
+
+## Preparing a version bump
+
+From a clean swarm checkout, use the gated version command instead of editing
+the three release manifests independently:
+
+```bash
+cargo xtask bump-version 0.11.0
+```
+
+The command requires the workspace version, editors/vscode/package.json, and
+both root version fields in editors/vscode/package-lock.json to agree before
+it writes. It preserves the existing JSON formatting, validates the resulting
+Cargo workspace with cargo metadata, and restores the original files if a
+write or validation step fails. It changes files only; review and commit the
+result as a normal release-prep PR.
+
+## Checking release state (audit contract)
+
+Any release or status audit must name the repository it queries and fail
+closed on ambiguity — never silently query the current checkout for public
+release state:
+
+```bash
+# Public releases and tags (authoritative):
+gh release list --repo EffortlessMetrics/ripr --limit 5
+gh api repos/EffortlessMetrics/ripr/tags --paginate -q '.[].name'
+
+# Swarm side (development/rehearsal only — mirror tags must not exist):
+gh api repos/EffortlessMetrics/ripr-swarm/tags --paginate -q '.[].name'
+```
+
+- A public tag existing in the source repo but not in swarm is the expected
+  state, not a defect.
+- A swarm rehearsal without a public release is rehearsal, not a release.
+- A changelog version without a source release is an unpublished draft, and
+  is named that way (the 0.8.0/0.9.0/0.10.0 swarm drafts are working drafts,
+  not published releases).
+- The VS Code downloader and default install documentation resolve release
+  assets from `EffortlessMetrics/ripr` only
+  (`editors/vscode/src/downloader.ts` builds URLs against that repository).
+
+
 Run the [Release copy checklist](RELEASE_COPY_CHECKLIST.md) before finalizing
 the GitHub Release body, triggering `publish-extension.yml`, or running
 `cargo publish`. It captures the public-surface rules (release body vs.
@@ -11,7 +150,15 @@ public vocabulary, asset verification) that the v0.5.0 release surfaced.
 ## Preconditions
 
 - The release branch has been reviewed and merged.
-- The version in `crates/ripr/Cargo.toml` is correct.
+- The version in the root `Cargo.toml` `[workspace.package]` is correct. This is
+  the single release-version source; `crates/ripr/Cargo.toml` inherits it with
+  `version.workspace = true` and declares no version of its own (#2711).
+- `editors/vscode/package.json` and its `package-lock.json` match that version.
+  `cargo xtask release-readiness` checks this as `extension-version-match`; a
+  mismatch fails the marketplace publish (#1283). The check compares all four
+  declarations — `[workspace.package] version`, `package.json`, and both places
+  `package-lock.json` records the version — against the `--version` you pass, so
+  running it before the bump lands is a hard fail rather than a pass.
 - For the defaults-first public install line, the version is newer than
   `0.3.0`; `0.3.0` predates `ripr pilot` and `ripr outcome`.
 - The root workspace uses Rust edition `2024`.
@@ -31,10 +178,29 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
 cargo xtask check-product-copy
 cargo xtask check-generated-clean
-cargo xtask release-readiness --version 0.8.0
+cargo xtask release-readiness --version 0.11.0   # the version you are cutting
+cargo xtask release-negative-corpus --version 0.11.0   # readiness-chain authority negatives (#2824)
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
+
+### Crate tarball contents
+
+`crates/ripr/Cargo.toml` intentionally includes `tests/**` and the tracked
+example paths (`examples/*/example.diff`, `examples/*/src/**`,
+`examples/*/tests/**`) in the published source distribution. The package list
+therefore carries the checked integration corpus and sample workspace used by
+release and dogfood evidence. This does not change the installed binary or
+library API, but removing either surface is a release-contract change that must
+be reviewed against `cargo package -p ripr --list` and this document.
+
+The example paths are enumerated rather than globbed as `examples/**` on
+purpose. `ripr` runs against the sample workspace during tests and writes a
+fact cache into `crates/ripr/examples/sample/target/`. That directory is
+gitignored, but a wildcard include still pulls it into the package, and
+`cargo package` then fails its uncommitted-files check after any test run.
+Widening the glob reintroduces that failure; add new example subdirectories to
+the list instead.
 
 For the defaults-first install path, also run the local install proof from
 [Installation verification](INSTALLATION_VERIFICATION.md).
@@ -149,9 +315,13 @@ target/ripr/install-smoke-cratesio/bin/ripr agent verify --root . --before fixtu
 target/ripr/install-smoke-cratesio/bin/ripr agent receipt --root . --verify-json target/ripr/install-smoke-cratesio/agent/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/install-smoke-cratesio/agent/agent-receipt.json
 ```
 
-Tag the release:
+Tag the release — in a checkout of the **source** repository
+(`EffortlessMetrics/ripr`), never in ripr-swarm (#2025):
 
 ```bash
+# Run inside an EffortlessMetrics/ripr checkout; fetch AND push URLs must be that repo.
+git remote get-url origin        # expect github.com/EffortlessMetrics/ripr(.git)?
+git remote get-url --push origin # pushurl must also resolve to EffortlessMetrics/ripr (#2193 review)
 git tag v0.8.0
 git push origin v0.8.0
 ```
@@ -173,7 +343,9 @@ analysis, default blocking, or stable preview-language gate authority.
 ## Recovery
 
 If a release workflow fails after the tag has been pushed, prefer
-fix-forward over retagging. The tag is the release-prep snapshot; the
+fix-forward over retagging. Workflow reruns (`gh workflow run ...`) also
+belong to the source repository: run them with `--repo EffortlessMetrics/ripr`
+from anywhere else, or from a source checkout. The tag is the release-prep snapshot; the
 release workflows can be rerun against `main` (or any commit that contains
 the fix) using `workflow_dispatch`, and uploaded assets attach to the
 existing GitHub Release rather than replacing it.

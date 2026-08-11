@@ -205,6 +205,7 @@ fn keep_shared_loop_templates_reachable() {
         loop_commands::WORKFLOW_AGENT_BRIEF_ARTIFACT,
         loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
         loop_commands::WORKFLOW_AGENT_RECEIPT_ARTIFACT,
+        loop_commands::WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
         loop_commands::WORKFLOW_MANIFEST_ARTIFACT,
         loop_commands::WORKFLOW_COMMANDS_MARKDOWN_ARTIFACT,
         loop_commands::WORKFLOW_AGENT_STATUS_ARTIFACT,
@@ -233,6 +234,11 @@ fn keep_shared_loop_templates_reachable() {
             loop_commands::WORKFLOW_AGENT_BRIEF_ARTIFACT,
         ),
         loop_commands::agent_start_command(".", "seam-id", "target/ripr/workflow"),
+        loop_commands::check_analysis_outcome_command(
+            ".",
+            "draft",
+            loop_commands::WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+        ),
         loop_commands::agent_status_command(
             ".",
             Some(loop_commands::WORKFLOW_AGENT_STATUS_ARTIFACT),

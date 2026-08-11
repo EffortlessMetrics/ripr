@@ -1,0 +1,57 @@
+schema_version = "2.0"
+id = "ripr.slice.baseline-fallback-disclosure.v1"
+generation = 1
+
+source_issue = "issue:1934"
+design_reference = "RIPR-SPEC-0014"
+change_class = "behavior_change"
+
+claim_boundary = """
+Makes a gate baseline match that succeeds only via the legacy
+`path:line:static_class` fallback selector a disclosed compatibility event:
+the decision payload records `baseline_match_kind: "legacy_path_line_class"`
+and the report emits a warning naming the candidate and the matched legacy
+identity. Fallback-only matches still suppress blocking during the
+compatibility window (`is_baseline_new` stays `false`). Does not claim the
+deprecation flip to canonical-only matching, baseline write-path changes, a
+baseline migration route, or any change to canonical identity matching.
+"""
+
+non_goals = [
+  "flipping fallback-only matches to `is_baseline_new = true` (deferred deprecation question)",
+  "refusing to create new baseline entries from `path:line:class` alone (baseline write path)",
+  "a deterministic baseline migration/update route replacing legacy identities",
+  "changing canonical identity matching (rules 1-4) or `BaselineIndex` construction",
+]
+
+return_conditions = [
+  "Return to root if the compatibility window ends and fallback-only matches must flip to baseline-new.",
+  "Return to root if the baseline write path starts emitting fallback-primary entries and the disclosure must become a hard error.",
+]
+
+owned_seams = [
+  "seam:ripr:gate:baseline-fallback-disclosure",
+]
+
+shared_seams = [
+  "seam:ripr:output:gate-decision-contract",
+  "seam:ripr:specs:calibrated-gate-policy",
+]
+
+forbidden_seams = [
+  "seam:ripr:repo:workflows",
+  "seam:ripr:output:check-json-contract",
+]
+
+[[requirement_delta]]
+requirement_id = "issue:1934#baseline-fallback-disclosure"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

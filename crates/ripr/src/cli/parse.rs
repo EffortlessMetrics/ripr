@@ -43,6 +43,18 @@ mod tests {
             Ok(CliCommand::Outcome(args(&["--format", "json"])))
         );
         assert_eq!(
+            parse_args(args(&[
+                "ripr",
+                "rerun",
+                "--changed-test",
+                "tests/pricing.rs"
+            ])),
+            Ok(CliCommand::Rerun(args(&[
+                "--changed-test",
+                "tests/pricing.rs"
+            ])))
+        );
+        assert_eq!(
             parse_args(args(&["ripr", "review-comments", "--base", "main"])),
             Ok(CliCommand::ReviewComments(args(&["--base", "main"])))
         );
@@ -140,7 +152,10 @@ mod tests {
             },
             ModeScenario {
                 given_mode: "slow",
-                then_result: Err("unknown mode \"slow\"".to_string()),
+                then_result: Err(
+                    "unknown mode \"slow\"; expected `instant`, `draft`, `fast`, `deep`, or `ready`"
+                        .to_string(),
+                ),
             },
         ];
 
@@ -169,7 +184,10 @@ mod tests {
         );
         assert_eq!(
             parse_format("xml"),
-            Err("unknown format \"xml\"".to_string())
+            Err(
+                "unknown format \"xml\"; see `ripr check --help` for the accepted formats"
+                    .to_string()
+            )
         );
     }
 

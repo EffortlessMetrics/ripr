@@ -1,22 +1,32 @@
-pub(super) const AGENT_HELP: &str = r#"Create a bounded packet for a coding agent and verify what it did.
+pub(super) const AGENT_HELP: &str = r#"Create a bounded repair transaction for a coding agent and inspect its evidence.
 
 Usage: ripr agent <subcommand>
 
-Subcommands:
+Primary workflow:
+  repair    Run the two-phase before/edit/after repair transaction for one seam.
+  status    Report existing agent-loop artifacts and the exact next command.
+
+Advanced and compatibility workflows:
   start      Write a source-edit-free workflow manifest for one seam.
   brief      Rank a working-set brief for the agent-active router.
   packet     Expand one visible seam into the existing agent seam packet JSON.
   verify     Compare before/after repo-exposure JSON for agent verification.
+  verify-execute
+             Execute one validated producer-owned direct verify route.
   receipt    Summarize one seam from agent verify JSON for review handoff.
-  status     Report existing agent-loop artifacts and the next missing command.
   review-summary
              Join agent-loop artifacts into a compact review packet.
 
-Run `ripr agent start --help` for the workflow manifest, `ripr agent brief
---help`, `ripr agent packet --help`, or `ripr agent verify --help` for
-JSON-only agent surfaces. Run `ripr agent receipt --help` for the verification
-receipt surface, `ripr agent status --help` for the artifact status lens, and
-`ripr agent review-summary --help` for the PR-review packet.
+Ordinary repair path:
+  ripr agent repair --seam-id ID --phase before
+  # edit one focused test outside RIPR
+  ripr agent repair --seam-id ID --phase after
+
+Run `ripr agent repair --help` for the primary repair workflow. Run
+`ripr agent status --help` to inspect an interrupted or incomplete local loop.
+The lower-level `start`, `brief`, `packet`, `verify`, `verify-execute`,
+`receipt`, and `review-summary` help surfaces remain available for explicit
+control, debugging, and compatibility.
 "#;
 pub(super) const AGENT_START_HELP: &str = r#"Start a source-edit-free workflow packet for one selected change.
 
@@ -25,7 +35,7 @@ Usage: ripr agent start [--root PATH] --seam-id ID [--out PATH]
 Options:
   --root PATH      Workspace root. Defaults to current directory.
   --seam-id ID     Select one visible seam by ID.
-  --out PATH       Workflow output directory. Defaults to target/ripr/workflow.
+  --out PATH       Workflow output directory (relative to --root). Defaults to target/ripr/workflow.
 
 The start command writes a source-edit-free workflow packet for one seam:
 workflow.json, commands.md, and agent-brief.json. The packet contains artifact
@@ -90,6 +100,44 @@ an agent-focused before/after summary. Snapshot paths must resolve under
 `--root`. The command remains advisory and static; it does not run analysis,
 mutation testing, generate tests, edit files, change cache behavior, or touch
 LSP/MCP surfaces.
+
+Movement vocabulary (#2648): the JSON output uses two related fields:
+  - `change` (per-item): improved | changed | regressed | unchanged | new | resolved
+  - `gap_movement` (per-item): closed | persisted | new
+Precedence: `change: improved` means the grip class moved up; `gap_movement: closed`
+means the gap disappeared entirely. A gap can persist even when grip improves.
+"#;
+pub(super) const AGENT_VERIFY_EXECUTE_HELP: &str = r#"Execute one validated producer-owned verification route.
+
+Usage: ripr agent verify-execute [--root PATH] --packet PATH --result-json PATH --authorize --json [--cancel-after-ms N]
+
+Options:
+  --root PATH          Workspace root. Defaults to current directory.
+  --packet PATH        One producer-emitted agent packet JSON under --root.
+  --result-json PATH   New result path under --root; existing files are refused.
+  --authorize          Required explicit authorization for process execution.
+  --cancel-after-ms N  Optional bounded cancellation request.
+  --json               Required machine-readable output.
+
+Only the exact direct, no-network, no-write `ripr agent verify` route is
+executable. Authority is layered: the packet's typed `command_specs.verify` must
+be reproducible from its own `verification_commands`, so the route you read is
+the route that runs; and both `--before` and `--after` must pass repo-exposure
+provenance validation, after which the canonical route is recomputed from those
+validated artifacts and must match the packet. The packet chooses which
+producer artifacts to compare; it never authors the command.
+
+The command uses the current ripr binary, a bounded timeout, output caps, and
+repository currentness checks. The child environment is reduced to a disclosed
+platform floor (PATH plus platform essentials); ambient credentials are dropped,
+though HOME is passed through so host Git configuration still applies. Only the
+owned child is terminated.
+
+Every parsed attempt, including refusals, emits typed JSON on stdout; usage
+errors stay on stderr. Exit status is 0 when a bounded observation was committed
+-- including an observed command failure -- and nonzero when none was. It
+records process evidence only; it does not issue receipts, run mutation testing,
+prove adequacy, or grant gate or merge authority.
 "#;
 pub(super) const AGENT_RECEIPT_HELP: &str = r#"Write a provenance receipt with bounded next-action guidance for one change.
 
@@ -139,4 +187,29 @@ status, receipt, workflow, operator cockpit, repo exposure, LSP cockpit when
 present, and local CI artifact state into a compact review packet. It remains
 advisory and static; it does not run analysis, mutation testing, generate
 tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
+"#;
+pub(super) const AGENT_REPAIR_HELP: &str = r#"Run the primary two-phase repair transaction for one named gap.
+
+Usage: ripr agent repair [--root PATH] --seam-id ID [--phase before|after]
+
+Options:
+  --root PATH          Workspace root. Defaults to current directory.
+  --seam-id ID         Select one visible seam by ID.
+  --phase before|after Which half of the repair loop to run. Defaults to `before`.
+
+The ordinary repair path is:
+
+  ripr agent repair --seam-id ID --phase before
+  # edit one focused test outside RIPR
+  ripr agent repair --seam-id ID --phase after
+
+The before phase writes the pre-edit repo-exposure snapshot and repair packet.
+The after phase writes the post-edit snapshot, persists static verification
+JSON, and emits a receipt. RIPR owns the evidence plumbing; the human or
+external agent owns the test edit.
+
+Lower-level `start`, `brief`, `packet`, `verify`, `receipt`, `status`, and
+`review-summary` commands remain available for explicit control and debugging.
+The repair command does not generate or apply tests, execute mutation testing,
+or declare the repository safe to merge.
 "#;

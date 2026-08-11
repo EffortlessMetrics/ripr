@@ -6,9 +6,6 @@ on:
       version:
         description: "Release version, for example 0.2.0 or v0.2.0"
         required: true
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
@@ -43,10 +40,11 @@ jobs:
             archive: tar.gz
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
 
       - name: Build ripr
@@ -56,7 +54,7 @@ jobs:
         run: cargo xtask release-server-archive --version "${{ github.event.inputs.version || github.ref_name }}" --target "${{ matrix.target }}" --executable "${{ matrix.executable }}" --archive "${{ matrix.archive }}"
 
       - name: Upload server artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ripr-server-${{ matrix.target }}
           path: dist/*
@@ -65,11 +63,13 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: ripr-server-*
           path: dist
@@ -83,3 +83,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: cargo xtask release-upload-assets --version "${{ github.event.inputs.version || github.ref_name }}"
+
+# Authority: this workflow is the SOURCE-REPO release authority.
+# It must NOT be tag-triggered in the swarm (ripr-swarm) repo.
+# The swarm repo's copy of this workflow is a read-only rehearsal
+# surface (#1882). Publication authority lives in
+# EffortlessMetrics/ripr, not here. The `push: tags: ["v*"]` trigger
+# was removed (#1882) because swarm-side v*-shaped tags must not
+# trigger a real publication.

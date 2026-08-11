@@ -3,16 +3,51 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
+  InitializeParams,
   LanguageClient,
   LanguageClientOptions,
-  RevealOutputChannelOn,
   ServerOptions,
   Trace
 } from 'vscode-languageclient/node';
 import { getConfig, RiprConfig } from './config';
 import { requestedServerVersion, resolveServer, ResolveFailure, ResolvedServer } from './serverResolver';
+import { setupFilePath, stringValues, hasUnsafeShellMetacharacter, normalizePath, sameWorkspaceRoot, rootMatchesWorkspace, objectField, stringField, boundedStringField, arrayLength, numberFieldValue } from './packetJson';
+import { riprDocumentSelectorsForWorkspace, extensionVersion, traceFromConfig, currentWorkspaceRootState, workspaceRootStateNoWorkspace, workspaceRootStateLabel, workspaceRootStateDetail, workspaceRootPickItems } from './workspaceHelpers';
+import type { WorkspaceRootPickItem } from './workspaceHelpers';
+import { statusText, statusSummary, statusBarColors, canProjectFirstUsefulAction, shouldInlineFirstUsefulAction } from './statusRender';
+import type { RiprStatusKind, RiprStatusState, FirstUsefulActionStatus, StatusBarColors } from './statusRender';
+import {
+  validateFirstPrPacket,
+  firstPrSummaryPacket,
+  firstPrRepairPacket,
+  firstPrRegenerationGuidance,
+  firstPrTopRepairableGapLines,
+  firstPrBlockedPacketLines,
+  firstPrSuppressedMessage,
+  firstPrHasRepairPacket,
+  firstPrPacketAllowsSummary,
+  firstPrPacketAllowsOpen,
+  firstPrPacketCanBecomeStale,
+  firstPrPacketStoredInTarget,
+  diagnosticMatchesFirstPrPacket,
+  firstPrCommandIsSafe,
+  firstPrPathIsWorkspaceLocal
+} from './firstPrProjection';
+import type { RiprFirstPrPacketState, RiprFirstPrPacketStatus } from './firstPrProjection';
+import {
+  DEFAULT_LIFECYCLE_SETTLE_BUDGET_MS,
+  waitForLifecyclePromise
+} from './lifecycleCoordinator';
 
-const RIPR_DOCUMENT_SELECTORS: Array<{ language: string; scheme: 'file' }> = [
+// Re-export for backward compatibility: the picker test imports these symbols
+// from '../../src/client'. They now live in workspaceHelpers.ts (#2553).
+export { workspaceRootPickItems };
+export type { WorkspaceRootPickItem };
+
+// Re-export public first-PR types that moved to firstPrProjection.ts (#2543).
+export type { RiprFirstPrPacketState, RiprFirstPrPacketStatus };
+
+export const RIPR_DOCUMENT_SELECTORS: Array<{ language: string; scheme: 'file' }> = [
   { language: 'rust', scheme: 'file' },
   { language: 'typescript', scheme: 'file' },
   { language: 'typescriptreact', scheme: 'file' },
@@ -20,6 +55,9 @@ const RIPR_DOCUMENT_SELECTORS: Array<{ language: string; scheme: 'file' }> = [
   { language: 'javascriptreact', scheme: 'file' },
   { language: 'python', scheme: 'file' }
 ];
+
+const SHOW_OUTPUT_ACTION = 'Show Output';
+const SELECT_WORKSPACE_ROOT_ACTION = 'Select Workspace Root';
 
 const RIPR_FILE_LANGUAGES = new Set(RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language));
 const RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION = new Map<string, 'rust' | 'typescript' | 'python'>([
@@ -32,14 +70,113 @@ const RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION = new Map<string, 'rust' | 'typesc
 ]);
 const RIPR_CONFIG_RELATIVE_PATH = 'ripr.toml';
 
-function riprDocumentSelectorsForWorkspace(
-  workspaceRoot: string
-): Array<{ language: string; scheme: 'file'; pattern: string }> {
-  const workspacePattern = `${workspaceRoot.replace(/\\/g, '/')}/**/*`;
-  return RIPR_DOCUMENT_SELECTORS.map((selector) => ({
-    ...selector,
-    pattern: workspacePattern
-  }));
+function lspConfigurationForResource(scopeUri: string | undefined): Record<string, unknown> {
+  const resource = scopeUri ? vscode.Uri.parse(scopeUri) : undefined;
+  const config = vscode.workspace.getConfiguration('ripr', resource);
+  return {
+    baseRef: config.get<string>('baseRef'),
+    checkMode: config.get<string>('check.mode'),
+    includeUnchangedTests: config.get<boolean>('includeUnchangedTests'),
+    seamDiagnostics: config.get<boolean>('seamDiagnostics'),
+    diagnosticProfile: config.get<string>('diagnosticProfile'),
+    gitTimeoutMs: config.get<number>('gitTimeoutMs'),
+    refreshDeadlineMs: config.get<number>('refreshDeadlineMs')
+  };
+}
+
+// The ripr.* commands this extension registers, advertised to the server at
+// initialize inside the RIPR experimental capability block (#1987,
+// RIPR-SPEC-0143) so the session profile knows which client commands exist.
+// This list must cover EVERY ripr.* command registered in extension.ts: the
+// server filters code actions to advertised commands only (#1776,
+// RIPR-SPEC-0129), so a missing entry silently strips that quick fix.
+const RIPR_CLIENT_COMMANDS: readonly string[] = [
+  'ripr.copyAfterSnapshotCommand',
+  'ripr.copyAgentBriefCommand',
+  'ripr.copyAgentPacketCommand',
+  'ripr.copyAgentReceiptCommand',
+  'ripr.copyAgentVerifyCommand',
+  'ripr.copyContext',
+  'ripr.copyCurrentRepairPacket',
+  'ripr.copyFirstPrReceiptCommand',
+  'ripr.copyFirstPrRegenerationGuidance',
+  'ripr.copyFirstPrRepairPacket',
+  'ripr.copyRepairPacketAtCursor',
+  'ripr.copyFirstPrSummary',
+  'ripr.copyFirstPrVerifyCommand',
+  'ripr.copyReceiptCommand',
+  'ripr.copyRepoGapMap',
+  'ripr.copySuggestedAssertion',
+  'ripr.copyTargetedTestBrief',
+  'ripr.copyTopReceiptCommand',
+  'ripr.copyTopRepairPacket',
+  'ripr.copyTopVerifyCommand',
+  'ripr.diagnoseSetup',
+  'ripr.openAttemptLedger',
+  'ripr.openFirstPrPacket',
+  'ripr.openRelatedTest',
+  'ripr.openReport',
+  'ripr.openSettings',
+  'ripr.restartServer',
+  'ripr.selectWorkspaceRoot',
+  'ripr.showOutput',
+  'ripr.showReceiptStatus',
+  'ripr.showRouteQuality',
+  'ripr.showStatus',
+  'ripr.showTopLimitation',
+  'ripr.startCurrentRepair'
+];
+
+// The RIPR experimental capability block advertised in initialize params
+// (#1987, RIPR-SPEC-0143). Absence of a field never implies support on the
+// server side, and the server fails closed on malformed blocks, so this
+// advertisement stays minimal and exact.
+export interface RiprExperimentalClientCapabilities {
+  riprEditor: {
+    version: string;
+    commands: string[];
+    guardedTestEdit: boolean;
+  };
+}
+
+export function riprExperimentalClientCapabilities(
+  extensionVersion: string
+): RiprExperimentalClientCapabilities {
+  return {
+    riprEditor: {
+      version: extensionVersion,
+      commands: [...RIPR_CLIENT_COMMANDS],
+      // Guarded test edits are not implemented by this extension; the opt-in
+      // stays false until the guarded-edit slice lands.
+      guardedTestEdit: false
+    }
+  };
+}
+
+// A LanguageClient that merges the RIPR experimental capability block into
+// the initialize handshake (#1987). vscode-languageclient computes the
+// standard capabilities itself; this override only adds the RIPR block and
+// preserves any experimental capabilities the library already set.
+class RiprExperimentalLanguageClient extends LanguageClient {
+  constructor(
+    id: string,
+    name: string,
+    serverOptions: ServerOptions,
+    clientOptions: LanguageClientOptions,
+    private readonly riprExperimental: RiprExperimentalClientCapabilities
+  ) {
+    super(id, name, serverOptions, clientOptions);
+  }
+
+  protected override fillInitializeParams(params: InitializeParams): void {
+    super.fillInitializeParams(params);
+    const capabilities = params.capabilities as { experimental?: unknown };
+    const existing =
+      typeof capabilities.experimental === 'object' && capabilities.experimental !== null
+        ? capabilities.experimental
+        : {};
+    capabilities.experimental = { ...existing, ...this.riprExperimental };
+  }
 }
 
 const RIPR_SETUP_ARTIFACTS: RiprSetupArtifactDefinition[] = [
@@ -71,7 +208,6 @@ const RIPR_FIRST_PR_PACKET_ARTIFACTS = [
   }
 ];
 const ACTIONABLE_GAP_QUEUE_RELATIVE_PATH = 'target/ripr/reports/actionable-gaps.json';
-const FIRST_PR_STATIC_EVIDENCE_BOUNDARY = 'static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.';
 
 export interface RiprContextTarget {
   uri?: string;
@@ -83,6 +219,7 @@ export interface RiprContextTarget {
   probe_id?: string;
   seam_id?: string;
   seam_kind?: string;
+  evidence_identity?: unknown;
   gap_id?: string;
   canonical_gap_id?: string;
   gap_kind?: string;
@@ -135,17 +272,38 @@ interface RiprLanguageClient {
   stop(): Promise<void>;
 }
 
+export type RiprClientLifecycleWait = (
+  operation: Promise<void>,
+  budgetMs: number,
+  description: string
+) => Promise<void>;
+
+export class RiprClientLifecycleTimeoutError extends Error {
+  constructor(description: string, budgetMs: number) {
+    super(
+      `${description} did not settle within ${budgetMs}ms; refusing an unsafe ripr lifecycle transition.`
+    );
+    this.name = 'RiprClientLifecycleTimeoutError';
+  }
+}
+
 export interface RiprClientRuntime {
-  getConfig(): RiprConfig;
+  getConfig(resource?: vscode.Uri): RiprConfig;
   workspaceRootState(): RiprWorkspaceRootState;
+  workspaceFolders(): readonly vscode.WorkspaceFolder[];
+  showQuickPick<T extends vscode.QuickPickItem>(
+    items: T[],
+    options?: vscode.QuickPickOptions
+  ): Thenable<T | undefined>;
   resolveServer(
     context: vscode.ExtensionContext,
     config: RiprConfig,
-    output: vscode.OutputChannel
+    output: vscode.LogOutputChannel
   ): Promise<ResolvedServer | ResolveFailure>;
   createLanguageClient(
     serverOptions: ServerOptions,
-    clientOptions: LanguageClientOptions
+    clientOptions: LanguageClientOptions,
+    experimentalCapabilities?: RiprExperimentalClientCapabilities
   ): RiprLanguageClient;
   createFileSystemWatcher(pattern: vscode.GlobPattern): vscode.FileSystemWatcher;
   readFile(filePath: string): Promise<string | undefined>;
@@ -153,8 +311,9 @@ export interface RiprClientRuntime {
   writeClipboard(text: string): Promise<void>;
   isWorkspaceTrusted(): boolean;
   showInformationMessage(message: string): Thenable<string | undefined>;
-  showWarningMessage(message: string): Thenable<string | undefined>;
+  showWarningMessage(message: string, ...items: string[]): Thenable<string | undefined>;
   showErrorMessage(message: string, ...items: string[]): Thenable<string | undefined>;
+  waitForLifecycle?: RiprClientLifecycleWait;
 }
 
 export type RiprWorkspaceRootKind =
@@ -173,9 +332,19 @@ export interface RiprWorkspaceRootState {
 const defaultRuntime: RiprClientRuntime = {
   getConfig,
   workspaceRootState: currentWorkspaceRootState,
+  workspaceFolders: () => vscode.workspace.workspaceFolders ?? [],
+  showQuickPick: (items, options) => vscode.window.showQuickPick(items, options),
   resolveServer,
-  createLanguageClient: (serverOptions, clientOptions) =>
-    new LanguageClient('ripr', 'ripr', serverOptions, clientOptions),
+  createLanguageClient: (serverOptions, clientOptions, experimentalCapabilities) =>
+    experimentalCapabilities
+      ? new RiprExperimentalLanguageClient(
+          'ripr',
+          'ripr',
+          serverOptions,
+          clientOptions,
+          experimentalCapabilities
+        )
+      : new LanguageClient('ripr', 'ripr', serverOptions, clientOptions),
   createFileSystemWatcher: (pattern) => vscode.workspace.createFileSystemWatcher(pattern),
   readFile: readOptionalFile,
   runRipr,
@@ -185,7 +354,7 @@ const defaultRuntime: RiprClientRuntime = {
   },
   isWorkspaceTrusted: () => vscode.workspace.isTrusted,
   showInformationMessage: (message) => vscode.window.showInformationMessage(message),
-  showWarningMessage: (message) => vscode.window.showWarningMessage(message),
+  showWarningMessage: (message, ...items) => vscode.window.showWarningMessage(message, ...items),
   showErrorMessage: (message, ...items) => vscode.window.showErrorMessage(message, ...items)
 };
 
@@ -193,6 +362,8 @@ export class RiprClientController {
   private client: RiprLanguageClient | undefined;
   private server: ResolvedServer | undefined;
   private readonly notificationDisposables: vscode.Disposable[] = [];
+  private receivedTypedAnalysisStatus = false;
+  private typedAnalysisStatusState: RiprAnalysisStatusPayload['state'] | undefined;
   private readonly dirtyRiprDocuments = new Set<string>();
   private firstUsefulAction: FirstUsefulActionStatus | undefined;
   private setupStatus: RiprSetupStatus = setupStatusWithoutWorkspace();
@@ -204,10 +375,44 @@ export class RiprClientController {
     nextStep: 'Open a workspace folder, then run ripr: Restart Server.'
   };
   private workspaceRoot: string | undefined;
+  /**
+   * Session-scoped workspace folder picked through `ripr: Select Workspace
+   * Root` (#2077). When the document-driven root state is ambiguous (multi-
+   * root workspace, no active file editor), startOnce() falls back to this
+   * pick so an explicit `ripr: Restart Server` after picking reuses it. It
+   * never overrides the active-document disambiguation: the pick is only
+   * consulted when the runtime reports `ambiguousMultiRoot`, and it is only
+   * honored while the picked folder is still one of the workspace folders.
+   */
+  private selectedWorkspaceRoot: string | undefined;
+  /**
+   * In-flight start() promise, used to deduplicate concurrent start attempts.
+   *
+   * start() is re-entrant from several listeners: the initial activate() call,
+   * onDidGrantWorkspaceTrust, onDidChangeWorkspaceFolders, and restart()
+   * (which calls stop() then start()). Without deduplication, two events
+   * firing in quick succession during the async setup window (before
+   * this.client is assigned) would both pass the `if (this.client) return`
+   * guard and both spawn a server. The promise is cleared on
+   * completion/failure so the next start() attempt can proceed. (#2060
+   * review feedback.)
+   */
+  private startingPromise: Promise<void> | undefined;
+  /**
+   * Monotonic generation counter bumped by every stop(). startOnce() captures
+   * the generation at entry and checks it again before assigning this.client.
+   * If stop() ran during the async setup window (e.g. the user hit Restart
+   * Server while a workspace-folder-event start() was mid-flight), the
+   * generation no longer matches and startOnce() aborts without assigning —
+   * preventing the late assignment from overwriting the fresh client that
+   * restart()'s subsequent start() already installed. This closes the
+   * server-leak race described in #2123.
+   */
+  private startGeneration = 0;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly output: vscode.OutputChannel,
+    private readonly output: vscode.LogOutputChannel,
     private readonly runtime: RiprClientRuntime = defaultRuntime,
     private readonly statusBar?: vscode.StatusBarItem
   ) {
@@ -215,13 +420,40 @@ export class RiprClientController {
   }
 
   async start(): Promise<void> {
+    // Fast path: server is already up.
+    if (this.client) {
+      return;
+    }
+    // Deduplicate concurrent in-flight starts. Two listeners firing in quick
+    // succession (e.g. trust granted + workspace folder added) would otherwise
+    // both pass the `if (this.client) return` guard above during the async
+    // setup window and both spawn a server. The promise is cleared on
+    // completion/failure so the next start() attempt can proceed.
+    if (this.startingPromise) {
+      return this.startingPromise;
+    }
+    const generation = this.startGeneration;
+    const promise = this.startOnce(generation);
+    this.startingPromise = promise;
+    try {
+      await promise;
+    } finally {
+      if (this.startingPromise === promise) {
+        this.startingPromise = undefined;
+      }
+    }
+  }
+
+  private async startOnce(startGeneration: number): Promise<void> {
     if (this.client) {
       return;
     }
 
-    const config = this.runtime.getConfig();
-    this.workspaceRootState = this.runtime.workspaceRootState();
+    this.workspaceRootState = this.resolveWorkspaceRootState();
     this.workspaceRoot = this.workspaceRootState.root;
+    const config = this.runtime.getConfig(
+      this.workspaceRoot ? vscode.Uri.file(this.workspaceRoot) : undefined
+    );
     await this.refreshSetupStatusFiles();
 
     if (!config.enabled) {
@@ -240,9 +472,13 @@ export class RiprClientController {
         kind: 'workspaceAmbiguous',
         summary: 'Select one workspace folder before using ripr repair actions.',
         detail: workspaceRootStateDetail(this.workspaceRootState),
-        nextStep: 'Open a Rust or enabled preview-language file from one workspace folder, then run ripr: Restart Server.'
+        nextStep: 'Run ripr: Select Workspace Root, or open a Rust or enabled preview-language file from one workspace folder, then run ripr: Restart Server.'
       });
-      this.output.appendLine('ripr multi-root workspace is ambiguous; select a file before starting the server.');
+      this.output.appendLine('ripr multi-root workspace is ambiguous; select a workspace folder before starting the server.');
+      // Fire and forget (#2180 review): awaiting the warning would block
+      // start() — and extension activation, which awaits it — until the
+      // user answers the notification, which may never happen.
+      void this.offerWorkspaceRootSelection();
       return;
     }
 
@@ -254,6 +490,17 @@ export class RiprClientController {
         nextStep: 'Open a workspace folder, then run ripr: Restart Server.'
       });
       this.output.appendLine('ripr workspace was not detected; open a workspace folder.');
+      return;
+    }
+
+    if (!this.runtime.isWorkspaceTrusted()) {
+      this.updateStatus({
+        kind: 'workspaceUntrusted',
+        summary: 'ripr requires a trusted workspace to start the server.',
+        detail: 'The workspace is not trusted. ripr does not download, launch, or run repair actions in untrusted workspaces.',
+        nextStep: 'Trust the workspace (Manage > Trust Workspace), then run ripr: Restart Server.'
+      });
+      this.output.appendLine('ripr workspace is not trusted; refusing to start server or download.');
       return;
     }
 
@@ -286,7 +533,11 @@ export class RiprClientController {
       command: server.command,
       args: config.serverArgs,
       options: {
-        cwd: this.workspaceRoot
+        cwd: this.workspaceRoot,
+        // A win32 PATH shim resolved through the shell probe must be spawned
+        // with the same launch semantics (#2079 review); explicit paths keep
+        // shell-free spawns.
+        ...(server.needsShell ? { shell: true } : {})
       }
     };
 
@@ -295,26 +546,101 @@ export class RiprClientController {
       initializationOptions: {
         baseRef: config.baseRef,
         checkMode: config.checkMode,
-        includeUnchangedTests: true
+        includeUnchangedTests: config.includeUnchangedTests,
+        seamDiagnostics: config.seamDiagnostics,
+        diagnosticProfile: config.diagnosticProfile
       },
       outputChannel: this.output,
-      revealOutputChannelOn: RevealOutputChannelOn.Never,
       traceOutputChannel: this.output,
+      middleware: {
+        workspace: {
+          configuration: async (params, token, next) => {
+            const riprItems = params.items.filter((item) => item.section === 'ripr');
+            const otherItems = params.items.filter((item) => item.section !== 'ripr');
+            if (riprItems.length === 0) {
+              return next(params, token);
+            }
+            const riprConfigurations = riprItems.map((item) => lspConfigurationForResource(item.scopeUri));
+            if (otherItems.length === 0) {
+              return riprConfigurations;
+            }
+            const otherConfigurations = await next({ items: otherItems }, token);
+            if (!Array.isArray(otherConfigurations)) {
+              return otherConfigurations;
+            }
+            let riprIndex = 0;
+            let otherIndex = 0;
+            return params.items.map((item) =>
+              item.section === 'ripr'
+                ? riprConfigurations[riprIndex++]
+                : otherConfigurations[otherIndex++]
+            );
+          }
+        }
+      },
       synchronize: {
+        configurationSection: 'ripr',
         fileEvents: this.runtime.createFileSystemWatcher(
-          new vscode.RelativePattern(this.workspaceRoot, '**/Cargo.toml')
+          new vscode.RelativePattern(this.workspaceRoot, '**/{Cargo.toml,ripr.toml}')
         )
       }
     };
 
     this.output.appendLine(`Resolved ripr server from ${server.source}: ${server.detail}`);
     this.output.appendLine(`Starting ripr language server: ${server.command} ${config.serverArgs.join(' ')}`);
-    this.client = this.runtime.createLanguageClient(serverOptions, clientOptions);
-    this.client.setTrace(traceFromConfig(config.traceServer));
-    this.notificationDisposables.push(
-      this.client.onNotification('window/logMessage', (params) => this.handleServerLog(params))
+    // Guard against the restart race (#2123): if stop() ran during the async
+    // setup window (resolveServer / createLanguageClient), this start is stale.
+    // Assigning this.client now would overwrite the fresh client that the
+    // caller's subsequent start() (after stop()) already installed, leaking
+    // our process and listeners. Abort without assigning.
+    if (this.startGeneration !== startGeneration) {
+      this.output.appendLine('ripr server start aborted: stop() ran during setup.');
+      return;
+    }
+    const client = this.runtime.createLanguageClient(
+      serverOptions,
+      clientOptions,
+      riprExperimentalClientCapabilities(extensionVersion(this.context))
     );
-    await this.client.start();
+    this.client = client;
+    client.setTrace(traceFromConfig(config.traceServer));
+    this.notificationDisposables.push(
+      client.onNotification('ripr/analysisStatus', (params) => this.handleAnalysisStatus(params)),
+      client.onNotification('window/logMessage', (params) => this.handleServerLog(params))
+    );
+    try {
+      await client.start();
+      // Re-apply the configured trace level after the handshake (#2082
+      // review): a ripr.trace change that landed while start() was in
+      // flight (before this.client was assigned, so the live path was a
+      // no-op) must not be lost. Idempotent with the setTrace above and
+      // with any live update that already ran.
+      this.setTraceFromConfig();
+    } catch (error) {
+      // A rejected start must not strand a half-initialized client: clear the
+      // reference and detach listeners so a later start() re-initializes
+      // instead of returning early against stale state. Only clear this.client
+      // if it still points at OUR client — a replacement start() may have
+      // already installed a different one (the restart race, #2123).
+      if (this.client === client) {
+        this.client = undefined;
+      }
+      while (this.notificationDisposables.length > 0) {
+        this.notificationDisposables.pop()?.dispose();
+      }
+      await client.stop().catch(() => undefined);
+      throw error;
+    }
+    // If stop() ran during `await this.client.start()`, the generation no
+    // longer matches and a newer start() may have already installed a fresh
+    // client. Don't overwrite the fresh client's status or run setup-status
+    // refreshes against the stale session — just return. The client we
+    // started here was already stopped by stop() (which captures this.client
+    // at entry and calls client.stop()). (#2123 review feedback.)
+    if (this.startGeneration !== startGeneration) {
+      this.output.appendLine('ripr server start completed but stop() ran during startup; aborting setup.');
+      return;
+    }
     await this.refreshSetupStatusFiles();
     this.updateStatus({
       kind: 'analysisQueued',
@@ -330,17 +656,145 @@ export class RiprClientController {
     await this.start();
   }
 
+  /**
+   * Workspace root state with the session-scoped `ripr: Select Workspace
+   * Root` pick applied (#2077). The pick only resolves an
+   * `ambiguousMultiRoot` state; when the active editor already selects a
+   * folder the document-driven state wins unchanged, and a pick whose folder
+   * left the workspace is ignored.
+   */
+  private resolveWorkspaceRootState(): RiprWorkspaceRootState {
+    const state = this.runtime.workspaceRootState();
+    if (state.kind !== 'ambiguousMultiRoot' || !this.selectedWorkspaceRoot) {
+      return state;
+    }
+    const picked = state.roots.find((root) => sameWorkspaceRoot(root, this.selectedWorkspaceRoot!));
+    if (!picked) {
+      // Do not silently drop a stale pick (#2180 review): name why the
+      // session selection is not being applied.
+      this.output.appendLine(
+        `ripr previously selected workspace root '${this.selectedWorkspaceRoot}' is no longer in the workspace; run ripr: Select Workspace Root again.`
+      );
+      this.selectedWorkspaceRoot = undefined;
+      return state;
+    }
+    return {
+      kind: 'selectedRoot',
+      root: picked,
+      roots: state.roots,
+      detail: 'selected with ripr: Select Workspace Root'
+    };
+  }
+
+  /**
+   * Offer the folder picker from the blocked `workspaceAmbiguous` start path
+   * (#2077): the status bar/tooltip alone told the user to "select one
+   * workspace folder" without any UI to do so. The warning names the action;
+   * accepting it runs the same flow as the palette command.
+   */
+  private async offerWorkspaceRootSelection(): Promise<void> {
+    const selection = await this.runtime.showWarningMessage(
+      'ripr cannot tell which workspace folder to analyze. Select one workspace folder to start the ripr server.',
+      SELECT_WORKSPACE_ROOT_ACTION
+    );
+    if (selection === SELECT_WORKSPACE_ROOT_ACTION) {
+      await this.selectWorkspaceRoot();
+    }
+  }
+
+  /**
+   * `ripr: Select Workspace Root` (#2077). In a multi-root workspace with no
+   * active file editor, the start path refuses with `workspaceAmbiguous` and
+   * previously offered no in-product way to pick a folder. This command
+   * shows a quick pick over the workspace folders (name + path), keeps the
+   * pick as session state, and restarts the server through the SAME single-
+   * server start path as the active-document disambiguation — one server for
+   * one folder.
+   */
+  async selectWorkspaceRoot(): Promise<void> {
+    const folders = this.runtime.workspaceFolders();
+    if (folders.length === 0) {
+      this.warnWithOutput('ripr found no workspace folder to select.');
+      return;
+    }
+    if (folders.length === 1) {
+      await this.runtime.showInformationMessage(
+        'ripr has a single workspace folder; no workspace root selection is needed.'
+      );
+      return;
+    }
+    const selected = await this.runtime.showQuickPick(workspaceRootPickItems(folders), {
+      placeHolder: 'Select the workspace folder ripr should use for this session',
+      matchOnDescription: true
+    });
+    if (!selected) {
+      return;
+    }
+    this.selectedWorkspaceRoot = selected.root;
+    this.output.appendLine(`ripr workspace root selected for this session: ${selected.root}`);
+    await this.restart();
+  }
+
+  /**
+   * Apply the configured `ripr.trace.server` level to the running client
+   * without a restart (#2082): trace changes must not drop published
+   * diagnostics or force a full re-analysis. No-op when no client runs —
+   * the next start() applies the configured level anyway.
+   */
+  setTraceFromConfig(): void {
+    if (!this.client) {
+      return;
+    }
+    const config = this.runtime.getConfig();
+    this.client.setTrace(traceFromConfig(config.traceServer));
+    this.output.appendLine(`ripr server trace set to '${config.traceServer}' without a restart.`);
+  }
+
+  /**
+   * Whether the language client is currently bound and (nominally) running.
+   * Used by listeners (e.g. onDidChangeWorkspaceFolders) to decide whether a
+   * transition should trigger a fresh start, or whether the server is already
+   * up and a restart would just churn. This is a cheap nominal check; it does
+   * not probe the language-client's actual lifecycle state.
+   */
+  isRunning(): boolean {
+    return this.client !== undefined;
+  }
+
   async stop(): Promise<void> {
     const client = this.client;
-    this.client = undefined;
+    const starting = this.startingPromise;
+    // Bump the generation so any in-flight startOnce() detects that stop()
+    // ran during its async setup window. The captured start is awaited before
+    // the client is cleared or stopped, so a stop during startup cannot lose
+    // ownership of a client that may have started successfully. (#2822)
+    this.startGeneration++;
+
+    if (starting) {
+      const waitForLifecycle = this.runtime.waitForLifecycle ?? waitForLifecyclePromise;
+      await waitForLifecycle(
+        starting.catch(() => undefined),
+        DEFAULT_LIFECYCLE_SETTLE_BUDGET_MS,
+        'ripr server startup'
+      );
+    }
+
+    // The captured start's finally block clears this when it completes. A
+    // completed start has no remaining deduplication authority here.
+    if (this.startingPromise === starting) {
+      this.startingPromise = undefined;
+    }
+    if (client && this.client === client) {
+      await client.stop();
+      this.client = undefined;
+    }
     this.server = undefined;
+    this.receivedTypedAnalysisStatus = false;
+    this.typedAnalysisStatusState = undefined;
     this.firstUsefulAction = undefined;
     this.dirtyRiprDocuments.clear();
     while (this.notificationDisposables.length > 0) {
       this.notificationDisposables.pop()?.dispose();
-    }
-    if (client) {
-      await client.stop();
     }
     this.updateStatus({
       kind: 'stopped',
@@ -401,19 +855,24 @@ export class RiprClientController {
       return;
     }
 
-    if (target?.label === 'first_repair_packet' && typeof target.packet === 'string') {
+    const directPacketLabel = target?.label === 'first_repair_packet'
+      ? 'first repair packet'
+      : target?.label === 'gap_repair_packet'
+        ? 'gap repair packet'
+        : undefined;
+    if (directPacketLabel && target && typeof target.packet === 'string') {
       const packet = target.packet.trim();
       if (!packet) {
-        this.runtime.showInformationMessage('No ripr first repair packet is available for this diagnostic.');
+        this.runtime.showInformationMessage(`No ripr ${directPacketLabel} is available for this diagnostic.`);
         return;
       }
       try {
         await this.runtime.writeClipboard(packet);
-        this.runtime.showInformationMessage('Copied ripr first repair packet to clipboard.');
+        this.runtime.showInformationMessage(`Copied ripr ${directPacketLabel} to clipboard.`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.output.appendLine(`ripr copy first repair packet failed: ${message}`);
-        this.runtime.showWarningMessage('ripr could not copy the first repair packet. See ripr output for details.');
+        this.output.appendLine(`ripr copy ${directPacketLabel} failed: ${message}`);
+        this.warnWithOutput(`ripr could not copy the ${directPacketLabel}.`);
       }
       return;
     }
@@ -430,7 +889,7 @@ export class RiprClientController {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.output.appendLine(`ripr copy static-limit note failed: ${message}`);
-        this.runtime.showWarningMessage('ripr could not copy the static-limit note. See ripr output for details.');
+        this.warnWithOutput('ripr could not copy the static-limit note.');
       }
       return;
     }
@@ -453,6 +912,9 @@ export class RiprClientController {
           uri: target.uri,
           line: target.line,
         };
+        if (target.evidence_identity !== undefined) {
+          collectContextTarget.evidence_identity = target.evidence_identity;
+        }
         if (target.gap_id) {
           collectContextTarget.gap_id = target.gap_id;
           collectContextTarget.canonical_gap_id = target.canonical_gap_id;
@@ -507,7 +969,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr context failed: ${message}`);
-      this.runtime.showWarningMessage(`ripr context failed for ${selector}. See ripr output for details.`);
+      this.warnWithOutput(`ripr context failed for ${selector}.`);
     }
   }
 
@@ -549,7 +1011,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr start current repair failed to collect code actions: ${message}`);
-      this.runtime.showWarningMessage('ripr could not collect current repair actions. See ripr output for details.');
+      this.warnWithOutput('ripr could not collect current repair actions.');
       return;
     }
 
@@ -583,7 +1045,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy suggested assertion failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the suggested assertion. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the suggested assertion.');
     }
   }
 
@@ -599,12 +1061,24 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy targeted test brief failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the targeted test brief. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the targeted test brief.');
     }
   }
 
   async copyAgentLoopCommand(target?: RiprAgentLoopCommandTarget): Promise<void> {
-    const rootBlocker = this.repairActionRootBlocker();
+    // Invoked from the palette without a diagnostic target: say what to do
+    // instead of appearing to no-op (#2083). This must precede the root
+    // blocker check, which would otherwise swallow the guidance when no
+    // editor is active. Platform-neutral: Quick Fix is Ctrl+. on
+    // Windows/Linux and Cmd+. on macOS.
+    if (!target) {
+      this.runtime.showInformationMessage(
+        'ripr agent loop commands run from a ripr diagnostic: open a file with ripr diagnostics, use Quick Fix (Ctrl+. or Cmd+.) on one, and pick the agent command from there.'
+      );
+      return;
+    }
+
+    const rootBlocker = this.repairActionRootBlocker(uriFromTarget(target));
     if (rootBlocker) {
       this.runtime.showInformationMessage(rootBlocker);
       return;
@@ -621,11 +1095,15 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy agent loop command failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the agent loop command. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the agent loop command.');
     }
   }
 
   async copyCurrentRepairPacket(): Promise<void> {
+    if (!this.runtime.isWorkspaceTrusted()) {
+      this.runtime.showInformationMessage('ripr workspace is not trusted; repair packets are unavailable.');
+      return;
+    }
     await this.refreshSetupStatusFiles();
     const queue = this.setupStatus.actionableQueue;
     if (this.status.kind === 'stale' && actionableGapQueueCanBecomeStale(queue.state)) {
@@ -642,7 +1120,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy current repair packet failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the current repair packet. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the current repair packet.');
     }
   }
 
@@ -659,7 +1137,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy repo gap map failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the repo gap map. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the repo gap map.');
     }
   }
 
@@ -684,7 +1162,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr open first-pr packet failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not open the first-pr packet. See ripr output for details.');
+      this.warnWithOutput('ripr could not open the first-pr packet.');
     }
   }
 
@@ -702,6 +1180,55 @@ export class RiprClientController {
       return;
     }
     await this.copyFirstPrText(firstPrRepairPacket(packet), 'repair packet');
+  }
+
+  async copyRepairPacketAtCursor(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || !isRiprFileDocument(editor.document)) {
+      this.runtime.showInformationMessage('Open the diagnostic file before copying the repair packet at the cursor.');
+      return;
+    }
+    const rootBlocker = this.activeDocumentRootBlocker(editor.document);
+    if (rootBlocker) {
+      this.runtime.showInformationMessage(rootBlocker);
+      return;
+    }
+    const setupBlocker = setupRepairBlocker(this.statusContext());
+    if (setupBlocker) {
+      this.runtime.showInformationMessage(setupBlocker);
+      return;
+    }
+    const diagnostic = containingGapDiagnostic(editor);
+    if (!diagnostic) {
+      this.runtime.showInformationMessage('No ripr repair gap diagnostic contains the active selection.');
+      return;
+    }
+
+    let actions: Array<vscode.CodeAction | vscode.Command> | undefined;
+    try {
+      actions = await vscode.commands.executeCommand<Array<vscode.CodeAction | vscode.Command>>(
+        'vscode.executeCodeActionProvider',
+        editor.document.uri,
+        diagnostic.range
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copyRepairPacketAtCursor failed to collect code actions: ${message}`);
+      this.warnWithOutput('ripr could not collect the repair packet action at the cursor.');
+      return;
+    }
+
+    const packetCommand = (actions ?? [])
+      .map(commandForAction)
+      .find((command) =>
+        command?.command === 'ripr.copyContext' &&
+        (firstArgumentLabelIs(command, 'first_repair_packet') || firstArgumentLabelIs(command, 'gap_repair_packet'))
+      );
+    if (!packetCommand) {
+      this.runtime.showInformationMessage('No validated ripr repair packet is available for the diagnostic at the cursor.');
+      return;
+    }
+    await vscode.commands.executeCommand(packetCommand.command, ...(packetCommand.arguments ?? []));
   }
 
   async copyFirstPrVerifyCommand(): Promise<void> {
@@ -770,7 +1297,25 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr open related test failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not open the related test. See ripr output for details.');
+      this.warnWithOutput('ripr could not open the related test.');
+    }
+  }
+
+  async refreshDiagnostics(): Promise<void> {
+    const client = this.client;
+    if (!client) {
+      this.runtime.showInformationMessage('ripr diagnostics refresh requires a running server.');
+      return;
+    }
+    try {
+      await client.sendRequest('workspace/executeCommand', {
+        command: 'ripr.refresh',
+        arguments: []
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr refresh diagnostics failed: ${message}`);
+      this.warnWithOutput('ripr could not refresh diagnostics.');
     }
   }
 
@@ -852,12 +1397,24 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy first-pr ${label} failed: ${message}`);
-      this.runtime.showWarningMessage(`ripr could not copy the first-pr ${label}. See ripr output for details.`);
+      this.warnWithOutput(`ripr could not copy the first-pr ${label}.`);
     }
   }
 
   showOutput(): void {
     this.output.show();
+  }
+
+  private warnWithOutput(message: string): void {
+    void Promise.resolve(this.runtime.showWarningMessage(message, SHOW_OUTPUT_ACTION))
+      .then((choice) => {
+        if (choice === SHOW_OUTPUT_ACTION) {
+          this.showOutput();
+        }
+      })
+      .catch((error) => {
+        this.output.appendLine(`ripr warning notification failed: ${String(error)}`);
+      });
   }
 
   showStatus(): Promise<void> {
@@ -871,6 +1428,9 @@ export class RiprClientController {
   private handleServerLog(params: unknown): void {
     const message = serverLogMessage(params);
     if (!message) {
+      return;
+    }
+    if (this.shouldSuppressRefreshLifecycleLog(message)) {
       return;
     }
     if (message.startsWith('ripr analysis refresh queued')) {
@@ -906,6 +1466,112 @@ export class RiprClientController {
     }
   }
 
+  private handleAnalysisStatus(params: unknown): void {
+    const status = analysisStatusPayload(params);
+    if (!status) {
+      return;
+    }
+    this.receivedTypedAnalysisStatus = true;
+    this.typedAnalysisStatusState = status.state;
+    if (status.root_state && status.root_state !== 'selected_single_root') {
+      const rootDetail = analysisRootStatusDetail(status);
+      const rootKind: RiprStatusKind = status.root_state === 'workspace_ambiguous'
+        ? 'workspaceAmbiguous'
+        : status.root_state === 'root_changed'
+          ? 'stale'
+          : 'noWorkspace';
+      this.updateStatus({
+        kind: rootKind,
+        summary: status.root_state === 'workspace_ambiguous'
+          ? 'ripr workspace root is ambiguous.'
+          : status.root_state === 'root_changed'
+            ? 'ripr workspace root changed; retained evidence is unavailable.'
+            : 'ripr has no usable workspace root.',
+        detail: `${analysisStatusDetail(status)}\n${rootDetail}`,
+        nextStep: status.root_recovery_route === 'refresh'
+          ? 'Refresh the saved workspace to obtain current evidence for the new root.'
+          : 'Run ripr: Select Workspace Root, or open a file in one workspace folder, then run ripr: Restart Server.'
+      });
+      return;
+    }
+    const failure = status.failure && typeof status.failure === 'object'
+      ? status.failure as Record<string, unknown>
+      : undefined;
+    const failureMessage = typeof failure?.message === 'string'
+      ? failure.message
+      : 'The last analysis attempt failed.';
+    const retry = typeof status.retry_command === 'string'
+      ? status.retry_command
+      : 'ripr: Restart Server';
+    const retained = status.snapshot_id ? ' The last completed snapshot remains available but is stale.' : '';
+    switch (status.state) {
+      case 'queued':
+        this.updateStatus({
+          kind: 'analysisQueued',
+          summary: 'ripr saved-workspace analysis is queued.',
+          detail: analysisStatusDetail(status),
+          nextStep: 'Wait for the current saved-workspace analysis refresh to finish.'
+        });
+        return;
+      case 'running':
+        this.updateStatus({
+          kind: 'analysisRunning',
+          summary: 'ripr saved-workspace analysis is running.',
+          detail: analysisStatusDetail(status),
+          nextStep: 'Wait for the current saved-workspace analysis refresh to finish.'
+        });
+        return;
+      case 'failed':
+        this.updateStatus({
+          kind: 'analysisFailed',
+          summary: 'ripr analysis failed; last-known-good evidence is retained.',
+          detail: `${analysisStatusDetail(status)}\n${failureMessage}${retained}`,
+          nextStep: `Run ${retry} to retry the saved-workspace analysis.`
+        });
+        return;
+      case 'cancelled':
+      case 'superseded':
+        this.updateStatus({
+          kind: 'stale',
+          summary: `ripr analysis ${status.state}; retained evidence is stale.`,
+          detail: analysisStatusDetail(status),
+          nextStep: `Run ${retry} to obtain a current saved-workspace snapshot.`
+        });
+        return;
+      case 'succeeded':
+        if (status.run_status === 'stale' || this.dirtyRiprDocuments.size > 0) {
+          const dirtyDetail = this.dirtyRiprDocuments.size > 0
+            ? [
+              analysisStatusDetail(status),
+              'Current diagnostics describe the last saved workspace state.',
+              `Unsaved routed files: ${Array.from(this.dirtyRiprDocuments).join(', ')}`
+            ].join('\n')
+            : analysisStatusDetail(status);
+          this.updateStatus({
+            kind: 'stale',
+            summary: this.dirtyRiprDocuments.size > 0
+              ? 'ripr analysis completed, but unsaved routed-file changes remain.'
+              : 'ripr analysis completed with stale or limited evidence.',
+            detail: dirtyDetail,
+            nextStep: this.dirtyRiprDocuments.size > 0
+              ? 'Save the file, then wait for ripr to refresh saved-workspace diagnostics.'
+              : `Run ${retry} after resolving the reported limitation.`
+          });
+        } else {
+          this.updateStatus({
+            kind: 'analysisReady',
+            summary: 'ripr saved-workspace analysis completed.',
+            detail: analysisStatusDetail(status),
+            nextStep: 'Inspect diagnostics, then use bounded ripr hover and code actions for one focused test.'
+          });
+        }
+        void this.refreshFirstUsefulActionStatus();
+        return;
+      default:
+        return;
+    }
+  }
+
   private statusAfterRefreshCompleted(message: string): RiprStatusState {
     if (this.dirtyRiprDocuments.size === 0) {
       return statusFromRefreshCompletedMessage(message);
@@ -921,6 +1587,12 @@ export class RiprClientController {
     };
   }
 
+  private shouldSuppressRefreshLifecycleLog(message: string): boolean {
+    return this.receivedTypedAnalysisStatus
+      && this.typedAnalysisStatusState !== 'succeeded'
+      && isRefreshLifecycleLog(message);
+  }
+
   private updateStatus(status: RiprStatusState): void {
     this.status = status;
     this.renderStatusBar();
@@ -933,6 +1605,15 @@ export class RiprClientController {
     this.statusBar.text = statusText(this.status.kind, this.firstUsefulAction);
     this.statusBar.tooltip = statusTooltip(this.status, this.firstUsefulAction, this.statusContext());
     this.statusBar.command = 'ripr.showStatus';
+    // Set background and foreground colors so error and warning states are
+    // visible at a glance — otherwise `ripr: failed` and `ripr: ready` differ
+    // only in codicon, which is hard to read in peripheral vision. VS Code's
+    // documented convention is red for errors, yellow for warnings. When no
+    // color applies (idle/OK/transient), both are cleared so the theme
+    // default re-applies.
+    const colors = statusBarColors(this.status.kind);
+    this.statusBar.backgroundColor = colors?.background;
+    this.statusBar.color = colors?.foreground;
     this.statusBar.show();
   }
 
@@ -1044,7 +1725,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copyTopRepairPacket clipboard write failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the repair packet. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the repair packet.');
     }
   }
 
@@ -1072,7 +1753,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copyTopVerifyCommand clipboard write failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the verify command. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the verify command.');
     }
   }
 
@@ -1100,7 +1781,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copyTopReceiptCommand clipboard write failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the receipt command. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the receipt command.');
     }
   }
 
@@ -1133,14 +1814,14 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr open report failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not open the report. See ripr output for details.');
+      this.warnWithOutput('ripr could not open the report.');
     }
   }
 
   async showTopLimitation(): Promise<void> {
     const client = this.client;
     if (!client) {
-      this.runtime.showInformationMessage('No active limitations — analysis appears clean.');
+      this.runtime.showInformationMessage('RIPR has not completed an analysis snapshot yet.');
       return;
     }
     let response: Record<string, unknown> | null = null;
@@ -1157,12 +1838,14 @@ export class RiprClientController {
       this.output.appendLine(`ripr collectTopLimitation failed: ${message}`);
     }
     if (response === null) {
-      this.runtime.showInformationMessage('No active limitations — analysis appears clean.');
+      this.runtime.showInformationMessage('RIPR could not report workspace limitation status.');
       return;
     }
     const status = typeof response['status'] === 'string' ? response['status'] : undefined;
-    if (status === 'no_limitation') {
-      this.runtime.showInformationMessage('No active limitations — analysis appears clean.');
+    if (status === 'no_active_limitation_in_current_scope') {
+      this.runtime.showInformationMessage(
+        'No active limitation was reported in the current RIPR analysis scope; this is not an all-clear.'
+      );
       return;
     }
     const category = typeof response['limitation_category'] === 'string' ? response['limitation_category'] : '';
@@ -1183,7 +1866,7 @@ export class RiprClientController {
       this.output.appendLine(`  unlock_condition: ${unlock}`);
     }
     this.output.show();
-    const summary = category || repairRoute || 'See ripr output for limitation details.';
+    const summary = status || category || repairRoute || 'See ripr output for limitation details.';
     this.runtime.showInformationMessage(`ripr top limitation: ${summary}`);
   }
 
@@ -1267,7 +1950,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copyReceiptCommand clipboard write failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not copy the receipt command. See ripr output for details.');
+      this.warnWithOutput('ripr could not copy the receipt command.');
     }
   }
 
@@ -1292,7 +1975,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr openAttemptLedger failed: ${message}`);
-      this.runtime.showWarningMessage('ripr could not open the attempt ledger. See ripr output for details.');
+      this.warnWithOutput('ripr could not open the attempt ledger.');
     }
   }
 
@@ -1302,9 +1985,7 @@ export class RiprClientController {
       this.runtime.showInformationMessage('No route quality available — server not responding.');
       return;
     }
-    const routeQualitySummary = typeof response['route_quality_summary'] === 'string'
-      ? response['route_quality_summary']
-      : 'not_available';
+    const routeQualitySummary = formatRouteQualitySummary(response['route_quality_summary']) ?? 'not_available';
 
     this.output.appendLine(`ripr route quality: ${routeQualitySummary}`);
     this.output.show();
@@ -1352,6 +2033,10 @@ export class RiprClientController {
   }
 
   private async resolveServerForCommand(config: RiprConfig): Promise<ResolvedServer | undefined> {
+    if (!this.runtime.isWorkspaceTrusted()) {
+      this.output.appendLine('ripr workspace is not trusted; refusing to resolve server for command.');
+      return undefined;
+    }
     const server = await this.runtime.resolveServer(this.context, config, this.output);
     if ('command' in server) {
       this.server = server;
@@ -1364,14 +2049,34 @@ export class RiprClientController {
   private async showMissingServerMessage(summary: string, detail: string): Promise<void> {
     this.output.appendLine(summary);
     this.output.appendLine(detail);
+    // Name the actual failure (HTTP/checksum/manifest) in the popup body —
+    // the hard-coded generic message alone sent users down Retry loops and
+    // install paths that could not fix it (#2078). When resolution fell all
+    // the way through, `summary` IS the generic message and the real cause
+    // is the first detail line; prefer it so the popup never reads
+    // "not available: not available" (#2078 review).
+    const cause = summary === 'ripr server is not available.'
+      ? detail.split('\n')[0] || summary
+      : summary;
+    const separator = cause.endsWith('.') ? '' : '.';
     const selection = await this.runtime.showErrorMessage(
-      'ripr server is not available. Enable automatic download, install with `cargo install ripr`, or set `ripr.server.path`.',
+      `ripr server is not available: ${cause}${separator} Enable automatic download, install with \`cargo install ripr\`, or set \`ripr.server.path\` (\`ripr.server.downloadBaseUrl\` for a mirror).`,
       'Open Settings',
+      'Copy Diagnostic',
       'Copy Install Command',
       'Retry'
     );
     if (selection === 'Open Settings') {
       await vscode.commands.executeCommand('workbench.action.openSettings', 'ripr.server');
+    } else if (selection === 'Copy Diagnostic') {
+      try {
+        await this.runtime.writeClipboard(`ripr server is not available\n${summary}\n${detail}`);
+        this.runtime.showInformationMessage('Copied the ripr server diagnostic to the clipboard.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.output.appendLine(`ripr copy server diagnostic failed: ${message}`);
+        this.warnWithOutput('ripr could not copy the server diagnostic.');
+      }
     } else if (selection === 'Copy Install Command') {
       await this.runtime.writeClipboard('cargo install ripr');
     } else if (selection === 'Retry') {
@@ -1421,34 +2126,6 @@ export class RiprClientController {
 interface RiprSetupArtifactDefinition {
   label: string;
   relativePath: string;
-}
-
-type RiprStatusKind =
-  | 'disabled'
-  | 'noWorkspace'
-  | 'workspaceAmbiguous'
-  | 'resolvingServer'
-  | 'serverUnavailable'
-  | 'starting'
-  | 'analysisQueued'
-  | 'ready'
-  | 'analysisRunning'
-  | 'analysisReady'
-  | 'gapActionable'
-  | 'gapNoAction'
-  | 'gapArtifactWarning'
-  | 'noActionableSeams'
-  | 'noEnabledLanguages'
-  | 'stale'
-  | 'analysisFailed'
-  | 'stopped';
-
-interface RiprStatusState {
-  kind: RiprStatusKind;
-  summary: string;
-  detail?: string;
-  enabledLanguages?: string[];
-  nextStep?: string;
 }
 
 interface RiprStatusContext {
@@ -1528,66 +2205,6 @@ export interface RiprActionableGapQueueStatus {
   projectionExclusionReasons?: string[];
 }
 
-export type RiprFirstPrPacketState =
-  | 'found'
-  | 'topRepairableGap'
-  | 'noAction'
-  | 'blocked'
-  | 'missing'
-  | 'malformed'
-  | 'unsupportedSchema'
-  | 'wrongRoot'
-  | 'unsafePath'
-  | 'unsafeCommand'
-  | 'unreadable'
-  | 'noWorkspace';
-
-export interface RiprFirstPrPacketStatus {
-  relativePath: string;
-  markdownRelativePath?: string;
-  path?: string;
-  markdownPath?: string;
-  state: RiprFirstPrPacketState;
-  detail?: string;
-  status?: string;
-  selectedState?: string;
-  selectedKind?: string;
-  changedBehavior?: string;
-  currentEvidenceStrength?: string;
-  missingDiscriminator?: string;
-  focusedProofIntent?: string;
-  staticEvidenceBoundary?: string;
-  why?: string;
-  gapId?: string;
-  canonicalGapId?: string;
-  repairRoute?: string;
-  suggestedAssertion?: string;
-  verifyCommand?: string;
-  receiptCommand?: string;
-  receiptPath?: string;
-  relatedTest?: string;
-  repairTarget?: string;
-  repoRoot?: string;
-  warningCount?: number;
-}
-
-interface FirstUsefulActionStatus {
-  status: string;
-  actionKind: string;
-  title: string;
-  generatedAt?: string;
-  seamId?: string;
-  selectedLocation?: string;
-  missingDiscriminator?: string;
-  target?: string;
-  relatedTest?: string;
-  verifyCommand?: string;
-  receiptCommand?: string;
-  fallback?: string;
-  reportPath: string;
-  warningCount: number;
-}
-
 type RiprReceiptArtifactState =
   | 'found'
   | 'missing'
@@ -1606,75 +2223,6 @@ interface RiprReceiptArtifactStatus {
   movement?: string;
   repoRoot?: string;
   generatedAt?: string;
-}
-
-function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus): string {
-  if (firstAction && shouldInlineFirstUsefulAction(kind)) {
-    if (
-      firstAction.status === 'stale' ||
-      firstAction.status === 'missing_required_artifact' ||
-      firstAction.status === 'unchanged_after_attempt'
-    ) {
-      return '$(warning) ripr: first action';
-    }
-    if (
-      firstAction.status === 'already_improved' ||
-      firstAction.status === 'baseline_only' ||
-      firstAction.status === 'no_actionable_seam' ||
-      firstAction.status === 'suppressed' ||
-      firstAction.status === 'acknowledged' ||
-      firstAction.status === 'waived'
-    ) {
-      return '$(pass) ripr: first action';
-    }
-    return '$(lightbulb) ripr: first action';
-  }
-  switch (kind) {
-    case 'disabled':
-      return '$(circle-slash) ripr: disabled';
-    case 'noWorkspace':
-      return '$(folder) ripr: open workspace';
-    case 'workspaceAmbiguous':
-      return '$(warning) ripr: select root';
-    case 'resolvingServer':
-      return '$(sync~spin) ripr: resolving';
-    case 'serverUnavailable':
-      return '$(warning) ripr: server missing';
-    case 'starting':
-      return '$(sync~spin) ripr: starting';
-    case 'ready':
-      return '$(pass) ripr: ready';
-    case 'analysisQueued':
-      return '$(clock) ripr: queued';
-    case 'analysisRunning':
-      return '$(sync~spin) ripr: analyzing';
-    case 'analysisReady':
-      return '$(check) ripr: diagnostics';
-    case 'gapActionable':
-      return '$(lightbulb) ripr: gap ready';
-    case 'gapNoAction':
-      return '$(pass) ripr: gap clear';
-    case 'gapArtifactWarning':
-      return '$(warning) ripr: gap blocked';
-    case 'noActionableSeams':
-      return '$(circle-slash) ripr: no seams';
-    case 'noEnabledLanguages':
-      return '$(circle-slash) ripr: languages off';
-    case 'stale':
-      return '$(warning) ripr: stale';
-    case 'analysisFailed':
-      return '$(error) ripr: failed';
-    case 'stopped':
-    default:
-      return 'ripr: stopped';
-  }
-}
-
-function statusSummary(status: RiprStatusState, firstAction?: FirstUsefulActionStatus): string {
-  if (!firstAction || !shouldInlineFirstUsefulAction(status.kind)) {
-    return status.summary;
-  }
-  return `${status.summary} First useful action: ${firstAction.title}`;
 }
 
 function statusTooltip(
@@ -1843,11 +2391,6 @@ function setupRepairBlocker(context: RiprStatusContext): string | undefined {
   return undefined;
 }
 
-function extensionVersion(context: vscode.ExtensionContext): string {
-  const version = context.extension?.packageJSON?.version;
-  return typeof version === 'string' && version.trim() !== '' ? version.replace(/^v/, '') : '0.8.0';
-}
-
 function workspaceTrustState(context: RiprStatusContext): RiprSetupState {
   if (!context.workspaceRoot) {
     return 'workspace_not_open';
@@ -1883,12 +2426,6 @@ function actionableGapQueueStoredInTarget(queue: RiprActionableGapQueueStatus): 
   return queue.state !== 'missing'
     && queue.state !== 'noWorkspace'
     && queue.relativePath.startsWith('target/ripr/');
-}
-
-function firstPrPacketStoredInTarget(packet: RiprFirstPrPacketStatus): boolean {
-  return packet.state !== 'missing'
-    && packet.state !== 'noWorkspace'
-    && packet.relativePath.startsWith('target/ripr/');
 }
 
 function riprServerVersionState(context: RiprStatusContext): { state: RiprSetupState; detail?: string } {
@@ -2581,320 +3118,12 @@ function firstPrPacketStatusLines(
   }
 }
 
-function firstPrPacketCanBecomeStale(state: RiprFirstPrPacketState): boolean {
-  return state === 'found'
-    || state === 'topRepairableGap'
-    || state === 'noAction'
-    || state === 'blocked';
-}
-
 function actionableGapQueueCanBecomeStale(state: RiprActionableGapQueueState): boolean {
   return state === 'topActionableGap'
     || state === 'noAction'
     || state === 'reportOnly'
     || state === 'staticLimitOnly'
     || state === 'blocked';
-}
-
-function firstPrPacketAllowsSummary(state: RiprFirstPrPacketState): boolean {
-  return state === 'found'
-    || state === 'topRepairableGap'
-    || state === 'noAction';
-}
-
-function firstPrPacketAllowsOpen(state: RiprFirstPrPacketState): boolean {
-  return state === 'found'
-    || state === 'topRepairableGap'
-    || state === 'noAction';
-}
-
-function firstPrHasRepairPacket(packet: RiprFirstPrPacketStatus): boolean {
-  return Boolean(
-    (packet.canonicalGapId ?? packet.gapId) &&
-    packet.repairRoute &&
-    (packet.relatedTest || packet.repairTarget) &&
-    packet.verifyCommand &&
-    packet.receiptCommand
-  );
-}
-
-function firstPrSuppressedMessage(packet: RiprFirstPrPacketStatus): string {
-  switch (packet.state) {
-    case 'missing':
-      return 'ripr first-pr packet is missing; run cargo xtask first-pr after verify/receipt artifacts exist.';
-    case 'unreadable':
-      return 'ripr first-pr packet is unreadable; bounded first-pr actions are suppressed.';
-    case 'malformed':
-    case 'unsupportedSchema':
-      return 'ripr first-pr packet is malformed or unsupported; bounded first-pr actions are suppressed.';
-    case 'wrongRoot':
-      return 'ripr first-pr packet belongs to another workspace; bounded first-pr actions are suppressed.';
-    case 'unsafePath':
-      return 'ripr first-pr packet references an unsafe path; bounded first-pr actions are suppressed.';
-    case 'unsafeCommand':
-      return 'ripr first-pr packet contains an unsafe command; copy-command actions are suppressed.';
-    case 'noAction':
-      return 'ripr first-pr packet has no actionable gap; no repair packet is projected.';
-    case 'blocked':
-      return 'ripr first-pr packet is blocked; copy regeneration guidance before acting.';
-    case 'noWorkspace':
-      return 'Open a workspace before using ripr first-pr packet actions.';
-    case 'found':
-    case 'topRepairableGap':
-      return 'ripr first-pr packet does not contain a bounded action for this command.';
-  }
-}
-
-function firstPrSummaryPacket(packet: RiprFirstPrPacketStatus): string {
-  const lines = [
-    'RIPR first-pr summary',
-    '',
-    `State: ${packet.state}`,
-    `Packet: ${packet.markdownRelativePath ?? packet.relativePath}`
-  ];
-  if (packet.selectedState) {
-    lines.push(`Selected state: ${packet.selectedState}`);
-  }
-  if (packet.canonicalGapId ?? packet.gapId) {
-    lines.push(`Gap identity: ${packet.canonicalGapId ?? packet.gapId}`);
-  }
-  if (packet.selectedKind) {
-    lines.push(`Gap kind: ${packet.selectedKind}`);
-  }
-  if (packet.changedBehavior) {
-    lines.push(`Changed behavior: ${packet.changedBehavior}`);
-  }
-  if (packet.currentEvidenceStrength) {
-    lines.push(`Current evidence strength: ${packet.currentEvidenceStrength}`);
-  }
-  if (packet.missingDiscriminator) {
-    lines.push(`Missing discriminator: ${packet.missingDiscriminator}`);
-  }
-  if (packet.focusedProofIntent) {
-    lines.push(`Focused proof intent: ${packet.focusedProofIntent}`);
-  }
-  if (packet.why) {
-    lines.push(`Why this matters: ${packet.why}`);
-  }
-  if (packet.relatedTest) {
-    lines.push(`Related test: ${packet.relatedTest}`);
-  }
-  if (packet.repairTarget) {
-    lines.push(`Repair target: ${packet.repairTarget}`);
-  }
-  if (packet.verifyCommand) {
-    lines.push(`Verify command: ${packet.verifyCommand}`);
-  }
-  if (packet.receiptCommand) {
-    lines.push(`Receipt command: ${packet.receiptCommand}`);
-  }
-  if (packet.receiptPath) {
-    lines.push(`Receipt path: ${packet.receiptPath}`);
-  }
-  lines.push(`Warnings: ${packet.warningCount ?? 0}`);
-  lines.push('');
-  lines.push('Limits and non-claims:');
-  lines.push(`- ${packet.staticEvidenceBoundary ?? FIRST_PR_STATIC_EVIDENCE_BOUNDARY}`);
-  lines.push('- Does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
-  lines.push('- Does not edit source, generate tests, publish PR comments, or run providers.');
-  return lines.join('\n');
-}
-
-function firstPrRepairPacket(packet: RiprFirstPrPacketStatus): string {
-  const lines = [
-    'RIPR first-pr repair packet',
-    '',
-    `First PR packet: ${packet.markdownRelativePath ?? packet.relativePath}`,
-    `Gap identity: ${packet.canonicalGapId ?? packet.gapId ?? 'unknown'}`
-  ];
-  if (packet.selectedKind) {
-    lines.push(`Gap kind: ${packet.selectedKind}`);
-  }
-  if (packet.changedBehavior) {
-    lines.push(`Changed behavior: ${packet.changedBehavior}`);
-  }
-  if (packet.currentEvidenceStrength) {
-    lines.push(`Current evidence strength: ${packet.currentEvidenceStrength}`);
-  }
-  if (packet.missingDiscriminator) {
-    lines.push(`Missing discriminator: ${packet.missingDiscriminator}`);
-  }
-  if (packet.focusedProofIntent) {
-    lines.push(`Focused proof intent: ${packet.focusedProofIntent}`);
-  }
-  if (packet.why) {
-    lines.push(`Why this matters: ${packet.why}`);
-  }
-  if (packet.repairRoute) {
-    lines.push(`Repair route: ${packet.repairRoute}`);
-  }
-  if (packet.repairTarget) {
-    lines.push(`Repair target: ${packet.repairTarget}`);
-  }
-  if (packet.relatedTest) {
-    lines.push(`Related test: ${packet.relatedTest}`);
-  }
-  if (packet.suggestedAssertion) {
-    lines.push(`Suggested assertion: ${packet.suggestedAssertion}`);
-  }
-  lines.push('');
-  lines.push('Verify command:');
-  lines.push(packet.verifyCommand ?? 'not available');
-  lines.push('');
-  lines.push('Receipt command:');
-  lines.push(packet.receiptCommand ?? 'not available');
-  if (packet.receiptPath) {
-    lines.push('');
-    lines.push('Receipt path:');
-    lines.push(packet.receiptPath);
-  }
-  lines.push('');
-  lines.push('Instructions:');
-  lines.push('- Add one focused test for this gap.');
-  lines.push('- Do not broaden scope.');
-  lines.push('- Run the verify command, then emit the receipt.');
-  lines.push('- Return the receipt path and result.');
-  lines.push('');
-  lines.push('Limits and non-claims:');
-  lines.push(`- ${packet.staticEvidenceBoundary ?? FIRST_PR_STATIC_EVIDENCE_BOUNDARY}`);
-  lines.push('- Does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
-  lines.push('- Does not edit source, generate tests, publish PR comments, or run providers.');
-  return lines.join('\n');
-}
-
-function firstPrRegenerationGuidance(packet: RiprFirstPrPacketStatus): string {
-  const lines = [
-    'RIPR first-pr regeneration guidance',
-    '',
-    `Current state: ${packet.state}`,
-    `Packet: ${packet.relativePath}`
-  ];
-  if (packet.detail) {
-    lines.push(`Detail: ${packet.detail}`);
-  }
-  if (packet.selectedState) {
-    lines.push(`Selected state: ${packet.selectedState}`);
-  }
-  lines.push('');
-  lines.push('Next safe action:');
-  lines.push('cargo xtask first-pr');
-  lines.push('');
-  lines.push('Limits and non-claims:');
-  lines.push('- This is copied guidance only; the editor does not run the command.');
-  lines.push('- Regenerate first-pr artifacts for the current workspace before carrying evidence into PR review.');
-  return lines.join('\n');
-}
-
-function diagnosticMatchesFirstPrPacket(
-  diagnostic: vscode.Diagnostic,
-  packet: RiprFirstPrPacketStatus
-): boolean {
-  const packetIds = [
-    packet.canonicalGapId,
-    packet.gapId
-  ].filter((value): value is string => value !== undefined);
-  if (packetIds.length === 0) {
-    return false;
-  }
-  const diagnosticIds = [
-    diagnosticDataString(diagnostic, 'canonical_gap_id'),
-    diagnosticDataString(diagnostic, 'gap_id'),
-    diagnosticDataString(diagnostic, 'seam_id'),
-    diagnosticDataString(diagnostic, 'finding_id')
-  ].filter((value): value is string => value !== undefined);
-  return packetIds.some((packetId) => diagnosticIds.includes(packetId));
-}
-
-function diagnosticDataString(diagnostic: vscode.Diagnostic, field: string): string | undefined {
-  const data = (diagnostic as unknown as { data?: unknown }).data;
-  if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    return undefined;
-  }
-  const value = (data as Record<string, unknown>)[field];
-  return typeof value === 'string' && value.trim() !== '' ? value : undefined;
-}
-
-function firstPrTopRepairableGapLines(packet: RiprFirstPrPacketStatus): string[] {
-  const lines = [
-    `First PR packet: top repairable gap available; ${packet.relativePath} is advisory.`,
-    `Packet: ${packet.markdownRelativePath ?? packet.relativePath}`
-  ];
-  if (packet.canonicalGapId ?? packet.gapId) {
-    lines.push(`Gap identity: ${packet.canonicalGapId ?? packet.gapId}`);
-  }
-  if (packet.changedBehavior) {
-    lines.push(`Changed behavior: ${packet.changedBehavior}`);
-  }
-  if (packet.currentEvidenceStrength) {
-    lines.push(`Current evidence strength: ${packet.currentEvidenceStrength}`);
-  }
-  if (packet.missingDiscriminator) {
-    lines.push(`Missing discriminator: ${packet.missingDiscriminator}`);
-  }
-  if (packet.focusedProofIntent) {
-    lines.push(`Focused proof intent: ${packet.focusedProofIntent}`);
-  }
-  if (packet.relatedTest) {
-    lines.push(`Related test: ${packet.relatedTest}`);
-  }
-  if (packet.repairTarget) {
-    lines.push(`Repair target: ${packet.repairTarget}`);
-  }
-  if (packet.verifyCommand) {
-    lines.push(`Verify: ${packet.verifyCommand}`);
-  }
-  if (packet.receiptCommand) {
-    lines.push(`Receipt: ${packet.receiptCommand}`);
-  }
-  if (packet.receiptPath) {
-    lines.push(`Receipt path: ${packet.receiptPath}`);
-  }
-  lines.push(`Warnings: ${packet.warningCount ?? 0}`);
-  lines.push(`Boundary: ${packet.staticEvidenceBoundary ?? FIRST_PR_STATIC_EVIDENCE_BOUNDARY}`);
-  lines.push('First PR packet does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
-  return lines;
-}
-
-function firstPrBlockedPacketLines(packet: RiprFirstPrPacketStatus): string[] {
-  switch (packet.selectedState) {
-    case 'missing_artifact':
-      return [
-        `First PR packet: missing; ${packet.relativePath} reports a missing upstream artifact.`,
-        'Regenerate the named artifact, then rerun cargo xtask first-pr.',
-        'First PR packet repair claims are suppressed.'
-      ];
-    case 'stale_artifact':
-      return [
-        `First PR packet: stale; ${packet.relativePath} reports stale upstream evidence.`,
-        'Refresh saved-workspace evidence and rerun cargo xtask first-pr before acting.',
-        'First PR packet repair claims are suppressed.'
-      ];
-    case 'wrong_root':
-      return [
-        `First PR packet: wrong root; ${packet.relativePath} reports an upstream artifact for another workspace.`,
-        'Regenerate first-pr inputs for the current workspace.',
-        'First PR packet repair claims are suppressed.'
-      ];
-    case 'malformed_artifact':
-      return [
-        `First PR packet: malformed; ${packet.relativePath} reports a malformed upstream artifact.`,
-        'Regenerate the malformed artifact, then rerun cargo xtask first-pr.',
-        'First PR packet repair claims are suppressed.'
-      ];
-    case 'timeout':
-      return [
-        `First PR packet: blocked; ${packet.relativePath} reports a timeout while composing first-pr evidence.`,
-        'Rerun cargo xtask first-pr or inspect the blocked artifact before acting.',
-        'First PR packet repair claims are suppressed.'
-      ];
-    case 'blocked_artifact':
-    default:
-      return [
-        `First PR packet: blocked; ${packet.relativePath} reports ${packet.selectedState ?? 'blocked_artifact'}.`,
-        'Inspect or regenerate first-pr inputs before carrying evidence into PR review.',
-        'First PR packet repair claims are suppressed.'
-      ];
-  }
 }
 
 function receiptStatusLines(
@@ -3015,30 +3244,76 @@ function parseTimestamp(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function canProjectFirstUsefulAction(kind: RiprStatusKind): boolean {
-  return kind === 'starting'
-    || kind === 'analysisQueued'
-    || kind === 'analysisRunning'
-    || kind === 'analysisReady'
-    || kind === 'gapActionable'
-    || kind === 'gapNoAction'
-    || kind === 'noActionableSeams'
-    || kind === 'noEnabledLanguages'
-    || kind === 'ready';
-}
-
-function shouldInlineFirstUsefulAction(kind: RiprStatusKind): boolean {
-  return canProjectFirstUsefulAction(kind)
-    && kind !== 'gapActionable'
-    && kind !== 'gapNoAction';
-}
-
 function serverLogMessage(params: unknown): string | undefined {
   if (!params || typeof params !== 'object' || !('message' in params)) {
     return undefined;
   }
   const message = (params as { message?: unknown }).message;
   return typeof message === 'string' ? message : undefined;
+}
+
+interface RiprAnalysisStatusPayload {
+  schema_version: string;
+  kind: string;
+  state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'superseded' | 'stopped';
+  run_status?: string;
+  attempt_id?: string | null;
+  snapshot_id?: string | null;
+  retry_command?: string;
+  failure?: unknown;
+  pending?: boolean;
+  root_state?: string;
+  effective_root?: string | null;
+  candidate_roots?: string[];
+  root_input_identity?: string | null;
+  root_detail?: string | null;
+  root_recovery_route?: string;
+}
+
+function analysisStatusPayload(params: unknown): RiprAnalysisStatusPayload | undefined {
+  if (!params || typeof params !== 'object') {
+    return undefined;
+  }
+  const candidate = params as Partial<RiprAnalysisStatusPayload>;
+  if (candidate.schema_version !== '0.1' || candidate.kind !== 'analysis_status') {
+    return undefined;
+  }
+  const states = new Set<RiprAnalysisStatusPayload['state']>([
+    'queued', 'running', 'succeeded', 'failed', 'cancelled', 'superseded', 'stopped'
+  ]);
+  if (typeof candidate.state !== 'string' || !states.has(candidate.state as RiprAnalysisStatusPayload['state'])) {
+    return undefined;
+  }
+  return candidate as RiprAnalysisStatusPayload;
+}
+
+function analysisStatusDetail(status: RiprAnalysisStatusPayload): string {
+  const fields = [
+    `state=${status.state}`,
+    status.attempt_id ? `attempt=${status.attempt_id}` : undefined,
+    status.run_status ? `run_status=${status.run_status}` : undefined,
+    status.snapshot_id ? `snapshot=${status.snapshot_id}` : undefined,
+    status.pending ? 'pending=latest' : undefined
+  ].filter((field): field is string => Boolean(field));
+  return `ripr typed analysis status: ${fields.join(', ')}`;
+}
+
+function analysisRootStatusDetail(status: RiprAnalysisStatusPayload): string {
+  const candidates = status.candidate_roots?.filter((root) => root.length > 0) ?? [];
+  return [
+    `root_state=${status.root_state ?? 'unknown'}`,
+    status.effective_root ? `effective_root=${status.effective_root}` : undefined,
+    candidates.length > 0 ? `candidate_roots=${candidates.join('|')}` : undefined,
+    status.root_detail ?? undefined,
+    status.root_recovery_route ? `recovery=${status.root_recovery_route}` : undefined
+  ].filter((field): field is string => Boolean(field)).join(', ');
+}
+
+function isRefreshLifecycleLog(message: string): boolean {
+  return message.startsWith('ripr analysis refresh queued')
+    || message.startsWith('ripr analysis refresh started')
+    || message.startsWith('ripr analysis refresh completed')
+    || message.startsWith('ripr analysis refresh failed');
 }
 
 function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
@@ -3215,18 +3490,6 @@ function lineFromTarget(target: RiprContextTarget | undefined): number | undefin
   return Math.floor(target.line);
 }
 
-function traceFromConfig(trace: RiprConfig['traceServer']): Trace {
-  switch (trace) {
-    case 'messages':
-      return Trace.Messages;
-    case 'verbose':
-      return Trace.Verbose;
-    case 'off':
-    default:
-      return Trace.Off;
-  }
-}
-
 function firstUsefulActionReportPath(workspaceRoot: string): string {
   return path.join(workspaceRoot, 'target', 'ripr', 'reports', 'first-useful-action.json');
 }
@@ -3318,10 +3581,6 @@ function setupNoWorkspaceFile(label: string, relativePath: string): RiprSetupFil
     state: 'noWorkspace',
     detail: 'open a workspace before matching saved-workspace files'
   };
-}
-
-function setupFilePath(workspaceRoot: string, relativePath: string): string {
-  return path.join(workspaceRoot, ...relativePath.split('/'));
 }
 
 export async function readActionableGapQueueStatus(
@@ -3649,277 +3908,6 @@ export async function readFirstPrPacketStatus(
     state: 'missing',
     detail: 'first-pr start-here packet missing; run cargo xtask first-pr for the current workspace'
   };
-}
-
-function validateFirstPrPacket(
-  raw: string,
-  workspaceRoot: string,
-  relativePath: string,
-  markdownRelativePath: string,
-  filePath: string,
-  markdownPath: string
-): RiprFirstPrPacketStatus {
-  const base = {
-    relativePath,
-    markdownRelativePath,
-    path: filePath,
-    markdownPath
-  };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    return {
-      ...base,
-      state: 'malformed',
-      detail: error instanceof Error ? error.message : String(error)
-    };
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return {
-      ...base,
-      state: 'malformed',
-      detail: 'first-pr packet JSON root is not an object'
-    };
-  }
-  const packet = parsed as Record<string, unknown>;
-  if (
-    stringField(packet, 'schema_version') !== '0.1' ||
-    stringField(packet, 'tool') !== 'ripr' ||
-    stringField(packet, 'kind') !== 'first_pr_start_here'
-  ) {
-    return {
-      ...base,
-      state: 'unsupportedSchema',
-      detail: 'expected ripr first_pr_start_here schema_version 0.1'
-    };
-  }
-  const repoRoot = stringField(packet, 'root');
-  if (!rootMatchesWorkspace(repoRoot, workspaceRoot)) {
-    return {
-      ...base,
-      state: 'wrongRoot',
-      repoRoot,
-      detail: 'first-pr packet root does not match the active workspace'
-    };
-  }
-  if (stringField(packet, 'posture') !== 'advisory') {
-    return {
-      ...base,
-      state: 'unsupportedSchema',
-      detail: 'first-pr packet must remain advisory'
-    };
-  }
-  const status = boundedStringField(packet, 'status', FIRST_PR_PACKET_STATUSES);
-  const selected = objectField(packet, 'selected');
-  if (!status || !selected) {
-    return {
-      ...base,
-      state: 'malformed',
-      detail: 'first-pr packet is missing status or selected state'
-    };
-  }
-  const selectedState = stringField(selected, 'state');
-  if (!selectedState) {
-    return {
-      ...base,
-      state: 'malformed',
-      detail: 'first-pr packet selected state is missing'
-    };
-  }
-  if (!FIRST_PR_PACKET_SELECTED_STATES.has(selectedState)) {
-    return {
-      ...base,
-      state: 'unsupportedSchema',
-      detail: 'first-pr packet selected state is not supported by this editor'
-    };
-  }
-  const commands = objectField(packet, 'commands');
-  for (const command of stringValues(commands)) {
-    if (!firstPrCommandIsSafe(command)) {
-      return {
-        ...base,
-        state: 'unsafeCommand',
-        detail: 'first-pr packet command payload is not safe for editor projection'
-      };
-    }
-  }
-  const selectedCommands = [
-    stringField(selected, 'agent_packet_command'),
-    stringField(selected, 'verify_command'),
-    stringField(selected, 'receipt_command'),
-    stringField(selected, 'next_command'),
-    stringField(selected, 'regeneration_command')
-  ].filter((value): value is string => value !== undefined);
-  if (selectedCommands.some((command) => !firstPrCommandIsSafe(command))) {
-    return {
-      ...base,
-      state: 'unsafeCommand',
-      detail: 'first-pr selected command payload is not safe for editor projection'
-    };
-  }
-  const repair = objectField(selected, 'repair');
-  const relatedTest = repair ? stringField(repair, 'related_test') : undefined;
-  const repairTarget = repair ? stringField(repair, 'target_file') : undefined;
-  const anchor = objectField(selected, 'anchor');
-  const selectedArtifact = objectField(selected, 'artifact');
-  const packetPaths = [
-    ...stringValues(objectField(packet, 'inputs')),
-    ...firstPrArtifactPaths(packet),
-    relatedTest,
-    repairTarget,
-    anchor ? stringField(anchor, 'file') : undefined,
-    selectedArtifact ? stringField(selectedArtifact, 'path') : undefined,
-    stringField(selected, 'receipt_path')
-  ].filter((value): value is string => value !== undefined);
-  if (packetPaths.some((packetPath) => !firstPrPathIsWorkspaceLocal(packetPath))) {
-    return {
-      ...base,
-      state: 'unsafePath',
-      detail: 'first-pr packet repair path is outside the workspace'
-    };
-  }
-  const common = {
-    ...base,
-    status,
-    selectedState,
-    selectedKind: stringField(selected, 'kind'),
-    changedBehavior: stringField(selected, 'changed_behavior'),
-    currentEvidenceStrength: stringField(selected, 'current_evidence_strength'),
-    missingDiscriminator: stringField(selected, 'missing_discriminator'),
-    focusedProofIntent: stringField(selected, 'focused_proof_intent'),
-    staticEvidenceBoundary: stringField(selected, 'static_evidence_boundary'),
-    why: stringField(selected, 'why'),
-    gapId: stringField(selected, 'gap_id'),
-    canonicalGapId: stringField(selected, 'canonical_gap_id'),
-    repairRoute: repair ? stringField(repair, 'route') : undefined,
-    suggestedAssertion: repair ? stringField(repair, 'suggested_assertion') : undefined,
-    verifyCommand: stringField(selected, 'verify_command'),
-    receiptCommand: stringField(selected, 'receipt_command'),
-    receiptPath: stringField(selected, 'receipt_path'),
-    relatedTest,
-    repairTarget,
-    repoRoot,
-    warningCount: arrayLength(packet, 'warnings')
-  };
-  if (status === 'actionable') {
-    if (
-      selectedState !== 'top_gap' ||
-      (!common.gapId && !common.canonicalGapId) ||
-      !common.verifyCommand
-    ) {
-      return {
-        ...base,
-        state: 'malformed',
-        detail: 'actionable first-pr packet is missing top-gap identity or verify command'
-      };
-    }
-    return { ...common, state: 'topRepairableGap' };
-  }
-  if (status === 'no_action') {
-    if (!FIRST_PR_PACKET_NO_ACTION_STATES.has(selectedState)) {
-      return {
-        ...base,
-        state: 'malformed',
-        detail: 'first-pr no-action packet has a non-no-action selected state'
-      };
-    }
-    return { ...common, state: 'noAction' };
-  }
-  if (status === 'blocked') {
-    if (!FIRST_PR_PACKET_BLOCKED_STATES.has(selectedState)) {
-      return {
-        ...base,
-        state: 'malformed',
-        detail: 'first-pr blocked packet has a non-blocked selected state'
-      };
-    }
-    return { ...common, state: 'blocked' };
-  }
-  return { ...common, state: 'found' };
-}
-
-const FIRST_PR_PACKET_STATUSES = new Set([
-  'actionable',
-  'no_action',
-  'blocked'
-]);
-const FIRST_PR_PACKET_BLOCKED_STATES = new Set([
-  'missing_artifact',
-  'malformed_artifact',
-  'stale_artifact',
-  'wrong_root',
-  'blocked_artifact',
-  'timeout'
-]);
-const FIRST_PR_PACKET_NO_ACTION_STATES = new Set([
-  'empty_diff',
-  'no_action'
-]);
-const FIRST_PR_PACKET_SELECTED_STATES = new Set([
-  'top_gap',
-  ...FIRST_PR_PACKET_BLOCKED_STATES,
-  ...FIRST_PR_PACKET_NO_ACTION_STATES
-]);
-
-function stringValues(value: Record<string, unknown> | undefined): string[] {
-  if (!value) {
-    return [];
-  }
-  return Object.values(value).filter((child): child is string =>
-    typeof child === 'string' && child.trim() !== ''
-  );
-}
-
-function firstPrCommandIsSafe(command: string): boolean {
-  const normalized = command.trim().replace(/\s+/g, ' ');
-  return normalized !== ''
-    && !hasUnsafeShellMetacharacter(normalized)
-    && FIRST_PR_SAFE_COMMAND_PREFIXES.some((prefix) =>
-      normalized === prefix || normalized.startsWith(`${prefix} `)
-    );
-}
-
-const FIRST_PR_SAFE_COMMAND_PREFIXES = [
-  'cargo xtask first-pr',
-  'cargo xtask fixtures',
-  'cargo xtask goldens check',
-  'ripr first-pr',
-  'ripr start-here',
-  'ripr reports gap-ledger',
-  'ripr first-action',
-  'ripr review-comments',
-  'ripr agent packet',
-  'ripr agent verify',
-  'ripr agent receipt',
-  'ripr gate evaluate',
-  'ripr outcome'
-];
-
-function firstPrPathIsWorkspaceLocal(value: string): boolean {
-  const pathPart = value.split('::')[0];
-  if (!pathPart || path.isAbsolute(pathPart)) {
-    return false;
-  }
-  const normalized = path.normalize(pathPart);
-  return normalized !== '..' && !normalized.startsWith(`..${path.sep}`);
-}
-
-function firstPrArtifactPaths(packet: Record<string, unknown>): string[] {
-  const artifacts = packet['artifacts'];
-  if (!Array.isArray(artifacts)) {
-    return [];
-  }
-  const paths: string[] = [];
-  for (const artifact of artifacts) {
-    if (artifact && typeof artifact === 'object' && !Array.isArray(artifact)) {
-      const artifactPath = stringField(artifact as Record<string, unknown>, 'path');
-      if (artifactPath) {
-        paths.push(artifactPath);
-      }
-    }
-  }
-  return paths;
 }
 
 function staleFreshness(value: Record<string, unknown>): boolean {
@@ -4347,10 +4335,6 @@ function boundedPayloadString(value: unknown): boolean {
   return typeof value === 'string' && value.length > 0 && value.length <= 256;
 }
 
-function hasUnsafeShellMetacharacter(command: string): boolean {
-  return /[\r\n\0`;&|\\]/.test(command);
-}
-
 function nearestGapDiagnostic(editor: vscode.TextEditor): vscode.Diagnostic | undefined {
   const position = editor.selection.active;
   return vscode.languages
@@ -4367,6 +4351,13 @@ function nearestGapDiagnostic(editor: vscode.TextEditor): vscode.Diagnostic | un
       left.lineDistance - right.lineDistance ||
       left.characterDistance - right.characterDistance
     )[0]?.diagnostic;
+}
+
+function containingGapDiagnostic(editor: vscode.TextEditor): vscode.Diagnostic | undefined {
+  const position = editor.selection.active;
+  return vscode.languages
+    .getDiagnostics(editor.document.uri)
+    .find((diagnostic) => isRiprGapDiagnostic(diagnostic) && diagnostic.range.contains(position));
 }
 
 function isRiprGapDiagnostic(diagnostic: vscode.Diagnostic): boolean {
@@ -4502,20 +4493,6 @@ function shellArgToken(value: unknown): string {
     : `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-function rootMatchesWorkspace(root: string | undefined, workspaceRoot: string): boolean {
-  if (!root || root === '.') {
-    return true;
-  }
-  const resolvedRoot = path.isAbsolute(root)
-    ? path.resolve(root)
-    : path.resolve(workspaceRoot, root);
-  return sameWorkspaceRoot(resolvedRoot, workspaceRoot);
-}
-
-function sameWorkspaceRoot(left: string, right: string): boolean {
-  return normalizePath(path.resolve(left)) === normalizePath(path.resolve(right));
-}
-
 function activeDocumentRelativePath(workspaceRoot: string | undefined): string | undefined {
   const document = vscode.window.activeTextEditor?.document;
   if (!workspaceRoot || !document || !isRiprFileDocument(document) || document.uri.scheme !== 'file') {
@@ -4535,21 +4512,46 @@ function relativeWorkspacePath(workspaceRoot: string, filePath: string): string 
     : filePath;
 }
 
-function normalizePath(value: string): string {
-  const normalized = path.normalize(value).replace(/\\/g, '/');
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
-}
+function formatRouteQualitySummary(value: unknown): string | undefined {
+  if (value === 'not_available' || !value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const summary = value as Record<string, unknown>;
+  if (summary.report !== 'route-quality' || typeof summary.status !== 'string') {
+    return undefined;
+  }
+  const rows = summary.top_repair_kind_rows;
+  if (!Array.isArray(rows) || rows.length > 3) {
+    return undefined;
+  }
 
-function objectField(value: Record<string, unknown>, field: string): Record<string, unknown> | undefined {
-  const child = value[field];
-  return child && typeof child === 'object' && !Array.isArray(child)
-    ? child as Record<string, unknown>
-    : undefined;
-}
+  const formattedRows: string[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      return undefined;
+    }
+    const rowObject = row as Record<string, unknown>;
+    const repairKind = stringField(rowObject, 'repair_kind');
+    const attempted = rowObject.attempted;
+    const successRate = rowObject.success_rate;
+    if (
+      !repairKind ||
+      typeof attempted !== 'number' ||
+      !Number.isInteger(attempted) ||
+      attempted < 0 ||
+      (successRate !== null &&
+        (typeof successRate !== 'number' || !Number.isFinite(successRate) || successRate < 0 || successRate > 1))
+    ) {
+      return undefined;
+    }
+    const renderedRate = successRate === null ? 'not_available' : String(successRate);
+    formattedRows.push(`${repairKind}: attempted=${attempted}, success_rate=${renderedRate}`);
+  }
 
-function stringField(value: Record<string, unknown>, field: string): string | undefined {
-  const child = value[field];
-  return typeof child === 'string' && child.trim() !== '' ? child : undefined;
+  return [
+    `status=${summary.status}`,
+    ...formattedRows
+  ].join('\n');
 }
 
 function stringArrayField(value: Record<string, unknown>, field: string): string[] {
@@ -4557,25 +4559,6 @@ function stringArrayField(value: Record<string, unknown>, field: string): string
   return Array.isArray(child)
     ? child.filter((item): item is string => typeof item === 'string' && item.trim() !== '')
     : [];
-}
-
-function boundedStringField(
-  value: Record<string, unknown>,
-  field: string,
-  allowed: Set<string>
-): string | undefined {
-  const child = stringField(value, field);
-  return child && allowed.has(child) ? child : undefined;
-}
-
-function numberFieldValue(value: Record<string, unknown>, field: string): number | undefined {
-  const child = value[field];
-  return typeof child === 'number' && Number.isFinite(child) ? child : undefined;
-}
-
-function arrayLength(value: Record<string, unknown>, field: string): number {
-  const child = value[field];
-  return Array.isArray(child) ? child.length : 0;
 }
 
 function selectedLocation(selected: Record<string, unknown> | undefined): string | undefined {
@@ -4588,71 +4571,6 @@ function selectedLocation(selected: Record<string, unknown> | undefined): string
   }
   const line = numberFieldValue(selected, 'line');
   return line === undefined ? selectedPath : `${selectedPath}:${Math.trunc(line)}`;
-}
-
-function currentWorkspaceRootState(): RiprWorkspaceRootState {
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  if (folders.length === 0) {
-    return workspaceRootStateNoWorkspace();
-  }
-  if (folders.length === 1) {
-    return {
-      kind: 'singleRoot',
-      root: folders[0].uri.fsPath,
-      roots: [folders[0].uri.fsPath],
-      detail: 'single workspace folder is active'
-    };
-  }
-  const activeEditor = vscode.window.activeTextEditor;
-  const activeFolder = activeEditor && activeEditor.document.uri.scheme === 'file'
-    ? vscode.workspace.getWorkspaceFolder(activeEditor.document.uri)
-    : undefined;
-  if (activeFolder) {
-    return {
-      kind: 'selectedRoot',
-      root: activeFolder.uri.fsPath,
-      roots: folders.map((folder) => folder.uri.fsPath),
-      detail: 'selected from active editor workspace folder'
-    };
-  }
-  return {
-    kind: 'ambiguousMultiRoot',
-    roots: folders.map((folder) => folder.uri.fsPath),
-    detail: 'multiple workspace folders are open and no active editor selected a safe root'
-  };
-}
-
-function workspaceRootStateNoWorkspace(): RiprWorkspaceRootState {
-  return {
-    kind: 'noWorkspace',
-    roots: [],
-    detail: 'open a workspace folder before matching saved-workspace artifacts'
-  };
-}
-
-function workspaceRootStateLabel(state: RiprWorkspaceRootState): string {
-  switch (state.kind) {
-    case 'singleRoot':
-      return `workspace_single_root (${state.root ?? 'unknown'})`;
-    case 'selectedRoot':
-      return `workspace_multi_root_selected (${state.root ?? 'unknown'}; roots: ${state.roots.join(', ')})`;
-    case 'ambiguousMultiRoot':
-      return `workspace_multi_root_ambiguous (roots: ${state.roots.join(', ') || 'unknown'})`;
-    case 'noWorkspace':
-    default:
-      return 'workspace_not_open';
-  }
-}
-
-function workspaceRootStateDetail(state: RiprWorkspaceRootState): string {
-  const lines = [
-    state.detail ?? 'workspace root state is unavailable'
-  ];
-  if (state.roots.length > 0) {
-    lines.push(`Workspace folders: ${state.roots.join(', ')}`);
-  }
-  lines.push('Root-scoped repair actions are suppressed until one workspace folder is selected.');
-  return lines.join('\n');
 }
 
 function isRiprFileDocument(document: vscode.TextDocument): boolean {

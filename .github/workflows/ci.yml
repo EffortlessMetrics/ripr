@@ -32,10 +32,18 @@ jobs:
         with:
           shared-key: ripr-rust-1.95-${{ runner.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
       - run: cargo fmt --check
       - run: cargo check --workspace --all-targets
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      - run: cargo nextest run --workspace
+      # Exercise Perl alongside the product's required/default adapters. A
+      # Perl-only no-default build is invalid because RIPR requires lang-rust,
+      # and doctor intentionally shares optional Python framework detection.
+      - run: cargo check -p ripr --features lang-perl
+      - run: cargo test -p ripr --features lang-perl --lib analysis::language::perl
       - run: cargo xtask check-static-language
       - run: cargo xtask check-no-panic-family
       - run: cargo xtask check-allow-attributes
@@ -64,6 +72,28 @@ jobs:
       - name: Publish dry-run (release surface)
         if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
         run: cargo publish -p ripr --dry-run
+      - name: Release readiness (release surface)
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: |
+          release_version="$(cargo pkgid -p ripr | sed 's/.*#//')"
+          cargo xtask release-readiness --version "$release_version"
+      - name: Upload release-readiness receipts
+        if: always() && ((github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci'))
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-readiness-${{ github.run_id }}
+          path: |
+            target/ripr/reports/release-readiness.json
+            target/ripr/reports/release-readiness.md
+            target/ripr/reports/agent-receipt.json
+            target/ripr/reports/gap-decision-ledger.json
+            target/ripr/reports/lsp-cockpit.json
+            target/ripr/reports/lsp-cockpit.md
+            target/ripr/reports/repo-exposure-latency.json
+            target/ripr/reports/repo-exposure-latency.md
+            target/ripr/reports/start-here.md
+            target/ripr/release-readiness/
+          if-no-files-found: warn
       - name: Generate ripr test-efficiency report
         if: always()
         run: cargo xtask test-efficiency-report || true
@@ -83,8 +113,8 @@ jobs:
         env:
           RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
         run: |
-          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}"
-          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check
+          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check-output target/ripr/pr/check.json
+          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check --check-output target/ripr/pr/check.json
       - name: Generate impacted evidence
         if: github.event_name == 'pull_request'
         env:

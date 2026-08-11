@@ -92,7 +92,8 @@
         "no_static_path",
         "severe_gaps",
         "requires_targeted_mutation",
-        "ripr_severe_gap"
+        "ripr_severe_gap",
+        "targeted_mutation_route"
       ],
       "properties": {
         "changed_files": {
@@ -138,7 +139,52 @@
             "string",
             "null"
           ]
+        },
+        "targeted_mutation_route": {
+          "$ref": "#/$defs/targeted_mutation_route"
         }
+      }
+    },
+    "targeted_mutation_route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "candidates", "limitations"],
+      "properties": {
+        "status": {
+          "enum": ["not_required", "candidate", "static_limitation"]
+        },
+        "candidates": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/targeted_mutation_candidate"}
+        },
+        "limitations": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/targeted_mutation_limitation"}
+        }
+      }
+    },
+    "targeted_mutation_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "kind", "from", "to", "command", "expected_observation"],
+      "properties": {
+        "file": {"type": "string", "minLength": 1},
+        "line": {"type": "integer", "minimum": 0},
+        "kind": {"type": "string", "minLength": 1},
+        "from": {"type": "string", "minLength": 1},
+        "to": {"type": "string", "minLength": 1},
+        "command": {"type": "string", "minLength": 1},
+        "expected_observation": {"type": "string", "minLength": 1}
+      }
+    },
+    "targeted_mutation_limitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "family": {"type": "string", "minLength": 1},
+        "message": {"type": "string", "minLength": 1}
       }
     },
     "artifact": {

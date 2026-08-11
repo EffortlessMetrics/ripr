@@ -9,6 +9,8 @@ mod commands_timestamps;
 mod execute;
 mod help;
 mod parse;
+mod rerun;
+mod suggest;
 
 pub fn run(args: Vec<String>) -> Result<(), String> {
     execute::execute(parse::parse_args(args)?)
@@ -34,7 +36,10 @@ mod tests {
     fn run_dispatches_check_parse_errors() {
         assert_eq!(
             run(args(&["ripr", "check", "--format", "xml"])),
-            Err("unknown format \"xml\"".to_string())
+            Err(
+                "unknown format \"xml\"; see `ripr check --help` for the accepted formats"
+                    .to_string()
+            )
         );
     }
 
@@ -60,23 +65,26 @@ mod tests {
         assert_eq!(run(args(&["ripr", "--version"])), Ok(()));
         assert_eq!(
             run(args(&["ripr", "explain"])),
-            Err("missing finding selector".to_string())
+            Err("missing finding selector; pass a finding id (e.g. `probe:src_lib.rs:error_path:abc123`) or `file:line`. Run `ripr check --json` to list finding ids".to_string())
         );
         assert_eq!(
             run(args(&["ripr", "context"])),
-            Err("missing --at or --finding selector".to_string())
+            Err("missing --at or --finding selector; pass a finding id (e.g. `probe:src_lib.rs:error_path:abc123`) or `file:line`. Run `ripr check --json` to list finding ids".to_string())
         );
         assert_eq!(
             run(args(&["ripr", "diff", "--format", "xml"])),
-            Err("unknown diff format \"xml\"".to_string())
+            Err("unknown diff format \"xml\"; expected `human`, `text`, `md`, `markdown`, or `json`".to_string())
         );
         assert_eq!(
             run(args(&["ripr", "lsp", "--bad"])),
-            Err("unknown lsp argument \"--bad\"".to_string())
+            Err("unknown lsp argument \"--bad\". Run `ripr lsp --help`.".to_string())
         );
         assert_eq!(
             run(args(&["ripr", "agent", "brief", "--diff", "change.diff"])),
-            Err("agent brief requires --json until human output is implemented".to_string())
+            Err(
+                "agent brief requires --json (the supported output for this subcommand)"
+                    .to_string()
+            )
         );
         assert_eq!(
             run(args(&["ripr", "first-pr", "--gap-ledger"])),

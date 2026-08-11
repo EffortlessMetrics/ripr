@@ -1,0 +1,106 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/rust_macro_wrapped_assertion_limitation/input
+
+Summary: 2 probe(s), 0 exposed, 0 weak, 2 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
+
+WARNING fixtures/rust_macro_wrapped_assertion_limitation/input/src/internal.rs:2
+
+Changed
+  before: if a > b {
+  after:  if a >= b {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/internal.rs::inner
+
+Static exposure
+  reachable_unrevealed (warning, confidence 0.71)
+
+Evidence
+  - reach yes: Related tests appear to reach inner: test_inner_with_custom_assertion_macro
+  - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+  - propagation yes: Changed behavior appears to influence returned value: a - b
+  - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
+  - discriminator no: No assertion found on related tests
+  - local flow reaches returned value: a - b (line 3)
+  - related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle
+  - observed function argument value a = 10 at line 9
+  - observed function argument value b = 3 at line 9
+
+Weakness
+  - No detected assertion observes the changed value, error, field, or effect
+  - No relevant oracle was detected
+  - No strong discriminator was detected
+  - missing discriminator a == b: No related test call uses a equal to b; observed a values: 10; observed b values: 3
+
+Stop reasons:
+  - fixture_opaque
+
+Static limitation
+  rust_macro_wrapped_assertion_unresolved — A reachable Rust test uses an assertion-like macro that ripr does not classify, so the assertion semantics are unresolved. This is a named limitation, not a coverage claim.
+
+Where to look
+  For example, the test `test_inner_with_custom_assertion_macro` (tests/it.rs:8) reaches the changed owner, then invokes assertion-like macro `assert_result!` at tests/it.rs:10. ripr does not classify that macro as an oracle.
+
+Limitation detail
+  last established edge: test `test_inner_with_custom_assertion_macro` (tests/it.rs:8) -> assertion macro `assert_result!` at tests/it.rs:10
+  first unresolved edge: assertion macro `assert_result!` semantics toward the changed owner
+  analyzer route: analysis/rust-macro-assertion-oracle
+  non-claim: named limitation only; ripr cannot confirm or deny that the macro assertion discriminates the change
+
+Next step
+  Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
+
+WARNING fixtures/rust_macro_wrapped_assertion_limitation/input/src/internal.rs:2
+
+Changed
+  before: if a > b {
+  expr:   if a > b {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/internal.rs::inner
+
+Static exposure
+  reachable_unrevealed (warning, confidence 0.71)
+
+Evidence
+  - reach yes: Related tests appear to reach inner: test_inner_with_custom_assertion_macro
+  - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+  - propagation yes: Changed behavior appears to influence returned value: a - b
+  - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
+  - discriminator no: No assertion found on related tests
+  - local flow reaches returned value: a - b (line 3)
+  - related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle
+  - observed function argument value a = 10 at line 9
+  - observed function argument value b = 3 at line 9
+
+Weakness
+  - No detected assertion observes the changed value, error, field, or effect
+  - No relevant oracle was detected
+  - No strong discriminator was detected
+  - missing discriminator a == b: No related test call uses a equal to b; observed a values: 10; observed b values: 3
+
+Stop reasons:
+  - fixture_opaque
+
+Static limitation
+  rust_macro_wrapped_assertion_unresolved — A reachable Rust test uses an assertion-like macro that ripr does not classify, so the assertion semantics are unresolved. This is a named limitation, not a coverage claim.
+
+Where to look
+  For example, the test `test_inner_with_custom_assertion_macro` (tests/it.rs:8) reaches the changed owner, then invokes assertion-like macro `assert_result!` at tests/it.rs:10. ripr does not classify that macro as an oracle.
+
+Limitation detail
+  last established edge: test `test_inner_with_custom_assertion_macro` (tests/it.rs:8) -> assertion macro `assert_result!` at tests/it.rs:10
+  first unresolved edge: assertion macro `assert_result!` semantics toward the changed owner
+  analyzer route: analysis/rust-macro-assertion-oracle
+  non-claim: named limitation only; ripr cannot confirm or deny that the macro assertion discriminates the change
+
+Next step
+  Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.

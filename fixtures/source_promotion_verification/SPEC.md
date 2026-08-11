@@ -1,6 +1,6 @@
 # Fixture: source_promotion_verification
 
-Spec: RIPR-SPEC-0149
+Spec: RIPR-SPEC-0152
 
 ## Given
 

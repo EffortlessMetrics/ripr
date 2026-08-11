@@ -15,6 +15,13 @@ export interface ResolvedServer {
   readonly source: ServerSource;
   readonly detail: string;
   readonly version?: string;
+  /**
+   * True when this server must be spawned through the shell (#2079): a
+   * Windows `.cmd`/`.bat` PATH shim resolves via the shell probe, and the
+   * client spawn must use the same launch semantics or startup fails the
+   * same way the probe used to.
+   */
+  readonly needsShell?: boolean;
 }
 
 export interface ResolveFailure {
@@ -70,12 +77,19 @@ export async function resolveServer(
     downloadFailure = `No prebuilt ripr server target is known for ${process.platform}/${process.arch}.`;
   }
 
-  const pathResult = await probeCandidate('ripr', 'path', 'ripr on PATH');
-  if (isResolved(pathResult)) {
+  // On Windows, spawning with shell: false does no PATHEXT resolution, so
+  // ripr.bat/ripr.cmd shims (Scoop, Chocolatey, manual PATH) fail to start
+  // even though `ripr` works in a terminal (#2079). The command is the
+  // constant string 'ripr --version' — no user input reaches the shell.
+  const probeWithShell = process.platform === 'win32';
+  const pathResult = await probeCandidate('ripr', 'path', 'ripr on PATH', probeWithShell);
+  const resolvedPathResult: ResolvedServer | ResolveFailure =
+    isResolved(pathResult) && probeWithShell ? { ...pathResult, needsShell: true } : pathResult;
+  if (isResolved(resolvedPathResult)) {
     if (downloadFailure) {
       output.appendLine(`Using PATH fallback after managed server resolution failed: ${downloadFailure}`);
     }
-    return pathResult;
+    return resolvedPathResult;
   }
 
   const autoDownloadHint = config.autoDownload
@@ -103,6 +117,10 @@ export function requestedServerVersion(context: vscode.ExtensionContext, config:
 }
 
 function bundledServerPath(context: vscode.ExtensionContext, platform: RiprPlatform): string {
+  // Dormant by design (#2085): no platform VSIX ships a bundled server
+  // today, so this candidate never exists on disk and resolution falls
+  // through to the cache/download path. Kept as the documented first
+  // preference for when #1443 / #1624 ship platform VSIXs.
   return path.join(context.extensionUri.fsPath, 'server', platform.target, platform.executableName);
 }
 
@@ -117,9 +135,9 @@ async function probeExistingCandidate(
   return probeCandidate(command, source, detail);
 }
 
-function probeCandidate(command: string, source: ServerSource, detail: string): Promise<ResolvedServer | ResolveFailure> {
+function probeCandidate(command: string, source: ServerSource, detail: string, useShell = false): Promise<ResolvedServer | ResolveFailure> {
   return new Promise((resolve) => {
-    const child = cp.spawn(command, ['--version'], { shell: false });
+    const child = cp.spawn(command, ['--version'], { shell: useShell });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     const timer = setTimeout(() => {

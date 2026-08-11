@@ -1,6 +1,6 @@
 [package]
 name = "ripr"
-version = "0.10.1"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
@@ -10,10 +10,21 @@ description = "Find static mutation-exposure gaps before expensive mutation test
 readme = "README.md"
 keywords = ["mutation-testing", "testing", "rust", "static-analysis", "lsp"]
 categories = ["development-tools", "development-tools::testing"]
+# Keep the integration tests and sample workspace in the source distribution.
+# This is intentional release evidence; see docs/RELEASE.md before changing it.
+# The example paths are enumerated rather than globbed as `examples/**` so that
+# `examples/*/target/` test residue cannot enter the package. `ripr` runs
+# against the sample workspace during tests and writes a fact cache there; that
+# residue is gitignored, so a wildcard include makes `cargo package` fail on an
+# uncommitted-files check.
 include = [
   "src/**",
   "tests/**",
-  "examples/**",
+  "examples/*/example.diff",
+  "examples/*/src/**",
+  "examples/*/tests/**",
+  "examples/*.diff",
+  "examples/*.rs",
   "README.md",
   "LICENSE-*",
   "Cargo.toml"
@@ -32,7 +43,8 @@ oxc_allocator = { version = "0.130", optional = true }
 oxc_ast = { version = "0.130", optional = true }
 oxc_parser = { version = "0.130", optional = true }
 oxc_span = { version = "0.130", optional = true }
-ra_ap_syntax = "0.0.330"
+ra_ap_syntax = { version = "0.0.330", optional = true }
+rayon = "1"
 # Default features pull `malachite-bigint` (LGPL-3.0-only), which is
 # incompatible with our MIT/Apache-2.0 license posture. Disable the
 # default and select `num-bigint` (MIT/Apache-2.0) for arbitrary-precision
@@ -43,15 +55,19 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 toml = "0.9"
-tokio = { version = "1", features = ["rt-multi-thread", "io-std", "io-util", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "io-std", "io-util", "time", "macros"] }
 tower-lsp-server = "0.23.0"
 
 [features]
 default = ["lang-rust", "lang-typescript", "lang-python"]
-lang-rust = []
+lang-rust = ["dep:ra_ap_syntax"]
 lang-typescript = ["dep:oxc_allocator", "dep:oxc_ast", "dep:oxc_parser", "dep:oxc_span"]
 lang-python = ["dep:rustpython-parser"]
 lang-perl = []
+
+[dev-dependencies]
+proptest = "1"
+serial_test = "3"
 
 [lints]
 workspace = true

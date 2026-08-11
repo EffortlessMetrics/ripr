@@ -4,20 +4,24 @@
   "mode": "fast",
   "root": "fixtures/mixed_rust_typescript_preview/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":2,"probes":2,"findings":2,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1},{"language":"typescript","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:0a4e9040cc3dfe4e22ef8ec251e3d4d26533329a983e09cfac4a659ed34c7460","snapshot_identity":null},"counts":{"changed_file_count":2,"changed_line_count":4,"candidate_line_count":2,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
     {
-      "id": "probe:src_lib.rs:predicate:8390dd91",
+      "id": "probe:src_lib.rs:predicate:c80557eb",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.92,
       "probe": {
-        "id": "probe:src_lib.rs:predicate:8390dd91",
+        "id": "probe:src_lib.rs:predicate:c80557eb",
         "family": "predicate",
         "delta": "control",
         "file": "fixtures/mixed_rust_typescript_preview/input/src/lib.rs",
         "line": 2,
-        "expression": "if amount >= discount_threshold {"
+        "expression": "amount >= discount_threshold"
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts"},
@@ -149,7 +153,7 @@
     {
       "id": "probe:web_discount.ts:typescript_preview:55f72c10",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 0.60,
       "probe": {
         "id": "probe:web_discount.ts:typescript_preview:55f72c10",

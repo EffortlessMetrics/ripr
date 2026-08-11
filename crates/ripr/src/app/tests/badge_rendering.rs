@@ -8,7 +8,11 @@ fn render_check_dispatches_badge_json_format() -> Result<(), String> {
     let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
     let rendered = render_check(&output, &OutputFormat::BadgeJson)?;
 
-    assert!(rendered.contains("\"schema_version\": \"0.6\""));
+    assert!(rendered.contains("\"schema_version\": \"0.8\""));
+    assert!(rendered.contains("\"analysis_complete\": null"));
+    assert!(rendered.contains("\"analysis_outcome\": null"));
+    // Diff-scoped badges never carry a public projection.
+    assert!(!rendered.contains("\"public_projection\""));
     assert!(rendered.contains("\"kind\": \"ripr\""));
     assert!(rendered.contains("\"scope\": \"diff\""));
     assert!(rendered.contains("\"basis\": \"finding_exposure\""));
@@ -73,13 +77,34 @@ fn render_check_repo_badge_json_paints_scope_repo() -> Result<(), String> {
     let output = check_output_with_temp_seam_workspace(vec![sample_finding("src/lib.rs", 1)])?;
     let rendered = render_check(&output, &OutputFormat::RepoBadgeJson)?;
 
-    assert!(rendered.contains("\"schema_version\": \"0.6\""));
+    assert!(rendered.contains("\"schema_version\": \"0.8\""));
+    assert!(rendered.contains("\"analysis_complete\": null"));
+    assert!(rendered.contains("\"analysis_outcome\": null"));
     assert!(rendered.contains("\"scope\": \"repo\""));
     assert!(rendered.contains("\"basis\": \"canonical_actionable_gap\""));
     assert!(!rendered.contains("\"scope\": \"diff\""));
     assert!(rendered.contains("\"kind\": \"ripr\""));
     assert!(rendered.contains("\"analyzed_findings\": 0"));
     assert!(!rendered.contains("\"analyzed_seams\": 0"));
+    // Repo-scoped public badges carry the RIPR-SPEC-0066 projection. A fresh
+    // render is a full, current run, so the sidecar fields are present and the
+    // message speaks the closed count vocabulary (`N actionable`).
+    assert!(rendered.contains("\"public_projection\": {"));
+    assert!(rendered.contains("\"run_status\": \"full\""));
+    assert!(rendered.contains("\"generated_at\": \""));
+    assert!(rendered.contains("\"actionable_count\":"));
+    assert!(!rendered.contains("\"actionable_count\": null"));
+    assert!(rendered.contains("\"limited_reason\": null"));
+    assert!(rendered.contains("\"source_report\": \"target/ripr/reports/repo-ripr-badge.json\""));
+    // The closed count message renders as `<n> actionable`.
+    let projection = rendered
+        .split("\"public_projection\": {")
+        .nth(1)
+        .unwrap_or("");
+    assert!(
+        projection.contains("actionable"),
+        "projection message must speak the closed count vocabulary, got: {projection}"
+    );
     let _ = std::fs::remove_dir_all(&output.root);
     Ok(())
 }
