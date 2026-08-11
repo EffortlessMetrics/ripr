@@ -1,9 +1,8 @@
 name: Source Promotion Version Identity Repair
 
 on:
-  push:
-    branches:
-      - fix/source-promotion-version-identity-1531
+  pull_request:
+    types: [opened, reopened, synchronize]
 
 permissions:
   contents: write
@@ -15,12 +14,14 @@ concurrency:
 jobs:
   repair:
     name: patch and prove verifier contract
+    if: github.head_ref == 'fix/source-promotion-version-identity-1531'
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: fix/source-promotion-version-identity-1531
           fetch-depth: 0
           persist-credentials: true
 
