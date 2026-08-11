@@ -33,6 +33,37 @@ jobs:
         with:
           shared-key: ripr-source-promotion-version-identity
 
+      - name: Repair patch harness defects found by first run
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          script = Path('.github/scripts/patch_source_promotion_version_identity.py')
+          text = script.read_text(encoding='utf-8')
+          anchor = 'text = text.replace("METADATA_SURFACES", "RELEASE_METADATA_SURFACES")\n'
+          replacement = (
+              anchor
+              + 'text = text.replace("RELEASE_RELEASE_METADATA_SURFACES", "RELEASE_METADATA_SURFACES")\n'
+          )
+          if text.count(anchor) != 1:
+              raise SystemExit(f'expected one constant-renaming anchor, found {text.count(anchor)}')
+          script.write_text(text.replace(anchor, replacement), encoding='utf-8')
+
+          manifest = Path('xtask/Cargo.toml')
+          manifest_text = manifest.read_text(encoding='utf-8')
+          dependency_anchor = 'serde_json = "1"\n'
+          if 'toml = "0.9"\n' not in manifest_text:
+              if manifest_text.count(dependency_anchor) != 1:
+                  raise SystemExit('xtask dependency insertion anchor changed')
+              manifest_text = manifest_text.replace(
+                  dependency_anchor,
+                  dependency_anchor + 'toml = "0.9"\n',
+              )
+              manifest.write_text(manifest_text, encoding='utf-8')
+          PY
+
       - name: Apply bounded verifier repair
         shell: bash
         run: |
