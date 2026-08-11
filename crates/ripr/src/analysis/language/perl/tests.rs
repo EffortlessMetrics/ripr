@@ -3627,16 +3627,27 @@ const PARTIAL_DYNAMIC_BOUNDARY_PACKET: &str = r#"{
   ]
 }"#;
 
-/// #1938: Verify the Perl→domain OracleKind/OracleStrength mapping is
-/// non-lossy for the kinds that carry discrimination signal, and explicitly
-/// documents which kinds map to Unknown by design (no domain equivalent).
+/// #1938 / #3034: pin the production Perl→domain OracleKind/OracleStrength
+/// projection against an independent expected-disposition table.
+///
+/// This test consumes the single production mapping authority
+/// (`perl_oracle_kind_to_domain` / `perl_oracle_strength_to_domain` — the same
+/// helpers `packet_to_findings` uses) instead of repeating the mapping in a
+/// local `match`, so a production mapping drift fails this test. Every Perl
+/// variant has an explicit expected disposition: either a concrete domain
+/// kind/strength, or an intentional lossy collapse to `Unknown` (documented
+/// on the production helpers — the collapse is a limitation, not lossless).
 #[test]
-fn perl_to_domain_oracle_mapping_preserves_signal_kinds() -> Result<(), String> {
-    use super::{OracleKind, OracleStrength};
+fn perl_to_domain_oracle_mapping_preserves_signal_kinds() {
+    use super::{
+        OracleKind, OracleStrength, perl_oracle_kind_to_domain, perl_oracle_strength_to_domain,
+    };
     use crate::domain::{OracleKind as DomainOracleKind, OracleStrength as DomainOracleStrength};
 
-    // OracleKind: signal-bearing kinds must round-trip to non-Unknown domain kinds.
-    let signal_kinds = vec![
+    // Every Perl OracleKind variant with its expected domain disposition.
+    // Signal-bearing kinds map to concrete domain kinds; the rest are the
+    // pinned lossy cases (no domain equivalent → Unknown).
+    let expected_kinds = [
         (
             OracleKind::ExactReturnAssertion,
             DomainOracleKind::ExactValue,
@@ -3645,81 +3656,46 @@ fn perl_to_domain_oracle_mapping_preserves_signal_kinds() -> Result<(), String> 
             OracleKind::PredicateBoundaryAssertion,
             DomainOracleKind::RelationalCheck,
         ),
+        (OracleKind::ExceptionObserver, DomainOracleKind::Unknown),
+        (
+            OracleKind::HashOrObjectFieldAssertion,
+            DomainOracleKind::Unknown,
+        ),
+        (OracleKind::OutputObserver, DomainOracleKind::Unknown),
+        (OracleKind::WarnObserver, DomainOracleKind::Unknown),
+        (OracleKind::LogObserver, DomainOracleKind::Unknown),
         (OracleKind::SmokeOk, DomainOracleKind::SmokeOnly),
+        (OracleKind::MentionOnly, DomainOracleKind::Unknown),
+        (OracleKind::DiesOnly, DomainOracleKind::Unknown),
+        (OracleKind::UnknownHelper, DomainOracleKind::Unknown),
+        (
+            OracleKind::DynamicFrameworkIndirection,
+            DomainOracleKind::Unknown,
+        ),
+        (OracleKind::Unknown, DomainOracleKind::Unknown),
     ];
-    for (perl_kind, expected_domain) in signal_kinds {
-        let mapped = match perl_kind {
-            OracleKind::ExactReturnAssertion => DomainOracleKind::ExactValue,
-            OracleKind::PredicateBoundaryAssertion => DomainOracleKind::RelationalCheck,
-            OracleKind::SmokeOk => DomainOracleKind::SmokeOnly,
-            _ => DomainOracleKind::Unknown,
-        };
+    for (perl_kind, expected_domain) in expected_kinds {
         assert_eq!(
-            mapped, expected_domain,
+            perl_oracle_kind_to_domain(perl_kind),
+            expected_domain,
             "Perl OracleKind {perl_kind:?} must map to {expected_domain:?}"
         );
     }
 
-    // OracleKind: non-signal kinds explicitly map to Unknown (no domain equivalent).
-    let unknown_kinds = vec![
-        OracleKind::ExceptionObserver,
-        OracleKind::HashOrObjectFieldAssertion,
-        OracleKind::OutputObserver,
-        OracleKind::WarnObserver,
-        OracleKind::LogObserver,
-        OracleKind::MentionOnly,
-        OracleKind::DiesOnly,
-        OracleKind::UnknownHelper,
-        OracleKind::DynamicFrameworkIndirection,
-        OracleKind::Unknown,
-    ];
-    for kind in unknown_kinds {
-        let mapped = match kind {
-            OracleKind::ExactReturnAssertion => DomainOracleKind::ExactValue,
-            OracleKind::PredicateBoundaryAssertion => DomainOracleKind::RelationalCheck,
-            OracleKind::SmokeOk => DomainOracleKind::SmokeOnly,
-            _ => DomainOracleKind::Unknown,
-        };
-        assert_eq!(
-            mapped,
-            DomainOracleKind::Unknown,
-            "Perl OracleKind {kind:?} must map to Unknown (no domain equivalent)"
-        );
-    }
-
-    // OracleStrength: all three signal-bearing strengths must round-trip.
-    let signal_strengths = vec![
+    // Every Perl OracleStrength variant with its expected domain disposition.
+    // MentionOnly and Unknown are the pinned lossy cases.
+    let expected_strengths = [
         (OracleStrength::StrongExact, DomainOracleStrength::Strong),
         (OracleStrength::WeakSmoke, DomainOracleStrength::Smoke),
         (OracleStrength::WeakBroad, DomainOracleStrength::Weak),
+        (OracleStrength::MentionOnly, DomainOracleStrength::Unknown),
+        (OracleStrength::Unknown, DomainOracleStrength::Unknown),
     ];
-    for (perl_strength, expected_domain) in signal_strengths {
-        let mapped = match perl_strength {
-            OracleStrength::StrongExact => DomainOracleStrength::Strong,
-            OracleStrength::WeakSmoke => DomainOracleStrength::Smoke,
-            OracleStrength::WeakBroad => DomainOracleStrength::Weak,
-            _ => DomainOracleStrength::Unknown,
-        };
+    for (perl_strength, expected_domain) in expected_strengths {
         assert_eq!(
-            mapped, expected_domain,
+            perl_oracle_strength_to_domain(perl_strength),
+            expected_domain,
             "Perl OracleStrength {perl_strength:?} must map to {expected_domain:?}"
         );
     }
-
-    // OracleStrength: MentionOnly and Unknown explicitly map to Unknown.
-    for strength in [OracleStrength::MentionOnly, OracleStrength::Unknown] {
-        let mapped = match strength {
-            OracleStrength::StrongExact => DomainOracleStrength::Strong,
-            OracleStrength::WeakSmoke => DomainOracleStrength::Smoke,
-            OracleStrength::WeakBroad => DomainOracleStrength::Weak,
-            _ => DomainOracleStrength::Unknown,
-        };
-        assert_eq!(
-            mapped,
-            DomainOracleStrength::Unknown,
-            "Perl OracleStrength {strength:?} must map to Unknown"
-        );
-    }
-
-    Ok(())
 }

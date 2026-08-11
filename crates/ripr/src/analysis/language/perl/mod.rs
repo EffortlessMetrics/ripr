@@ -360,23 +360,11 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
                     line: test_line,
                     oracle: oracle.and_then(|o| o.expression.clone()),
                     oracle_kind: oracle
-                        .map(|o| match o.kind {
-                            OracleKind::ExactReturnAssertion => DomainOracleKind::ExactValue,
-                            OracleKind::PredicateBoundaryAssertion => {
-                                DomainOracleKind::RelationalCheck
-                            }
-                            OracleKind::SmokeOk => DomainOracleKind::SmokeOnly,
-                            _ => DomainOracleKind::Unknown,
-                        })
+                        .map(|o| perl_oracle_kind_to_domain(o.kind))
                         .unwrap_or(DomainOracleKind::Unknown),
                     oracle_strength: ev
                         .oracle_strength
-                        .map(|strength| match strength {
-                            OracleStrength::StrongExact => DomainOracleStrength::Strong,
-                            OracleStrength::WeakSmoke => DomainOracleStrength::Smoke,
-                            OracleStrength::WeakBroad => DomainOracleStrength::Weak,
-                            _ => DomainOracleStrength::Unknown,
-                        })
+                        .map(perl_oracle_strength_to_domain)
                         .unwrap_or(DomainOracleStrength::Unknown),
                     relation_reason: perl_relation_reason,
                     relation_confidence: perl_relation_confidence,
@@ -2762,6 +2750,54 @@ fn perl_relation_to_domain(
         RelationKind::FileProximity | RelationKind::FixtureSetup | RelationKind::Unknown => {
             (None, None)
         }
+    }
+}
+
+/// Single production authority for the Perl→domain `OracleKind` projection.
+///
+/// Signal-bearing kinds map to the concrete domain kind that carries the same
+/// discrimination signal. Every other kind is intentionally collapsed to
+/// `Unknown`: the domain taxonomy has no equivalent for the exception/output/
+/// warn/log observer shapes or the non-signal mention/dies/helper/indirection
+/// shapes. This collapse is lossy — a documented limitation, not a lossless
+/// mapping. The match is exhaustive so a new `OracleKind` variant fails to
+/// compile until its disposition is decided here.
+fn perl_oracle_kind_to_domain(kind: OracleKind) -> crate::domain::OracleKind {
+    use crate::domain::OracleKind as DomainOracleKind;
+    match kind {
+        OracleKind::ExactReturnAssertion => DomainOracleKind::ExactValue,
+        OracleKind::PredicateBoundaryAssertion => DomainOracleKind::RelationalCheck,
+        OracleKind::SmokeOk => DomainOracleKind::SmokeOnly,
+        // Lossy collapse (documented limitation): no domain equivalent.
+        OracleKind::ExceptionObserver
+        | OracleKind::HashOrObjectFieldAssertion
+        | OracleKind::OutputObserver
+        | OracleKind::WarnObserver
+        | OracleKind::LogObserver
+        | OracleKind::MentionOnly
+        | OracleKind::DiesOnly
+        | OracleKind::UnknownHelper
+        | OracleKind::DynamicFrameworkIndirection
+        | OracleKind::Unknown => DomainOracleKind::Unknown,
+    }
+}
+
+/// Single production authority for the Perl→domain `OracleStrength`
+/// projection.
+///
+/// `MentionOnly` and `Unknown` are intentionally collapsed to
+/// `DomainOracleStrength::Unknown`: a mention is not a discriminating
+/// assertion. This collapse is lossy — a documented limitation, not a
+/// lossless mapping. The match is exhaustive so a new `OracleStrength`
+/// variant fails to compile until its disposition is decided here.
+fn perl_oracle_strength_to_domain(strength: OracleStrength) -> crate::domain::OracleStrength {
+    use crate::domain::OracleStrength as DomainOracleStrength;
+    match strength {
+        OracleStrength::StrongExact => DomainOracleStrength::Strong,
+        OracleStrength::WeakSmoke => DomainOracleStrength::Smoke,
+        OracleStrength::WeakBroad => DomainOracleStrength::Weak,
+        // Lossy collapse (documented limitation): not a discriminating signal.
+        OracleStrength::MentionOnly | OracleStrength::Unknown => DomainOracleStrength::Unknown,
     }
 }
 
