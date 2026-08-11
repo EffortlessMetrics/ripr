@@ -46343,6 +46343,10 @@ fn release_pin_ruleset_requires_fully_qualified_tag_ref() -> Result<(), String> 
             JQ_PREDICATE.to_string(),
             path_text.to_string(),
         ];
+        // The jq executable may be a Windows package-manager shim. Keep its
+        // inherited cwd stable while it is spawned: another test must not
+        // switch to and remove a temporary cwd in this window.
+        let _cwd_guard = super::acquire_test_cwd_read_guard();
         command_success_owned("jq", &args)
     };
 
