@@ -1012,6 +1012,52 @@ mod tests {
     }
 
     #[test]
+    fn packaged_qualification_cli_helper_preserves_arguments() -> Result<(), String> {
+        let workflow = include_str!("../../.github/workflows/windows-packaged-qualification.yml");
+        let helper = workflow
+            .lines()
+            .find(|line| line.trim_start().starts_with("function Invoke-CLI"))
+            .ok_or_else(|| "workflow must define the packaged CLI helper".to_string())?;
+        if !helper.contains("[string[]]$cliArgs") {
+            return Err("packaged CLI helper must use a named argument parameter".to_string());
+        }
+        if helper.contains("$args") {
+            return Err(
+                "packaged CLI helper must not shadow PowerShell's automatic $args".to_string(),
+            );
+        }
+        for required in [
+            "if ($null -eq $cliArgs -or $cliArgs.Count -eq 0)",
+            "throw \"packaged CLI $name requires arguments\"",
+            "& $env:RIPR_PACKAGED @cliArgs",
+        ] {
+            if !helper.contains(required) {
+                return Err(format!("Invoke-CLI must contain {required:?}"));
+            }
+        }
+        let guard = helper
+            .find("if ($null -eq $cliArgs -or $cliArgs.Count -eq 0)")
+            .ok_or_else(|| "Invoke-CLI must guard empty arguments".to_string())?;
+        let invocation = helper
+            .find("& $env:RIPR_PACKAGED @cliArgs")
+            .ok_or_else(|| "Invoke-CLI must forward arguments".to_string())?;
+        if guard > invocation {
+            return Err("Invoke-CLI must validate arguments before invocation".to_string());
+        }
+        for required in [
+            "Invoke-CLI 'version' @('--version')",
+            "packaged --version did not report the package version",
+        ] {
+            if !workflow.contains(required) {
+                return Err(format!(
+                    "packaged CLI qualification must contain {required:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn packaged_qualification_receipts_survive_checkout_cleanup() -> Result<(), String> {
         let workflow = include_str!("../../.github/workflows/windows-packaged-qualification.yml");
         let lines = workflow.lines().map(str::trim).collect::<Vec<_>>();
