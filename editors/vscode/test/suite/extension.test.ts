@@ -69,6 +69,12 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.showTopLimitation'));
   });
 
+  test('trusted-host gate is limited to explicit untrusted harness mode', () => {
+    assert.strictEqual(shouldSkipTrustedTestHost('untrusted'), true);
+    assert.strictEqual(shouldSkipTrustedTestHost('trusted'), false);
+    assert.strictEqual(shouldSkipTrustedTestHost(undefined), false);
+  });
+
   test('real extension first-pr bridge commands use safe packet artifacts', async function (this: Mocha.Context) {
     this.timeout(30000);
     await cleanupFirstPrBridgeSmokeFiles();
@@ -155,6 +161,7 @@ suite('Extension Smoke', () => {
 
   test('real extension actionable gap queue commands copy bounded packets for safe artifacts', async function (this: Mocha.Context) {
     this.timeout(30000);
+    skipUnlessTrustedTestHost(this);
     await cleanupActionableGapQueueSmokeFiles();
     await writeWorkspaceFile('target/ripr/reports/actionable-gaps.json', actionableGapsReport({}));
     await writeWorkspaceFile('target/ripr/agent/agent-receipt.json', agentReceipt({ movement: 'improved' }));
@@ -390,6 +397,7 @@ suite('Extension Smoke', () => {
 
   test('real server surfaces seam diagnostic, hover provider, and agent actions', async function (this: Mocha.Context) {
     this.timeout(75000);
+    skipUnlessTrustedTestHost(this);
     if (!process.env.RIPR_TEST_SERVER_PATH) {
       this.skip();
     }
@@ -549,6 +557,7 @@ suite('Extension Smoke', () => {
 
   test('real server invalidates a seam action across deferred save and full refresh', async function (this: Mocha.Context) {
     this.timeout(90000);
+    skipUnlessTrustedTestHost(this);
     if (!process.env.RIPR_TEST_SERVER_PATH) {
       this.skip();
     }
@@ -630,6 +639,7 @@ suite('Extension Smoke', () => {
 
   test('real server reapplies diagnostic profile after runtime configuration changes', async function (this: Mocha.Context) {
     this.timeout(300000);
+    skipUnlessTrustedTestHost(this);
     if (!process.env.RIPR_TEST_SERVER_PATH) {
       this.skip();
     }
@@ -689,6 +699,7 @@ suite('Extension Smoke', () => {
 
   test('real server surfaces preview gap diagnostic, hover, status, and bounded actions', async function (this: Mocha.Context) {
     this.timeout(75000);
+    skipUnlessTrustedTestHost(this);
     if (!process.env.RIPR_TEST_SERVER_PATH) {
       this.skip();
     }
@@ -1095,7 +1106,8 @@ suite('Extension Smoke', () => {
     }
   });
 
-  test('startCurrentRepair executes the nearest existing repair action', async () => {
+  test('startCurrentRepair executes the nearest existing repair action', async function (this: Mocha.Context) {
+    skipUnlessTrustedTestHost(this);
     const relativePath = 'src/start-current-repair.rs';
     const uri = workspaceFileUri(relativePath);
     const collection = vscode.languages.createDiagnosticCollection('ripr-start-current-repair');
@@ -1166,7 +1178,8 @@ suite('Extension Smoke', () => {
     }
   });
 
-  test('copyRepairPacketAtCursor uses only the packet action for the containing diagnostic', async () => {
+  test('copyRepairPacketAtCursor uses only the packet action for the containing diagnostic', async function (this: Mocha.Context) {
+    skipUnlessTrustedTestHost(this);
     const relativePath = 'src/copy-repair-packet-at-cursor.rs';
     const uri = workspaceFileUri(relativePath);
     const collection = vscode.languages.createDiagnosticCollection('ripr-copy-repair-packet-at-cursor');
@@ -4951,6 +4964,16 @@ async function writeClipboardText(text: string): Promise<void> {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
+}
+
+function shouldSkipTrustedTestHost(workspaceTrustMode: string | undefined): boolean {
+  return workspaceTrustMode === 'untrusted';
+}
+
+function skipUnlessTrustedTestHost(testContext: Mocha.Context): void {
+  if (shouldSkipTrustedTestHost(process.env.RIPR_TEST_WORKSPACE_TRUST)) {
+    testContext.skip();
+  }
 }
 
 function assertRepairTargetBlocker(message: string): void {
