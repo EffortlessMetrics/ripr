@@ -1742,25 +1742,45 @@ mod tests {
     {
         let workflow = source_promotion_workflow()?;
         let expected = "CARGO_TARGET_DIR=\"$trusted_target\" cargo build --locked --manifest-path \"$trusted_dir/Cargo.toml\" -p xtask --bin xtask";
-        let build_count = workflow.matches(expected).count();
-        if build_count != 2 {
-            return Err(format!(
-                "trusted-verifier build must explicitly select xtask in both workflow lanes; found {build_count} exact commands"
-            ));
-        }
         if workflow.contains(
             "CARGO_TARGET_DIR=\"$trusted_target\" cargo build --manifest-path \"$trusted_dir/Cargo.toml\" --bin xtask",
         ) {
             return Err("trusted-verifier build regressed to default-package selection".into());
         }
-        for needle in [
-            "verifier=\"$trusted_target/debug/xtask\"",
-            "test -x \"$verifier\"",
+
+        for (label, next_label) in [
+            (
+                "Build verifier from trusted base source",
+                "Verify promotion inputs and PR-head binding",
+            ),
+            (
+                "Build verifier from trusted source parent",
+                "Verify exact J reaches merged source main",
+            ),
         ] {
-            if !workflow.contains(needle) {
+            let start = workflow
+                .find(label)
+                .ok_or_else(|| format!("trusted-verifier lane is missing: {label}"))?;
+            let lane = &workflow[start..];
+            let end = lane.find(next_label).ok_or_else(|| {
+                format!("trusted-verifier lane has no expected end marker: {label}")
+            })?;
+            let lane = &lane[..end];
+            let build_count = lane.matches(expected).count();
+            if build_count != 1 {
                 return Err(format!(
-                    "trusted-verifier build must validate the selected xtask binary path: {needle}"
+                    "trusted-verifier lane {label:?} must contain exactly one explicit xtask build; found {build_count}"
                 ));
+            }
+            for needle in [
+                "verifier=\"$trusted_target/debug/xtask\"",
+                "test -x \"$verifier\"",
+            ] {
+                if !lane.contains(needle) {
+                    return Err(format!(
+                        "trusted-verifier lane {label:?} must validate the selected xtask binary path: {needle}"
+                    ));
+                }
             }
         }
         Ok(())
