@@ -64,6 +64,11 @@ cases must emit a structured rejection receipt when an output directory can be
 determined. The executable witnesses are the focused `source_promotion_verify`
 tests in `xtask/src/reports/source_promotion_verify.rs`.
 
+The post-merge workflow additionally emits
+`source-promotion-post-merge-contract.json` with schema
+`ripr.source_promotion_post_merge_contract.v1`; it retains the exact control
+commit and all transaction identities even when verification rejects.
+
 ## Then
 
 The valid direct join is accepted only when its merge base is unique, its

@@ -368,7 +368,7 @@ the exact `control_commit`, `J`, the original source parent, the trusted
 verifier source parent, and the merged source-main SHA. The dispatch lane
 requires `source_parent == source_main` from the immutable sidecar before it
 builds the trusted verifier, fetches the same fixed-path sidecar, records the
-control commit in its normalized workflow receipt, passes the existing exact-J
+exact control commit in its normalized post-merge workflow receipt, passes the existing exact-J
 arguments and `--main-head` to the trusted verifier, and fails when an
 equivalent flattened tree is present without the exact join object remaining
 reachable.

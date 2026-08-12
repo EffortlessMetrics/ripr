@@ -460,6 +460,22 @@ jobs:
             echo "A flattened equivalent tree is rejected because the verifier requires the exact J object."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Write SHA-bound post-merge contract receipt
+        if: always()
+        env:
+          CONTROL_COMMIT: ${{ steps.control.outputs.control_commit }}
+          JOIN_HEAD: ${{ inputs.join_head }}
+          SOURCE_MAIN: ${{ inputs.source_main }}
+          SOURCE_PARENT: ${{ inputs.source_parent }}
+          MAIN_HEAD: ${{ inputs.main_head }}
+        run: |
+          set -euo pipefail
+          out=target/ripr/source-promotion
+          mkdir -p "$out"
+          status=rejected
+          if test -f "$out/source-promotion-verification.json" && jq -e '.status == "verified"' "$out/source-promotion-verification.json" >/dev/null; then status=verified; fi
+          jq -n --arg schema 'ripr.source_promotion_post_merge_contract.v1' --arg status "$status" --arg control_commit "$CONTROL_COMMIT" --arg join_head "$JOIN_HEAD" --arg source_main "$SOURCE_MAIN" --arg source_parent "$SOURCE_PARENT" --arg main_head "$MAIN_HEAD" '{schema:$schema,status:$status,control_commit:$control_commit,join_head:$join_head,source_main:$source_main,source_parent:$source_parent,main_head:$main_head}' > "$out/source-promotion-post-merge-contract.json"
+
       - name: Upload SHA-bound post-merge receipts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

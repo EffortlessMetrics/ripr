@@ -1634,6 +1634,9 @@ mod tests {
             "sha256sum \"$preflight\"",
             "sha256sum \"$resolution_manifest\"",
             "control_commit:$control_commit",
+            "ripr.source_promotion_post_merge_contract.v1",
+            "source-promotion-post-merge-contract.json",
+            "--arg control_commit \"$CONTROL_COMMIT\"",
         ] {
             if !workflow.contains(needle) {
                 return Err(format!("workflow lacks immutable sidecar guard: {needle}"));

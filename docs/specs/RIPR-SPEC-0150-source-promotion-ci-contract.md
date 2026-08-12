@@ -75,6 +75,9 @@ exact J object to remain reachable from merged source `main`.
 - a single-parent or equivalent-tree flattened history fails post-merge;
 - uploaded receipts retain exact heads, ordered parents, input digests, checks,
   failure reasons, and claim boundaries.
+- The uploaded post-merge contract receipt uses schema
+  `ripr.source_promotion_post_merge_contract.v1` and retains the exact
+  `control_commit` alongside J, source, trusted-parent, and merged-main SHAs.
 - the verifier is built from the trusted source-parent SHA in an isolated target
   and invoked against the candidate checkout; the candidate cannot supply it.
 
