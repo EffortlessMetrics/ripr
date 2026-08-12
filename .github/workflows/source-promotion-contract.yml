@@ -241,6 +241,9 @@ jobs:
           RESOLUTION_MANIFEST: ${{ steps.inputs.outputs.resolution_manifest }}
           CONTROL_COMMIT: ${{ steps.inputs.outputs.control_commit }}
           VERIFY_EXIT_CODE: ${{ steps.verify.outputs.exit_code }}
+          TRUSTED_VERIFIER_SHA: ${{ steps.trusted-verifier.outputs.sha }}
+          LIVE_TAG: ${{ steps.live-governance.outputs.tag }}
+          LIVE_RULESET: ${{ steps.live-governance.outputs.ruleset }}
           VALIDATION_FAILURE_PATH: ${{ runner.temp }}/source-promotion-validation-failure.txt
           SOURCE_PROMOTION_OUT: target/ripr/source-promotion
         run: |
@@ -250,7 +253,7 @@ jobs:
           verification="$out/source-promotion-verification.json"
           contract="$out/source-promotion-contract.json"
           if test -f "$verification"; then
-            if jq -e 'type == "object" and .schema == "ripr.source_promotion_verification.v2" and (.status == "verified" or .status == "rejected")' "$verification" >/dev/null 2>&1; then
+            if jq -e 'type == "object" and .schema == "ripr.source_promotion_verification.v2" and (.status == "verified" or .status == "rejected") and (.join_head | type) == "string" and (.source_main | type) == "string" and (.main_head == null or (.main_head | type) == "string") and (.parents | type) == "array" and (.tree == null or (.tree | type) == "string") and (.preflight_sha256 == null or (.preflight_sha256 | type) == "string") and (.resolution_manifest_sha256 == null or (.resolution_manifest_sha256 | type) == "string") and (.merge_base == null or (.merge_base | type) == "string") and (.swarm_reachability | type) == "object" and (.release_metadata_surfaces | type) == "array" and (.checks | type) == "object" and (.failure_reasons | type) == "array" and (.invalidation_rules | type) == "array" and (.non_claims | type) == "array"' "$verification" >/dev/null 2>&1; then
               verifier_receipt_status=present
               status=$(jq -r '.status' "$verification")
               preflight_sha256=$(jq -r '.preflight_sha256 // "not_available"' "$verification")

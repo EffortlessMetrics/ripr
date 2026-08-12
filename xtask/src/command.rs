@@ -1767,6 +1767,18 @@ mod tests {
             "trusted verifier receipt missing",
             "verifier_receipt_status:$verifier_receipt_status",
             "verifier_exit_code:$verifier_exit_code",
+            "TRUSTED_VERIFIER_SHA: ${{ steps.trusted-verifier.outputs.sha }}",
+            "LIVE_TAG: ${{ steps.live-governance.outputs.tag }}",
+            "LIVE_RULESET: ${{ steps.live-governance.outputs.ruleset }}",
+            "(.join_head | type) == \"string\"",
+            "(.source_main | type) == \"string\"",
+            "(.parents | type) == \"array\"",
+            "(.swarm_reachability | type) == \"object\"",
+            "(.release_metadata_surfaces | type) == \"array\"",
+            "(.checks | type) == \"object\"",
+            "(.failure_reasons | type) == \"array\"",
+            "(.invalidation_rules | type) == \"array\"",
+            "(.non_claims | type) == \"array\"",
         ] {
             if !workflow.contains(needle) {
                 return Err(format!(
