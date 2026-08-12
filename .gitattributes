@@ -14,3 +14,24 @@
 *.vsix binary
 *.woff  binary
 *.woff2 binary
+
+# Embedded patch and diff subjects preserve the observed whitespace verbatim.
+# `git diff --check` should validate the repository file, not reinterpret the
+# whitespace carried inside the fixture or example subject.
+crates/ripr/examples/*.diff -whitespace
+fixtures/**/*.diff -whitespace
+fixtures/**/*.patch -whitespace
+
+# These historical Markdown records use two-space hard breaks in compact
+# metadata headers. Disable only the end-of-line check for those exact files;
+# blank lines at EOF and every other Markdown path remain checked normally.
+docs/handoffs/2026-07-11-targeted-rerun-benchmark.md whitespace=-blank-at-eol,blank-at-eof
+docs/handoffs/2026-07-12-call-presence-evidence-packet.md whitespace=-blank-at-eol,blank-at-eof
+docs/handoffs/2026-07-29-preview-projection-honesty-closeout.md whitespace=-blank-at-eol,blank-at-eof
+docs/status/RUST_ROUTE_QUALITY.md whitespace=-blank-at-eol,blank-at-eof
+plans/rust-one-shot-evidence-to-repair.md whitespace=-blank-at-eol,blank-at-eof
+
+# These imported historical records intentionally retain one terminal blank
+# line. Disable only the EOF-blank check for those exact files.
+.factory/skills/review-guidelines/SKILL.md whitespace=-blank-at-eof,blank-at-eol
+docs/handoffs/2026-07-28-cli-finding-navigation-discoverability-closeout.md whitespace=-blank-at-eof,blank-at-eol
