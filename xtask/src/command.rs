@@ -1726,12 +1726,41 @@ mod tests {
         for needle in [
             "Build verifier from trusted base source",
             "git -C \"$trusted_dir\" checkout --detach \"$SOURCE_PARENT\"",
-            "cargo build --manifest-path \"$trusted_dir/Cargo.toml\" --bin xtask",
+            "cargo build --locked --manifest-path \"$trusted_dir/Cargo.toml\" -p xtask --bin xtask",
             "TRUSTED_VERIFIER",
             "rev-parse HEAD)\" = \"$SOURCE_PARENT",
         ] {
             if !workflow.contains(needle) {
                 return Err(format!("workflow lacks trusted-verifier guard: {needle}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_builds_xtask_explicitly_from_trusted_source() -> Result<(), String>
+    {
+        let workflow = source_promotion_workflow()?;
+        let expected = "CARGO_TARGET_DIR=\"$trusted_target\" cargo build --locked --manifest-path \"$trusted_dir/Cargo.toml\" -p xtask --bin xtask";
+        let build_count = workflow.matches(expected).count();
+        if build_count != 2 {
+            return Err(format!(
+                "trusted-verifier build must explicitly select xtask in both workflow lanes; found {build_count} exact commands"
+            ));
+        }
+        if workflow.contains(
+            "CARGO_TARGET_DIR=\"$trusted_target\" cargo build --manifest-path \"$trusted_dir/Cargo.toml\" --bin xtask",
+        ) {
+            return Err("trusted-verifier build regressed to default-package selection".into());
+        }
+        for needle in [
+            "verifier=\"$trusted_target/debug/xtask\"",
+            "test -x \"$verifier\"",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "trusted-verifier build must validate the selected xtask binary path: {needle}"
+                ));
             }
         }
         Ok(())
