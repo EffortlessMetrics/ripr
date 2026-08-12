@@ -1,0 +1,9 @@
+{
+  "schema": "ripr.source_promotion_ci_inputs.v2",
+  "source_main": "ec759b51311d806d53923a6c2af0a9d092fc5226",
+  "join_head": "a6d650ed8e87cbe3a35869a9c204d21e41c8a5f5",
+  "preflight": "docs/release/source-promotion/preflight.json",
+  "resolution_manifest": "docs/release/source-promotion/resolution-manifest.json",
+  "preflight_sha256": "cbf7488c9ced0020a8ef174f00134d0c8f9798e49d460180cb6e578f0ef150a1",
+  "resolution_manifest_sha256": "7faf5bac6eff946ce1523d3ddc59ebadb7e5f9ed708d978cffd0e48a78e38efd"
+}
