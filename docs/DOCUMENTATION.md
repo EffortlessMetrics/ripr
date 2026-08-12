@@ -121,7 +121,10 @@ Current how-to docs:
 - [Release](RELEASE.md)
 - [Live-history release transaction runbook](RELEASE_TRANSACTION.md) - exact
   two-repository release lifecycle, J/K transport, receipts, and stop rules
+- [Source-promotion runbook](SOURCE_PROMOTION.md)
 - [Source-promotion preflight](SOURCE_PROMOTION_PREFLIGHT.md)
+- [Source-promotion verification contract](specs/RIPR-SPEC-0152-source-promotion-verifier.md)
+- [Source-promotion CI contract](specs/RIPR-SPEC-0150-source-promotion-ci-contract.md)
 - [Back-sync verifier](BACK_SYNC_VERIFIER.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
 - [Windows packaged qualification](WINDOWS_PACKAGED_QUALIFICATION.md) - exact
