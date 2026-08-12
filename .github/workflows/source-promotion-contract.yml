@@ -96,13 +96,16 @@ jobs:
           marker_count=$(printf '%s\n' "$PR_BODY" | grep -F '<!-- source-promotion-control:' | wc -l || true)
           test "$marker_count" -eq 1 || fail "exactly one source-promotion-control marker is required"
           control_marker=$(printf '%s\n' "$PR_BODY" | grep -E '^<!-- source-promotion-control: [0-9a-f]{40} -->$' || true)
-          test "$(printf '%s\n' "$control_marker" | sed '/^$/d' | wc -l)" -eq 1 || fail "source-promotion-control marker must contain one exact lowercase SHA"
+          test "$(printf '%s\n' "$control_marker" | sed '/^$/d' | wc -l)" -eq 1 || fail "exactly one lowercase source-promotion-control marker is required"
           control_commit=$(printf '%s\n' "$control_marker" | sed -E 's/.*: ([0-9a-f]{40}) -->/\1/')
           control_dir="$RUNNER_TEMP/ripr-promotion-control"
           git clone --no-checkout "$CONTROL_REPOSITORY_URL" "$control_dir"
           git -C "$control_dir" fetch --no-tags origin "$control_commit"
           test "$(git -C "$control_dir" rev-parse --verify "$control_commit^{commit}")" = "$control_commit" || fail "control commit is not an exact source-repository commit"
           test "$(git -C "$control_dir" remote get-url origin)" = "$CONTROL_REPOSITORY_URL" || fail "control inputs were not fetched from the fixed source repository"
+          git -C "$control_dir" fetch --no-tags origin "$PR_HEAD"
+          test "$(git -C "$control_dir" merge-base "$control_commit" "$PR_HEAD" 2>/dev/null || true)" != "$control_commit" || fail "control commit must not be an ancestor of the PR head"
+          test "$(git -C "$control_dir" merge-base "$control_commit" "$PR_HEAD" 2>/dev/null || true)" != "$PR_HEAD" || fail "control commit must not be a descendant of the PR head"
 
           validate_control_file() {
             local path="$1"
@@ -365,12 +368,14 @@ jobs:
           PREFLIGHT_PATH: docs/release/source-promotion/preflight.json
           RESOLUTION_MANIFEST_PATH: docs/release/source-promotion/resolution-manifest.json
           EXPECTED_SOURCE_MAIN: ${{ inputs.source_main }}
+          EXPECTED_SOURCE_PARENT: ${{ inputs.source_parent }}
           EXPECTED_JOIN_HEAD: ${{ inputs.join_head }}
         run: |
           set -euo pipefail
           fail() { printf '%s\n' "post-merge contract rejected: $1" >&2; exit 1; }
           test "$(printf '%s' "$CONTROL_COMMIT" | grep -E '^[0-9a-f]{40}$')" = "$CONTROL_COMMIT" || fail "control_commit must be an exact lowercase SHA"
           test "$(printf '%s' "$EXPECTED_SOURCE_MAIN" | grep -E '^[0-9a-f]{40}$')" = "$EXPECTED_SOURCE_MAIN" || fail "source_main must be an exact lowercase SHA"
+          test "$(printf '%s' "$EXPECTED_SOURCE_PARENT" | grep -E '^[0-9a-f]{40}$')" = "$EXPECTED_SOURCE_PARENT" || fail "source_parent must be an exact lowercase SHA"
           test "$(printf '%s' "$EXPECTED_JOIN_HEAD" | grep -E '^[0-9a-f]{40}$')" = "$EXPECTED_JOIN_HEAD" || fail "join_head must be an exact lowercase SHA"
           control_dir="$RUNNER_TEMP/ripr-promotion-control"
           git clone --no-checkout "$CONTROL_REPOSITORY_URL" "$control_dir"
@@ -401,7 +406,11 @@ jobs:
           preflight_sha256=$(jq -er '.preflight_sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' "$control_inputs") || fail "control preflight digest is invalid"
           resolution_sha256=$(jq -er '.resolution_manifest_sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' "$control_inputs") || fail "control resolution digest is invalid"
           test "$source_main" = "$EXPECTED_SOURCE_MAIN" || fail "control source_main does not match dispatch input"
+          test "$EXPECTED_SOURCE_PARENT" = "$source_main" || fail "source_parent must equal control source_main"
           test "$join_head" = "$EXPECTED_JOIN_HEAD" || fail "control join_head does not match dispatch input"
+          git -C "$control_dir" fetch --no-tags origin "$EXPECTED_JOIN_HEAD"
+          test "$(git -C "$control_dir" merge-base "$CONTROL_COMMIT" "$EXPECTED_JOIN_HEAD" 2>/dev/null || true)" != "$CONTROL_COMMIT" || fail "control commit must not be an ancestor of the join head"
+          test "$(git -C "$control_dir" merge-base "$CONTROL_COMMIT" "$EXPECTED_JOIN_HEAD" 2>/dev/null || true)" != "$EXPECTED_JOIN_HEAD" || fail "control commit must not be a descendant of the join head"
           test "$(sha256sum "$preflight" | awk '{print $1}')" = "$preflight_sha256" || fail "control preflight digest mismatch"
           test "$(sha256sum "$resolution_manifest" | awk '{print $1}')" = "$resolution_sha256" || fail "control resolution digest mismatch"
           {

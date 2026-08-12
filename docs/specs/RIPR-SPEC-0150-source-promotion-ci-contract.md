@@ -12,8 +12,9 @@ must not produce a promotion success.
 ## Behavior
 
 The `Source Promotion Contract` workflow runs only for a pull request whose body
-contains `<!-- source-promotion: true -->` and exactly one
-`<!-- source-promotion-control: <40 lowercase hex> -->` marker. It checks out
+contains `<!-- source-promotion: true -->` and exactly one lowercase
+`source-promotion-control` marker in the form
+`<!-- source-promotion-control: <40 lowercase hex> -->`. It checks out
 the exact PR head with full history, fetches the named control commit from the
 fixed `EffortlessMetrics/ripr` source repository, and consumes only these fixed
 paths from that immutable commit:
@@ -25,7 +26,9 @@ paths from that immutable commit:
 The control manifest uses schema `ripr.source_promotion_ci_inputs.v2` and binds
 exact `source_main`, `join_head`, fixed paths, and the SHA-256 digest of each
 receipt. `join_head` must equal the live PR head and `source_main` must equal
-the live PR base. The control files are external to J's tree: the workflow
+the live PR base. The control commit must not be an ancestor or descendant of
+J. On manual dispatch, `source_parent` must equal the sidecar's `source_main`
+before the verifier is built. The control files are external to J's tree: the workflow
 rejects candidate-provided paths and does not require a tracked input file in
 the promotion PR. This avoids a circular fixed-point contract in which a file
 containing J also changes `J^{tree}`.
@@ -62,10 +65,12 @@ exact J object to remain reachable from merged source `main`.
 ## Required Evidence
 
 - unrelated PRs skip without a success claim;
-- a stale or substituted `join_head`, control commit, receipt digest, body
-  command SHA, fixed receipt path, or source parent fails closed;
+- a stale or substituted `join_head`, control commit, source parent, receipt digest, body
+  command SHA, or fixed receipt path fails closed;
 - missing, abbreviated, uppercase, unreachable, wrong-repository, symlinked,
   directory, and placeholder control inputs fail closed;
+- a dispatch whose trusted `source_parent` differs from the immutable sidecar's
+  `source_main` fails before the verifier is built;
 - a valid two-parent join passes the verifier;
 - a single-parent or equivalent-tree flattened history fails post-merge;
 - uploaded receipts retain exact heads, ordered parents, input digests, checks,
@@ -95,7 +100,8 @@ Executable proof lives in
 `xtask/src/command.rs::tests::source_promotion_workflow_is_exact_head_and_read_only`,
 `source_promotion_workflow_rejects_symlink_and_path_escape_inputs`,
 `source_promotion_workflow_rejects_placeholder_and_wrong_repo_commands`,
-`source_promotion_workflow_disables_checkout_credentials_before_code`, and
+`source_promotion_workflow_disables_checkout_credentials_before_code`,
+`source_promotion_workflow_binds_trusted_source_parent`, and
 `source_promotion_workflow_refutes_crlf_rewrite_thread`. The exact-J graph and
 flattened-history controls remain covered by the verifier tests mapped in
 `.ripr/traceability.toml`.

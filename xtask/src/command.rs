@@ -1641,6 +1641,28 @@ mod tests {
     }
 
     #[test]
+    fn source_promotion_workflow_binds_trusted_source_parent() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "EXPECTED_SOURCE_PARENT: ${{ inputs.source_parent }}",
+            "source_parent must be an exact lowercase SHA",
+            "test \"$EXPECTED_SOURCE_PARENT\" = \"$source_main\" || fail \"source_parent must equal control source_main\"",
+            "control commit must not be an ancestor of the join head",
+            "control commit must not be a descendant of the join head",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "workflow lacks trusted source-parent binding: {needle}"
+                ));
+            }
+        }
+        if workflow.contains("EXPECTED_SOURCE_PARENT: ${{ inputs.source_main }}") {
+            return Err("workflow aliases source_parent from the wrong dispatch input".into());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn source_promotion_workflow_rejects_placeholder_and_wrong_repo_commands() -> Result<(), String>
     {
         let workflow = source_promotion_workflow()?;

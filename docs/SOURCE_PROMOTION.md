@@ -307,7 +307,8 @@ marker:
 ```
 
 The promotion PR must name one immutable source-repository control commit in
-its body. The marker is exactly one HTML comment with a full lowercase SHA:
+its body. The workflow requires exactly one lowercase `source-promotion-control`
+marker; it is one HTML comment with a full lowercase SHA:
 
 ```text
 <!-- source-promotion-control: <exact-control-commit-SHA> -->
@@ -338,8 +339,9 @@ The sidecar's `contract-inputs.json` has this shape:
 
 The `Source Promotion Contract` workflow checks out the exact PR head with
 full history, fetches the sidecar control commit from source origin, verifies
-that each fixed path is a mode-100644 regular file, extracts the files by
-object id, verifies their digests, and requires both `source_main` and
+that each fixed path is a mode-100644 regular file, rejects a control commit
+that is an ancestor or descendant of J, extracts the files by object id,
+verifies their digests, and requires both `source_main` and
 `join_head` to match the live base/head. It then runs the read-only verifier
 and uploads JSON/Markdown receipts under an artifact name containing the
 PR-head SHA. No candidate-provided path is read, and no input file is required
@@ -364,7 +366,9 @@ workflow other than this permanent contract workflow.
 After the protected merge, manually dispatch the same workflow from `main` with
 the exact `control_commit`, `J`, the original source parent, the trusted
 verifier source parent, and the merged source-main SHA. The dispatch lane
-fetches the same fixed-path sidecar, records the control commit in its
-normalized workflow receipt, passes the existing exact-J arguments and
-`--main-head` to the trusted verifier, and fails when an equivalent flattened
-tree is present without the exact join object remaining reachable.
+requires `source_parent == source_main` from the immutable sidecar before it
+builds the trusted verifier, fetches the same fixed-path sidecar, records the
+control commit in its normalized workflow receipt, passes the existing exact-J
+arguments and `--main-head` to the trusted verifier, and fails when an
+equivalent flattened tree is present without the exact join object remaining
+reachable.

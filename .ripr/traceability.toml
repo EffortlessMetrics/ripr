@@ -6087,6 +6087,7 @@ name = "source-promotion exact-head CI contract"
 spec = "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md"
 tests = [
   "xtask/src/command.rs::tests::source_promotion_workflow_is_exact_head_and_read_only",
+  "xtask/src/command.rs::tests::source_promotion_workflow_binds_trusted_source_parent",
   "xtask/src/command.rs::tests::source_promotion_workflow_rejects_symlink_and_path_escape_inputs",
   "xtask/src/command.rs::tests::source_promotion_workflow_requires_external_fixed_sidecar",
   "xtask/src/command.rs::tests::source_promotion_workflow_rejects_placeholder_and_wrong_repo_commands",
