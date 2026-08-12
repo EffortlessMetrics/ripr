@@ -306,25 +306,50 @@ marker:
 <!-- source-promotion: true -->
 ```
 
-The promotion branch must commit a tracked
-`docs/release/source-promotion/contract-inputs.json` file with this shape:
+The promotion PR must name one immutable source-repository control commit in
+its body. The workflow requires exactly one lowercase `source-promotion-control`
+marker; it is one HTML comment with a full lowercase SHA:
+
+```text
+<!-- source-promotion-control: <exact-control-commit-SHA> -->
+```
+
+That control commit is a durable sidecar, not an ancestor or child of J and
+not a commit in J's tree. It is fetched only from the fixed source repository
+`https://github.com/EffortlessMetrics/ripr.git`. It must contain these tracked
+regular files at these fixed paths:
+
+- `docs/release/source-promotion/contract-inputs.json`
+- `docs/release/source-promotion/preflight.json`
+- `docs/release/source-promotion/resolution-manifest.json`
+
+The sidecar's `contract-inputs.json` has this shape:
 
 ```json
 {
-  "schema": "ripr.source_promotion_ci_inputs.v1",
+  "schema": "ripr.source_promotion_ci_inputs.v2",
   "source_main": "<exact-40-character-source-parent-SHA>",
   "join_head": "<exact-40-character-J-SHA>",
-  "preflight": "docs/release/0.11.0/source-promotion-preflight.json",
-  "resolution_manifest": "docs/release/0.11.0/source-promotion-resolution.json"
+  "preflight": "docs/release/source-promotion/preflight.json",
+  "resolution_manifest": "docs/release/source-promotion/resolution-manifest.json",
+  "preflight_sha256": "<64-character-lowercase-SHA-256>",
+  "resolution_manifest_sha256": "<64-character-lowercase-SHA-256>"
 }
 ```
 
 The `Source Promotion Contract` workflow checks out the exact PR head with
-full history, requires `join_head` to equal that head, verifies the tracked
-receipt paths and exact source parent, runs the read-only verifier, and uploads
-the JSON/Markdown receipts under an artifact name containing the PR-head SHA.
-It also requires the PR body to contain the live-head guarded merge command and
-these warnings:
+full history, fetches the sidecar control commit from source origin, verifies
+that each fixed path is a mode-100644 regular file, rejects a control commit
+that is an ancestor or descendant of J, extracts the files by object id,
+verifies their digests, and requires both `source_main` and
+`join_head` to match the live base/head. It then runs the read-only verifier
+and uploads JSON/Markdown receipts under an artifact name containing the
+PR-head SHA. No candidate-provided path is read, and no input file is required
+in J's tree; this avoids the impossible fixed-point construction where an
+input file contains `J` while also contributing bytes to `J^{tree}`.
+
+The PR body must also contain the live-head guarded merge command and these
+warnings:
 
 ```text
 Use Create a merge commit.
@@ -339,7 +364,11 @@ publication channels, or secrets. Promotion branches must not change any
 workflow other than this permanent contract workflow.
 
 After the protected merge, manually dispatch the same workflow from `main` with
-the exact preflight and resolution paths, `J`, the original source parent, and
-the merged source-main SHA. The dispatch lane passes `--main-head` to the
-verifier and fails when an equivalent flattened tree is present without the
-exact join object remaining reachable.
+the exact `control_commit`, `J`, the original source parent, the trusted
+verifier source parent, and the merged source-main SHA. The dispatch lane
+requires `source_parent == source_main` from the immutable sidecar before it
+builds the trusted verifier, fetches the same fixed-path sidecar, records the
+exact control commit in its normalized post-merge workflow receipt, passes the existing exact-J
+arguments and `--main-head` to the trusted verifier, and fails when an
+equivalent flattened tree is present without the exact join object remaining
+reachable.

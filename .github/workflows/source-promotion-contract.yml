@@ -6,12 +6,8 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      preflight:
-        description: Path to the immutable source-promotion preflight receipt
-        required: true
-        type: string
-      resolution_manifest:
-        description: Path to the reviewed source-promotion resolution manifest
+      control_commit:
+        description: Exact source-repository control commit containing immutable promotion inputs
         required: true
         type: string
       join_head:
@@ -55,6 +51,8 @@ jobs:
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable (master)
+        with:
+          toolchain: 1.95.0
 
       - name: Build verifier from trusted base source
         id: trusted-verifier
@@ -80,25 +78,13 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          INPUTS_PATH: docs/release/source-promotion/contract-inputs.json
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CONTROL_REPOSITORY_URL: https://github.com/EffortlessMetrics/ripr.git
+          CONTROL_INPUTS_PATH: docs/release/source-promotion/contract-inputs.json
+          PREFLIGHT_PATH: docs/release/source-promotion/preflight.json
+          RESOLUTION_MANIFEST_PATH: docs/release/source-promotion/resolution-manifest.json
         run: |
           set -euo pipefail
-          workspace_real=$(realpath -e "$GITHUB_WORKSPACE")
-
-          validate_tracked_regular_file() {
-            local relative_path="$1"
-            case "$relative_path" in
-              /*|../*|*/../*|*\\..\\*) fail "path escapes the checkout: $relative_path" ;;
-            esac
-            local candidate="$GITHUB_WORKSPACE/$relative_path"
-            test -f "$candidate" || fail "path is not a regular file: $relative_path"
-            test ! -L "$candidate" || fail "path must not be a symlink: $relative_path"
-            local canonical
-            canonical=$(realpath -e "$candidate") || fail "path cannot be canonicalized: $relative_path"
-            test "$canonical" = "$workspace_real/$relative_path" || fail "path is not canonical within GITHUB_WORKSPACE: $relative_path"
-            test "$(git ls-files --error-unmatch "$relative_path")" = "$relative_path" || fail "path must be tracked: $relative_path"
-          }
-
           fail() {
             printf '%s\n' "source-promotion contract rejected: $1" >&2
             exit 1
@@ -106,22 +92,55 @@ jobs:
 
           test "$(git rev-parse HEAD)" = "$PR_HEAD" || fail "checkout is not the exact PR head"
           test "$(git rev-parse --verify "$BASE_SHA^{commit}")" = "$BASE_SHA" || fail "base SHA is not an exact commit"
-          validate_tracked_regular_file "$INPUTS_PATH"
-          jq -e '.schema == "ripr.source_promotion_ci_inputs.v1"' "$INPUTS_PATH" >/dev/null || fail "unsupported promotion-input schema"
 
-          source_main=$(jq -er '.source_main | select(type == "string" and test("^[0-9a-f]{40}$"))' "$INPUTS_PATH") || fail "source_main must be an exact lowercase SHA"
-          join_head=$(jq -er '.join_head | select(type == "string" and test("^[0-9a-f]{40}$"))' "$INPUTS_PATH") || fail "join_head must be an exact lowercase SHA"
-          preflight=$(jq -er '.preflight | select(type == "string" and length > 0)' "$INPUTS_PATH") || fail "preflight path is missing"
-          resolution_manifest=$(jq -er '.resolution_manifest | select(type == "string" and length > 0)' "$INPUTS_PATH") || fail "resolution_manifest path is missing"
+          marker_count=$(printf '%s\n' "$PR_BODY" | grep -F '<!-- source-promotion-control:' | wc -l || true)
+          test "$marker_count" -eq 1 || fail "exactly one source-promotion-control marker is required"
+          control_marker=$(printf '%s\n' "$PR_BODY" | grep -E '^<!-- source-promotion-control: [0-9a-f]{40} -->$' || true)
+          test "$(printf '%s\n' "$control_marker" | sed '/^$/d' | wc -l)" -eq 1 || fail "exactly one lowercase source-promotion-control marker is required"
+          control_commit=$(printf '%s\n' "$control_marker" | sed -E 's/.*: ([0-9a-f]{40}) -->/\1/')
+          control_dir="$RUNNER_TEMP/ripr-promotion-control"
+          git clone --no-checkout "$CONTROL_REPOSITORY_URL" "$control_dir"
+          git -C "$control_dir" fetch --no-tags origin "$control_commit"
+          test "$(git -C "$control_dir" rev-parse --verify "$control_commit^{commit}")" = "$control_commit" || fail "control commit is not an exact source-repository commit"
+          test "$(git -C "$control_dir" remote get-url origin)" = "$CONTROL_REPOSITORY_URL" || fail "control inputs were not fetched from the fixed source repository"
+          git -C "$control_dir" fetch --no-tags origin "$PR_HEAD"
+          test "$(git -C "$control_dir" merge-base "$control_commit" "$PR_HEAD" 2>/dev/null || true)" != "$control_commit" || fail "control commit must not be an ancestor of the PR head"
+          test "$(git -C "$control_dir" merge-base "$control_commit" "$PR_HEAD" 2>/dev/null || true)" != "$PR_HEAD" || fail "control commit must not be a descendant of the PR head"
 
-          validate_tracked_regular_file "$preflight"
-          validate_tracked_regular_file "$resolution_manifest"
+          validate_control_file() {
+            local path="$1"
+            local entry
+            entry=$(git -C "$control_dir" ls-tree "$control_commit" -- "$path")
+            test "$(printf '%s\n' "$entry" | awk -F '\t' '{print $1}' | awk '{print $1}')" = "100644" || fail "control input is not a tracked regular file: $path"
+            test "$(printf '%s\n' "$entry" | awk -F '\t' '{print $2}')" = "$path" || fail "control input path is not canonical: $path"
+          }
+
+          validate_control_file "$CONTROL_INPUTS_PATH"
+          validate_control_file "$PREFLIGHT_PATH"
+          validate_control_file "$RESOLUTION_MANIFEST_PATH"
+          control_inputs="$RUNNER_TEMP/contract-inputs.json"
+          preflight="$RUNNER_TEMP/source-promotion-preflight.json"
+          resolution_manifest="$RUNNER_TEMP/source-promotion-resolution.json"
+          git -C "$control_dir" show "$control_commit:$CONTROL_INPUTS_PATH" > "$control_inputs"
+          git -C "$control_dir" show "$control_commit:$PREFLIGHT_PATH" > "$preflight"
+          git -C "$control_dir" show "$control_commit:$RESOLUTION_MANIFEST_PATH" > "$resolution_manifest"
+          jq -e '.schema == "ripr.source_promotion_ci_inputs.v2"' "$control_inputs" >/dev/null || fail "unsupported promotion-input schema"
+
+          source_main=$(jq -er '.source_main | select(type == "string" and test("^[0-9a-f]{40}$"))' "$control_inputs") || fail "source_main must be an exact lowercase SHA"
+          join_head=$(jq -er '.join_head | select(type == "string" and test("^[0-9a-f]{40}$"))' "$control_inputs") || fail "join_head must be an exact lowercase SHA"
+          jq -e --arg expected "$PREFLIGHT_PATH" '.preflight == $expected' "$control_inputs" >/dev/null || fail "control preflight path is not the fixed path"
+          jq -e --arg expected "$RESOLUTION_MANIFEST_PATH" '.resolution_manifest == $expected' "$control_inputs" >/dev/null || fail "control resolution path is not the fixed path"
+          preflight_sha256=$(jq -er '.preflight_sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' "$control_inputs") || fail "preflight_sha256 must be an exact lowercase digest"
+          resolution_sha256=$(jq -er '.resolution_manifest_sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' "$control_inputs") || fail "resolution_manifest_sha256 must be an exact lowercase digest"
+          test "$(sha256sum "$preflight" | awk '{print $1}')" = "$preflight_sha256" || fail "preflight digest does not match the immutable control commit"
+          test "$(sha256sum "$resolution_manifest" | awk '{print $1}')" = "$resolution_sha256" || fail "resolution manifest digest does not match the immutable control commit"
+          test "$source_main" = "$BASE_SHA" || fail "control source_main does not equal the PR base SHA"
+          test "$join_head" = "$PR_HEAD" || fail "declared join_head does not equal the live PR head"
 
           swarm_ref=$(jq -er '.swarm_ref | select(type == "string" and test("^refs/tags/ripr-release-[^/]+-[0-9a-f]{40}$"))' "$preflight") || fail "preflight swarm_ref must be the protected candidate tag ref"
           swarm_parent=$(jq -er '.swarm_parent | select(type == "string" and test("^[0-9a-f]{40}$"))' "$preflight") || fail "preflight swarm_parent must be an exact lowercase SHA"
 
           test "$(git rev-parse --verify "$source_main^{commit}")" = "$source_main" || fail "source_main is not present in full history"
-          test "$join_head" = "$PR_HEAD" || fail "declared join_head does not equal the live PR head"
 
           printf '%s\n' "$PR_BODY" | grep -Fq '<!-- source-promotion: true -->' || fail "promotion marker is missing"
           merge_count=$(printf '%s\n' "$PR_BODY" | grep -oF 'gh pr merge' | wc -l)
@@ -155,15 +174,7 @@ jobs:
           unexpected_workflows=$(printf '%s\n' "$changed_workflows" | sed '/^$/d;/^\.github\/workflows\/source-promotion-contract\.yml$/d')
           test -z "$unexpected_workflows" || fail "promotion PR changes non-contract workflows: $unexpected_workflows"
 
-          {
-            echo "source_main=$source_main" >> "$GITHUB_OUTPUT"
-            echo "join_head=$join_head" >> "$GITHUB_OUTPUT"
-            echo "preflight=$preflight" >> "$GITHUB_OUTPUT"
-            echo "resolution_manifest=$resolution_manifest" >> "$GITHUB_OUTPUT"
-            echo "swarm_ref=$swarm_ref" >> "$GITHUB_OUTPUT"
-            echo "swarm_parent=$swarm_parent" >> "$GITHUB_OUTPUT"
-            echo "source_parent=$BASE_SHA" >> "$GITHUB_OUTPUT"
-          }
+          printf '%s\n' "source_main=$source_main" "join_head=$join_head" "preflight=$preflight" "resolution_manifest=$resolution_manifest" "swarm_ref=$swarm_ref" "swarm_parent=$swarm_parent" "source_parent=$BASE_SHA" "control_commit=$control_commit" "preflight_sha256=$preflight_sha256" "resolution_sha256=$resolution_sha256" >> "$GITHUB_OUTPUT"
 
       - name: Verify live swarm tag and protected ruleset
         id: live-governance
@@ -199,6 +210,7 @@ jobs:
           JOIN_HEAD: ${{ steps.inputs.outputs.join_head }}
           SOURCE_MAIN: ${{ steps.inputs.outputs.source_main }}
           SOURCE_PARENT: ${{ steps.inputs.outputs.source_parent }}
+          CONTROL_COMMIT: ${{ steps.inputs.outputs.control_commit }}
           TRUSTED_VERIFIER: ${{ steps.trusted-verifier.outputs.path }}
         run: |
           set +e
@@ -224,6 +236,7 @@ jobs:
           JOIN_HEAD: ${{ steps.inputs.outputs.join_head }}
           PREFLIGHT: ${{ steps.inputs.outputs.preflight }}
           RESOLUTION_MANIFEST: ${{ steps.inputs.outputs.resolution_manifest }}
+          CONTROL_COMMIT: ${{ steps.inputs.outputs.control_commit }}
         run: |
           set -euo pipefail
           out=target/ripr/source-promotion
@@ -255,13 +268,14 @@ jobs:
             version_state='{}'
           fi
           jq -n \
-            --arg schema 'ripr.source_promotion_contract.v1' \
+            --arg schema 'ripr.source_promotion_contract.v2' \
             --arg status "$status" \
             --argjson pr_number "$PR_NUMBER" \
             --arg base_sha "$BASE_SHA" \
             --arg head_sha "$PR_HEAD" \
             --arg source_main "${SOURCE_MAIN:-not_available}" \
             --arg join_head "${JOIN_HEAD:-not_available}" \
+            --arg control_commit "${CONTROL_COMMIT:-not_available}" \
             --arg trusted_verifier_sha "${TRUSTED_VERIFIER_SHA:-not_available}" \
             --arg preflight "$PREFLIGHT" \
             --arg resolution_manifest "$RESOLUTION_MANIFEST" \
@@ -278,7 +292,7 @@ jobs:
             --argjson parents "$parents" \
             --argjson checks "$checks" \
             --argjson failure_reasons "$failure_reasons" \
-            '{schema:$schema,status:$status,pr_number:$pr_number,base_sha:$base_sha,head_sha:$head_sha,source_main:$source_main,join_head:$join_head,trusted_verifier_sha:$trusted_verifier_sha,inputs:{preflight:$preflight,resolution_manifest:$resolution_manifest},preflight_sha256:$preflight_sha256,resolution_manifest_sha256:$resolution_manifest_sha256,parents:$parents,tree:$tree,merge_base:$merge_base,inventory:{conflicts:($conflict_count|tonumber? // $conflict_count),source_survivors:($survivor_count|tonumber? // $survivor_count),swarm_exclusions:($exclusion_count|tonumber? // $exclusion_count)},version_state:$version_state,governance:{protected_candidate_tag:$live_tag,protected_ruleset:$live_ruleset},checks:$checks,failure_reasons:$failure_reasons,claim_boundary:["Exact PR head, ordered two-parent ancestry, reviewed tree, metadata identity, live protected tag and ruleset bindings only.","No merge, publication, tag, release, settings, branch-protection, or product-correctness claim."]}' > "$contract"
+            '{schema:$schema,status:$status,pr_number:$pr_number,base_sha:$base_sha,head_sha:$head_sha,source_main:$source_main,join_head:$join_head,control_commit:$control_commit,trusted_verifier_sha:$trusted_verifier_sha,inputs:{preflight:$preflight,resolution_manifest:$resolution_manifest},preflight_sha256:$preflight_sha256,resolution_manifest_sha256:$resolution_sha256,parents:$parents,tree:$tree,merge_base:$merge_base,inventory:{conflicts:($conflict_count|tonumber? // $conflict_count),source_survivors:($survivor_count|tonumber? // $survivor_count),swarm_exclusions:($exclusion_count|tonumber? // $exclusion_count)},version_state:$version_state,governance:{protected_candidate_tag:$live_tag,protected_ruleset:$live_ruleset},checks:$checks,failure_reasons:$failure_reasons,claim_boundary:["Exact PR head, ordered two-parent ancestry, reviewed tree, metadata identity, live protected tag and ruleset bindings only.","No merge, publication, tag, release, settings, branch-protection, or product-correctness claim."]}' > "$contract"
           {
             echo "## Source Promotion Contract"
             echo ""
@@ -331,6 +345,68 @@ jobs:
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable (master)
+        with:
+          toolchain: 1.95.0
+
+      - name: Fetch immutable promotion control sidecar
+        id: control
+        env:
+          CONTROL_COMMIT: ${{ inputs.control_commit }}
+          CONTROL_REPOSITORY_URL: https://github.com/EffortlessMetrics/ripr.git
+          CONTROL_INPUTS_PATH: docs/release/source-promotion/contract-inputs.json
+          PREFLIGHT_PATH: docs/release/source-promotion/preflight.json
+          RESOLUTION_MANIFEST_PATH: docs/release/source-promotion/resolution-manifest.json
+          EXPECTED_SOURCE_MAIN: ${{ inputs.source_main }}
+          EXPECTED_SOURCE_PARENT: ${{ inputs.source_parent }}
+          EXPECTED_JOIN_HEAD: ${{ inputs.join_head }}
+        run: |
+          set -euo pipefail
+          fail() { printf '%s\n' "post-merge contract rejected: $1" >&2; exit 1; }
+          test "$(printf '%s' "$CONTROL_COMMIT" | grep -E '^[0-9a-f]{40}$')" = "$CONTROL_COMMIT" || fail "control_commit must be an exact lowercase SHA"
+          test "$(printf '%s' "$EXPECTED_SOURCE_MAIN" | grep -E '^[0-9a-f]{40}$')" = "$EXPECTED_SOURCE_MAIN" || fail "source_main must be an exact lowercase SHA"
+          test "$(printf '%s' "$EXPECTED_SOURCE_PARENT" | grep -E '^[0-9a-f]{40}$')" = "$EXPECTED_SOURCE_PARENT" || fail "source_parent must be an exact lowercase SHA"
+          test "$(printf '%s' "$EXPECTED_JOIN_HEAD" | grep -E '^[0-9a-f]{40}$')" = "$EXPECTED_JOIN_HEAD" || fail "join_head must be an exact lowercase SHA"
+          control_dir="$RUNNER_TEMP/ripr-promotion-control"
+          git clone --no-checkout "$CONTROL_REPOSITORY_URL" "$control_dir"
+          git -C "$control_dir" fetch --no-tags origin "$CONTROL_COMMIT"
+          test "$(git -C "$control_dir" rev-parse --verify "$CONTROL_COMMIT^{commit}")" = "$CONTROL_COMMIT" || fail "control commit is not an exact source-repository commit"
+          test "$(git -C "$control_dir" remote get-url origin)" = "$CONTROL_REPOSITORY_URL" || fail "control inputs were not fetched from the fixed source repository"
+          validate_control_file() {
+            local path="$1"
+            local entry
+            entry=$(git -C "$control_dir" ls-tree "$CONTROL_COMMIT" -- "$path")
+            test "$(printf '%s\n' "$entry" | awk -F '\t' '{print $1}' | awk '{print $1}')" = "100644" || fail "control input is not a tracked regular file: $path"
+            test "$(printf '%s\n' "$entry" | awk -F '\t' '{print $2}')" = "$path" || fail "control input path is not canonical: $path"
+          }
+          validate_control_file "$CONTROL_INPUTS_PATH"
+          validate_control_file "$PREFLIGHT_PATH"
+          validate_control_file "$RESOLUTION_MANIFEST_PATH"
+          control_inputs="$RUNNER_TEMP/contract-inputs.json"
+          preflight="$RUNNER_TEMP/source-promotion-preflight.json"
+          resolution_manifest="$RUNNER_TEMP/source-promotion-resolution.json"
+          git -C "$control_dir" show "$CONTROL_COMMIT:$CONTROL_INPUTS_PATH" > "$control_inputs"
+          git -C "$control_dir" show "$CONTROL_COMMIT:$PREFLIGHT_PATH" > "$preflight"
+          git -C "$control_dir" show "$CONTROL_COMMIT:$RESOLUTION_MANIFEST_PATH" > "$resolution_manifest"
+          jq -e '.schema == "ripr.source_promotion_ci_inputs.v2"' "$control_inputs" >/dev/null || fail "unsupported promotion-input schema"
+          source_main=$(jq -er '.source_main | select(type == "string" and test("^[0-9a-f]{40}$"))' "$control_inputs") || fail "control source_main is invalid"
+          join_head=$(jq -er '.join_head | select(type == "string" and test("^[0-9a-f]{40}$"))' "$control_inputs") || fail "control join_head is invalid"
+          jq -e --arg expected "$PREFLIGHT_PATH" '.preflight == $expected' "$control_inputs" >/dev/null || fail "control preflight path is not fixed"
+          jq -e --arg expected "$RESOLUTION_MANIFEST_PATH" '.resolution_manifest == $expected' "$control_inputs" >/dev/null || fail "control resolution path is not fixed"
+          preflight_sha256=$(jq -er '.preflight_sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' "$control_inputs") || fail "control preflight digest is invalid"
+          resolution_sha256=$(jq -er '.resolution_manifest_sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' "$control_inputs") || fail "control resolution digest is invalid"
+          test "$source_main" = "$EXPECTED_SOURCE_MAIN" || fail "control source_main does not match dispatch input"
+          test "$EXPECTED_SOURCE_PARENT" = "$source_main" || fail "source_parent must equal control source_main"
+          test "$join_head" = "$EXPECTED_JOIN_HEAD" || fail "control join_head does not match dispatch input"
+          git -C "$control_dir" fetch --no-tags origin "$EXPECTED_JOIN_HEAD"
+          test "$(git -C "$control_dir" merge-base "$CONTROL_COMMIT" "$EXPECTED_JOIN_HEAD" 2>/dev/null || true)" != "$CONTROL_COMMIT" || fail "control commit must not be an ancestor of the join head"
+          test "$(git -C "$control_dir" merge-base "$CONTROL_COMMIT" "$EXPECTED_JOIN_HEAD" 2>/dev/null || true)" != "$EXPECTED_JOIN_HEAD" || fail "control commit must not be a descendant of the join head"
+          test "$(sha256sum "$preflight" | awk '{print $1}')" = "$preflight_sha256" || fail "control preflight digest mismatch"
+          test "$(sha256sum "$resolution_manifest" | awk '{print $1}')" = "$resolution_sha256" || fail "control resolution digest mismatch"
+          {
+            echo "control_commit=$CONTROL_COMMIT"
+            echo "preflight=$preflight"
+            echo "resolution_manifest=$resolution_manifest"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build verifier from trusted source parent
         id: trusted-verifier
@@ -353,12 +429,13 @@ jobs:
 
       - name: Verify exact J reaches merged source main
         env:
-          PREFLIGHT: ${{ inputs.preflight }}
-          RESOLUTION_MANIFEST: ${{ inputs.resolution_manifest }}
+          PREFLIGHT: ${{ steps.control.outputs.preflight }}
+          RESOLUTION_MANIFEST: ${{ steps.control.outputs.resolution_manifest }}
           JOIN_HEAD: ${{ inputs.join_head }}
           SOURCE_MAIN: ${{ inputs.source_main }}
           MAIN_HEAD: ${{ inputs.main_head }}
           SOURCE_PARENT: ${{ inputs.source_parent }}
+          CONTROL_COMMIT: ${{ inputs.control_commit }}
           TRUSTED_VERIFIER: ${{ steps.trusted-verifier.outputs.path }}
         run: |
           set -euo pipefail
@@ -382,6 +459,22 @@ jobs:
             echo "Exact join `$JOIN_HEAD` remains reachable from merged source main `$MAIN_HEAD`."
             echo "A flattened equivalent tree is rejected because the verifier requires the exact J object."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Write SHA-bound post-merge contract receipt
+        if: always()
+        env:
+          CONTROL_COMMIT: ${{ inputs.control_commit }}
+          JOIN_HEAD: ${{ inputs.join_head }}
+          SOURCE_MAIN: ${{ inputs.source_main }}
+          SOURCE_PARENT: ${{ inputs.source_parent }}
+          MAIN_HEAD: ${{ inputs.main_head }}
+        run: |
+          set -euo pipefail
+          out=target/ripr/source-promotion
+          mkdir -p "$out"
+          status=rejected
+          if test -f "$out/source-promotion-verification.json" && jq -e '.status == "verified"' "$out/source-promotion-verification.json" >/dev/null; then status=verified; fi
+          jq -n --arg schema 'ripr.source_promotion_post_merge_contract.v1' --arg status "$status" --arg control_commit "$CONTROL_COMMIT" --arg join_head "$JOIN_HEAD" --arg source_main "$SOURCE_MAIN" --arg source_parent "$SOURCE_PARENT" --arg main_head "$MAIN_HEAD" '{schema:$schema,status:$status,control_commit:$control_commit,join_head:$join_head,source_main:$source_main,source_parent:$source_parent,main_head:$main_head}' > "$out/source-promotion-post-merge-contract.json"
 
       - name: Upload SHA-bound post-merge receipts
         if: always()

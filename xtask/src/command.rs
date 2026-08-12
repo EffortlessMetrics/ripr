@@ -1547,10 +1547,26 @@ mod tests {
             "fetch-depth: 0",
             "ref: ${{ github.event.pull_request.head.sha }}",
             "join_head",
+            "source-promotion-control: [0-9a-f]{40}",
+            "marker_count",
+            "grep -E '^<!-- source-promotion-control: [0-9a-f]{40} -->$'",
+            "exactly one lowercase source-promotion-control marker",
+            "git -C \"$control_dir\" fetch --no-tags origin \"$control_commit\"",
+            "CONTROL_INPUTS_PATH: docs/release/source-promotion/contract-inputs.json",
+            "PREFLIGHT_PATH: docs/release/source-promotion/preflight.json",
+            "RESOLUTION_MANIFEST_PATH: docs/release/source-promotion/resolution-manifest.json",
+            "ripr.source_promotion_ci_inputs.v2",
+            "preflight_sha256",
+            "git -C \"$control_dir\" show \"$control_commit:$PREFLIGHT_PATH\"",
             "--match-head-commit $PR_HEAD",
             "Build verifier from trusted base source",
             "\"$TRUSTED_VERIFIER\" source-promotion verify",
             "--main-head \"$MAIN_HEAD\"",
+            "toolchain: 1.95.0",
+            "PR_NUMBER: ${{ github.event.pull_request.number }}",
+            "resolution_sha256",
+            "control preflight digest mismatch",
+            "control resolution digest mismatch",
             "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",
             "(.conditions.ref_name.exclude // []) == []",
             "permissions:\n  contents: read",
@@ -1578,17 +1594,111 @@ mod tests {
     fn source_promotion_workflow_rejects_symlink_and_path_escape_inputs() -> Result<(), String> {
         let workflow = source_promotion_workflow()?;
         for needle in [
-            "validate_tracked_regular_file",
-            "test ! -L \"$candidate\"",
-            "realpath -e \"$candidate\"",
-            "path is not canonical within GITHUB_WORKSPACE",
-            "path escapes the checkout",
+            "validate_control_file",
+            "git -C \"$control_dir\" ls-tree \"$control_commit\"",
+            "control input is not a tracked regular file",
+            "control input path is not canonical",
+            "fixed source repository",
         ] {
             if !workflow.contains(needle) {
                 return Err(format!(
                     "workflow lacks symlink/path-escape guard: {needle}"
                 ));
             }
+        }
+        for forbidden in [
+            "git show \"$PR_HEAD:$CONTROL_INPUTS_PATH\"",
+            "git show \"$PR_HEAD:$PREFLIGHT_PATH\"",
+            "git show \"$PR_HEAD:$RESOLUTION_MANIFEST_PATH\"",
+            "validate_tracked_regular_file \"$INPUTS_PATH\"",
+        ] {
+            if workflow.contains(forbidden) {
+                return Err(format!(
+                    "promotion workflow retained candidate-checkout authority: {forbidden}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_requires_external_fixed_sidecar() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "CONTROL_REPOSITORY_URL: https://github.com/EffortlessMetrics/ripr.git",
+            "git -C \"$control_dir\" rev-parse --verify \"$control_commit^{commit}\"",
+            "test \"$(git -C \"$control_dir\" remote get-url origin)\" = \"$CONTROL_REPOSITORY_URL\"",
+            "validate_control_file \"$CONTROL_INPUTS_PATH\"",
+            "validate_control_file \"$PREFLIGHT_PATH\"",
+            "validate_control_file \"$RESOLUTION_MANIFEST_PATH\"",
+            "sha256sum \"$preflight\"",
+            "sha256sum \"$resolution_manifest\"",
+            "control_commit:$control_commit",
+            "ripr.source_promotion_post_merge_contract.v1",
+            "source-promotion-post-merge-contract.json",
+            "--arg control_commit \"$CONTROL_COMMIT\"",
+            "CONTROL_COMMIT: ${{ inputs.control_commit }}",
+            "if: always()",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!("workflow lacks immutable sidecar guard: {needle}"));
+            }
+        }
+        for forbidden in [
+            "validate_tracked_regular_file \"$INPUTS_PATH\"",
+            "          INPUTS_PATH: docs/release/source-promotion/contract-inputs.json",
+        ] {
+            if workflow.contains(forbidden) {
+                return Err(format!(
+                    "workflow retained candidate-checkout input authority: {forbidden}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_binds_trusted_source_parent() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "EXPECTED_SOURCE_PARENT: ${{ inputs.source_parent }}",
+            "source_parent must be an exact lowercase SHA",
+            "test \"$EXPECTED_SOURCE_PARENT\" = \"$source_main\" || fail \"source_parent must equal control source_main\"",
+            "control commit must not be an ancestor of the join head",
+            "control commit must not be a descendant of the join head",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "workflow lacks trusted source-parent binding: {needle}"
+                ));
+            }
+        }
+        if workflow.contains("EXPECTED_SOURCE_PARENT: ${{ inputs.source_main }}") {
+            return Err("workflow aliases source_parent from the wrong dispatch input".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_post_merge_receipt_binds_dispatch_input_on_rejection() -> Result<(), String>
+    {
+        let workflow = source_promotion_workflow()?;
+        let receipt = workflow
+            .find("- name: Write SHA-bound post-merge contract receipt")
+            .ok_or_else(|| "post-merge receipt step is missing".to_string())?;
+        let post_merge = &workflow[receipt..];
+        for needle in [
+            "if: always()",
+            "CONTROL_COMMIT: ${{ inputs.control_commit }}",
+            "source-promotion-post-merge-contract.json",
+            "ripr.source_promotion_post_merge_contract.v1",
+        ] {
+            if !post_merge.contains(needle) {
+                return Err(format!("post-merge rejection receipt lacks: {needle}"));
+            }
+        }
+        if post_merge.contains("CONTROL_COMMIT: ${{ steps.control.outputs.control_commit }}") {
+            return Err("post-merge receipt depends on a failed validation step output".into());
         }
         Ok(())
     }

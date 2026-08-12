@@ -47,10 +47,27 @@ identity:
 - merged-main equivalents that do not reach J; and
 - floating, abbreviated, or uppercase identity arguments.
 
+The source-promotion CI wrapper supplies the preflight receipt and resolution
+manifest from a source-owned immutable control sidecar, not from J's tree. The
+sidecar is named by exactly one lowercase `source-promotion-control` marker and
+is read only
+from fixed mode-100644 paths. Its manifest binds `source_main`, `join_head`,
+the fixed paths, and both receipt digests. Missing, abbreviated, uppercase,
+unreachable, wrong-repository, symlink, directory, and digest-mismatch
+sidecars are rejected before the trusted verifier runs. A control commit that
+is an ancestor or descendant of J is rejected, and manual dispatch rejects a
+`source_parent` that differs from the sidecar's `source_main`. A sidecar is not an
+ancestor or child of J and does not participate in `J^{tree}`.
+
 The successful case must emit both the JSON and Markdown v2 receipts. Rejected
 cases must emit a structured rejection receipt when an output directory can be
 determined. The executable witnesses are the focused `source_promotion_verify`
 tests in `xtask/src/reports/source_promotion_verify.rs`.
+
+The post-merge workflow additionally emits
+`source-promotion-post-merge-contract.json` with schema
+`ripr.source_promotion_post_merge_contract.v1`; it retains the exact control
+commit and all transaction identities even when verification rejects.
 
 ## Then
 
