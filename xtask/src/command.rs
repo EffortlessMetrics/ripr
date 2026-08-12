@@ -1594,7 +1594,7 @@ mod tests {
     fn source_promotion_workflow_rejects_symlink_and_path_escape_inputs() -> Result<(), String> {
         let workflow = source_promotion_workflow()?;
         for needle in [
-            "validate_control_file",
+            "validate_tracked_regular_file",
             "git -C \"$control_dir\" ls-tree \"$control_commit\"",
             "control input is not a tracked regular file",
             "control input path is not canonical",
@@ -1628,9 +1628,9 @@ mod tests {
             "CONTROL_REPOSITORY_URL: https://github.com/EffortlessMetrics/ripr.git",
             "git -C \"$control_dir\" rev-parse --verify \"$control_commit^{commit}\"",
             "test \"$(git -C \"$control_dir\" remote get-url origin)\" = \"$CONTROL_REPOSITORY_URL\"",
-            "validate_control_file \"$CONTROL_INPUTS_PATH\"",
-            "validate_control_file \"$PREFLIGHT_PATH\"",
-            "validate_control_file \"$RESOLUTION_MANIFEST_PATH\"",
+            "validate_tracked_regular_file \"$CONTROL_INPUTS_PATH\"",
+            "validate_tracked_regular_file \"$PREFLIGHT_PATH\"",
+            "validate_tracked_regular_file \"$RESOLUTION_MANIFEST_PATH\"",
             "sha256sum \"$preflight\"",
             "sha256sum \"$resolution_manifest\"",
             "control_commit:$control_commit",
