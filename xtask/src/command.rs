@@ -1734,6 +1734,68 @@ mod tests {
                 return Err(format!("workflow lacks trusted-verifier guard: {needle}"));
             }
         }
+        if workflow.contains("cargo build --manifest-path \"$trusted_dir/Cargo.toml\" --bin xtask")
+        {
+            return Err("candidate-verifier build shape is still accepted".into());
+        }
+        if workflow.matches("cargo build --locked --manifest-path \"$trusted_dir/Cargo.toml\" -p xtask --bin xtask").count() != 2 {
+            return Err("both trusted verifier lanes must use the locked xtask package binary".into());
+        }
+        if workflow
+            .contains("cargo build --locked --manifest-path \"$GITHUB_WORKSPACE/Cargo.toml\"")
+            || workflow.contains("./target/debug/xtask source-promotion verify")
+        {
+            return Err("candidate checkout can still supply the verifier".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_receipt_contract_distinguishes_success_missing_and_mismatch()
+    -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "SOURCE_PROMOTION_OUT: target/ripr/source-promotion",
+            "--out \"$SOURCE_PROMOTION_OUT\"",
+            "out=\"$SOURCE_PROMOTION_OUT\"",
+            "verification=\"$out/source-promotion-verification.json\"",
+            "type == \"object\" and .schema == \"ripr.source_promotion_verification.v2\"",
+            "verifier_receipt_status=present",
+            "verifier_receipt_status=missing",
+            "verifier_receipt_status=schema_mismatch",
+            "verifier receipt schema mismatch",
+            "trusted verifier receipt missing",
+            "verifier_receipt_status:$verifier_receipt_status",
+            "verifier_exit_code:$verifier_exit_code",
+            "TRUSTED_VERIFIER_SHA: ${{ steps.trusted-verifier.outputs.sha }}",
+            "LIVE_TAG: ${{ steps.live-governance.outputs.tag }}",
+            "LIVE_RULESET: ${{ steps.live-governance.outputs.ruleset }}",
+            "(.join_head | type) == \"string\"",
+            "(.source_main | type) == \"string\"",
+            "(.parents | type) == \"array\"",
+            "(.swarm_reachability | type) == \"object\"",
+            "(.release_metadata_surfaces | type) == \"array\"",
+            "(.checks | type) == \"object\"",
+            "(.failure_reasons | type) == \"array\"",
+            "(.invalidation_rules | type) == \"array\"",
+            "(.non_claims | type) == \"array\"",
+            "(.status == \"rejected\" or ((.tree | type) == \"string\"",
+            "(.parents | length) == 2",
+            "all(.parents[]; type == \"string\")",
+            "(.swarm_reachability.all_reachable_count | type) == \"number\"",
+            "trusted verifier exited non-zero",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "receipt contract lacks discriminating branch: {needle}"
+                ));
+            }
+        }
+        if workflow.contains("echo \"- PR head / candidate SHA: `")
+            || workflow.contains("echo \"Failure reasons: `")
+        {
+            return Err("receipt summary still executes interpolated Markdown backticks".into());
+        }
         Ok(())
     }
 
