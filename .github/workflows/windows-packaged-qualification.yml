@@ -203,7 +203,7 @@ jobs:
         working-directory: editors/vscode
         run: |
           $ErrorActionPreference = 'Stop'
-          npm ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }; npm run compile; if ($LASTEXITCODE -ne 0) { throw 'VSIX compile failed' }; npm run package; if ($LASTEXITCODE -ne 0) { throw 'VSIX package failed' }
+          npm ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }; cargo --config $env:CARGO_TEMP_CONFIG xtask vscode-compile; if ($LASTEXITCODE -ne 0) { throw 'VSIX compile failed' }; npm run package; if ($LASTEXITCODE -ne 0) { throw 'VSIX package failed' }
           $vsix = Get-ChildItem dist\*.vsix | Select-Object -First 1; if ($null -eq $vsix) { throw 'VSIX package was not produced' }
           $hash = (Get-FileHash $vsix.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); tar -tf $vsix.FullName | Set-Content -Encoding utf8 (Join-Path $env:QUAL_ROOT 'vsix-files.txt')
           [ordered]@{ vsix = $vsix.Name; sha256 = $hash; bytes = $vsix.Length; candidate_sha = $env:CANDIDATE_SHA } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $env:QUAL_ROOT 'vsix-identity.json'); "RIPR_VSIX=$($vsix.FullName)" >> $env:GITHUB_ENV

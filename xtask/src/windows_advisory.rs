@@ -1365,6 +1365,54 @@ mod tests {
     }
 
     #[test]
+    fn packaged_qualification_vsix_compile_uses_external_cargo_config() -> Result<(), String> {
+        let workflow = include_str!("../../.github/workflows/windows-packaged-qualification.yml");
+        let lines = workflow.lines().map(str::trim).collect::<Vec<_>>();
+        let isolate = lines
+            .iter()
+            .position(|line| line.starts_with("- name: Isolate package installation"))
+            .ok_or_else(|| "workflow must isolate package installation".to_string())?;
+        let compile = lines
+            .iter()
+            .position(|line| line.contains("xtask vscode-compile"))
+            .ok_or_else(|| "workflow must compile the VSIX through xtask".to_string())?;
+        if compile <= isolate {
+            return Err("VSIX compile must run after Cargo isolation".to_string());
+        }
+        let command = lines[compile];
+        let cargo_invocation = command
+            .split(';')
+            .map(str::trim)
+            .find(|segment| segment.contains("xtask vscode-compile"))
+            .ok_or_else(|| "VSIX compile command must contain a Cargo invocation".to_string())?;
+        for required in [
+            "cargo --config $env:CARGO_TEMP_CONFIG",
+            "xtask vscode-compile",
+        ] {
+            if !cargo_invocation.contains(required) {
+                return Err(format!(
+                    "VSIX compile must carry the external Cargo setting {required:?}"
+                ));
+            }
+        }
+        let unisolated = cargo_invocation.replace(
+            "cargo --config $env:CARGO_TEMP_CONFIG xtask vscode-compile",
+            "npm run compile",
+        );
+        if unisolated != "npm run compile" {
+            return Err(
+                "test fixture did not model the unisolated npm compile command".to_string(),
+            );
+        }
+        if unisolated.contains("CARGO_TEMP_CONFIG") || unisolated.contains("CARGO_TARGET_DIR") {
+            return Err(
+                "unisolated compile mutation unexpectedly retained Cargo isolation".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn packaged_qualification_temp_contract_rejects_each_missing_export() {
         let workflow = include_str!("../../.github/workflows/windows-packaged-qualification.yml");
         let required = [
