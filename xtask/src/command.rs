@@ -1637,6 +1637,8 @@ mod tests {
             "ripr.source_promotion_post_merge_contract.v1",
             "source-promotion-post-merge-contract.json",
             "--arg control_commit \"$CONTROL_COMMIT\"",
+            "CONTROL_COMMIT: ${{ inputs.control_commit }}",
+            "if: always()",
         ] {
             if !workflow.contains(needle) {
                 return Err(format!("workflow lacks immutable sidecar guard: {needle}"));
@@ -1673,6 +1675,30 @@ mod tests {
         }
         if workflow.contains("EXPECTED_SOURCE_PARENT: ${{ inputs.source_main }}") {
             return Err("workflow aliases source_parent from the wrong dispatch input".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_post_merge_receipt_binds_dispatch_input_on_rejection() -> Result<(), String>
+    {
+        let workflow = source_promotion_workflow()?;
+        let receipt = workflow
+            .find("- name: Write SHA-bound post-merge contract receipt")
+            .ok_or_else(|| "post-merge receipt step is missing".to_string())?;
+        let post_merge = &workflow[receipt..];
+        for needle in [
+            "if: always()",
+            "CONTROL_COMMIT: ${{ inputs.control_commit }}",
+            "source-promotion-post-merge-contract.json",
+            "ripr.source_promotion_post_merge_contract.v1",
+        ] {
+            if !post_merge.contains(needle) {
+                return Err(format!("post-merge rejection receipt lacks: {needle}"));
+            }
+        }
+        if post_merge.contains("CONTROL_COMMIT: ${{ steps.control.outputs.control_commit }}") {
+            return Err("post-merge receipt depends on a failed validation step output".into());
         }
         Ok(())
     }

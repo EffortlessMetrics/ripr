@@ -435,7 +435,7 @@ jobs:
           SOURCE_MAIN: ${{ inputs.source_main }}
           MAIN_HEAD: ${{ inputs.main_head }}
           SOURCE_PARENT: ${{ inputs.source_parent }}
-          CONTROL_COMMIT: ${{ steps.control.outputs.control_commit }}
+          CONTROL_COMMIT: ${{ inputs.control_commit }}
           TRUSTED_VERIFIER: ${{ steps.trusted-verifier.outputs.path }}
         run: |
           set -euo pipefail
@@ -463,7 +463,7 @@ jobs:
       - name: Write SHA-bound post-merge contract receipt
         if: always()
         env:
-          CONTROL_COMMIT: ${{ steps.control.outputs.control_commit }}
+          CONTROL_COMMIT: ${{ inputs.control_commit }}
           JOIN_HEAD: ${{ inputs.join_head }}
           SOURCE_MAIN: ${{ inputs.source_main }}
           SOURCE_PARENT: ${{ inputs.source_parent }}
