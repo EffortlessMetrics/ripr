@@ -1779,6 +1779,11 @@ mod tests {
             "(.failure_reasons | type) == \"array\"",
             "(.invalidation_rules | type) == \"array\"",
             "(.non_claims | type) == \"array\"",
+            "(.status == \"rejected\" or ((.tree | type) == \"string\"",
+            "(.parents | length) == 2",
+            "all(.parents[]; type == \"string\")",
+            "(.swarm_reachability.all_reachable_count | type) == \"number\"",
+            "trusted verifier exited non-zero",
         ] {
             if !workflow.contains(needle) {
                 return Err(format!(
