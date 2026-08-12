@@ -187,7 +187,13 @@ jobs:
           Push-Location $fixture; try { & $env:RIPR_PACKAGED check --root $fixture --base $base --json --write-artifact $artifact 2>&1 | Tee-Object $checkLog; if ($LASTEXITCODE -ne 0) { throw "check failed with exit $LASTEXITCODE" } } finally { Pop-Location }
           $check = Get-Content $checkLog -Raw | ConvertFrom-Json; $finding = $check.findings | Select-Object -First 1
           if ($null -eq $finding -or [string]::IsNullOrWhiteSpace($finding.id)) { throw 'check emitted no finding selector for explain/context' }
-          Invoke-CLI 'explain' @('explain', '--root', $fixture, '--base', $base, '--from', $artifact, '--finding', $finding.id, '--json'); Invoke-CLI 'context' @('context', '--root', $fixture, '--base', $base, '--from', $artifact, '--finding', $finding.id, '--json')
+          # `explain` takes its finding selector positionally and emits its
+          # human-readable explanation; `context` uses the explicit `--at`
+          # selector and supports JSON. Keep these invocations aligned with
+          # the public CLI help rather than treating the two selectors as
+          # interchangeable flags.
+          Invoke-CLI 'explain' @('explain', '--root', $fixture, '--base', $base, '--from', $artifact, $finding.id)
+          Invoke-CLI 'context' @('context', '--root', $fixture, '--base', $base, '--from', $artifact, '--at', $finding.id, '--json')
           Invoke-CLI 'pilot' @('pilot', '--root', $fixture, '--out', (Join-Path $root 'pilot'), '--max-seams', '5', '--timeout-ms', '240000')
           $before = Join-Path $root 'outcome-before.json'; $after = Join-Path $root 'outcome-after.json'; '{"schema_version":"0.2","scope":"repo","seams":[]}' | Set-Content -Encoding utf8 $before; '{"schema_version":"0.2","scope":"repo","seams":[]}' | Set-Content -Encoding utf8 $after; Invoke-CLI 'outcome' @('outcome', '--before', $before, '--after', $after, '--format', 'json')
           [ordered]@{ fixture = $fixture; base = $base; head = $head; finding = $finding.id; binary = $env:RIPR_PACKAGED; binary_sha256 = (Get-FileHash $env:RIPR_PACKAGED -Algorithm SHA256).Hash.ToLowerInvariant() } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $root 'cli-journey.json')
