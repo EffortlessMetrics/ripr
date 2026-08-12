@@ -66,7 +66,7 @@ jobs:
           git -C "$trusted_dir" fetch --no-tags origin "$SOURCE_PARENT"
           git -C "$trusted_dir" checkout --detach "$SOURCE_PARENT"
           test "$(git -C "$trusted_dir" rev-parse HEAD)" = "$SOURCE_PARENT"
-          CARGO_TARGET_DIR="$trusted_target" cargo build --manifest-path "$trusted_dir/Cargo.toml" --bin xtask
+          CARGO_TARGET_DIR="$trusted_target" cargo build --locked --manifest-path "$trusted_dir/Cargo.toml" -p xtask --bin xtask
           verifier="$trusted_target/debug/xtask"
           test -x "$verifier"
           echo "path=$verifier" >> "$GITHUB_OUTPUT"
@@ -421,7 +421,7 @@ jobs:
           git -C "$trusted_dir" fetch --no-tags origin "$SOURCE_PARENT"
           git -C "$trusted_dir" checkout --detach "$SOURCE_PARENT"
           test "$(git -C "$trusted_dir" rev-parse HEAD)" = "$SOURCE_PARENT"
-          CARGO_TARGET_DIR="$trusted_target" cargo build --manifest-path "$trusted_dir/Cargo.toml" --bin xtask
+          CARGO_TARGET_DIR="$trusted_target" cargo build --locked --manifest-path "$trusted_dir/Cargo.toml" -p xtask --bin xtask
           verifier="$trusted_target/debug/xtask"
           test -x "$verifier"
           echo "path=$verifier" >> "$GITHUB_OUTPUT"
