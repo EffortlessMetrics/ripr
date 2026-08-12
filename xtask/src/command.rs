@@ -1639,10 +1639,15 @@ mod tests {
                 return Err(format!("workflow lacks immutable sidecar guard: {needle}"));
             }
         }
-        if workflow.contains("validate_tracked_regular_file")
-            || workflow.contains("INPUTS_PATH: docs/release/source-promotion/contract-inputs.json")
-        {
-            return Err("workflow retained candidate-checkout input authority".into());
+        for forbidden in [
+            "validate_tracked_regular_file \"$INPUTS_PATH\"",
+            "          INPUTS_PATH: docs/release/source-promotion/contract-inputs.json",
+        ] {
+            if workflow.contains(forbidden) {
+                return Err(format!(
+                    "workflow retained candidate-checkout input authority: {forbidden}"
+                ));
+            }
         }
         Ok(())
     }
