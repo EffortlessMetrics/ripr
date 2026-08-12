@@ -1547,10 +1547,26 @@ mod tests {
             "fetch-depth: 0",
             "ref: ${{ github.event.pull_request.head.sha }}",
             "join_head",
+            "source-promotion-control: [0-9a-f]{40}",
+            "marker_count",
+            "grep -E '^<!-- source-promotion-control: [0-9a-f]{40} -->$'",
+            "exactly one lowercase source-promotion-control marker",
+            "git -C \"$control_dir\" fetch --no-tags origin \"$control_commit\"",
+            "CONTROL_INPUTS_PATH: docs/release/source-promotion/contract-inputs.json",
+            "PREFLIGHT_PATH: docs/release/source-promotion/preflight.json",
+            "RESOLUTION_MANIFEST_PATH: docs/release/source-promotion/resolution-manifest.json",
+            "ripr.source_promotion_ci_inputs.v2",
+            "preflight_sha256",
+            "git -C \"$control_dir\" show \"$control_commit:$PREFLIGHT_PATH\"",
             "--match-head-commit $PR_HEAD",
             "Build verifier from trusted base source",
             "\"$TRUSTED_VERIFIER\" source-promotion verify",
             "--main-head \"$MAIN_HEAD\"",
+            "toolchain: 1.95.0",
+            "PR_NUMBER: ${{ github.event.pull_request.number }}",
+            "resolution_sha256",
+            "control preflight digest mismatch",
+            "control resolution digest mismatch",
             "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",
             "(.conditions.ref_name.exclude // []) == []",
             "permissions:\n  contents: read",
@@ -1578,17 +1594,48 @@ mod tests {
     fn source_promotion_workflow_rejects_symlink_and_path_escape_inputs() -> Result<(), String> {
         let workflow = source_promotion_workflow()?;
         for needle in [
-            "validate_tracked_regular_file",
-            "test ! -L \"$candidate\"",
-            "realpath -e \"$candidate\"",
-            "path is not canonical within GITHUB_WORKSPACE",
-            "path escapes the checkout",
+            "validate_control_file",
+            "git -C \"$control_dir\" ls-tree \"$control_commit\"",
+            "control input is not a tracked regular file",
+            "control input path is not canonical",
+            "fixed source repository",
         ] {
             if !workflow.contains(needle) {
                 return Err(format!(
                     "workflow lacks symlink/path-escape guard: {needle}"
                 ));
             }
+        }
+        if workflow.contains("validate_tracked_regular_file \"$INPUTS_PATH\"")
+            || workflow.contains("docs/release/source-promotion/contract-inputs.json\"\n")
+        {
+            return Err("promotion workflow retained a candidate-tree input contract".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_requires_external_fixed_sidecar() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "CONTROL_REPOSITORY_URL: https://github.com/EffortlessMetrics/ripr.git",
+            "git -C \"$control_dir\" rev-parse --verify \"$control_commit^{commit}\"",
+            "test \"$(git -C \"$control_dir\" remote get-url origin)\" = \"$CONTROL_REPOSITORY_URL\"",
+            "validate_control_file \"$CONTROL_INPUTS_PATH\"",
+            "validate_control_file \"$PREFLIGHT_PATH\"",
+            "validate_control_file \"$RESOLUTION_MANIFEST_PATH\"",
+            "sha256sum \"$preflight\"",
+            "sha256sum \"$resolution_manifest\"",
+            "control_commit:$control_commit",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!("workflow lacks immutable sidecar guard: {needle}"));
+            }
+        }
+        if workflow.contains("validate_tracked_regular_file")
+            || workflow.contains("INPUTS_PATH: docs/release/source-promotion/contract-inputs.json")
+        {
+            return Err("workflow retained candidate-checkout input authority".into());
         }
         Ok(())
     }

@@ -47,6 +47,15 @@ identity:
 - merged-main equivalents that do not reach J; and
 - floating, abbreviated, or uppercase identity arguments.
 
+The source-promotion CI wrapper supplies the preflight receipt and resolution
+manifest from a source-owned immutable control sidecar, not from J's tree. The
+sidecar is named by one exact lowercase control-commit marker and is read only
+from fixed mode-100644 paths. Its manifest binds `source_main`, `join_head`,
+the fixed paths, and both receipt digests. Missing, abbreviated, uppercase,
+unreachable, wrong-repository, symlink, directory, and digest-mismatch
+sidecars are rejected before the trusted verifier runs. A sidecar is not an
+ancestor or child of J and does not participate in `J^{tree}`.
+
 The successful case must emit both the JSON and Markdown v2 receipts. Rejected
 cases must emit a structured rejection receipt when an output directory can be
 determined. The executable witnesses are the focused `source_promotion_verify`
