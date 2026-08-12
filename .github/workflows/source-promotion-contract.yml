@@ -174,18 +174,7 @@ jobs:
           unexpected_workflows=$(printf '%s\n' "$changed_workflows" | sed '/^$/d;/^\.github\/workflows\/source-promotion-contract\.yml$/d')
           test -z "$unexpected_workflows" || fail "promotion PR changes non-contract workflows: $unexpected_workflows"
 
-          {
-            echo "source_main=$source_main" >> "$GITHUB_OUTPUT"
-            echo "join_head=$join_head" >> "$GITHUB_OUTPUT"
-            echo "preflight=$preflight" >> "$GITHUB_OUTPUT"
-            echo "resolution_manifest=$resolution_manifest" >> "$GITHUB_OUTPUT"
-            echo "swarm_ref=$swarm_ref" >> "$GITHUB_OUTPUT"
-            echo "swarm_parent=$swarm_parent" >> "$GITHUB_OUTPUT"
-            echo "source_parent=$BASE_SHA" >> "$GITHUB_OUTPUT"
-            echo "control_commit=$control_commit" >> "$GITHUB_OUTPUT"
-            echo "preflight_sha256=$preflight_sha256" >> "$GITHUB_OUTPUT"
-            echo "resolution_sha256=$resolution_sha256" >> "$GITHUB_OUTPUT"
-          }
+          printf '%s\n' "source_main=$source_main" "join_head=$join_head" "preflight=$preflight" "resolution_manifest=$resolution_manifest" "swarm_ref=$swarm_ref" "swarm_parent=$swarm_parent" "source_parent=$BASE_SHA" "control_commit=$control_commit" "preflight_sha256=$preflight_sha256" "resolution_sha256=$resolution_sha256" >> "$GITHUB_OUTPUT"
 
       - name: Verify live swarm tag and protected ruleset
         id: live-governance

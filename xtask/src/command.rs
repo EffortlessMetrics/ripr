@@ -1606,10 +1606,17 @@ mod tests {
                 ));
             }
         }
-        if workflow.contains("validate_tracked_regular_file \"$INPUTS_PATH\"")
-            || workflow.contains("docs/release/source-promotion/contract-inputs.json\"\n")
-        {
-            return Err("promotion workflow retained a candidate-tree input contract".to_string());
+        for forbidden in [
+            "git show \"$PR_HEAD:$CONTROL_INPUTS_PATH\"",
+            "git show \"$PR_HEAD:$PREFLIGHT_PATH\"",
+            "git show \"$PR_HEAD:$RESOLUTION_MANIFEST_PATH\"",
+            "validate_tracked_regular_file \"$INPUTS_PATH\"",
+        ] {
+            if workflow.contains(forbidden) {
+                return Err(format!(
+                    "promotion workflow retained candidate-checkout authority: {forbidden}"
+                ));
+            }
         }
         Ok(())
     }
