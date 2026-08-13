@@ -1,0 +1,1242 @@
+{
+  "schema": "ripr.source_promotion_resolution.v1",
+  "preflight_sha256": "sha256:007e0d496064b57a363423b10651fcfa0d1ba2bed19f671970b0f348d07cc57e",
+  "source_parent": "f0b6454826b7b7bf811b19fc4cb0ff1348961f2c",
+  "swarm_parent": "83217e97ec6847db41d757f57279a8b1ca433fe6",
+  "merge_base": "36909460db013ed3a3238ee8b2fc3ccda1135c15",
+  "reviewed_join_tree": "81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a",
+  "dispositions": [
+    {
+      "kind": "conflict",
+      "key": ".github/workflows/source-of-truth.yml",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "CHANGELOG.md",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "Cargo.lock",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "crates/ripr/Cargo.toml",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "crates/ripr/src/analysis/probes/diff.rs",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "crates/ripr/src/output/review_comments.rs",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "docs/DOCUMENTATION.md",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "docs/specs/README.md",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "docs/swarm-development.md",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "editors/vscode/package-lock.json",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "editors/vscode/package.json",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "policy/doc-artifacts.toml",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "policy/network_allowlist.txt",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "policy/non-rust-allowlist.toml",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "policy/process_allowlist.txt",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "xtask/src/dispatch.rs",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "xtask/src/main.rs",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "conflict",
+      "key": "xtask/src/reports/mod.rs",
+      "disposition": "integrated",
+      "rationale": "Reviewed file-level authority map.",
+      "evidence": "JOIN_TREE 81dab4c6d7fe6264b6864c0eb11a439dc35e8a9a"
+    },
+    {
+      "kind": "source_survivor",
+      "key": ".github/workflows/droid-review.yml",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": ".github/workflows/droid-security-scan.yml",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": ".github/workflows/droid.yml",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": ".github/workflows/source-of-truth.yml",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": ".github/workflows/source-promotion-contract.yml",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": ".ripr/traceability.toml",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "CHANGELOG.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "Cargo.lock",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "crates/ripr/Cargo.toml",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "crates/ripr/src/analysis/probes/diff.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "crates/ripr/src/analysis/probes/mod.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "crates/ripr/src/analysis/probes/subprocess.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "crates/ripr/src/output/review_comments.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/DOCUMENTATION.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/OUTPUT_SCHEMA.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/PR_REVIEW_GUIDANCE.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/SOURCE_PROMOTION.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/STATIC_EXPOSURE_MODEL.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-analyzer-fragment-2.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-analyzer-fragment-3.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-analyzer-fragment-4.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-analyzer-fragment-5.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-analyzer-fragment-6.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-analyzer-fragment-7.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-analyzer-fragment-8.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-analyzer-fragment.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-analyzer-review.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-delta-audit.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-delta-ledger.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-delta-shas.txt",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-delta-validation.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-editor-fragment-2.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-editor-fragment-3.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-editor-fragment-4.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-editor-fragment-5.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-editor-fragment-6.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-editor-fragment-7.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-editor-fragment-8.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-editor-fragment-9.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-editor-fragment.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-editor-review.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-ops-fragment-10.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-ops-fragment-2.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-ops-fragment-3.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-ops-fragment-4.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-ops-fragment-5.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-ops-fragment-6.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-ops-fragment-7.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-ops-fragment-8.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-ops-fragment-9.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-ops-fragment.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-ops-review.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-source-survivors.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-trust-fragment-2.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-trust-fragment-3.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-trust-fragment-4.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-trust-fragment-5.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-trust-fragment-6.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-trust-fragment-7.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-trust-fragment.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/release/0.11.0/post-freeze-trust-review.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/specs/README.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/specs/RIPR-SPEC-0112-bounded-subprocess-adapter-boundary.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/specs/RIPR-SPEC-0149-source-promotion-verifier.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "docs/swarm-development.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "editors/vscode/package-lock.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "editors/vscode/package.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/comments.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "fixtures/source_promotion_verification/SPEC.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "fixtures/source_promotion_verification/diff.patch",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "fixtures/source_promotion_verification/expected/CHANGELOG.md",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "fixtures/source_promotion_verification/expected/check.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "fixtures/source_promotion_verification/expected/human.txt",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "fixtures/source_promotion_verification/input/Cargo.toml",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "fixtures/source_promotion_verification/input/src/lib.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "policy/doc-artifacts.toml",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "policy/network_allowlist.txt",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "policy/non-rust-allowlist.toml",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "policy/process_allowlist.txt",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "policy/workflow_allowlist.txt",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "tests/fixtures/source_promotion_contract/empty-artifact-dir.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "tests/fixtures/source_promotion_contract/malformed-control.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "tests/fixtures/source_promotion_contract/missing-receipt.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "tests/fixtures/source_promotion_contract/schema-mismatch.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "tests/fixtures/source_promotion_contract/source-mismatch.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "tests/fixtures/source_promotion_contract/unreachable-control.json",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "xtask/Cargo.toml",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "xtask/src/command.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "xtask/src/dispatch.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "xtask/src/main.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "xtask/src/reports/mod.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "xtask/src/reports/recommendation.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "xtask/src/reports/review_comments.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "xtask/src/reports/source_promotion_verify.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "source_survivor",
+      "key": "xtask/src/reports/source_promotion_verify/version_identity.rs",
+      "disposition": "source_blob",
+      "rationale": "Source-authoritative surface retained exactly.",
+      "evidence": "SOURCE_PARENT f0b6454826b7b7bf811b19fc4cb0ff1348961f2c"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/ISSUE_TEMPLATE/design-plan.md",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/ISSUE_TEMPLATE/implementation-slice.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/actions/ripr-check/action.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/settings.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/workflows/ci.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/workflows/pr-plan.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/workflows/publish-extension.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/workflows/release-server-binaries.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/workflows/routed-rust.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/workflows/scratch-gc.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/workflows/server-archive-qualification.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/workflows/test-analytics.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/workflows/ub-review.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/workflows/windows-advisory.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".github/workflows/windows-packaged-qualification.yml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/README.md",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/allow-attributes.txt",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/README.md",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/active.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-05-11-pr-inline-comment-publisher.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-05-13-language-adapter-preview.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-05-15-rust-usable-gap-projection.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-05-22-first-useful-pr-loop.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-05-22-lane1-finding-alignment-burndown.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-05-22-start-here-surface-convergence.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-05-23-actionable-surface-translation.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-05-23-first-useful-pr-loop-continuation.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-05-23-lane1-value-resolution-audit-fixes.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-06-03-lane1-language-aware-placement-navigation.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-06-03-lane1-large-repo-runtime-completeness.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-06-03-lane1-real-repo-trust-readiness.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-06-03-self-hosted-routed-runner-proof.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-06-04-lane1-cross-language-guidance-safety.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-06-04-lane1-cross-language-oracle-followup.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-06-04-lane1-post-08-operating-loop.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-06-04-typescript-bun-081-placement-receipt-correction.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/2026-06-05-cross-language-evidence-router-ux.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/archive/README.md",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/lane2-policy-operations.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/lane2-policy-readiness.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/lane4-pr-ci-review-cockpit.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/modularization.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/goals/python-repair-routing.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/no-panic-allowlist.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": ".ripr/static-language-allowlist.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": "policy/ci-budget.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": "policy/ci-lane-whitelist.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": "policy/ci-risk-packs.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": "policy/clippy-exceptions.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": "policy/dependency_allowlist.txt",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": "policy/no-panic-allowlist.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": "policy/output_contracts.txt",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": "policy/public_api.txt",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": "policy/release-targets.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": "policy/ripr-soft-gate.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": "policy/windows-packaged-qualification.toml",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    },
+    {
+      "kind": "swarm_exclusion",
+      "key": "policy/workspace_shape.txt",
+      "disposition": "swarm_blob",
+      "rationale": "Swarm product/dependency surface retained where applicable.",
+      "evidence": "SWARM_PARENT 83217e97ec6847db41d757f57279a8b1ca433fe6"
+    }
+  ]
+}
