@@ -1,0 +1,6 @@
+{
+  "case": "empty-artifact-dir",
+  "validation_phase": "receipt",
+  "validation_reason": "artifact directory was empty; normalized receipt and validation log were created",
+  "status": "rejected"
+}

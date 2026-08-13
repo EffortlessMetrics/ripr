@@ -1,0 +1,6 @@
+{
+  "case": "schema-mismatch",
+  "validation_phase": "verifier_receipt",
+  "validation_reason": "trusted verifier receipt schema mismatch",
+  "status": "rejected"
+}
