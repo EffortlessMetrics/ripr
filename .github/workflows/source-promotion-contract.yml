@@ -107,8 +107,8 @@ jobs:
               "source_parent=$source_parent" \
               "join_head=$join_head" \
               "control_commit=$control_commit" \
-              "preflight=$PREFLIGHT_PATH" \
-              "resolution_manifest=$RESOLUTION_MANIFEST_PATH" \
+              "preflight=${preflight:-$PREFLIGHT_PATH}" \
+              "resolution_manifest=${resolution_manifest:-$RESOLUTION_MANIFEST_PATH}" \
               "preflight_sha256=$preflight_sha256" \
               "resolution_sha256=$resolution_sha256" \
               "swarm_ref=$swarm_ref" \
@@ -278,14 +278,19 @@ jobs:
           SOURCE_PROMOTION_OUT: target/ripr/source-promotion
         run: |
           set +e
-          test "$(git -C "$RUNNER_TEMP/ripr-trusted-verifier" rev-parse HEAD)" = "$SOURCE_PARENT"
-          "$TRUSTED_VERIFIER" source-promotion verify \
-            --preflight "$PREFLIGHT" \
-            --resolution-manifest "$RESOLUTION_MANIFEST" \
-            --join-head "$JOIN_HEAD" \
-            --source-main "$SOURCE_MAIN" \
-            --out "$SOURCE_PROMOTION_OUT"
-          status=$?
+          status=0
+          if test "$(git -C "$RUNNER_TEMP/ripr-trusted-verifier" rev-parse HEAD)" != "$SOURCE_PARENT"; then
+            status=1
+            echo "trusted verifier checkout identity mismatch" >&2
+          else
+            "$TRUSTED_VERIFIER" source-promotion verify \
+              --preflight "$PREFLIGHT" \
+              --resolution-manifest "$RESOLUTION_MANIFEST" \
+              --join-head "$JOIN_HEAD" \
+              --source-main "$SOURCE_MAIN" \
+              --out "$SOURCE_PROMOTION_OUT"
+            status=$?
+          fi
           set -e
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit "$status"
@@ -357,7 +362,7 @@ jobs:
             status=rejected
             failure_reasons=$(jq -cn --argjson existing "$failure_reasons" --arg code "${VERIFY_EXIT_CODE:-not_run}" '$existing + ["trusted verifier exited non-zero: " + $code]')
           fi
-          if test -f "$PREFLIGHT"; then
+          if test -f "$PREFLIGHT" && jq -e . "$PREFLIGHT" >/dev/null 2>&1; then
             conflict_count=$(jq -r '(.dry_merge.conflicts // []) | length' "$PREFLIGHT")
             survivor_count=$(jq -r '(.source_survivor_candidates // []) | length' "$PREFLIGHT")
             exclusion_count=$(jq -r '(.swarm_authority_resolution_candidates // []) | length' "$PREFLIGHT")
@@ -375,6 +380,7 @@ jobs:
             --arg base_sha "$BASE_SHA" \
             --arg head_sha "$PR_HEAD" \
             --arg source_main "${SOURCE_MAIN:-not_available}" \
+            --arg source_parent "${SOURCE_PARENT:-not_available}" \
             --arg join_head "${JOIN_HEAD:-not_available}" \
             --arg control_commit "${CONTROL_COMMIT:-not_available}" \
             --arg trusted_verifier_sha "${TRUSTED_VERIFIER_SHA:-not_available}" \
@@ -402,7 +408,7 @@ jobs:
             --argjson parents "$parents" \
             --argjson checks "$checks" \
             --argjson failure_reasons "$failure_reasons" \
-            '{schema:$schema,status:$status,pr_number:$pr_number,base_sha:$base_sha,head_sha:$head_sha,version:$version,source_main:$source_main,join_head:$join_head,control_commit:$control_commit,trusted_verifier_sha:$trusted_verifier_sha,verifier_receipt_status:$verifier_receipt_status,verifier_exit_code:$verifier_exit_code,validation:{status:$validation_status,phase:$validation_phase,reason:$validation_reason},inputs:{preflight:$preflight,resolution_manifest:$resolution_manifest},control_sidecars:{contract_inputs:$control_inputs_path,preflight:$control_preflight_path,resolution_manifest:$control_resolution_manifest_path},preflight_sha256:$preflight_sha256,resolution_manifest_sha256:$resolution_sha256,parents:$parents,tree:$tree,merge_base:$merge_base,inventory:{conflicts:($conflict_count|tonumber? // $conflict_count),source_survivors:($survivor_count|tonumber? // $survivor_count),swarm_exclusions:($exclusion_count|tonumber? // $exclusion_count)},version_state:$version_state,governance:{protected_candidate_tag:$live_tag,protected_ruleset:$live_ruleset},checks:$checks,failure_reasons:$failure_reasons,claim_boundary:["Exact PR head, ordered two-parent ancestry, reviewed tree, metadata identity, live protected tag and ruleset bindings only.","No merge, publication, tag, release, settings, branch-protection, or product-correctness claim."]}' > "$contract"
+            '{schema:$schema,status:$status,pr_number:$pr_number,base_sha:$base_sha,head_sha:$head_sha,version:$version,source_main:$source_main,source_parent:$source_parent,join_head:$join_head,control_commit:$control_commit,trusted_verifier_sha:$trusted_verifier_sha,verifier_receipt_status:$verifier_receipt_status,verifier_exit_code:$verifier_exit_code,validation:{status:$validation_status,phase:$validation_phase,reason:$validation_reason},inputs:{preflight:$preflight,resolution_manifest:$resolution_manifest},control_sidecars:{contract_inputs:$control_inputs_path,preflight:$control_preflight_path,resolution_manifest:$control_resolution_manifest_path},preflight_sha256:$preflight_sha256,resolution_manifest_sha256:$resolution_sha256,parents:$parents,tree:$tree,merge_base:$merge_base,inventory:{conflicts:($conflict_count|tonumber? // $conflict_count),source_survivors:($survivor_count|tonumber? // $survivor_count),swarm_exclusions:($exclusion_count|tonumber? // $exclusion_count)},version_state:$version_state,governance:{protected_candidate_tag:$live_tag,protected_ruleset:$live_ruleset},checks:$checks,failure_reasons:$failure_reasons,claim_boundary:["Exact PR head, ordered two-parent ancestry, reviewed tree, metadata identity, live protected tag and ruleset bindings only.","No merge, publication, tag, release, settings, branch-protection, or product-correctness claim."]}' > "$contract"
           {
             echo "## Source Promotion Contract"
             echo ""
