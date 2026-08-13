@@ -33,6 +33,11 @@ rejects candidate-provided paths and does not require a tracked input file in
 the promotion PR. This avoids a circular fixed-point contract in which a file
 containing J also changes `J^{tree}`.
 
+The workflow's `validate_tracked_regular_file` helper performs the mode-100644
+and canonical-path checks in the fixed source repository before any sidecar
+bytes are copied into runner-temporary files. It is called for all three fixed
+sidecars and must never be pointed at a candidate-checkout `INPUTS_PATH`.
+
 The workflow runs `cargo xtask source-promotion verify` and emits one
 normalized `ripr.source_promotion_contract.v2` receipt plus the verifier
 JSON/Markdown receipts. Every receipt is bound to the PR head, control commit,
