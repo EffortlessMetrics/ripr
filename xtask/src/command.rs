@@ -1565,6 +1565,23 @@ mod tests {
             "toolchain: 1.95.0",
             "PR_NUMBER: ${{ github.event.pull_request.number }}",
             "resolution_sha256",
+            "validation_phase",
+            "validation_reason",
+            "validation_status",
+            "version",
+            "source_parent",
+            "source_parent:$source_parent",
+            "control_sidecars",
+            "control_preflight_path",
+            "control_resolution_manifest_path",
+            "phase=$validation_phase",
+            "reason=$validation_reason",
+            "if: steps.inputs.outcome == 'success'",
+            "if: steps.inputs.outcome == 'success' && steps.live-governance.outcome == 'success'",
+            "source-promotion-validation.log",
+            "mkdir -p \"$out\"",
+            "trusted verifier checkout identity mismatch",
+            "jq -e . \"$PREFLIGHT\"",
             "control preflight digest mismatch",
             "control resolution digest mismatch",
             "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",
@@ -1795,6 +1812,87 @@ mod tests {
             || workflow.contains("echo \"Failure reasons: `")
         {
             return Err("receipt summary still executes interpolated Markdown backticks".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_has_failure_fixture_corpus() -> Result<(), String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest has no repository parent".to_string())?
+            .join("tests/fixtures/source_promotion_contract");
+        for (name, expected_phase, expected_reason) in [
+            (
+                "malformed-control.json",
+                "control_marker",
+                "exactly one lowercase source-promotion-control marker is required",
+            ),
+            (
+                "unreachable-control.json",
+                "control_repository",
+                "control commit is unreachable from the source repository",
+            ),
+            (
+                "source-mismatch.json",
+                "control_identity",
+                "control source_main does not equal the PR base SHA",
+            ),
+            (
+                "missing-receipt.json",
+                "verifier_receipt",
+                "trusted verifier receipt missing",
+            ),
+            (
+                "schema-mismatch.json",
+                "verifier_receipt",
+                "trusted verifier receipt schema mismatch",
+            ),
+            (
+                "empty-artifact-dir.json",
+                "verifier_receipt",
+                "trusted verifier receipt missing",
+            ),
+        ] {
+            let path = root.join(name);
+            let text = std::fs::read_to_string(&path)
+                .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+            let value: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
+            for key in ["case", "validation_phase", "validation_reason", "status"] {
+                if value.get(key).and_then(serde_json::Value::as_str).is_none() {
+                    return Err(format!("{} is missing string field {key}", path.display()));
+                }
+            }
+            if value["status"] != "rejected" {
+                return Err(format!("{} must pin fail-closed rejection", path.display()));
+            }
+            if value["validation_phase"] != expected_phase {
+                return Err(format!(
+                    "{} must pin emitted validation phase {expected_phase}",
+                    path.display()
+                ));
+            }
+            if value["validation_reason"] != expected_reason {
+                return Err(format!(
+                    "{} must pin emitted validation reason {expected_reason}",
+                    path.display()
+                ));
+            }
+            if matches!(name, "missing-receipt.json" | "empty-artifact-dir.json")
+                && value["receipt_status"] != "missing"
+            {
+                return Err(format!(
+                    "{} must pin a missing verifier receipt",
+                    path.display()
+                ));
+            }
+            if name == "schema-mismatch.json" && value["receipt_status"] != "schema_mismatch" {
+                return Err(format!(
+                    "{} must pin a schema-mismatched verifier receipt",
+                    path.display()
+                ));
+            }
         }
         Ok(())
     }
