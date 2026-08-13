@@ -107,8 +107,8 @@ jobs:
               "source_parent=$source_parent" \
               "join_head=$join_head" \
               "control_commit=$control_commit" \
-              "preflight=${preflight:-$PREFLIGHT_PATH}" \
-              "resolution_manifest=${resolution_manifest:-$RESOLUTION_MANIFEST_PATH}" \
+              "preflight=${preflight:-}" \
+              "resolution_manifest=${resolution_manifest:-}" \
               "preflight_sha256=$preflight_sha256" \
               "resolution_sha256=$resolution_sha256" \
               "swarm_ref=$swarm_ref" \
