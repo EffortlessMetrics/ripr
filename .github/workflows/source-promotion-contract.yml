@@ -324,11 +324,6 @@ jobs:
           out="$SOURCE_PROMOTION_OUT"
           mkdir -p "$out"
           validation_log="$out/source-promotion-validation.log"
-          if test -s "$VALIDATION_FAILURE_PATH"; then
-            cp "$VALIDATION_FAILURE_PATH" "$validation_log"
-          else
-            printf '%s\n' "phase=${VALIDATION_PHASE:-not_run}" "reason=${VALIDATION_REASON:-validation did not fail before verifier}" > "$validation_log"
-          fi
           verification="$out/source-promotion-verification.json"
           contract="$out/source-promotion-contract.json"
           if test -f "$verification"; then
@@ -361,6 +356,28 @@ jobs:
           if test "${VERIFY_EXIT_CODE:-not_run}" != 0 && test "$status" = verified; then
             status=rejected
             failure_reasons=$(jq -cn --argjson existing "$failure_reasons" --arg code "${VERIFY_EXIT_CODE:-not_run}" '$existing + ["trusted verifier exited non-zero: " + $code]')
+          fi
+          if test "$status" != verified && test "${VALIDATION_STATUS:-not_run}" = passed; then
+            VALIDATION_STATUS=rejected
+            case "$verifier_receipt_status" in
+              missing)
+                VALIDATION_PHASE=verifier_receipt
+                VALIDATION_REASON='trusted verifier receipt missing'
+                ;;
+              schema_mismatch)
+                VALIDATION_PHASE=verifier_receipt
+                VALIDATION_REASON='trusted verifier receipt schema mismatch'
+                ;;
+              *)
+                VALIDATION_PHASE=verifier
+                VALIDATION_REASON=$(jq -r '.failure_reasons[0] // "trusted verifier receipt rejected"' "$verification" 2>/dev/null || printf '%s' 'trusted verifier receipt rejected')
+                ;;
+            esac
+          fi
+          if test -s "$VALIDATION_FAILURE_PATH" && test "${VALIDATION_STATUS:-not_run}" != passed; then
+            cp "$VALIDATION_FAILURE_PATH" "$validation_log"
+          else
+            printf '%s\n' "phase=${VALIDATION_PHASE:-not_run}" "reason=${VALIDATION_REASON:-validation did not fail before verifier}" > "$validation_log"
           fi
           if test -f "$PREFLIGHT" && jq -e . "$PREFLIGHT" >/dev/null 2>&1; then
             conflict_count=$(jq -r '(.dry_merge.conflicts // []) | length' "$PREFLIGHT")
