@@ -216,8 +216,21 @@ jobs:
           printf '%s\n' "$PR_BODY" | grep -Fq 'Do not use Rebase and merge.' || fail "rebase warning is missing"
 
           changed_workflows=$(git diff --name-only "$BASE_SHA...$PR_HEAD" -- .github/workflows)
-          unexpected_workflows=$(printf '%s\n' "$changed_workflows" | sed '/^$/d;/^\.github\/workflows\/source-promotion-contract\.yml$/d')
-          test -z "$unexpected_workflows" || fail "promotion PR changes non-contract workflows: $unexpected_workflows"
+          unreviewed_workflows=''
+          while IFS= read -r workflow; do
+            test -n "$workflow" || continue
+            reviewed_count=$(jq -r --arg path "$workflow" '[.dispositions[]? | select(.key == $path and (.disposition == "swarm_blob" or .disposition == "integrated"))] | length' "$resolution_manifest")
+            if test "$reviewed_count" -ne 1; then
+              if test -n "$unreviewed_workflows"; then
+                unreviewed_workflows="$unreviewed_workflows,$workflow"
+              else
+                unreviewed_workflows="$workflow"
+              fi
+            fi
+          done <<EOF
+          $changed_workflows
+          EOF
+          test -z "$unreviewed_workflows" || fail "promotion PR changes workflows without exactly one reviewed non-source disposition: $unreviewed_workflows"
 
           validation_phase=complete
           validation_reason=all_validation_checks_passed
