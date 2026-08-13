@@ -95783,6 +95783,26 @@ jobs:
     }
 
     #[test]
+    fn source_of_truth_workflow_uses_canonical_campaign_check() -> Result<(), String> {
+        let workflow = super::read_text_lossy(
+            &super::repo_root()?.join(".github/workflows/source-of-truth.yml"),
+        )?;
+
+        if !workflow.contains("run: cargo xtask check-campaign") {
+            return Err(
+                "source-of-truth workflow must invoke the canonical `check-campaign` command"
+                    .to_string(),
+            );
+        }
+        if workflow.contains("check-goals") {
+            return Err(
+                "source-of-truth workflow must not invoke retired `check-goals`".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn xtask_command_parse_preserves_compatibility_aliases() {
         assert_eq!(
             XtaskCommand::parse(["check-test-oracles".to_string()]),
