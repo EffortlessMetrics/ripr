@@ -422,6 +422,15 @@ classification = "fixture"
 reason = "Sample JSON packets proving portable verification schemas are executable."
 covered_by = ["cargo xtask check-verification-contracts"]
 
+[[allow]]
+glob = "tests/fixtures/source_promotion_contract/*.json"
+kind = "fixture_input"
+owner = "release/ci"
+surface = "fixtures"
+classification = "fixture"
+reason = "Source-promotion rejection fixtures are JSON corpus inputs for the Rust xtask contract test."
+covered_by = ["cargo test -p xtask --bin xtask source_promotion_workflow"]
+
 # ---------------------------------------------------------------------------
 # Brand / assets
 # ---------------------------------------------------------------------------
