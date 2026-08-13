@@ -1,5 +1,5 @@
 use crate::cli::command::CliCommand;
-use crate::cli::{commands, help};
+use crate::cli::{commands, help, rerun};
 
 pub(super) fn execute(command: CliCommand) -> Result<(), String> {
     match command {
@@ -7,11 +7,16 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
             help::print_help();
             Ok(())
         }
+        CliCommand::HelpAll => {
+            help::print_help_all();
+            Ok(())
+        }
         CliCommand::Version => {
             println!("ripr {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         CliCommand::Init(args) => commands::init(&args),
+        CliCommand::Config(args) => commands::config(&args),
         CliCommand::Pilot(args) => commands::pilot(&args),
         CliCommand::Outcome(args) => commands::outcome(&args),
         CliCommand::EvidenceHealth(args) => commands::evidence_health(&args),
@@ -38,6 +43,13 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::Context(args) => commands::context(&args),
         CliCommand::Doctor(args) => commands::doctor(&args),
         CliCommand::Lsp(args) => commands::lsp(&args),
+        CliCommand::PrSummary(args) => commands::pr_summary(&args),
+        CliCommand::Annotations(args) => commands::annotations(&args),
+        CliCommand::PrEvidence(args) => commands::pr_evidence(&args),
+        CliCommand::ImpactedEvidence(args) => commands::impacted_evidence(&args),
+        CliCommand::RiprPlus(args) => commands::ripr_plus(&args),
+        CliCommand::Cache(args) => commands::cache(&args),
+        CliCommand::Rerun(args) => rerun::run(&args),
     }
 }
 
@@ -56,10 +68,24 @@ mod tests {
     }
 
     #[test]
+    fn execute_dispatches_rerun_parse_errors() {
+        assert_eq!(
+            execute(CliCommand::Rerun(Vec::new())),
+            Err(
+                "rerun requires --changed-test <path> or --gap <canonical-gap-id> --gap-ledger <path>"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
     fn execute_dispatches_subcommand_args_without_reparsing_argv() {
         assert_eq!(
             execute(CliCommand::Check(args(&["--format", "xml"]))),
-            Err("unknown format \"xml\"".to_string())
+            Err(
+                "unknown format \"xml\"; see `ripr check --help` for the accepted formats"
+                    .to_string()
+            )
         );
         assert_eq!(
             execute(CliCommand::Doctor(args(&["--root"]))),
@@ -67,6 +93,10 @@ mod tests {
         );
         assert_eq!(
             execute(CliCommand::Init(args(&["--root"]))),
+            Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Config(args(&["validate", "--root"]))),
             Err("missing value for --root".to_string())
         );
         assert_eq!(
@@ -94,7 +124,7 @@ mod tests {
         );
         assert_eq!(
             execute(CliCommand::Gate(args(&["evaluate", "--mode", "strict"]))),
-            Err("unknown gate mode `strict`".to_string())
+            Err("unknown gate mode `strict`; expected `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate`".to_string())
         );
         assert_eq!(
             execute(CliCommand::Baseline(args(&["create", "--from"]))),
@@ -154,7 +184,7 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Agent(args(&["unknown"]))),
             Err(
-                "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, or `review-summary`"
+                "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
                     .to_string()
             )
         );
@@ -164,7 +194,11 @@ mod tests {
         );
         assert_eq!(
             execute(CliCommand::Diff(args(&["--format", "xml"]))),
-            Err("unknown diff format \"xml\"".to_string())
+            Err("unknown diff format \"xml\"; expected `human`, `text`, `md`, `markdown`, or `json`".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Cache(Vec::new())),
+            Err("cache requires subcommand `status` or `clear`".to_string())
         );
     }
 
@@ -172,15 +206,15 @@ mod tests {
     fn execute_dispatches_remaining_command_handlers() {
         assert_eq!(
             execute(CliCommand::Explain(Vec::new())),
-            Err("missing finding selector".to_string())
+            Err("missing finding selector; pass a finding id (e.g. `probe:src_lib.rs:error_path:abc123`) or `file:line`. Run `ripr check --json` to list finding ids".to_string())
         );
         assert_eq!(
             execute(CliCommand::Context(Vec::new())),
-            Err("missing --at or --finding selector".to_string())
+            Err("missing --at or --finding selector; pass a finding id (e.g. `probe:src_lib.rs:error_path:abc123`) or `file:line`. Run `ripr check --json` to list finding ids".to_string())
         );
         assert_eq!(
             execute(CliCommand::Lsp(args(&["--bad"]))),
-            Err("unknown lsp argument \"--bad\"".to_string())
+            Err("unknown lsp argument \"--bad\". Run `ripr lsp --help`.".to_string())
         );
     }
 }

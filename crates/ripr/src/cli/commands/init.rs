@@ -2,6 +2,7 @@ use crate::agent::loop_commands;
 use crate::cli::commands_options::{InitCi, InitOptions};
 use crate::cli::help;
 use crate::cli::parse::expect_value;
+use crate::cli::suggest::unknown_argument;
 use crate::config::{CONFIG_FILE_NAME, generated_init_config};
 use std::path::{Path, PathBuf};
 
@@ -11,10 +12,56 @@ pub(in crate::cli) fn init(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let options = parse_init_options(args)?;
+    // #2572: `--dry-run` and the real run resolve the SAME plan, so a preview
+    // can never disagree with the run it previews. Previously `--dry-run`
+    // returned before every precondition check and printed file bodies
+    // unconditionally, so it reported success for two runs that actually fail:
+    // an existing `ripr.toml` without `--force`, and a root that is not a
+    // directory.
+    let plan = init_plan(&options)?;
     if options.dry_run {
-        print_init_dry_run(&options);
+        print_init_dry_run(&plan);
         return Ok(());
     }
+    apply_init_plan(&plan)
+}
+
+/// What `ripr init` would do to one file.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InitAction {
+    /// The path does not exist; it would be created.
+    Create,
+    /// The path exists and `--force` was given; it would be replaced.
+    Overwrite,
+    /// The config exists without `--force`, but `--ci` still has work to do,
+    /// so the config is left as the user wrote it.
+    LeaveUnchanged,
+}
+
+impl InitAction {
+    /// Fixed-width so a multi-target plan lines up in a terminal.
+    fn label(self) -> &'static str {
+        match self {
+            Self::Create => "create        ",
+            Self::Overwrite => "overwrite     ",
+            Self::LeaveUnchanged => "leave existing",
+        }
+    }
+}
+
+/// One file in the resolved plan, with the body that would be written.
+struct InitTarget {
+    path: PathBuf,
+    action: InitAction,
+    body: String,
+}
+
+/// Resolve what the run would do, or fail with the reason it cannot run.
+///
+/// This is the single authority for `ripr init` preconditions: both
+/// `--dry-run` and the real run go through it, so the two always agree on
+/// whether the run is possible and on which files it touches.
+fn init_plan(options: &InitOptions) -> Result<Vec<InitTarget>, String> {
     if !options.root.is_dir() {
         return Err(format!(
             "init root {} is not a directory",
@@ -27,16 +74,24 @@ pub(in crate::cli) fn init(args: &[String]) -> Result<(), String> {
         .as_ref()
         .map(|ci| init_ci_workflow_path(&options.root, ci));
 
-    if config_path.exists() && !options.force && options.ci.is_none() {
+    // #2576 review: the plan must reject a parent the real run cannot create,
+    // not just a target that already exists. If `<root>/.github` is a regular
+    // file, nothing exists at `.github/workflows/ripr.yml`, so the target reads
+    // as `create` while `create_dir_all` will fail — and because the config is
+    // written first, the run would half-initialize the repo before failing.
+    // Checking every target up front also means a doomed run writes nothing.
+    for path in std::iter::once(&config_path).chain(workflow_path.as_ref()) {
+        ensure_creatable_parent(path)?;
+    }
+
+    if path_is_occupied(&config_path)? && !options.force && options.ci.is_none() {
         return Err(format!(
             "{} already exists; rerun `ripr init --force` to overwrite it",
             config_path.display()
         ));
     }
-    if let Some(path) = workflow_path
-        .as_ref()
-        .filter(|path| path.exists())
-        .filter(|_| !options.force)
+    if let Some(path) = workflow_path.as_ref().filter(|_| !options.force)
+        && path_is_occupied(path)?
     {
         return Err(format!(
             "{} already exists; rerun `ripr init --ci github --force` to overwrite it",
@@ -44,17 +99,166 @@ pub(in crate::cli) fn init(args: &[String]) -> Result<(), String> {
         ));
     }
 
-    if config_path.exists() && !options.force {
-        println!("Left existing {} unchanged", config_path.display());
+    let config_action = if path_is_occupied(&config_path)? {
+        if options.force {
+            InitAction::Overwrite
+        } else {
+            InitAction::LeaveUnchanged
+        }
     } else {
-        std::fs::write(&config_path, generated_init_config())
-            .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
-        println!("Wrote {}", config_path.display());
+        InitAction::Create
+    };
+    let mut targets = vec![InitTarget {
+        path: config_path,
+        action: config_action,
+        body: generated_init_config().to_string(),
+    }];
+    if let Some(path) = workflow_path {
+        let action = if path_is_occupied(&path)? {
+            InitAction::Overwrite
+        } else {
+            InitAction::Create
+        };
+        targets.push(InitTarget {
+            path,
+            action,
+            body: generated_github_actions_workflow(),
+        });
     }
+    Ok(targets)
+}
 
-    if let Some(ci) = options.ci.as_ref() {
-        write_init_ci_workflow(&options.root, ci)?;
+/// Is anything at all sitting at `path`?
+///
+/// This deliberately does not use `Path::exists()`, which follows symlinks and
+/// so reports `false` for a dangling symlink. The write path opens with
+/// `create_new`, which fails when *any* entry occupies the path — including a
+/// dangling symlink — so planning has to ask the same question the write asks.
+/// `symlink_metadata` also surfaces permission errors instead of silently
+/// reading as "absent, will create".
+fn path_is_occupied(path: &Path) -> Result<bool, String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(format!("cannot inspect {}: {err}", path.display())),
     }
+}
+
+/// Fail when a target's parent directory cannot be created.
+///
+/// `create_dir_all` fails if an existing ancestor is not a directory, so the
+/// nearest existing ancestor decides whether the write is possible at all.
+/// Ancestors are followed through symlinks, matching what `create_dir_all`
+/// itself does.
+fn ensure_creatable_parent(path: &Path) -> Result<(), String> {
+    let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    else {
+        return Ok(());
+    };
+    for ancestor in parent.ancestors() {
+        match std::fs::metadata(ancestor) {
+            Ok(metadata) if metadata.is_dir() => return Ok(()),
+            Ok(_) => {
+                return Err(format!(
+                    "cannot write {}: {} exists and is not a directory",
+                    path.display(),
+                    ancestor.display()
+                ));
+            }
+            // `NotFound` means this level would simply be created. `NotADirectory`
+            // means a *shallower* ancestor is the real culprit, so keep walking
+            // up until the offending entry itself is found and can be named.
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) =>
+            {
+                continue;
+            }
+            Err(err) => {
+                return Err(format!(
+                    "cannot write {}: inspecting {} failed: {err}",
+                    path.display(),
+                    ancestor.display()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn apply_init_plan(plan: &[InitTarget]) -> Result<(), String> {
+    let mut wrote_any = false;
+    for target in plan {
+        match target.action {
+            InitAction::LeaveUnchanged => {
+                println!("Left existing {} unchanged", target.path.display());
+            }
+            InitAction::Create => {
+                write_init_target(target)?;
+                wrote_any = true;
+            }
+            InitAction::Overwrite => {
+                println!("Overwrote existing {}", target.path.display());
+                write_init_target(target)?;
+                wrote_any = true;
+            }
+        }
+    }
+    if wrote_any {
+        println!();
+        println!(
+            "Next: run `ripr doctor` to verify your setup, then `ripr check --base origin/main` to analyze a diff."
+        );
+    }
+    Ok(())
+}
+
+fn write_init_target(target: &InitTarget) -> Result<(), String> {
+    if let Some(parent) = target
+        .path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+    }
+    if target.action == InitAction::Overwrite {
+        // --force must not follow a pre-placed symlink either (#2101):
+        // remove_file unlinks the entry itself (it never follows a
+        // symlink to its target), and the create_new write below then
+        // fails closed if anything reappears at the path.
+        match std::fs::remove_file(&target.path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => {
+                return Err(format!(
+                    "remove existing {} for --force failed: {err}",
+                    target.path.display()
+                ));
+            }
+        }
+    }
+    // Use create_new to prevent a symlink-following write race where a
+    // symlink is placed at the path between the exists() check in
+    // init_plan and the write. create_new fails if the path already
+    // exists, including symlinks. (#1948)
+    //
+    // Write through the create_new handle: reopening the path after
+    // creation would leave a swap window where a planted symlink is
+    // followed (#2101 review, CWE-367).
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&target.path)
+        .map_err(|err| format!("write {} failed: {err}", target.path.display()))?;
+    use std::io::Write;
+    file.write_all(target.body.as_bytes())
+        .map_err(|err| format!("write {} failed: {err}", target.path.display()))?;
+    println!("Wrote {}", target.path.display());
     Ok(())
 }
 
@@ -78,7 +282,7 @@ pub(super) fn parse_init_options(args: &[String]) -> Result<InitOptions, String>
             }
             "--dry-run" => options.dry_run = true,
             "--force" => options.force = true,
-            other => return Err(format!("unknown init argument {other:?}")),
+            other => return Err(unknown_argument("init", other)),
         }
         i += 1;
     }
@@ -92,40 +296,32 @@ fn parse_init_ci(value: &str) -> Result<InitCi, String> {
     }
 }
 
-fn print_init_dry_run(options: &InitOptions) {
-    if let Some(ci) = options.ci.as_ref() {
-        println!("# {}", CONFIG_FILE_NAME);
-        print!("{}", generated_init_config());
-        println!();
-        println!("# {}", init_ci_workflow_path(&options.root, ci).display());
-        print!("{}", generated_github_actions_workflow());
-    } else {
-        print!("{}", generated_init_config());
+/// Render the resolved plan, then the body of each file that would be written.
+///
+/// The plan block goes first so the reader learns which paths are involved and
+/// what would happen to each before scrolling through a multi-hundred-line
+/// generated workflow. Previously this printed bodies only, so `--dry-run`
+/// never named its targets or said that nothing had been written.
+fn print_init_dry_run(plan: &[InitTarget]) {
+    println!("ripr init plan (dry run — nothing was written)");
+    for target in plan {
+        println!("  {} {}", target.action.label(), target.path.display());
     }
+    for target in plan {
+        if target.action == InitAction::LeaveUnchanged {
+            continue;
+        }
+        println!();
+        println!("# {}", target.path.display());
+        print!("{}", target.body);
+    }
+    println!();
+    println!("Rerun without --dry-run to apply.");
 }
 
 fn init_ci_workflow_path(root: &Path, ci: &InitCi) -> PathBuf {
     match ci {
         InitCi::Github => root.join(".github/workflows/ripr.yml"),
-    }
-}
-
-fn write_init_ci_workflow(root: &Path, ci: &InitCi) -> Result<(), String> {
-    match ci {
-        InitCi::Github => {
-            let path = init_ci_workflow_path(root, ci);
-            if let Some(parent) = path
-                .parent()
-                .filter(|parent| !parent.as_os_str().is_empty())
-            {
-                std::fs::create_dir_all(parent)
-                    .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
-            }
-            std::fs::write(&path, generated_github_actions_workflow())
-                .map_err(|err| format!("write {} failed: {err}", path.display()))?;
-            println!("Wrote {}", path.display());
-            Ok(())
-        }
     }
 }
 
@@ -142,15 +338,38 @@ permissions:
   security-events: write
 
 env:
+  # Upload SARIF to GitHub Security tab when true. Disable with
+  # RIPR_UPLOAD_SARIF=false if your repo does not use code scanning.
   RIPR_UPLOAD_SARIF: "true"
+  # Gate authority for this workflow. Configure as a GitHub Actions
+  # repository variable (Settings > Secrets and variables > Actions >
+  # Variables). Empty (default) = advisory only, the job never fails.
+  # Allowed values:
+  #   visible-only     gate runs and prints, but does not block the job
+  #   acknowledgeable  gate runs; PR author can acknowledge to merge
+  #   baseline-check   gate fails if exposure is worse than the baseline
+  #   calibrated-gate  gate fails on any actionable finding
+  # See docs/CALIBRATED_GATE_POLICY.md for the full policy.
   RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}
+  # Optional baseline git ref (tag, branch, or SHA) the gate compares
+  # against when RIPR_GATE_MODE includes a baseline check. Empty by default.
   RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}
+  # PR review-comment publishing. Configure as a repository variable.
+  # Allowed values:
+  #   off     (default) no PR comments; findings only in artifacts
+  #   plan    compute and publish a comment plan; do not post inline
+  #   inline  publish inline review comments on changed lines (needs
+  #           pull-requests: write, which this workflow grants)
   RIPR_COMMENT_MODE: ${{ vars.RIPR_COMMENT_MODE || 'off' }}
 
 jobs:
   ripr:
     name: RIPR advisory reports
     runs-on: ubuntu-latest
+    # The whole job is advisory (continue-on-error) unless RIPR_GATE_MODE
+    # is set to a blocking value. With the default empty/visible-only mode
+    # a failure here never fails the PR — set RIPR_GATE_MODE to opt in to
+    # blocking behaviour. See docs/CALIBRATED_GATE_POLICY.md.
     continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
     steps:
       - uses: actions/checkout@v6
@@ -158,6 +377,18 @@ jobs:
           fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
+
+      # Cache the cargo registry, git checkouts, and dependency builds
+      # (#2008): an uncached `cargo install ripr --locked` recompiles for
+      # minutes on every PR. The install itself still runs (no stale-binary
+      # risk); the warm caches cut most of the compile.
+      # Pinned to a commit SHA (#2190 review): the generated workflow
+      # grants pull-requests: write and security-events: write, so a
+      # mutable third-party tag is a supply-chain risk in consumer repos.
+      # Swatinem/rust-cache v2 = e18b497796c12c097a38f9edb9d0641fb99eee32.
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: ripr-install
 
       - name: Install ripr
         run: cargo install ripr --locked
@@ -211,6 +442,11 @@ jobs:
             --format repo-exposure-json \
             > target/ripr/workflow/after.repo-exposure.json
           cp target/ripr/workflow/after.repo-exposure.json target/ripr/pilot/after.repo-exposure.json
+          ripr check \
+            --root . \
+            --mode draft \
+            --format json \
+            > target/ripr/workflow/analysis-outcome.json
           ripr agent verify \
             --root . \
             --before target/ripr/workflow/before.repo-exposure.json \
@@ -250,13 +486,25 @@ jobs:
 
       - name: Run RIPR PR guidance report
         if: github.event_name == 'pull_request'
-        continue-on-error: true
+        # Gate-critical producer (#2009): advisory by default, but a
+        # blocking RIPR_GATE_MODE must not green-on-error past the gate's
+        # own input.
+        continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
         run: |
-          mkdir -p target/ripr/review
+          mkdir -p target/ripr/pr target/ripr/review
+          check_status=0
+          ripr check \
+            --root . \
+            --base "origin/${{ github.base_ref }}" \
+            --format json > target/ripr/pr/check.json || check_status=$?
+          if [ "$check_status" -ne 0 ]; then
+            echo "RIPR check did not produce a complete result (exit $check_status); review-comments will fail closed on the named artifact."
+          fi
           ripr review-comments \
             --root . \
             --base "origin/${{ github.base_ref }}" \
             --head HEAD \
+            --check-output target/ripr/pr/check.json \
             --out target/ripr/review/comments.json
 
       - name: Capture existing RIPR inline comments
@@ -376,7 +624,7 @@ jobs:
 
       - name: Render RIPR diff SARIF
         if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'
-        continue-on-error: true
+        continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
         run: |
           ripr check \
             --root . \
@@ -386,7 +634,7 @@ jobs:
 
       - name: Render RIPR repo seam SARIF
         if: env.RIPR_UPLOAD_SARIF == 'true'
-        continue-on-error: true
+        continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
         run: |
           mkdir -p target/ripr/reports
           ripr check \
@@ -674,16 +922,9 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p target/ripr/reports
-          configured_languages="$(
-            ripr doctor --root . 2>/dev/null \
-              | sed -n 's/^- Enabled languages: //p' \
-              | tail -n 1 \
-              || true
-          )"
           preview_languages="$(
-            printf '%s\n' "$configured_languages" \
-              | tr ',' '\n' \
-              | sed 's/^ *//; s/ *$//' \
+            ripr doctor --root . --json 2>/dev/null \
+              | jq -r '.languages[]?' 2>/dev/null \
               | sed -n '/^typescript$/p; /^python$/p' \
               | sort -u \
               | tr '\n' ' ' \
@@ -691,7 +932,15 @@ jobs:
               || true
           )"
           if [ -z "$preview_languages" ]; then
-            echo 'No TypeScript or Python preview languages are configured; preview promotion packets were not generated.'
+            # Empty can mean "none configured" OR "doctor --json failed"
+            # (#2182 review): doctor always emits at least the default
+            # language, so an empty result is a detection failure. Say so
+            # instead of asserting none are configured.
+            if ripr doctor --root . --json > /dev/null 2>&1; then
+              echo 'No TypeScript or Python preview languages are configured; preview promotion packets were not generated.'
+            else
+              echo 'Language detection via `ripr doctor --json` failed; preview promotion packets were not generated. Run ripr doctor locally for the underlying error.'
+            fi
             exit 0
           fi
           for language in $preview_languages; do
@@ -1155,9 +1404,8 @@ jobs:
             fi
             echo
             configured_languages="$(
-              ripr doctor --root . 2>/dev/null \
-                | sed -n 's/^- Enabled languages: //p' \
-                | tail -n 1 \
+              ripr doctor --root . --json 2>/dev/null \
+                | jq -r '.languages | join(",")' 2>/dev/null \
                 || true
             )"
             if [ -z "$configured_languages" ]; then
@@ -1870,7 +2118,7 @@ jobs:
               mutation_calibration="$(jq -r '.inputs.mutation_calibration // "not supplied"' "$gate_json" 2>/dev/null || echo unknown)"
               recommendation_effects="$(jq -r '([.decisions[]?.evidence.recommendation_calibration.confidence_effect | select(. != null)] | unique | if length == 0 then "none" else join(", ") end)' "$gate_json" 2>/dev/null || echo unknown)"
               mutation_effects="$(jq -r '([.decisions[]?.evidence.mutation_calibration.confidence_effect | select(. != null)] | unique | if length == 0 then "none" else join(", ") end)' "$gate_json" 2>/dev/null || echo unknown)"
-              blocking_reason="$(jq -r '([.decisions[]? | select(.decision == "blocking") | .gate_reason] | first) // "none"' "$gate_json" 2>/dev/null || echo unknown)"
+              blocking_reason="$(jq -r '([.decisions[]? | select(.decision == "blocking") | .gate_reason]) as $reasons | if ($reasons | length) == 0 then "none" elif ($reasons | length) == 1 then $reasons[0] else "\($reasons[0]) (+\(($reasons | length) - 1) more, see gate-decision.md)" end' "$gate_json" 2>/dev/null || echo unknown)"
               gate_status="$(markdown_inline "$gate_status")"
               gate_mode="$(markdown_inline "$gate_mode")"
               blocking="$(markdown_inline "$blocking")"
@@ -1898,7 +2146,7 @@ jobs:
               echo "- Baseline artifact: \`$baseline_artifact\`"
               echo "- Recommendation calibration: \`$recommendation_calibration\` (effects: $recommendation_effects)"
               echo "- Mutation calibration: \`$mutation_calibration\` (effects: $mutation_effects)"
-              echo "- Blocking reason: \`$blocking_reason\`"
+              echo "- Blocking reason (\`$blocking\`): \`$blocking_reason\`"
               echo "- Gate artifacts: \`target/ripr/reports/gate-decision.json\`, \`target/ripr/reports/gate-decision.md\`"
               echo "- Related inputs: \`target/ripr/review/comments.json\`, \`target/ci/labels.json\`"
               echo
@@ -2056,6 +2304,28 @@ jobs:
             echo "- No runtime mutation execution is performed by this workflow."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Check RIPR advisory artifacts
+        if: always()
+        continue-on-error: true
+        run: |
+          # Green-with-missing-artifacts is a real failure mode (#2009):
+          # report it visibly without failing the advisory job.
+          missing=()
+          for artifact in target/ripr/reports/start-here.md target/ripr/reports/index.json; do
+            if [ ! -f "$artifact" ]; then
+              missing+=("$artifact")
+            fi
+          done
+          if [ "$RIPR_GATE_MODE" != '' ] && [ ! -f target/ripr/reports/gate-decision.json ] && [ -f target/ripr/review/comments.json ]; then
+            missing+=("target/ripr/reports/gate-decision.json (RIPR_GATE_MODE is set)")
+          fi
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo '::warning::Some RIPR advisory artifacts are missing (upstream step failed softly):'
+            for artifact in "${missing[@]}"; do
+              echo "  - $artifact"
+            done
+          fi
+
       - name: Upload RIPR report artifacts
         if: always()
         continue-on-error: true
@@ -2074,6 +2344,9 @@ jobs:
 
       - name: Upload RIPR diff findings
         if: always() && env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
+        # Upload infra is not analysis authority (#2009 review): a CodeQL
+        # flake must not fail a gate the analysis passed. Renders (the
+        # analysis) stay gate-conditional; uploads stay advisory.
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
@@ -2160,4 +2433,233 @@ jobs:
         "target/ripr/workflow/agent-review-summary.md",
         loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::commands_options::InitCi;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// The `cli_smoke` tests drive `ripr init` as a subprocess, so they prove
+    /// end-to-end behavior but leave the planning logic uninstrumented. These
+    /// in-process tests exercise `init_plan` and its precondition helpers
+    /// directly, which is also where the interesting branches live.
+    fn temp_root(name: &str) -> Result<PathBuf, String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let root =
+            std::env::temp_dir().join(format!("ripr-init-{name}-{}-{stamp}", std::process::id()));
+        std::fs::create_dir_all(&root).map_err(|err| format!("create temp root failed: {err}"))?;
+        Ok(root)
+    }
+
+    fn options(root: &Path) -> InitOptions {
+        InitOptions {
+            root: root.to_path_buf(),
+            dry_run: false,
+            force: false,
+            ci: None,
+        }
+    }
+
+    fn write(path: &Path, text: &str) -> Result<(), String> {
+        std::fs::write(path, text).map_err(|err| format!("write {} failed: {err}", path.display()))
+    }
+
+    #[test]
+    fn plan_creates_the_config_in_a_clean_root() -> Result<(), String> {
+        let root = temp_root("clean")?;
+        let plan = init_plan(&options(&root))?;
+
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].action, InitAction::Create);
+        assert_eq!(plan[0].path, root.join(CONFIG_FILE_NAME));
+        assert!(plan[0].body.contains("[analysis]"));
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn plan_adds_the_workflow_target_for_ci_github() -> Result<(), String> {
+        let root = temp_root("ci")?;
+        let mut opts = options(&root);
+        opts.ci = Some(InitCi::Github);
+        let plan = init_plan(&opts)?;
+
+        assert_eq!(plan.len(), 2);
+        assert_eq!(plan[1].action, InitAction::Create);
+        assert_eq!(plan[1].path, root.join(".github/workflows/ripr.yml"));
+        assert!(plan[1].body.contains("name: RIPR"));
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn plan_rejects_an_existing_config_without_force() -> Result<(), String> {
+        let root = temp_root("exists")?;
+        write(&root.join(CONFIG_FILE_NAME), "[analysis]\n")?;
+
+        match init_plan(&options(&root)) {
+            Ok(_) => return Err("an existing config without --force must block".to_string()),
+            Err(message) => {
+                assert!(message.contains("already exists"), "{message}");
+                assert!(message.contains("--force"), "{message}");
+            }
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn plan_overwrites_an_existing_config_with_force() -> Result<(), String> {
+        let root = temp_root("force")?;
+        write(&root.join(CONFIG_FILE_NAME), "[analysis]\n")?;
+        let mut opts = options(&root);
+        opts.force = true;
+
+        let plan = init_plan(&opts)?;
+        assert_eq!(plan[0].action, InitAction::Overwrite);
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    /// An existing config only blocks when there is nothing else to do; with
+    /// `--ci` the run still has a workflow to write.
+    #[test]
+    fn plan_leaves_an_existing_config_alone_when_ci_still_has_work() -> Result<(), String> {
+        let root = temp_root("leave")?;
+        write(&root.join(CONFIG_FILE_NAME), "[analysis]\n")?;
+        let mut opts = options(&root);
+        opts.ci = Some(InitCi::Github);
+
+        let plan = init_plan(&opts)?;
+        assert_eq!(plan[0].action, InitAction::LeaveUnchanged);
+        assert_eq!(plan[1].action, InitAction::Create);
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn plan_rejects_an_existing_workflow_without_force() -> Result<(), String> {
+        let root = temp_root("wf-exists")?;
+        let workflow = root.join(".github/workflows/ripr.yml");
+        if let Some(parent) = workflow.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+        }
+        write(&workflow, "name: existing\n")?;
+        let mut opts = options(&root);
+        opts.ci = Some(InitCi::Github);
+
+        match init_plan(&opts) {
+            Ok(_) => return Err("an existing workflow without --force must block".to_string()),
+            Err(message) => assert!(message.contains("already exists"), "{message}"),
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn plan_rejects_a_root_that_is_not_a_directory() -> Result<(), String> {
+        let root = temp_root("bad-root")?;
+        let file_root = root.join("a-file");
+        write(&file_root, "not a directory\n")?;
+
+        match init_plan(&options(&file_root)) {
+            Ok(_) => return Err("a non-directory root must block".to_string()),
+            Err(message) => assert!(message.contains("is not a directory"), "{message}"),
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    /// #2576 review: the plan must reject a parent `create_dir_all` cannot
+    /// make, and must name the entry that actually blocks it.
+    #[test]
+    fn plan_rejects_a_workflow_parent_that_is_a_file() -> Result<(), String> {
+        let root = temp_root("parent-file")?;
+        write(&root.join(".github"), "not a directory\n")?;
+        let mut opts = options(&root);
+        opts.ci = Some(InitCi::Github);
+
+        match init_plan(&opts) {
+            Ok(_) => return Err("an uncreatable parent must block".to_string()),
+            Err(message) => {
+                assert!(
+                    message.contains("exists and is not a directory"),
+                    "{message}"
+                );
+                assert!(
+                    message.contains(&root.join(".github").display().to_string()),
+                    "message should name the blocking entry: {message}"
+                );
+            }
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn creatable_parent_accepts_directories_that_do_not_exist_yet() -> Result<(), String> {
+        let root = temp_root("deep")?;
+        ensure_creatable_parent(&root.join("a/b/c/file.yml"))?;
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn occupied_reports_absent_and_present_paths() -> Result<(), String> {
+        let root = temp_root("occupied")?;
+        assert!(!path_is_occupied(&root.join("missing"))?);
+
+        let file = root.join("present");
+        write(&file, "x")?;
+        assert!(path_is_occupied(&file)?);
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    /// `Path::exists()` follows symlinks and reports `false` here, but
+    /// `create_new` still refuses the path, so planning must call it occupied.
+    #[cfg(unix)]
+    #[test]
+    fn occupied_reports_a_dangling_symlink_as_present() -> Result<(), String> {
+        let root = temp_root("dangling")?;
+        let link = root.join("link");
+        std::os::unix::fs::symlink(root.join("nowhere"), &link)
+            .map_err(|err| format!("symlink failed: {err}"))?;
+
+        assert!(!link.exists(), "precondition: exists() misses this case");
+        assert!(path_is_occupied(&link)?);
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn action_labels_are_padded_to_a_common_width() {
+        let width = InitAction::Create.label().len();
+        assert_eq!(InitAction::Overwrite.label().len(), width);
+        assert_eq!(InitAction::LeaveUnchanged.label().len(), width);
+        assert!(InitAction::Create.label().starts_with("create"));
+        assert!(InitAction::Overwrite.label().starts_with("overwrite"));
+        assert!(
+            InitAction::LeaveUnchanged
+                .label()
+                .starts_with("leave existing")
+        );
+    }
 }

@@ -38,7 +38,7 @@ Durable restart context:
 
 - [implementation plan](../../plans/rust-usable-gap-projection/implementation-plan.md)
 - [agent route](../../plans/rust-usable-gap-projection/agent-context-route.md)
-- [closed manifest](../../.ripr/goals/archive/2026-05-15-rust-usable-gap-projection.toml)
+- closed manifest (`.ripr/goals/`, deleted in #1701 PR 3)
 
 ## Prompt-To-Artifact Audit
 

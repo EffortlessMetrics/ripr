@@ -154,6 +154,30 @@ seam when the current shape is broad, smoke-only, or unknown. These semantics
 do not change `oracle_kind`, `oracle_strength`, relation confidence, or static
 classification; they make the existing oracle facts actionable.
 
+### Constructor-field observation linkage
+
+For a `field_construction` seam, repo-scoped evidence may link an exact-field
+observer through a bounded same-file or same-crate production caller graph when
+all of these conditions hold:
+
+- the test and production caller are in the same Cargo package;
+- the caller chain resolves to the seam owner without a conflicting same-name
+  owner mapping;
+- the oracle kind is valid for a value seam; and
+- the oracle structurally names the exact constructed field through a member
+  access or record field/pattern.
+
+An assertion on a sibling field, a same-named field reached through another
+constructor owner, an unrelated test, or a token present only in prose does not
+discriminate the seam. A destructured field asserted later only through a local
+binding also stays weak unless producer evidence can link that binding to the
+selected constructor result; token agreement alone is not value flow. When a
+same-name caller can lead to multiple owners and no narrower path resolves the
+owner, activation remains unknown and the
+evidence record names `constructor_field_owner_ambiguous` with repair route
+`analysis/constructor-field-observation`. RIPR must not choose one owner or
+promote the seam from the ambiguous path.
+
 ## Non-Goals
 
 This spec does not require:

@@ -16,15 +16,17 @@ Linked ADRs:
 
 Linked plan:
 
-- plans/use-case-specs/implementation-plan.md (planned)
+- plans/rust-one-shot-evidence-to-repair.md (RIPR-PLAN-0062)
 
 Linked issues:
 
-- None yet
+- #1440
+- #1933
+- #1963
 
 Linked PRs:
 
-- None yet
+- #2249 (gap-ledger seam identity and route eligibility)
 
 Support-tier impact:
 
@@ -185,6 +187,138 @@ gate advisory-behavior slice (see Implementation Mapping).
 | runtime status | `run_status` / `runtime_status` of the inputs, so limited or stale evidence is visible in the decision. | planned addition |
 | local reproduction command | The `ripr gate evaluate ...` invocation that reproduces the decision locally. | planned addition |
 
+### Structured failure-time repair route
+
+Every policy-eligible per-candidate decision carries one structured
+`repair_route` assembled from producer-owned evidence. Renderers consume this
+object; they must not re-derive or manufacture identity, navigation, test, or
+command fields.
+
+```text
+repair_route.canonical_gap_id
+repair_route.seam_id
+repair_route.classification
+repair_route.changed_owner
+repair_route.changed_behavior
+repair_route.missing_discriminator
+repair_route.repair_target
+repair_route.test_intent
+repair_route.verify_command
+repair_route.receipt_command
+repair_route.inspection_command
+repair_route.authority_boundary
+repair_route.limitation
+```
+
+`changed_owner` names the owner containing the changed seam; it is not relabeled
+as a caller. `repair_target` is either `null`, a tagged `related_test` with
+`name`, `file`, and `line`, or a tagged `production_caller` supplied explicitly
+by producer evidence. Name-only test navigation remains `null` rather than
+inventing a file or line. `inspection_command` projects the producer-owned
+`llm_guidance.command` unchanged when available. An explain command may be used
+only when producer evidence supplies an exact unambiguous selector; path/line
+alone is not synthesized as the exact route because multiple seams can share a
+line.
+
+The JSON object is present on every decision. For a policy-eligible candidate,
+all identity, seam location, behavior, discriminator, target, intent, verify,
+receipt, inspection, and boundary fields must be complete. If any required fact is
+absent, `limitation` is:
+
+```json
+{
+  "kind": "incomplete_repair_route",
+  "missing_fields": ["<closed field name>"],
+  "detail": "The gate cannot provide a complete bounded repair route from current evidence."
+}
+```
+
+The candidate then fails closed to advisory visibility and is not counted as a
+policy-eligible blocking candidate or in `new_unsuppressed.count`. The gate must
+not synthesize a seam ID from file/line, substitute a canonical gap ID for a
+seam ID, guess a test command, or expose an unsupported `ripr explain`
+spelling.
+Generic ordered `GapRecord.evidence_ids` entries are not seam identities. Until
+the gap-record producer preserves a typed seam identity and exact inspection
+command, that source emits `incomplete_repair_route` rather than guessing.
+
+`authority_boundary` is `static_ripr_evidence_only`. It means the route is
+static repair guidance under the configured gate policy, not runtime mutation
+evidence, coverage adequacy, or proof of correctness.
+
+### Canonical repair-route eligibility contract
+
+The gate may consider a candidate for policy eligibility only when one
+producer-owned evidence record supplies every field below. These are eligibility
+inputs; renderers and gate adapters must not reconstruct them from file names,
+line numbers, display text, or ordered evidence arrays.
+
+```text
+canonical_gap_id
+seam_id
+source_artifact_identity
+file
+line
+gap_state
+classification
+changed_owner
+changed_behavior
+missing_discriminator
+repair_target
+test_intent
+inspection_command
+verify_command
+receipt_command
+analysis_completeness
+analysis_currentness
+authority_boundary
+```
+
+`source_artifact_identity` identifies the producer artifact and its repository,
+configuration, input, and content identity. `analysis_completeness` uses the
+closed run vocabulary `complete`, `limited`, `stale`, `failed`, or `unavailable`.
+`analysis_currentness` records whether the artifact is current for the selected
+repository snapshot. A route is not complete merely because its human-facing
+strings are non-empty.
+
+The eligibility decision has this closed outcome table:
+
+| Evidence condition | Eligibility outcome |
+| --- | --- |
+| Complete, current, full-scope route | May become policy-eligible; the configured gate mode still decides whether it can block. |
+| Any missing route field | `incomplete_repair_route`; visible advisory only. |
+| Limited or partial analysis scope | `limited_partial_scope`; gate-ineligible and never a full-run pass. |
+| Stale artifact or non-current repository snapshot | Gate-ineligible, or `config_error` when the selected mode requires current input. |
+| Failed analysis | `failed`; gate-ineligible and fail-closed, or `config_error` when the selected mode requires a successful current analysis. |
+| Unavailable analysis | `unavailable`; gate-ineligible and fail-closed, or `config_error` when the selected mode requires an available current analysis. |
+| Unsupported preview-language authority | Advisory only; it cannot gain blocking authority through projection. |
+| Explicit advisory mode | Never blocks, including for an otherwise complete route. |
+| Explicit calibrated blocking mode | Blocks only a complete, current, full-scope, policy-eligible decision. |
+| Baseline match only via the legacy path/line/static_class fallback | Disclosed compatibility event: a report-level warning plus decision `baseline_match_kind: "legacy_path_line_class"`; the candidate stays non-new and non-blocking during the compatibility window and must never match silently (RIPR-SPEC-0014 § Baseline Comparison). |
+
+This contract does not make the default-generated workflow blocking. The
+gap-ledger producer now carries an optional typed `GapRecord.seam_id` and an
+optional exact `repair_route.inspection_command` through the normalized gate
+route. Rows that omit either producer-owned fact remain visibly
+`incomplete_repair_route`; duplicate or conflicting seam identities fail closed
+as a named ledger configuration error. Gate-mode enforcement remains the next
+slice under #1933.
+
+### Human and check-summary projection
+
+`gate-decision.md` projects the same structured route for every blocking,
+acknowledged, or advisory decision. A complete route names the gap and seam,
+gap state, classification, changed owner and behavior, missing discriminator,
+tagged test or caller target, focused test intent, verify command, receipt
+command, exact inspection command, and authority boundary. An incomplete route
+prints `incomplete_repair_route` plus its closed missing-field list and does not
+invent an inspection command.
+
+Generated GitHub CI already appends `gate-decision.md` verbatim to
+`GITHUB_STEP_SUMMARY`; it must not maintain a second inference or rendering
+path. Suppressed and not-applicable decisions retain their policy reason but do
+not expand into an actionable repair route.
+
 ### Required versus forbidden wording for clean and empty states
 
 Required wording shape for a passing or empty result:
@@ -267,6 +401,9 @@ passing or blocking success state:
 - a decision report missing any required output field above
   (decision, reason, changed surfaces, canonical gap deltas, receipt
   deltas, runtime status, local reproduction command);
+- a policy-eligible candidate whose structured `repair_route` is incomplete,
+  missing its named limitation, or contains renderer-synthesized identity,
+  navigation, or commands;
 - an acknowledged or suppressed candidate silently dropped from the
   report.
 
@@ -306,6 +443,17 @@ manufactured block and never a silent pass.
   path, baseline state, and the local `ripr gate evaluate ...`
   reproduction command; artifacts upload before the job fails.
 
+### Causal attribution authority
+
+When the producer-owned `target/ripr/pr/canonical-delta.json` artifact is
+available, gate and baseline thresholding use its canonical identities and
+closed `delta_attribution` values. Only `introduced_by_change`,
+`weakened_by_change`, and `reintroduced_by_change` are PR-caused blocking debt.
+`resolved_by_change`, `changed_surface_existing`, `adjacent_preexisting`,
+`baseline_existing`, and `comparison_unknown` remain visible context and do not
+block by themselves. Incomplete, ambiguous, or unknown comparison coverage is
+disclosed and fails closed; it is never treated as a complete causal comparison.
+
 ### Resolved and regressed evidence
 
 - The PR retires one canonical gap (resolved) and weakens a receipt
@@ -328,23 +476,38 @@ manufactured block and never a silent pass.
 
 ## Test Mapping
 
-- None yet. Test mappings land with the PR gate advisory-behavior
-  implementation slice; traceability entries are added only when
-  behavior and tests exist.
+- Structured repair-route tests pin complete PR-guidance projection,
+  fail-closed incomplete projection, exact producer-owned inspection commands,
+  schema validation, and the shared human/check-summary rendering. CLI-backed
+  gate-adoption dogfood pins a self-contained blocking threshold route without
+  artifact archaeology.
+- The real call-observation receipt remains open: current CallPresence producer
+  cases are `static_limitation` because propagation to a side-effect/call-effect
+  sink is unknown, so they correctly lack a policy-eligible receipt. PR C must
+  not manufacture a blocking call-observation route from that limited evidence.
 
 ## Implementation Mapping
 
 - docs/specs/RIPR-SPEC-0067-pr-gate-use-case.md — this document.
-- plans/use-case-specs/implementation-plan.md (planned) — the "PR
-  gate advisory behavior" slice: ensure the decision report carries
-  all required output fields, express gate reasons as canonical gap /
-  receipt deltas over changed surfaces, surface input `run_status` in
-  the decision, and pin the reject-list with fixtures.
+- plans/rust-one-shot-evidence-to-repair.md (RIPR-PLAN-0062) — the active
+  `gate/exact-repair-route` work item and its PR A / PR B / PR C proof split.
 - Existing surfaces this contract binds: `ripr gate evaluate`,
   `ripr baseline diff`, `ripr policy readiness`,
   `docs/CALIBRATED_GATE_POLICY.md`, `docs/BLOCKING_READINESS.md`,
   the generated-CI `RIPR_GATE_MODE` / `RIPR_GATE_BASELINE` wiring,
   and `fixtures/boundary_gap/expected/calibrated-gate/`.
+- #1440 PR A owns the shared model and JSON contract; PR B projects that object
+  into human and CI summaries. #1933 now sequences the remaining trust work:
+  B1 defines this repair-route eligibility contract, B2 carries producer-owned
+  seam identity through the gap ledger, and B3 enforces configured gate modes.
+  B2 is represented by `issue:1962` and
+  `.allow/spec-system/slices/gap-ledger-seam-identity.v1.toml`; its complete,
+  legacy, round-trip, conflict, Markdown, and review-card identity controls
+  are in the gate, ledger, and review-card tests.
+  The CLI dogfood receipt proves the complete failure surface for a supported
+  threshold route, but does not make the gap-ledger path blocking. PR C remains
+  open until a real policy-eligible call-observation producer can drive the
+  same round trip. No slice adds a classifier.
 
 ## Metrics
 

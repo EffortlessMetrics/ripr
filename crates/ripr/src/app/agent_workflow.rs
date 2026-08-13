@@ -1,8 +1,9 @@
 use crate::agent::loop_commands::{
-    WORKFLOW_AGENT_RECEIPT_ARTIFACT, WORKFLOW_COMMANDS_MARKDOWN_ARTIFACT,
-    WORKFLOW_MANIFEST_ARTIFACT, agent_brief_command, agent_packet_command, agent_receipt_command,
-    agent_seam_packets_command, agent_start_command, agent_verify_command,
-    check_repo_exposure_command, display_path, workflow_artifact_path,
+    WORKFLOW_AGENT_RECEIPT_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+    WORKFLOW_COMMANDS_MARKDOWN_ARTIFACT, WORKFLOW_MANIFEST_ARTIFACT, agent_brief_command,
+    agent_packet_command, agent_receipt_command, agent_seam_packets_command, agent_start_command,
+    agent_verify_command, check_analysis_outcome_command, check_repo_exposure_command,
+    display_path, workflow_artifact_path,
 };
 use crate::app::Mode;
 use serde_json::Value;
@@ -123,6 +124,7 @@ struct AgentWorkflowPaths {
     commands_markdown: String,
     before_snapshot: String,
     after_snapshot: String,
+    analysis_outcome: String,
     agent_seam_packets: String,
     agent_packet: String,
     agent_brief: String,
@@ -146,6 +148,11 @@ impl AgentWorkflowPaths {
             ),
             before_snapshot: workflow_artifact_path(out_dir, "before.repo-exposure.json"),
             after_snapshot: workflow_artifact_path(out_dir, "after.repo-exposure.json"),
+            analysis_outcome: workflow_artifact_path_with_default(
+                out_dir,
+                "analysis-outcome.json",
+                WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+            ),
             agent_seam_packets: workflow_artifact_path(out_dir, "agent-seam-packets.json"),
             agent_packet: workflow_artifact_path(out_dir, "agent-packet.json"),
             agent_brief: workflow_artifact_path(out_dir, "agent-brief.json"),
@@ -168,6 +175,7 @@ fn workflow_commands(
         agent_packet_command_item(root, seam_id, paths),
         agent_brief_command_item(root, seam_id, paths),
         after_snapshot_command(root, mode, paths),
+        analysis_outcome_command_item(root, mode, paths),
         agent_verify_command_item(root, paths),
         agent_receipt_command_item(root, seam_id, paths),
     ]
@@ -265,6 +273,21 @@ fn agent_verify_command_item(root: &str, paths: &AgentWorkflowPaths) -> AgentWor
     }
 }
 
+fn analysis_outcome_command_item(
+    root: &str,
+    mode: &Mode,
+    paths: &AgentWorkflowPaths,
+) -> AgentWorkflowCommand {
+    AgentWorkflowCommand {
+        step: "analysis_outcome".to_string(),
+        artifact: paths.analysis_outcome.clone(),
+        purpose:
+            "Capture the producer-backed diff completeness outcome after the focused test change."
+                .to_string(),
+        command: check_analysis_outcome_command(root, mode.as_str(), &paths.analysis_outcome),
+    }
+}
+
 fn agent_receipt_command_item(
     root: &str,
     seam_id: &str,
@@ -306,6 +329,11 @@ fn workflow_artifacts(root: &Path, paths: &AgentWorkflowPaths) -> Vec<AgentWorkf
         ("agent_packet", "agent packet", &paths.agent_packet),
         ("agent_brief", "agent brief", &paths.agent_brief),
         ("after_snapshot", "after snapshot", &paths.after_snapshot),
+        (
+            "analysis_outcome",
+            "analysis outcome",
+            &paths.analysis_outcome,
+        ),
         ("agent_verify", "agent verify", &paths.agent_verify),
         ("agent_receipt", "agent receipt", &paths.agent_receipt),
     ]
@@ -493,6 +521,12 @@ mod tests {
                     "target/ripr/workflow/after.repo-exposure.json",
                     "Capture static seam evidence after adding one focused test.",
                     "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+                ),
+                (
+                    "analysis_outcome",
+                    "target/ripr/workflow/analysis-outcome.json",
+                    "Capture the producer-backed diff completeness outcome after the focused test change.",
+                    "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json",
                 ),
                 (
                     "agent_verify",

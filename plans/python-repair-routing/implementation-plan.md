@@ -26,10 +26,9 @@ Linked ADRs:
 
 Active goal:
 
-- Not active. The active execution manifest remains
-  [`.ripr/goals/active.toml`](../../.ripr/goals/active.toml). This plan does
-  not supersede the routed-runner proof goal unless a later activation PR
-  explicitly selects it.
+- Not active. The former active execution manifest `.ripr/goals/active.toml`
+  was deleted in #1701 PR 3. This plan does not supersede live GitHub issue/PR
+  state unless a later activation explicitly selects it.
 
 Support-tier impact:
 

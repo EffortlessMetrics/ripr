@@ -3,6 +3,8 @@
 //! See `docs/specs/RIPR-SPEC-0026-language-adapter-contract.md`.
 
 use super::super::{AnalysisOptions, diff::ChangedFile};
+use super::rust::PartialDiffScope;
+use crate::analysis_outcome::AnalysisLimitation;
 use crate::config::OraclePolicy;
 use crate::domain::Finding;
 use std::path::Path;
@@ -12,10 +14,31 @@ use std::path::Path;
 /// `findings` are unsorted; the orchestrating pipeline applies the
 /// language-neutral sort and summary. `changed_files` is the number of
 /// diff entries this adapter handled, used by the summary builder.
+/// `partial_scope` is `Some` only when the adapter analyzed a deterministic
+/// bounded partition of an over-budget diff (`limited_partial_scope`,
+/// RIPR-PROP-0019); the pipeline then restricts the changed-file set handed
+/// to every other adapter to the same partition.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct LanguageDiffResult {
     pub(crate) findings: Vec<Finding>,
     pub(crate) changed_files: usize,
+    /// Number of distinct changed source lines for which the adapter
+    /// generated at least one probe. This is a producer fact, not a proxy for
+    /// every changed source line.
+    pub(crate) candidate_line_count: usize,
+    /// Per-output-language breakdown of `changed_files` for adapters that
+    /// cover more than one output language — the TypeScript adapter handles
+    /// `.ts/.tsx` (typescript) and `.js/.jsx` (javascript) (#2103 review).
+    /// Empty when the adapter covers exactly one language; the pipeline then
+    /// attributes `changed_files` to the adapter's own language.
+    pub(crate) changed_files_by_language: Vec<(super::LanguageId, usize)>,
+    pub(crate) partial_scope: Option<PartialDiffScope>,
+    /// Number of accepted-language files intentionally excluded as generated
+    /// source. The pipeline records this as a partial run disclosure.
+    pub(crate) skipped_files: usize,
+    /// Typed adapter-owned limitations that the pipeline publishes in the
+    /// shared analysis outcome.
+    pub(crate) limitations: Vec<AnalysisLimitation>,
 }
 
 /// Per-language results returned by [`LanguageAdapter::analyze_repo`].
@@ -26,6 +49,9 @@ pub(crate) struct LanguageDiffResult {
 pub(crate) struct LanguageRepoResult {
     pub(crate) findings: Vec<Finding>,
     pub(crate) production_files: usize,
+    /// Number of discovered-language files intentionally excluded as generated
+    /// source. The pipeline records this as a partial run disclosure.
+    pub(crate) skipped_files: usize,
 }
 
 /// Boundary trait for per-language adapters.

@@ -1,5 +1,5 @@
 use crate::agent::loop_commands::{check_repo_exposure_command, display_path, shell_arg};
-use crate::config::{CONFIG_FILE_NAME, detect_python_project};
+use crate::config::detect_python_project;
 use crate::output::receipt_lifecycle::receipt_lifecycle_state;
 use crate::output::receipt_write::receipt_write_command;
 use crate::output::start_here_state::{
@@ -32,12 +32,14 @@ const REPO_EXPOSURE_LATENCY_REPORT_COMMAND: &str = "cargo xtask repo-exposure-la
 pub(crate) const STATIC_EVIDENCE_BOUNDARY: &str = "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.";
 
 mod options;
+mod preflight;
 mod rendering;
 mod validation;
 
 #[cfg(test)]
 use options::first_pr_help_text;
 use options::{FirstPrOptions, parse_options, print_help};
+use preflight::{FirstPrPreflight, first_pr_preflight};
 #[cfg(test)]
 use rendering::markdown_code_or_text;
 use rendering::{render_start_here_markdown, start_here_cli_summary};
@@ -50,13 +52,37 @@ pub(crate) fn first_pr(args: &[String]) -> Result<(), String> {
         print_help();
         return Ok(());
     }
+
     let options = parse_options(args)?;
+    print_side_effect_disclosure(&options);
+
     let repo = repo_root()?;
     if options.check {
         check_first_pr(&repo, &options)
     } else {
         write_first_pr(&repo, &options)
     }
+}
+
+/// Print the side-effect and cost disclosure for the *resolved* invocation, so
+/// `--check` (validate-only) and custom `--out-dir` runs report their actual
+/// write behavior rather than always claiming the defaults. Rendered after
+/// `parse_options` and before any filesystem write.
+fn print_side_effect_disclosure(options: &FirstPrOptions) {
+    println!("ripr first-pr - side effects and cost disclosure");
+    println!("  cost class:      varies with diff and workspace size");
+    if options.check {
+        println!("  writes to:       none (--check validates an existing start-here packet)");
+    } else {
+        println!(
+            "  writes to:       {}/",
+            options.out_dir.trim_end_matches('/')
+        );
+    }
+    println!("  cache location:  target/ripr/cache/");
+    println!("  git reads:       yes (diff between base and head)");
+    println!("  network:         none");
+    println!("  runtime hint:    seconds on typical diffs; minutes on large diffs\n");
 }
 
 fn write_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {
@@ -104,6 +130,13 @@ fn check_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {
     let out_dir = resolve_path(output_root, &options.out_dir);
     let json_path = out_dir.join(START_HERE_JSON);
     let markdown_path = out_dir.join(START_HERE_MD);
+    if !json_path.exists() || !markdown_path.exists() {
+        return Err(first_pr_missing_packet_recovery_error(
+            &json_path,
+            &markdown_path,
+            options,
+        ));
+    }
     let packet = validate_start_here_packet(&json_path, &markdown_path)?;
     validate_current_preflight_recovery(&packet, &root, options, preflight_recovery)?;
     print!(
@@ -112,6 +145,47 @@ fn check_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {
     );
     println!("First PR start-here packet ok: {}", json_path.display());
     Ok(())
+}
+
+fn first_pr_missing_packet_recovery_error(
+    json_path: &Path,
+    markdown_path: &Path,
+    options: &FirstPrOptions,
+) -> String {
+    let missing = if !json_path.exists() {
+        json_path
+    } else {
+        markdown_path
+    };
+    format!(
+        "first-pr --check validates an existing start-here packet; it does not create one.\n\nMissing:\n  {}\n\nCreate and validate it with:\n  {}",
+        missing.display(),
+        first_pr_write_command(options)
+    )
+}
+
+fn first_pr_write_command(options: &FirstPrOptions) -> String {
+    let mut parts = vec![
+        "ripr".to_string(),
+        "first-pr".to_string(),
+        "--root".to_string(),
+        shell_arg(&options.root),
+        "--base".to_string(),
+        shell_arg(&options.base),
+        "--head".to_string(),
+        shell_arg(&options.head),
+    ];
+    if let Some(check_output) = &options.check_output {
+        parts.push("--check-output".to_string());
+        parts.push(shell_arg(check_output));
+    }
+    if options.gap_ledger_explicit {
+        parts.push("--gap-ledger".to_string());
+        parts.push(shell_arg(&options.gap_ledger));
+    }
+    parts.push("--out-dir".to_string());
+    parts.push(shell_arg(&options.out_dir));
+    parts.join(" ")
 }
 
 fn validate_current_preflight_recovery(
@@ -348,455 +422,6 @@ fn materialize_check_output_gap_ledger(
     Ok(())
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct FirstPrPreflight {
-    status: &'static str,
-    mode: &'static str,
-    root: String,
-    resolved_root: String,
-    base: String,
-    head: String,
-    next_command: Option<String>,
-    checks: Vec<PreflightCheck>,
-}
-
-impl FirstPrPreflight {
-    fn warnings(&self) -> impl Iterator<Item = String> + '_ {
-        self.checks
-            .iter()
-            .filter(|check| {
-                check.status != "ok" && check.status != "defaulted" && check.status != "will_create"
-            })
-            .map(|check| check.message.clone())
-    }
-
-    fn to_json(&self) -> Value {
-        json!({
-            "status": self.status,
-            "mode": self.mode,
-            "root": self.root,
-            "resolved_root": self.resolved_root,
-            "base": self.base,
-            "head": self.head,
-            "next_command": self.next_command,
-            "checks": self.checks.iter().map(PreflightCheck::to_json).collect::<Vec<_>>()
-        })
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct PreflightCheck {
-    id: &'static str,
-    label: &'static str,
-    status: &'static str,
-    message: String,
-    path: Option<String>,
-    next_command: Option<String>,
-}
-
-impl PreflightCheck {
-    fn ok(id: &'static str, label: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            id,
-            label,
-            status: "ok",
-            message: message.into(),
-            path: None,
-            next_command: None,
-        }
-    }
-
-    fn defaulted(id: &'static str, label: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            id,
-            label,
-            status: "defaulted",
-            message: message.into(),
-            path: None,
-            next_command: None,
-        }
-    }
-
-    fn needs_attention(
-        id: &'static str,
-        label: &'static str,
-        message: impl Into<String>,
-        next_command: Option<String>,
-    ) -> Self {
-        Self {
-            id,
-            label,
-            status: "needs_attention",
-            message: message.into(),
-            path: None,
-            next_command,
-        }
-    }
-
-    fn no_action(
-        id: &'static str,
-        label: &'static str,
-        message: impl Into<String>,
-        next_command: Option<String>,
-    ) -> Self {
-        Self {
-            id,
-            label,
-            status: "no_action",
-            message: message.into(),
-            path: None,
-            next_command,
-        }
-    }
-
-    fn with_path(mut self, path: impl Into<String>) -> Self {
-        self.path = Some(path.into());
-        self
-    }
-
-    fn to_json(&self) -> Value {
-        json!({
-            "id": self.id,
-            "label": self.label,
-            "status": self.status,
-            "message": self.message,
-            "path": self.path,
-            "next_command": self.next_command
-        })
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct CommandOutput {
-    code: Option<i32>,
-    stdout: String,
-    stderr: String,
-}
-
-impl CommandOutput {
-    fn success(&self) -> bool {
-        matches!(self.code, Some(0))
-    }
-}
-
-fn first_pr_preflight(root: &Path, options: &FirstPrOptions) -> FirstPrPreflight {
-    let mut checks = Vec::new();
-    let resolved_root = root.display().to_string();
-    checks.push(preflight_root_check(root, options));
-    let git_available = matches!(checks.last().map(|check| check.status), Some("ok"))
-        && preflight_git_repo_check(root, &mut checks);
-    let mut base_ok = false;
-    let mut head_ok = false;
-    if git_available {
-        base_ok = preflight_git_ref_check(
-            root,
-            &mut checks,
-            "git_base",
-            "Git base",
-            &options.base,
-            Some(missing_base_command(options)),
-        );
-        head_ok = preflight_git_ref_check(
-            root,
-            &mut checks,
-            "git_head",
-            "Git head",
-            &options.head,
-            Some(format!(
-                "Check --head `{}` or fetch the branch, then rerun `ripr first-pr --root {} --base {} --head {}`.",
-                options.head, options.root, options.base, options.head
-            )),
-        );
-    }
-    if git_available && base_ok && head_ok {
-        preflight_diff_check(root, options, &mut checks);
-    }
-    checks.push(preflight_project_check(root));
-    checks.push(preflight_config_check(root));
-    checks.push(preflight_output_check(root, options));
-    checks.push(PreflightCheck::ok(
-        "mode",
-        "Mode",
-        if options.check {
-            "Check mode validates the existing start-here packet without rewriting it."
-        } else {
-            "Write mode composes start-here.json and start-here.md from explicit artifacts."
-        },
-    ));
-    let next_command = checks.iter().find_map(|check| check.next_command.clone());
-    let status = if checks
-        .iter()
-        .any(|check| check.status == "needs_attention" || check.status == "no_action")
-    {
-        "needs_attention"
-    } else {
-        "ready"
-    };
-    FirstPrPreflight {
-        status,
-        mode: if options.check { "check" } else { "write" },
-        root: options.root.clone(),
-        resolved_root,
-        base: options.base.clone(),
-        head: options.head.clone(),
-        next_command,
-        checks,
-    }
-}
-
-fn preflight_root_check(root: &Path, options: &FirstPrOptions) -> PreflightCheck {
-    if root.is_dir() {
-        PreflightCheck::ok(
-            "root",
-            "Workspace root",
-            format!("Workspace root `{}` exists.", options.root),
-        )
-        .with_path(root.display().to_string())
-    } else {
-        PreflightCheck::needs_attention(
-            "root",
-            "Workspace root",
-            format!(
-                "Workspace root `{}` does not exist or is not a directory.",
-                options.root
-            ),
-            Some("Run from a repository root or pass --root <path>.".to_string()),
-        )
-        .with_path(root.display().to_string())
-    }
-}
-
-fn preflight_git_repo_check(root: &Path, checks: &mut Vec<PreflightCheck>) -> bool {
-    match run_git(root, &git_args(&["rev-parse", "--is-inside-work-tree"])) {
-        Ok(output) if output.success() && output.stdout.trim() == "true" => {
-            checks.push(PreflightCheck::ok(
-                "git_repo",
-                "Git repository",
-                "The root is inside a Git worktree.",
-            ));
-            true
-        }
-        Ok(output) => {
-            checks.push(PreflightCheck::needs_attention(
-                "git_repo",
-                "Git repository",
-                command_problem(
-                    "The root is not a Git worktree.",
-                    &output,
-                    "Run from a Git worktree or pass --root <repo>.",
-                ),
-                Some("Run from a Git worktree or pass --root <repo>.".to_string()),
-            ));
-            false
-        }
-        Err(message) => {
-            checks.push(PreflightCheck::needs_attention(
-                "git_repo",
-                "Git repository",
-                format!("Could not run git preflight: {message}."),
-                Some(
-                    "Install git or run first-pr from an environment where git is available."
-                        .to_string(),
-                ),
-            ));
-            false
-        }
-    }
-}
-
-fn preflight_git_ref_check(
-    root: &Path,
-    checks: &mut Vec<PreflightCheck>,
-    id: &'static str,
-    label: &'static str,
-    rev: &str,
-    next_command: Option<String>,
-) -> bool {
-    let commit = format!("{rev}^{{commit}}");
-    match run_git(
-        root,
-        &[
-            "rev-parse".to_string(),
-            "--verify".to_string(),
-            "--quiet".to_string(),
-            commit,
-        ],
-    ) {
-        Ok(output) if output.success() => {
-            checks.push(PreflightCheck::ok(
-                id,
-                label,
-                format!("Resolved `{rev}` to a commit."),
-            ));
-            true
-        }
-        Ok(output) => {
-            checks.push(PreflightCheck::needs_attention(
-                id,
-                label,
-                command_problem(
-                    &format!("Could not resolve `{rev}` to a commit."),
-                    &output,
-                    "Fetch the missing ref or pass a resolvable --base/--head.",
-                ),
-                next_command,
-            ));
-            false
-        }
-        Err(message) => {
-            checks.push(PreflightCheck::needs_attention(
-                id,
-                label,
-                format!("Could not run git ref preflight for `{rev}`: {message}."),
-                next_command,
-            ));
-            false
-        }
-    }
-}
-
-fn preflight_diff_check(root: &Path, options: &FirstPrOptions, checks: &mut Vec<PreflightCheck>) {
-    let range = format!("{}..{}", options.base, options.head);
-    match run_git(
-        root,
-        &[
-            "diff".to_string(),
-            "--quiet".to_string(),
-            range.clone(),
-            "--".to_string(),
-        ],
-    ) {
-        Ok(output) if matches!(output.code, Some(0)) => {
-            checks.push(PreflightCheck::no_action(
-                "git_diff",
-                "Git diff",
-                format!("No file diff was found for `{range}`."),
-                Some(format!(
-                    "Choose a head with changes or rerun after committing PR work: `ripr first-pr --root {} --base {} --head {}`.",
-                    options.root, options.base, options.head
-                )),
-            ));
-        }
-        Ok(output) if matches!(output.code, Some(1)) => {
-            checks.push(PreflightCheck::ok(
-                "git_diff",
-                "Git diff",
-                format!("Found a file diff for `{range}`."),
-            ));
-        }
-        Ok(output) => {
-            checks.push(PreflightCheck::needs_attention(
-                "git_diff",
-                "Git diff",
-                command_problem(
-                    &format!("Could not inspect diff range `{range}`."),
-                    &output,
-                    "Check --base and --head, then rerun first-pr.",
-                ),
-                Some(format!(
-                    "Check --base and --head, then rerun `ripr first-pr --root {} --base {} --head {}`.",
-                    options.root, options.base, options.head
-                )),
-            ));
-        }
-        Err(message) => {
-            checks.push(PreflightCheck::needs_attention(
-                "git_diff",
-                "Git diff",
-                format!("Could not run git diff preflight: {message}."),
-                Some(
-                    "Install git or rerun from an environment where git is available.".to_string(),
-                ),
-            ));
-        }
-    }
-}
-
-fn preflight_project_check(root: &Path) -> PreflightCheck {
-    let manifest = root.join("Cargo.toml");
-    if manifest.is_file() {
-        PreflightCheck::ok(
-            "cargo_workspace",
-            "Cargo workspace",
-            "Cargo.toml was found at the workspace root.",
-        )
-        .with_path(manifest.display().to_string())
-    } else if detect_python_project(root) {
-        PreflightCheck::ok(
-            "python_project",
-            "Python project",
-            "Python project markers were found; first-pr can consume Python preview gap-ledger records.",
-        )
-        .with_path(root.display().to_string())
-    } else {
-        PreflightCheck::needs_attention(
-            "cargo_workspace",
-            "Cargo workspace",
-            "No Cargo.toml was found at the workspace root.",
-            Some(
-                "Run from a Rust/Cargo workspace, a Python project root, or pass --root <repo>."
-                    .to_string(),
-            ),
-        )
-        .with_path(manifest.display().to_string())
-    }
-}
-
-fn preflight_config_check(root: &Path) -> PreflightCheck {
-    let config = root.join(CONFIG_FILE_NAME);
-    if config.is_file() {
-        PreflightCheck::ok(
-            "ripr_config",
-            "RIPR config",
-            format!("{CONFIG_FILE_NAME} was found."),
-        )
-        .with_path(config.display().to_string())
-    } else {
-        PreflightCheck::defaulted(
-            "ripr_config",
-            "RIPR config",
-            format!("No {CONFIG_FILE_NAME} was found; built-in advisory defaults apply."),
-        )
-        .with_path(config.display().to_string())
-    }
-}
-
-fn preflight_output_check(root: &Path, options: &FirstPrOptions) -> PreflightCheck {
-    let out_dir = resolve_path(root, &options.out_dir);
-    if out_dir.exists() && !out_dir.is_dir() {
-        return PreflightCheck::needs_attention(
-            "output_dir",
-            "Output directory",
-            format!(
-                "Output path `{}` exists but is not a directory.",
-                options.out_dir
-            ),
-            Some("Choose a directory for --out-dir, then rerun first-pr.".to_string()),
-        )
-        .with_path(out_dir.display().to_string());
-    }
-    if out_dir.is_dir() {
-        PreflightCheck::ok(
-            "output_dir",
-            "Output directory",
-            format!("Output directory `{}` exists.", options.out_dir),
-        )
-        .with_path(out_dir.display().to_string())
-    } else {
-        PreflightCheck {
-            id: "output_dir",
-            label: "Output directory",
-            status: "will_create",
-            message: format!(
-                "Output directory `{}` will be created if needed.",
-                options.out_dir
-            ),
-            path: Some(out_dir.display().to_string()),
-            next_command: None,
-        }
-    }
-}
-
 fn missing_base_command(options: &FirstPrOptions) -> String {
     options.base.strip_prefix("origin/")
         .filter(|branch| !branch.trim().is_empty())
@@ -816,6 +441,19 @@ fn missing_base_command(options: &FirstPrOptions) -> String {
 
 fn git_args(args: &[&str]) -> Vec<String> {
     args.iter().map(|arg| (*arg).to_string()).collect()
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CommandOutput {
+    code: Option<i32>,
+    stdout: String,
+    stderr: String,
+}
+
+impl CommandOutput {
+    fn success(&self) -> bool {
+        matches!(self.code, Some(0))
+    }
 }
 
 fn run_git(root: &Path, args: &[String]) -> Result<CommandOutput, String> {
@@ -858,13 +496,13 @@ fn root_preflight_recovery(root: &Path, options: &FirstPrOptions) -> Option<Sele
         ));
     }
     if !root.join("Cargo.toml").is_file() {
-        if detect_python_project(root) {
+        if detect_python_project(root) || detect_typescript_project(root) {
             return None;
         }
         return Some(Selection::blocked(
             "wrong_root",
             format!(
-                "The first-pr root `{}` is not a Rust/Cargo workspace because Cargo.toml is missing, and no Python project markers were found. Pass the repository root with `--root` before assigning repair work.",
+                "The first-pr root `{}` is not a Rust/Cargo workspace because Cargo.toml is missing, and no Python or TypeScript project markers were found. Pass the repository root with `--root` before assigning repair work.",
                 options.root
             ),
             Some(doctor_command(&options.root)),
@@ -1252,14 +890,14 @@ fn select_from_gap_ledger(gap_ledger: &Value, root: &Path, options: &FirstPrOpti
     }
     Selection::no_action(
         "no_action",
-        "No repairable PR-local stable Rust gap was selected from the gap decision ledger."
+        "No repairable PR-local stable Rust or preview Python/TypeScript gap was selected from the gap decision ledger."
             .to_string(),
         records.len(),
     )
 }
 
 fn missing_gap_ledger_selection(root: &Path, options: &FirstPrOptions) -> Selection {
-    if uses_python_check_output_gap_ledger(root) {
+    if uses_check_output_gap_ledger(root) {
         return Selection::missing_artifact(
             "gap_ledger",
             "Gap decision ledger",
@@ -1447,7 +1085,9 @@ fn first_pr_language_is_supported(record: &Value) -> bool {
             string_path(record, &["language"]).as_deref(),
             string_path(record, &["language_status"]).as_deref(),
         ),
-        (Some("rust"), Some("stable")) | (Some("python"), Some("preview"))
+        (Some("rust"), Some("stable"))
+            | (Some("python"), Some("preview"))
+            | (Some("typescript"), Some("preview"))
     )
 }
 
@@ -1490,7 +1130,7 @@ fn top_gap_from_record(record: &Value, root: &Path, options: &FirstPrOptions) ->
     let target_file = string_from_sources(&[(repair_route, &["target_file"])]);
     let related_test = string_from_sources(&[(repair_route, &["related_test"])]);
     let suggested_assertion = string_from_sources(&[(repair_route, &["assertion_shape"])]);
-    let missing_discriminator = if language.as_deref() == Some("python") {
+    let missing_discriminator = if matches!(language.as_deref(), Some("python" | "typescript")) {
         string_from_sources(&[
             (repair_route, &["missing_discriminator"]),
             (Some(record), &["missing_discriminator"]),
@@ -1550,6 +1190,14 @@ fn current_evidence_strength_for_gap(kind: &str, language: Option<&str>) -> Stri
         (Some("python"), "MissingSideEffectObserver") => {
             "Static evidence found related Python test context, but the current proof does not observe the changed output or side effect.".to_string()
         }
+        (Some("typescript"), "MissingBoundaryAssertion")
+        | (Some("typescript"), "MissingValueAssertion")
+        | (Some("typescript"), "MissingErrorDiscriminator") => {
+            "Static evidence found related TypeScript test context, but the current proof is weak because the discriminator is missing.".to_string()
+        }
+        (Some("typescript"), "MissingSideEffectObserver") => {
+            "Static evidence found related TypeScript test context, but the current proof does not observe the changed output or side effect.".to_string()
+        }
         (_, "MissingBoundaryAssertion")
         | (_, "MissingValueAssertion")
         | (_, "MissingErrorDiscriminator") => {
@@ -1561,6 +1209,7 @@ fn current_evidence_strength_for_gap(kind: &str, language: Option<&str>) -> Stri
         _ => {
             let language_label = match language {
                 Some("python") => "preview Python",
+                Some("typescript") => "preview TypeScript",
                 Some("rust") | None => "stable Rust",
                 Some(other) => other,
             };
@@ -1639,6 +1288,18 @@ fn why_for_gap(kind: &str, language: Option<&str>) -> String {
         (Some("python"), "MissingSideEffectObserver") => {
             "A related Python test reaches this change, but no output or side-effect observer was found for the changed behavior.".to_string()
         }
+        (Some("typescript"), "MissingBoundaryAssertion") => {
+            "A related TypeScript test reaches this change, but no boundary discriminator was found for the changed behavior.".to_string()
+        }
+        (Some("typescript"), "MissingValueAssertion") => {
+            "A related TypeScript test reaches this change, but no exact value assertion was found for the changed behavior.".to_string()
+        }
+        (Some("typescript"), "MissingErrorDiscriminator") => {
+            "A related TypeScript test reaches this error path, but no error discriminator was found for the changed behavior.".to_string()
+        }
+        (Some("typescript"), "MissingSideEffectObserver") => {
+            "A related TypeScript test reaches this change, but no output or side-effect observer was found for the changed behavior.".to_string()
+        }
         (_, "MissingBoundaryAssertion") => {
             "A related Rust test reaches this change, but no equality-boundary assertion was found for the changed behavior.".to_string()
         }
@@ -1654,6 +1315,7 @@ fn why_for_gap(kind: &str, language: Option<&str>) -> String {
         _ => {
             let language_label = match language {
                 Some("python") => "preview Python",
+                Some("typescript") => "preview TypeScript",
                 Some("rust") | None => "stable Rust",
                 Some(other) => other,
             };
@@ -1805,14 +1467,15 @@ fn bool_path(value: &Value, path: &[&str]) -> Option<bool> {
 }
 
 fn regenerate_gap_ledger_command(root: &Path, options: &FirstPrOptions) -> String {
-    if uses_python_check_output_gap_ledger(root) {
-        return regenerate_python_gap_ledger_command(options);
+    if uses_check_output_gap_ledger(root) {
+        return regenerate_check_output_gap_ledger_command(options);
     }
     regenerate_repo_exposure_gap_ledger_command(&options.gap_ledger)
 }
 
-fn uses_python_check_output_gap_ledger(root: &Path) -> bool {
-    detect_python_project(root) && !root.join("Cargo.toml").is_file()
+fn uses_check_output_gap_ledger(root: &Path) -> bool {
+    !root.join("Cargo.toml").is_file()
+        && (detect_python_project(root) || detect_typescript_project(root))
 }
 
 fn regenerate_repo_exposure_gap_ledger_command(out: &str) -> String {
@@ -1822,7 +1485,7 @@ fn regenerate_repo_exposure_gap_ledger_command(out: &str) -> String {
     )
 }
 
-fn regenerate_python_gap_ledger_command(options: &FirstPrOptions) -> String {
+fn regenerate_check_output_gap_ledger_command(options: &FirstPrOptions) -> String {
     let root = shell_arg(&options.root);
     let base = shell_arg(&options.base);
     let check_output = shell_arg(
@@ -1842,6 +1505,48 @@ fn regenerate_python_gap_ledger_command(options: &FirstPrOptions) -> String {
             "ripr check --root {root} --base {base} --json > {check_output} && ripr reports gap-ledger --check-output {check_output} --root {root} --out {out} --out-md {out_md}"
         )
     }
+}
+
+fn detect_typescript_project(root: &Path) -> bool {
+    ["package.json", "tsconfig.json", "jsconfig.json"]
+        .iter()
+        .any(|marker| root.join(marker).is_file())
+        || ["src", "tests"]
+            .iter()
+            .any(|marker| dir_contains_typescript_source(&root.join(marker)))
+}
+
+fn dir_contains_typescript_source(dir: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default();
+            if matches!(name, ".git" | "target" | "node_modules" | "dist" | "build") {
+                continue;
+            }
+            if dir_contains_typescript_source(&path) {
+                return true;
+            }
+        } else if file_type.is_file() && is_typescript_source_file(&path) {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_typescript_source_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| matches!(extension, "ts" | "tsx"))
 }
 
 fn regenerate_repo_exposure_command(root: &str) -> String {
@@ -1964,6 +1669,41 @@ fn repo_root() -> Result<PathBuf, String> {
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn first_pr_check_missing_packet_error_explains_validate_only_mode() {
+        let mut options = FirstPrOptions {
+            check_output: Some("target/ripr/foo/check.json".to_string()),
+            out_dir: "target/ripr/foo/reports".to_string(),
+            ..FirstPrOptions::default()
+        };
+        options.check = true;
+        let err = first_pr_missing_packet_recovery_error(
+            Path::new("target/ripr/foo/reports/start-here.json"),
+            Path::new("target/ripr/foo/reports/start-here.md"),
+            &options,
+        );
+
+        assert!(err.contains("first-pr --check validates an existing start-here packet"));
+        assert!(err.contains("it does not create one"));
+        assert!(err.contains("Missing:\n  target/ripr/foo/reports/start-here.json"));
+        assert!(err.contains("--check-output target/ripr/foo/check.json"));
+        assert!(err.contains("--out-dir target/ripr/foo/reports"));
+        assert!(!err.trim_end().ends_with(" --check"));
+    }
+
+    #[test]
+    fn first_pr_write_command_preserves_explicit_gap_ledger_only() {
+        let implicit = FirstPrOptions::default();
+        assert!(!first_pr_write_command(&implicit).contains("--gap-ledger"));
+
+        let explicit = FirstPrOptions {
+            gap_ledger: "target/custom/gaps.json".to_string(),
+            gap_ledger_explicit: true,
+            ..FirstPrOptions::default()
+        };
+        assert!(first_pr_write_command(&explicit).contains("--gap-ledger target/custom/gaps.json"));
+    }
 
     #[test]
     fn parse_accepts_artifact_paths_and_check() -> Result<(), String> {
@@ -2638,7 +2378,7 @@ mod tests {
         );
         assert_eq!(
             packet["selected"]["next_command"],
-            "git -C . rev-parse --verify \"missing-head^{commit}\""
+            "git -C . rev-parse --verify 'missing-head^{commit}'"
         );
         cleanup(&repo)
     }
@@ -2971,6 +2711,59 @@ mod tests {
     }
 
     #[test]
+    fn typescript_preview_gap_ledger_is_selected_for_start_here() -> Result<(), String> {
+        let repo = temp_typescript_repo("first-pr-typescript-preview")?;
+        fs::create_dir_all(repo.join("src")).map_err(|err| format!("mkdir src: {err}"))?;
+        fs::write(
+            repo.join("src/discount.ts"),
+            "export function applyDiscount(amount: number, threshold: number) { return amount >= threshold ? 50 : 0; }\n",
+        )
+        .map_err(|err| format!("write src/discount.ts: {err}"))?;
+        run_git_setup(&repo, &["add", "src/discount.ts"])?;
+        run_git_setup(&repo, &["commit", "-m", "change discount"])?;
+        write_json(
+            &repo.join(DEFAULT_GAP_LEDGER),
+            ledger_with_typescript_repairable_gap(),
+        )?;
+
+        let options = FirstPrOptions {
+            preflight: true,
+            ..FirstPrOptions::default()
+        };
+        write_first_pr(&repo, &options)?;
+        let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
+        assert_eq!(packet["status"], "actionable");
+        assert_eq!(packet["selected"]["state"], "top_gap");
+        assert_eq!(
+            packet["selected"]["output_state"],
+            START_HERE_PREVIEW_LIMITED
+        );
+        assert_eq!(packet["selected"]["language"], "typescript");
+        assert_eq!(packet["selected"]["language_status"], "preview");
+        assert_eq!(
+            packet["selected"]["missing_discriminator"],
+            "amount == threshold"
+        );
+        assert_eq!(
+            packet["selected"]["verify_command"],
+            "jest tests/discount.test.ts"
+        );
+        let typescript_project = preflight_check(&packet, "typescript_project")?;
+        assert_eq!(typescript_project["status"], "ok");
+        let summary = start_here_cli_summary(
+            &packet,
+            Path::new("target/ripr/reports/start-here.json"),
+            Path::new("target/ripr/reports/start-here.md"),
+        );
+        assert!(summary.contains(
+            "Safe next action: repair one named gap `gap:typescript:typescript_preview:2396aec1`"
+        ));
+        assert!(summary.contains("Verify command: `jest tests/discount.test.ts`"));
+        check_first_pr(&repo, &options)?;
+        cleanup(&repo)
+    }
+
+    #[test]
     fn preflight_reports_missing_git_base_and_config_defaults() -> Result<(), String> {
         let repo = temp_repo("first-pr-preflight-missing-base")?;
         fs::write(repo.join("Cargo.toml"), "[workspace]\n")
@@ -3046,20 +2839,6 @@ mod tests {
             "kind": "gap_decision_ledger",
             "records": [
                 {
-                    "gap_id": "gap:preview",
-                    "kind": "MissingBoundaryAssertion",
-                    "language": "typescript",
-                    "language_status": "preview",
-                    "scope": "pr_local",
-                    "gap_state": "actionable",
-                    "policy_state": "new",
-                    "repairability": "repairable",
-                    "repair_route": {
-                        "route_kind": "AddBoundaryAssertion"
-                    },
-                    "verification_commands": ["cargo xtask fixtures"]
-                },
-                {
                     "gap_id": "gap:pr:pricing:threshold-boundary",
                     "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
                     "kind": "MissingBoundaryAssertion",
@@ -3085,6 +2864,56 @@ mod tests {
                         "cargo xtask fixtures boundary_gap",
                         "cargo xtask goldens check"
                     ]
+                }
+            ]
+        })
+    }
+
+    fn ledger_with_typescript_repairable_gap() -> Value {
+        json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "gap_decision_ledger",
+            "status": "advisory",
+            "records": [
+                {
+                    "gap_id": "gap:pr:gap:typescript:typescript_preview:2396aec1",
+                    "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+                    "kind": "MissingBoundaryAssertion",
+                    "language": "typescript",
+                    "language_status": "preview",
+                    "scope": "pr_local",
+                    "current_evidence_strength": "weakly_exposed",
+                    "changed_behavior": "amount == threshold",
+                    "missing_discriminator": "amount == threshold",
+                    "gap_state": "actionable",
+                    "policy_state": "new",
+                    "repairability": "repairable",
+                    "static_limit_kind": "typescript_preview",
+                    "static_limit_detail": "TypeScript repair packets are preview advisory evidence.",
+                    "anchor": {
+                        "file": "src/discount.ts",
+                        "line": 2,
+                        "owner": "applyDiscount",
+                        "dedupe_fingerprint": "gap:typescript:typescript_preview:2396aec1"
+                    },
+                    "repair_route": {
+                        "route_kind": "AddBoundaryAssertion",
+                        "target_file": "tests/discount.test.ts",
+                        "related_test": "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold",
+                        "assertion_shape": "expect(result).toBe(50)",
+                        "missing_discriminator": "amount == threshold",
+                        "changed_behavior": "amount == threshold",
+                        "stop_conditions": [
+                            "Stop if the TypeScript preview packet loses repair_packet_ready=true.",
+                            "Stop if the verification command cannot run from this workspace.",
+                            "Stop if the repair appears to require a production-code edit."
+                        ]
+                    },
+                    "verification_commands": [
+                        "jest tests/discount.test.ts"
+                    ],
+                    "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-cmd 'jest tests/discount.test.ts' --out target/ripr/receipts/gap-typescript-typescript-preview-2396aec1.targeted-test-outcome.json"
                 }
             ]
         })
@@ -3262,6 +3091,17 @@ mod tests {
         )
         .map_err(|err| format!("write temp pyproject.toml: {err}"))?;
         init_git_repo_with_initial_files(&path, &["pyproject.toml"])?;
+        Ok(path)
+    }
+
+    fn temp_typescript_repo(name: &str) -> Result<PathBuf, String> {
+        let path = write_temp_root(&env::temp_dir(), name)?;
+        fs::write(
+            path.join("package.json"),
+            r#"{"name":"first-pr-typescript-test","private":true,"devDependencies":{"jest":"^30.0.0","typescript":"^5.8.0"}}"#,
+        )
+        .map_err(|err| format!("write temp package.json: {err}"))?;
+        init_git_repo_with_initial_files(&path, &["package.json"])?;
         Ok(path)
     }
 

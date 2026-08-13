@@ -4,36 +4,35 @@ root: fixtures/python_related_test_name_similarity/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-WARNING src/pricing.py:2
+Changed file(s) by language: python: 1, rust: 0.
 
-Changed
-  after:      return amount - 10
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
-Probe
-  family: return_value
-  delta:  value
-  owner:  python:src/pricing.py::apply_discount
-  canonical gap: gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/pricing.py:2
+  Language: python
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Canonical gap: gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10
+  Changed behavior: return amount - 10
+  Missing discriminator: Only heuristic Python test links were found for `apply_discount`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion.
+  Related test: tests/test_checkout.py:1 test_apply_discount_boundary_case
+  Evidence:
+    - reach weak: 1 heuristic Python test link(s) found for owner `apply_discount`; relation is uncertain
+    - infection yes: Changed Python return expression can alter the owner return value: `return amount - 10`
+    - 5 more evidence line(s) hidden
 
-Language
-  language: python
-  status: preview
-  owner kind: function
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_related_test_name_similarity/input --diff fixtures/python_related_test_name_similarity/diff.patch --mode fast probe:src_pricing.py:python_preview:5511809e
+  ripr context --root fixtures/python_related_test_name_similarity/input --diff fixtures/python_related_test_name_similarity/diff.patch --mode fast --at probe:src_pricing.py:python_preview:5511809e
 
-Static exposure
-  weakly_exposed (warning, confidence 0.40)
-
-Evidence
-  - reach weak: 1 heuristic Python test link(s) found for owner `apply_discount`; relation is uncertain
-  - infection yes: Changed Python return expression can alter the owner return value: `return amount - 10`
-  - propagation yes: Changed Python return value is already at the owner output boundary.
-  - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
-  - discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.
-  - local flow reaches returned value: return amount - 10 (line 2)
-  - related test tests/test_checkout.py:1 test_apply_discount_boundary_case uses unknown unknown oracle
-
-Weakness
-  - Only heuristic Python test links were found for `apply_discount`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion.
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

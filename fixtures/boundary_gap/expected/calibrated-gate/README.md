@@ -3,6 +3,9 @@
 These fixtures pin Campaign 15 gate decisions over existing PR-time evidence.
 They are static policy projections: no source edits, generated tests, runtime
 mutation execution, GitHub posting, or generated workflow default changes.
+The Markdown cases project the same structured repair route consumed by the
+generated GitHub step summary; limited routes name missing fields without
+inventing commands.
 
 | Case | Purpose |
 | --- | --- |

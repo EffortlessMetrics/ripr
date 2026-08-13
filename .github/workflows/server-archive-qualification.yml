@@ -1,0 +1,390 @@
+name: Qualify ripr Server Archives (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: "Exact 40-character candidate commit to qualify"
+        required: true
+        type: string
+      candidate_tag:
+        description: "Optional immutable tag that must resolve to candidate_sha"
+        required: false
+        default: ""
+        type: string
+      version:
+        description: "Archive version label, for example 0.11.0"
+        required: true
+        type: string
+
+# Qualification is intentionally unable to write releases, tags, or repository
+# contents. The only external writes are scoped Actions artifacts below.
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+  CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+  QUALIFICATION_VERSION: ${{ inputs.version }}
+  REPOSITORY: ${{ github.repository }}
+
+jobs:
+  verify-candidate:
+    name: verify immutable candidate identity
+    runs-on: ubuntu-latest
+    outputs:
+      ruleset_mode: ${{ steps.candidate-proof.outputs.ruleset_mode }}
+      ruleset_source_url: ${{ steps.candidate-proof.outputs.ruleset_source_url }}
+      ruleset_response_sha256: ${{ steps.candidate-proof.outputs.ruleset_response_sha256 }}
+      ruleset_id: ${{ steps.candidate-proof.outputs.ruleset_id }}
+    steps:
+      - name: Fetch exact candidate without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${REPOSITORY}" = "EffortlessMetrics/ripr-swarm"
+          [[ "${CANDIDATE_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]
+          git init "${GITHUB_WORKSPACE}"
+          git -C "${GITHUB_WORKSPACE}" remote add origin "https://github.com/EffortlessMetrics/ripr-swarm.git"
+          git -C "${GITHUB_WORKSPACE}" -c credential.helper= -c http.extraheader= fetch --no-tags --depth=1 origin "${CANDIDATE_SHA}"
+          git -C "${GITHUB_WORKSPACE}" checkout --detach FETCH_HEAD
+
+      - name: Verify candidate SHA and optional tag
+        id: candidate-proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${CANDIDATE_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]
+          candidate_sha="${CANDIDATE_SHA,,}"
+          test "$(git -C "${GITHUB_WORKSPACE}" rev-parse HEAD)" = "${candidate_sha}"
+          ruleset_mode="not_applicable"
+          ruleset_source_url="none"
+          ruleset_response_sha256="none"
+          ruleset_id="none"
+          if [[ -n "${CANDIDATE_TAG}" ]]; then
+            tag="${CANDIDATE_TAG#refs/tags/}"
+            test "${CANDIDATE_TAG}" = "${tag}"
+            [[ "${tag}" =~ ^ripr-release-[0-9]+\.[0-9]+\.[0-9]+$ ]]
+            remote_tag="$(git -c credential.helper= -c http.extraheader= ls-remote "https://github.com/EffortlessMetrics/ripr-swarm.git" "refs/tags/${tag}" "refs/tags/${tag}^{}")"
+            remote_count="$(printf '%s\n' "${remote_tag}" | awk 'NF {count++} END {print count + 0}')"
+            test "${remote_count}" = "1" -o "${remote_count}" = "2"
+            remote_sha="$(printf '%s\n' "${remote_tag}" | awk -v tag="refs/tags/${tag}" '$2 == tag {print $1}')"
+            peeled_sha="$(printf '%s\n' "${remote_tag}" | awk -v tag="refs/tags/${tag}^{}" '$2 == tag {print $1}')"
+            [[ -n "${remote_sha}" ]]
+            resolved_sha="${peeled_sha:-${remote_sha}}"
+            test "${resolved_sha}" = "${candidate_sha}"
+            remote_sha="${resolved_sha}"
+            test "$(git -C "${GITHUB_WORKSPACE}" cat-file -t "${remote_sha}")" = "commit"
+
+            ruleset_id="20661783"
+            ruleset_source_url="https://api.github.com/repos/EffortlessMetrics/ripr-swarm/rulesets/${ruleset_id}"
+            ruleset_file="$(mktemp)"
+            ruleset_headers="$(mktemp)"
+            ruleset_status=""
+            ruleset_rate_remaining="unknown"
+            ruleset_rate_reset="unknown"
+            ruleset_response_digest="unavailable"
+            for attempt in 1 2 3; do
+              : > "${ruleset_file}"
+              : > "${ruleset_headers}"
+              if ruleset_status="$(curl --silent --show-error --location --connect-timeout 10 --max-time 20 --dump-header "${ruleset_headers}" --output "${ruleset_file}" --write-out '%{http_code}' "${ruleset_source_url}")"; then
+                ruleset_transport_ok=true
+              else
+                ruleset_transport_ok=false
+              fi
+              ruleset_rate_remaining="$(awk 'BEGIN {IGNORECASE=1} /^x-ratelimit-remaining:/ {sub("\r", "", $2); print $2}' "${ruleset_headers}" | tail -n 1)"
+              ruleset_rate_reset="$(awk 'BEGIN {IGNORECASE=1} /^x-ratelimit-reset:/ {sub("\r", "", $2); print $2}' "${ruleset_headers}" | tail -n 1)"
+              [[ "${ruleset_rate_remaining}" =~ ^[0-9]{1,20}$ ]] || ruleset_rate_remaining=unknown
+              [[ "${ruleset_rate_reset}" =~ ^[0-9]{1,20}$ ]] || ruleset_rate_reset=unknown
+              if [[ "${ruleset_transport_ok}" == true ]]; then
+                ruleset_response_digest="$(sha256sum "${ruleset_file}" | awk '{print $1}')"
+              else
+                ruleset_response_digest=unavailable
+              fi
+              if [[ "${ruleset_status}" == "200" ]]; then
+                break
+              fi
+              echo "::warning::ruleset verification request failed: attempt=${attempt}/3 http_status=${ruleset_status:-transport-error} rate_limit_remaining=${ruleset_rate_remaining} rate_limit_reset=${ruleset_rate_reset} response_sha256=${ruleset_response_digest}" >&2
+              sleep "$((attempt * 2))"
+            done
+            ruleset_verified=false
+            if [[ "${ruleset_status}" == "200" ]]; then
+              if jq -e --argjson expected_id "${ruleset_id}" '
+                (.id == $expected_id) and
+                (.target == "tag") and
+                (.enforcement == "active") and
+                (.conditions.ref_name.include | type == "array" and length == 1 and .[0] == "refs/tags/ripr-release-*") and
+                (.conditions.ref_name.exclude | type == "array" and length == 0) and
+                ([.rules[]?.type] | index("update") != null) and
+                ([.rules[]?.type] | index("deletion") != null)
+              ' "${ruleset_file}" >/dev/null; then
+                ruleset_verified=true
+                ruleset_mode="public-rest"
+                ruleset_response_sha256="${ruleset_response_digest}"
+              else
+                ruleset_safe_summary="$(jq -c 'if type == "object" then {json_object: true, include_count: ((.conditions.ref_name.include // []) | if type == "array" then length else 0 end), exclude_count: ((.conditions.ref_name.exclude // []) | if type == "array" then length else 0 end), rule_count: ((.rules // []) | if type == "array" then length else 0 end)} else {json_object: false, include_count: 0, exclude_count: 0, rule_count: 0} end' "${ruleset_file}" 2>/dev/null || echo '{"json_object":false,"include_count":0,"exclude_count":0,"rule_count":0}')"
+                echo "::error::ruleset verification shape mismatch: http_status=200 rate_limit_remaining=${ruleset_rate_remaining} rate_limit_reset=${ruleset_rate_reset} response_sha256=${ruleset_response_digest} summary=${ruleset_safe_summary}" >&2
+              fi
+            else
+              echo "::error::ruleset verification unavailable after 3 attempts: http_status=${ruleset_status:-transport-error} rate_limit_remaining=${ruleset_rate_remaining} rate_limit_reset=${ruleset_rate_reset} response_sha256=${ruleset_response_digest}" >&2
+            fi
+            test "${ruleset_verified}" = true
+          fi
+          {
+            echo "ruleset_mode=${ruleset_mode}"
+            echo "ruleset_source_url=${ruleset_source_url}"
+            echo "ruleset_response_sha256=${ruleset_response_sha256}"
+            echo "ruleset_id=${ruleset_id}"
+          } >> "${GITHUB_OUTPUT}"
+  build:
+    name: build and qualify ${{ matrix.target }}
+    needs: verify-candidate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            executable: ripr.exe
+            archive: zip
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            executable: ripr
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            executable: ripr
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+            executable: ripr
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-15
+            executable: ripr
+            archive: tar.gz
+
+    steps:
+      - name: Fetch exact candidate without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${REPOSITORY}" = "EffortlessMetrics/ripr-swarm"
+          git init "${GITHUB_WORKSPACE}"
+          git -C "${GITHUB_WORKSPACE}" remote add origin "https://github.com/EffortlessMetrics/ripr-swarm.git"
+          git -C "${GITHUB_WORKSPACE}" -c credential.helper= -c http.extraheader= fetch --no-tags --depth=1 origin "${CANDIDATE_SHA}"
+          git -C "${GITHUB_WORKSPACE}" checkout --detach FETCH_HEAD
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Verify requested version matches candidate package
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${QUALIFICATION_VERSION#v}"
+          expected_binary_version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "ripr") | .version')"
+          test "${version}" = "${expected_binary_version}"
+
+      - name: Verify requested version matches candidate package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = $env:QUALIFICATION_VERSION.TrimStart('v')
+          $expectedBinaryVersion = ((cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages | Where-Object name -eq 'ripr').version
+          if ($version -ne $expectedBinaryVersion) { throw "qualification version does not match package version" }
+
+      - name: Build ripr
+        shell: bash
+        run: cargo build -p ripr --release --target "${{ matrix.target }}"
+
+      - name: Package server archive
+        shell: bash
+        run: cargo xtask release-server-archive --version "$QUALIFICATION_VERSION" --target "${{ matrix.target }}" --executable "${{ matrix.executable }}" --archive "${{ matrix.archive }}"
+
+      - name: Verify archive checksum and extraction
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          EXECUTABLE: ${{ matrix.executable }}
+        run: |
+          set -euo pipefail
+          version="${QUALIFICATION_VERSION#v}"
+          archive="dist/ripr-server-v${version}-${TARGET}.tar.gz"
+          expected="$(tr -d '[:space:]' < "${archive}.sha256")"
+          actual="$(sha256sum "${archive}" | cut -d ' ' -f 1)"
+          test "${actual}" = "${expected}"
+          expected_entries=("LICENSE-APACHE" "LICENSE-MIT" "README-server.txt" "${EXECUTABLE}")
+          printf '%s\n' "${expected_entries[@]}" | sort > expected-archive-entries.txt
+          tar -tzf "${archive}" | sed 's#^\./##' | grep -v '^$' | sort > actual-archive-entries.txt
+          diff -u expected-archive-entries.txt actual-archive-entries.txt
+          ! grep -q '/' actual-archive-entries.txt
+          mkdir extracted
+          tar -xzf "${archive}" -C extracted
+          test -f "extracted/${EXECUTABLE}"
+          test -x "extracted/${EXECUTABLE}"
+          test -f extracted/LICENSE-MIT
+          test -f extracted/LICENSE-APACHE
+          test -f extracted/README-server.txt
+          expected_binary_version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "ripr") | .version')"
+          test "${version}" = "${expected_binary_version}"
+          test "$(head -n 1 extracted/README-server.txt)" = "ripr server ${version}"
+          test "$("extracted/${EXECUTABLE}" --version)" = "ripr ${expected_binary_version}"
+
+      - name: Verify archive checksum and extraction
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+          EXECUTABLE: ${{ matrix.executable }}
+        run: |
+          $version = $env:QUALIFICATION_VERSION.TrimStart('v')
+          $archive = "dist/ripr-server-v$version-$env:TARGET.zip"
+          $expected = (Get-Content -Raw "$archive.sha256").Trim()
+          $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($actual -ne $expected.ToLowerInvariant()) { throw "archive checksum mismatch" }
+          Expand-Archive -LiteralPath $archive -DestinationPath extracted -Force
+          $expectedEntries = @('LICENSE-APACHE', 'LICENSE-MIT', 'README-server.txt', $env:EXECUTABLE) | Sort-Object
+          $actualEntries = @(Get-ChildItem extracted -Recurse -Force | ForEach-Object { $_.FullName.Substring((Resolve-Path extracted).Path.Length + 1) } | Sort-Object)
+          if ((Compare-Object $expectedEntries $actualEntries).Count -ne 0) { throw "archive contains unexpected or nested entries" }
+          if (@(Get-ChildItem extracted -Recurse -Directory).Count -ne 0) { throw "archive contains nested directories" }
+          if (-not (Test-Path "extracted\$env:EXECUTABLE")) { throw "archive executable missing" }
+          if (-not (Test-Path extracted\LICENSE-MIT)) { throw "MIT license missing" }
+          if (-not (Test-Path extracted\LICENSE-APACHE)) { throw "Apache license missing" }
+          if (-not (Test-Path extracted\README-server.txt)) { throw "archive readme missing" }
+          $expectedBinaryVersion = ((cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages | Where-Object name -eq 'ripr').version
+          if ($version -ne $expectedBinaryVersion) { throw "qualification version does not match package version" }
+          if ((Get-Content extracted\README-server.txt -First 1) -ne "ripr server $version") { throw "archive label mismatch" }
+          $versionOutput = & "extracted\$env:EXECUTABLE" --version
+          if ($LASTEXITCODE -ne 0 -or $versionOutput -ne "ripr $expectedBinaryVersion") { throw "archive binary version check failed" }
+
+      - name: Upload qualified server artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ripr-server-qualification-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  manifest:
+    name: assemble qualification manifest
+    needs: [build, verify-candidate]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch exact candidate without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${REPOSITORY}" = "EffortlessMetrics/ripr-swarm"
+          git init "${GITHUB_WORKSPACE}"
+          git -C "${GITHUB_WORKSPACE}" remote add origin "https://github.com/EffortlessMetrics/ripr-swarm.git"
+          git -C "${GITHUB_WORKSPACE}" -c credential.helper= -c http.extraheader= fetch --no-tags --depth=1 origin "${CANDIDATE_SHA}"
+          git -C "${GITHUB_WORKSPACE}" checkout --detach FETCH_HEAD
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: ripr-server-qualification-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate manifest and checksums
+        shell: bash
+        run: cargo xtask release-server-manifest --version "$QUALIFICATION_VERSION" --repository "$REPOSITORY"
+
+      - name: Verify exact manifest inventory
+        shell: bash
+        env:
+          EXPECTED_TARGETS: '["x86_64-pc-windows-msvc","x86_64-unknown-linux-gnu","aarch64-unknown-linux-gnu","x86_64-apple-darwin","aarch64-apple-darwin"]'
+        run: |
+          set -euo pipefail
+          version="${QUALIFICATION_VERSION#v}"
+          expected_files=()
+          while IFS= read -r target; do
+            archive="tar.gz"
+            [[ "${target}" == "x86_64-pc-windows-msvc" ]] && archive="zip"
+            expected_files+=("ripr-server-v${version}-${target}.${archive}" "ripr-server-v${version}-${target}.${archive}.sha256")
+          done < <(jq -r '.[]' <<< "${EXPECTED_TARGETS}")
+          expected_files+=("ripr-server-manifest-v${version}.json" "SHA256SUMS")
+          printf '%s\n' "${expected_files[@]}" | sort > expected-dist-files.txt
+          find dist -mindepth 1 -maxdepth 1 ! -type f -print -quit | grep -q . && exit 1 || true
+          find dist -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort > actual-dist-files.txt
+          diff -u expected-dist-files.txt actual-dist-files.txt
+          manifest="dist/ripr-server-manifest-v${version}.json"
+          test -f "${manifest}"
+          jq -e --arg version "${version}" --arg repository "${REPOSITORY}" --argjson targets "${EXPECTED_TARGETS}" '
+            .version == $version and
+            (.assets | keys == ($targets | sort)) and
+            (all(.assets[]; (.sha256 | test("^[0-9a-f]{64}$")) and (.url | startswith("https://github.com/" + $repository + "/releases/download/v" + $version + "/"))))
+          ' "${manifest}" >/dev/null
+          while IFS= read -r target; do
+            archive="tar.gz"
+            [[ "${target}" == "x86_64-pc-windows-msvc" ]] && archive="zip"
+            file="ripr-server-v${version}-${target}.${archive}"
+            actual_sha="$(sha256sum "dist/${file}" | awk '{print $1}')"
+            test "${actual_sha}" = "$(tr -d '[:space:]' < "dist/${file}.sha256")"
+            test "${actual_sha}" = "$(jq -r --arg target "${target}" '.assets[$target].sha256' "${manifest}")"
+            test "$(jq -r --arg target "${target}" '.assets[$target].url' "${manifest}")" = "https://github.com/${REPOSITORY}/releases/download/v${version}/${file}"
+          done < <(jq -r '.[]' <<< "${EXPECTED_TARGETS}")
+
+      - name: Verify aggregate checksums and write receipt
+        shell: bash
+        env:
+          RULESET_MODE: ${{ needs.verify-candidate.outputs.ruleset_mode }}
+          RULESET_SOURCE_URL: ${{ needs.verify-candidate.outputs.ruleset_source_url }}
+          RULESET_RESPONSE_SHA256: ${{ needs.verify-candidate.outputs.ruleset_response_sha256 }}
+          RULESET_ID: ${{ needs.verify-candidate.outputs.ruleset_id }}
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum -c SHA256SUMS)
+          version="${QUALIFICATION_VERSION#v}"
+          jq -n \
+            --arg candidate_sha "${CANDIDATE_SHA}" \
+            --arg candidate_tag "${CANDIDATE_TAG}" \
+            --arg version "${version}" \
+            --arg repository "${REPOSITORY}" \
+            --arg ruleset_mode "${RULESET_MODE}" \
+            --arg ruleset_source_url "${RULESET_SOURCE_URL}" \
+            --arg ruleset_response_sha256 "${RULESET_RESPONSE_SHA256}" \
+            --arg ruleset_id "${RULESET_ID}" \
+            --argjson targets '["x86_64-pc-windows-msvc","x86_64-unknown-linux-gnu","aarch64-unknown-linux-gnu","x86_64-apple-darwin","aarch64-apple-darwin"]' \
+            '{schema_version: 1, status: "qualified_archive_shape", candidate_sha: $candidate_sha, candidate_tag: $candidate_tag, version: $version, targets: $targets, ruleset: {mode: $ruleset_mode, source_url: $ruleset_source_url, response_sha256: $ruleset_response_sha256, repository: $repository, id: $ruleset_id}, actions_artifacts_only: true, release_assets_created: false, repository_contents_written: false, secrets_required: false, limitations: ["Actions artifact retention is not a public release", "Manifest URLs are prospective and were not fetched"]}' \
+            > dist/server-archive-qualification-receipt.json
+          {
+            echo "# Server archive qualification receipt"
+            echo
+            echo "- candidate SHA: ${CANDIDATE_SHA}"
+            echo "- candidate tag: ${CANDIDATE_TAG:-none supplied}"
+            echo "- version: ${version}"
+            echo "- targets: five supported server targets"
+            echo "- ruleset mode: ${RULESET_MODE}"
+            echo "- ruleset source: ${RULESET_SOURCE_URL}"
+            echo "- ruleset response SHA256: ${RULESET_RESPONSE_SHA256}"
+            echo "- ruleset ID: ${RULESET_ID}"
+            echo "- aggregate SHA256SUMS: verified"
+            echo "- GitHub Release assets: not created"
+            echo "- repository contents writes: none"
+            echo "- secrets: not required"
+          } > dist/server-archive-qualification-receipt.md
+
+      - name: Upload qualification manifest and receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ripr-server-qualification-manifest
+          path: |
+            dist/ripr-server-manifest-*.json
+            dist/SHA256SUMS
+            dist/server-archive-qualification-receipt.json
+            dist/server-archive-qualification-receipt.md
+          if-no-files-found: error
+
+# Authority: this workflow is qualification-only and never creates GitHub
+# Release assets. Publication authority remains in the source repository's
+# release workflow after independent candidate/source qualification.

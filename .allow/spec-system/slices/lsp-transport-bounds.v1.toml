@@ -1,0 +1,60 @@
+schema_version = "2.0"
+id = "ripr.slice.lsp-transport-bounds.v1"
+generation = 1
+
+source_issue = "issue:2034"
+design_reference = "docs/LSP_TRANSPORT_BOUNDS.md"
+change_class = "behavior_change"
+
+claim_boundary = """
+Bounds JSON-RPC framing, typed request payloads, request concurrency, and
+slow-reader egress for `ripr lsp --stdio` behind reviewed defaults with
+bounded rejections. Does not claim OS sandboxing, resistance to every
+denial-of-service technique, per-message write deadlines, frame-level wire
+recovery, processId monitoring, or bounds for the capability-only riprAgent
+request family.
+"""
+
+non_goals = [
+  "forking or patching tower-lsp-server",
+  "full lifecycle and parent-process cleanup (issue #2030)",
+  "riprAgent typed request handlers (capability-only slice)",
+  "LSP surface manifest representation (issue #1995 not landed)",
+  "operating-system sandboxing or universal denial-of-service resistance",
+]
+
+return_conditions = [
+  "Return to root if tower-lsp-server is upgraded and its codec or Server composition seams change.",
+  "Return to root if a legitimate client payload class exceeds a reviewed bound and the bound must move.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:transport-bounds",
+  "seam:ripr:lsp:payload-bounds",
+  "seam:ripr:docs:lsp-transport-bounds",
+]
+
+shared_seams = [
+  "seam:ripr:lsp:backend-handlers",
+  "seam:ripr:lsp:serve-composition",
+  "seam:ripr:tests:lsp-stdio-harness",
+]
+
+forbidden_seams = [
+  "seam:ripr:repo:workflows",
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:diagnostics:delivery-budget-authority",
+]
+
+[[requirement_delta]]
+requirement_id = "issue:2034#bounded-lsp-transport"
+requirement_generation = 1
+
+[implementation_claim]
+status = "outstanding"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

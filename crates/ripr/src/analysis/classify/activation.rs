@@ -205,6 +205,11 @@ fn missing_discriminator_facts(
     {
         missing.push(fact);
     }
+    if matches!(probe.family, ProbeFamily::FieldConstruction)
+        && let Some(fact) = missing_field_value_discriminator(probe, related_tests, flow_sinks)
+    {
+        missing.push(fact);
+    }
     if missing.is_empty()
         && observed_values
             .iter()
@@ -309,6 +314,64 @@ fn missing_error_variant_discriminator(
             .iter()
             .find(|sink| sink.kind == FlowSinkKind::ErrorVariant)
             .or_else(|| first_visible_flow_sink(flow_sinks))
+            .cloned(),
+    })
+}
+
+/// Produce a missing-discriminator fact for a `FieldConstruction` seam whose
+/// `RequiredDiscriminator::FieldValue { field }` has no matching producer-owned
+/// discriminator in the test evidence.
+///
+/// Mirrors the Predicate (`missing_boundary_discriminator`) and ErrorPath
+/// (`missing_error_variant_discriminator`) arms. The probe expression is the
+/// field value the readiness authority (`repair_route.rs`) compares via
+/// `exact_key("field_value", field)`. When a related test already asserts the
+/// field via an ExactValue / WholeObjectEquality / RelationalCheck / Snapshot
+/// oracle, the discriminator is NOT missing and this returns `None`.
+fn missing_field_value_discriminator(
+    probe: &Probe,
+    related_tests: &[&TestSummary],
+    flow_sinks: &[FlowSinkFact],
+) -> Option<MissingDiscriminatorFact> {
+    // Only meaningful when there is a StructField flow sink.
+    let has_struct_field_sink = flow_sinks
+        .iter()
+        .any(|sink| sink.kind == FlowSinkKind::StructField);
+    if !has_struct_field_sink {
+        return None;
+    }
+
+    // If any related test observes this field via an accepted oracle kind
+    // (ExactValue, WholeObjectEquality, RelationalCheck, Snapshot), the
+    // discriminator is already covered — do not emit a missing fact.
+    //
+    // The match uses word-boundary semantics via `contains_as_whole_word` to
+    // avoid token coincidence (e.g. `id` matching inside `provider`), the
+    // recurring false-observation family. See reveal.rs:413 for the same guard.
+    let field_already_observed = related_tests.iter().any(|test| {
+        test.assertions.iter().any(|assertion| {
+            matches!(
+                assertion.kind,
+                OracleKind::ExactValue
+                    | OracleKind::WholeObjectEquality
+                    | OracleKind::RelationalCheck
+                    | OracleKind::Snapshot
+            ) && super::reveal::contains_as_whole_word(&assertion.text, &probe.expression)
+        })
+    });
+    if field_already_observed {
+        return None;
+    }
+
+    Some(MissingDiscriminatorFact {
+        value: probe.expression.clone(),
+        reason: format!(
+            "No field-value assertion observes the constructed field: {}",
+            probe.expression
+        ),
+        flow_sink: flow_sinks
+            .iter()
+            .find(|sink| sink.kind == FlowSinkKind::StructField)
             .cloned(),
     })
 }

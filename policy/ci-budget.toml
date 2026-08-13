@@ -50,7 +50,7 @@ notes = "Demotes ripr-waive for this PR once lane selection is implemented."
 name = "release-check"
 effect = "run_wired_release_surface_lanes"
 budget_effect = "release"
-notes = "Currently runs the legacy Rust workflow package list and publish dry-run proof on pull requests; broader release readiness lanes remain target vocabulary until wired."
+notes = "Runs the legacy Rust workflow package list, publish dry-run, and release-readiness proof on pull requests."
 
 [[label]]
 name = "vscode"
@@ -81,3 +81,9 @@ name = "clippy-future"
 effect = "run_future_clippy_lanes"
 budget_effect = "medium"
 notes = "Runs future or candidate Clippy lint lanes in advisory mode."
+
+[[label]]
+name = "windows-ci"
+effect = "run_advisory_windows_lane"
+budget_effect = "medium"
+notes = "Runs the advisory Windows lane (.github/workflows/windows-advisory.yml) on a pull request without opting into every full-ci lane. Test outcomes are advisory; evidence generation is not."

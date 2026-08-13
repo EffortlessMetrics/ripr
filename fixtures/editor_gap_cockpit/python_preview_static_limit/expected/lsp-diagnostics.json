@@ -18,6 +18,7 @@
       "source": "ripr",
       "message": "ripr preview gap: MissingImportPathAssertion; static limit: missing_import_graph; repair route: AddErrorPathAssertion",
       "data": {
+        "diagnostic_id": "gap:py:pricing:import-error-path",
         "schema_version": "0.1",
         "source": "gap_decision_ledger",
         "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",

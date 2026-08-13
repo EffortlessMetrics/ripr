@@ -1,11 +1,15 @@
 use super::super::rust_index::{
     PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_FIELD_CONSTRUCTION,
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
-    PROBE_SHAPE_SIDE_EFFECT,
+    PROBE_SHAPE_SIDE_EFFECT, is_known_probe_shape,
 };
 use crate::domain::{DeltaKind, ProbeFamily};
 
 pub fn family_for_probe_shape(kind: &str) -> Option<ProbeFamily> {
+    if !is_known_probe_shape(kind) {
+        return None;
+    }
+
     match kind {
         PROBE_SHAPE_PREDICATE => Some(ProbeFamily::Predicate),
         PROBE_SHAPE_RETURN_VALUE => Some(ProbeFamily::ReturnValue),
