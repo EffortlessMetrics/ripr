@@ -20,25 +20,24 @@ fn workflow_disposition_is_authorized(manifest: &Value, path: &str) -> bool {
         .iter()
         .filter(|row| row.get("key").and_then(Value::as_str) == Some(path))
         .collect::<Vec<_>>();
-    if matching.len() != 1 {
-        return false;
-    }
-    matches!(
-        matching[0].get("disposition").and_then(Value::as_str),
-        Some("swarm_blob" | "integrated")
-    )
+    !matching.is_empty()
+        && matching.iter().all(|row| {
+            matches!(
+                row.get("disposition").and_then(Value::as_str),
+                Some("swarm_blob" | "integrated")
+            )
+        })
 }
 
 #[test]
-fn changed_workflows_require_one_total_row_and_one_reviewed_non_source_disposition(
-) -> Result<(), String> {
+fn changed_workflows_require_unanimous_reviewed_non_source_dispositions() -> Result<(), String> {
     let workflow = workflow_text()?;
     for needle in [
         "changed_workflows=$(git diff --name-only \"$BASE_SHA...$PR_HEAD\" -- .github/workflows)",
         "[.dispositions[]? | select(.key == $path)] | length",
         "[.dispositions[]? | select(.key == $path and (.disposition == \"swarm_blob\" or .disposition == \"integrated\"))] | length",
-        "test \"$resolution_count\" -ne 1 || test \"$reviewed_count\" -ne 1",
-        "promotion PR changes workflows without exactly one reviewed non-source disposition",
+        "test \"$resolution_count\" -eq 0 || test \"$reviewed_count\" -ne \"$resolution_count\"",
+        "promotion PR changes workflows without unanimous reviewed non-source dispositions",
     ] {
         assert!(
             workflow.contains(needle),
@@ -53,7 +52,7 @@ fn changed_workflows_require_one_total_row_and_one_reviewed_non_source_dispositi
 }
 
 #[test]
-fn workflow_disposition_authority_rejects_ambiguous_or_unreviewed_rows() {
+fn workflow_disposition_authority_rejects_missing_mixed_or_unreviewed_rows() {
     let path = ".github/workflows/routed-rust.yml";
     let rejected = [
         json!({"dispositions": []}),
@@ -66,30 +65,30 @@ fn workflow_disposition_authority_rejects_ambiguous_or_unreviewed_rows() {
             {"key": path, "disposition": "integrated"},
             {"key": path, "disposition": "source_blob"}
         ]}),
-        json!({"dispositions": [
-            {"key": path, "disposition": "swarm_blob"},
-            {"key": path, "disposition": "swarm_blob"}
-        ]}),
     ];
 
     for manifest in rejected {
         assert!(
             !workflow_disposition_is_authorized(&manifest, path),
-            "ambiguous or unreviewed workflow disposition must fail closed: {manifest}"
+            "missing, mixed, or unreviewed workflow dispositions must fail closed: {manifest}"
         );
     }
 }
 
 #[test]
-fn workflow_disposition_authority_accepts_exactly_one_allowed_row() {
+fn workflow_disposition_authority_accepts_one_or_more_allowed_category_rows() {
     let path = ".github/workflows/routed-rust.yml";
-    for disposition in ["swarm_blob", "integrated"] {
-        let manifest = json!({
-            "dispositions": [{"key": path, "disposition": disposition}]
-        });
+    for manifest in [
+        json!({"dispositions": [{"key": path, "disposition": "swarm_blob"}]}),
+        json!({"dispositions": [{"key": path, "disposition": "integrated"}]}),
+        json!({"dispositions": [
+            {"kind": "conflict", "key": path, "disposition": "integrated"},
+            {"kind": "source_survivor", "key": path, "disposition": "swarm_blob"}
+        ]}),
+    ] {
         assert!(
             workflow_disposition_is_authorized(&manifest, path),
-            "exactly one reviewed non-source workflow disposition should be accepted: {manifest}"
+            "all category rows authorize non-source workflow movement: {manifest}"
         );
     }
 }
