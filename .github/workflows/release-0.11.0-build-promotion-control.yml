@@ -1,0 +1,213 @@
+name: Build 0.11.0 Promotion Control Sidecar
+
+on:
+  push:
+    branches:
+      - release/0.11.0-promotion-control-a072b7-w7
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ripr-0.11.0-promotion-control-a072b7-w7
+  cancel-in-progress: false
+
+jobs:
+  build-control:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SOURCE_PARENT: a072b7efe80f1a32d7b5ba7342559a114edeb12e
+      SWARM_PARENT: 83217e97ec6847db41d757f57279a8b1ca433fe6
+      SWARM_REF: refs/tags/ripr-release-0.11.0-83217e97ec6847db41d757f57279a8b1ca433fe6
+      JOIN_HEAD: 87cc06cfb7f686248a35f93871d8794bdbe30ba1
+      JOIN_TREE: c53a89dcace27f54fdb78df4d16037959dfa2e2a
+      MERGE_BASE: 36909460db013ed3a3238ee8b2fc3ccda1135c15
+      VERSION: 0.11.0
+      EXPECTED_PREFLIGHT_SHA256: 56ee5ad76b30ffb3271bfa3c2535cf0512bfd888e6f20b7cb98befcc839c89ad
+      EXPECTED_RESOLUTION_SHA256: fc73ea8b8bb834b33ec6c41a1251a649e71fd050a700247b5f90a2856ce7d16c
+
+    steps:
+      - name: Checkout control branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: release/0.11.0-promotion-control-a072b7-w7
+          fetch-depth: 0
+
+      - name: Checkout exact W7 producer
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: EffortlessMetrics/ripr-swarm
+          ref: 83217e97ec6847db41d757f57279a8b1ca433fe6
+          fetch-depth: 0
+          fetch-tags: true
+          path: _swarm
+          persist-credentials: false
+
+      - name: Checkout exact source parent
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: EffortlessMetrics/ripr
+          ref: a072b7efe80f1a32d7b5ba7342559a114edeb12e
+          fetch-depth: 0
+          path: _source
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+
+      - name: Regenerate exact reviewed preflight
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/ripr-control-target
+        run: |
+          set -euo pipefail
+          test "$(git -C _source rev-parse HEAD)" = "$SOURCE_PARENT"
+          test "$(git -C _source rev-parse origin/main)" = "$SOURCE_PARENT"
+          test "$(git -C _swarm rev-parse HEAD)" = "$SWARM_PARENT"
+          test "$(git -C _swarm rev-parse "$SWARM_REF^{commit}")" = "$SWARM_PARENT"
+          git -C _source fetch --no-tags https://github.com/EffortlessMetrics/ripr.git "$JOIN_HEAD"
+          test "$(git -C _source rev-parse "$JOIN_HEAD^{tree}")" = "$JOIN_TREE"
+          test "$(git -C _source cat-file -t "$JOIN_TREE")" = tree
+          mkdir -p _swarm/target _generated
+          cd _swarm
+          cargo xtask source-promotion preflight \
+            --source-parent "$SOURCE_PARENT" \
+            --swarm-parent "$SWARM_PARENT" \
+            --swarm-ref "$SWARM_REF" \
+            --source-repo "$GITHUB_WORKSPACE/_source" \
+            --swarm-repo "$GITHUB_WORKSPACE/_swarm" \
+            --source-main origin/main \
+            --swarm-main origin/main \
+            --version "$VERSION" \
+            --resolved-tree "$JOIN_TREE" \
+            --out "$GITHUB_WORKSPACE/_generated"
+          cd "$GITHUB_WORKSPACE"
+          actual=$(sha256sum _generated/source-promotion-preflight.json | awk '{print $1}')
+          test "$actual" = "$EXPECTED_PREFLIGHT_SHA256"
+          jq -e --arg tree "$JOIN_TREE" '.dry_merge.reviewed_resolved_tree == $tree and .dry_merge.reviewed_resolved_tree_verified == true' _generated/source-promotion-preflight.json >/dev/null
+
+      - name: Generate exact reviewed resolution and CI inputs
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path('_generated')
+          preflight_path = root / 'source-promotion-preflight.json'
+          preflight_bytes = preflight_path.read_bytes()
+          preflight = json.loads(preflight_bytes)
+          source = os.environ['SOURCE_PARENT']
+          swarm = os.environ['SWARM_PARENT']
+          tree = os.environ['JOIN_TREE']
+          merge_base = os.environ['MERGE_BASE']
+          join = os.environ['JOIN_HEAD']
+
+          assert preflight['source_parent'] == source
+          assert preflight['swarm_parent'] == swarm
+          assert preflight['merge_base'] == merge_base
+          assert preflight['dry_merge']['reviewed_resolved_tree'] == tree
+          assert preflight['dry_merge']['reviewed_resolved_tree_verified'] is True
+
+          rows = []
+          for key in preflight['dry_merge']['conflicts']:
+              rows.append({
+                  'kind': 'conflict', 'key': key, 'disposition': 'integrated',
+                  'rationale': 'Reviewed file-level authority map.',
+                  'evidence': f'JOIN_TREE {tree}',
+              })
+          for key in preflight['source_survivor_candidates']:
+              rows.append({
+                  'kind': 'source_survivor', 'key': key, 'disposition': 'source_blob',
+                  'rationale': 'Source-authoritative surface retained exactly.',
+                  'evidence': f'SOURCE_PARENT {source}',
+              })
+          for key in preflight['swarm_authority_resolution_candidates']:
+              rows.append({
+                  'kind': 'swarm_exclusion', 'key': key, 'disposition': 'swarm_blob',
+                  'rationale': 'Swarm product/dependency surface retained where applicable.',
+                  'evidence': f'SWARM_PARENT {swarm}',
+              })
+
+          expected = (
+              {('conflict', x) for x in preflight['dry_merge']['conflicts']} |
+              {('source_survivor', x) for x in preflight['source_survivor_candidates']} |
+              {('swarm_exclusion', x) for x in preflight['swarm_authority_resolution_candidates']}
+          )
+          actual = {(row['kind'], row['key']) for row in rows}
+          assert actual == expected
+          assert len(rows) == len(actual) == 177
+
+          manifest = {
+              'schema': 'ripr.source_promotion_resolution.v1',
+              'preflight_sha256': 'sha256:' + hashlib.sha256(preflight_bytes).hexdigest(),
+              'source_parent': source,
+              'swarm_parent': swarm,
+              'merge_base': merge_base,
+              'reviewed_join_tree': tree,
+              'dispositions': rows,
+          }
+          resolution_path = root / 'resolution-manifest.json'
+          resolution_path.write_text(json.dumps(manifest, indent=2) + '\n')
+          resolution_bytes = resolution_path.read_bytes()
+          resolution_sha = hashlib.sha256(resolution_bytes).hexdigest()
+          assert resolution_sha == os.environ['EXPECTED_RESOLUTION_SHA256']
+
+          ci_inputs = {
+              'schema': 'ripr.source_promotion_ci_inputs.v2',
+              'source_main': source,
+              'join_head': join,
+              'preflight': 'docs/release/source-promotion/preflight.json',
+              'resolution_manifest': 'docs/release/source-promotion/resolution-manifest.json',
+              'preflight_sha256': hashlib.sha256(preflight_bytes).hexdigest(),
+              'resolution_manifest_sha256': resolution_sha,
+          }
+          (root / 'contract-inputs.json').write_text(json.dumps(ci_inputs, indent=2) + '\n')
+
+          # Pin workflow-import authority explicitly.
+          by_path = {}
+          for row in rows:
+              by_path.setdefault(row['key'], []).append(row['disposition'])
+          for path in [
+              '.github/workflows/routed-rust.yml',
+              '.github/workflows/server-archive-qualification.yml',
+          ]:
+              values = by_path.get(path, [])
+              assert values and all(v in {'swarm_blob', 'integrated'} for v in values)
+          assert by_path['.github/workflows/source-promotion-contract.yml'] == ['source_blob']
+          PY
+
+      - name: Commit immutable source-side control sidecar
+        run: |
+          set -euo pipefail
+          mkdir -p docs/release/source-promotion
+          cp _generated/source-promotion-preflight.json docs/release/source-promotion/preflight.json
+          cp _generated/resolution-manifest.json docs/release/source-promotion/resolution-manifest.json
+          cp _generated/contract-inputs.json docs/release/source-promotion/contract-inputs.json
+          rm -rf _swarm _source _generated
+          git status --short
+          git diff --check
+          git add docs/release/source-promotion
+          git config user.name 'EffortlessSteven'
+          git config user.email 'git@effortlesssteven.com'
+          git commit -m 'release(control): bind exact W7 source-promotion inputs'
+          git push origin HEAD:release/0.11.0-promotion-control-a072b7-w7
+
+      - name: Record control commit
+        run: |
+          set -euo pipefail
+          {
+            echo '## 0.11.0 source-promotion control sidecar'
+            echo
+            printf -- '- control commit: `%s`\n' "$(git rev-parse HEAD)"
+            printf -- '- source parent: `%s`\n' "$SOURCE_PARENT"
+            printf -- '- W7: `%s`\n' "$SWARM_PARENT"
+            printf -- '- J: `%s`\n' "$JOIN_HEAD"
+            printf -- '- JOIN_TREE: `%s`\n' "$JOIN_TREE"
+            printf -- '- preflight SHA-256: `%s`\n' "$EXPECTED_PREFLIGHT_SHA256"
+            printf -- '- resolution SHA-256: `%s`\n' "$EXPECTED_RESOLUTION_SHA256"
+          } >> "$GITHUB_STEP_SUMMARY"
