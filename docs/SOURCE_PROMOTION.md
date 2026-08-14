@@ -362,12 +362,15 @@ The workflow has read-only contents permission and never executes the printed
 merge command or changes refs, settings, branch protection, tags, releases,
 publication channels, or secrets.
 
-A promotion PR may change a workflow only when the authenticated immutable
-resolution manifest contains **exactly one total disposition row** for that
-exact workflow path and that row's disposition is `swarm_blob` or `integrated`.
-Missing rows, duplicate rows, mixed allowed/source rows, `source_blob`, and any
-other disposition fail closed. This reviewed-resolution rule is the only
-workflow-import authority; there is no hardcoded workflow-name exception.
+A workflow path may appear in more than one reviewed resolution category because
+the manifest is keyed by `kind:key`. A promotion PR may change that workflow
+only when the authenticated immutable resolution manifest contains at least one
+row for the exact path and **every** row for that path has disposition
+`swarm_blob` or `integrated`. Missing rows, any `source_blob`, mixed
+source/non-source authority, and unknown or other dispositions fail closed.
+Duplicate rows for the same `kind:key` remain invalid under the resolution
+verifier. This reviewed-resolution rule is the only workflow-import authority;
+there is no hardcoded workflow-name exception.
 
 After the protected merge, manually dispatch the same workflow from `main` with
 the exact `control_commit`, `J`, the original source parent, the trusted
