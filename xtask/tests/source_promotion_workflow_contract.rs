@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
 
+use serde_json::{json, Value};
+
 fn workflow_text() -> Result<String, String> {
     let xtask = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let root = xtask
@@ -10,16 +12,38 @@ fn workflow_text() -> Result<String, String> {
         .map_err(|error| format!("read source-promotion contract workflow: {error}"))
 }
 
+fn workflow_disposition_is_authorized(manifest: &Value, path: &str) -> bool {
+    let Some(dispositions) = manifest.get("dispositions").and_then(Value::as_array) else {
+        return false;
+    };
+    let matching = dispositions
+        .iter()
+        .filter(|row| row.get("key").and_then(Value::as_str) == Some(path))
+        .collect::<Vec<_>>();
+    if matching.len() != 1 {
+        return false;
+    }
+    matches!(
+        matching[0].get("disposition").and_then(Value::as_str),
+        Some("swarm_blob" | "integrated")
+    )
+}
+
 #[test]
-fn changed_workflows_require_exact_reviewed_non_source_dispositions() -> Result<(), String> {
+fn changed_workflows_require_one_total_row_and_one_reviewed_non_source_disposition(
+) -> Result<(), String> {
     let workflow = workflow_text()?;
     for needle in [
         "changed_workflows=$(git diff --name-only \"$BASE_SHA...$PR_HEAD\" -- .github/workflows)",
+        "[.dispositions[]? | select(.key == $path)] | length",
         "[.dispositions[]? | select(.key == $path and (.disposition == \"swarm_blob\" or .disposition == \"integrated\"))] | length",
-        "test \"$reviewed_count\" -ne 1",
+        "test \"$resolution_count\" -ne 1 || test \"$reviewed_count\" -ne 1",
         "promotion PR changes workflows without exactly one reviewed non-source disposition",
     ] {
-        assert!(workflow.contains(needle), "workflow missing contract fragment: {needle}");
+        assert!(
+            workflow.contains(needle),
+            "workflow missing contract fragment: {needle}"
+        );
     }
     assert!(
         !workflow.contains("/^\\.github\\/workflows\\/source-promotion-contract\\.yml$/d"),
@@ -29,12 +53,56 @@ fn changed_workflows_require_exact_reviewed_non_source_dispositions() -> Result<
 }
 
 #[test]
+fn workflow_disposition_authority_rejects_ambiguous_or_unreviewed_rows() {
+    let path = ".github/workflows/routed-rust.yml";
+    let rejected = [
+        json!({"dispositions": []}),
+        json!({"dispositions": [{"key": path, "disposition": "source_blob"}]}),
+        json!({"dispositions": [
+            {"key": path, "disposition": "swarm_blob"},
+            {"key": path, "disposition": "source_blob"}
+        ]}),
+        json!({"dispositions": [
+            {"key": path, "disposition": "integrated"},
+            {"key": path, "disposition": "source_blob"}
+        ]}),
+        json!({"dispositions": [
+            {"key": path, "disposition": "swarm_blob"},
+            {"key": path, "disposition": "swarm_blob"}
+        ]}),
+    ];
+
+    for manifest in rejected {
+        assert!(
+            !workflow_disposition_is_authorized(&manifest, path),
+            "ambiguous or unreviewed workflow disposition must fail closed: {manifest}"
+        );
+    }
+}
+
+#[test]
+fn workflow_disposition_authority_accepts_exactly_one_allowed_row() {
+    let path = ".github/workflows/routed-rust.yml";
+    for disposition in ["swarm_blob", "integrated"] {
+        let manifest = json!({
+            "dispositions": [{"key": path, "disposition": disposition}]
+        });
+        assert!(
+            workflow_disposition_is_authorized(&manifest, path),
+            "exactly one reviewed non-source workflow disposition should be accepted: {manifest}"
+        );
+    }
+}
+
+#[test]
 fn workflow_rejection_reason_is_single_line_after_multiple_unreviewed_paths() -> Result<(), String> {
     let workflow = workflow_text()?;
     assert!(workflow.contains("unreviewed_workflows=\"$unreviewed_workflows,$workflow\""));
     assert!(workflow.contains("unreviewed_workflows=\"$workflow\""));
     assert!(
-        !workflow.contains("fail \"promotion PR changes non-contract workflows: $unexpected_workflows\""),
+        !workflow.contains(
+            "fail \"promotion PR changes non-contract workflows: $unexpected_workflows\""
+        ),
         "multi-line git diff output must not flow directly into a single-line GITHUB_OUTPUT value"
     );
     Ok(())
