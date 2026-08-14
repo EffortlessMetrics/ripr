@@ -38,12 +38,14 @@ and canonical-path checks in the fixed source repository before any sidecar
 bytes are copied into runner-temporary files. It is called for all three fixed
 sidecars and must never be pointed at a candidate-checkout `INPUTS_PATH`.
 
-For every workflow path changed by the promotion PR, the authenticated immutable
-resolution manifest is the sole import authority. The manifest must contain
-exactly one total disposition row whose `key` equals that workflow path, and
-that one row must have disposition `swarm_blob` or `integrated`. Missing rows,
-duplicate rows, mixed allowed/source rows, `source_blob`, and unknown or other
-dispositions fail closed. The workflow must not substitute a hardcoded
+The resolution schema is keyed by `kind:key`, so one workflow path may
+legitimately have rows in several reviewed categories. For every workflow path
+changed by the promotion PR, the authenticated immutable resolution manifest is
+the sole import authority: at least one row must have that exact key and every
+row with that key must have disposition `swarm_blob` or `integrated`. Missing
+rows, any `source_blob`, mixed source/non-source authority, and unknown or other
+dispositions fail closed. Duplicate rows for one `kind:key` remain invalid
+under the resolution verifier. The workflow must not substitute a hardcoded
 workflow-name exception for reviewed resolution authority.
 
 The workflow runs `cargo xtask source-promotion verify` and emits one
@@ -84,9 +86,12 @@ exact J object to remain reachable from merged source `main`.
   directory, and placeholder control inputs fail closed;
 - a dispatch whose trusted `source_parent` differs from the immutable sidecar's
   `source_main` fails before the verifier is built;
-- exactly one `swarm_blob` or `integrated` workflow disposition is accepted;
-- missing, source-only, duplicate allowed, or mixed allowed/source dispositions
-  for one workflow key are rejected;
+- one or more `swarm_blob`/`integrated` rows for distinct resolution kinds are
+  accepted when every row for the workflow key authorizes non-source movement;
+- missing, source-only, or mixed allowed/source dispositions for one workflow
+  key are rejected;
+- duplicate rows for the same `kind:key` remain rejected by the resolution
+  verifier;
 - a valid two-parent join passes the verifier;
 - a single-parent or equivalent-tree flattened history fails post-merge;
 - uploaded receipts retain exact heads, ordered parents, input digests, checks,
@@ -104,9 +109,10 @@ exact J object to remain reachable from merged source `main`.
 - A marked promotion PR with one exact source-control marker, canonical
   mode-100644 sidecar files, matching digests, and a numeric,
   repository-bound `gh pr merge` command passes the PR-head verifier lane.
-- A changed workflow with exactly one reviewed `swarm_blob` or `integrated`
-  disposition is eligible for import; the same workflow key appearing in both
-  an allowed and `source_blob` row is ambiguous and rejected.
+- A changed workflow with one reviewed `swarm_blob` row is eligible for import.
+  If the same workflow also appears in another reviewed category, that second
+  row may be `integrated` or `swarm_blob`; any `source_blob` row makes the
+  workflow authority mixed and rejects the promotion.
 - Missing, duplicate, abbreviated, uppercase, unreachable, wrong-repository,
   symlinked, directory, or placeholder sidecar inputs, candidate-tree input
   paths, and flattened ancestry are rejected.
@@ -126,9 +132,10 @@ Executable proof lives in
 `source_promotion_workflow_binds_trusted_source_parent`,
 `source_promotion_workflow_refutes_crlf_rewrite_thread`, and the integration
 contract tests in `xtask/tests/source_promotion_workflow_contract.rs`, including
-mixed allowed/source, duplicate, missing, source-only, and exact allowed
-workflow-disposition cases. The exact-J graph and flattened-history controls
-remain covered by the verifier tests mapped in `.ripr/traceability.toml`.
+missing/source-only, mixed allowed/source, and one-or-more unanimously allowed
+workflow-disposition cases. The exact-J graph, `kind:key` completeness, duplicate
+`kind:key`, and flattened-history controls remain covered by the verifier tests
+mapped in `.ripr/traceability.toml`.
 
 ## Implementation Mapping
 
