@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn workflow_text() -> Result<String, String> {
     let xtask = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -94,7 +94,8 @@ fn workflow_disposition_authority_accepts_one_or_more_allowed_category_rows() {
 }
 
 #[test]
-fn workflow_rejection_reason_is_single_line_after_multiple_unreviewed_paths() -> Result<(), String> {
+fn workflow_rejection_reason_is_single_line_after_multiple_unreviewed_paths() -> Result<(), String>
+{
     let workflow = workflow_text()?;
     assert!(workflow.contains("unreviewed_workflows=\"$unreviewed_workflows,$workflow\""));
     assert!(workflow.contains("unreviewed_workflows=\"$workflow\""));
