@@ -221,7 +221,7 @@ jobs:
             test -n "$workflow" || continue
             resolution_count=$(jq -r --arg path "$workflow" '[.dispositions[]? | select(.key == $path)] | length' "$resolution_manifest")
             reviewed_count=$(jq -r --arg path "$workflow" '[.dispositions[]? | select(.key == $path and (.disposition == "swarm_blob" or .disposition == "integrated"))] | length' "$resolution_manifest")
-            if test "$resolution_count" -ne 1 || test "$reviewed_count" -ne 1; then
+            if test "$resolution_count" -eq 0 || test "$reviewed_count" -ne "$resolution_count"; then
               if test -n "$unreviewed_workflows"; then
                 unreviewed_workflows="$unreviewed_workflows,$workflow"
               else
@@ -231,7 +231,7 @@ jobs:
           done <<EOF
           $changed_workflows
           EOF
-          test -z "$unreviewed_workflows" || fail "promotion PR changes workflows without exactly one reviewed non-source disposition: $unreviewed_workflows"
+          test -z "$unreviewed_workflows" || fail "promotion PR changes workflows without unanimous reviewed non-source dispositions: $unreviewed_workflows"
 
           validation_phase=complete
           validation_reason=all_validation_checks_passed
