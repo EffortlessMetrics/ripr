@@ -7,6 +7,7 @@
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::SeamLimitInfo;
 use crate::analysis::seams::SeamGripClass;
+use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::CheckOutput;
 use crate::config::{ConfigSeverity, RiprConfig};
 use crate::domain::{
@@ -48,7 +49,7 @@ pub(crate) fn render_findings_sarif(
         .iter()
         .filter_map(|finding| finding_result(finding, config, suppressions, &today))
         .collect::<Vec<_>>();
-    sarif_document("finding", rules, results)
+    sarif_document("finding", rules, results, output.analysis_outcome.as_ref())
 }
 
 /// Render repo-scoped classified seams as SARIF.
@@ -114,7 +115,39 @@ fn sarif_document_repo_seam(
     json_pretty(document)
 }
 
-fn sarif_document(scope: &str, rules: Vec<Value>, results: Vec<Value>) -> String {
+fn sarif_document(
+    scope: &str,
+    rules: Vec<Value>,
+    results: Vec<Value>,
+    analysis_outcome: Option<&AnalysisOutcome>,
+) -> String {
+    let mut properties = Map::new();
+    properties.insert("tool".to_string(), json!("ripr"));
+    properties.insert(
+        "schema_version".to_string(),
+        json!(RIPR_SARIF_SCHEMA_VERSION),
+    );
+    properties.insert("scope".to_string(), json!(scope));
+    if let Some(outcome) = analysis_outcome {
+        properties.insert(
+            "run_status".to_string(),
+            json!(if outcome.kind.is_complete() {
+                "complete"
+            } else {
+                "incomplete"
+            }),
+        );
+        properties.insert(
+            "analysis_complete".to_string(),
+            json!(outcome.kind.is_complete()),
+        );
+        properties.insert(
+            "analysis_outcome".to_string(),
+            serde_json::to_value(outcome).unwrap_or_else(
+                |error| json!({"serialization_error": escape_message(&error.to_string())}),
+            ),
+        );
+    }
     let document = json!({
         "$schema": SARIF_SCHEMA,
         "version": SARIF_VERSION,
@@ -129,11 +162,7 @@ fn sarif_document(scope: &str, rules: Vec<Value>, results: Vec<Value>) -> String
                     }
                 },
                 "results": results,
-                "properties": {
-                    "tool": "ripr",
-                    "schema_version": RIPR_SARIF_SCHEMA_VERSION,
-                    "scope": scope
-                }
+                "properties": properties
             }
         ]
     });
@@ -183,6 +212,13 @@ fn finding_result(
         "partialFingerprints".to_string(),
         json!({ "riprFingerprintV1": finding_fingerprint(&rule_id, finding, &file, line) }),
     );
+    // #2627: also emit top-level fingerprints for GitHub Code Scanning cross-run
+    // dedup. partialFingerprints alone is insufficient — GitHub reads
+    // fingerprints as the primary dedup key.
+    result.insert(
+        "fingerprints".to_string(),
+        json!({ "riprFingerprintV1": finding_fingerprint(&rule_id, finding, &file, line) }),
+    );
     result.insert(
         "properties".to_string(),
         finding_properties(finding, severity),
@@ -217,6 +253,11 @@ fn seam_result(entry: &ClassifiedSeam, config: &RiprConfig) -> Option<Value> {
         "partialFingerprints".to_string(),
         json!({ "riprFingerprintV1": seam_fingerprint(&rule_id, entry, &file, line) }),
     );
+    // #2627: also emit top-level fingerprints for GitHub Code Scanning cross-run dedup.
+    result.insert(
+        "fingerprints".to_string(),
+        json!({ "riprFingerprintV1": seam_fingerprint(&rule_id, entry, &file, line) }),
+    );
     result.insert("properties".to_string(), seam_properties(entry, severity));
     if entry.class == SeamGripClass::Suppressed {
         result.insert(
@@ -243,8 +284,19 @@ fn sarif_level(severity: ConfigSeverity) -> Option<&'static str> {
 }
 
 fn physical_location(file: &str, line: usize, column: Option<usize>) -> Value {
+    // SARIF 2.1.0: `region` is optional. When the finding has no known line
+    // (line == 0 — an unlocated probe or a producer bug), omit the region
+    // entirely rather than fabricating startLine:1, which would point SARIF
+    // viewers (GitHub code scanning, VS Code) at the wrong line (#2407).
+    if line == 0 {
+        return json!({
+            "physicalLocation": {
+                "artifactLocation": { "uri": file }
+            }
+        });
+    }
     let mut region = Map::new();
-    region.insert("startLine".to_string(), json!(line.max(1)));
+    region.insert("startLine".to_string(), json!(line));
     if let Some(column) = column
         && column > 0
     {
@@ -821,6 +873,10 @@ mod tests {
     use crate::analysis::test_grip_evidence::{
         RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence,
     };
+    use crate::analysis_outcome::{
+        AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome, AnalysisOutcomeCounts,
+        AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind, AnalysisStage,
+    };
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, FindingCanonicalGap, FlowSinkFact, FlowSinkKind,
@@ -847,6 +903,30 @@ mod tests {
         assert_eq!(
             result["partialFingerprints"]["riprFingerprintV1"],
             "ripr.finding.weakly_exposed|finding:discount|probe:src/pricing.rs:88:predicate|src/pricing.rs|88"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sarif_discloses_incomplete_zero_finding_outcome_at_run_level() -> Result<(), String> {
+        let mut output = sample_output();
+        output.findings.clear();
+        output.analysis_outcome = Some(incomplete_outcome()?);
+
+        let rendered = render_findings_sarif(&output, &RiprConfig::default(), &[]);
+        let sarif = parse_json(&rendered)?;
+        let props = &sarif["runs"][0]["properties"];
+
+        assert_eq!(
+            sarif["runs"][0]["results"].as_array().map(Vec::len),
+            Some(0)
+        );
+        assert_eq!(props["run_status"], "incomplete");
+        assert_eq!(props["analysis_complete"], false);
+        assert_eq!(props["analysis_outcome"]["kind"], "unsupported_input");
+        assert_eq!(
+            props["analysis_outcome"]["limitations"][0]["kind"],
+            "unresolved_conflict_markers"
         );
         Ok(())
     }
@@ -1091,9 +1171,9 @@ mod tests {
         );
         assert_eq!(card["suggested_test_location"], "t/app.t::discount_smoke");
         assert_eq!(card["verify"]["command"], "prove t/app.t");
-        assert_eq!(card["verify"]["status"], "fact_only_not_delegated");
+        assert_eq!(card["verify"]["status"], "preview_fact_only_not_delegated");
         assert!(card["receipt"]["command"].is_null());
-        assert_eq!(card["receipt"]["status"], "available_not_delegated");
+        assert_eq!(card["receipt"]["status"], "preview_available_not_delegated");
         assert_eq!(card["raw_evidence_refs"][0]["file"], "lib/My/App.pm");
         assert_eq!(card["raw_evidence_refs"][0]["line"], 8);
         assert!(card.get("allowed_edit_surface").is_none());
@@ -1259,6 +1339,9 @@ mod tests {
             "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
             "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
             "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/array_buffer.rs rust_owner=copy_to_unshared rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_missing_shared missing_discriminators=shared_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_shared action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
         ];
         finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
             value: "resizable_array_buffer".to_string(),
@@ -1277,6 +1360,20 @@ mod tests {
             grip["typescript_evidence"]["missing_discriminators"][0],
             "resizable_array_buffer"
         );
+        assert_eq!(grip["profiles"].as_array().map(Vec::len), Some(2));
+        assert_eq!(
+            grip["profiles"][0]["rust_seam"]["owner"],
+            "Blob::from_js_without_defer_gc"
+        );
+        assert_eq!(
+            grip["profiles"][0]["placement"]["reason"],
+            "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer"
+        );
+        assert_eq!(
+            grip["profiles"][1]["rust_seam"]["owner"],
+            "copy_to_unshared"
+        );
+        assert!(grip["profiles"][1]["placement"].is_null());
         assert_eq!(
             grip["limitation_category"],
             "cross_language_oracle_visibility_unresolved"
@@ -1590,8 +1687,31 @@ weakly_gripped = "note"
             summary: Summary::default(),
             findings: vec![sample_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         }
+    }
+
+    fn incomplete_outcome() -> Result<AnalysisOutcome, String> {
+        let recovery = AnalysisRecovery::new(
+            AnalysisRecoveryKind::ResolveConflicts,
+            "resolve conflict markers before rerunning analysis",
+        )?;
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::UnresolvedConflictMarkers,
+            AnalysisStage::DiffParse,
+            recovery,
+        );
+        AnalysisOutcome::new(
+            AnalysisOutcomeKind::UnsupportedInput,
+            Default::default(),
+            AnalysisOutcomeCounts::default(),
+            vec![limitation],
+        )
     }
 
     fn sample_finding() -> Finding {
@@ -1692,6 +1812,13 @@ weakly_gripped = "note"
                 test_name: "below_threshold_has_no_discount".to_string(),
                 file: PathBuf::from("tests/pricing.rs"),
                 line: 12,
+                test_target: Some(
+                    crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                        "below_threshold_has_no_discount",
+                        std::path::Path::new("tests/pricing.rs"),
+                        12,
+                    ),
+                ),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
                 evidence_summary: "exact value assertion".to_string(),
@@ -1720,6 +1847,28 @@ weakly_gripped = "note"
             evidence,
             class,
         }
+    }
+
+    #[test]
+    fn physical_location_omits_region_for_unlocated_finding() {
+        // #2407: a finding with line == 0 (unlocated probe) must not fabricate
+        // startLine:1. The region should be omitted entirely so SARIF viewers
+        // don't point at the wrong line.
+        let loc = physical_location("src/lib.rs", 0, None);
+        assert!(
+            loc["physicalLocation"]["region"].is_null(),
+            "line-0 finding must omit region, got: {loc}"
+        );
+        assert_eq!(
+            loc["physicalLocation"]["artifactLocation"]["uri"],
+            "src/lib.rs"
+        );
+    }
+
+    #[test]
+    fn physical_location_includes_region_for_located_finding() {
+        let loc = physical_location("src/lib.rs", 42, None);
+        assert_eq!(loc["physicalLocation"]["region"]["startLine"], 42);
     }
 
     fn stage(state: StageState, summary: &str) -> StageEvidence {

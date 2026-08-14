@@ -89,7 +89,7 @@
       "source_collection": "comments",
       "source_id": "ripr-review-d",
       "dedupe_key": "ripr:d:src/pricing.rs:40",
-      "skip_reason": "cap_reached",
+      "skip_reason": "inline_comment_cap_reached",
       "message": "Default inline comment cap reached."
     }
   ],

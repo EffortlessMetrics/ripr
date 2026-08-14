@@ -1,6 +1,0 @@
-{
-  "case": "malformed-control",
-  "validation_phase": "control_marker",
-  "validation_reason": "exactly one lowercase source-promotion-control marker is required",
-  "status": "rejected"
-}

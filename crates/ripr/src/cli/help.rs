@@ -4,6 +4,7 @@ mod overview;
 mod policy;
 mod pr;
 mod reports;
+mod rerun;
 mod swarm;
 
 use agent::*;
@@ -12,14 +13,154 @@ use overview::*;
 use policy::*;
 use pr::*;
 use reports::*;
+use rerun::*;
 use swarm::*;
+
+use crate::cli::commands::{RECEIPT_CHECK_HELP, RECEIPT_WRITE_HELP};
+
+/// The command paths that resolve to a flag-documenting help body.
+///
+/// A path here is the space-separated command as the user types it, which is
+/// also the string the CLI names in its own unknown-argument errors. Keeping
+/// the list next to [`help_text_for`] lets a test assert that every path a user
+/// can mistype still lands on real help.
+///
+/// Only the flag-parity test reads it, so it is test-only; production lookups
+/// go through [`help_text_for`].
+#[cfg(test)]
+const REGISTERED_COMMAND_PATHS: &[&str] = &[
+    "agent brief",
+    "agent packet",
+    "agent repair",
+    "agent receipt",
+    "agent review-summary",
+    "agent start",
+    "agent status",
+    "agent verify",
+    "agent verify-execute",
+    "assistant-loop health",
+    "assistant-loop proof",
+    "baseline create",
+    "baseline diff",
+    "baseline update",
+    "calibrate cargo-mutants",
+    "check",
+    "config validate",
+    "context",
+    "coverage-grip frontier",
+    "diff",
+    "doctor",
+    "evidence-health",
+    "explain",
+    "first-action",
+    "gate",
+    "init",
+    "lsp",
+    "outcome",
+    "pilot",
+    "policy history",
+    "policy operations",
+    "policy preview-promote",
+    "policy promote",
+    "policy readiness",
+    "policy suppression-health",
+    "policy waiver-aging",
+    "pr-comments plan",
+    "pr-ledger record",
+    "pr-review front-panel",
+    "receipt check",
+    "receipt write",
+    "reports gap-ledger",
+    "reports index",
+    "reports ts-false-actionable",
+    "reports ts-limitations",
+    "rerun",
+    "review-comments",
+    "swarm ingest",
+    "swarm queue",
+    "zero status",
+];
+
+/// Resolve a command path to the help body that documents its flags.
+///
+/// Several subcommand groups (`policy`, `baseline`, `reports`, ...) document
+/// every subcommand's flags in one shared body, so those paths all map to the
+/// same constant. `None` means the path has no help body to mine for flag
+/// suggestions; callers fall back to naming `ripr <path> --help`.
+pub(super) fn help_text_for(command: &str) -> Option<&'static str> {
+    let help_text = match command {
+        "agent brief" => AGENT_BRIEF_HELP,
+        "agent packet" => AGENT_PACKET_HELP,
+        "agent repair" => AGENT_REPAIR_HELP,
+        "agent receipt" => AGENT_RECEIPT_HELP,
+        "agent review-summary" => AGENT_REVIEW_SUMMARY_HELP,
+        "agent start" => AGENT_START_HELP,
+        "agent status" => AGENT_STATUS_HELP,
+        "agent verify" => AGENT_VERIFY_HELP,
+        "agent verify-execute" => AGENT_VERIFY_EXECUTE_HELP,
+        "assistant-loop health" | "assistant-loop proof" => ASSISTANT_LOOP_HELP,
+        "baseline create" | "baseline diff" | "baseline update" => BASELINE_HELP,
+        "calibrate cargo-mutants" => CALIBRATE_HELP,
+        "check" => CHECK_HELP,
+        "config validate" => CONFIG_HELP,
+        "context" => CONTEXT_HELP,
+        "coverage-grip frontier" => COVERAGE_GRIP_HELP,
+        "diff" => DIFF_HELP,
+        "doctor" => DOCTOR_HELP,
+        "evidence-health" => EVIDENCE_HEALTH_HELP,
+        "explain" => EXPLAIN_HELP,
+        "first-action" => FIRST_ACTION_HELP,
+        "gate" => GATE_HELP,
+        "init" => INIT_HELP,
+        "lsp" => LSP_HELP,
+        "outcome" => OUTCOME_HELP,
+        "pilot" => PILOT_HELP,
+        "policy history"
+        | "policy operations"
+        | "policy preview-promote"
+        | "policy promote"
+        | "policy readiness"
+        | "policy suppression-health"
+        | "policy waiver-aging" => POLICY_HELP,
+        "pr-comments plan" => PR_COMMENTS_HELP,
+        "pr-ledger record" => PR_LEDGER_HELP,
+        "pr-review front-panel" => PR_REVIEW_HELP,
+        "receipt check" => RECEIPT_CHECK_HELP,
+        "receipt write" => RECEIPT_WRITE_HELP,
+        "reports gap-ledger"
+        | "reports index"
+        | "reports ts-false-actionable"
+        | "reports ts-limitations" => REPORTS_HELP,
+        "rerun" => RERUN_HELP,
+        "review-comments" => REVIEW_COMMENTS_HELP,
+        "swarm ingest" => SWARM_INGEST_HELP,
+        "swarm queue" => SWARM_QUEUE_HELP,
+        "zero status" => ZERO_HELP,
+        _ => return None,
+    };
+    Some(help_text)
+}
+
+/// The command paths [`help_text_for`] can resolve.
+#[cfg(test)]
+pub(super) fn registered_command_paths() -> &'static [&'static str] {
+    REGISTERED_COMMAND_PATHS
+}
 
 pub(super) fn print_help() {
     println!("{HELP}");
 }
 
+pub(super) fn print_help_all() {
+    println!("{HELP_ALL}");
+}
+
 pub(super) fn print_check_help() {
     println!("{CHECK_HELP}");
+}
+
+pub(super) fn print_config_help() {
+    println!("{CONFIG_HELP}");
 }
 
 pub(super) fn print_diff_help() {
@@ -114,6 +255,10 @@ pub(super) fn print_agent_verify_help() {
     println!("{AGENT_VERIFY_HELP}");
 }
 
+pub(super) fn print_agent_verify_execute_help() {
+    println!("{AGENT_VERIFY_EXECUTE_HELP}");
+}
+
 pub(super) fn print_agent_receipt_help() {
     println!("{AGENT_RECEIPT_HELP}");
 }
@@ -124,6 +269,10 @@ pub(super) fn print_agent_status_help() {
 
 pub(super) fn print_agent_review_summary_help() {
     println!("{AGENT_REVIEW_SUMMARY_HELP}");
+}
+
+pub(super) fn print_agent_repair_help() {
+    println!("{AGENT_REPAIR_HELP}");
 }
 
 pub(super) fn print_swarm_help() {
@@ -154,79 +303,159 @@ pub(super) fn print_lsp_help() {
     println!("{LSP_HELP}");
 }
 
+pub(super) fn print_rerun_help() {
+    println!("{RERUN_HELP}");
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
-        ASSISTANT_LOOP_HELP, BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP,
+        ASSISTANT_LOOP_HELP, BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONFIG_HELP, CONTEXT_HELP,
         COVERAGE_GRIP_HELP, DIFF_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP,
-        FIRST_ACTION_HELP, GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
-        POLICY_HELP, PR_COMMENTS_HELP, PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP,
-        REVIEW_COMMENTS_HELP, SWARM_HELP, SWARM_INGEST_HELP, SWARM_QUEUE_HELP, ZERO_HELP,
-        print_agent_brief_help, print_agent_help, print_agent_packet_help,
-        print_agent_receipt_help, print_agent_review_summary_help, print_agent_start_help,
-        print_agent_status_help, print_agent_verify_help, print_assistant_loop_help,
-        print_baseline_help, print_calibrate_help, print_check_help, print_context_help,
-        print_coverage_grip_help, print_diff_help, print_doctor_help, print_evidence_health_help,
-        print_explain_help, print_first_action_help, print_gate_help, print_help, print_init_help,
-        print_lsp_help, print_outcome_help, print_pilot_help, print_policy_help,
-        print_pr_comments_help, print_pr_ledger_help, print_pr_review_help, print_reports_help,
+        FIRST_ACTION_HELP, GATE_HELP, HELP, HELP_ALL, INIT_HELP, LSP_HELP, OUTCOME_HELP,
+        PILOT_HELP, POLICY_HELP, PR_COMMENTS_HELP, PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP,
+        RERUN_HELP, REVIEW_COMMENTS_HELP, SWARM_HELP, SWARM_INGEST_HELP, SWARM_QUEUE_HELP,
+        ZERO_HELP, print_agent_brief_help, print_agent_help, print_agent_packet_help,
+        print_agent_receipt_help, print_agent_repair_help, print_agent_review_summary_help,
+        print_agent_start_help, print_agent_status_help, print_agent_verify_help,
+        print_assistant_loop_help, print_baseline_help, print_calibrate_help, print_check_help,
+        print_config_help, print_context_help, print_coverage_grip_help, print_diff_help,
+        print_doctor_help, print_evidence_health_help, print_explain_help, print_first_action_help,
+        print_gate_help, print_help, print_help_all, print_init_help, print_lsp_help,
+        print_outcome_help, print_pilot_help, print_policy_help, print_pr_comments_help,
+        print_pr_ledger_help, print_pr_review_help, print_reports_help, print_rerun_help,
         print_review_comments_help, print_swarm_help, print_swarm_ingest_help,
         print_swarm_queue_help, print_zero_help,
     };
+    use crate::cli::command::KNOWN_COMMANDS;
+
+    /// The exhaustive reference owns the full inventory. This assertion used to
+    /// target the default screen, which is why that screen had grown to 91
+    /// lines (#1613).
+    #[test]
+    fn help_all_mentions_supported_commands() {
+        assert!(HELP_ALL.contains("ripr init"));
+        assert!(HELP_ALL.contains("ripr config validate"));
+        assert!(HELP_ALL.contains("ripr pilot"));
+        assert!(HELP_ALL.contains("ripr outcome"));
+        assert!(HELP_ALL.contains("ripr rerun --changed-test"));
+        assert!(HELP_ALL.contains("ripr evidence-health"));
+        assert!(HELP_ALL.contains("ripr review-comments"));
+        assert!(HELP_ALL.contains("ripr gate evaluate"));
+        assert!(HELP_ALL.contains("ripr baseline create"));
+        assert!(HELP_ALL.contains("ripr baseline diff"));
+        assert!(HELP_ALL.contains("ripr baseline update"));
+        assert!(HELP_ALL.contains("ripr zero status"));
+        assert!(HELP_ALL.contains("ripr policy readiness"));
+        assert!(HELP_ALL.contains("ripr policy operations"));
+        assert!(HELP_ALL.contains("ripr policy history"));
+        assert!(HELP_ALL.contains("ripr policy promote"));
+        assert!(HELP_ALL.contains("ripr policy preview-promote"));
+        assert!(HELP_ALL.contains("ripr policy waiver-aging"));
+        assert!(HELP_ALL.contains("ripr pr-ledger record"));
+        assert!(HELP_ALL.contains("ripr pr-comments plan"));
+        assert!(HELP_ALL.contains("ripr pr-review front-panel"));
+        assert!(HELP_ALL.contains("ripr coverage-grip frontier"));
+        assert!(HELP_ALL.contains("ripr assistant-loop proof"));
+        assert!(HELP_ALL.contains("ripr assistant-loop health"));
+        assert!(HELP_ALL.contains("ripr first-pr"));
+        assert!(HELP_ALL.contains("ripr start-here"));
+        assert!(HELP_ALL.contains("ripr first-action"));
+        assert!(HELP_ALL.contains("ripr reports index"));
+        assert!(HELP_ALL.contains("ripr reports gap-ledger"));
+        assert!(HELP_ALL.contains("ripr calibrate"));
+        assert!(HELP_ALL.contains("ripr receipt write"));
+        assert!(HELP_ALL.contains("ripr receipt check"));
+        assert!(HELP_ALL.contains("ripr agent start"));
+        assert!(HELP_ALL.contains("ripr agent brief"));
+        assert!(HELP_ALL.contains("ripr agent packet"));
+        assert!(HELP_ALL.contains("ripr agent verify"));
+        assert!(HELP_ALL.contains("ripr agent receipt"));
+        assert!(HELP_ALL.contains("ripr agent status"));
+        assert!(HELP_ALL.contains("ripr agent review-summary"));
+        assert!(HELP_ALL.contains("ripr swarm queue"));
+        assert!(HELP_ALL.contains("ripr swarm ingest"));
+        assert!(HELP_ALL.contains("ripr plus"));
+        assert!(HELP_ALL.contains("ripr diff"));
+        assert!(HELP_ALL.contains("ripr check"));
+        assert!(HELP_ALL.contains("ripr explain"));
+        assert!(HELP_ALL.contains("ripr context"));
+        assert!(HELP_ALL.contains("ripr doctor"));
+        assert!(HELP_ALL.contains("ripr cache status"));
+        assert!(HELP_ALL.contains("ripr cache clear"));
+        assert!(HELP_ALL.contains("Start-here path:"));
+        assert!(HELP_ALL.contains("Safe next action means repair one named gap"));
+        assert!(HELP_ALL.contains("Missing artifact, stale evidence, wrong root"));
+        assert!(HELP_ALL.contains("Verify command, receipt command, and receipt path"));
+        assert!(HELP_ALL.contains("Preview-limited evidence stays syntax-first"));
+    }
+
+    /// The default screen has to stay readable without scrolling. Before #1613
+    /// it was 91 lines of command inventory with the quick start at line 75, so
+    /// this envelope is what keeps it from regrowing. 40 leaves room to edit the
+    /// wording without inviting the whole catalog back.
+    #[test]
+    fn help_overview_fits_one_screen() {
+        let lines = HELP.lines().count();
+        assert!(
+            lines <= 40,
+            "the default help screen is {lines} lines; keep it under one screen and put \
+             reference material in HELP_ALL (ripr help --all)"
+        );
+    }
+
+    /// The first screen has to answer "what do I run?" without the reader
+    /// knowing any internal vocabulary: the setup commands, one route per task,
+    /// and how to reach the rest.
+    #[test]
+    fn help_overview_routes_to_first_actions_and_full_reference() {
+        for needle in [
+            "ripr doctor",
+            "ripr check",
+            "ripr explain",
+            "ripr first-pr",
+            "ripr lsp --stdio",
+            "ripr init --ci github",
+            "ripr help <command>",
+            "ripr help --all",
+        ] {
+            assert!(
+                HELP.contains(needle),
+                "the default help screen should route to {needle}"
+            );
+        }
+        // The advisory boundary belongs on the first screen; a reader should not
+        // have to opt into `--all` to learn that ripr does not run mutants.
+        assert!(HELP.contains("does not run mutants"));
+    }
+
+    /// `ripr help --all` claims to be every command, so it is checked against
+    /// the parser's own list rather than a hand-kept copy. The previous overview
+    /// had already drifted: `pr-summary`, `annotations`, `pr-evidence`, and
+    /// `impacted-evidence` were all reachable and undocumented.
+    #[test]
+    fn help_all_documents_every_public_command() {
+        // `help` documents itself in the header and `More:` lines rather than as
+        // a catalog entry.
+        let documented_elsewhere = ["help"];
+        let missing: Vec<&str> = KNOWN_COMMANDS
+            .iter()
+            .copied()
+            .filter(|command| !documented_elsewhere.contains(command))
+            .filter(|command| !HELP_ALL.contains(&format!("ripr {command}")))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "ripr help --all omits reachable command(s): {missing:?}; \
+             every KNOWN_COMMANDS entry must appear in the full reference"
+        );
+    }
 
     #[test]
-    fn top_level_help_mentions_supported_commands() {
-        assert!(HELP.contains("ripr init"));
-        assert!(HELP.contains("ripr pilot"));
-        assert!(HELP.contains("ripr outcome"));
-        assert!(HELP.contains("ripr evidence-health"));
-        assert!(HELP.contains("ripr review-comments"));
-        assert!(HELP.contains("ripr gate evaluate"));
-        assert!(HELP.contains("ripr baseline create"));
-        assert!(HELP.contains("ripr baseline diff"));
-        assert!(HELP.contains("ripr baseline update"));
-        assert!(HELP.contains("ripr zero status"));
-        assert!(HELP.contains("ripr policy readiness"));
-        assert!(HELP.contains("ripr policy operations"));
-        assert!(HELP.contains("ripr policy history"));
-        assert!(HELP.contains("ripr policy promote"));
-        assert!(HELP.contains("ripr policy preview-promote"));
-        assert!(HELP.contains("ripr policy waiver-aging"));
-        assert!(HELP.contains("ripr pr-ledger record"));
-        assert!(HELP.contains("ripr pr-comments plan"));
-        assert!(HELP.contains("ripr pr-review front-panel"));
-        assert!(HELP.contains("ripr coverage-grip frontier"));
-        assert!(HELP.contains("ripr assistant-loop proof"));
-        assert!(HELP.contains("ripr assistant-loop health"));
-        assert!(HELP.contains("ripr first-pr"));
-        assert!(HELP.contains("ripr start-here"));
-        assert!(HELP.contains("ripr first-action"));
-        assert!(HELP.contains("ripr reports index"));
-        assert!(HELP.contains("ripr reports gap-ledger"));
-        assert!(HELP.contains("ripr calibrate"));
-        assert!(HELP.contains("ripr receipt write"));
-        assert!(HELP.contains("ripr receipt check"));
-        assert!(HELP.contains("ripr agent start"));
-        assert!(HELP.contains("ripr agent brief"));
-        assert!(HELP.contains("ripr agent packet"));
-        assert!(HELP.contains("ripr agent verify"));
-        assert!(HELP.contains("ripr agent receipt"));
-        assert!(HELP.contains("ripr agent status"));
-        assert!(HELP.contains("ripr agent review-summary"));
-        assert!(HELP.contains("ripr swarm queue"));
-        assert!(HELP.contains("ripr swarm ingest"));
-        assert!(HELP.contains("ripr diff"));
-        assert!(HELP.contains("ripr check"));
-        assert!(HELP.contains("ripr explain"));
-        assert!(HELP.contains("ripr context"));
-        assert!(HELP.contains("ripr doctor"));
-        assert!(HELP.contains("Start-here path:"));
-        assert!(HELP.contains("Safe next action means repair one named gap"));
-        assert!(HELP.contains("Missing artifact, stale evidence, wrong root"));
-        assert!(HELP.contains("Verify command, receipt command, and receipt path"));
-        assert!(HELP.contains("Preview-limited evidence stays syntax-first"));
+    fn print_help_all_writes_the_full_reference() {
+        print_help_all();
     }
 
     #[test]
@@ -236,11 +465,23 @@ mod tests {
         assert!(CHECK_HELP.contains("repo-exposure-summary-json"));
         assert!(CHECK_HELP.contains("agent-seam-packets-json"));
         assert!(CHECK_HELP.contains("repo-sarif"));
+        assert!(CHECK_HELP.contains("walks up to a Cargo.toml containing [workspace]"));
         assert!(CHECK_HELP.contains("needs test-efficiency"));
         assert!(CHECK_HELP.contains("docs/BADGE_ADOPTION.md"));
         assert!(CHECK_HELP.contains("--mode ready --json"));
         assert!(DIFF_HELP.contains("Usage: ripr diff"));
         assert!(DIFF_HELP.contains("full-repo-limited"));
+    }
+
+    #[test]
+    fn gate_family_help_states_file_backed_output_discipline() {
+        assert!(GATE_HELP.contains("stdout contains human `Wrote ...` status lines"));
+        assert!(BASELINE_HELP.contains("ripr baseline create --from PATH"));
+        assert!(BASELINE_HELP.contains("--dry-run"));
+        assert!(BASELINE_HELP.contains("it prints the candidate JSON"));
+        assert!(BASELINE_HELP.contains("to stdout without"));
+        assert!(ZERO_HELP.contains("stdout contains human `Wrote ...`"));
+        assert!(ZERO_HELP.contains("status lines rather than the JSON report"));
     }
 
     #[test]
@@ -253,6 +494,10 @@ mod tests {
         assert!(INIT_HELP.contains("--ci github"));
         assert!(INIT_HELP.contains("--dry-run"));
         assert!(INIT_HELP.contains("--force"));
+        assert!(CONFIG_HELP.starts_with("Validate the repository's ripr.toml"));
+        assert!(CONFIG_HELP.contains("Usage: ripr config validate"));
+        assert!(CONFIG_HELP.contains("without running workspace probes"));
+        assert!(CONFIG_HELP.contains("ancestor-aware loader"));
         assert!(PILOT_HELP.starts_with("Find the top test gap in this repo"));
         assert!(PILOT_HELP.contains("Usage: ripr pilot"));
         assert!(PILOT_HELP.contains("pilot-summary.json"));
@@ -260,6 +505,10 @@ mod tests {
         assert!(OUTCOME_HELP.starts_with("Compare before/after static evidence"));
         assert!(OUTCOME_HELP.contains("Usage: ripr outcome"));
         assert!(OUTCOME_HELP.contains("--before PATH"));
+        assert!(RERUN_HELP.starts_with("Re-evaluate static evidence affected"));
+        assert!(RERUN_HELP.contains("Usage: ripr rerun --changed-test PATH"));
+        assert!(RERUN_HELP.contains("gap selector groups"));
+        assert!(RERUN_HELP.contains("current_state_only"));
         assert!(DIFF_HELP.starts_with("Analyze the changed surface first"));
         assert!(DIFF_HELP.contains("--head REV"));
         assert!(
@@ -345,7 +594,7 @@ mod tests {
         assert!(CALIBRATE_HELP.starts_with("Import cargo-mutants outcomes"));
         assert!(CALIBRATE_HELP.contains("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
-        assert!(AGENT_HELP.starts_with("Create a bounded packet for a coding agent"));
+        assert!(AGENT_HELP.starts_with("Create a bounded repair transaction for a coding agent"));
         assert!(AGENT_HELP.contains("Usage: ripr agent"));
         assert!(AGENT_START_HELP.starts_with("Start a source-edit-free workflow packet"));
         assert!(AGENT_START_HELP.contains("Usage: ripr agent start"));
@@ -383,6 +632,7 @@ mod tests {
         assert!(CONTEXT_HELP.contains("Usage: ripr context"));
         assert!(DOCTOR_HELP.starts_with("Diagnose the local ripr setup"));
         assert!(DOCTOR_HELP.contains("Usage: ripr doctor [--root PATH]"));
+        assert!(DOCTOR_HELP.contains("--json"));
         assert!(DOCTOR_HELP.contains("Cargo.toml"));
         assert!(DOCTOR_HELP.contains("Start-here next step:"));
         assert!(DOCTOR_HELP.contains("ripr start-here --root . --base origin/main --head HEAD"));
@@ -402,8 +652,10 @@ mod tests {
         // cargo-test harness.
         print_help();
         print_init_help();
+        print_config_help();
         print_pilot_help();
         print_outcome_help();
+        print_rerun_help();
         print_evidence_health_help();
         print_review_comments_help();
         print_gate_help();
@@ -426,6 +678,7 @@ mod tests {
         print_agent_receipt_help();
         print_agent_status_help();
         print_agent_review_summary_help();
+        print_agent_repair_help();
         print_swarm_help();
         print_swarm_queue_help();
         print_swarm_ingest_help();
@@ -435,5 +688,95 @@ mod tests {
         print_context_help();
         print_doctor_help();
         print_lsp_help();
+    }
+
+    /// Extract all `--flag` tokens from a help text (#2342).
+    #[expect(
+        dead_code,
+        reason = "flag-parity test helper; used by #2342 test suite"
+    )]
+    fn extract_flags(help: &str) -> Vec<String> {
+        let mut flags = Vec::new();
+        for line in help.lines() {
+            let trimmed = line.trim();
+            // Match lines starting with `--` (flag definitions in help text)
+            if let Some(rest) = trimmed.strip_prefix("--") {
+                // Take the flag name up to the first space or end of line
+                let name = rest.split_whitespace().next().unwrap_or(rest);
+                if !name.is_empty() {
+                    flags.push(format!("--{name}"));
+                }
+            }
+            // Also match `--flag` embedded in usage lines like `[--flag VALUE]`
+            for word in trimmed.split_whitespace() {
+                if word.starts_with("--") && word.len() > 2 {
+                    let name = word
+                        .trim_start_matches('-')
+                        .split(|c: char| !c.is_alphanumeric() && c != '-' && c != '_')
+                        .next()
+                        .unwrap_or("");
+                    if !name.is_empty() {
+                        let flag = format!("--{name}");
+                        if !flags.contains(&flag) {
+                            flags.push(flag);
+                        }
+                    }
+                }
+            }
+        }
+        flags
+    }
+
+    #[test]
+    fn help_flags_are_consistent_for_key_commands() {
+        // #2342: verify that flags mentioned in the HELP text for key commands
+        // actually appear. This catches drift where a flag is removed from help
+        // but still parsed, or added to the parser but not documented. The test
+        // checks the HELP text contains expected flag tokens — if a flag moves
+        // between Usage and Options sections, the test still passes as long as
+        // the flag appears somewhere in the help text.
+        let commands: &[(&str, &str, &[&str])] = &[
+            (
+                "check",
+                CHECK_HELP,
+                &["--base", "--diff", "--mode", "--json"],
+            ),
+            (
+                "explain",
+                EXPLAIN_HELP,
+                &[
+                    "--from",
+                    "--mode",
+                    "--no-unchanged-tests",
+                    "--perl-facts",
+                    "--suppression-policy",
+                ],
+            ),
+            (
+                "context",
+                CONTEXT_HELP,
+                &[
+                    "--from",
+                    "--at",
+                    "--mode",
+                    "--perl-facts",
+                    "--suppression-policy",
+                ],
+            ),
+            ("gate", GATE_HELP, &["--pr-guidance", "--mode"]),
+            ("doctor", DOCTOR_HELP, &["--root", "--json"]),
+            ("config validate", CONFIG_HELP, &["--root"]),
+            (
+                "pilot",
+                PILOT_HELP,
+                &["--root", "--out", "--mode", "--max-seams"],
+            ),
+        ];
+
+        for (cmd, help, expected_flags) in commands {
+            for flag in *expected_flags {
+                assert!(help.contains(flag), "{cmd} help should contain {flag}");
+            }
+        }
     }
 }

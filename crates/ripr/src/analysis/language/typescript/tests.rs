@@ -718,8 +718,8 @@ fn classify_change_projects_trusted_related_bun_array_buffer_facts_as_advisory_e
         r#"
 test("Blob copies ArrayBuffer-backed bytes", async () => {
   const shared = new SharedArrayBuffer(4);
-  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
-  const view = new Uint8Array(growable);
+  const fixed = new ArrayBuffer(4);
+  const view = new Uint8Array(fixed);
   const blob = new Blob([view, new Uint8Array(shared)]);
   hydrateBlob(blob);
   const copied = new Uint8Array(await blob.arrayBuffer());
@@ -757,10 +757,6 @@ test("Blob copies ArrayBuffer-backed bytes", async () => {
     );
     assert_evidence_contains(
         &finding,
-        "typescript_bun_ub_advisory_fact: resizable_array_buffer",
-    );
-    assert_evidence_contains(
-        &finding,
         "typescript_bun_ub_advisory_fact: view_backed_blob_input",
     );
     assert_evidence_contains(
@@ -772,9 +768,10 @@ test("Blob copies ArrayBuffer-backed bytes", async () => {
         "typescript_bun_ub_bridge_hint: confidence=configured_hint",
     );
     assert_evidence_contains(&finding, "rust_owner=Blob::from_js_without_defer_gc");
+    assert_evidence_contains(&finding, "rust_owner=copy_to_unshared");
     assert_evidence_contains(
         &finding,
-        "typescript_bun_ub_bridge_verdict: ts_discriminated missing_discriminators=none action=no_missing_bridge_discriminator",
+        "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation",
     );
     assert_evidence_contains(
         &finding,
@@ -787,6 +784,20 @@ test("Blob copies ArrayBuffer-backed bytes", async () => {
             .all(|entry| !entry.contains("max_byte_length_mention_only")),
         "maxByteLength mention-only must not be emitted for a Blob stable-byte observer: {:?}",
         finding.evidence
+    );
+    let placement_evidence: Vec<_> = finding
+        .evidence
+        .iter()
+        .filter(|entry| entry.starts_with("typescript_bun_ub_test_placement:"))
+        .collect();
+    assert_eq!(
+        placement_evidence.len(),
+        1,
+        "expected Blob-only placement evidence"
+    );
+    assert!(
+        placement_evidence[0].contains("missing discriminator is resizable ArrayBuffer"),
+        "expected the sole placement record to belong to the Blob profile: {placement_evidence:?}"
     );
     Ok(())
 }
@@ -1182,6 +1193,32 @@ test("blob copies shared and resizable buffers through copy path", async () => {
 }
 
 #[test]
+fn related_copy_to_unshared_test_emits_configured_bridge_hint() -> Result<(), String> {
+    let source = r#"
+test("blob copies shared and resizable buffers through copy path", async () => {
+  const shared = new SharedArrayBuffer(4);
+  const growable = new ArrayBuffer(4, { maxByteLength: 8 });
+  const blob = new Blob([new Uint8Array(shared), new Uint8Array(growable)]);
+  const copied = new Uint8Array(await blob.arrayBuffer());
+  expect([...copied]).toEqual([0, 0, 0, 0]);
+});
+"#;
+    let tests = extract_tests(Path::new(BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE), source);
+    let facts = tests
+        .iter()
+        .flat_map(bun_array_buffer_facts_for_test)
+        .collect::<Vec<_>>();
+
+    let hints = collect_related_bun_bridge_hints(&facts);
+    assert!(hints.iter().any(|hint| {
+        hint.profile_kind == TypeScriptBunBridgeProfileKind::ArrayBufferCopyToUnshared
+            && hint.rust_owner == BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_RUST_OWNER
+            && hint.ts_test_file == Path::new(BUN_BLOB_ARRAY_BUFFER_TS_TEST_FILE)
+    }));
+    Ok(())
+}
+
+#[test]
 fn changed_rust_copy_to_unshared_unknown_bridge_stays_limitation() -> Result<(), String> {
     let source = r#"
 test("blob copies shared and resizable buffers through copy path", async () => {
@@ -1370,6 +1407,21 @@ fn is_test_file_matches_test_and_spec_suffixes() {
     assert!(is_test_file(Path::new("legacy.test.js")));
     assert!(!is_test_file(Path::new("src/lib.ts")));
     assert!(!is_test_file(Path::new("README.md")));
+}
+
+#[test]
+fn is_test_file_matches_test_directory_convention() {
+    // AVA / Mocha / node:test: feature-named source under test/ or tests/.
+    assert!(is_test_file(Path::new("test/body-size.ts")));
+    assert!(is_test_file(Path::new("tests/utils.ts")));
+    assert!(is_test_file(Path::new("src/__tests__/Header.tsx")));
+    assert!(is_test_file(Path::new("packages/core/test/index.mjs")));
+    // Component match, not substring — these are NOT tests.
+    assert!(!is_test_file(Path::new("src/latest/feature.ts")));
+    assert!(!is_test_file(Path::new("test-utils/helper.ts")));
+    assert!(!is_test_file(Path::new("src/contest.ts")));
+    // Non-TS/JS files under test/ are not source test files.
+    assert!(!is_test_file(Path::new("test/fixtures/data.json")));
 }
 
 #[test]
@@ -1717,6 +1769,240 @@ test("mocked cart total stays ambiguous", () => {
     let related = find_related_tests(&owner, &tests, None, &ReExportIndex::empty(), None);
 
     assert!(related.is_empty());
+}
+
+#[test]
+fn find_related_tests_keeps_mocked_function_owner_call_at_proximity() {
+    // issue #2269: a test that mocks the changed Function owner's OWN module
+    // must NOT be credited `DirectOwnerCall` — the owner call executes the
+    // mock, not the changed code. Only the advisory same-file-stem proximity
+    // heuristic may link the test.
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/owners.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let tests = extract_tests(
+        Path::new("tests/owners.test.ts"),
+        r#"import { applyDiscount } from "../src/owners";
+
+vi.mock("../src/owners");
+
+test("mocked applyDiscount stays ambiguous", () => {
+    const result = applyDiscount(100, 100);
+    expect(result).toBe(90);
+});
+"#,
+    );
+
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
+
+    assert!(
+        candidates
+            .iter()
+            .all(|candidate| candidate.relation.is_uncertain()),
+        "mocked owner module must not credit any oracle-using relation: {candidates:?}"
+    );
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(
+        candidates[0].relation,
+        TypeScriptRelationKind::SameFileProximity
+    );
+}
+
+#[test]
+fn find_related_tests_keeps_mocked_arrow_function_owner_call_at_proximity() {
+    // issue #2269 (ArrowFunction arm): the owner-module mock guard must cover
+    // both Function and ArrowFunction owner kinds — an arrow-function owner
+    // call under its own module's mock executes the mock, not the changed
+    // code, so only the advisory proximity heuristic may link the test.
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/owners.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::ArrowFunction,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let tests = extract_tests(
+        Path::new("tests/owners.test.ts"),
+        r#"import { applyDiscount } from "../src/owners";
+
+vi.mock("../src/owners");
+
+test("mocked arrow applyDiscount stays ambiguous", () => {
+    const result = applyDiscount(100, 100);
+    expect(result).toBe(90);
+});
+"#,
+    );
+
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
+
+    assert!(
+        candidates
+            .iter()
+            .all(|candidate| candidate.relation.is_uncertain()),
+        "mocked owner module must not credit any oracle-using relation: {candidates:?}"
+    );
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(
+        candidates[0].relation,
+        TypeScriptRelationKind::SameFileProximity
+    );
+}
+
+#[test]
+fn find_related_tests_keeps_mocked_namespace_import_owner_call_at_proximity() {
+    // issue #2269 (ImportedOwnerCall arm): the #2269 guard sits above BOTH the
+    // `DirectOwnerCall` and the `ImportedOwnerCall` arms in
+    // `owner_call_relation`. A namespace-import member call
+    // (`discount.applyDiscount(...)`) cannot hit `DirectOwnerCall` (the `.`
+    // receiver breaks the call boundary) and would credit `ImportedOwnerCall`
+    // (`uses_oracle`) if unguarded — see the unmocked positive control
+    // `find_related_tests_namespace_import_unchanged_imported_owner_call`.
+    // Under an owner-module mock it must fall back to the advisory
+    // same-file-stem proximity link only.
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/owners.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let tests = extract_tests(
+        Path::new("tests/owners.test.ts"),
+        r#"import * as discount from "../src/owners";
+
+jest.mock("../src/owners");
+
+test("mocked namespace applyDiscount stays ambiguous", () => {
+    const result = discount.applyDiscount(100, 100);
+    expect(result).toBe(90);
+});
+"#,
+    );
+
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
+
+    assert!(
+        candidates
+            .iter()
+            .all(|candidate| candidate.relation.is_uncertain()),
+        "mocked owner module must not credit any oracle-using relation: {candidates:?}"
+    );
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(
+        candidates[0].relation,
+        TypeScriptRelationKind::SameFileProximity
+    );
+}
+
+#[test]
+fn find_related_tests_credits_unmocked_function_owner_call() {
+    // Positive control for the #2269 guard: the same scenario WITHOUT the
+    // owner-module mock keeps the `DirectOwnerCall` credit.
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/owners.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let tests = extract_tests(
+        Path::new("tests/owners.test.ts"),
+        r#"import { applyDiscount } from "../src/owners";
+
+test("unmocked applyDiscount observes the owner", () => {
+    const result = applyDiscount(100, 100);
+    expect(result).toBe(90);
+});
+"#,
+    );
+
+    let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(
+        candidates[0].relation,
+        TypeScriptRelationKind::DirectOwnerCall
+    );
+}
+
+#[test]
+fn classify_change_stays_weakly_exposed_when_test_mocks_owner_module() -> Result<(), String> {
+    // issue #2269: mocked owner module + strong exact-value oracle must not
+    // classify `exposed`; the `mocked_module` static limit stays disclosed.
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/lib.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let tests = extract_tests(
+        Path::new("tests/lib.test.ts"),
+        r#"import { applyDiscount } from "../src/lib";
+
+jest.mock("../src/lib");
+
+test("mocked applyDiscount stays ambiguous", () => {
+    const result = applyDiscount(100, 100);
+    expect(result).toBe(90);
+});
+"#,
+    );
+    let finding = classify_change(
+        Path::new("src/lib.ts"),
+        2,
+        "    if (amount >= threshold) {",
+        &[owner],
+        &tests,
+        None,
+        &ReExportIndex::empty(),
+        None,
+    )
+    .ok_or_else(|| "expected a finding for the changed line".to_string())?;
+    assert!(
+        matches!(finding.class, ExposureClass::WeaklyExposed),
+        "expected weakly_exposed, got {:?}",
+        finding.class
+    );
+    assert_eq!(
+        finding.static_limit_kind,
+        Some(StaticLimitKind::MockedModule)
+    );
+    // Fail-closed actionability contract (review round, #2269): the
+    // classify-level `Finding` carries no `repair_packet_ready` field — the
+    // preview actionability evidence is the surface the struct does carry.
+    // Pin the static-limitation gap and the absence of any packet credit; the
+    // output-layer `repair packet ready: false` is pinned by the
+    // `typescript_adversarial_owner_module_mock` golden and the corpus gate's
+    // `must_not_emit_repair_packet` assertion.
+    assert_evidence_contains(&finding, "gap_state: static_limitation");
+    assert_evidence_contains(&finding, "actionability_category: mocked_module");
+    assert_evidence_contains(
+        &finding,
+        "why_not_actionable: static limit `mocked_module` prevents bounded TypeScript repair guidance",
+    );
+    assert_evidence_lacks(&finding, "repair_packet_ready: true");
+    Ok(())
 }
 
 #[test]
@@ -3652,6 +3938,66 @@ fn classify_change_returns_exposed_when_related_test_has_strong_oracle() -> Resu
 }
 
 #[test]
+fn classify_change_exposed_t_assertion_uses_execution_context_label() -> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/lib.ts"),
+        start_line: 1,
+        end_line: 5,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        imports: Vec::new(),
+    };
+    let test = TypeScriptTest {
+        name: "alpha".to_string(),
+        local_name: "alpha".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/lib.test.ts"),
+        line: 1,
+        body_text: "const result = applyDiscount(50, 100); t.is(result, 90);".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "is".to_string(),
+            argument_count: 2,
+            line: 2,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            observed_expression: Some("result".to_string()),
+            expected_value_or_variant: Some("90".to_string()),
+            has_dynamic_matcher_arg: false,
+            oracle_confidence: OracleConfidence::High,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    let finding = classify_change(
+        Path::new("src/lib.ts"),
+        2,
+        "    if (amount >= threshold) {",
+        &[owner],
+        &[test],
+        None,
+        &ReExportIndex::empty(),
+        None,
+    )
+    .ok_or_else(|| "expected a finding for the changed line".to_string())?;
+    assert!(matches!(finding.class, ExposureClass::Exposed));
+    assert_eq!(finding.related_tests.len(), 1);
+    assert_eq!(
+        finding.related_tests[0].oracle.as_deref(),
+        Some("t.is(...)")
+    );
+    assert_evidence_contains(&finding, "gap_state: already_observed");
+    assert_evidence_contains(
+        &finding,
+        "why_not_actionable: related TypeScript `t.*` evidence already has a strong exact oracle",
+    );
+    Ok(())
+}
+
+#[test]
 fn classify_change_returns_no_static_path_when_no_related_test() -> Result<(), String> {
     let owner = TypeScriptOwner {
         name: "applyDiscount".to_string(),
@@ -3718,6 +4064,8 @@ fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), 
         mode: crate::analysis::AnalysisMode::Draft,
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![
@@ -3735,6 +4083,40 @@ fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), 
 }
 
 #[test]
+fn analyze_diff_splits_changed_files_into_typescript_and_javascript() -> Result<(), String> {
+    // #2103 review: this adapter covers .js/.jsx as javascript; the summary
+    // must not attribute JS files to typescript.
+    let adapter = TypeScriptAdapter;
+    let options = AnalysisOptions {
+        root: PathBuf::from("/nonexistent_workspace"),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
+    };
+    let policy = OraclePolicy::default();
+    let changed_files = vec![
+        changed("src/index.ts"),
+        changed("src/app.js"),
+        changed("src/Header.jsx"),
+        changed("src/lib.rs"),
+    ];
+    let result = adapter.analyze_diff(&options, &policy, &changed_files)?;
+    assert_eq!(result.changed_files, 3);
+    assert_eq!(
+        result.changed_files_by_language,
+        vec![
+            (crate::analysis::language::LanguageId::TypeScript, 1),
+            (crate::analysis::language::LanguageId::JavaScript, 2),
+        ]
+    );
+    Ok(())
+}
+
+#[test]
 fn analyze_repo_returns_empty_scaffold() -> Result<(), String> {
     let adapter = TypeScriptAdapter;
     let options = AnalysisOptions {
@@ -3744,6 +4126,8 @@ fn analyze_repo_returns_empty_scaffold() -> Result<(), String> {
         mode: crate::analysis::AnalysisMode::Deep,
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
     };
     let policy = OraclePolicy::default();
     let result = adapter.analyze_repo(&options, &policy)?;
@@ -4712,6 +5096,55 @@ fn named_limitation_custom_matcher_not_emitted_for_recognised_matcher() -> Resul
     Ok(())
 }
 
+/// `typescript_oracle_helper_gated` fires when an oracle-eligible related test
+/// wraps the changed owner call in an assertion-shaped helper, but the
+/// syntax-first extractor finds no direct supported assertion to credit.
+#[test]
+fn named_limitation_oracle_helper_gated_emitted_for_assertion_helper_wrapping_owner_call()
+-> Result<(), String> {
+    let owner = test_owner("computePrice", "src/pricing.ts");
+    let tests = extract_tests(
+        Path::new("tests/pricing.test.ts"),
+        r#"import { computePrice } from "../src/pricing";
+test("price is checked through helper", () => {
+  assertPriceBoundary(computePrice(10, 3), 20);
+});
+"#,
+    );
+    let finding = classify_change(
+        Path::new("src/pricing.ts"),
+        2,
+        "    if (base >= 0) {",
+        &[owner],
+        &tests,
+        None,
+        &ReExportIndex::empty(),
+        None,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_oracle_helper_gated",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_sample: typescript_oracle_helper_gated at tests/pricing.test.ts:3",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_why: typescript_oracle_helper_gated — the test calls assertion helper `assertPriceBoundary(...)` around owner `computePrice`",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_repair_route: typescript_oracle_helper_gated → analysis/typescript-oracle-helper-resolution",
+    );
+    assert_eq!(finding.static_limit_kind, None);
+    assert!(!matches!(finding.class, ExposureClass::Exposed));
+    assert_evidence_lacks(&finding, "repair_packet_ready: true");
+    Ok(())
+}
+
 /// Heuristic-only (name/proximity) related tests must NOT trigger oracle-based
 /// named limitations, because heuristic relations are not oracle-eligible.
 #[test]
@@ -4779,7 +5212,8 @@ fn oracle_metadata_emitted_for_literal_expected_value() {
     let file = PathBuf::from("tests/clamp.test.ts");
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions = collect_expect_assertions_in_statements(&parse_result.program.body, source);
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
     assert_eq!(assertions.len(), 1, "should extract one assertion");
     let assertion = &assertions[0];
     assert_eq!(assertion.matcher, "toBe");
@@ -4823,7 +5257,8 @@ fn oracle_metadata_has_dynamic_matcher_arg_for_variable_expected() {
     let source = "expect(clamp(-5, 0, 10)).toBe(expected);";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions = collect_expect_assertions_in_statements(&parse_result.program.body, source);
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
     assert_eq!(assertions.len(), 1);
     let assertion = &assertions[0];
     assert_eq!(assertion.matcher, "toBe");
@@ -4843,7 +5278,8 @@ fn oracle_metadata_has_dynamic_matcher_arg_for_call_expression() {
     let source = "expect(getValue()).toBe(computeExpected(0));";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions = collect_expect_assertions_in_statements(&parse_result.program.body, source);
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
     assert_eq!(assertions.len(), 1);
     let assertion = &assertions[0];
     assert!(assertion.has_dynamic_matcher_arg);
@@ -4856,13 +5292,243 @@ fn oracle_metadata_no_dynamic_flag_for_no_arg_matchers() {
     let source = "expect(result).toBeTruthy();\nexpect(fn).toThrow();";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions = collect_expect_assertions_in_statements(&parse_result.program.body, source);
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
     for assertion in &assertions {
         assert!(
             !assertion.has_dynamic_matcher_arg,
             "no-arg matchers should not set has_dynamic_matcher_arg: {assertion:?}"
         );
     }
+}
+
+/// AVA `t.is(actual, expected)` is recognized as an exact-value oracle when the
+/// receiver matches the test callback's first parameter. Observed = arg 0
+/// (`actual`), expected = arg 1 literal, mirroring Jest's
+/// `expect(actual).toBe(expected)`.
+#[test]
+fn ava_is_assertion_extracts_exact_value_oracle() {
+    let source = "t.is(score(10, 3), 7);";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    assert_eq!(assertions.len(), 1, "should extract one AVA assertion");
+    let assertion = &assertions[0];
+    assert_eq!(assertion.matcher, "is");
+    assert_eq!(assertion.oracle_kind, OracleKind::ExactValue);
+    assert_eq!(assertion.oracle_strength, OracleStrength::Strong);
+    assert_eq!(
+        assertion.observed_expression.as_deref(),
+        Some("score(10, 3)")
+    );
+    assert_eq!(assertion.expected_value_or_variant.as_deref(), Some("7"));
+    assert!(!assertion.has_dynamic_matcher_arg);
+}
+
+/// AVA `t.not(actual, expected)` reaches the observed value but only proves a
+/// non-equality relation. It must stay weak relational evidence rather than a
+/// strong exact-value oracle.
+#[test]
+fn ava_not_assertion_extracts_relational_oracle() {
+    let source = "t.not(score(10, 3), 8);";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    assert_eq!(assertions.len(), 1, "should extract one AVA assertion");
+    let assertion = &assertions[0];
+    assert_eq!(assertion.matcher, "not");
+    assert_eq!(assertion.oracle_kind, OracleKind::RelationalCheck);
+    assert_eq!(assertion.oracle_strength, OracleStrength::Weak);
+    assert_eq!(
+        assertion.observed_expression.as_deref(),
+        Some("score(10, 3)")
+    );
+    assert_eq!(assertion.expected_value_or_variant.as_deref(), Some("8"));
+    assert_eq!(assertion_oracle_text(assertion), "t.not(...)");
+    assert!(!assertion.has_dynamic_matcher_arg);
+}
+
+/// End-to-end: a full AVA `test('name', t => { t.is(...) })` call has its
+/// callback receiver (`t`) extracted and threaded so the inner `t.is(...)` is
+/// credited as an exact-value oracle.
+#[test]
+fn ava_test_call_threads_callback_receiver() {
+    let source = "test('scores the difference', t => { t.is(score(10, 3), 7); });";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let call = parse_result
+        .program
+        .body
+        .iter()
+        .find_map(|stmt| match stmt {
+            Statement::ExpressionStatement(stmt) => match &stmt.expression {
+                Expression::CallExpression(call) => Some(call),
+                _ => None,
+            },
+            _ => None,
+        });
+    assert!(call.is_some(), "expected a test() call expression");
+    let Some(call) = call else { return };
+    let result = test_name_and_assertions_from_call(call, source);
+    assert!(result.is_some(), "should recognize the AVA test call");
+    let Some((name, assertions)) = result else {
+        return;
+    };
+    assert_eq!(name, "scores the difference");
+    assert_eq!(assertions.len(), 1, "AVA assertion should be threaded");
+    assert_eq!(assertions[0].oracle_kind, OracleKind::ExactValue);
+    assert_eq!(assertions[0].oracle_strength, OracleStrength::Strong);
+}
+
+/// Fail-closed: an AVA assertion is only credited when its receiver is the test
+/// callback's parameter. A same-named method on an unrelated object
+/// (`helper.is(...)`) is NOT an AVA assertion.
+#[test]
+fn ava_assertion_requires_matching_receiver() {
+    let source = "helper.is(score(10, 3), 7);";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    assert!(
+        assertions.is_empty(),
+        "wrong receiver must not be credited as an AVA assertion: {assertions:?}"
+    );
+}
+
+/// Fail-closed: an unrecognized method on the AVA receiver yields no oracle (no
+/// assertion), so an unknown discriminator is never over-credited.
+#[test]
+fn ava_unknown_method_not_credited() {
+    let source = "t.frobnicate(score(10, 3), 7);";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    assert!(
+        assertions.is_empty(),
+        "unknown AVA method must not be credited: {assertions:?}"
+    );
+}
+
+/// AVA `t.truthy(...)` is a smoke-only oracle — it reaches but does not pin the
+/// exact changed value, so it must not be promoted to a strong exact oracle.
+#[test]
+fn ava_truthy_is_smoke_only() {
+    let source = "t.truthy(score(10, 3));";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    assert_eq!(assertions.len(), 1);
+    assert_eq!(assertions[0].oracle_kind, OracleKind::SmokeOnly);
+    assert_eq!(assertions[0].oracle_strength, OracleStrength::Smoke);
+}
+
+/// Tape / node:test positive equality aliases use the same receiver-gated path
+/// as AVA: `t.equal(...)`, `t.strictEqual(...)`, and positive deep-equality
+/// forms are exact-value oracles when the receiver matches the test callback
+/// parameter.
+#[test]
+fn tape_equal_aliases_extract_exact_value_oracles() {
+    for method in ["equal", "strictEqual", "deepEqual"] {
+        let source = format!("t.{method}(score(10, 3), 7);");
+        let allocator = Allocator::default();
+        let parse_result = Parser::new(&allocator, &source, SourceType::ts()).parse();
+        let assertions =
+            collect_expect_assertions_in_statements(&parse_result.program.body, &source, Some("t"));
+        assert_eq!(
+            assertions.len(),
+            1,
+            "{method} should extract one receiver-gated assertion"
+        );
+        let assertion = &assertions[0];
+        assert_eq!(assertion.matcher, method);
+        assert_eq!(assertion.oracle_kind, OracleKind::ExactValue);
+        assert_eq!(assertion.oracle_strength, OracleStrength::Strong);
+        assert_eq!(
+            assertion.observed_expression.as_deref(),
+            Some("score(10, 3)")
+        );
+        assert_eq!(assertion.expected_value_or_variant.as_deref(), Some("7"));
+        assert_eq!(assertion_oracle_text(assertion), format!("t.{method}(...)"));
+        assert!(!assertion.has_dynamic_matcher_arg);
+    }
+}
+
+/// Tape / node:test negated equality aliases are not exact-value oracles. They
+/// observe that the value is not equal to another value, so they stay weak
+/// relational evidence.
+#[test]
+fn tape_negated_equal_aliases_extract_relational_oracles() {
+    for method in ["notEqual", "notStrictEqual", "notDeepEqual"] {
+        let source = format!("t.{method}(score(10, 3), 8);");
+        let allocator = Allocator::default();
+        let parse_result = Parser::new(&allocator, &source, SourceType::ts()).parse();
+        let assertions =
+            collect_expect_assertions_in_statements(&parse_result.program.body, &source, Some("t"));
+        assert_eq!(
+            assertions.len(),
+            1,
+            "{method} should extract one receiver-gated assertion"
+        );
+        let assertion = &assertions[0];
+        assert_eq!(assertion.matcher, method);
+        assert_eq!(assertion.oracle_kind, OracleKind::RelationalCheck);
+        assert_eq!(assertion.oracle_strength, OracleStrength::Weak);
+        assert_eq!(
+            assertion.observed_expression.as_deref(),
+            Some("score(10, 3)")
+        );
+        assert_eq!(assertion.expected_value_or_variant.as_deref(), Some("8"));
+        assert_eq!(assertion_oracle_text(assertion), format!("t.{method}(...)"));
+        assert!(!assertion.has_dynamic_matcher_arg);
+    }
+}
+
+/// Tape `t.ok(...)` / `t.notOk(...)` reach the value but do not pin the changed
+/// discriminator, so they remain smoke-only.
+#[test]
+fn tape_ok_aliases_are_smoke_only() {
+    for method in ["ok", "notOk"] {
+        let source = format!("t.{method}(score(10, 3));");
+        let allocator = Allocator::default();
+        let parse_result = Parser::new(&allocator, &source, SourceType::ts()).parse();
+        let assertions =
+            collect_expect_assertions_in_statements(&parse_result.program.body, &source, Some("t"));
+        assert_eq!(
+            assertions.len(),
+            1,
+            "{method} should extract one receiver-gated assertion"
+        );
+        let assertion = &assertions[0];
+        assert_eq!(assertion.matcher, method);
+        assert_eq!(assertion.oracle_kind, OracleKind::SmokeOnly);
+        assert_eq!(assertion.oracle_strength, OracleStrength::Smoke);
+        assert_eq!(
+            assertion.observed_expression.as_deref(),
+            Some("score(10, 3)")
+        );
+        assert!(assertion.expected_value_or_variant.is_none());
+        assert!(!assertion.has_dynamic_matcher_arg);
+    }
+}
+
+/// Without a receiver (Jest/Vitest callbacks take no execution context), AVA
+/// matching is never attempted — `t.is(...)` here is just an unrelated call.
+#[test]
+fn ava_assertion_not_attempted_without_receiver() {
+    let source = "t.is(score(10, 3), 7);";
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
+    let assertions =
+        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
+    assert!(
+        assertions.is_empty(),
+        "no receiver means no AVA assertion: {assertions:?}"
+    );
 }
 
 /// `typescript_dynamic_assertion_unresolved` limitation emitted when a direct
@@ -4910,6 +5576,10 @@ fn named_limitation_dynamic_assertion_emitted_for_dynamic_matcher_arg() -> Resul
         &finding,
         "typescript_limitation: typescript_dynamic_assertion_unresolved",
     );
+    assert_evidence_lacks(
+        &finding,
+        "typescript_limitation: typescript_table_case_unresolved",
+    );
     assert_evidence_contains(
         &finding,
         "typescript_limitation_sample: typescript_dynamic_assertion_unresolved at tests/clamp.test.ts:3",
@@ -4920,6 +5590,66 @@ fn named_limitation_dynamic_assertion_emitted_for_dynamic_matcher_arg() -> Resul
     assert_evidence_contains(&finding, "typescript_oracle_confidence: medium");
     // repair_packet_ready stays false
     assert_evidence_contains(&finding, "repair_route:");
+    Ok(())
+}
+
+/// `typescript_table_case_unresolved` limitation emitted when an oracle-eligible
+/// `test.each` / `it.each` table case uses a row-derived dynamic matcher arg.
+#[test]
+fn named_limitation_table_case_emitted_for_table_dynamic_matcher_arg() -> Result<(), String> {
+    let owner = test_owner("clamp", "src/clamp.ts");
+    let test = TypeScriptTest {
+        name: "clamps table %#".to_string(),
+        local_name: "clamps table %#".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("tests/clamp.test.ts"),
+        line: 1,
+        body_text: "test.each([[ -5, 0 ]])(\"clamps table %#\", (value, expected) => {\nclamp(value, 0, 10);\nexpect(clamp(value, 0, 10)).toBe(expected);\n});".to_string(),
+        assertions: vec![TypeScriptAssertion {
+            matcher: "toBe".to_string(),
+            argument_count: 1,
+            line: 3,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            mock_payload: None,
+            error_payload: None,
+            observed_expression: Some("clamp(value, 0, 10)".to_string()),
+            expected_value_or_variant: None,
+            has_dynamic_matcher_arg: true,
+            oracle_confidence: OracleConfidence::Medium,
+        }],
+        mocks_in_file: Vec::new(),
+        imports_in_file: Vec::new(),
+    };
+    let finding = classify_change(
+        Path::new("src/clamp.ts"),
+        2,
+        "    if (value < min) {",
+        &[owner],
+        &[test],
+        None,
+        &ReExportIndex::empty(),
+        None,
+    )
+    .ok_or_else(|| "expected a finding".to_string())?;
+
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_table_case_unresolved",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_sample: typescript_table_case_unresolved at tests/clamp.test.ts:3",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation_repair_route: typescript_table_case_unresolved",
+    );
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_dynamic_assertion_unresolved",
+    );
+    assert_evidence_lacks(&finding, "repair_packet_ready: true");
     Ok(())
 }
 
@@ -6657,6 +7387,8 @@ fn delta5_verify_command_absent_from_missing_list_when_runner_resolved() -> Resu
         mode: crate::analysis::AnalysisMode::Draft,
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {
@@ -6747,6 +7479,8 @@ fn delta5_verify_command_stays_in_missing_list_when_runner_unresolved() -> Resul
         mode: crate::analysis::AnalysisMode::Draft,
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {

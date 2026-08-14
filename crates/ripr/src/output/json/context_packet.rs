@@ -2,6 +2,7 @@ use crate::domain::{Finding, MissingDiscriminatorFact, ValueFact, context_packet
 
 use super::{array_field, escape, field, number_field};
 use crate::output::json::report::{related_test_json, stop_reason_values};
+use crate::output::next_step::reconcile_next_step;
 
 // Keep the registered packet version literal in this renderer path so the
 // output-contract check can verify the JSON surface while the DTO owns values.
@@ -9,7 +10,16 @@ const CONTEXT_PACKET_VERSION_CONTRACT: &str = "1.0";
 
 pub fn render_context_packet(finding: &Finding, max_related_tests: usize) -> String {
     let stop_reasons = stop_reason_values(finding);
-    let packet = ContextPacket::from_finding(finding, max_related_tests, stop_reasons);
+    let mut packet = ContextPacket::from_finding(finding, max_related_tests, stop_reasons);
+    // Reconcile the next step so the context packet does not diverge from the
+    // human/JSON/SARIF surfaces. See #2597: every renderer MUST call
+    // reconcile_next_step.
+    let reconciled = reconcile_next_step(finding);
+    packet.recommended_next_step = if reconciled.is_empty() {
+        None
+    } else {
+        Some(reconciled)
+    };
     render_context_packet_dto(&packet)
 }
 
@@ -26,7 +36,13 @@ pub(crate) fn render_context_packet_dto(packet: &ContextPacket) -> String {
     field(&mut out, 2, "id", &packet.probe.id, true);
     field(&mut out, 2, "family", &packet.probe.family, true);
     field(&mut out, 2, "delta", &packet.probe.delta, true);
-    field(&mut out, 2, "file", &packet.probe.file, true);
+    field(
+        &mut out,
+        2,
+        "file",
+        &crate::output::path::display_path_text(&packet.probe.file),
+        true,
+    );
     number_field(&mut out, 2, "line", packet.probe.line, true);
     field(
         &mut out,
@@ -68,6 +84,18 @@ pub(crate) fn render_context_packet_dto(packet: &ContextPacket) -> String {
         &packet.missing_discriminators,
     );
     out.push_str(",\n");
+    match &packet.witness {
+        Some(witness) => {
+            out.push_str("  \"witness\": ");
+            if let Ok(serialized) = serde_json::to_string(witness) {
+                out.push_str(&serialized);
+            } else {
+                out.push_str("null");
+            }
+            out.push_str(",\n");
+        }
+        None => out.push_str("  \"witness\": null,\n"),
+    }
     array_field(&mut out, 1, "missing", &packet.missing, true);
     array_field(&mut out, 1, "stop_reasons", &packet.stop_reasons, true);
     field(

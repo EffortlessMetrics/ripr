@@ -313,6 +313,20 @@ findings as evidence details, but must not infer:
 Lane 1 owns evidence truth and static limitations. Policy lanes own baseline,
 suppression, acknowledgement, and default blocking authority.
 
+### LSP Projection
+
+The experimental LSP adapter is a downstream projection of the same canonical
+identity. When a finding carries a producer-owned `canonical_gap_id`, the
+default diagnostic stream emits at most one diagnostic for that identity.
+Findings without a canonical identity remain one-for-one; the adapter must not
+invent semantic grouping keys. The diagnostic retains `raw_signal_count`,
+`group_reason`, `primary_anchor`, and a deterministic `raw_findings` array.
+Mixed static classes within one canonical group degrade to an informational
+limitation and retain the raw evidence rather than inflating severity.
+
+This projection does not add pull-diagnostics negotiation or unchanged-report
+protocol behavior; those are separate LSP work items.
+
 ## Required Evidence
 
 An implemented finding-to-gap alignment feature must show:
@@ -420,7 +434,8 @@ from planned docs into implemented public output.
 
 - No PR or CI annotation rendering changes.
 - No inline PR comment publishing.
-- No LSP or editor polish.
+- No LSP pull-diagnostics negotiation or unchanged-report protocol behavior.
+- No broad editor UX or provider changes.
 - No gate-policy changes or default blocking.
 - No score redefinition.
 - No generated tests.

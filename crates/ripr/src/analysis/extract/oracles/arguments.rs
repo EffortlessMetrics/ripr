@@ -1,4 +1,4 @@
-pub(super) fn equality_assertion_arguments(line: &str) -> Option<Vec<String>> {
+pub(crate) fn equality_assertion_arguments(line: &str) -> Option<Vec<String>> {
     ["assert_eq!", "assert_ne!"]
         .iter()
         .find_map(|macro_name| macro_invocation_arguments(line, macro_name))
@@ -7,6 +7,10 @@ pub(super) fn equality_assertion_arguments(line: &str) -> Option<Vec<String>> {
 pub(super) fn custom_assertion_arguments(line: &str) -> Option<Vec<String>> {
     let open = line.find('(')?;
     delimited_contents_at(line, open).map(|contents| split_top_level_commas(&contents))
+}
+
+pub(super) fn ensure_assertion_arguments(line: &str) -> Option<Vec<String>> {
+    macro_invocation_arguments(line, "ensure!")
 }
 
 fn macro_invocation_arguments(line: &str, macro_name: &str) -> Option<Vec<String>> {

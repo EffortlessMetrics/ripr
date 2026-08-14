@@ -1,6 +1,0 @@
-{
-  "case": "unreachable-control",
-  "validation_phase": "control_repository",
-  "validation_reason": "control commit is unreachable from the source repository",
-  "status": "rejected"
-}

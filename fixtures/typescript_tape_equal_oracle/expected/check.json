@@ -1,0 +1,143 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/typescript_tape_equal_oracle/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:fc4bb2dc31dbc16b45c4d542e8360883e0c5983a1bfab2ad7a29fbd460469079","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_score.ts:typescript_preview:af44236d",
+      "classification": "exposed",
+      "severity": "warning",
+      "confidence": 0.60,
+      "probe": {
+        "id": "probe:src_score.ts:typescript_preview:af44236d",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/score.ts",
+        "line": 2,
+        "expression": "    return total - penalty + 0;",
+        "owner": "typescript:src/score.ts::score"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `score`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"yes","confidence":"low","summary":"Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `score`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches returned value: return total - penalty + 0; (line 2)", "related test tests/score.test.ts:3 scores the difference uses strong exact value oracle: t.equal(...)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return total - penalty + 0;","line":2}
+      ],
+      "evidence": ["owner: score", "typescript_oracle_observed: result", "typescript_oracle_expected: 7", "typescript_oracle_confidence: high", "typescript_oracle_evidence_ref: tests/score.test.ts:5", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related TypeScript `t.*` evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/score.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_score.ts:typescript_preview:af44236d;owner=score", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["Related test reaches `score` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related TypeScript `t.*` evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "scores the difference",
+          "file": "tests/score.test.ts",
+          "line": 3,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "t.equal(...)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "return_value changed at src/score.ts:2: `return total - penalty + 0;`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "owner": "score",
+        "owner_kind": "function",
+        "probe_family": "return_value",
+        "related_test": {
+          "file": "tests/score.test.ts",
+          "line": 3,
+          "name": "scores the difference"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Exact-value evidence is present; verify it targets the changed discriminator.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "related TypeScript `t.*` evidence already has a strong exact oracle; no repair packet should be emitted"
+      },
+      "preview_actionability": {
+        "actionability_category": "strong_oracle_observed",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "none for a repair packet; retain strong related-test evidence as non-actionable context",
+        "gap_state": "already_observed",
+        "missing_actionability_fields": [],
+        "missing_graph_legs": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/score.ts",
+            "kind": "typescript_preview_probe",
+            "leg": null,
+            "line": 2,
+            "owner": "score",
+            "raw": "file=src/score.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_score.ts:typescript_preview:af44236d;owner=score",
+            "sample": null,
+            "source_id": "probe:src_score.ts:typescript_preview:af44236d"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "unlock_condition": null,
+        "why_not_actionable": "related TypeScript `t.*` evidence already has a strong exact oracle; no repair packet should be emitted"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "suggested_next_action": "TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "typescript",
+      "file_count": 1,
+      "sample_paths": ["src/score.ts"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

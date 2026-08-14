@@ -1,13 +1,15 @@
+use super::exception_policy::ExceptionPolicyReport;
 use super::model::{
-    CalibrationEvidence, GateDecision, GateDecisionInputs, GateDecisionReport, GatePolicy,
-    GateSummary, NewUnsuppressed,
+    CalibrationEvidence, GateDecision, GateDecisionInputs, GateDecisionReport, GatePlacement,
+    GatePolicy, GateRepairRoute, GateRepairTarget, GateSummary, NewUnsuppressed,
 };
 use super::{LIMITS_NOTE, SCHEMA_VERSION};
+use crate::app::causal_projection::insert_canonical_delta_fields;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 pub(crate) fn render_gate_decision_json(report: &GateDecisionReport) -> Result<String, String> {
-    serde_json::to_string_pretty(&json!({
+    let mut document = json!({
         "schema_version": SCHEMA_VERSION,
         "tool": "ripr",
         "status": report.status,
@@ -21,8 +23,49 @@ pub(crate) fn render_gate_decision_json(report: &GateDecisionReport) -> Result<S
         "warnings": report.warnings,
         "config_errors": report.config_errors,
         "limits_note": LIMITS_NOTE,
-    }))
-    .map_err(|err| format!("failed to render gate decision JSON: {err}"))
+    });
+    // Additive: present only when `--exception-policy` was supplied (#1442),
+    // so existing gate-decision consumers and goldens see identical output.
+    if let Some(exception_policy) = &report.exception_policy
+        && let Some(object) = document.as_object_mut()
+    {
+        object.insert(
+            "exception_policy".to_string(),
+            exception_policy_json(exception_policy),
+        );
+    }
+    if let Some(projection) = &report.causal_projection
+        && let Some(object) = document.as_object_mut()
+    {
+        projection.insert_comparison_fields(object);
+    }
+    serde_json::to_string_pretty(&document)
+        .map_err(|err| format!("failed to render gate decision JSON: {err}"))
+}
+
+fn exception_policy_json(report: &ExceptionPolicyReport) -> Value {
+    json!({
+        "path": report.path,
+        "ledger_status": report.ledger_status,
+        "ledger_owner": report.ledger_owner,
+        "due_review": report.due_review.as_str(),
+        "active_count": report.active.len(),
+        "active": report.active.iter().map(|entry| json!({
+            "id": entry.id,
+            "kind": entry.kind,
+            "scope": entry.scope,
+            "owner": entry.owner,
+            "reason": entry.reason,
+            "review_after": entry.review_after,
+            "expires": entry.expires,
+        })).collect::<Vec<_>>(),
+        "violations": report.violations.iter().map(|violation| json!({
+            "kind": violation.kind,
+            "exception_id": violation.exception_id,
+            "detail": violation.detail,
+            "blocking": violation.blocking,
+        })).collect::<Vec<_>>(),
+    })
 }
 
 pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> String {
@@ -46,6 +89,41 @@ pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> Stri
         "not_applicable",
     );
 
+    if let Some(exception_policy) = &report.exception_policy {
+        out.push_str("## Exception Policy\n\n");
+        out.push_str(&format!(
+            "Ledger: {} (status: {}, due_review: {})\n",
+            md_escape(&exception_policy.path),
+            md_escape(&exception_policy.ledger_status),
+            exception_policy.due_review.as_str()
+        ));
+        out.push_str(&format!(
+            "Active exceptions: {}\n\n",
+            exception_policy.active.len()
+        ));
+        for entry in &exception_policy.active {
+            out.push_str(&format!(
+                "- active `{}` ({}) review_after {} expires {}\n",
+                md_escape(&entry.id),
+                md_escape(&entry.kind),
+                md_escape(&entry.review_after),
+                md_escape(&entry.expires)
+            ));
+        }
+        for violation in &exception_policy.violations {
+            let severity = if violation.blocking {
+                "BLOCKING"
+            } else {
+                "warning"
+            };
+            out.push_str(&format!(
+                "- {severity} {}: {}\n",
+                md_escape(&violation.kind),
+                md_escape(&violation.detail)
+            ));
+        }
+        out.push('\n');
+    }
     if !report.config_errors.is_empty() {
         out.push_str("## Config Errors\n\n");
         for error in &report.config_errors {
@@ -74,6 +152,50 @@ pub(crate) fn gate_decision_status(report: &GateDecisionReport) -> &str {
     &report.status
 }
 
+/// Extract the first actionable detail from a failing gate report so the
+/// CLI can surface it inline instead of only pointing at the JSON artifact
+/// (#2599).
+///
+/// For `config_error`: the first config error message. For `blocked`: the
+/// first blocking decision or, when exception policy is the blocker, the
+/// count and first blocking exception-policy violation.
+/// Returns an empty string when no useful detail is available.
+pub(crate) fn gate_decision_inline_detail(report: &GateDecisionReport) -> String {
+    if report.status == "config_error"
+        && let Some(first) = report.config_errors.first()
+    {
+        return format!(": {first}");
+    }
+    if report.status == "blocked" {
+        let blocking: Vec<&GateDecision> = report
+            .decisions
+            .iter()
+            .filter(|d| d.decision == "blocking")
+            .collect();
+        if let Some(first) = blocking.first() {
+            return format!(
+                ": {} blocking gap(s); first: {}",
+                blocking.len(),
+                first.gate_reason
+            );
+        }
+        if let Some(exception_policy) = &report.exception_policy {
+            let mut blocking_violations = exception_policy
+                .violations
+                .iter()
+                .filter(|violation| violation.blocking);
+            if let Some(first) = blocking_violations.next() {
+                let count = 1 + blocking_violations.count();
+                return format!(
+                    ": {count} blocking exception-policy violation(s); first: {}: {}",
+                    first.kind, first.detail
+                );
+            }
+        }
+    }
+    String::new()
+}
+
 pub(crate) fn markdown_path_for(out: &Path) -> PathBuf {
     let mut path = out.to_path_buf();
     path.set_extension("md");
@@ -97,6 +219,14 @@ fn inputs_json(inputs: &GateDecisionInputs) -> Value {
         && let Some(object) = value.as_object_mut()
     {
         object.insert("gap_ledger".to_string(), Value::String(gap_ledger.clone()));
+    }
+    if let Some(exception_policy) = &inputs.exception_policy
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(
+            "exception_policy".to_string(),
+            Value::String(exception_policy.clone()),
+        );
     }
     value
 }
@@ -130,6 +260,7 @@ fn decision_json(decision: &GateDecision) -> Value {
         "gate_reason": decision.gate_reason,
         "seam_id": decision.seam_id,
         "source_id": decision.source_id,
+        "gap_state": decision.gap_state,
         "static_class": decision.static_class,
         "severity": decision.severity,
         "placement": {
@@ -142,6 +273,7 @@ fn decision_json(decision: &GateDecision) -> Value {
             "acknowledgement_label": decision.policy.acknowledgement_label,
             "baseline_identity": decision.policy.baseline_identity,
         },
+        "repair_route": repair_route_json(&decision.repair_route),
         "evidence": {
             "missing_discriminator": decision.evidence.missing_discriminator,
             "assertion_shape": decision.evidence.assertion_shape,
@@ -175,6 +307,11 @@ fn decision_json(decision: &GateDecision) -> Value {
             Value::String(canonical_gap_id.clone()),
         );
     }
+    if let Some(delta) = &decision.causal_delta
+        && let Some(object) = value.as_object_mut()
+    {
+        insert_canonical_delta_fields(object, delta);
+    }
     if let Some(gap_id) = &decision.gap_id
         && let Some(object) = value.as_object_mut()
     {
@@ -185,7 +322,57 @@ fn decision_json(decision: &GateDecision) -> Value {
     {
         object.insert("gap_kind".to_string(), Value::String(gap_kind.clone()));
     }
+    // Additive (issue #1934): present only on legacy fallback-only baseline
+    // matches, so canonical-match and baseline-new decisions render
+    // byte-identical to before the disclosure existed.
+    if let Some(match_kind) = &decision.baseline_match_kind
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(
+            "baseline_match_kind".to_string(),
+            Value::String(match_kind.clone()),
+        );
+    }
     value
+}
+
+pub(super) fn repair_route_json(route: &GateRepairRoute) -> Value {
+    let repair_target = route.repair_target.as_ref().map(|target| match target {
+        GateRepairTarget::RelatedTest { name, file, line } => json!({
+            "kind": "related_test",
+            "name": name,
+            "file": file,
+            "line": line,
+        }),
+        GateRepairTarget::ProductionCaller { owner, file, line } => json!({
+            "kind": "production_caller",
+            "owner": owner,
+            "file": file,
+            "line": line,
+        }),
+    });
+    let limitation = route.limitation.as_ref().map(|limitation| {
+        json!({
+            "kind": limitation.kind,
+            "missing_fields": limitation.missing_fields,
+            "detail": limitation.detail,
+        })
+    });
+    json!({
+        "canonical_gap_id": route.canonical_gap_id,
+        "seam_id": route.seam_id,
+        "classification": route.classification,
+        "changed_owner": route.changed_owner,
+        "changed_behavior": route.changed_behavior,
+        "missing_discriminator": route.missing_discriminator,
+        "repair_target": repair_target,
+        "test_intent": route.test_intent,
+        "verify_command": route.verify_command,
+        "receipt_command": route.receipt_command,
+        "inspection_command": route.inspection_command,
+        "authority_boundary": route.authority_boundary,
+        "limitation": limitation,
+    })
 }
 
 fn calibration_json(evidence: &CalibrationEvidence) -> Value {
@@ -219,23 +406,184 @@ fn push_decision_section(
     }
     out.push_str(&format!("## {title}\n\n"));
     for decision in section {
-        let path = decision.placement.path.as_deref().unwrap_or("<no path>");
-        let line = decision
-            .placement
-            .line
-            .map(|line| line.to_string())
-            .unwrap_or_else(|| "?".to_string());
         out.push_str(&format!(
-            "- {}:{} {} — {}\n",
-            md_escape(path),
-            line,
+            "- {} {} — {}\n",
+            decision_location(&decision.placement),
             md_escape(decision.static_class.as_deref().unwrap_or("unknown")),
             md_escape(&decision.gate_reason)
         ));
+        if matches!(
+            decision.decision.as_str(),
+            "blocking" | "acknowledged" | "advisory"
+        ) {
+            push_optional_code(out, "Gap state", decision.gap_state.as_deref());
+            push_optional_code(
+                out,
+                "Delta attribution",
+                decision
+                    .delta_attribution
+                    .map(|attribution| attribution.as_str()),
+            );
+            push_repair_route(out, &decision.repair_route);
+        }
     }
     out.push('\n');
 }
 
+fn push_repair_route(out: &mut String, route: &GateRepairRoute) {
+    push_optional_code(out, "Gap", route.canonical_gap_id.as_deref());
+    push_optional_code(out, "Seam", route.seam_id.as_deref());
+    push_optional_code(out, "Classification", route.classification.as_deref());
+    push_optional_code(out, "Changed owner", route.changed_owner.as_deref());
+    push_optional_text(out, "Changed behavior", route.changed_behavior.as_deref());
+    push_optional_text(
+        out,
+        "Why it remains open",
+        route.missing_discriminator.as_deref(),
+    );
+    push_repair_target(out, route.repair_target.as_ref());
+    push_optional_text(out, "Add", route.test_intent.as_deref());
+    push_optional_code(out, "Verify", route.verify_command.as_deref());
+    push_optional_code(out, "Receipt", route.receipt_command.as_deref());
+    push_optional_code(out, "Inspect", route.inspection_command.as_deref());
+    out.push_str(&format!(
+        "  - Boundary: `{}`\n",
+        md_inline_code(&route.authority_boundary)
+    ));
+    if let Some(limitation) = &route.limitation {
+        out.push_str(&format!(
+            "  - Repair route limitation: `{}`\n",
+            md_inline_code(limitation.kind)
+        ));
+        out.push_str(&format!(
+            "  - Missing route fields: `{}`\n",
+            md_inline_code(&limitation.missing_fields.join(", "))
+        ));
+        out.push_str(&format!(
+            "  - Limitation detail: {}\n",
+            md_escape(limitation.detail)
+        ));
+    }
+}
+
+fn push_repair_target(out: &mut String, target: Option<&GateRepairTarget>) {
+    match target {
+        Some(GateRepairTarget::RelatedTest { name, file, line }) => {
+            out.push_str(&format!(
+                "  - Near test: `{}` at `{}:{line}`\n",
+                md_inline_code(name),
+                md_inline_code(file)
+            ));
+        }
+        Some(GateRepairTarget::ProductionCaller { owner, file, line }) => {
+            out.push_str(&format!(
+                "  - Production caller: `{}`",
+                md_inline_code(owner)
+            ));
+            match (file.as_deref(), line) {
+                (Some(file), Some(line)) => {
+                    out.push_str(&format!(" at `{}:{line}`", md_inline_code(file)));
+                }
+                (Some(file), None) => {
+                    out.push_str(&format!(" at `{}`", md_inline_code(file)));
+                }
+                (None, Some(line)) => out.push_str(&format!(" at line `{line}`")),
+                (None, None) => {}
+            }
+            out.push('\n');
+        }
+        None => {}
+    }
+}
+
+fn push_optional_code(out: &mut String, label: &str, value: Option<&str>) {
+    if let Some(value) = value {
+        out.push_str(&format!("  - {label}: `{}`\n", md_inline_code(value)));
+    }
+}
+
+fn push_optional_text(out: &mut String, label: &str, value: Option<&str>) {
+    if let Some(value) = value {
+        out.push_str(&format!("  - {label}: {}\n", md_escape(value)));
+    }
+}
+
+fn md_inline_code(value: &str) -> String {
+    md_escape(value).replace('`', "\\`")
+}
+
+/// Render the decision's source location for the Markdown report.
+///
+/// A decision does not always have a changed-line anchor: `path` and `line`
+/// come from independent producer fallbacks and any combination is reachable.
+/// The absent cases previously rendered as `<no path>:?`, which reads as a
+/// broken renderer rather than as a decision that has no line to anchor on
+/// (#2641). Each case now names the fact the renderer actually holds.
+///
+/// This states only what the placement contains. The *reason* a decision is
+/// summary-only lives in `GateCandidate::summary_reason`, which is not carried
+/// onto `GateDecision`; inferring it from an absent path here would be renderer
+/// guesswork. The per-decision `gate_reason` already carries that explanation.
+fn decision_location(placement: &GatePlacement) -> String {
+    match (placement.path.as_deref(), placement.line) {
+        (Some(path), Some(line)) => format!("{}:{}", md_escape(path), line),
+        (Some(path), None) => format!("{} (no line anchor)", md_escape(path)),
+        (None, Some(line)) => format!("(no file anchor):{line}"),
+        (None, None) => "(no changed-line anchor)".to_string(),
+    }
+}
+
 fn md_escape(value: &str) -> String {
     value.replace('|', "\\|").replace('\n', " ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn production_caller_target_markdown_preserves_explicit_location() -> Result<(), String> {
+        let mut rendered = String::new();
+        let targets = [
+            GateRepairTarget::ProductionCaller {
+                owner: "foo::dispatch".to_string(),
+                file: Some("crates/foo/src/lib.rs".to_string()),
+                line: Some(88),
+            },
+            GateRepairTarget::ProductionCaller {
+                owner: "foo::dispatch_file_only".to_string(),
+                file: Some("crates/foo/src/lib.rs".to_string()),
+                line: None,
+            },
+            GateRepairTarget::ProductionCaller {
+                owner: "foo::dispatch_line_only".to_string(),
+                file: None,
+                line: Some(89),
+            },
+            GateRepairTarget::ProductionCaller {
+                owner: "foo::dispatch_without_location".to_string(),
+                file: None,
+                line: None,
+            },
+        ];
+
+        for target in &targets {
+            push_repair_target(&mut rendered, Some(target));
+        }
+        push_repair_target(&mut rendered, None);
+
+        let expected = concat!(
+            "  - Production caller: `foo::dispatch` at `crates/foo/src/lib.rs:88`\n",
+            "  - Production caller: `foo::dispatch_file_only` at `crates/foo/src/lib.rs`\n",
+            "  - Production caller: `foo::dispatch_line_only` at line `89`\n",
+            "  - Production caller: `foo::dispatch_without_location`\n",
+        );
+        if rendered == expected {
+            Ok(())
+        } else {
+            Err(format!(
+                "production caller Markdown mismatch: actual={rendered:?} expected={expected:?}"
+            ))
+        }
+    }
 }

@@ -5,15 +5,29 @@ mod owner;
 use self::evidence::ClassifiedProbeEvidence;
 use self::finding::build_finding;
 use self::owner::resolve_owner_function;
-use super::classify::{ProbeContext, find_related_tests};
+use super::classify::{ProbeContext, find_related_tests, is_assertion_shaped_owner};
+use super::probes::parser_expression_for_probe;
 use super::rust_index::RustIndex;
 use crate::domain::*;
 
-pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
+pub fn classify_probe(probe: &Probe, index: &RustIndex, workspace_complete: bool) -> Finding {
     let owner_fn = resolve_owner_function(probe, index);
-    let related_tests = find_related_tests(probe, owner_fn, index);
-    let context = ProbeContext::new(probe, owner_fn, related_tests);
-    let evidence = ClassifiedProbeEvidence::gather(&context);
+    let related_tests = find_related_tests(probe, owner_fn, index, workspace_complete);
+    // RIPR-SPEC-0133: detect assertion-shaped owners (oracles) here, where the
+    // full index is available; the context carries the verdict so guidance can
+    // be reframed. The exposure class is never changed by this flag.
+    let owner_assertion_shaped =
+        owner_fn.is_some_and(|owner| is_assertion_shaped_owner(owner, index));
+    let context = ProbeContext::new(probe, owner_fn, related_tests, owner_assertion_shaped);
+    let reveal_expression = parser_expression_for_probe(
+        index,
+        &probe.location.file,
+        probe.location.line,
+        &probe.family,
+        &probe.expression,
+    )
+    .unwrap_or(&probe.expression);
+    let evidence = ClassifiedProbeEvidence::gather(&context, reveal_expression);
     let class = evidence.classify(context.probe);
 
     build_finding(&context, class, evidence)
@@ -24,9 +38,10 @@ mod tests {
     use super::*;
     use crate::analysis::classify::{recommended_next_step, stop_reasons};
     use crate::analysis::rust_index::{
-        CallFact, FunctionSummary, LiteralFact, OracleFact, ReturnFact, TestSummary,
-        extract_identifier_tokens,
+        CallFact, FileFacts, FunctionSummary, LiteralFact, OracleFact, PROBE_SHAPE_CALL_DELETION,
+        ProbeShapeFact, ReturnFact, TestSummary, extract_identifier_tokens,
     };
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
 
     #[test]
@@ -64,7 +79,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.related_tests.len(), 1);
         assert_eq!(finding.related_tests[0].name, "crate_a_score_test");
@@ -111,7 +126,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.class, ExposureClass::NoStaticPath);
         assert_eq!(finding.ripr.reach.state, StageState::No);
@@ -160,7 +175,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.ripr.reach.state, StageState::Yes);
         assert_eq!(finding.related_tests.len(), 1);
@@ -195,7 +210,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.class, ExposureClass::InfectionUnknown);
         assert!(finding.unknown_has_stop_reason());
@@ -236,7 +251,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.class, ExposureClass::PropagationUnknown);
         assert!(finding.unknown_has_stop_reason());
@@ -272,7 +287,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.class, ExposureClass::StaticUnknown);
         assert!(finding.unknown_has_stop_reason());
@@ -313,7 +328,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Yes);
         assert_eq!(
@@ -355,7 +370,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
         // RIPR-SPEC-0107: ErrorPath now in needs_token_confirmation. A broad
@@ -413,7 +428,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
         // The smoke-only assertion score(1).unwrap() contains no token from the
@@ -464,7 +479,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
         // The broad error assertion "assert!(score(1).is_err())" contains no
@@ -532,7 +547,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
@@ -573,7 +588,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ErrorVariant);
@@ -608,7 +623,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::EventCall);
@@ -640,7 +655,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::StructField);
@@ -672,7 +687,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::MatchArm);
@@ -713,7 +728,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
@@ -771,7 +786,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ErrorVariant);
@@ -823,7 +838,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::StructField);
@@ -869,7 +884,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
@@ -915,7 +930,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert!(finding.flow_sinks.is_empty());
         assert_eq!(finding.ripr.propagate.state, StageState::Unknown);
@@ -964,7 +979,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::Unknown);
@@ -996,7 +1011,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
@@ -1032,7 +1047,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ErrorVariant);
@@ -1068,7 +1083,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::Unknown);
@@ -1126,7 +1141,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.class, ExposureClass::WeaklyExposed);
         assert_eq!(finding.ripr.infect.state, StageState::Weak);
@@ -1191,7 +1206,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert_eq!(finding.ripr.infect.state, StageState::Yes);
         assert!(finding.activation.missing_discriminators.is_empty());
@@ -1251,7 +1266,7 @@ mod tests {
             required_oracles: vec![],
         };
 
-        let finding = classify_probe(&probe, &index);
+        let finding = classify_probe(&probe, &index, true);
 
         assert!(finding.activation.observed_values.iter().any(|fact| {
             fact.context == ValueContext::FunctionArgument && fact.value == "token = \"\""
@@ -1276,43 +1291,171 @@ mod tests {
         let return_value_probe = probe(ProbeFamily::ReturnValue, DeltaKind::Value, "value + 1");
 
         assert_eq!(
-            recommended_next_step(&predicate_probe, &ExposureClass::Exposed),
+            recommended_next_step(&predicate_probe, &ExposureClass::Exposed, false),
             None
         );
         assert_eq!(
-            recommended_next_step(&predicate_probe, &ExposureClass::WeaklyExposed).as_deref(),
+            recommended_next_step(&predicate_probe, &ExposureClass::WeaklyExposed, false)
+                .as_deref(),
             Some(
                 "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
             )
         );
         assert_eq!(
-            recommended_next_step(&return_value_probe, &ExposureClass::WeaklyExposed).as_deref(),
+            recommended_next_step(&return_value_probe, &ExposureClass::WeaklyExposed, false)
+                .as_deref(),
             Some(
                 "Replace broad assertions with exact equality or a property that constrains the changed returned value."
             )
         );
         assert_eq!(
-            recommended_next_step(&predicate_probe, &ExposureClass::ReachableUnrevealed).as_deref(),
+            recommended_next_step(&predicate_probe, &ExposureClass::ReachableUnrevealed, false)
+                .as_deref(),
             Some(
                 "Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect."
             )
         );
         assert_eq!(
-            recommended_next_step(&predicate_probe, &ExposureClass::NoStaticPath).as_deref(),
-            Some(
-                "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change."
-            )
+            recommended_next_step(&predicate_probe, &ExposureClass::NoStaticPath, false).as_deref(),
+            Some(NO_STATIC_PATH_NEXT_STEP)
         );
         assert_eq!(
-            recommended_next_step(&predicate_probe, &ExposureClass::InfectionUnknown).as_deref(),
+            recommended_next_step(&predicate_probe, &ExposureClass::InfectionUnknown, false)
+                .as_deref(),
             Some(
                 "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml."
             )
         );
         assert_eq!(
-            recommended_next_step(&predicate_probe, &ExposureClass::StaticUnknown).as_deref(),
+            recommended_next_step(&predicate_probe, &ExposureClass::StaticUnknown, false)
+                .as_deref(),
             Some("Escalate to real mutation testing or deep static analysis for this probe.")
         );
+    }
+
+    // RIPR-SPEC-0133: end-to-end through `classify_probe` — an assertion-shaped
+    // owner keeps its exposure class but gets oracle-shaped guidance plus the
+    // `owner_shape` disclosure line.
+    #[test]
+    fn given_assertion_shaped_owner_when_classifying_then_guidance_is_reframed_not_reclassified() {
+        let mut owner = function("tests/fragments.rs", "assert_paths_are_stable");
+        owner.body = "fn assert_paths_are_stable(spans: &[Span]) {\n    for span in spans {\n        assert!(!span.file.contains('\\\\'));\n        assert_eq!(span.root.as_deref(), Some(\"src\"));\n    }\n}\n".to_string();
+        let index = RustIndex {
+            functions: vec![owner],
+            tests: vec![test(
+                "tests/fragments.rs",
+                "paths_stay_stable",
+                "assert_paths_are_stable(&spans)",
+                "assert!(true);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:tests_fragments_rs:2:predicate".to_string()),
+            location: SourceLocation::new("tests/fragments.rs", 3, 1),
+            owner: Some(SymbolId(
+                "tests/fragments.rs::assert_paths_are_stable".to_string(),
+            )),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("!span.file.contains('\\\\')".to_string()),
+            expression: "!span.file.contains('\\\\')".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index, true);
+
+        let step = finding.recommended_next_step.as_deref().unwrap_or("");
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|line| line.starts_with("owner_shape: assertion_shaped (")),
+            "finding must disclose the assertion-shaped owner shape; evidence: {:?}",
+            finding.evidence
+        );
+        assert!(
+            !step.contains("co-located test")
+                && !step.contains("Replace broad assertions")
+                && !step.contains("fixture/builder in ripr.toml"),
+            "guidance must be reframed for the oracle, got: {step}"
+        );
+        // The unknown/static classes keep their standard escalation text; every
+        // other class maps to a reframed const.
+        let expected = match finding.class {
+            ExposureClass::Exposed => None,
+            ExposureClass::WeaklyExposed => Some(ASSERTION_SHAPED_WEAKLY_EXPOSED_NEXT_STEP),
+            ExposureClass::ReachableUnrevealed => {
+                Some(ASSERTION_SHAPED_REACHABLE_UNREVEALED_NEXT_STEP)
+            }
+            ExposureClass::NoStaticPath => Some(ASSERTION_SHAPED_NO_STATIC_PATH_NEXT_STEP),
+            ExposureClass::InfectionUnknown => Some(ASSERTION_SHAPED_INFECTION_UNKNOWN_NEXT_STEP),
+            ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown => {
+                Some("Escalate to real mutation testing or deep static analysis for this probe.")
+            }
+        };
+        assert_eq!(
+            finding.recommended_next_step.as_deref(),
+            expected,
+            "class {} guidance mismatch",
+            finding.class.as_str()
+        );
+    }
+
+    // RIPR-SPEC-0133 control: an assert-dominated helper WITH a production
+    // caller keeps the standard code-under-test guidance.
+    #[test]
+    fn given_assertion_heavy_owner_with_production_caller_when_classifying_then_guidance_is_standard()
+     {
+        let mut owner = function("src/lib.rs", "check_invariants");
+        owner.body = "fn check_invariants(value: i32) {\n    assert!(value >= 0);\n    assert_eq!(value % 2, 0);\n}\n".to_string();
+        let mut production_caller = function("src/lib.rs", "validate");
+        production_caller.calls = vec![CallFact {
+            line: 2,
+            name: "check_invariants".to_string(),
+            text: "check_invariants(value);".to_string(),
+        }];
+        let index = RustIndex {
+            functions: vec![owner, production_caller],
+            tests: vec![test(
+                "tests/lib.rs",
+                "validate_works",
+                "validate(2)",
+                "assert_eq!(2 + 2, 4);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::check_invariants".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("value >= 0".to_string()),
+            expression: "value >= 0".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index, true);
+
+        assert!(
+            !finding
+                .evidence
+                .iter()
+                .any(|line| line.starts_with("owner_shape:")),
+            "production-called helper must not disclose an oracle shape; evidence: {:?}",
+            finding.evidence
+        );
+        if let Some(step) = finding.recommended_next_step.as_deref() {
+            assert!(
+                !step.contains(crate::domain::ASSERTION_SHAPED_OWNER_REASON),
+                "guidance must stay in the code-under-test voice, got: {step}"
+            );
+        }
     }
 
     #[test]
@@ -1389,6 +1532,131 @@ mod tests {
             expected_sinks: vec![],
             required_oracles: vec![],
         }
+    }
+
+    #[test]
+    fn parser_expression_confirms_payload_without_rewriting_emitted_probe() -> Result<(), String> {
+        let owner = function("src/gate_watchdog.rs", "classify_gate_watchdog");
+        let owner_id = owner.id.clone();
+        let path = PathBuf::from("src/gate_watchdog.rs");
+        let assertion = r#"ensure!(reason.kind == "run-missing");"#;
+        let index = RustIndex {
+            functions: vec![owner],
+            tests: vec![test_with_oracle(
+                "src/tests/gate_watchdog_tests.rs",
+                "classify_gate_watchdog_reports_run_missing",
+                "classify_gate_watchdog(&input)",
+                oracle_fact(assertion, OracleKind::ExactValue, OracleStrength::Strong),
+            )],
+            files: BTreeMap::from([(
+                path,
+                FileFacts {
+                    path: PathBuf::from("src/gate_watchdog.rs"),
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 190,
+                        end_line: 194,
+                        start_byte: 1_024,
+                        kind: PROBE_SHAPE_CALL_DELETION.to_string(),
+                        text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)".to_string(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+        };
+        let probe = Probe {
+            id: ProbeId("probe:watchdog-reason".to_string()),
+            location: SourceLocation::new(
+                PathBuf::from("/repo/ub-review/src/gate_watchdog.rs"),
+                190,
+                1,
+            ),
+            owner: Some(owner_id),
+            family: ProbeFamily::CallDeletion,
+            delta: DeltaKind::Effect,
+            before: None,
+            after: Some("watchdog_reason(".to_string()),
+            expression: "watchdog_reason(".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index, true);
+        if finding.class != ExposureClass::Exposed {
+            return Err(format!("parser payload was not discriminated: {finding:?}"));
+        }
+        if finding.probe.expression != "watchdog_reason(" {
+            return Err(format!(
+                "emitted probe expression changed: {}",
+                finding.probe.expression
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parser_argument_identifier_does_not_confirm_call_effect() -> Result<(), String> {
+        let owner = function("src/gate_watchdog.rs", "classify_gate_watchdog");
+        let owner_id = owner.id.clone();
+        let path = PathBuf::from("src/gate_watchdog.rs");
+        let assertion = "ensure!(reason.receipt == receipt);";
+        let index = RustIndex {
+            functions: vec![owner],
+            tests: vec![test_with_oracle(
+                "src/tests/gate_watchdog_tests.rs",
+                "classify_gate_watchdog_preserves_receipt",
+                "classify_gate_watchdog(&input)",
+                oracle_fact(assertion, OracleKind::ExactValue, OracleStrength::Strong),
+            )],
+            files: BTreeMap::from([(
+                path,
+                FileFacts {
+                    path: PathBuf::from("src/gate_watchdog.rs"),
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 190,
+                        end_line: 194,
+                        start_byte: 1_024,
+                        kind: PROBE_SHAPE_CALL_DELETION.to_string(),
+                        text: "watchdog_reason(\n    \"run-missing\",\n    receipt,\n)".to_string(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+        };
+        let probe = Probe {
+            id: ProbeId("probe:watchdog-reason".to_string()),
+            location: SourceLocation::new(
+                PathBuf::from("/repo/ub-review/src/gate_watchdog.rs"),
+                190,
+                1,
+            ),
+            owner: Some(owner_id),
+            family: ProbeFamily::CallDeletion,
+            delta: DeltaKind::Effect,
+            before: None,
+            after: Some("watchdog_reason(".to_string()),
+            expression: "watchdog_reason(".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index, true);
+        if finding.class != ExposureClass::WeaklyExposed {
+            return Err(format!(
+                "argument identifier falsely confirmed call effect: {finding:?}"
+            ));
+        }
+        if !finding
+            .ripr
+            .reveal
+            .discriminate
+            .summary
+            .contains("observation_unverified")
+        {
+            return Err(format!(
+                "missing observation boundary for argument-only oracle: {finding:?}"
+            ));
+        }
+        Ok(())
     }
 
     fn function(file: &str, name: &str) -> FunctionSummary {

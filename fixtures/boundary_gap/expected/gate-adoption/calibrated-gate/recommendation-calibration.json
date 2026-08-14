@@ -38,7 +38,7 @@
       },
       "grip_class": "weakly_gripped",
       "id": "ripr-review-8f7fa8644fd12280",
-      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "missing_discriminator": "amount == discount_threshold",
       "placement": {
         "line": 88,
         "mode": "exact_seam_line",
@@ -72,7 +72,7 @@
       },
       "grip_class": "weakly_gripped",
       "id": "ripr-review-8f7fa8644fd12280",
-      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "missing_discriminator": "amount == discount_threshold",
       "placement": {
         "line": 70,
         "mode": "owner_function_changed_line",
@@ -106,7 +106,7 @@
       },
       "grip_class": "weakly_gripped",
       "id": "ripr-review-8f7fa8644fd12280",
-      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "missing_discriminator": "amount == discount_threshold",
       "placement": {
         "line": 92,
         "mode": "same_file_changed_line",
@@ -174,7 +174,7 @@
       },
       "grip_class": "weakly_gripped",
       "id": "ripr-review-8f7fa8644fd12280",
-      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "missing_discriminator": "amount == discount_threshold",
       "placement": {
         "line": 88,
         "mode": null,

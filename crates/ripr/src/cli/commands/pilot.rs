@@ -4,6 +4,7 @@ use crate::cli::commands_numeric::{parse_positive_u64, parse_positive_usize};
 use crate::cli::commands_options::PilotOptions;
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_mode};
+use crate::cli::suggest::unknown_argument;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
 use crate::output;
 use std::path::{Path, PathBuf};
@@ -11,6 +12,12 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 const DEFAULT_PILOT_TIMEOUT_MS: u64 = 30_000;
+
+/// Budget for the auto-retry when the default timeout fires (#2424).
+/// A cold fact cache on a multi-crate workspace can need ~155s; the
+/// default 30s is too low for first-run. The retry budget is set high
+/// enough to cover a cold cache on the ripr-swarm repo itself.
+const PILOT_RETRY_TIMEOUT_MS: u64 = 240_000;
 
 pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
@@ -40,9 +47,33 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
 
     let analysis_root = input.root.clone();
     let analysis_config = config.clone();
-    let analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, move || {
-        analysis::inventory_classified_seams_at_with_config(&analysis_root, &analysis_config)
+    let mut analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, {
+        let root = analysis_root.clone();
+        let cfg = analysis_config.clone();
+        move || analysis::inventory_classified_seams_at_with_config(&root, &cfg)
     })?;
+
+    // Auto-retry at a higher budget when the default timeout fires and the
+    // user did not pass an explicit --timeout-ms (#2424). A cold fact cache
+    // on a multi-crate workspace can need ~155s; the 30s default is too low
+    // for first-run. The retry gives a complete result on the first
+    // invocation — just slower.
+    if matches!(analysis_result, PilotAnalysisResult::TimedOut)
+        && options.timeout_ms == DEFAULT_PILOT_TIMEOUT_MS
+    {
+        eprintln!(
+            "ripr: pilot timed out at {}ms; retrying at {}ms (cold cache needs more time)...",
+            DEFAULT_PILOT_TIMEOUT_MS, PILOT_RETRY_TIMEOUT_MS
+        );
+        analysis_result = run_pilot_analysis_with_timeout(PILOT_RETRY_TIMEOUT_MS, {
+            let root = analysis_root.clone();
+            let cfg = analysis_config.clone();
+            move || analysis::inventory_classified_seams_at_with_config(&root, &cfg)
+        })?;
+        // Update timeout_ms so the retry hint (if it times out again) uses the
+        // retry budget, not the original default.
+        // (context struct reads options.timeout_ms for the hint)
+    }
     let PilotAnalysisResult::Complete((mut classified, inventory_limit_info)) = analysis_result
     else {
         let context = output::pilot::PilotSummaryContext {
@@ -85,6 +116,11 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     // budget wins when both fire; inventory limit is the outer bound).
     let pilot_budget_info = analysis::apply_pilot_seam_budget(&mut classified);
     let limit_info = pilot_budget_info.or(inventory_limit_info);
+    let (causal_projection, causal_projection_warning) =
+        crate::app::causal_projection::CausalDeltaArtifact::load_optional(&input.root);
+    if let Some(warning) = causal_projection_warning {
+        eprintln!("ripr pilot: {warning}");
+    }
 
     let python_first_use = collect_pilot_python_first_use(&input, &config);
     let context = output::pilot::PilotSummaryContext {
@@ -128,9 +164,10 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     })?;
     std::fs::write(
         &artifacts.agent_seam_packets_json,
-        output::agent_seam_packets::render_agent_seam_packets_json(
+        output::agent_seam_packets::render_agent_seam_packets_json_with_causal(
             &classified,
             limit_info.as_ref(),
+            causal_projection.as_ref(),
         ),
     )
     .map_err(|err| {
@@ -225,7 +262,7 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
                 options.timeout_ms =
                     parse_positive_u64(expect_value(args, i, "--timeout-ms")?, "--timeout-ms")?;
             }
-            other => return Err(format!("unknown pilot argument {other:?}")),
+            other => return Err(unknown_argument("pilot", other)),
         }
         i += 1;
     }
@@ -256,15 +293,21 @@ where
         > + Send
         + 'static,
 {
+    let cancellation_token = crate::analysis::cancellation::AnalysisCancellationToken::new();
+    let worker_token = cancellation_token.clone();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let result = runner();
+        let result = crate::analysis::cancellation::with_token(&worker_token, runner);
         let _ignored = tx.send(result);
     });
 
     match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
         Ok(result) => result.map(PilotAnalysisResult::Complete),
-        Err(mpsc::RecvTimeoutError::Timeout) => Ok(PilotAnalysisResult::TimedOut),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            cancellation_token
+                .cancel(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
+            Ok(PilotAnalysisResult::TimedOut)
+        }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
             Err("pilot analysis stopped before producing a result".to_string())
         }
@@ -317,7 +360,7 @@ mod tests {
     fn pilot_rejects_unknown_arguments() {
         assert_eq!(
             pilot(&args(&["--wat"])),
-            Err("unknown pilot argument \"--wat\"".to_string())
+            Err("unknown pilot argument \"--wat\". Run `ripr pilot --help`.".to_string())
         );
     }
 
@@ -369,13 +412,19 @@ mod tests {
     }
 
     #[test]
-    fn pilot_analysis_timeout_returns_partial_result() {
-        let (_hold_tx, hold_rx) = mpsc::channel::<()>();
+    fn pilot_analysis_timeout_cancels_worker() {
+        let (cancelled_tx, cancelled_rx) = mpsc::channel();
         let result = run_pilot_analysis_with_timeout(1, move || {
-            let _ignored = hold_rx.recv();
-            Ok((Vec::new(), None))
+            loop {
+                if crate::analysis::cancellation::checkpoint().is_err() {
+                    let _ignored = cancelled_tx.send(());
+                    return Err("analysis cancelled".to_string());
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
         });
 
         assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));
+        assert_eq!(cancelled_rx.recv_timeout(Duration::from_secs(1)), Ok(()));
     }
 }

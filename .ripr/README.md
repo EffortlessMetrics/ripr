@@ -14,6 +14,9 @@ Files:
 - `static-language-allowlist.txt`: lists files that may mention prohibited
   mutation-runtime terms because they define the language boundary or discuss
   calibration.
+- `suppressions.toml`: records reviewed exposure-gap and test-efficiency
+  exceptions; see [the triage guide](../docs/how-to/triage-a-finding.md) and
+  validate metadata with `ripr policy suppression-health`.
 
 The preferred direction is to remove allowlist entries as implementation and
 test debt is paid down. New entries should be reviewed as deliberate exceptions.

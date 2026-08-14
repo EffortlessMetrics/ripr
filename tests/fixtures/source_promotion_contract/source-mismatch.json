@@ -1,6 +1,0 @@
-{
-  "case": "source-mismatch",
-  "validation_phase": "control_identity",
-  "validation_reason": "control source_main does not equal the PR base SHA",
-  "status": "rejected"
-}

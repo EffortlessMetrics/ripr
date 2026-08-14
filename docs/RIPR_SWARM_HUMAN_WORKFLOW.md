@@ -24,13 +24,13 @@ supporting evidence only.
 Generate or refresh Lane 1 evidence first:
 
 ```bash
-rtk cargo xtask lane1-evidence-audit
-rtk cargo xtask evidence-health
-rtk cargo xtask evidence-quality-scorecard
-rtk cargo xtask evidence-quality-trend
-rtk cargo xtask ripr-swarm plan --top 10
-rtk cargo xtask actionable-gap-outcomes
-rtk cargo xtask ripr-swarm readiness
+cargo xtask lane1-evidence-audit
+cargo xtask evidence-health
+cargo xtask evidence-quality-scorecard
+cargo xtask evidence-quality-trend
+cargo xtask ripr-swarm plan --top 10
+cargo xtask actionable-gap-outcomes
+cargo xtask ripr-swarm readiness
 ```
 
 Run these Cargo-backed report commands sequentially in one worktree. They share
@@ -91,13 +91,13 @@ Blocked packets are still useful evidence. They are not repair-ready work.
 Run the attempt dry-run for the selected packet:
 
 ```bash
-rtk cargo xtask ripr-swarm attempt --packet <packet_id> --dry-run
+cargo xtask ripr-swarm attempt --packet <packet_id> --dry-run
 ```
 
 If you are using a non-default packet file:
 
 ```bash
-rtk cargo xtask ripr-swarm attempt \
+cargo xtask ripr-swarm attempt \
   --packet <packet_id> \
   --dry-run \
   --actionable-gaps target/ripr/reports/actionable-gaps.json
@@ -176,9 +176,9 @@ chooses a narrower local equivalent and records that choice in the PR.
 Examples:
 
 ```bash
-rtk cargo test -p ripr <related_test_name>
-rtk cargo xtask evidence-quality-scorecard
-rtk cargo xtask lane1-evidence-audit
+cargo test -p ripr <related_test_name>
+cargo xtask evidence-quality-scorecard
+cargo xtask lane1-evidence-audit
 ```
 
 A passing verify command means the repository accepted the attempted change. It
@@ -201,7 +201,7 @@ instead of retrying silently.
 Refresh the outcome report:
 
 ```bash
-rtk cargo xtask actionable-gap-outcomes
+cargo xtask actionable-gap-outcomes
 ```
 
 Read:

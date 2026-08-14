@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_swarm_0_11_hard_cut_receipt",
+  "issue": 2893,
+  "created_at": "2026-08-08",
+  "final_development_cut_sha": "b8b1c9ec78b013dfac6dcf929447839132835971",
+  "observed_main_sha": "bac3614716307ee432c3fa51a7fa4dd18ea9f823",
+  "selected_claim_set_digest": "sha256:68a338d9d08aeb009ce147ff8fef469fd0a5077eda1106ca95e0aadbcc21f5d5",
+  "selected_claim_set_digest_recipe": "sha256 over `jq -cS .candidate_selection fixtures/release_denominator/current-main-provisional.json` at the freeze commit",
+  "candidate_required_claims_pending": 0,
+  "candidate_required_prs_pending": 0,
+  "candidate_required_writers_active": 0,
+  "selected_claims": [
+    {"claim_id": "claim:lifecycle", "owner_issue": 2822, "resolution": "accepted_defer", "note": "stop-totality core landed (#2845/#2862); residual criteria (typed terminal results, session-scoped disposal, focused tests, real-Electron proof #2978) deferred post-0.11"},
+    {"claim_id": "claim:packaged-editor", "owner_issue": 2528, "resolution": "landed"},
+    {"claim_id": "claim:diff-input-honesty", "owner_issue": 2829, "resolution": "landed"},
+    {"claim_id": "claim:packet-honesty", "owner_issue": 2830, "resolution": "landed"},
+    {"claim_id": "claim:producer-authentic-readiness", "owner_issue": 2792, "resolution": "landed", "note": "positive chain #2823, negatives #2921/#2922/#2824, identity #3049, currentness #3053, corpus #3066/#3069/#3071"},
+    {"claim_id": "claim:installed-cli", "owner_issue": 2834, "resolution": "landed"},
+    {"claim_id": "claim:review-control", "owner_issue": 2341, "resolution": "landed", "note": "human-thread row recorded not_proven with the named external action; candidate repetition belongs to #2769"},
+    {"claim_id": "claim:provisional-denominator", "owner_issue": 2832, "resolution": "landed"},
+    {"claim_id": "claim:final-candidate-identity", "owner_issue": 2833, "resolution": "accepted_defer", "note": "materialize/lock happens after the cut in #2833/#2835/#1609 from frozen C+S+E"},
+    {"claim_id": "claim:candidate-only-execution-exclusion", "owner_issue": 2835, "resolution": "candidate_exclusion", "note": "exclusion:2767:verification-execution path-level manifest"}
+  ],
+  "unrelated_open_pr_inventory_and_dispositions": [
+    {"pr": 3086, "draft": false, "disposition": "hold_post_release", "reason": "post-cut process-skill fix (#3079)"},
+    {"pr": 3068, "draft": false, "disposition": "hold_post_release", "reason": "post-cut schema-hardening lane"},
+    {"pr": 3067, "draft": false, "disposition": "hold_post_release", "reason": "post-cut gate strengthening"},
+    {"pr": 3063, "draft": false, "disposition": "hold_post_release", "reason": "test-infrastructure flake fix (#3051)"},
+    {"pr": 3057, "draft": true, "disposition": "hold_post_release", "reason": "draft gate-ergonomics fix, not a selected claim"},
+    {"pr": 2932, "draft": true, "disposition": "hold_post_release", "reason": "post-0.11 RepairAttempt slice, deliberately draft at awaiting_edit"}
+  ],
+  "accepted_deferrals": [
+    {"claim_id": "claim:lifecycle", "owner_issue": 2822},
+    {"claim_id": "claim:final-candidate-identity", "owner_issue": 2833}
+  ],
+  "accepted_candidate_exclusions": [
+    {"exclusion_id": "exclusion:2767:verification-execution", "granularity": "hunk_or_symbol"},
+    {"kind": "record_level", "disposition": "candidate_only_exclusion", "commits": ["b91848b6", "24da79d8", "930936a6", "5923689b", "0b433afa"], "reason": "dependency bumps outside the selected candidate scope"},
+    {"kind": "record_level", "disposition": "safe_defer_post_0_11", "commits": ["d3fafbcb", "6fc4d5eb", "3547699a"], "reason": "LSP listActionableItems (#3012/#3031) and ZCode control (#3043) deferred post-0.11"}
+  ],
+  "required_public_non_claims": [
+    "0.11.0 does not execute verification commands or issue RepairReceiptV2 (#2767 exclusion manifest).",
+    "0.11.0 does not include the LSP ripr/listActionableItems surface (#3012/#3031) or the ZCode control work (#3043).",
+    "0.11.0 does not claim the #2822 residual lifecycle criteria (typed terminal stop results, session-scoped disposal, focused lifecycle tests, real-Electron proof #2978).",
+    "0.11.0 does not include the RepairAttempt manifest work (#2932, draft).",
+    "The hard cut does not materialize or lock the final candidate tree identity (#2833/#2835/#1609) and does not qualify the candidate (#2769).",
+    "#3013 and #3032/#3034-#3037/#3039 have no merged commit in P..C (all-state search); no exclusion rows were invented for them."
+  ],
+  "reviewed_cutoff_sha": "fcbb30a7cf6a37027fa377abafb617632b2e6f57",
+  "post_cutoff_commit_count": 103,
+  "provisional_ordered_range_digest": "sha256:857911c214cd10a011ffc54fcf3226b81811a699a6e2364f10c03343c6a969c4",
+  "provisional_record_set_digest": "sha256:4d8977b4a50e7697a5632f9e2e127bc83fde05640fddc09356dfc532bb72956a",
+  "candidate_tree_digest": "sha256:025963fa597c4f2c068be06cea7576a43589ac49b34014c68119987f5bb59825",
+  "pre_candidate_proof_bundle_digest": "sha256:3e99db98853bfa67b1d1fd8c64c7a9ce2d2bffff24e0710a7829be29c1849429",
+  "pre_candidate_proof_bundle_recipe": "sha256 over the four-line manifest of sha256 digests (one per line, `digest  path`): target/ripr/reports/release-readiness.json, release-negative-corpus.json, release-denominator.json, release-control.json, all produced on the exact cut commit",
+  "pre_candidate_proof": {
+    "cut_sha": "b8b1c9ec78b013dfac6dcf929447839132835971",
+    "ci_full": "exit 0 (review-ready check-pr lane, evidence gates, package listing, publish dry-run)",
+    "release_readiness": "exit 0; all required checks pass; sole warn is the non-required advisory repo-exposure-latency (cold-cache 30s probe timeout under load)",
+    "release_negative_corpus": "exit 0; 28/28 cases, 0 violations, run_status complete, 2 not_applicable dispositions",
+    "release_control_evaluation": "status ready; candidate_state hard_cut_eligible with the single residual reason `candidate tree T has not been materialized` (#2835 scope)",
+    "notes": "first ci-full attempt red on the load-correlated doctor-probe flake (filed #3073); green on rerun. ETXTBSY flake tracked in #3051 (fix PR #3063 in flight, dispositioned hold_post_release)."
+  },
+  "next_issue": 2835,
+  "freeze_rules": [
+    "S, C, and E are frozen for this candidate.",
+    "development main may continue independently; later commits do not retarget the candidate.",
+    "a real defect in the selected tree invalidates the cut and requires a deliberate later C2 and new receipt.",
+    "no patch is made directly to the candidate-only/frozen tree."
+  ]
+}

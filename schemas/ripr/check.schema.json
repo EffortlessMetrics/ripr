@@ -1,0 +1,437 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.effortlessmetrics.dev/ripr/check.schema.json",
+  "title": "RIPR Check Output",
+  "description": "The versioned JSON envelope emitted by ripr check. Static findings and typed analysis completeness are evidence only; they do not claim runtime mutation results or merge readiness.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tool",
+    "mode",
+    "root",
+    "summary",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.2" },
+    "tool": { "const": "ripr" },
+    "mode": { "enum": ["instant", "draft", "fast", "deep", "ready"] },
+    "root": { "type": "string", "minLength": 1 },
+    "base": { "$ref": "#/$defs/nullable_string" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "analysis_outcome": { "$ref": "#/$defs/analysis_outcome_projection" },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "suppression_policy": { "type": "object" },
+    "language_runs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/language_run" }
+    },
+    "analysis_scope": { "type": "object" },
+    "run_limitations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/run_limitation" }
+    },
+    "scope_disclosures": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "unanalyzed_working_tree": { "type": "boolean" },
+    "preview_languages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/preview_language" }
+    },
+    "finding_alignment": { "$ref": "#/$defs/finding_alignment" }
+  },
+  "$defs": {
+    "nullable_string": { "type": ["string", "null"] },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changed_rust_files",
+        "probes",
+        "findings",
+        "exposed",
+        "weakly_exposed",
+        "reachable_unrevealed",
+        "no_static_path",
+        "infection_unknown",
+        "propagation_unknown",
+        "static_unknown",
+        "changed_files_by_language"
+      ],
+      "properties": {
+        "changed_rust_files": { "type": "integer", "minimum": 0 },
+        "probes": { "type": "integer", "minimum": 0 },
+        "findings": { "type": "integer", "minimum": 0 },
+        "exposed": { "type": "integer", "minimum": 0 },
+        "weakly_exposed": { "type": "integer", "minimum": 0 },
+        "reachable_unrevealed": { "type": "integer", "minimum": 0 },
+        "no_static_path": { "type": "integer", "minimum": 0 },
+        "infection_unknown": { "type": "integer", "minimum": 0 },
+        "propagation_unknown": { "type": "integer", "minimum": 0 },
+        "static_unknown": { "type": "integer", "minimum": 0 },
+        "changed_files_by_language": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["language", "files"],
+            "properties": {
+              "language": { "type": "string", "minLength": 1 },
+              "files": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "suppressed_by_policy": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "analysis_outcome_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analysis_complete", "outcome"],
+      "properties": {
+        "analysis_complete": { "type": "boolean" },
+        "outcome": { "$ref": "#/$defs/analysis_outcome" }
+      }
+    },
+    "analysis_outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "identity",
+        "counts",
+        "limitations",
+        "claim_boundary"
+      ],
+      "properties": {
+        "schema_version": { "const": "0.1" },
+        "kind": {
+          "enum": [
+            "no_scope",
+            "no_changed_lines",
+            "no_behavioral_candidates",
+            "complete_no_findings",
+            "complete_with_findings",
+            "partial_with_limitations",
+            "unsupported_input",
+            "analysis_failed"
+          ]
+        },
+        "identity": { "$ref": "#/$defs/analysis_identity" },
+        "counts": { "$ref": "#/$defs/analysis_counts" },
+        "limitations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/analysis_limitation" }
+        },
+        "claim_boundary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "analysis_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_identity",
+        "root_identity",
+        "config_identity",
+        "base_revision",
+        "input_identity",
+        "snapshot_identity"
+      ],
+      "properties": {
+        "repository_identity": { "$ref": "#/$defs/nullable_string" },
+        "root_identity": { "$ref": "#/$defs/nullable_string" },
+        "config_identity": { "$ref": "#/$defs/nullable_string" },
+        "base_revision": { "$ref": "#/$defs/nullable_string" },
+        "input_identity": { "$ref": "#/$defs/nullable_string" },
+        "snapshot_identity": { "$ref": "#/$defs/nullable_string" }
+      }
+    },
+    "analysis_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changed_file_count",
+        "changed_line_count",
+        "candidate_line_count",
+        "probe_count",
+        "finding_count"
+      ],
+      "properties": {
+        "changed_file_count": { "type": "integer", "minimum": 0 },
+        "changed_line_count": { "type": "integer", "minimum": 0 },
+        "candidate_line_count": { "type": "integer", "minimum": 0 },
+        "probe_count": { "type": "integer", "minimum": 0 },
+        "finding_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "analysis_limitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "producer_stage", "path", "affected_items", "bounded_detail", "recovery"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "producer_stage": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/nullable_string" },
+        "affected_items": { "type": ["integer", "null"], "minimum": 0 },
+        "bounded_detail": { "$ref": "#/$defs/nullable_string" },
+        "recovery": { "$ref": "#/$defs/recovery" }
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "detail"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "classification",
+        "severity",
+        "confidence",
+        "probe",
+        "ripr",
+        "evidence_path",
+        "flow_sinks",
+        "evidence",
+        "missing",
+        "assertion_texts",
+        "activation",
+        "observed_values",
+        "missing_discriminators",
+        "related_tests_total",
+        "related_tests",
+        "stop_reasons",
+        "oracle_kind",
+        "oracle_strength",
+        "recommended_next_step",
+        "suggested_next_action"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "suppressed": { "type": "boolean" },
+        "suppressed_by": { "type": "string", "minLength": 1 },
+        "canonical_gap_id": { "type": "string", "minLength": 1 },
+        "canonical_gap_group_size": { "type": "integer", "minimum": 1 },
+        "canonical_gap": { "type": "object" },
+        "classification": { "type": "string", "minLength": 1 },
+        "severity": { "type": "string", "minLength": 1 },
+        "confidence": { "type": "number", "minimum": 0 },
+        "probe": { "$ref": "#/$defs/probe" },
+        "ripr": { "$ref": "#/$defs/ripr" },
+        "evidence_path": { "type": "array", "items": { "type": "string" } },
+        "flow_sinks": { "type": "array", "items": { "type": "object" } },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "missing": { "type": "array", "items": { "type": "string" } },
+        "assertion_texts": { "type": "object" },
+        "activation": { "$ref": "#/$defs/activation" },
+        "observed_values": { "type": "array", "items": { "$ref": "#/$defs/value_fact" } },
+        "missing_discriminators": { "type": "array", "items": { "$ref": "#/$defs/missing_discriminator" } },
+        "related_tests_total": { "type": "integer", "minimum": 0 },
+        "related_tests": { "type": "array", "items": { "type": "object" } },
+        "repair_placement": { "type": "object" },
+        "python_repair_card": { "type": "object" },
+        "typescript_preview_card": { "type": "object" },
+        "typescript_repair_packet": { "type": "object" },
+        "perl_preview_card": { "type": "object" },
+        "preview_actionability": { "type": "object" },
+        "stop_reasons": { "type": "array", "items": { "type": "string" } },
+        "oracle_kind": { "type": "string", "minLength": 1 },
+        "oracle_strength": { "type": "string", "minLength": 1 },
+        "recommended_next_step": { "type": "string", "minLength": 1 },
+        "suggested_next_action": { "type": "string", "minLength": 1 },
+        "language": { "type": "string" },
+        "language_status": { "type": "string" },
+        "owner_kind": { "type": "string" },
+        "static_limit_kind": { "type": "string" },
+        "static_limitation": { "type": "object" },
+        "changed_sink": { "type": "string" },
+        "observed_sink": { "type": "string" },
+        "oracle_alignment": { "type": "string" },
+        "alignment_reason": { "type": "string" }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "family", "delta", "file", "line"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "family": { "type": "string", "minLength": 1 },
+        "delta": { "type": "string", "minLength": 1 },
+        "file": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "expression": { "type": "string" },
+        "owner": { "type": "string" }
+      }
+    },
+    "ripr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reach", "infect", "propagate", "observe", "discriminate"],
+      "properties": {
+        "reach": { "$ref": "#/$defs/stage" },
+        "infect": { "$ref": "#/$defs/stage" },
+        "propagate": { "$ref": "#/$defs/stage" },
+        "observe": { "$ref": "#/$defs/stage" },
+        "discriminate": { "$ref": "#/$defs/stage" }
+      }
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "confidence", "summary"],
+      "properties": {
+        "state": { "type": "string", "minLength": 1 },
+        "confidence": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed_values", "missing_discriminators"],
+      "properties": {
+        "observed_values": { "type": "array", "items": { "$ref": "#/$defs/value_fact" } },
+        "missing_discriminators": { "type": "array", "items": { "$ref": "#/$defs/missing_discriminator" } }
+      }
+    },
+    "value_fact": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["line", "value", "context"],
+      "properties": {
+        "line": { "type": "integer", "minimum": 1 },
+        "value": { "type": "string", "minLength": 1 },
+        "context": { "type": "string", "minLength": 1 }
+      }
+    },
+    "missing_discriminator": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["value", "reason", "flow_sink"],
+      "properties": {
+        "value": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "flow_sink": { "type": "object" }
+      }
+    },
+    "language_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "status", "reason"],
+      "properties": {
+        "language": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "minLength": 1 },
+        "reason": { "$ref": "#/$defs/nullable_string" }
+      }
+    },
+    "preview_language": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "file_count", "sample_paths", "enabled", "analyzed", "category", "why"],
+      "properties": {
+        "language": { "type": "string", "minLength": 1 },
+        "file_count": { "type": "integer", "minimum": 0 },
+        "sample_paths": { "type": "array", "items": { "type": "string" } },
+        "enabled": { "type": "boolean" },
+        "analyzed": { "type": "boolean" },
+        "category": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 }
+      }
+    },
+    "run_limitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "run_status",
+        "basis",
+        "downstream_consumable",
+        "message",
+        "repair_route"
+      ],
+      "properties": {
+        "category": { "type": "string", "minLength": 1 },
+        "run_status": { "type": "string", "minLength": 1 },
+        "basis": { "type": "string", "minLength": 1 },
+        "downstream_consumable": { "const": false },
+        "message": { "type": "string", "minLength": 1 },
+        "repair_route": { "type": "string", "minLength": 1 }
+      }
+    },
+    "finding_alignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "supported_evidence_classes", "summary", "items"],
+      "properties": {
+        "scope": { "const": "supported_classes" },
+        "supported_evidence_classes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "summary": { "type": "object" },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/alignment_item" }
+        }
+      }
+    },
+    "alignment_item": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "canonical_gap_id",
+        "canonical_item_kind",
+        "evidence_class",
+        "gap_state",
+        "actionability",
+        "raw_group_size",
+        "group_reason",
+        "primary_anchor",
+        "raw_spans",
+        "why",
+        "recommended_repair",
+        "repair_route",
+        "related_test",
+        "verify_command",
+        "static_limitations",
+        "confidence",
+        "raw_findings"
+      ],
+      "properties": {
+        "canonical_gap_id": { "type": "string", "minLength": 1 },
+        "canonical_item_kind": { "type": "string", "minLength": 1 },
+        "evidence_class": { "type": "string", "minLength": 1 },
+        "gap_state": { "type": "string", "minLength": 1 },
+        "actionability": { "type": "string", "minLength": 1 },
+        "raw_group_size": { "type": "integer", "minimum": 1 },
+        "group_reason": { "type": "string", "minLength": 1 },
+        "primary_anchor": { "type": ["object", "null"] },
+        "raw_spans": { "type": "array", "items": { "type": "object" } },
+        "why": { "type": "string", "minLength": 1 },
+        "recommended_repair": { "type": "string", "minLength": 1 },
+        "repair_route": { "type": ["object", "null"] },
+        "related_test": { "type": ["object", "null"] },
+        "verify_command": { "type": "string", "minLength": 1 },
+        "static_limitations": { "type": "array", "items": { "type": "object" } },
+        "confidence": { "type": "object" },
+        "raw_findings": { "type": "array", "items": { "type": "object" } },
+        "presentation_text": { "type": ["object", "null"] },
+        "config_policy": { "type": ["object", "null"] }
+      }
+    }
+  }
+}

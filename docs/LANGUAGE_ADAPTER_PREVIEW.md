@@ -203,6 +203,37 @@ Useful references:
 - [TypeScript preview static facts](specs/RIPR-SPEC-0027-typescript-preview-static-facts.md).
 - [Python preview static facts](specs/RIPR-SPEC-0028-python-preview-static-facts.md).
 
+## Repo-Mode Analysis Is Rust-Only
+
+The preview adapters (TypeScript, Python) implement diff-mode static exposure
+analysis. They do NOT implement repo-mode analysis: `analyze_repo` for both
+adapters is an intentional stub that returns an empty result (`python.rs`,
+`typescript/mod.rs`). Only Rust and Perl implement full repo-mode analysis.
+
+A user running one of the repo-scoped formats on a Python-only or TypeScript-only
+workspace will get zero seams and a near-empty report from the preview adapter.
+This is a known limitation, not a clean result. Note that repo-exposure already
+emits a `typescript_diff_first` limitation entry for TS/JS-only workspaces
+pointing the user at diff-scoped analysis — so a TypeScript-only run is not
+entirely warning-free, even though the empty adapter result itself is silent.
+Python-only runs do not currently carry an equivalent entry.
+
+| Format | Rust repo | Perl repo | TypeScript repo | Python repo |
+| --- | --- | --- | --- | --- |
+| `repo-exposure-json` / `repo-exposure-md` / `repo-sarif` | full | full | empty (stub) | empty (stub) |
+| `repo-seams-json` / `repo-seams-md` | full | full | empty (stub) | empty (stub) |
+| `repo-badge-json` / `repo-badge-shields` | full | full | empty (stub) | empty (stub) |
+| `agent-seam-packets-json` | full | full | empty (stub) | empty (stub) |
+
+Diff-scoped formats (`check --json`, `check --format human`, SARIF from a diff,
+review-comments) work normally on all four languages — the stub only affects
+formats that scan the full repo baseline.
+
+**Until the stubs are implemented**, do not interpret a zero-seam repo-mode
+report for a preview language as evidence of clean coverage. Run
+`ripr check --diff <diff>` against a representative PR diff to get real
+exposure evidence for that language.
+
 ## Editor Workflow
 
 The VS Code extension can activate on TypeScript, TSX, JavaScript, JSX, and

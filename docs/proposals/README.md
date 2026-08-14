@@ -94,3 +94,4 @@ Start new proposals from
 | [RIPR-PROP-0016](RIPR-PROP-0016-actionable-surface-translation.md) | accepted | Actionable surface translation |
 | [RIPR-PROP-0017](RIPR-PROP-0017-python-repair-routing-lane.md) | accepted | Python repair routing lane |
 | [RIPR-PROP-0018](RIPR-PROP-0018-perl-repair-routing-lane.md) | proposed | Perl repair routing lane |
+| [RIPR-PROP-0019](RIPR-PROP-0019-partial-diff-scope-contract.md) | proposed | Partial diff-scope analysis contract |

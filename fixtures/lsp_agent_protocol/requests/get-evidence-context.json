@@ -1,0 +1,9 @@
+{
+  "protocol_version": "0.1",
+  "schema_version": "0.1",
+  "request": "ripr/getEvidenceContext",
+  "mode": "read_only",
+  "profile": "full",
+  "snapshot_id": "snapshot:6",
+  "continuation_id": "continuation:1"
+}

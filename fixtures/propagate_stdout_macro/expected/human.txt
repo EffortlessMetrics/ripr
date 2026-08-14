@@ -4,75 +4,29 @@ root: fixtures/propagate_stdout_macro/input
 
 Summary: 2 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 2 unknown
 
-NOTE fixtures/propagate_stdout_macro/input/src/lib.rs:2
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
-Changed
-  before: println!("amount is {}", amount);
-  after:  println!("amount is {}", amount * 9);
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/propagate_stdout_macro/input/src/lib.rs:2
+  Static exposure: propagation_unknown (note, confidence 0.51)
+  Why propagation_unknown: the change propagates but the downstream effect is unknown statically
+  Changed behavior: println!("amount is {}", amount * 9);
+  Missing discriminator: No clear propagation path from changed behavior to an observable sink
+  Related test: tests/report_tests.rs:4 report_does_not_panic
+  Next step: Escalate to real mutation testing or deep static analysis for this probe.
+  Evidence:
+    - reach yes: Related tests appear to reach report: report_does_not_panic
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 6 more evidence line(s) hidden
 
-Probe
-  family: call_deletion
-  delta:  effect
-  owner:  src/lib.rs::report
+Next: drill into the top finding:
+  ripr explain --root fixtures/propagate_stdout_macro/input --diff fixtures/propagate_stdout_macro/diff.patch --mode fast probe:src_lib.rs:call_deletion:75eda2b6
+  ripr context --root fixtures/propagate_stdout_macro/input --diff fixtures/propagate_stdout_macro/diff.patch --mode fast --at probe:src_lib.rs:call_deletion:75eda2b6
 
-Static exposure
-  propagation_unknown (note, confidence 0.51)
-
-Evidence
-  - reach yes: Related tests appear to reach report: report_does_not_panic
-  - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
-  - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
-  - discriminator no: No assertion found on related tests
-  - local flow reaches unknown sink: effect does not escape the function scope; propagation unknown (line 2)
-  - related test tests/report_tests.rs:4 report_does_not_panic uses none unknown oracle
-  - observed function argument value amount = 5 at line 5
-
-Weakness
-  - No clear propagation path from changed behavior to an observable sink
-  - No relevant oracle was detected
-  - No strong discriminator was detected
-
-Stop reasons:
-  - proc_macro_opaque
-
-Next step
-  Escalate to real mutation testing or deep static analysis for this probe.
-
-NOTE fixtures/propagate_stdout_macro/input/src/lib.rs:2
-
-Changed
-  before: println!("amount is {}", amount);
-  after:  println!("amount is {}", amount * 9);
-
-Probe
-  family: side_effect
-  delta:  effect
-  owner:  src/lib.rs::report
-
-Static exposure
-  propagation_unknown (note, confidence 0.51)
-
-Evidence
-  - reach yes: Related tests appear to reach report: report_does_not_panic
-  - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
-  - observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect
-  - discriminator no: No assertion found on related tests
-  - local flow reaches unknown sink: effect does not escape the function scope; propagation unknown (line 2)
-  - related test tests/report_tests.rs:4 report_does_not_panic uses none unknown oracle
-  - observed function argument value amount = 5 at line 5
-
-Weakness
-  - No clear propagation path from changed behavior to an observable sink
-  - No relevant oracle was detected
-  - No strong discriminator was detected
-
-Stop reasons:
-  - proc_macro_opaque
-
-Next step
-  Escalate to real mutation testing or deep static analysis for this probe.
-
-
-Note: ripr found no static test path for any of the 2 changed expression(s) in this diff. This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
