@@ -38,6 +38,14 @@ and canonical-path checks in the fixed source repository before any sidecar
 bytes are copied into runner-temporary files. It is called for all three fixed
 sidecars and must never be pointed at a candidate-checkout `INPUTS_PATH`.
 
+For every workflow path changed by the promotion PR, the authenticated immutable
+resolution manifest is the sole import authority. The manifest must contain
+exactly one total disposition row whose `key` equals that workflow path, and
+that one row must have disposition `swarm_blob` or `integrated`. Missing rows,
+duplicate rows, mixed allowed/source rows, `source_blob`, and unknown or other
+dispositions fail closed. The workflow must not substitute a hardcoded
+workflow-name exception for reviewed resolution authority.
+
 The workflow runs `cargo xtask source-promotion verify` and emits one
 normalized `ripr.source_promotion_contract.v2` receipt plus the verifier
 JSON/Markdown receipts. Every receipt is bound to the PR head, control commit,
@@ -76,6 +84,9 @@ exact J object to remain reachable from merged source `main`.
   directory, and placeholder control inputs fail closed;
 - a dispatch whose trusted `source_parent` differs from the immutable sidecar's
   `source_main` fails before the verifier is built;
+- exactly one `swarm_blob` or `integrated` workflow disposition is accepted;
+- missing, source-only, duplicate allowed, or mixed allowed/source dispositions
+  for one workflow key are rejected;
 - a valid two-parent join passes the verifier;
 - a single-parent or equivalent-tree flattened history fails post-merge;
 - uploaded receipts retain exact heads, ordered parents, input digests, checks,
@@ -93,6 +104,9 @@ exact J object to remain reachable from merged source `main`.
 - A marked promotion PR with one exact source-control marker, canonical
   mode-100644 sidecar files, matching digests, and a numeric,
   repository-bound `gh pr merge` command passes the PR-head verifier lane.
+- A changed workflow with exactly one reviewed `swarm_blob` or `integrated`
+  disposition is eligible for import; the same workflow key appearing in both
+  an allowed and `source_blob` row is ambiguous and rejected.
 - Missing, duplicate, abbreviated, uppercase, unreachable, wrong-repository,
   symlinked, directory, or placeholder sidecar inputs, candidate-tree input
   paths, and flattened ancestry are rejected.
@@ -109,10 +123,12 @@ Executable proof lives in
 `source_promotion_workflow_rejects_symlink_and_path_escape_inputs`,
 `source_promotion_workflow_rejects_placeholder_and_wrong_repo_commands`,
 `source_promotion_workflow_disables_checkout_credentials_before_code`,
-`source_promotion_workflow_binds_trusted_source_parent`, and
-`source_promotion_workflow_refutes_crlf_rewrite_thread`. The exact-J graph and
-flattened-history controls remain covered by the verifier tests mapped in
-`.ripr/traceability.toml`.
+`source_promotion_workflow_binds_trusted_source_parent`,
+`source_promotion_workflow_refutes_crlf_rewrite_thread`, and the integration
+contract tests in `xtask/tests/source_promotion_workflow_contract.rs`, including
+mixed allowed/source, duplicate, missing, source-only, and exact allowed
+workflow-disposition cases. The exact-J graph and flattened-history controls
+remain covered by the verifier tests mapped in `.ripr/traceability.toml`.
 
 ## Implementation Mapping
 
