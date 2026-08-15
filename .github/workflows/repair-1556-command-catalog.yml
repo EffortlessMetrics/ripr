@@ -1,0 +1,160 @@
+name: Emit exact #1556 command-catalog repair
+
+on:
+  push:
+    branches:
+      - promote/0.11.0-swarm-w7-a072b7
+
+permissions:
+  contents: read
+
+jobs:
+  emit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the invalid staged join exactly
+        uses: actions/checkout@v6
+        with:
+          ref: 87cc06cfb7f686248a35f93871d8794bdbe30ba1
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Apply and verify the twelve catalog truth changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object xtask/src/command.rs)" = "9891a2a8d1f18797affd55cc4ba15ccba5736fd0"
+
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          import re
+
+          path = Path("xtask/src/command.rs")
+          text = path.read_text(encoding="utf-8")
+          targets = [
+              "precommit",
+              "check-agent-skills",
+              "check-workspace-shape",
+              "check-architecture",
+              "check-public-api",
+              "check-doc-artifacts",
+              "check-readme-state",
+              "markdown-links",
+              "check-pr-shape",
+              "check-lint-policy",
+              "check-proof-packs",
+              "check-release-targets",
+          ]
+
+          block_re = re.compile(
+              r"(?ms)^        command_entry\(\n(?P<body>.*?)^        \),\n"
+          )
+          blocks = list(block_re.finditer(text))
+          replacements = []
+          changed = []
+
+          for target in targets:
+              candidates = []
+              for match in blocks:
+                  body = match.group("body")
+                  first = re.match(r'^            "([^"]+)",\n', body)
+                  if first is None:
+                      continue
+                  specification = first.group(1)
+                  if specification == target or specification.startswith(target + " ["):
+                      candidates.append((match, body, specification))
+
+              if len(candidates) != 1:
+                  raise SystemExit(
+                      f"expected one catalog entry for {target!r}, found {len(candidates)}"
+                  )
+
+              match, body, specification = candidates[0]
+              booleans = list(
+                  re.finditer(r"(?m)^            (true|false),$", body)
+              )
+              if len(booleans) < 2:
+                  raise SystemExit(
+                      f"catalog entry {specification!r} has fewer than two policy booleans"
+                  )
+
+              ci_flag = booleans[1]
+              if ci_flag.group(1) != "false":
+                  raise SystemExit(
+                      f"catalog entry {specification!r} ci_enforced is not false"
+                  )
+
+              body_after = (
+                  body[: ci_flag.start(1)]
+                  + "true"
+                  + body[ci_flag.end(1) :]
+              )
+              replacements.append((match.start("body"), match.end("body"), body_after))
+              changed.append(specification)
+
+          if len(replacements) != 12 or len({start for start, _, _ in replacements}) != 12:
+              raise SystemExit("repair did not resolve to twelve distinct catalog entries")
+
+          for start, end, body_after in sorted(replacements, reverse=True):
+              text = text[:start] + body_after + text[end:]
+
+          path.write_text(text, encoding="utf-8")
+          Path("repair-targets.json").write_text(
+              json.dumps({"changed": changed}, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          test "$(git diff --numstat -- xtask/src/command.rs)" = $'12\t12\txtask/src/command.rs'
+          git diff --check
+          git diff --unified=0 -- xtask/src/command.rs > repair.patch
+          test "$(grep -c '^[-]            false,$' repair.patch)" = "12"
+          test "$(grep -c '^[+]            true,$' repair.patch)" = "12"
+
+          old_blob="$(git rev-parse 87cc06cfb7f686248a35f93871d8794bdbe30ba1:xtask/src/command.rs)"
+          new_blob="$(git hash-object xtask/src/command.rs)"
+          sha256="$(sha256sum xtask/src/command.rs | cut -d' ' -f1)"
+          printf '%s\n' "$new_blob" > new-blob-sha.txt
+          printf '%s\n' "$sha256" > command-rs-sha256.txt
+          python - "$old_blob" "$new_blob" "$sha256" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          old_blob, new_blob, sha256 = sys.argv[1:]
+          targets = json.loads(Path("repair-targets.json").read_text(encoding="utf-8"))["changed"]
+          Path("repair-receipt.json").write_text(
+              json.dumps(
+                  {
+                      "invalid_join": "87cc06cfb7f686248a35f93871d8794bdbe30ba1",
+                      "invalid_tree": "c53a89dcace27f54fdb78df4d16037959dfa2e2a",
+                      "path": "xtask/src/command.rs",
+                      "old_blob": old_blob,
+                      "new_blob": new_blob,
+                      "sha256": sha256,
+                      "changes": len(targets),
+                      "commands": targets,
+                  },
+                  indent=2,
+                  sort_keys=True,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload the lossless repair packet
+        uses: actions/upload-artifact@v4
+        with:
+          name: ripr-1556-command-catalog-repair
+          path: |
+            xtask/src/command.rs
+            repair.patch
+            repair-targets.json
+            repair-receipt.json
+            new-blob-sha.txt
+            command-rs-sha256.txt
+          if-no-files-found: error
+          retention-days: 7
