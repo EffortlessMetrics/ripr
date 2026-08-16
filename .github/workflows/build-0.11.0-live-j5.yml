@@ -3,7 +3,7 @@ name: Build exact live-source 0.11.0 J5
 on:
   push:
     branches:
-      - control/0.11.0-j3-builder
+      - control/0.11.0-j5-builder-v2
 
 permissions:
   contents: write
@@ -11,7 +11,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: build-exact-live-source-0.11.0-j5
+  group: build-exact-live-source-0.11.0-j5-v2
   cancel-in-progress: false
 
 jobs:
