@@ -1,0 +1,76 @@
+name: Finalize exact current-source W7 J3 v2
+
+on:
+  push:
+    branches:
+      - control/0.11.0-w7-6cc5d-j3-builder
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-current-source-w7-j3
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      OLD_SOURCE_PARENT: a072b7efe80f1a32d7b5ba7342559a114edeb12e
+      SOURCE_PARENT: 6cc5d6135593d9fb9a745eb215c5b0f92cbd14d5
+      SWARM_PARENT: 83217e97ec6847db41d757f57279a8b1ca433fe6
+      SWARM_REF: refs/tags/ripr-release-0.11.0-83217e97ec6847db41d757f57279a8b1ca433fe6
+      BASE_J: a2a743abd139566499f80cdca8ed999ec4ee01d4
+      BASE_TREE: e9206995263876f087bce0da5f3aeac35895c040
+      CONTROL_BASE: ce6c3996d9a656180eee7b95ccb03c4327c1e813
+      EXPECTED_PREVIEW_TREE: c5b5fb10af10c6b9d35905813258bf0053b9eabd
+      EXPECTED_CONFLICTS_SHA256: ead54800d0d9ef03d66ab9db21fbb9831e04d9776476deedc9495bfe18bcecff
+      EXPECTED_SURVIVORS_SHA256: 16da9d3ff78d33611ffc0194f35447c9ce074363a30107aaf07ed558eef519d5
+      EXPECTED_SWARM_ONLY_SHA256: aa5d8320c7d4ebacf2f2c5c322eaf26177d78cf170377b9b68e9245ae89d2f40
+      EXPECTED_AUTHORITY_SHA256: a904b4a52c716de3aac7389c78fecf0a76ace28d90b30846268e25942284d9b7
+      EXPECTED_VERSION_STATE_SHA256: bd20e4565bce4993773ac04a760ab503c8d85e6c6f03c384765c9b98a26c8045
+      EXPECTED_SOURCE_ALL_COUNT: "44"
+      EXPECTED_SOURCE_FIRST_PARENT_COUNT: "24"
+      EXPECTED_SOURCE_ALL_SHA256: sha256:05114ab142829dd8921cb6b0c111a6e4e8e7640a663b4b9851063673d5bc0780
+      EXPECTED_SOURCE_FIRST_PARENT_SHA256: sha256:e1ae516a02033fd32cba7bea239ee6d44682becaf912e01151aa4a831e13cc30
+      EXPECTED_SWARM_COUNT: "859"
+      EXPECTED_SWARM_SHA256: sha256:d92e4a218aedae9937627a5d5cdae1ac5335caec0a67841cfe3762f8591d38a1
+      J3_BRANCH: promote/0.11.0-swarm-w7-6cc5d-j3
+      CONTROL_BRANCH: release/0.11.0-promotion-control-6cc5d-w7-j3
+      VERSION: 0.11.0
+
+    steps:
+      - name: Checkout source control builder
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Checkout exact W7 preflight producer
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: EffortlessMetrics/ripr-swarm
+          ref: 83217e97ec6847db41d757f57279a8b1ca433fe6
+          fetch-depth: 0
+          fetch-tags: true
+          path: swarm
+          persist-credentials: false
+
+      - name: Install governed Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+
+      - name: Build reviewed tree, exact J3, control sidecars, and proof
+        shell: bash
+        run: bash scripts/finalize-current-source-w7-j3.sh
+
+      - name: Upload exact J3 construction and proof packet
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ripr-0.11.0-current-source-w7-j3
+          path: target/j3-final
+          if-no-files-found: error
+          retention-days: 90
