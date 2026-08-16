@@ -1,0 +1,37 @@
+name: Emit #1559 source contract context
+
+on:
+  push:
+    branches:
+      - control/0.11.0-j2-catalog-builder
+
+permissions:
+  contents: read
+
+jobs:
+  emit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: a072b7efe80f1a32d7b5ba7342559a114edeb12e
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Stage source context
+        run: |
+          set -euo pipefail
+          mkdir -p target/1559-context/.github/workflows target/1559-context/xtask/src target/1559-context/xtask/tests target/1559-context/docs/specs target/1559-context/.ripr
+          cp .github/workflows/source-promotion-contract.yml target/1559-context/.github/workflows/
+          cp xtask/src/command.rs target/1559-context/xtask/src/
+          cp xtask/tests/source_promotion_workflow_contract.rs target/1559-context/xtask/tests/
+          cp docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md target/1559-context/docs/specs/
+          cp .ripr/traceability.toml target/1559-context/.ripr/
+          cp .gitignore target/1559-context/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ripr-1559-source-context
+          path: target/1559-context
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
