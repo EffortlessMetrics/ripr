@@ -50,8 +50,18 @@ workflow-name exception for reviewed resolution authority.
 
 The workflow runs `cargo xtask source-promotion verify` and emits one
 normalized `ripr.source_promotion_contract.v2` receipt plus the verifier
-JSON/Markdown receipts. Every receipt is bound to the PR head, control commit,
-and input digests and is uploaded under a SHA-containing artifact name.
+JSON/Markdown receipts. PR and post-merge receipt directories live under the
+runner-owned temporary directory rather than the candidate checkout. Every
+receipt is bound to the PR head, control commit, and input digests and is
+uploaded under a SHA-containing artifact name.
+
+After the PR receipt upload, an always-run terminal enforcement step reads the
+normalized contract and succeeds only when its schema is
+`ripr.source_promotion_contract.v2`, its status is `verified`, validation is
+`passed`, the verifier receipt is `present`, and the verifier exit code is zero.
+Rejected evidence is therefore retained before the hosted job fails; a missing,
+malformed, rejected, candidate-supplied, or non-zero-verifier receipt cannot
+produce a green `Source Promotion Contract` check.
 
 Before invoking the verifier, the workflow resolves the declared `swarm_ref`
 with `git ls-remote --refs` against the fixed public
@@ -95,7 +105,14 @@ exact J object to remain reachable from merged source `main`.
 - a valid two-parent join passes the verifier;
 - a single-parent or equivalent-tree flattened history fails post-merge;
 - uploaded receipts retain exact heads, ordered parents, input digests, checks,
-  failure reasons, and claim boundaries.
+  failure reasons, and claim boundaries;
+- the retained verified `ripr.source_promotion_verification.v2` shape passes the
+  balanced normalizer predicate while malformed shapes fail closed;
+- a rejected normalized contract is uploaded and then fails the hosted job,
+  while a verified, passed, present, zero-exit contract passes terminal
+  enforcement;
+- candidate-checkout files cannot substitute for runner-owned verifier or
+  normalized-contract receipts.
 - The uploaded post-merge contract receipt uses schema
   `ripr.source_promotion_post_merge_contract.v1` and retains the exact
   `control_commit` alongside J, source, trusted-parent, and merged-main SHAs.
@@ -132,8 +149,10 @@ Executable proof lives in
 `source_promotion_workflow_binds_trusted_source_parent`,
 `source_promotion_workflow_refutes_crlf_rewrite_thread`, and the integration
 contract tests in `xtask/tests/source_promotion_workflow_contract.rs`, including
-missing/source-only, mixed allowed/source, and one-or-more unanimously allowed
-workflow-disposition cases. The exact-J graph, `kind:key` completeness, duplicate
+missing/source-only, mixed allowed/source, one-or-more unanimously allowed
+workflow-disposition cases, the balanced verifier-receipt predicate, and
+runner-owned upload-before-enforcement ordering. The exact-J graph, `kind:key`
+completeness, duplicate
 `kind:key`, and flattened-history controls remain covered by the verifier tests
 mapped in `.ripr/traceability.toml`.
 

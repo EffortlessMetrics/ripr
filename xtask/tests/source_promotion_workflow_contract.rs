@@ -107,3 +107,74 @@ fn workflow_rejection_reason_is_single_line_after_multiple_unreviewed_paths() ->
     );
     Ok(())
 }
+
+#[test]
+fn verifier_receipt_schema_predicate_is_balanced() -> Result<(), String> {
+    let workflow = workflow_text()?;
+    let malformed = "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\")))' \"$verification\"";
+    let balanced = "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\"))' \"$verification\"";
+    assert!(
+        !workflow.contains(malformed),
+        "verifier-receipt jq predicate retains an unmatched parenthesis"
+    );
+    assert!(
+        workflow.contains(balanced),
+        "workflow no longer contains the balanced verified-receipt predicate"
+    );
+    Ok(())
+}
+
+#[test]
+fn normalized_contract_is_runner_owned_uploaded_then_enforced() -> Result<(), String> {
+    let workflow = workflow_text()?;
+    let promotion_job = workflow
+        .split("\n  post-merge-reachability:\n")
+        .next()
+        .ok_or_else(|| "missing promotion-contract job".to_string())?;
+
+    for forbidden in [
+        "SOURCE_PROMOTION_OUT: target/ripr/source-promotion",
+        "path: target/ripr/source-promotion",
+    ] {
+        assert!(
+            !promotion_job.contains(forbidden),
+            "candidate checkout still owns promotion evidence: {forbidden}"
+        );
+    }
+    for required in [
+        "SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion",
+        "path: ${{ runner.temp }}/ripr-source-promotion",
+        "SOURCE_PROMOTION_CONTRACT: ${{ runner.temp }}/ripr-source-promotion/source-promotion-contract.json",
+    ] {
+        assert!(
+            promotion_job.contains(required),
+            "runner-owned promotion contract missing: {required}"
+        );
+    }
+
+    let upload = promotion_job
+        .find("- name: Upload SHA-bound promotion receipts")
+        .ok_or_else(|| "missing promotion receipt upload step".to_string())?;
+    let enforce = promotion_job
+        .find("- name: Enforce normalized source-promotion contract")
+        .ok_or_else(|| "missing terminal normalized-contract enforcement step".to_string())?;
+    assert!(
+        upload < enforce,
+        "rejected evidence must be uploaded before the hosted job fails"
+    );
+    let enforcement = &promotion_job[enforce..];
+    for required in [
+        "if: always()",
+        ".schema == \"ripr.source_promotion_contract.v2\"",
+        ".status == \"verified\"",
+        ".validation.status == \"passed\"",
+        ".verifier_receipt_status == \"present\"",
+        ".verifier_exit_code == \"0\"",
+    ] {
+        assert!(
+            enforcement.contains(required),
+            "terminal enforcement missing: {required}"
+        );
+    }
+    Ok(())
+}
