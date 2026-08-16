@@ -482,6 +482,79 @@ parallel TS path — if someone later forks the logic, this test breaks.
 
 ---
 
+## 8. Producer-owned repair-packet authority (issue #2028, scoped amendment)
+
+§1.1 made `validate_agent_gap_record_packet` the single completeness authority
+for the GapRecord-shaped flip. This amendment extends the same
+one-authority rule to the Rust `ClassifiedSeam`-shaped decision and to the
+editor surfaces that consume it.
+
+### 8.1 Single authority for the safe-for-repair-packet flip
+
+`crates/ripr/src/analysis/repair_route.rs::repair_packet_eligibility` (with
+its derived `is_safe_for_repair_packet`) is the single producer-owned
+authority for whether a classified Rust seam is safe to hand to a
+targeted-test repair packet. It conjoins, in a fixed fail-closed order:
+headline-eligible class, resolved cross-language oracle visibility, resolved
+cross-language test target, and producer route readiness; every ineligible
+state carries a typed `RepairPacketIneligibility` reason. Consumers
+**must not** hand-conjoin `repair_projection_ready`,
+`repair_route_readiness`, class checks, or the cross-language helpers into a
+parallel flip. A consumer that needs readiness-only gating (not the full
+flip) reads `repair_packet_eligibility(entry).readiness` — it does not call
+readiness internals directly.
+
+### 8.2 Consumer routing
+
+- **LSP seam code actions** (`lsp/actions.rs`): the targeted-test-brief
+  action is gated on the authority's `eligible()` flip plus editor content
+  availability (a concrete assertion template or related test). The
+  cross-language early-out consumes the authority's
+  `cross_language_test_target_unresolved` helper directly.
+- **LSP gap code actions**: ledger-gap cross-language suppression consumes
+  the producer-emitted category string
+  (`CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY`); the LSP does not re-derive
+  the predicate — no `ClassifiedSeam` exists for ledger gaps.
+- **Actionable-gaps packet JSON**: the render-field contract
+  (`canonical_gap_id`, `repair_kind`, `verify_command`, `receipt_command`,
+  `must_not_change`, `allowed_edit_surface`, `raw_evidence_refs`) exists
+  exactly once, in
+  `lsp/gap_artifacts.rs::require_actionable_packet_render_fields`. The ingest
+  boundary (`validate_actionable_gaps`) and the command-time repair-packet
+  renderer (`lsp/backend.rs`) both call it; neither re-walks packet fields.
+  The GapRecord arm keeps §1.1's `validate_agent_gap_record_packet`; no
+  second authority is invented for JSON shapes.
+- **Gate repair route** (`output/gate/repair_route.rs`): the 12-field
+  completeness predicate is a route-rendering completeness check over
+  `GateCandidate` facts, not the flip; it stays, documented as such.
+
+### 8.3 Coupling guard
+
+`cargo xtask check-architecture` fails when production code outside
+`analysis/repair_route.rs` calls `repair_projection_ready` or
+`repair_route_readiness` directly. Declared compatibility exemptions:
+`output/evidence_record.rs` (the PR 1 re-export site for the cross-language
+helpers, which renders readiness into evidence records) and `cli/rerun.rs`
+(targeted-rerun parity diffs producer readiness structs). New consumers route
+through the authority or add an explicit, justified exemption. The
+pre-authority `repair_projection_ready` convenience wrapper was removed when
+migrating its last consumer (the LSP seam brief action) to the authority; the
+guard also blocks its reintroduction.
+
+### 8.4 Behavior boundary
+
+The migration is behavior-preserving with one documented, fail-closed
+exception: the LSP targeted-test-brief action previously lacked the
+cross-language *oracle-visibility* conjunct, so a seam with an
+external-language related test but a resolved Rust-side target could be
+offered a brief while its evidence record named the oracle-visibility
+limitation. Routing through the authority withholds the brief in that case —
+withhold-only, never additive — consistent with this spec's UNDER-emit rule.
+No new user-facing text is introduced at withheld sites that do not already
+explain themselves.
+
+---
+
 ## Acceptance criteria
 
 1. `repair_packet_ready` flips `true` for the complete fixture and **only**
@@ -610,6 +683,17 @@ fixtures/ts_cross_language_bridge_limit — F11: mocked module static limit
 fixtures/ts_already_observed         — F12: strong exact oracle observed
 ```
 
+The §8 consumer-routing migration is covered by existing LSP nets (zero
+drift required) plus the new coupling-guard unit tests:
+
+```text
+crates/ripr/src/lsp/tests.rs::seam_code_actions_fail_closed_for_cross_language_target_unresolved
+crates/ripr/src/lsp/tests.rs::gap_code_actions_suppress_repair_actions_for_cross_language_target_unresolved
+crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_incomplete_gap_returns_sentinel
+crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_complete_gap_returns_full_packet
+xtask/src/main.rs::repair_packet_authority_guard_tests::*
+```
+
 ## Implementation Mapping
 
 The implementation adds two modules and modifies one:
@@ -631,6 +715,29 @@ The shared validator lives in (not modified):
 
 ```text
 crates/ripr/src/output/agent_seam_packets.rs::validate_agent_gap_record_packet
+```
+
+The §8 amendment modifies consumer surfaces only (the authority in
+`analysis/repair_route.rs` is not modified):
+
+```text
+MOD  crates/ripr/src/lsp/actions.rs
+     (seam brief action gates on repair_packet_eligibility(...).eligible();
+      gap cross-language suppression consumes the producer category constant)
+
+MOD  crates/ripr/src/lsp/gap_artifacts.rs
+     (single actionable-packet render-field contract:
+      require_actionable_packet_render_fields, called by the ingest boundary)
+
+MOD  crates/ripr/src/lsp/backend.rs
+     (command-time repair-packet renderer calls the shared render-field
+      contract instead of re-walking packet fields)
+
+MOD  crates/ripr/src/output/gate/repair_route.rs
+     (comment only: 12-field completeness predicate is not the flip)
+
+MOD  xtask/src/main.rs
+     (check-architecture coupling guard + guard unit tests)
 ```
 
 ## Metrics

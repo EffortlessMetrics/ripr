@@ -116,6 +116,27 @@ state writes, persistence writes, log messages, and configuration changes. When
 the sink family is not statically obvious, `ripr` should keep the older
 `call_effect` fallback or report propagation as unknown with a stop reason.
 
+Field-assignment boundary example:
+
+```rust
+let mut file = File::default();
+file.body_model_version = HIR_BODY_MODEL_VERSION - 1;
+load(&file);
+```
+
+For a predicate comparing `file.body_model_version == HIR_BODY_MODEL_VERSION`,
+RIPR may credit the direct field assignment as activation evidence only when
+the object, field, same-file literal constant, bounded `+/-` integer offset,
+and source order are exact and unambiguous. The equality value and its adjacent
+integer boundaries must remain distinct. Other objects, other fields,
+similarly named constants, helper-only assignments, and opaque right-hand
+expressions must not be credited. Assignments nested under control flow are not
+unconditional evidence, and an intervening explicit mutable borrow invalidates
+an earlier field value. An otherwise related test with an unsupported or
+invalidated direct field assignment must stop as
+`field_assignment_value_unresolved` instead of receiving a repair
+recommendation that the analyzer cannot credit.
+
 ## Test Mapping
 
 Fixture coverage:
@@ -128,6 +149,13 @@ Fixture coverage:
   predicate-to-error, match-arm result, output field, event/outbound call,
   state write, persistence write, log message, configuration change, and
   unknown propagation fallback
+- `given_direct_field_assignments_from_named_constant_boundaries_then_values_are_observed`
+- `given_other_object_or_field_assignments_then_boundary_value_is_not_credited`
+- `given_similarly_named_constant_then_equality_boundary_stays_missing`
+- `given_assignment_only_in_unrelated_helper_or_test_then_value_is_not_credited`
+- `given_direct_field_assignment_with_opaque_rhs_then_names_field_assignment_limitation`
+- `given_control_flow_nested_field_assignment_then_boundary_value_is_not_credited`
+- `given_mutable_borrow_after_field_assignment_then_stale_value_is_not_credited`
 
 ## Implementation Mapping
 

@@ -21,6 +21,7 @@ pub(crate) struct TypeScriptPreviewCard {
     pub(crate) oracle_kind: String,
     pub(crate) oracle_strength: String,
     pub(crate) bun_cross_language_grip: Option<TypeScriptBunCrossLanguageGrip>,
+    pub(crate) bun_cross_language_grips: Vec<TypeScriptBunCrossLanguageGrip>,
     pub(crate) missing_discriminator: Option<String>,
     pub(crate) suggested_assertion_shape: String,
     pub(crate) static_limits: Vec<String>,
@@ -143,7 +144,8 @@ pub(crate) fn typescript_preview_card(finding: &Finding) -> Option<TypeScriptPre
         .map(static_limit_label)
         .into_iter()
         .collect::<Vec<_>>();
-    let bun_cross_language_grip = bun_cross_language_grip(finding, &actionability);
+    let bun_cross_language_grips = bun_cross_language_grips(finding, &actionability);
+    let bun_cross_language_grip = bun_cross_language_grips.first().cloned();
 
     Some(TypeScriptPreviewCard {
         card_version: "typescript_preview_card.v1".to_string(),
@@ -159,6 +161,7 @@ pub(crate) fn typescript_preview_card(finding: &Finding) -> Option<TypeScriptPre
         oracle_kind,
         oracle_strength,
         bun_cross_language_grip,
+        bun_cross_language_grips,
         missing_discriminator: missing_discriminator.clone(),
         suggested_assertion_shape: suggested_assertion_shape(
             finding,
@@ -177,6 +180,24 @@ pub(crate) fn typescript_preview_card(finding: &Finding) -> Option<TypeScriptPre
 }
 
 pub(crate) fn typescript_preview_card_json_value(card: &TypeScriptPreviewCard) -> Value {
+    let mut bun_grip = card
+        .bun_cross_language_grip
+        .as_ref()
+        .map(bun_cross_language_grip_json);
+    if card.bun_cross_language_grips.len() > 1
+        && let Some(Value::Object(object)) = bun_grip.as_mut()
+    {
+        object.insert(
+            "profiles".to_string(),
+            Value::Array(
+                card.bun_cross_language_grips
+                    .iter()
+                    .map(bun_cross_language_grip_json)
+                    .collect(),
+            ),
+        );
+    }
+
     json!({
         "card_version": card.card_version.as_str(),
         "source": card.source.as_str(),
@@ -194,43 +215,7 @@ pub(crate) fn typescript_preview_card_json_value(card: &TypeScriptPreviewCard) -
         })),
         "oracle_kind": card.oracle_kind.as_str(),
         "oracle_strength": card.oracle_strength.as_str(),
-        "bun_cross_language_grip": card.bun_cross_language_grip.as_ref().map(|grip| {
-            let advisory_packet = bun_cross_language_advisory_packet(grip);
-            let proof_mode = stable_byte_proof_mode(grip);
-            json!({
-                "state": grip.state.as_str(),
-                "rust_seam": {
-                    "file": grip.rust_file.as_str(),
-                    "owner": grip.rust_owner.as_str(),
-                    "boundary": grip.rust_boundary.as_str(),
-                },
-                "typescript_evidence": {
-                    "test_file": grip.ts_test_file.as_str(),
-                    "verdict": grip.ts_verdict.as_str(),
-                    "bridge_confidence": grip.bridge_confidence.as_str(),
-                    "missing_discriminators": &grip.missing_discriminators,
-                },
-                "limitation_category": grip.limitation_category.as_str(),
-                "repair_route": grip.repair_route.as_str(),
-                "missing_graph_legs": &grip.missing_graph_legs,
-                "unlock_condition": grip.unlock_condition.as_deref(),
-                "raw_evidence_refs": grip.raw_evidence_refs.iter().map(raw_ref_json).collect::<Vec<_>>(),
-                "action": grip.action.as_str(),
-                "suggested_test_file": grip.suggested_test_file.as_str(),
-                "placement": grip.placement.as_ref().map(|placement| json!({
-                    "rank": placement.rank,
-                    "suggested_test_file": placement.suggested_test_file.as_str(),
-                    "reason": placement.reason.as_str(),
-                    "basis": &placement.basis,
-                    "authority_boundary": placement.authority_boundary.as_str(),
-                    "repair_packet_ready": placement.repair_packet_ready,
-                })),
-                "proof_mode": proof_mode_json(&proof_mode),
-                "advisory_packet": advisory_packet_json(&advisory_packet),
-                "authority_boundary": grip.authority_boundary.as_str(),
-                "repair_packet_ready": grip.repair_packet_ready,
-            })
-        }),
+        "bun_cross_language_grip": bun_grip,
         "missing_discriminator": card.missing_discriminator.as_deref(),
         "suggested_assertion_shape": card.suggested_assertion_shape.as_str(),
         "static_limits": &card.static_limits,
@@ -350,14 +335,51 @@ fn evidence_value<'a>(finding: &'a Finding, prefix: &str) -> Option<&'a str> {
         .filter(|value| !value.is_empty())
 }
 
-fn bun_cross_language_grip(
+fn evidence_values<'a>(finding: &'a Finding, prefix: &str) -> Vec<&'a str> {
+    finding
+        .evidence
+        .iter()
+        .filter_map(|entry| entry.strip_prefix(prefix))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
+fn bun_cross_language_grips(
     finding: &Finding,
     actionability: &PreviewActionability,
+) -> Vec<TypeScriptBunCrossLanguageGrip> {
+    let hints = evidence_values(finding, "typescript_bun_ub_bridge_hint: ");
+    let verdicts = evidence_values(finding, "typescript_bun_ub_bridge_verdict: ");
+    let grips = evidence_values(finding, "typescript_bun_ub_cross_language_grip: ");
+    let placements = evidence_values(finding, "typescript_bun_ub_test_placement: ");
+    if hints.len() != verdicts.len() || hints.len() != grips.len() {
+        return Vec::new();
+    }
+
+    hints
+        .into_iter()
+        .zip(verdicts)
+        .zip(grips)
+        .enumerate()
+        .filter_map(|(index, ((hint, verdict), grip))| {
+            let suggested_test_file = keyed_value(verdict, "suggested_test_file")?;
+            let placement = placements.get(index).copied().filter(|candidate| {
+                keyed_value(candidate, "suggested_test_file").as_deref()
+                    == Some(suggested_test_file.as_str())
+            });
+            bun_cross_language_grip_for_lines(actionability, hint, verdict, grip, placement)
+        })
+        .collect()
+}
+
+fn bun_cross_language_grip_for_lines(
+    actionability: &PreviewActionability,
+    hint: &str,
+    verdict: &str,
+    grip: &str,
+    placement: Option<&str>,
 ) -> Option<TypeScriptBunCrossLanguageGrip> {
-    let hint = evidence_value(finding, "typescript_bun_ub_bridge_hint: ")?;
-    let verdict = evidence_value(finding, "typescript_bun_ub_bridge_verdict: ")?;
-    let grip = evidence_value(finding, "typescript_bun_ub_cross_language_grip: ");
-    let placement = evidence_value(finding, "typescript_bun_ub_test_placement: ");
     let ts_verdict = verdict.split_whitespace().next()?.to_string();
     let missing = keyed_value(verdict, "missing_discriminators")
         .map(|value| {
@@ -373,8 +395,7 @@ fn bun_cross_language_grip(
             }
         })
         .unwrap_or_default();
-    let state = grip
-        .and_then(|line| keyed_value(line, "state"))
+    let state = keyed_value(grip, "state")
         .unwrap_or_else(|| cross_language_state_for_verdict(&ts_verdict).to_string());
 
     Some(TypeScriptBunCrossLanguageGrip {
@@ -394,12 +415,48 @@ fn bun_cross_language_grip(
         action: keyed_value(verdict, "action")?,
         suggested_test_file: keyed_value(verdict, "suggested_test_file")?,
         placement: placement.and_then(bun_test_placement),
-        authority_boundary: grip
-            .and_then(|line| keyed_value(line, "authority"))
+        authority_boundary: keyed_value(grip, "authority")
             .unwrap_or_else(|| "preview_advisory_only".to_string()),
-        repair_packet_ready: grip
-            .and_then(|line| keyed_value(line, "repair_packet_ready"))
+        repair_packet_ready: keyed_value(grip, "repair_packet_ready")
             .is_some_and(|value| value == "true"),
+    })
+}
+
+fn bun_cross_language_grip_json(grip: &TypeScriptBunCrossLanguageGrip) -> Value {
+    let advisory_packet = bun_cross_language_advisory_packet(grip);
+    let proof_mode = stable_byte_proof_mode(grip);
+    json!({
+        "state": grip.state.as_str(),
+        "rust_seam": {
+            "file": grip.rust_file.as_str(),
+            "owner": grip.rust_owner.as_str(),
+            "boundary": grip.rust_boundary.as_str(),
+        },
+        "typescript_evidence": {
+            "test_file": grip.ts_test_file.as_str(),
+            "verdict": grip.ts_verdict.as_str(),
+            "bridge_confidence": grip.bridge_confidence.as_str(),
+            "missing_discriminators": &grip.missing_discriminators,
+        },
+        "limitation_category": grip.limitation_category.as_str(),
+        "repair_route": grip.repair_route.as_str(),
+        "missing_graph_legs": &grip.missing_graph_legs,
+        "unlock_condition": grip.unlock_condition.as_deref(),
+        "raw_evidence_refs": grip.raw_evidence_refs.iter().map(raw_ref_json).collect::<Vec<_>>(),
+        "action": grip.action.as_str(),
+        "suggested_test_file": grip.suggested_test_file.as_str(),
+        "placement": grip.placement.as_ref().map(|placement| json!({
+            "rank": placement.rank,
+            "suggested_test_file": placement.suggested_test_file.as_str(),
+            "reason": placement.reason.as_str(),
+            "basis": &placement.basis,
+            "authority_boundary": placement.authority_boundary.as_str(),
+            "repair_packet_ready": placement.repair_packet_ready,
+        })),
+        "proof_mode": proof_mode_json(&proof_mode),
+        "advisory_packet": advisory_packet_json(&advisory_packet),
+        "authority_boundary": grip.authority_boundary.as_str(),
+        "repair_packet_ready": grip.repair_packet_ready,
     })
 }
 
@@ -928,6 +985,67 @@ mod tests {
     }
 
     #[test]
+    fn typescript_preview_card_retains_copy_bridge_group_when_multiple_profiles_exist()
+    -> Result<(), String> {
+        let mut finding = sample_bun_missing_resizable_finding();
+        finding.evidence.extend([
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/array_buffer.rs rust_owner=copy_to_unshared rust_boundary=\"SharedArrayBuffer and resizable ArrayBuffer copy semantics\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_discriminated missing_discriminators=none action=no_missing_bridge_discriminator suggested_test_file=not_applicable repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_discriminated rust_grip=ungripped ts_verdict=ts_discriminated action=no_missing_bridge_discriminator authority=preview_advisory_only suggested_test_file=not_applicable repair_packet_ready=false".to_string(),
+        ]);
+
+        let card = typescript_preview_card(&finding)
+            .ok_or_else(|| "expected TypeScript preview card".to_string())?;
+        assert_eq!(card.bun_cross_language_grips.len(), 2);
+        let compatibility_grip = card
+            .bun_cross_language_grip
+            .as_ref()
+            .ok_or_else(|| "expected Bun cross-language grip".to_string())?;
+        assert_eq!(compatibility_grip.rust_file, "src/jsc/Blob.rs");
+        assert_eq!(
+            compatibility_grip.rust_owner,
+            "Blob::from_js_without_defer_gc"
+        );
+        let copy_grip = card
+            .bun_cross_language_grips
+            .get(1)
+            .ok_or_else(|| "expected copy profile".to_string())?;
+        assert_eq!(copy_grip.rust_file, "src/jsc/array_buffer.rs");
+        assert_eq!(copy_grip.rust_owner, "copy_to_unshared");
+        assert_eq!(copy_grip.ts_verdict, "ts_discriminated");
+
+        let json = typescript_preview_card_json_value(&card);
+        assert_eq!(
+            json["bun_cross_language_grip"]["rust_seam"]["file"],
+            "src/jsc/Blob.rs"
+        );
+        assert_eq!(
+            json["bun_cross_language_grip"]["profiles"][1]["rust_seam"]["owner"],
+            "copy_to_unshared"
+        );
+        assert_eq!(
+            json["bun_cross_language_grip"]["typescript_evidence"]["test_file"],
+            "test/js/web/fetch/blob.test.ts"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_preview_card_keeps_blob_group_without_copy_profile() -> Result<(), String> {
+        let card = typescript_preview_card(&sample_bun_missing_resizable_finding())
+            .ok_or_else(|| "expected TypeScript preview card".to_string())?;
+        let grip = card
+            .bun_cross_language_grip
+            .as_ref()
+            .ok_or_else(|| "expected Bun cross-language grip".to_string())?;
+
+        assert_eq!(grip.rust_file, "src/jsc/Blob.rs");
+        assert_eq!(grip.rust_owner, "Blob::from_js_without_defer_gc");
+        assert_eq!(grip.ts_verdict, "ts_missing_resizable");
+        Ok(())
+    }
+
+    #[test]
     fn bun_cross_language_agent_packet_projects_missing_discriminator() -> Result<(), String> {
         let card = typescript_preview_card(&sample_bun_missing_resizable_finding())
             .ok_or_else(|| "expected TypeScript preview card".to_string())?;
@@ -1001,6 +1119,51 @@ mod tests {
                 .iter()
                 .any(|raw_ref| raw_ref["leg"] == "binding_edge")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_preview_card_retains_multiple_bun_profiles() -> Result<(), String> {
+        let finding = sample_bun_multiple_profile_finding();
+        let card = typescript_preview_card(&finding)
+            .ok_or_else(|| "expected TypeScript preview card".to_string())?;
+
+        if card.bun_cross_language_grips.len() != 2 {
+            return Err(format!(
+                "expected two Bun profiles, got {}",
+                card.bun_cross_language_grips.len()
+            ));
+        }
+        assert_eq!(
+            card.bun_cross_language_grips[1].rust_owner,
+            "copy_to_unshared"
+        );
+        assert_eq!(
+            card.bun_cross_language_grips[0]
+                .placement
+                .as_ref()
+                .map(|placement| placement.reason.as_str()),
+            Some(
+                "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer"
+            )
+        );
+        assert!(card.bun_cross_language_grips[1].placement.is_none());
+        let json = typescript_preview_card_json_value(&card);
+        assert_eq!(
+            json["bun_cross_language_grip"]["profiles"]
+                .as_array()
+                .map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            json["bun_cross_language_grip"]["profiles"][1]["rust_seam"]["owner"],
+            "copy_to_unshared"
+        );
+        assert_eq!(
+            json["bun_cross_language_grip"]["profiles"][0]["placement"]["reason"],
+            "existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer"
+        );
+        assert!(json["bun_cross_language_grip"]["profiles"][1]["placement"].is_null());
         Ok(())
     }
 
@@ -1461,6 +1624,16 @@ mod tests {
             "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
             "typescript_bun_ub_bridge_boundary: preview_advisory_only no_source_edits no_generated_tests no_runtime_bun_execution no_mutation_execution no_default_gates no_badge_baseline_zero_or_support_tier_authority".to_string(),
         ];
+        finding
+    }
+
+    fn sample_bun_multiple_profile_finding() -> Finding {
+        let mut finding = sample_bun_missing_resizable_finding();
+        finding.evidence.extend([
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/array_buffer.rs rust_owner=copy_to_unshared rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_missing_shared missing_discriminators=shared_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_shared action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+        ]);
         finding
     }
 

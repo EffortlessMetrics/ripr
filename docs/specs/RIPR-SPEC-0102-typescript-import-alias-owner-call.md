@@ -90,6 +90,17 @@ All other import forms are unchanged:
 | `import * as ns` + `ns.X(...)` | ImportedOwnerCall | import_path_affinity | Medium |
 | `import { Y as local }` (Y ≠ X) + `local(...)` | not credited | — | — |
 
+Owner-module mock guard (issue #2269): when the test file mocks the changed
+owner's OWN module (`jest.mock('../src/owner')` / `vi.mock('../src/owner')`),
+`owner_call_relation` credits NO owner-call relation for Function/ArrowFunction
+owners — the owner call executes the mock, not the changed code. This is the
+same `test_mocks_owner_module` guard the Method/ClassMethod/ModuleFunction
+relation paths already applied; the Function-owner arm was simply missed. The
+advisory proximity heuristics may still link the test (at most
+`weakly_exposed`), and the `mocked_module` static limit stays disclosed.
+Pinned by `fixtures/typescript_adversarial_owner_module_mock` (corpus case
+`ts_mocked_owner_module_unrelated_assertion`, RIPR-SPEC-0108).
+
 ## Solution
 
 ### 1. New `TypeScriptRelationKind` variant

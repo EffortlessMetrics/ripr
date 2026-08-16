@@ -22,7 +22,7 @@ Linked ADRs:
 
 Active goal:
 
-- [`.ripr/goals/active.toml`](../../.ripr/goals/active.toml)
+- `.ripr/goals/active.toml` (deleted in #1701 PR 3)
 
 Support-tier impact:
 

@@ -771,6 +771,13 @@ mod tests {
                     test_name: format!("{owner}_test"),
                     file: PathBuf::from("tests/sample.rs"),
                     line: 5,
+                    test_target: Some(
+                        crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                            &format!("{owner}_test"),
+                            std::path::Path::new("tests/sample.rs"),
+                            5,
+                        ),
+                    ),
                     oracle_kind: OracleKind::ExactValue,
                     oracle_strength: OracleStrength::Strong,
                     evidence_summary: "exact value assertion".to_string(),

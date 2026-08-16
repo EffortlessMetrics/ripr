@@ -3,7 +3,8 @@ use super::{
     repo_seams, sarif, suppressions,
 };
 use crate::analysis;
-use crate::app::CheckOutput;
+use crate::app::causal_projection::CausalDeltaArtifact;
+use crate::app::{CheckOutput, FindingNavigation};
 use crate::config::RiprConfig;
 use crate::output::repo_exposure::TsFullRepoGuidance;
 use std::collections::BTreeMap;
@@ -12,13 +13,23 @@ use std::collections::BTreeMap;
 /// test-efficiency report is expected when rendering `ripr+` badge formats.
 const TEST_EFFICIENCY_REPORT_RELATIVE: &str = "target/ripr/reports/test-efficiency.json";
 
+/// Repo-relative report path the public `ripr` badge projection names as its
+/// source (RIPR-SPEC-0066 `source_report`). The repo-badge pipeline writes
+/// the canonical-actionable-gap projection into this artifact.
+const REPO_RIPR_BADGE_SOURCE_REPORT: &str = "target/ripr/reports/repo-ripr-badge.json";
+
+/// Repo-relative report path the public `ripr+` badge projection names as its
+/// source (RIPR-SPEC-0066 `source_report`).
+const REPO_RIPR_PLUS_BADGE_SOURCE_REPORT: &str = "target/ripr/reports/repo-ripr-plus-badge.json";
+
 pub(crate) fn render_check_with_config(
     output: &CheckOutput,
     format: &OutputFormat,
     config: &RiprConfig,
 ) -> Result<String, String> {
     match format {
-        OutputFormat::Human => Ok(human::render_with_config(output, config)),
+        OutputFormat::Human => Ok(human::render_bounded_with_config(output, config)),
+        OutputFormat::HumanFull => Ok(human::render_full_with_config(output, config)),
         OutputFormat::Json => Ok(json::render_with_config(output, config)),
         OutputFormat::Github => Ok(github::render_with_config(output, config)),
         OutputFormat::Sarif => {
@@ -30,7 +41,8 @@ pub(crate) fn render_check_with_config(
             Ok(badge::render_native_json(&summary))
         }
         OutputFormat::RepoBadgeJson => {
-            let summary = ripr_repo_canonical_actionable_summary(output, config)?;
+            let mut summary = ripr_repo_canonical_actionable_summary(output, config)?;
+            badge::attach_public_projection(&mut summary, REPO_RIPR_BADGE_SOURCE_REPORT);
             Ok(badge::render_native_json(&summary))
         }
         OutputFormat::BadgeShields => {
@@ -38,15 +50,18 @@ pub(crate) fn render_check_with_config(
             Ok(badge::render_shields_json(&summary))
         }
         OutputFormat::RepoBadgeShields => {
-            let summary = ripr_repo_canonical_actionable_summary(output, config)?;
+            let mut summary = ripr_repo_canonical_actionable_summary(output, config)?;
+            badge::attach_public_projection(&mut summary, REPO_RIPR_BADGE_SOURCE_REPORT);
             Ok(badge::render_shields_json(&summary))
         }
         OutputFormat::BadgePlusJson | OutputFormat::RepoBadgePlusJson => {
-            let summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
+            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
+            maybe_attach_repo_plus_projection(&mut summary, output, format);
             Ok(badge::render_native_json(&summary))
         }
         OutputFormat::BadgePlusShields | OutputFormat::RepoBadgePlusShields => {
-            let summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
+            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
+            maybe_attach_repo_plus_projection(&mut summary, output, format);
             Ok(badge::render_shields_json(&summary))
         }
         OutputFormat::RepoSeamsJson => {
@@ -61,11 +76,19 @@ pub(crate) fn render_check_with_config(
             let (classified, limit_info) =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             let ts_guidance = detect_ts_full_repo_guidance(&output.root, &classified);
-            Ok(repo_exposure::render_repo_exposure_json(
+            let artifact_context =
+                crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
+                    output.root.clone(),
+                    output.mode.as_str().to_string(),
+                    output.base.clone(),
+                    config,
+                )?;
+            repo_exposure::render_repo_exposure_json_with_context(
                 &classified,
                 limit_info.as_ref(),
                 ts_guidance.as_ref(),
-            ))
+                &artifact_context,
+            )
         }
         OutputFormat::RepoExposureSummaryJson => {
             let classified =
@@ -99,11 +122,35 @@ pub(crate) fn render_check_with_config(
         OutputFormat::AgentSeamPacketsJson => {
             let (classified, _) =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            Ok(agent_seam_packets::render_agent_seam_packets_json(
-                &classified,
-                None,
-            ))
+            let (causal_projection, causal_projection_warning) =
+                CausalDeltaArtifact::load_optional(&output.root);
+            if let Some(warning) = causal_projection_warning {
+                eprintln!("ripr agent packets: {warning}");
+            }
+            Ok(
+                agent_seam_packets::render_agent_seam_packets_json_with_causal_and_outcome(
+                    &classified,
+                    None,
+                    causal_projection.as_ref(),
+                    output.analysis_outcome.as_ref(),
+                    output.base.is_some(),
+                ),
+            )
         }
+    }
+}
+
+pub(crate) fn render_check_with_config_and_navigation(
+    output: &CheckOutput,
+    format: &OutputFormat,
+    config: &RiprConfig,
+    navigation: Option<&FindingNavigation>,
+) -> Result<String, String> {
+    match format {
+        OutputFormat::Human => Ok(human::render_bounded_with_config_and_navigation(
+            output, config, navigation,
+        )),
+        _ => render_check_with_config(output, format, config),
     }
 }
 
@@ -162,7 +209,12 @@ fn detect_ts_full_repo_guidance(
         return None;
     }
 
-    Some(TsFullRepoGuidance { ts_file_count })
+    let readiness = analysis::workspace_typescript_repo_readiness(root)?;
+
+    Some(TsFullRepoGuidance {
+        ts_file_count,
+        readiness,
+    })
 }
 
 fn load_suppressions(
@@ -178,6 +230,22 @@ fn load_suppressions(
             )
         },
     )
+}
+
+/// Attaches the public projection to a repo-scoped `ripr+` badge, but only
+/// when a measured test-efficiency report exists. The neutral
+/// "needs test-efficiency" badge (no report on disk) is left unprojected: an
+/// unmeasurable `ripr+` must not be projected as a clean `0 actionable`
+/// public count. Diff-scoped `ripr+` badges are also left unchanged.
+fn maybe_attach_repo_plus_projection(
+    summary: &mut badge::BadgeSummary,
+    output: &CheckOutput,
+    format: &OutputFormat,
+) {
+    let report_present = output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE).exists();
+    if format.is_repo_scope() && report_present {
+        badge::attach_public_projection(summary, REPO_RIPR_PLUS_BADGE_SOURCE_REPORT);
+    }
 }
 
 fn ripr_summary_with_suppressions(
@@ -312,6 +380,8 @@ fn missing_test_efficiency_badge_summary(
         },
         warnings: vec![warning],
         preview_skipped: Vec::new(),
+        projection: None,
+        analysis_outcome: None,
     }
 }
 
@@ -404,7 +474,7 @@ mod tests {
             &RiprConfig::default(),
         )?;
 
-        assert!(rendered.contains("\"schema_version\": \"0.3\""));
+        assert!(rendered.contains("\"schema_version\": \"0.4\""));
         assert!(rendered.contains("\"packets\""));
 
         remove_temp_root(&output.root)?;
@@ -863,7 +933,12 @@ mod tests {
             summary: Summary::default(),
             findings,
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         }
     }
 

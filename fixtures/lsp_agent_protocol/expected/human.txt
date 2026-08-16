@@ -1,0 +1,31 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/lsp_agent_protocol/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/lsp_agent_protocol/input/src/lib.rs:2
+  Static exposure: static_unknown (note, confidence 0.50)
+  Why static_unknown: the analysis could not determine a static exposure state
+  Changed behavior: value + 2
+  Missing discriminator: No strong discriminator was detected
+  Related test: src/lib.rs:10 boundary_is_observed
+  Next step: Escalate to real mutation testing or deep static analysis for this probe.
+  Evidence:
+    - reach yes: Related tests appear to reach agent_protocol_boundary: boundary_is_observed
+    - infection unknown: Changed syntax is not mapped to a high-confidence probe family
+    - 7 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/lsp_agent_protocol/input --diff fixtures/lsp_agent_protocol/diff.patch --mode fast probe:src_lib.rs:static_unknown:401a7bb9
+  ripr context --root fixtures/lsp_agent_protocol/input --diff fixtures/lsp_agent_protocol/diff.patch --mode fast --at probe:src_lib.rs:static_unknown:401a7bb9
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

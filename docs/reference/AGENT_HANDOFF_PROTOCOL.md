@@ -1,9 +1,15 @@
 # Agent Handoff Protocol
 
-This is the operating contract between the human owner, the planning
+This is the working method shared by the human owner, the planning
 partner, and the executor agent that build `ripr` together. It exists
 so a fresh session can pick up the work without re-deriving the
 method from transcript memory.
+
+Status note: this is **guidance, not an enforced contract** — there is
+no machine-readable schema or xtask validator for a handoff packet
+today (#2097; the typed orchestration epic is #1631). Where this doc
+says "contract", read it as the working method the participants
+follow, not something a tool will check.
 
 The protocol is **descriptive of the working method that produced
 Campaign 4A**, not a speculative future ideal. If a section here

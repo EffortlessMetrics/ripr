@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 1111111..2222222 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -7,7 +7,7 @@
+ /// Summarize why a gate is blocking. The whole body is one long chained
+ /// expression, which is what makes this fixture a display-bound probe.
+ pub fn blocking_reason(decisions: &[Decision], fallback: &str) -> String {
+-    if decisions.iter().filter(|d| d.decision == "blocking").count() == 0 { "none".to_string() } else { decisions.iter().find(|d| d.decision == "blocking").map(|d| d.gate_reason.clone()).unwrap_or_else(|| fallback.to_string()) }
++    if decisions.iter().filter(|d| d.decision == "blocking").count() == 0 { "none".to_string() } else if decisions.iter().filter(|d| d.decision == "blocking").count() == 1 { decisions.iter().find(|d| d.decision == "blocking").map(|d| d.gate_reason.clone()).unwrap_or_else(|| fallback.to_string()) } else { fallback.to_string() }
+ }
+
+ #[cfg(test)]

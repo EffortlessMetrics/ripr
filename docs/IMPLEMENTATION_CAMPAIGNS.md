@@ -1,12 +1,13 @@
 # Implementation Campaigns
 
-This is the campaign-level plan for Codex Goals and long-context contributor
-work. Campaigns are larger than one PR. Each campaign has an objective, an end
-state, and work items that should each follow the
-[scoped PR contract](SCOPED_PR_CONTRACT.md).
+This document preserves historical campaign-level context for Codex Goals and
+long-context contributor work. It is not live execution authority. The campaigns
+below remain useful for chronology, objectives, and completed work-item context.
 
-The operational checklist remains in [Implementation plan](IMPLEMENTATION_PLAN.md).
-The machine-readable active campaign is `.ripr/goals/active.toml`.
+Live work selection and ownership come from GitHub issues, pull requests, checks,
+reviews, and the local worktree. One PR's scope is its `ImplementationSliceV1`
+under `.allow/spec-system/slices/`; normative behavior lives in RIPR-SPEC
+requirements. Do not infer current work from a campaign status below.
 
 ## Campaign 1: Agentic DevEx Foundation
 
@@ -955,8 +956,6 @@ npm --prefix editors/vscode run package
 cargo xtask check-pr
 cargo xtask check-output-contracts
 cargo xtask check-static-language
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask check-traceability
 cargo xtask check-capabilities
@@ -1032,8 +1031,6 @@ cargo test -p ripr calibration
 cargo xtask mutation-calibration fixtures/boundary_gap/input --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json
 cargo xtask check-output-contracts
 cargo xtask check-static-language
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability
 cargo xtask check-capabilities
@@ -1112,8 +1109,6 @@ cargo xtask lsp-cockpit-report
 cargo xtask repo-exposure-latency-report
 cargo xtask check-output-contracts
 cargo xtask check-static-language
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-pr
 cargo test --workspace
 ```
@@ -1273,8 +1268,6 @@ Closeout:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask check-traceability
 cargo xtask check-capabilities
@@ -1664,8 +1657,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -1804,8 +1795,6 @@ Closeout:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -1923,8 +1912,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -2029,8 +2016,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -2131,8 +2116,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -2232,8 +2215,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -2348,8 +2329,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -2438,8 +2417,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -2544,8 +2521,6 @@ Dependencies:
 Commands:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -3020,8 +2995,6 @@ cargo xtask markdown-links
 cargo xtask check-static-language
 cargo xtask check-traceability
 cargo xtask check-capabilities
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-output-contracts
 cargo xtask check-architecture
 cargo xtask check-workspace-shape
@@ -3117,8 +3090,6 @@ Commands:
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-pr
 ```
 
@@ -3415,9 +3386,6 @@ Blocking conditions:
 Commands:
 
 ```bash
-cargo xtask goals status
-cargo xtask goals next
-cargo xtask check-goals
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -3467,7 +3435,7 @@ Work items:
 | `spec/preview-evidence-policy-boundary` | done | RIPR-SPEC-0030 specifies that TypeScript and Python preview evidence is visible/advisory by default, carries preview/static-limit labels, and is not gate, RIPR Zero, default baseline-check, or mutation-calibrated confidence eligible without later explicit promotion. |
 | `report/policy-readiness` | done | `ripr policy readiness` writes policy-readiness JSON and Markdown over explicit existing artifacts only, with independent readiness axes and preview-evidence zero-count boundaries, without posting, source edits, hidden analysis, baseline mutation, gate execution, or CI failure authority. |
 | `report/waiver-aging` | done | `ripr policy waiver-aging` writes advisory waiver-aging JSON and Markdown from current PR evidence ledgers plus optional JSONL history, keeping repeated waiver visible as a repair or policy-review signal without pass/fail authority. |
-| `policy/suppression-ledger-health` | done | `ripr policy suppression-health` writes advisory suppression-health JSON and Markdown over `.ripr/suppressions.toml`, flags missing owner, missing reason, stale review windows, overbroad scope, unknown selectors, and preview-language suppressions without `language_status = "preview"`, and keeps suppressed findings visible with `still_visible = true`. |
+| `policy/suppression-ledger-health` | done | `ripr policy suppression-health` writes advisory suppression-health JSON and Markdown over `.ripr/suppressions.toml`, requires `static_class` for `exposure_gap` entries but not `test_efficiency` entries, flags missing owner, missing reason, stale review windows, overbroad scope, unknown selectors, and preview-language suppressions without `language_status = "preview"`, and keeps suppressed findings visible with `still_visible = true`. |
 | `policy/baseline-refresh-guardrails` | done | Shrink-only `ripr baseline update --remove-resolved` remains the only refresh path, `--adopt-new` is rejected, generated CI is pinned to read-only `ripr baseline diff`, and docs state that CI never rewrites or auto-adopts baseline entries. |
 | `policy/exception-ledger-convergence` | done | `docs/POLICY_ALLOWLISTS.md` now aligns no-panic, Clippy, non-Rust, workflow, RIPR suppression, baseline, and waiver ledgers around one reviewed reason per exception, semantic identity where available, and stale-entry behavior by class. |
 | `docs/blocking-readiness-guide` | done | `docs/BLOCKING_READINESS.md` now uses policy readiness as the ceiling for advisory, visible-only, acknowledgeable, baseline-check, and calibrated-gate promotion, including calibration, baseline, waiver, suppression, and preview-evidence health. |
@@ -3481,7 +3449,7 @@ References:
 - [RIPR-SPEC-0030: Preview evidence policy boundary](specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md)
 - [Output schema: Policy readiness report](OUTPUT_SCHEMA.md#policy-readiness-report)
 - [Output schema: Suppression health report](OUTPUT_SCHEMA.md#suppression-health-report)
-- [Focused Lane 2 tracker manifest](../.ripr/goals/lane2-policy-readiness.toml)
+- Focused Lane 2 tracker manifest (`.ripr/goals/`, deleted in #1701 PR 3)
 - [Language Adapter Preview](#campaign-27-language-adapter-preview)
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)
 - [RIPR blocking readiness](BLOCKING_READINESS.md)
@@ -3520,7 +3488,7 @@ in the machine-readable manifest.
 Sources of truth:
 
 - [Policy operations tracker](policy/POLICY_OPERATIONS.md)
-- [Focused Lane 2 policy operations manifest](../.ripr/goals/lane2-policy-operations.toml)
+- Focused Lane 2 policy operations manifest (`.ripr/goals/`, deleted in #1701 PR 3)
 - [Policy readiness tracker](policy/POLICY_READINESS.md)
 
 Objective:
@@ -3582,7 +3550,6 @@ Commands:
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
-cargo xtask check-campaign
 cargo xtask check-pr
 git diff --check
 ```
@@ -3681,7 +3648,6 @@ cargo xtask check-static-language
 cargo xtask check-generated-clean
 cargo xtask pr-ready
 cargo xtask cockpit
-cargo xtask check-campaign
 cargo xtask check-pr
 git diff --check
 ```
@@ -4156,8 +4122,6 @@ Commands:
 
 ```bash
 cargo xtask check-doc-artifacts
-cargo xtask check-goals
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -4251,8 +4215,6 @@ Work items:
 Commands:
 
 ```bash
-cargo xtask check-goals
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
@@ -4333,20 +4295,18 @@ Work items:
 Commands:
 
 ```bash
-rtk git fetch origin --prune
-rtk git status --short --branch
-rtk gh pr list --repo EffortlessMetrics/ripr-swarm --state open
-rtk gh pr list --repo EffortlessMetrics/ripr --state open
-rtk cargo xtask pr-triage-report
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-workflows
-rtk cargo xtask check-pr
-rtk git diff --check
+git fetch origin --prune
+git status --short --branch
+gh pr list --repo EffortlessMetrics/ripr-swarm --state open
+gh pr list --repo EffortlessMetrics/ripr --state open
+cargo xtask pr-triage-report
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-workflows
+cargo xtask check-pr
+git diff --check
 ```
 
 Closeout:
@@ -4434,14 +4394,12 @@ Work items:
 Commands:
 
 ```bash
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Blocking conditions:
@@ -4512,17 +4470,15 @@ Work items:
 Commands:
 
 ```bash
-rtk cargo test -p ripr seam_cache -- --test-threads=1
-rtk cargo test -p ripr seam_inventory -- --test-threads=1
-rtk cargo test -p xtask cache -- --test-threads=1
-rtk cargo xtask cache report
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p ripr seam_cache -- --test-threads=1
+cargo test -p ripr seam_inventory -- --test-threads=1
+cargo test -p xtask cache -- --test-threads=1
+cargo xtask cache report
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
 ```
 
 Blocking conditions:
@@ -4599,20 +4555,18 @@ Work items:
 Commands:
 
 ```bash
-rtk cargo test -p ripr suggested_test -- --test-threads=1
-rtk cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
-rtk cargo test -p ripr lsp --lib
-rtk cargo xtask ripr-swarm readiness
-rtk cargo xtask evidence-quality-scorecard
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p ripr suggested_test -- --test-threads=1
+cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
+cargo test -p ripr lsp --lib
+cargo xtask ripr-swarm readiness
+cargo xtask evidence-quality-scorecard
+cargo xtask check-output-contracts
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Blocking conditions:
@@ -4705,27 +4659,25 @@ Focused correction campaign ID:
 Commands:
 
 ```bash
-rtk cargo xtask check-spec-format
-rtk cargo xtask check-spec-numbering
-rtk cargo xtask check-traceability
-rtk cargo test -p xtask cross_language_oracle_graph_corpus_cases_are_checked -- --test-threads=1
-rtk cargo test -p xtask typescript_bun_ub_calibration_cases_are_checked -- --test-threads=1
-rtk cargo test -p xtask dogfood_bun_ub_cross_language -- --test-threads=1
-rtk cargo test -p xtask bun_ub_calibration -- --test-threads=1
-rtk cargo xtask bun-ub-calibration
-rtk cargo xtask dogfood
-rtk cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
-rtk cargo xtask ripr-swarm readiness
-rtk cargo xtask evidence-quality-scorecard
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-spec-format
+cargo xtask check-spec-numbering
+cargo xtask check-traceability
+cargo test -p xtask cross_language_oracle_graph_corpus_cases_are_checked -- --test-threads=1
+cargo test -p xtask typescript_bun_ub_calibration_cases_are_checked -- --test-threads=1
+cargo test -p xtask dogfood_bun_ub_cross_language -- --test-threads=1
+cargo test -p xtask bun_ub_calibration -- --test-threads=1
+cargo xtask bun-ub-calibration
+cargo xtask dogfood
+cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
+cargo xtask ripr-swarm readiness
+cargo xtask evidence-quality-scorecard
+cargo xtask check-output-contracts
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Blocking conditions:
@@ -4950,14 +4902,12 @@ Work items:
 Commands:
 
 ```bash
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Blocking conditions:
@@ -4991,7 +4941,8 @@ Non-claims:
 
 Campaign ID: `use-case-spec-spine`
 
-Status: active
+Status: superseded for active execution on 2026-07-09 by Campaign 32. Its
+accepted specs remain source truth; its release-era execution sequence does not.
 
 RIPR has strong mechanism (reports, packets, runtime status, readiness,
 preview cards, limitation routes, receipts) and a weak product spine: no
@@ -5036,15 +4987,14 @@ contract.
 Commands:
 
 ```bash
-rtk cargo xtask check-goals
-rtk cargo xtask check-spec-format
-rtk cargo xtask check-spec-numbering
-rtk cargo xtask check-doc-artifacts
-rtk cargo xtask check-support-tiers
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk git diff --check
+cargo xtask check-spec-format
+cargo xtask check-spec-numbering
+cargo xtask check-doc-artifacts
+cargo xtask check-support-tiers
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+git diff --check
 ```
 
 Blocking conditions:
@@ -5102,3 +5052,512 @@ Non-goals:
 - Completeness across all Python constructs or frameworks.
 - A `stable` claim; the target is `usable`.
 - Supporting Django/SQLAlchemy/etc — only failing closed (named limitation) there.
+
+## Campaign 31: Perl Repair-Routing Usable Alpha
+
+Campaign ID: `perl-repair-routing-bridge`
+
+Status: tracker
+
+Tracker: `.ripr/goals/perl-repair-routing.toml` · umbrella issue #1379
+
+Note: this is a focused tracker campaign, not the selected active campaign in
+`.ripr/goals/active.toml` (which remains `use-case-spec-spine`). Promotion into
+`active.toml` is a maintainer decision.
+
+### Objective
+
+A working alpha lets a maintainer configure an explicit `perl-lsp` producer and
+use the normal RIPR loop:
+
+```toml
+[languages]
+enabled = ["perl"]
+
+[perl]
+producer = "perllsp"
+```
+
+```bash
+ripr doctor --root .
+ripr check --root . --base origin/main
+# add or strengthen one test
+prove -l t/example.t
+ripr check --root . --base origin/main --json > after.json
+ripr outcome --before before.json --after after.json
+```
+
+The result is exactly one honest outcome: (1) a bounded Perl test-repair packet
+with a concrete missing discriminator, test location, verify command, edit cage,
+stop conditions, and receipt path; (2) already-observed evidence explaining why
+no new test is needed; or (3) a named limitation explaining why the Perl change
+is not statically actionable.
+
+**Not** general Perl correctness, coverage adequacy, runtime mutation testing,
+or support for every dynamic Perl construct.
+
+### Why the restructure (ADR 0019)
+
+An earlier draft of this campaign proposed moving the existing
+`PerlStrictActionability` out of `#[cfg(test)]` as the actionability flip
+authority, with `PerlRepairCard`/`PerlInternalAgentPacket` as bespoke
+renderers. That approach **violates ADR 0019** (line 83-86: "An adapter MUST
+NOT introduce a parallel, mirror, or inline validator; a language-local
+`repair_packet_ready` boolean; or a bespoke packet renderer"). The shared
+authority is `validate_agent_gap_record_packet` (`agent_seam_packets.rs`), already
+used by the TypeScript projection (`typescript_gap_record_for` + `validator_parity_*`
+tests). Perl follows the same pattern.
+
+### Verified ground truth (scout-passed, file:line-confirmed)
+
+- The Perl adapter module is `#[cfg(test)] mod perl;` under
+  `crates/ripr/src/analysis/language/`. After PR 2 (#1417) the former 4036-line
+  monolith `perl.rs` is split into `perl/mod.rs` + `perl/tests.rs`.
+- `missing_discriminator` formerly defaulted to generic enum labels
+  (`default_missing_discriminator()` returned `"return_value"` etc.), NOT
+  concrete expressions. TypeScript/Python populate the **same shared slot**
+  (`GapRepairRoute.missing_discriminator`, `gap_decision_ledger.rs`) with
+  concrete values (`"amount >= threshold"`). Correction #2 is a Perl-local fix —
+  **no shared-contract change, no golden re-bless**. Landed in PR 12 (#1428).
+- Relations formerly gated by exposure class + confidence + oracle shape but
+  **NOT by relation kind**. `direct_owner_call` and `file_proximity` were treated
+  identically. Correction #3 landed in PR 12 (#1428).
+- `prove -l`/`-lv`/`-Ilib` were rejected by positional matching. Correction #4
+  landed in PR 13 (#1421).
+- perl-lsp already produced a serde `FileFactShard`; the exporter is a thin new
+  `LaunchAction` variant, not a from-scratch build.
+- `lang-perl = []` exists but is not in `default` (`Cargo.toml`); the pipeline
+  returns a fail-closed stub when the feature is off.
+- **Pre-existing ADR-0019 violation (still open as of 2026-06-27):** the bespoke
+  Perl projection `gap_record_from_perl_preview_finding`
+  (`gap_decision_ledger.rs:756`, read at `:424`) and the bespoke
+  `perl_preview_card` renderer (`crates/ripr/src/output/perl_preview_card.rs`,
+  called from `github.rs:99` and `human/sections.rs:143`) predate ADR 0019 and are
+  **still wired into production output on `main`**. They are dormant only because
+  they set `agent_packet` ineligible + `receipt_command: None` (failing shared
+  validator gates #1/#6). PR 16 (D16) MUST delete or formally scope them down
+  before the shared-validator path goes live — see Blocking conditions.
+
+### Four corrections before productionizing
+
+1. **Shared `GapRecord` authority.** Do not merely remove `#[cfg(test)]` from
+   `PerlStrictActionability`. Perl must project into `GapRecord` via
+   `perl_gap_record_for()`, pass `validate_agent_gap_record_packet`, reuse shared
+   edit-surface/render helpers, and carry `validator_parity_perl_*` tests. The
+   Perl-local model decides eligibility; only the shared validator flips
+   `repair_packet_ready`.
+
+2. **Concrete discriminator.** Stop emitting generic enum labels. The producer
+   must emit concrete facts (`$amount == $threshold`,
+   `returned status changed from pending to paid`,
+   `exception class/message InvalidAmount`); RIPR aligns the changed observable
+   with the assertion's observed sink. A strong assertion somewhere in the same
+   test is not enough.
+
+3. **Relation gating by reason.** Restrict actionability by relation kind:
+   `direct_owner_call`/proven helper-call chain eligible; `package_reference`/
+   `test-name match`/`file proximity` advisory-only; `unknown` a limitation.
+   Every related test exposes `relation_reason` and `relation_confidence`
+   (Perl-local model + thread into existing `RelatedTestGrip`; no shared-contract
+   change this campaign).
+
+4. **Typed runner commands.** Replace positional matching with a structural
+   model (runner, flags, test targets, working dir, preconditions, scope,
+   confidence). RIPR generates the receipt command; the producer does not.
+
+### Phases (each PR one scoped slice)
+
+| PR | Phase | Repo | Slice | Landed |
+| -: | - | --- | --- | --- |
+| 1 | A | ripr-swarm | Refresh PROP-0018/SPEC-0064, record landed work, add `Perl scaffold — blocked on live fact producer` support-tier row, create tracker. | #1413 |
+| 2 | A | ripr-swarm | Split the test-only `perl.rs` into `perl/mod.rs` + `perl/tests.rs`; zero behavior change, zero golden drift. | #1417 |
+| 3 | A | ripr-swarm | Replace Perl-local readiness authority with `perl_gap_record_for()` + shared `GapRecord` validation + `validator_parity_perl_*` tests. Public projection stays disabled. | #1415 |
+| 4 | B | perl-lsp | `perllsp ripr-facts` command parsing, capability reporting, canonical JSON writer, valid `unavailable` packets. No LSP server, no Perl execution. | — |
+| 5 | B | perl-lsp | Export files, owners, changes, source digests, ranges, provenance, packet fingerprint, diff identity. | — |
+| 6 | B | perl-lsp | Export Test::More/Test2/Test::Exception/Test::Fatal test + oracle facts. | — |
+| 7 | B | perl-lsp | Export relations with reason/confidence, concrete changed-observable + discriminator facts, oracle-observed-sink facts. | — |
+| 8 | B | perl-lsp | Export dynamic boundaries, limitations, typed verify-command candidates, deterministic goldens, schema-capability tests. | — |
+| 9 | C | ripr-swarm | `--perl-facts PATH` + productionize packet parsing with schema/size/uniqueness/referential-integrity/path/fingerprint/source-digest/root/diff-coherence checks. | #1422, #1434, #1448 |
+| 10 | C | ripr-swarm | `language_runs[]` status output (`complete`/`partial`/`unavailable`/`invalid`). Missing Perl facts must not abort valid Rust/Python/TS output. | #1418 |
+| 11 | C | ripr-swarm | Production `PerlAdapter`, `.pm`/`.pl`/`.t`/`.psgi` routing, packet→`Finding`/limitation conversion. | #1426, #1431, #1432 |
+| 12 | C | ripr-swarm | Concrete discriminator + sink alignment + strict relation gating. Heuristic-only relations and generic discriminators cannot project a `GapRecord`. | #1428, #1451, #1449 |
+| 13 | C | ripr-swarm | Typed `prove`/`yath`/`carton exec prove`/`dzil` command validation incl. `-l`/`-v` flags. RIPR generates the receipt command. | #1421 |
+| 14 | D | ripr-swarm | Managed producer mode: `[perl] producer = "perllsp"` / `--perl-producer`; timeout, executable override, version/schema capability check, cache location, stderr diagnostics. No silent invocation unless configured. | #1435 |
+| 15 | D | ripr-swarm | `ripr doctor` Perl upgrade: project markers, producer availability/version, schema compatibility, detected framework, runner availability, exact first command. | #1436 |
+| 16 | D | ripr-swarm | Project validated Perl `GapRecord`s as public repair packets across human/JSON/Markdown/SARIF/GitHub/gap-ledger via shared renderers. Gates/badges/RIPR Zero stay false. | — (open; ADR-0019 blocker) |
+| 17 | D | ripr-swarm | Bounded agent packets + PR/CI/LSP/swarm advisory projection. Only the selected test file is editable; production files forbidden. | — |
+| 18 | D | ripr-swarm | Perl before/after snapshots + outcome receipts keyed by canonical gap ID + producer packet fingerprint. | — |
+
+### Landed work beyond the 18-slice spine
+
+The 18-slice table predates the consumer-side contract freeze and the mapper-
+integrity hotfix wave. These landed after the plan was authored and are recorded
+here for tracker completeness:
+
+- **#1433 (E1)** — CPAN-style three-outcome alpha fixture (`fixtures/perl_cpan_alpha/`).
+- **#1447 (H1)** — mapping-integrity hotfix for `packet_to_findings`:
+  `related_test.file` routed through packet-owned helpers; the test file is read
+  via `test.file_id`, with test-specific verify commands, real test lines, and
+  relation reason/confidence. Avoids canonical gaps from generic discriminators.
+- **#1448** — boundary check made ordering-independent: the mapper checks all
+  related evidence, not just `.first()`, so a boundary on a later related test
+  file still blocks. `perl_relation_to_domain` refactored.
+- **#1449** — corrected a false-green test introduced by #1448; proves the
+  ordering test fails on the buggy `.first()` behavior and passes on `.any()`.
+- **#1450 (contract freeze step 2)** — consumer-side contract freeze: accepts
+  `Test2::V1` and the frozen `ChangeFact`/`OracleFact` fields
+  (`changed_observable`, `missing_discriminator`, `observed_sink`,
+  `expected_expression`).
+- **#1451 (H2)** — already-observed classification via sink alignment: a Perl
+  change classifies as `Exposed` only when a direct owner call links a strong
+  exact oracle whose `observed_sink` aligns to the change's `changed_observable`;
+  owner-target identity alone is explicitly not enough.
+- **perl-lsp-swarm #3104** — producer-side contract freeze: schema-drift fix,
+  `Test2::V1` added, nullable `changed_observable`/`missing_discriminator` and
+  `observed_sink`/`expected_expression` fields. Parser-backed Test2 facts are
+  explicitly left for a later step (still emits `null` when fields are not
+  derived).
+
+### Alpha producer scope (deliberately narrow start)
+
+```text
+lib/**/*.pm
+t/**/*.t
+
+Test::More
+Test2::V0
+Test::Exception / Test::Fatal
+
+predicate boundary
+exact return
+exception path
+```
+
+Scripts, fields, output/warnings, Moose/Moo synthesis, Carton, Dist::Zilla land
+only when each passes the same fixture + dogfood gates. Existing vocabulary can
+remain broader than the first release claim.
+
+### End-to-end alpha fixture (release-blocking)
+
+Real CPAN-style project: `Makefile.PL` + `lib/Pricing.pm` + `t/pricing.t`,
+proving all three outcomes:
+
+- **Actionable** — `ok(calculate_discount(100));` — a changed equality boundary
+  yields a bounded recommendation for an exact boundary assertion.
+- **Already observed** — `is(calculate_discount(100), 10, 'threshold equality');`
+  — no repair packet emitted.
+- **Limited** — `my $method = $config->{method}; $obj->$method();` — relation
+  visible but dynamic dispatch yields a named limitation and no packet.
+
+The fixture landed (#1433); the fixture-scoped **two-binary proof** (real
+`perl-ripr-facts` compatible output consumed end-to-end) landed in #1491 and
+turns the consumer from scaffold into a working preview. Committed expected
+packets remain regression fixtures, not producer proof.
+
+### Release gates (usable alpha)
+
+Contract & safety (**mechanically enforced**):
+- 100% pass on packet schema, referential-integrity, path-safety, stale-digest,
+  partial-packet, and dynamic-boundary fixtures.
+- Zero public repair packets from heuristic-only relations, generic
+  discriminators, low/unknown confidence, partial packets, or unsupported
+  dynamics — enforced by the Perl `must_not_emit_repair_packet`
+  evidence-promotion-honesty corpus guard.
+- Validator parity demonstrates Perl uses the same shared packet authority as
+  Rust/TypeScript/Python (PR 3 `validator_parity_perl_*` unit tests +
+  cross-language corpus).
+- `lang-perl` feature-gated code path exercised in CI (PR 11 matrix job).
+
+Real-world evidence (**human-judgment, recorded in PR 18**; the checked
+`perl-real-repo-evals` corpus starts as producer-dependent launchpoints and
+does not by itself satisfy alpha promotion):
+- ≥5 materially different Perl repositories; ≥20 human-reviewed candidate routes.
+- top-1 repair-card precision ≥ 80%; verify-command validity ≥ 90%;
+  false-actionable rate ≤ 5%; zero severe false-actionables permitting
+  production edits; ≥5 before/after receipts with ≥3 improved/resolved.
+
+The feature is labelled "usable alpha" only when **both** the mechanical gates
+pass in CI **and** the human-judgment thresholds are documented as met in
+PR 18's description.
+
+### Alpha release claim
+
+> **Perl repair routing usable alpha:** opt-in static analysis for selected
+> CPAN-style Test::More/Test2/Test::Exception/Test::Fatal workflows, powered by
+> deterministic `perl-lsp` fact packets. RIPR can identify selected changed
+> owners, related tests, concrete missing discriminators, bounded test-only
+> repairs, verify commands, and before/after receipts. Dynamic and unsupported
+> Perl fails closed into named limitations.
+
+Explicit non-claims: no general Perl correctness proof; no coverage/mutation
+adequacy; no automatic test execution by default; no generated tests; no source
+edits; no arbitrary custom-helper understanding; no default gate/badge/baseline/
+RIPR Zero authority.
+
+### Non-goals
+
+- `stable` support tier.
+- General Perl correctness or coverage adequacy.
+- Auto-test-execution by default, generated tests, or source edits.
+- Custom-helper understanding beyond the named frameworks.
+- Reconciling the FNV-1a gap-id scheme (deferred; lands before IDs become public
+  receipt keys — receipt keys are established in PR 18, so the reconciliation
+  lands before or with PR 18).
+
+### Dependencies
+
+- Phase A is unblocked. PR 1 (docs) and PR 2 (split) are independent; PR 3
+  (GapRecord projection) is sequenced after PR 2 for review flow but does NOT
+  hard-depend on it — `perl_gap_record_for` lives in `output/` and reads the
+  public `Finding` domain surface + `perl_*` evidence keys, none of which the
+  split changes.
+- Phase B (producer, perl-lsp repo) depends on Phase A PR 1 (frozen schema/plan)
+  but can otherwise proceed in parallel with PRs 2-3.
+- Phase C depends on Phase A PR 3 (shared GapRecord projection) AND Phase B PR 8
+  (real packets to consume). Within Phase C: PR 9 (ingestion) → PR 11 (adapter);
+  PR 10 (language_runs) independent; PR 12 (discriminator/relations) needs PR 11
+  + PR 7 (producer facts); PR 13 (typed commands) depends on PR 11.
+- Phase D depends on Phase C complete. Within Phase D: PR 14 (producer mode) →
+  PR 15 (doctor); PR 16 (public projection) needs PR 14 + PR 12; PR 17 (agent
+  packets) needs PR 16; PR 18 (receipts) needs PR 16.
+
+### Blocking conditions
+
+- Any output-shape change to `perl_preview_card.v1` or `GapRecord` requires a
+  full golden re-bless in the same PR (single-writer-collision awareness).
+- Any flip of a gate/badge/RIPR Zero authority flag to `true` (out of alpha
+  scope; only `repair_packet_ready` flips, and only via the shared validator).
+- **ADR-0019 parallel-renderer decommissioning (PR 16, blocker, still open as of
+  2026-06-27):** the pre-existing bespoke Perl projection
+  `gap_record_from_perl_preview_finding` (`gap_decision_ledger.rs:756`, read at
+  `:424`) and the bespoke `perl_preview_card` renderer (`perl_preview_card.rs`)
+  are **still wired into production output on `main`** (`github.rs:99`,
+  `human/sections.rs:143`). They predate ADR 0019 and are currently dormant only
+  because they set `agent_packet` ineligible + `receipt_command: None`. PR 16
+  MUST delete or formally scope them down before the shared-validator path goes
+  live, or the campaign creates the exact parallel-renderer drift surface ADR
+  0019 line 83-86 forbids.
+- `lang-perl` added to `default` features is **out of scope for this campaign**
+  (not a timer that expires when PR 14 lands). PR 14 makes default-inclusion
+  *considerable*; the actual flip is a separate decision tracked elsewhere.
+- Spec status flip of SPEC-0064 / PROP-0018 / ADR-0018 / ADR-0019 before
+  Phase C completes.
+
+### Review policy
+
+- Each PR follows `docs/SCOPED_PR_CONTRACT.md`.
+- Phase A PR 1 (docs) is stackable. PR 2 (split) is `stackable = false` (large
+  mechanical diff; needs independent review). PR 3 (GapRecord) is
+  `stackable = false` (architectural).
+- Phase B/C/D production-behavior PRs are all `stackable = false`; each needs a
+  failing fixture that passes only after the change.
+- Cardinal-sin seam: the `repair_packet_ready` flip must route through
+  `validate_agent_gap_record_packet`. A Perl-local flip is the forbidden pattern.
+- No merge on self-report — verify the artifact by running the binary.
+
+Commands (non-exhaustive; each PR's issue carries its specific gate set):
+
+```bash
+cargo xtask check-pr
+cargo xtask module-health         # PR 2 proof: perl/ no longer over threshold
+cargo xtask goldens check         # PR 2 proof: zero golden drift
+cargo xtask check-fixture-contracts
+cargo xtask check-evidence-promotion-honesty
+cargo xtask check-static-language
+cargo xtask check-no-panic-family
+cargo xtask check-public-api
+cargo xtask check-output-contracts
+cargo xtask check-architecture
+cargo xtask check-spec-format
+cargo xtask check-doc-index
+cargo fmt --check
+cargo check --workspace --all-targets
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+# perl-lsp side (Phase B): cargo test -p perl-lsp-rs-core, cargo test -p perl-workspace
+# alpha gate (Phase D PR 18): the CPAN-style end-to-end fixture proves all three outcomes
+```
+
+## Campaign 32: Rust Evidence-Bound Repair Trust and Adoption
+
+Campaign ID: `rust-one-shot-evidence-to-repair`
+
+Status: active
+
+Tracker: [RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md) ·
+`.ripr/goals/active.toml` · issues #1423, #1424, #1425, #1427, #1440
+
+The completed 0.9.0 release made Campaign 29's post-release activation gate
+obsolete. The current crate is 0.10.0, and the accepted targeted-rerun contract
+is now shipped infrastructure rather than the long-range destination. This
+campaign establishes trust in one exact, safe, test-only repair and current
+before/after receipt on real Rust work while keeping unsupported analysis
+explicitly limited.
+
+The queue preserves the shipped bounded-output, canonical-identity, gate-route,
+targeted-mutation, and targeted-rerun contracts. Remaining work is the
+authorized real CallPresence evidence packet and a receipt-backed route-quality
+corpus across at least three Rust repositories; synthetic fixtures remain
+separate from adoption evidence.
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `control-plane/cargo-allow-spec-system-adoption` | done | Add advisory cargo-allow profile/ledger and doctor, audit, and worklist evidence without a second active goal. |
+| `control-plane/rust-one-shot-goal` | done | Replace the stale release-era active manifest and execution plan with Campaign 32. |
+| `control-plane/cargo-allow-active-goal-dialect` | blocked | Blocked on cargo-allow #2119 or a separately approved RIPR manifest migration. |
+| `output/bounded-start-here` | done | #1489 merged: bounded human output and `human-full` are on main. |
+| `docs/first-screen-agent-loop` | done | #1487 merged: the README first screen now describes the shipped bounded repair loop. |
+| `review/card-oracle-projection` | done | #1483 merged with explicit representative-oracle semantics. |
+| `review/canonical-working-set-id` | done | #1505 merged: working-set cards now carry domain-supplied canonical gap identity. |
+| `gate/exact-repair-route` | done | Structural route shipped: policy-eligible decisions expose the exact seam, missing discriminator, focused test intent, verify/receipt commands, and producer-owned inspection route without artifact archaeology. Real CallPresence producer eligibility remains a separate fail-closed follow-up. |
+| `gate/concrete-targeted-mutation` | done | #1545 merged: PR-evidence and impacted-evidence now carry a bounded producer-owned predicate/operator candidate and command, or an explicit no-safe-candidate limitation; mutation execution remains opt-in. |
+| `analysis/call-presence-gate-producer` | blocked | #1543 remains blocked on an authorized real/current-repo CallPresence receipt proving an unambiguous caller/observer route; `docs/handoffs/2026-07-12-call-presence-evidence-packet.md` records why synthetic positive tests and stale bounded scans do not qualify; helper-only, dynamic, method-string, and ambiguous cases stay named limitations. |
+| `analysis/field-constant-observation` | done | #1511 merged: safe direct field assignments and named-constant boundaries are credited with conservative invalidation and limitation guards. |
+| `analysis/constructor-field-observation` | done | #1515 merged: safe same-crate constructor and exact-field observers are credited while same-name and unlinked-alias ambiguity stays fail-closed. |
+| `perf/targeted-rerun` | done | Accepted RIPR-SPEC-0123 is shipped as regression-protected infrastructure: canonical-gap and changed-test selection, before/after movement, cache and invalidation disclosure, input fingerprints, graph provenance, selector-scoped parity, and the registered benchmark. |
+| `perf/rerun-gap-selection` | done | #1524 treats one canonical gap as a behavioral-debt group, deduplicates anchored scopes, preserves partial success, and names stale or conflicting route data. |
+| `perf/rerun-before-movement` | done | #1527 adds explicit before/after movement receipts with typed seam continuity and honest indeterminate states. |
+| `perf/rerun-cache-disclosure` | done | #1529 discloses producer-owned file-fact cache reuse and recomputation without inventing unavailable whole-analysis invalidation reasons. |
+| `perf/rerun-classification-parity` | done | #1558 adds opt-in two-sided selector-scoped comparison against the typed full inventory; missing, unexpected, and differing seams fail closed with retained details. |
+| `perf/rerun-evidence-parity` | done | Typed selected-scope route and oracle evidence parity is shipped and fails closed with retained mismatch details. |
+| `perf/rerun-invalidation-attribution` | done | Selected-input fingerprints and explicit invalidation reasons are shipped for file, workspace, configuration, graph, and selector-ledger changes. |
+| `perf/rerun-benchmark` | done | The registered current-main receipt records matched parity, 228 ms warm p50, 1,512 ms cold-full p50, and 6.63x speedup on the benchmark fixture. |
+| `perf/rerun-closeout` | done | SPEC-0123, plan, and issue #1424's completed closeout comment reconcile the targeted-rerun lane as complete infrastructure, with merged parity, invalidation, graph-provenance, benchmark, support-boundary, and remaining-limitation evidence. |
+| `perf/targeted-rerun-graph-provenance` | done | #1550 merged: receipts attribute local package/member and feature graph provenance, name unavailable external metadata, and fail parity closed on required graph mismatch without network inference. |
+| `dogfood/rust-route-quality-corpus` | active | #1560 has explicit authorization for the three internal adopting Rust repositories. The first real pilot audit is retained as explicit exclusions for timeouts, static limitations, false actionability, and invalid test paths; none enter the denominator. The schema, validator, and denominator-preserving scorecard remain ready for the next six-attempt pilot. Corpus collection is independent of CallPresence closure. |
+| `dogfood/route-quality-closeout` | blocked | Final closeout waits for the #1560 corpus threshold and #1543 CallPresence proof or durable limitation disposition; `metrics/rust-repair-trust/corpus.json` and `cargo xtask rust-repair-trust-report` preserve missing denominators as `limited`; keep synthetic fixtures separate and do not claim route-quality closure. |
+
+Hard boundaries: preview lanes remain preview; mutation execution stays explicit;
+there is no automatic test or consumer-source editing, default gate hardening,
+release/publish work, or claim beyond conservative static evidence. Every work
+item is one reviewable PR, a source-truth update, or a durable blocked report.
+
+## Campaign 33: CLI Finding Navigation Discoverability
+
+Campaign ID: `cli-finding-navigation-discoverability`
+
+Status: complete
+
+Tracker: issues #2598, #2659, and #2679; PRs #2620 and #2681.
+
+This campaign makes the default human `ripr check` output useful as an
+operator entry point. A finding now carries executable `explain` and
+`context --at` follow-up commands, and the follow-up route preserves the
+analysis scope, artifact inputs, and supported options needed to inspect the
+same finding. The production contract remains static and advisory.
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `cli/finding-follow-up-guidance` | done | #2620 added finding-specific human guidance for `explain` and `context --at`, with quiet empty and fully suppressed output. |
+| `cli/scope-preserving-navigation` | done | #2681 closed #2659 by preserving scope in replay commands, accepting supported configuration and mode options, and adding executable CLI smoke coverage. |
+| `campaign/cli-finding-navigation-closeout` | done | The [closeout handoff](handoffs/2026-07-28-cli-finding-navigation-discoverability-closeout.md) records the final merged head, hosted proof, claim boundary, and inherited Clippy follow-up. |
+
+Non-goals: runtime mutation execution, adequacy or coverage claims, default CI
+blocking, release/publish changes, and repair-packet authority changes.
+
+## Campaign 34: Analyzer Honesty and Policy Visibility
+
+Campaign ID: `analyzer-honesty-and-policy-visibility`
+
+Status: complete
+
+Tracker: issues #2698 and #2699; PRs #2702 and #2703.
+
+This campaign makes two previously implicit limits visible without promoting
+static evidence into runtime or adequacy claims: policy scans cover the actual
+editor extension source languages, and repo/seam analysis discloses when the
+parser fell back to lexical facts, including on warm cache paths.
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `policy/static-language-editor-surface` | done | #2703 scans `.ts`, `.js`, `.tsx`, and `.jsx` editor sources, with focused xtask coverage. |
+| `analysis/lexical-fallback-disclosure` | done | #2702 records producer fallback provenance, preserves it through file and classified-seam caches/schema, and emits stable sorted disclosure without claiming runtime mutation or adequacy. |
+| `campaign/analyzer-honesty-closeout` | done | The [closeout handoff](handoffs/2026-07-29-analyzer-honesty-and-policy-visibility-closeout.md) records merged heads, hosted proof, local proof boundaries, and follow-up disposition. |
+
+Non-goals: runtime mutation execution, test adequacy or coverage claims,
+release/publish changes, default blocking, and broad parser replacement.
+
+## Campaign 35: Operator Signal Integrity
+
+Campaign ID: `operator-signal-integrity`
+
+Status: complete
+
+Tracker: issues #2675, #2599, and #2632; implementation PRs #2720, #2721,
+#2722; repair PR #2726.
+
+This campaign keeps operator-facing signals faithful to the underlying
+evidence. Submodule pointer changes are disclosed as skipped content, gate
+failures surface their first actionable reason inline while retaining the full
+artifact, and GitHub annotations map the actual severity without downgrading a
+literal warning to a notice.
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `diff/submodule-pointer-disclosure` | done | #2720 detects confined gitlink additions, deletions, and changes; forces short submodule diff output; and discloses that contents are not analyzed. |
+| `gate/inline-first-reason` | done | #2721 surfaces the first config, blocking-gap, or exception-policy reason while preserving the full gate report. |
+| `annotations/severity-level-mapping` | done-with-repair | #2722 added severity mapping; #2726 aligns the output with the source-of-truth all-warning policy and adds weak, literal warning, and configured info regressions. |
+| `campaign/operator-signal-closeout` | done | The [closeout handoff](handoffs/2026-07-29-operator-signal-integrity-closeout.md) records final merge proof, issue disposition, claims, and the independent #2718 boundary. |
+
+Non-goals: LSP severity redesign (#2718), runtime mutation, adequacy or
+coverage claims, release/publish changes, default blocking, and broad output
+refactoring.
+
+## Campaign 36: Preview Projection Honesty
+
+Campaign ID: `preview-projection-honesty`
+
+Status: complete
+
+Tracker: issues #2716, #2744, and follow-up #2764; PRs #2743, #2746,
+#2753, and #2757.
+
+This campaign keeps preview output faithful when the producer has more than
+one configured TypeScript/Bun bridge profile. It also closes the JSON-order
+documentation drift without adding a dependency or making JSON byte order a
+consumer contract.
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `output/json-order-contract` | done | #2743 documents semantic JSON object ordering and explicitly excludes exact-byte canonical artifacts. |
+| `output/multi-bun-profile-projection` | done | #2753 retains every emitted Bun bridge profile across human, JSON, SARIF, and GitHub projections, with Blob plus `copy_to_unshared` regression coverage; the first producer profile remains the documented singular compatibility alias. |
+| `campaign/preview-projection-closeout` | done | #2757's [closeout handoff](handoffs/2026-07-29-preview-projection-honesty-closeout.md) records merged heads, proof, claim boundaries, and follow-up disposition. |
+
+Non-goals: new Bun taxonomy or discovery, runtime Bun execution, mutation,
+coverage or adequacy claims, public repair-packet promotion, default blocking,
+release/publish changes, `serde_json` `preserve_order`, and broad refactoring.
+
+## Campaign 37: 0.11 Release Control Lens
+
+Campaign ID: `release-control-0-11`
+
+Status: historical / superseded
+
+Tracker: issues #2766, #2767, #2768, and #2769, under the historical release
+authority #2379 and candidate manifest authority #1609. **Superseded for the
+live 0.11.0 release train** by the transaction-boundary live-head decision in
+`docs/release-candidates/0.11.0-live-head-selection.json`; these slices remain
+audit evidence and are not an active C/T publication path.
+
+The campaign made the temporary 0.11 writer cutoff and merge-eligibility
+boundary explicit without restoring singleton active-goal authority. Its
+read-only release lens, execution-surface scope decision, supplemental
+denominator, and exact-candidate evidence remain audit records. The active
+sequence is the live-head authority reset, exact `SWARM_PARENT` pin, exact-head
+qualification, source preflight, history-preserving join, metadata, artifact
+proof, ship packet, authorized publication, and back-sync.
+
+| Work item | Status | Summary |
+| --- | --- | --- |
+| `control/release-lens` | landed | #2766 / PR #2773: fixture-backed `cargo xtask release-control` normalizes current-authority input, assigns closed PR dispositions, and fails closed on stale or incomplete evidence. |
+| `release/execution-scope` | landed | #2767 / PR #2788: accepted Outcome A is machine-readable as a complete candidate-only exclusion while development `main` remains unchanged. |
+| `release/supplemental-denominator` | in progress | #2768 / PR #2790 and the landed #2868 snapshot establish the 234-record captured range through `c30a2683`; the fresh #2831 B slice adds GitHub-backed typed capture/import, fixed provisional review cutoff `fcbb30a7`, optional #2766/#2871 claim references, and fail-closed `candidate_tree_state_pending` rows. All 234 records remain operator decisions until #2832 adjudication; no blanket post-cutoff exclusion or candidate qualification is claimed. |
+| `release/exact-candidate-bundle` | superseded | Historical #2769/#1609 C/T qualification path; the active release qualifies the exact transaction-boundary live swarm head. |
+| `campaign/release-control-closeout` | planned | Reconcile live state, retain proof and claim boundaries, clean campaign-created artifacts, and capture successor work. |
+
+The durable sequence and first-slice acceptance criteria are in
+[`plans/release-control-0-11/implementation-plan.md`](../plans/release-control-0-11/implementation-plan.md),
+and the first-slice output contract is
+[`RIPR-SPEC-0144`](specs/RIPR-SPEC-0144-release-control-lens.md).
+The execution-scope contract is [`RIPR-SPEC-0145`](specs/RIPR-SPEC-0145-release-execution-scope.md).
+The supplemental denominator contract is [`RIPR-SPEC-0146`](specs/RIPR-SPEC-0146-release-denominator.md).

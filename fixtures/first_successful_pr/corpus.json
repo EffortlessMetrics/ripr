@@ -65,6 +65,30 @@
       ]
     },
     {
+      "id": "typescript-preview-gap",
+      "description": "A repairable TypeScript preview gap becomes a preview-limited first-run repair.",
+      "input": "typescript-preview-gap/inputs/reports/gap-decision-ledger.json",
+      "outcome_before": "typescript-preview-gap/inputs/reports/before-check.json",
+      "outcome_after": "typescript-preview-gap/inputs/reports/after-check.json",
+      "expected": "typescript-preview-gap/expected/start-here.json",
+      "expected_outcome": "typescript-preview-gap/expected/outcome/closed.json",
+      "expected_outcome_markdown": "typescript-preview-gap/expected/outcome/closed.md",
+      "expected_status": "actionable",
+      "expected_state": "top_gap",
+      "expected_output_state": "preview_limited",
+      "expected_gap_movement": "closed",
+      "outcome_receipts": [
+        {
+          "id": "closed",
+          "before": "typescript-preview-gap/inputs/reports/before-check.json",
+          "after": "typescript-preview-gap/inputs/reports/after-check.json",
+          "expected": "typescript-preview-gap/expected/outcome/closed.json",
+          "expected_markdown": "typescript-preview-gap/expected/outcome/closed.md",
+          "expected_gap_movement": "closed"
+        }
+      ]
+    },
+    {
       "id": "empty-diff",
       "description": "An empty diff emits schema-valid no-action output.",
       "input": "empty-diff/inputs/reports/gap-decision-ledger.json",

@@ -3,7 +3,7 @@ mod json;
 mod markdown;
 mod receipt;
 mod report;
-mod types;
+pub(crate) mod types;
 mod util;
 
 pub(crate) use json::render_agent_review_summary_json;
@@ -19,8 +19,8 @@ mod tests {
     use crate::agent::loop_commands::{
         WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_BRIEF_ARTIFACT,
         WORKFLOW_AGENT_PACKET_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
-        WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
-        WORKFLOW_MANIFEST_ARTIFACT,
+        WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+        WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, WORKFLOW_MANIFEST_ARTIFACT,
     };
     use serde_json::Value;
     use std::path::{Path, PathBuf};
@@ -66,6 +66,35 @@ mod tests {
         write_file(&root.join(WORKFLOW_AFTER_SNAPSHOT_ARTIFACT), "{}")?;
         write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
         write_file(&root.join(WORKFLOW_AGENT_PACKET_ARTIFACT), "{}")?;
+        write_file(
+            &root.join(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT),
+            r#"{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": ".",
+  "base": "origin/main",
+  "summary": {},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {
+      "schema_version": "0.1",
+      "kind": "no_scope",
+      "identity": {"base_revision": "origin/main"},
+      "counts": {
+        "changed_file_count": 0,
+        "changed_line_count": 0,
+        "candidate_line_count": 0,
+        "probe_count": 0,
+        "finding_count": 0
+      },
+      "limitations": [],
+      "claim_boundary": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+    }
+  },
+  "findings": []
+}"#,
+        )?;
         Ok(())
     }
 
@@ -106,8 +135,7 @@ mod tests {
     "next_action": {
       "kind": "improved",
       "summary": "Static grip improved.",
-      "recommended_action": "Keep the focused test and include this receipt in review.",
-      "safe_to_merge": false
+      "recommended_action": "Keep the focused test and include this receipt in review."
     }
   }
 }"#,
@@ -202,7 +230,6 @@ mod tests {
                         "kind": case.action_kind,
                         "summary": case.action_summary,
                         "recommended_action": case.action_recommendation,
-                        "safe_to_merge": false
                     }
                 }
             }))
@@ -293,6 +320,104 @@ mod tests {
     }
 
     #[test]
+    fn agent_review_summary_fails_closed_on_incomplete_analysis_outcome() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("incomplete-outcome");
+        write_complete_artifacts(&root)?;
+        write_file(
+            &root.join(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT),
+            r#"{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": ".",
+  "base": "origin/main",
+  "summary": {},
+  "analysis_outcome": {
+    "analysis_complete": false,
+    "outcome": {
+      "schema_version": "0.1",
+      "kind": "unsupported_input",
+      "identity": {"base_revision": "origin/main"},
+      "counts": {
+        "changed_file_count": 1,
+        "changed_line_count": 2,
+        "candidate_line_count": 0,
+        "probe_count": 0,
+        "finding_count": 0
+      },
+      "limitations": [{
+        "kind": "malformed_diff",
+        "producer_stage": "diff_parse",
+        "path": "src/lib.rs",
+        "affected_items": 1,
+        "bounded_detail": "fixture input is malformed",
+        "recovery": {
+          "kind": "inspect_failure",
+          "detail": "inspect the malformed diff"
+        }
+      }],
+      "claim_boundary": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+    }
+  },
+  "findings": []
+}"#,
+        )?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+        assert_eq!(value["status"], "incomplete");
+        assert_eq!(value["analysis_outcome"]["analysis_complete"], false);
+        assert_eq!(
+            value["analysis_outcome"]["outcome"]["kind"],
+            "unsupported_input"
+        );
+        assert_eq!(
+            value["surfaces"]
+                .as_array()
+                .and_then(|surfaces| {
+                    surfaces
+                        .iter()
+                        .find(|surface| surface["name"] == "analysis_outcome")
+                })
+                .and_then(|surface| surface["status"].as_str()),
+            Some("incomplete")
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_rejects_malformed_analysis_outcome() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("malformed-outcome");
+        write_complete_artifacts(&root)?;
+        write_file(&root.join(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT), "{")?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+        assert_eq!(value["status"], "incomplete");
+        assert_eq!(value["analysis_outcome"], Value::Null);
+        assert_eq!(
+            value["surfaces"]
+                .as_array()
+                .and_then(|surfaces| {
+                    surfaces
+                        .iter()
+                        .find(|surface| surface["name"] == "analysis_outcome")
+                })
+                .and_then(|surface| surface["state"].as_str()),
+            Some("invalid_json")
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn agent_llm_work_loop_review_summary_fixtures_pin_core_states() -> Result<(), String> {
         let cases = [
             ReviewFixtureCase {
@@ -363,15 +488,43 @@ mod tests {
             action_recommendation: "Add the missing discriminator or stronger assertion named by the packet.",
         };
         std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
-        write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
-        write_file(&root.join(WORKFLOW_AGENT_PACKET_ARTIFACT), "{}")?;
+        write_common_workflow_artifacts(&root)?;
+        write_file(
+            &root.join(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT),
+            r#"{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": ".",
+  "base": "origin/main",
+  "summary": {},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {
+      "schema_version": "0.1",
+      "kind": "complete_no_findings",
+      "identity": {"base_revision": "origin/main"},
+      "counts": {
+        "changed_file_count": 0,
+        "changed_line_count": 0,
+        "candidate_line_count": 0,
+        "probe_count": 0,
+        "finding_count": 0
+      },
+      "limitations": [],
+      "claim_boundary": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+    }
+  },
+  "findings": []
+}"#,
+        )?;
         write_file(
             &root.join(WORKFLOW_MANIFEST_ARTIFACT),
             r#"{"schema_version":"0.1","tool":"ripr","status":"ready","seam":{"seam_id":"seam-stale","file":"src/pricing.rs","line":42,"seam_kind":"predicate_boundary"}}"#,
         )?;
         write_file(
             &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
-            r#"{"schema_version":"0.3","tool":"ripr","status":"advisory","provenance":{"before_class":"weakly_gripped","after_class":"weakly_gripped","movement":"unchanged","verify_artifact":{"path":"target/ripr/workflow/agent-verify.json","sha256":"sha256:verify"}},"seam":{"seam_id":"seam-stale","file":"src/pricing.rs","line":42,"seam_kind":"predicate_boundary","before":"weakly_gripped","after":"weakly_gripped","change":"unchanged","grip_class":"weakly_gripped"},"summary":{"remaining_gap":"Fixture-controlled static review state.","next_recommendation":"Add the missing discriminator or stronger assertion named by the packet.","next_action":{"kind":"unchanged","summary":"Static grip did not improve.","recommended_action":"Add the missing discriminator or stronger assertion named by the packet.","safe_to_merge":false}}}"#,
+            r#"{"schema_version":"0.5","tool":"ripr","status":"advisory","provenance":{"before_class":"weakly_gripped","after_class":"weakly_gripped","movement":"unchanged","verify_artifact":{"path":"target/ripr/workflow/agent-verify.json","sha256":"sha256:verify"}},"seam":{"seam_id":"seam-stale","file":"src/pricing.rs","line":42,"seam_kind":"predicate_boundary","before":"weakly_gripped","after":"weakly_gripped","change":"unchanged","grip_class":"weakly_gripped"},"summary":{"remaining_gap":"Fixture-controlled static review state.","next_recommendation":"Add the missing discriminator or stronger assertion named by the packet.","next_action":{"kind":"unchanged","summary":"Static grip did not improve.","recommended_action":"Add the missing discriminator or stronger assertion named by the packet."}}}"#,
         )?;
         std::thread::sleep(std::time::Duration::from_millis(25));
         write_file(

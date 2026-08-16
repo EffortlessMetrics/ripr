@@ -1,0 +1,8 @@
+diff --git a/src/conf.py b/src/conf.py
+index 0000000..1111111 100644
+--- a/src/conf.py
++++ b/src/conf.py
+@@ -1,2 +1,2 @@
+ def build_config():
+-    return {"host": "localhost", "port": 8080}
++    return {"host": "localhost", "port": 9090}

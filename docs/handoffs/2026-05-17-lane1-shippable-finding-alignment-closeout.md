@@ -139,22 +139,22 @@ or reintroduced remain owned by policy lanes. They must not replace the Lane 1
 Latest local proof for this closeout should include:
 
 ```text
-rtk cargo test -p xtask lane1_evidence_audit --bin xtask
-rtk cargo test -p xtask evidence_quality_scorecard --bin xtask
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-traceability
-rtk cargo xtask check-capabilities
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p xtask lane1_evidence_audit --bin xtask
+cargo test -p xtask evidence_quality_scorecard --bin xtask
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-pr
+git diff --check
 ```
 
 Release operators making evidence-alignment claims should also run:
 
 ```text
-rtk cargo xtask lane1-evidence-audit
-rtk cargo xtask evidence-quality-scorecard
+cargo xtask lane1-evidence-audit
+cargo xtask evidence-quality-scorecard
 ```
 
 and confirm the audit coverage section reports:

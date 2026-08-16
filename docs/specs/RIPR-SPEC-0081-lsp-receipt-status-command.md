@@ -87,6 +87,7 @@ without a second round-trip.
 | `open_attempt_ledger` | `target/ripr/reports/swarm-attempt-ledger.json` file-exists check | file absent |
 | `latest_attempt_outcome` | `latest_attempts[].outcome` from `target/ripr/reports/swarm-attempt-ledger.json` | file absent OR unreadable (`absence != no outcome`) |
 | `route_quality_summary` | `repair_route_quality_latest` rows from `target/ripr/reports/route-quality.json` (RIPR-SPEC-0080) | file absent, unreadable, or `status == "blocked"` |
+| `client_features` | Bounded projection of the negotiated `ClientFeatureProfile` parsed once at `initialize` (RIPR-SPEC-0143) | never `not_available` — present in every payload state; the pre-initialize profile projects as unsupported |
 
 ### `not_available` rule (HONESTY BAR)
 
@@ -176,6 +177,10 @@ Full receipt-status packet (when snapshot is present):
       { "repair_kind": "AddBoundaryAssertion", "attempted": 2, "success_rate": 0.5 }
     ]
   },
+  "client_features": {
+    "position_encoding": "utf-16",
+    "...": "bounded negotiated-capability projection (RIPR-SPEC-0143)"
+  },
   "report_paths": {
     "gap_decision_ledger": "target/ripr/reports/gap-decision-ledger.json",
     "swarm_attempt_ledger": "target/ripr/reports/swarm-attempt-ledger.json",
@@ -198,6 +203,7 @@ Absent-artifacts sentinel (artifacts not on disk):
   "open_attempt_ledger": "not_available",
   "latest_attempt_outcome": "not_available",
   "route_quality_summary": "not_available",
+  "client_features": { "...": "bounded projection (RIPR-SPEC-0143), independent of artifact state" },
   "report_paths": { ... },
   "limits_note": "Static evidence only; advisory, not a gate decision."
 }
@@ -217,6 +223,7 @@ No-snapshot sentinel (no analysis run yet):
   "open_attempt_ledger": "not_available",
   "latest_attempt_outcome": "not_available",
   "route_quality_summary": "not_available",
+  "client_features": { "...": "bounded projection (RIPR-SPEC-0143), independent of artifact state" },
   "limits_note": "Static evidence only; advisory, not a gate decision."
 }
 ```

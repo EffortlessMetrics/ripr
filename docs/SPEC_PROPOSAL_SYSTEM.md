@@ -299,7 +299,6 @@ cargo xtask check-spec-format
 cargo xtask check-spec-numbering
 cargo xtask check-traceability
 cargo xtask check-capabilities
-cargo xtask check-goals
 cargo xtask check-doc-roles
 cargo xtask check-ci-lane-whitelist
 ```

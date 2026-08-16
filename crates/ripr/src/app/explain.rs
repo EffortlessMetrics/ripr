@@ -24,18 +24,85 @@ pub fn explain_finding_with_input(input: CheckInput, selector: &str) -> Result<S
     explain_finding_with_config(input, selector, &RiprConfig::default())
 }
 
-pub(crate) fn explain_finding_with_config(
+pub fn explain_finding_with_config(
     input: CheckInput,
     selector: &str,
     config: &RiprConfig,
 ) -> Result<String, String> {
+    explain_finding_with_config_and_navigation_mode(input, selector, config, false)
+}
+
+pub(crate) fn explain_finding_with_config_and_navigation_mode(
+    input: CheckInput,
+    selector: &str,
+    config: &RiprConfig,
+    mode_explicit: bool,
+) -> Result<String, String> {
+    let navigation = super::finding_navigation(&input, None, mode_explicit);
     let output = check_workspace_with_config(input, config)?;
     match select_finding(&output.findings, selector) {
-        Some(finding) => Ok(output::human::render_finding_with_config(finding, config)),
-        None => Err(format!("no finding matched {selector:?}")),
+        Some(finding) => Ok(output::human::render_finding_with_context_command(
+            finding,
+            config,
+            &navigation.context_command(selector),
+        )),
+        None => Err(format!(
+            "no finding matched {selector:?}; run `ripr check --json` to list available finding ids"
+        )),
     }
 }
 
+/// Like [`explain_finding_with_config`] but loads the finding set from a
+/// previously written check artifact (`--from`, RIPR-SPEC-0140) instead of
+/// re-running the pipeline. The artifact identity gate is fail-closed; on a
+/// verified hit, selection and rendering are identical to the fresh path, so
+/// the rendered output is byte-identical to a recomputed run given the same
+/// render options. `asserted_base` is an explicitly passed `--base`, verified
+/// against the recording rather than used as an override.
+#[cfg(test)]
+pub(crate) fn explain_finding_from_artifact(
+    input: CheckInput,
+    selector: &str,
+    config: &RiprConfig,
+    artifact_path: &Path,
+    asserted_base: Option<&str>,
+) -> Result<String, String> {
+    explain_finding_from_artifact_with_navigation_mode(
+        input,
+        selector,
+        config,
+        artifact_path,
+        asserted_base,
+        false,
+    )
+}
+
+pub(crate) fn explain_finding_from_artifact_with_navigation_mode(
+    input: CheckInput,
+    selector: &str,
+    config: &RiprConfig,
+    artifact_path: &Path,
+    asserted_base: Option<&str>,
+    mode_explicit: bool,
+) -> Result<String, String> {
+    let navigation = super::finding_navigation(&input, Some(artifact_path), mode_explicit);
+    let findings = super::check_artifact::load_findings_for_reuse(
+        artifact_path,
+        &input,
+        config,
+        asserted_base,
+    )?;
+    match select_finding(&findings, selector) {
+        Some(finding) => Ok(output::human::render_finding_with_context_command(
+            finding,
+            config,
+            &navigation.context_command(selector),
+        )),
+        None => Err(format!(
+            "no finding matched {selector:?}; run `ripr check --json` to list available finding ids"
+        )),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -56,6 +123,50 @@ mod tests {
         }
     }
 
+    fn fixture_diff_input(name: &str) -> CheckInput {
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("fixtures")
+            .join(name);
+        CheckInput {
+            root: fixture.join("input"),
+            diff_file: Some(fixture.join("diff.patch")),
+            mode: Mode::Draft,
+            ..CheckInput::default()
+        }
+    }
+
+    fn require_contains(rendered: &str, needle: &str) -> Result<(), String> {
+        if rendered.contains(needle) {
+            Ok(())
+        } else {
+            Err(format!(
+                "expected rendered explain output to contain {needle:?}"
+            ))
+        }
+    }
+
+    fn require_not_contains(rendered: &str, needle: &str) -> Result<(), String> {
+        if rendered.contains(needle) {
+            Err(format!(
+                "expected rendered explain output to omit {needle:?}"
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn explain_fixture(name: &str, selector: &str) -> Result<String, String> {
+        let mut input = fixture_diff_input(name);
+        let config = crate::config::load_for_root(&input.root)?;
+        crate::config::apply_to_check_input(
+            &mut input,
+            &config,
+            crate::config::CheckInputExplicit::default(),
+        );
+        explain_finding_with_config(input, selector, &config)
+    }
+
     #[test]
     fn explain_finding_with_input_renders_selected_finding() -> Result<(), String> {
         let rendered = explain_finding_with_input(
@@ -66,6 +177,63 @@ mod tests {
         assert!(rendered.contains("Static exposure"));
         assert!(rendered.contains("no_static_path"));
         assert!(rendered.contains("InvoiceError::InvalidCurrency"));
+        let root = crate::agent::loop_commands::shell_arg(&sample_root().display().to_string());
+        let diff = crate::agent::loop_commands::shell_arg(
+            &sample_root().join("example.diff").display().to_string(),
+        );
+        assert!(rendered.contains(
+            &format!(
+                "Next: ripr context --root {root} --diff {diff} --at probe:crates_ripr_examples_sample_src_lib.rs:error_path:a776c683"
+            )
+        ));
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "lang-typescript")]
+    fn explain_finding_renders_typescript_actionable_packet_field_note() -> Result<(), String> {
+        let rendered = explain_fixture(
+            "ts_repair_packet_complete",
+            "probe:src_discount.ts:typescript_preview:2396aec1",
+        )?;
+
+        require_contains(&rendered, "TypeScript repair packet (advisory)")?;
+        require_contains(&rendered, "repair packet ready: true")?;
+        require_contains(
+            &rendered,
+            "canonical gap: gap:typescript:typescript_preview:2396aec1",
+        )?;
+        require_contains(&rendered, "edit surface: tests/discount.test.ts")?;
+        require_contains(&rendered, "verify: jest tests/discount.test.ts")?;
+        require_contains(&rendered, "receipt: ripr outcome ")?;
+        require_contains(&rendered, "authority: preview_advisory_only")?;
+        require_not_contains(&rendered, "status: not actionable")?;
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "lang-typescript")]
+    fn explain_finding_renders_typescript_blocked_packet_limitation() -> Result<(), String> {
+        let rendered = explain_fixture(
+            "ts_static_limit",
+            "probe:src_cache.ts:typescript_preview:bac50022",
+        )?;
+
+        require_contains(&rendered, "TypeScript repair packet (advisory)")?;
+        require_contains(&rendered, "repair packet ready: false")?;
+        require_contains(&rendered, "status: not actionable")?;
+        require_contains(
+            &rendered,
+            "limitation: static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance",
+        )?;
+        require_contains(
+            &rendered,
+            "next capability needed: resolve the named static limit and re-run TypeScript preview evidence extraction",
+        )?;
+        require_not_contains(
+            &rendered,
+            "canonical gap: gap:typescript:typescript_preview:bac50022",
+        )?;
         Ok(())
     }
 

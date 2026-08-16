@@ -22,17 +22,26 @@
   "top_seams": [
     {
       "assertion_shape": {
+        "basis": "seam_required_discriminator",
         "example": "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)",
-        "kind": "exact_return_value"
+        "kind": "exact_return_value",
+        "observer_kind": null,
+        "reason": null,
+        "recovery": null,
+        "state": "concrete"
       },
       "candidate_values": [
         {
-          "reason": "predicate uses an equality-bearing operator; tests should exercise the boundary case",
-          "value": "input that hits the boundary: amount >= discount_threshold"
-        },
-        {
           "reason": "observed values do not include the equality-boundary case for this predicate",
           "value": "discount_threshold (equality boundary)"
+        },
+        {
+          "reason": "observed function_argument value from existing tests",
+          "value": "50"
+        },
+        {
+          "reason": "observed function_argument value from existing tests",
+          "value": "10_000"
         }
       ],
       "evidence": {
@@ -48,10 +57,6 @@
       "headline_eligible": true,
       "line": 2,
       "missing_discriminators": [
-        {
-          "reason": "predicate uses an equality-bearing operator; tests should exercise the boundary case",
-          "value": "input that hits the boundary: amount >= discount_threshold"
-        },
         {
           "reason": "observed values do not include the equality-boundary case for this predicate",
           "value": "discount_threshold (equality boundary)"
@@ -74,7 +79,7 @@
       "recommended_test": {
         "file": "tests/pricing.rs",
         "name": "discounted_total_boundary_discriminator",
-        "reason": "place the new targeted test next to the nearest strong related test"
+        "reason": "place the new targeted test next to the producer-owned related test"
       },
       "seam_id": "67fc764ba37d77bd",
       "seam_kind": "predicate_boundary",

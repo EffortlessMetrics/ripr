@@ -146,7 +146,7 @@ pub(in crate::analysis) fn missing_evidence(
         activation
             .missing_discriminators
             .iter()
-            .map(|fact| format!("Missing discriminator value: {}", fact.value)),
+            .map(|fact| format!("{MISSING_DISCRIMINATOR_VALUE_PREFIX}{}", fact.value)),
     );
     missing.sort();
     missing.dedup();
@@ -201,16 +201,49 @@ fn contains_macro_invocation(expression: &str) -> bool {
 pub(in crate::analysis) fn recommended_next_step(
     probe: &Probe,
     class: &ExposureClass,
+    owner_assertion_shaped: bool,
 ) -> Option<String> {
+    // RIPR-SPEC-0133: an assertion-shaped owner is the oracle, not the code
+    // under test, so the standard code-under-test advice is incoherent for it.
+    // The exposure class is unchanged; only the guidance is reframed.
+    if owner_assertion_shaped {
+        return assertion_shaped_next_step(class);
+    }
     match class {
         ExposureClass::Exposed => None,
         ExposureClass::WeaklyExposed => {
             Some(weakly_exposed_guidance_for_family(&probe.family).to_string())
         }
         ExposureClass::ReachableUnrevealed => Some("Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.".to_string()),
-        ExposureClass::NoStaticPath => Some("Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.".to_string()),
+        ExposureClass::NoStaticPath => Some(crate::domain::NO_STATIC_PATH_NEXT_STEP.to_string()),
         ExposureClass::InfectionUnknown => Some("Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.".to_string()),
         ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown => Some("Escalate to real mutation testing or deep static analysis for this probe.".to_string()),
+    }
+}
+
+/// Guidance for an assertion-shaped owner, phrased for oracles rather than for
+/// code under test. `PropagationUnknown`/`StaticUnknown` keep the escalation
+/// text: "escalate to real mutation testing" is coherent for an oracle (the
+/// helper and the code it checks can both be mutation-tested). `Exposed`
+/// stays `None` — a finding that does not need a next step does not get one.
+fn assertion_shaped_next_step(class: &ExposureClass) -> Option<String> {
+    match class {
+        ExposureClass::Exposed => None,
+        ExposureClass::WeaklyExposed => {
+            Some(crate::domain::ASSERTION_SHAPED_WEAKLY_EXPOSED_NEXT_STEP.to_string())
+        }
+        ExposureClass::ReachableUnrevealed => {
+            Some(crate::domain::ASSERTION_SHAPED_REACHABLE_UNREVEALED_NEXT_STEP.to_string())
+        }
+        ExposureClass::NoStaticPath => {
+            Some(crate::domain::ASSERTION_SHAPED_NO_STATIC_PATH_NEXT_STEP.to_string())
+        }
+        ExposureClass::InfectionUnknown => {
+            Some(crate::domain::ASSERTION_SHAPED_INFECTION_UNKNOWN_NEXT_STEP.to_string())
+        }
+        ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown => Some(
+            "Escalate to real mutation testing or deep static analysis for this probe.".to_string(),
+        ),
     }
 }
 
@@ -292,6 +325,7 @@ mod tests {
         let side_effect = recommended_next_step(
             &probe(ProbeFamily::SideEffect, "client.send(value)"),
             &ExposureClass::WeaklyExposed,
+            false,
         );
         assert_eq!(
             side_effect.as_deref(),
@@ -303,6 +337,7 @@ mod tests {
         let match_arm = recommended_next_step(
             &probe(ProbeFamily::MatchArm, "None => 0"),
             &ExposureClass::WeaklyExposed,
+            false,
         );
         assert_eq!(
             match_arm.as_deref(),
@@ -315,6 +350,7 @@ mod tests {
         let predicate = recommended_next_step(
             &probe(ProbeFamily::Predicate, "value >= threshold"),
             &ExposureClass::WeaklyExposed,
+            false,
         );
         assert_eq!(
             predicate.as_deref(),
@@ -326,6 +362,7 @@ mod tests {
         let error_path = recommended_next_step(
             &probe(ProbeFamily::ErrorPath, "Err(AppError::Denied)"),
             &ExposureClass::WeaklyExposed,
+            false,
         );
         assert_eq!(
             error_path.as_deref(),
@@ -335,6 +372,7 @@ mod tests {
         let return_value = recommended_next_step(
             &probe(ProbeFamily::ReturnValue, "count + 1"),
             &ExposureClass::WeaklyExposed,
+            false,
         );
         assert_eq!(
             return_value.as_deref(),
@@ -342,6 +380,68 @@ mod tests {
                 "Replace broad assertions with exact equality or a property that constrains the changed returned value."
             )
         );
+    }
+
+    // RIPR-SPEC-0133: an assertion-shaped owner is the oracle. Guidance is
+    // reframed for every class; the class itself is untouched (classification
+    // happens in `classify`, upstream of this fn).
+    #[test]
+    fn recommended_next_step_reframes_guidance_for_assertion_shaped_owners() {
+        let return_value = probe(ProbeFamily::ReturnValue, "count + 1");
+
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::Exposed, true),
+            None
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::WeaklyExposed, true).as_deref(),
+            Some(crate::domain::ASSERTION_SHAPED_WEAKLY_EXPOSED_NEXT_STEP)
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::ReachableUnrevealed, true)
+                .as_deref(),
+            Some(crate::domain::ASSERTION_SHAPED_REACHABLE_UNREVEALED_NEXT_STEP)
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::NoStaticPath, true).as_deref(),
+            Some(crate::domain::ASSERTION_SHAPED_NO_STATIC_PATH_NEXT_STEP)
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::InfectionUnknown, true).as_deref(),
+            Some(crate::domain::ASSERTION_SHAPED_INFECTION_UNKNOWN_NEXT_STEP)
+        );
+        // Escalation text is coherent for an oracle and stays unchanged.
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::PropagationUnknown, true)
+                .as_deref(),
+            Some("Escalate to real mutation testing or deep static analysis for this probe.")
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::StaticUnknown, true).as_deref(),
+            Some("Escalate to real mutation testing or deep static analysis for this probe.")
+        );
+    }
+
+    // RIPR-SPEC-0133: the reframed guidance must state the detection rule in
+    // one sentence and must not ask for a test of the oracle itself.
+    #[test]
+    fn assertion_shaped_guidance_states_the_rule_and_avoids_test_of_test_advice() {
+        let reason = crate::domain::ASSERTION_SHAPED_OWNER_REASON;
+        for guidance in [
+            crate::domain::ASSERTION_SHAPED_WEAKLY_EXPOSED_NEXT_STEP,
+            crate::domain::ASSERTION_SHAPED_REACHABLE_UNREVEALED_NEXT_STEP,
+            crate::domain::ASSERTION_SHAPED_NO_STATIC_PATH_NEXT_STEP,
+            crate::domain::ASSERTION_SHAPED_INFECTION_UNKNOWN_NEXT_STEP,
+        ] {
+            assert!(
+                guidance.contains(reason),
+                "guidance must embed the one-sentence rule `{reason}`; got: {guidance}"
+            );
+            assert!(
+                !guidance.contains("co-located test"),
+                "guidance must not ask for a test that observes the oracle; got: {guidance}"
+            );
+        }
     }
 
     // RIPR-SPEC-0109 control (a): genuine all-Yes/Medium exposure must not be
@@ -429,6 +529,118 @@ mod tests {
             prop_class,
             ExposureClass::PropagationUnknown,
             "propagation_unknown class must be unchanged after RIPR-SPEC-0109"
+        );
+    }
+
+    // #2450: the Exposed branch is the single over-credit guard. These tests
+    // pin the contract that Exposed requires all of discriminate+infect+
+    // propagate == Yes, and that any stage not-Yes downgrades to WeaklyExposed
+    // (never Exposed). A regression here is the cardinal sin per AGENTS.md.
+
+    #[test]
+    fn classify_emits_exposed_only_when_all_discriminate_infect_propagate_are_yes() {
+        // All stages Yes → Exposed (the only path to Exposed).
+        let all_yes = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::Predicate, "amount >= threshold"),
+        );
+        assert_eq!(all_yes, ExposureClass::Exposed);
+
+        // discriminate=Weak with infect=Yes + propagate=Yes at the FINAL guard
+        // → WeaklyExposed, NOT Exposed. This is the cardinal-sin guard: all
+        // stages Yes except discrimination → must not credit as Exposed.
+        let weak_discrim = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Weak),
+            &probe(ProbeFamily::Predicate, "amount >= threshold"),
+        );
+        assert_eq!(
+            weak_discrim,
+            ExposureClass::WeaklyExposed,
+            "Weak discrimination must not credit as Exposed (over-credit guard)"
+        );
+
+        // infect=No (not Unknown) at the final guard → WeaklyExposed.
+        // infect=No means infection is resolved as "not happening", so the
+        // all-Yes Exposed check fails on the infect arm specifically.
+        let no_infect = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::No),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::Predicate, "amount >= threshold"),
+        );
+        assert_eq!(
+            no_infect,
+            ExposureClass::WeaklyExposed,
+            "infect=No at the final guard must yield WeaklyExposed, not Exposed"
+        );
+
+        // propagate=No (not Unknown) at the final guard → WeaklyExposed.
+        let no_propagate = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::No),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::Predicate, "amount >= threshold"),
+        );
+        assert_eq!(
+            no_propagate,
+            ExposureClass::WeaklyExposed,
+            "propagate=No at the final guard must yield WeaklyExposed, not Exposed"
+        );
+
+        // infect=Unknown → InfectionUnknown (never reaches the Exposed check).
+        let unknown_infect = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Unknown),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::Predicate, "amount >= threshold"),
+        );
+        assert_eq!(unknown_infect, ExposureClass::InfectionUnknown);
+
+        // propagate=Unknown → PropagationUnknown (never reaches the Exposed check).
+        let unknown_prop = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Unknown),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::Predicate, "amount >= threshold"),
+        );
+        assert_eq!(unknown_prop, ExposureClass::PropagationUnknown);
+    }
+
+    #[test]
+    fn classify_strong_oracle_on_wrong_sink_does_not_credit_as_exposed() {
+        // A "strong" oracle that observes a DIFFERENT sink than the changed one
+        // should produce observe/discriminate stages that are not both Yes.
+        // The classifier never sees "wrong sink" directly — it sees the stage
+        // states the callers produce. This test pins that observe=Yes but
+        // discriminate=No (the wrong-sink case) yields WeaklyExposed, not Exposed.
+        let wrong_sink = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::No),
+            &probe(ProbeFamily::ErrorPath, "Err(InvalidCurrency)"),
+        );
+        assert_eq!(
+            wrong_sink,
+            ExposureClass::WeaklyExposed,
+            "observe=Yes but discriminate=No (wrong sink) must not credit as Exposed"
         );
     }
 

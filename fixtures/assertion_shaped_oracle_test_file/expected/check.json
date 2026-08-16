@@ -1,0 +1,72 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/assertion_shaped_oracle_test_file/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":1,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:45c408b4009736c370a763ffacd5ff6f91b6b6cd09b7280fbb5eb4f6da04d42b","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_fragment_checks.rs:predicate:41d9e03a",
+      "classification": "infection_unknown",
+      "severity": "warning",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_fragment_checks.rs:predicate:41d9e03a",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/assertion_shaped_oracle_test_file/input/src/fragment_checks.rs",
+        "line": 8,
+        "expression": "fragment.crate_root.is_none()"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach assert_workspace_source_paths_are_stable: workspace_source_paths_are_stable"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Predicate changed, but no literal boundary was visible in the changed expression"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: fragment.crate_root.as_deref().unwrap_or(\"\")"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach assert_workspace_source_paths_are_stable: workspace_source_paths_are_stable", "infection unknown: Predicate changed, but no literal boundary was visible in the changed expression", "propagation yes: Changed behavior appears to influence returned value: fragment.crate_root.as_deref().unwrap_or(\"\")", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches returned value: fragment.crate_root.as_deref().unwrap_or(\"\") (line 11)", "related test tests/fragments.rs:5 workspace_source_paths_are_stable uses unknown unknown oracle: assert_workspace_source_paths_are_stable(&fragments);"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"fragment.crate_root.as_deref().unwrap_or(\"\")","line":11}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed behavior appears to influence returned value: fragment.crate_root.as_deref().unwrap_or(\"\")", "Predicate changed, but no literal boundary was visible in the changed expression", "Related tests appear to reach assert_workspace_source_paths_are_stable: workspace_source_paths_are_stable", "owner_shape: assertion_shaped (its body is dominated by assert*/expect calls and nothing outside tests calls it)"],
+      "missing": ["No detected boundary input for the changed predicate", "No strong discriminator was detected", "Predicate changed, but no literal boundary was visible in the changed expression"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "workspace_source_paths_are_stable",
+          "file": "tests/fragments.rs",
+          "line": 5,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": "assert_workspace_source_paths_are_stable(&fragments);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["infection_evidence_unknown"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "The changed owner is an assertion helper (its body is dominated by assert*/expect calls and nothing outside tests calls it); there is no fixture/builder for ripr.toml to describe. Add a boundary or negative-path case for the code this helper checks.",
+      "suggested_next_action": "The changed owner is an assertion helper (its body is dominated by assert*/expect calls and nothing outside tests calls it); there is no fixture/builder for ripr.toml to describe. Add a boundary or negative-path case for the code this helper checks.",
+      "language": "rust"
+    }
+  ]
+}

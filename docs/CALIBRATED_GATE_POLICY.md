@@ -36,6 +36,14 @@ ripr gate evaluate \
   --out-md target/ripr/reports/gate-decision.md
 ```
 
+When `target/ripr/pr/canonical-delta.json` exists, the gate also consumes that
+versioned producer-owned comparison. Only `introduced_by_change`,
+`weakened_by_change`, and `reintroduced_by_change` can contribute to a causal
+blocking count. Resolved, existing, adjacent, baseline, and unknown
+attributions remain visible but non-blocking. Missing, ambiguous, or low
+coverage comparison evidence is disclosed and fails closed rather than being
+treated as a complete causal comparison.
+
 Only `--pr-guidance`, `--mode`, `--out`, and `--out-md` are required for the
 smallest local run. Other inputs refine the decision when available:
 
@@ -69,6 +77,20 @@ The gate mode is the policy boundary:
 Every mode writes the same JSON and Markdown surfaces. Blocking modes return a
 non-zero exit only after writing `target/ripr/reports/gate-decision.json` and
 `target/ripr/reports/gate-decision.md`.
+
+When the CLI is invoked without `--mode` and stderr is non-interactive, it
+prints a warning that the `visible-only` default records advisory evidence and
+never blocks. This warning does not change the decision or exit status. Pass an
+explicit mode to document the intended posture; `--mode visible-only` suppresses
+the warning, while blocking modes remain opt-in.
+
+For blocking, acknowledged, and advisory decisions, the Markdown report expands
+the structured gate repair route into the exact gap/seam identity, missing
+observation, focused test target and intent, verify/receipt commands, and
+producer-owned inspection command. Incomplete routes remain visible with their
+named missing fields and no fabricated command. Generated GitHub CI appends this
+same Markdown report to the step summary, so no artifact download is needed to
+read the route.
 
 ## Waivers And Suppressions
 

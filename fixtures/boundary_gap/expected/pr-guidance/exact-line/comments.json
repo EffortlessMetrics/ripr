@@ -24,6 +24,7 @@
   "base": "main",
   "comments": [
     {
+      "canonical_gap_id": "gap:dedf923a13a00573",
       "dedupe_key": "ripr:8f7fa8644fd12280:src/pricing.rs:88",
       "gap_state": "actionable",
       "grip_class": "weakly_gripped",
@@ -31,10 +32,12 @@
       "kind": "predicate_boundary",
       "llm_guidance": {
         "command": "ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > target/ripr/workflow/agent-brief.json",
-        "prompt": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "prompt": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
-      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "missing_discriminator": "amount == discount_threshold",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
       "owner": "pricing::discounted_total",
       "placement": {
         "line": 88,
@@ -42,7 +45,7 @@
         "path": "src/pricing.rs",
         "side": "RIGHT"
       },
-      "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "reason": "Static evidence names missing discriminator `amount == discount_threshold` for this seam.",
       "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 8f7fa8644fd12280 --json --out target/ripr/reports/agent-receipt.json",
       "seam": {
         "expression": "amount >= discount_threshold",
@@ -60,15 +63,29 @@
         "status": "resolved"
       },
       "suggested_test": {
+        "assertion_guidance": {
+          "basis": "seam_required_discriminator",
+          "example": "assert_eq!(discounted_total(/* boundary input where amount == discount_threshold */), /* expected */)",
+          "kind": "exact_return_value",
+          "observer_kind": null,
+          "reason": null,
+          "recovery": null,
+          "state": "concrete"
+        },
         "assertion_kind": "exact_return_value",
-        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input where amount == discount_threshold */), /* expected */)",
         "candidate_values": [
-          "input that hits the boundary: amount == discount_threshold"
+          "amount == discount_threshold"
         ],
         "intent": "Add one focused discriminator test.",
         "near_test": "above_threshold_gets_discount",
         "recommended_file": "tests/pricing.rs",
-        "recommended_name": "discounted_total_boundary_discriminator"
+        "recommended_name": "discounted_total_boundary_discriminator",
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        }
       }
     }
   ],

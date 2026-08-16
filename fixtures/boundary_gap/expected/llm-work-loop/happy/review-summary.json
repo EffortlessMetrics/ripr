@@ -24,6 +24,30 @@
       "recommended_action": "Keep the focused test and include this receipt in review."
     }
   },
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {
+      "schema_version": "0.1",
+      "kind": "no_scope",
+      "identity": {
+        "repository_identity": null,
+        "root_identity": null,
+        "config_identity": null,
+        "base_revision": "origin/main",
+        "input_identity": null,
+        "snapshot_identity": null
+      },
+      "counts": {
+        "changed_file_count": 0,
+        "changed_line_count": 0,
+        "candidate_line_count": 0,
+        "probe_count": 0,
+        "finding_count": 0
+      },
+      "limitations": [],
+      "claim_boundary": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+    }
+  },
   "next_command": null,
   "surfaces": [
     {
@@ -33,7 +57,7 @@
       "state": "computed",
       "status": "complete",
       "required": true,
-      "summary": "6 required artifacts present, 0 missing, 0 warnings. Command: ripr agent status --root . --json > target/ripr/workflow/agent-status.json"
+      "summary": "7 required artifacts present, 0 missing, 0 warnings. Command: ripr agent status --root . --json > target/ripr/workflow/agent-status.json"
     },
     {
       "name": "agent_workflow",
@@ -79,6 +103,15 @@
       "status": "optional_missing",
       "required": false,
       "summary": "LSP cockpit artifact is not present."
+    },
+    {
+      "name": "analysis_outcome",
+      "label": "Analysis outcome",
+      "path": "target/ripr/workflow/analysis-outcome.json",
+      "state": "present",
+      "status": "complete",
+      "required": true,
+      "summary": "Producer analysis outcome is no_scope (complete)."
     }
   ],
   "ci_artifacts": [
@@ -108,6 +141,11 @@
       "state": "missing"
     },
     {
+      "name": "analysis_outcome",
+      "path": "target/ripr/workflow/analysis-outcome.json",
+      "state": "present"
+    },
+    {
       "name": "agent_receipt",
       "path": "target/ripr/reports/agent-receipt.json",
       "state": "present"
@@ -131,6 +169,7 @@
     "reviewer_should_inspect": [
       "target/ripr/reports/agent-receipt.json",
       "target/ripr/workflow/agent-verify.json",
+      "target/ripr/workflow/analysis-outcome.json",
       "target/ripr/reports/operator-cockpit.json",
       "target/ripr/reports/repo-exposure.json"
     ]
@@ -142,4 +181,3 @@
     "generated_tests": false
   }
 }
-
