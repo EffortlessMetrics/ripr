@@ -39,6 +39,7 @@ jobs:
           python - "$repair_dir/.github/workflows/source-promotion-contract.yml" "$repair_dir/xtask/tests/source_promotion_workflow_contract.rs" <<'PY'
           from pathlib import Path
           import sys
+          import textwrap
 
           workflow_path = Path(sys.argv[1])
           tests_path = Path(sys.argv[2])
@@ -50,31 +51,33 @@ jobs:
               raise SystemExit(f"expected one malformed predicate, found {workflow.count(bad)}")
           workflow = workflow.replace(bad, good, 1)
 
-          upload = '''      - name: Upload SHA-bound promotion receipts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: source-promotion-contract-${{ github.event.pull_request.head.sha }}
-          path: target/ripr/source-promotion
-          if-no-files-found: error
-
-'''
-          enforcement = '''      - name: Enforce normalized source-promotion contract
-        if: always()
-        env:
-          SOURCE_PROMOTION_CONTRACT: target/ripr/source-promotion/source-promotion-contract.json
-        run: |
-          set -euo pipefail
-          test -f "$SOURCE_PROMOTION_CONTRACT"
-          jq -e '
-            .schema == "ripr.source_promotion_contract.v2" and
-            .status == "verified" and
-            .validation.status == "passed" and
-            .verifier_receipt_status == "present" and
-            .verifier_exit_code == "0"
-          ' "$SOURCE_PROMOTION_CONTRACT"
-
-'''
+          upload = "\n".join([
+              "      - name: Upload SHA-bound promotion receipts",
+              "        if: always()",
+              "        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",
+              "        with:",
+              "          name: source-promotion-contract-${{ github.event.pull_request.head.sha }}",
+              "          path: target/ripr/source-promotion",
+              "          if-no-files-found: error",
+              "",
+          ])
+          enforcement = "\n".join([
+              "      - name: Enforce normalized source-promotion contract",
+              "        if: always()",
+              "        env:",
+              "          SOURCE_PROMOTION_CONTRACT: target/ripr/source-promotion/source-promotion-contract.json",
+              "        run: |",
+              "          set -euo pipefail",
+              "          test -f \"$SOURCE_PROMOTION_CONTRACT\"",
+              "          jq -e '",
+              "            .schema == \"ripr.source_promotion_contract.v2\" and",
+              "            .status == \"verified\" and",
+              "            .validation.status == \"passed\" and",
+              "            .verifier_receipt_status == \"present\" and",
+              "            .verifier_exit_code == \"0\"",
+              "          ' \"$SOURCE_PROMOTION_CONTRACT\"",
+              "",
+          ])
           if workflow.count(upload) != 1:
               raise SystemExit(f"expected one upload block, found {workflow.count(upload)}")
           if "Enforce normalized source-promotion contract" in workflow:
@@ -83,58 +86,57 @@ jobs:
           workflow_path.write_text(workflow, encoding="utf-8")
 
           tests = tests_path.read_text(encoding="utf-8")
-          addition = r'''
+          addition = textwrap.dedent(r'''
+              #[test]
+              fn verifier_receipt_schema_predicate_is_balanced() -> Result<(), String> {
+                  let workflow = workflow_text()?;
+                  let malformed =
+                      "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\")))' \"$verification\"";
+                  let balanced =
+                      "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\"))' \"$verification\"";
+                  assert!(
+                      !workflow.contains(malformed),
+                      "verifier receipt predicate must not retain an unmatched trailing parenthesis"
+                  );
+                  assert!(
+                      workflow.contains(balanced),
+                      "workflow must retain the balanced verified-receipt predicate"
+                  );
+                  Ok(())
+              }
 
-#[test]
-fn verifier_receipt_schema_predicate_is_balanced() -> Result<(), String> {
-    let workflow = workflow_text()?;
-    let malformed =
-        "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\")))' \"$verification\"";
-    let balanced =
-        "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\"))' \"$verification\"";
-    assert!(
-        !workflow.contains(malformed),
-        "verifier receipt predicate must not retain an unmatched trailing parenthesis"
-    );
-    assert!(
-        workflow.contains(balanced),
-        "workflow must retain the balanced verified-receipt predicate"
-    );
-    Ok(())
-}
-
-#[test]
-fn rejected_normalized_contract_is_uploaded_then_fails_the_job() -> Result<(), String> {
-    let workflow = workflow_text()?;
-    let upload = workflow
-        .find("- name: Upload SHA-bound promotion receipts")
-        .ok_or_else(|| "missing promotion receipt upload step".to_string())?;
-    let enforce = workflow
-        .find("- name: Enforce normalized source-promotion contract")
-        .ok_or_else(|| "missing terminal normalized-contract enforcement step".to_string())?;
-    assert!(
-        upload < enforce,
-        "rejected receipts must be uploaded before the hosted job fails"
-    );
-    for needle in [
-        "SOURCE_PROMOTION_CONTRACT: target/ripr/source-promotion/source-promotion-contract.json",
-        ".schema == \"ripr.source_promotion_contract.v2\"",
-        ".status == \"verified\"",
-        ".validation.status == \"passed\"",
-        ".verifier_receipt_status == \"present\"",
-        ".verifier_exit_code == \"0\"",
-    ] {
-        assert!(
-            workflow[enforce..].contains(needle),
-            "terminal enforcement missing contract predicate: {needle}"
-        );
-    }
-    Ok(())
-}
-'''
+              #[test]
+              fn rejected_normalized_contract_is_uploaded_then_fails_the_job() -> Result<(), String> {
+                  let workflow = workflow_text()?;
+                  let upload = workflow
+                      .find("- name: Upload SHA-bound promotion receipts")
+                      .ok_or_else(|| "missing promotion receipt upload step".to_string())?;
+                  let enforce = workflow
+                      .find("- name: Enforce normalized source-promotion contract")
+                      .ok_or_else(|| "missing terminal normalized-contract enforcement step".to_string())?;
+                  assert!(
+                      upload < enforce,
+                      "rejected receipts must be uploaded before the hosted job fails"
+                  );
+                  for needle in [
+                      "SOURCE_PROMOTION_CONTRACT: target/ripr/source-promotion/source-promotion-contract.json",
+                      ".schema == \"ripr.source_promotion_contract.v2\"",
+                      ".status == \"verified\"",
+                      ".validation.status == \"passed\"",
+                      ".verifier_receipt_status == \"present\"",
+                      ".verifier_exit_code == \"0\"",
+                  ] {
+                      assert!(
+                          workflow[enforce..].contains(needle),
+                          "terminal enforcement missing contract predicate: {needle}"
+                      );
+                  }
+                  Ok(())
+              }
+          ''').lstrip()
           if "fn verifier_receipt_schema_predicate_is_balanced" in tests:
               raise SystemExit("focused #1559 tests already exist")
-          tests_path.write_text(tests.rstrip() + addition + "\n", encoding="utf-8")
+          tests_path.write_text(tests.rstrip() + "\n\n" + addition, encoding="utf-8")
           PY
 
           cargo fmt --manifest-path "$repair_dir/Cargo.toml" --all
