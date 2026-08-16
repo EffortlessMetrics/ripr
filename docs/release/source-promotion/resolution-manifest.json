@@ -1,150 +1,150 @@
 {
   "schema": "ripr.source_promotion_resolution.v1",
-  "preflight_sha256": "sha256:56ee5ad76b30ffb3271bfa3c2535cf0512bfd888e6f20b7cb98befcc839c89ad",
+  "preflight_sha256": "sha256:f37c98ea450cb8642c04bf7c5e76bf1cb6ec51a494920cb7be0448bae45c29b5",
   "source_parent": "a072b7efe80f1a32d7b5ba7342559a114edeb12e",
   "swarm_parent": "83217e97ec6847db41d757f57279a8b1ca433fe6",
   "merge_base": "36909460db013ed3a3238ee8b2fc3ccda1135c15",
-  "reviewed_join_tree": "c53a89dcace27f54fdb78df4d16037959dfa2e2a",
+  "reviewed_join_tree": "e9206995263876f087bce0da5f3aeac35895c040",
   "dispositions": [
     {
       "kind": "conflict",
       "key": ".github/workflows/source-of-truth.yml",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "CHANGELOG.md",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "Cargo.lock",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "crates/ripr/Cargo.toml",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "crates/ripr/src/analysis/probes/diff.rs",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "crates/ripr/src/output/review_comments.rs",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "docs/DOCUMENTATION.md",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "docs/specs/README.md",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "docs/swarm-development.md",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "editors/vscode/package-lock.json",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "editors/vscode/package.json",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "policy/doc-artifacts.toml",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "policy/network_allowlist.txt",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "policy/non-rust-allowlist.toml",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "policy/process_allowlist.txt",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "xtask/src/dispatch.rs",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "xtask/src/main.rs",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "conflict",
       "key": "xtask/src/reports/mod.rs",
       "disposition": "integrated",
       "rationale": "Reviewed file-level authority map.",
-      "evidence": "JOIN_TREE c53a89dcace27f54fdb78df4d16037959dfa2e2a"
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040"
     },
     {
       "kind": "source_survivor",
@@ -786,9 +786,9 @@
     {
       "kind": "source_survivor",
       "key": "xtask/src/command.rs",
-      "disposition": "source_blob",
-      "rationale": "Source-authoritative surface retained exactly.",
-      "evidence": "SOURCE_PARENT a072b7efe80f1a32d7b5ba7342559a114edeb12e"
+      "disposition": "integrated",
+      "rationale": "Integrated-tree correction: source main has no ci_enforced field; the W7 command catalog must agree with blocking joined workflows.",
+      "evidence": "JOIN_TREE e9206995263876f087bce0da5f3aeac35895c040; #1557 artifact 9254525510; old blob 9891a2a8d1f18797affd55cc4ba15ccba5736fd0; new blob 800ff76ccdf1cf76b6496b2208fbfca8aed0c2d5"
     },
     {
       "kind": "source_survivor",
