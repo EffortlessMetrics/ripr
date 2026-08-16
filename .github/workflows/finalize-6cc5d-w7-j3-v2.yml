@@ -1,4 +1,4 @@
-name: Finalize exact current-source W7 J3 v3
+name: Finalize exact current-source W7 J3 v4
 
 on:
   push:
@@ -64,7 +64,7 @@ jobs:
 
       - name: Build reviewed tree, exact J3, control sidecars, and proof
         shell: bash
-        run: bash scripts/finalize-current-source-w7-j3-v3.sh
+        run: bash scripts/finalize-current-source-w7-j3-v4.sh
 
       - name: Upload exact J3 construction and proof packet
         if: always()
