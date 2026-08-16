@@ -1,0 +1,482 @@
+name: Build 0.11.0 Current-Source Promotion Control
+
+on:
+  push:
+    branches:
+      - release/0.11.0-promotion-control-6cc5d6-w7-j3
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ripr-0.11.0-promotion-control-6cc5d6-w7-j3
+  cancel-in-progress: false
+
+jobs:
+  build-control:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SOURCE_PARENT: 6cc5d6135593d9fb9a745eb215c5b0f92cbd14d5
+      OLD_SOURCE_PARENT: a072b7efe80f1a32d7b5ba7342559a114edeb12e
+      SWARM_PARENT: 83217e97ec6847db41d757f57279a8b1ca433fe6
+      SWARM_REF: refs/tags/ripr-release-0.11.0-83217e97ec6847db41d757f57279a8b1ca433fe6
+      OLD_JOIN_HEAD: a2a743abd139566499f80cdca8ed999ec4ee01d4
+      OLD_JOIN_TREE: e9206995263876f087bce0da5f3aeac35895c040
+      OLD_CONTROL: ce6c3996d9a656180eee7b95ccb03c4327c1e813
+      MERGE_BASE: 36909460db013ed3a3238ee8b2fc3ccda1135c15
+      VERSION: 0.11.0
+      CONTROL_BRANCH: release/0.11.0-promotion-control-6cc5d6-w7-j3
+      JOIN_BRANCH: promote/0.11.0-swarm-w7-6cc5d6-j3
+      PREFLIGHT_RUN: '31940258949'
+      PREFLIGHT_ARTIFACT: '9261831135'
+      PREFLIGHT_ARTIFACT_DIGEST: sha256:25f3f0bde9913f1707c05276f4dd1e6a638f9ea9450eca867c053bb71befa26d
+
+    steps:
+      - name: Check out ancestry-separated control branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: release/0.11.0-promotion-control-6cc5d6-w7-j3
+          fetch-depth: 0
+
+      - name: Check out exact W7 preflight producer
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: EffortlessMetrics/ripr-swarm
+          ref: 83217e97ec6847db41d757f57279a8b1ca433fe6
+          fetch-depth: 0
+          fetch-tags: true
+          path: _swarm
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+
+      - name: Revalidate exact parents, tag, and source hold
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse "$SOURCE_PARENT^{commit}")" = "$SOURCE_PARENT"
+          test "$(git ls-remote origin refs/heads/main | awk '{print $1}')" = "$SOURCE_PARENT"
+          test "$(git -C _swarm rev-parse HEAD)" = "$SWARM_PARENT"
+          test "$(git -C _swarm rev-parse "$SWARM_REF^{commit}")" = "$SWARM_PARENT"
+          test "$(git -C _swarm merge-base "$SWARM_PARENT" origin/main)" = "$SWARM_PARENT"
+
+          git fetch --no-tags origin "$OLD_SOURCE_PARENT" "$OLD_JOIN_HEAD" "$OLD_CONTROL"
+          git fetch --no-tags https://github.com/EffortlessMetrics/ripr-swarm.git "$SWARM_PARENT"
+
+          test "$(git rev-parse "$OLD_JOIN_HEAD^{tree}")" = "$OLD_JOIN_TREE"
+          test "$(git show -s --format='%P' "$OLD_JOIN_HEAD")" = "$OLD_SOURCE_PARENT $SWARM_PARENT"
+          test "$(git merge-base "$SOURCE_PARENT" "$SWARM_PARENT")" = "$MERGE_BASE"
+          test "$(git merge-base "$OLD_SOURCE_PARENT" "$SOURCE_PARENT")" = "$OLD_SOURCE_PARENT"
+
+      - name: Construct one fresh reviewed JOIN_TREE and direct two-parent J
+        run: |
+          set -euo pipefail
+          mkdir -p _generated/merged _generated/originals
+          index="$RUNNER_TEMP/ripr-j3.index"
+          rm -f "$index"
+          GIT_INDEX_FILE="$index" git read-tree "$OLD_JOIN_TREE"
+
+          paths=(
+            '.github/workflows/source-promotion-contract.yml'
+            'docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md'
+            'policy/process_allowlist.txt'
+            'xtask/src/command.rs'
+            'xtask/tests/source_promotion_workflow_contract.rs'
+          )
+
+          : > _generated/merged-paths.tsv
+          for path in "${paths[@]}"; do
+            safe="${path//\//__}"
+            git show "$OLD_SOURCE_PARENT:$path" > "_generated/originals/${safe}.base"
+            git show "$OLD_JOIN_TREE:$path" > "_generated/originals/${safe}.current"
+            git show "$SOURCE_PARENT:$path" > "_generated/originals/${safe}.other"
+
+            git merge-file -p \
+              "_generated/originals/${safe}.current" \
+              "_generated/originals/${safe}.base" \
+              "_generated/originals/${safe}.other" \
+              > "_generated/merged/${safe}"
+            ! grep -Eq '^(<<<<<<<|=======|>>>>>>>)' "_generated/merged/${safe}"
+
+            mode=$(git ls-tree "$SOURCE_PARENT" -- "$path" | awk '{print $1}')
+            test "$mode" = 100644
+            blob=$(git hash-object -w "_generated/merged/${safe}")
+            printf '%s %s\t%s\n' "$mode" "$blob" "$path" | \
+              GIT_INDEX_FILE="$index" git update-index --index-info
+            printf '%s\t%s\n' "$path" "$blob" >> _generated/merged-paths.tsv
+          done
+
+          join_tree=$(GIT_INDEX_FILE="$index" git write-tree)
+          test "$(git cat-file -t "$join_tree")" = tree
+
+          git diff-tree --no-commit-id --name-only -r "$OLD_JOIN_TREE" "$join_tree" | sort > _generated/tree-diff-paths.txt
+          printf '%s\n' \
+            '.github/workflows/source-promotion-contract.yml' \
+            'docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md' \
+            'policy/process_allowlist.txt' \
+            'xtask/src/command.rs' \
+            'xtask/tests/source_promotion_workflow_contract.rs' | sort > _generated/expected-tree-diff-paths.txt
+          diff -u _generated/expected-tree-diff-paths.txt _generated/tree-diff-paths.txt
+          git diff-tree --no-commit-id --numstat -r "$OLD_JOIN_TREE" "$join_tree" > _generated/tree-diff-numstat.txt
+
+          export GIT_AUTHOR_NAME='EffortlessSteven'
+          export GIT_AUTHOR_EMAIL='git@effortlesssteven.com'
+          export GIT_COMMITTER_NAME='EffortlessSteven'
+          export GIT_COMMITTER_EMAIL='git@effortlesssteven.com'
+          join_head=$(printf '%s\n' \
+            'promote: join frozen ripr-swarm W7 with current source controls for 0.11.0' | \
+            git commit-tree "$join_tree" -p "$SOURCE_PARENT" -p "$SWARM_PARENT")
+
+          test "$(git rev-parse "$join_head^{tree}")" = "$join_tree"
+          test "$(git show -s --format='%P' "$join_head")" = "$SOURCE_PARENT $SWARM_PARENT"
+          git update-ref "refs/heads/$JOIN_BRANCH" "$join_head"
+
+          echo "JOIN_TREE=$join_tree" >> "$GITHUB_ENV"
+          echo "JOIN_HEAD=$join_head" >> "$GITHUB_ENV"
+          printf '%s\n' "$join_tree" > _generated/join-tree.txt
+          printf '%s\n' "$join_head" > _generated/join-head.txt
+
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          def git(*args: str) -> str:
+              return subprocess.check_output(['git', *args], text=True).strip()
+
+          rows = []
+          for line in Path('_generated/merged-paths.tsv').read_text().splitlines():
+              path, blob = line.split('\t')
+              rows.append({
+                  'path': path,
+                  'old_source_blob': git('rev-parse', f"{os.environ['OLD_SOURCE_PARENT']}:{path}"),
+                  'old_join_blob': git('rev-parse', f"{os.environ['OLD_JOIN_TREE']}:{path}"),
+                  'new_source_blob': git('rev-parse', f"{os.environ['SOURCE_PARENT']}:{path}"),
+                  'new_join_blob': blob,
+              })
+
+          receipt = {
+              'schema': 'ripr.source_promotion_join_construction.v1',
+              'source_parent': os.environ['SOURCE_PARENT'],
+              'swarm_parent': os.environ['SWARM_PARENT'],
+              'swarm_ref': os.environ['SWARM_REF'],
+              'merge_base': os.environ['MERGE_BASE'],
+              'precedent_join': os.environ['OLD_JOIN_HEAD'],
+              'precedent_tree': os.environ['OLD_JOIN_TREE'],
+              'join_head': os.environ['JOIN_HEAD'],
+              'join_tree': os.environ['JOIN_TREE'],
+              'ordered_parents': [os.environ['SOURCE_PARENT'], os.environ['SWARM_PARENT']],
+              'changed_from_precedent_tree': rows,
+              'unfinalized_preflight': {
+                  'run_id': int(os.environ['PREFLIGHT_RUN']),
+                  'artifact_id': int(os.environ['PREFLIGHT_ARTIFACT']),
+                  'artifact_digest': os.environ['PREFLIGHT_ARTIFACT_DIGEST'],
+              },
+          }
+          Path('_generated/construction-receipt.json').write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + '\n'
+          )
+          PY
+
+      - name: Generate fresh resolved preflight for the exact new tree
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/ripr-preflight-target
+        run: |
+          set -euo pipefail
+          source_worktree="$RUNNER_TEMP/ripr-source-parent"
+          git worktree add --detach "$source_worktree" "$SOURCE_PARENT"
+          echo "SOURCE_WORKTREE=$source_worktree" >> "$GITHUB_ENV"
+
+          mkdir -p _swarm/target _generated/preflight
+          cd _swarm
+          cargo xtask source-promotion preflight \
+            --source-parent "$SOURCE_PARENT" \
+            --swarm-parent "$SWARM_PARENT" \
+            --swarm-ref "$SWARM_REF" \
+            --source-repo "$source_worktree" \
+            --swarm-repo "$GITHUB_WORKSPACE/_swarm" \
+            --source-main origin/main \
+            --swarm-main origin/main \
+            --version "$VERSION" \
+            --resolved-tree "$JOIN_TREE" \
+            --out "$GITHUB_WORKSPACE/_generated/preflight"
+          cd "$GITHUB_WORKSPACE"
+
+          jq -e \
+            --arg source "$SOURCE_PARENT" \
+            --arg swarm "$SWARM_PARENT" \
+            --arg base "$MERGE_BASE" \
+            --arg tree "$JOIN_TREE" \
+            '.source_parent == $source and
+             .source_main == $source and
+             .swarm_parent == $swarm and
+             .swarm_ref_sha == $swarm and
+             .merge_base == $base and
+             .source_range.all_reachable_count == 44 and
+             .source_range.first_parent_count == 24 and
+             .source_range.all_reachable_sha256 == "sha256:05114ab142829dd8921cb6b0c111a6e4e8e7640a663b4b9851063673d5bc0780" and
+             .source_range.first_parent_ordered_sha256 == "sha256:e1ae516a02033fd32cba7bea239ee6d44682becaf912e01151aa4a831e13cc30" and
+             .swarm_range.all_reachable_count == 859 and
+             .swarm_range.first_parent_count == 859 and
+             .swarm_range.all_reachable_sha256 == "sha256:d92e4a218aedae9937627a5d5cdae1ac5335caec0a67841cfe3762f8591d38a1" and
+             .dry_merge.reviewed_resolved_tree == $tree and
+             .dry_merge.reviewed_resolved_tree_verified == true and
+             (.dry_merge.conflicts | length) == 20 and
+             (.source_survivor_candidates | length) == 100 and
+             ((.dry_merge.conflicts | length) + (.source_survivor_candidates | length) + (.swarm_authority_resolution_candidates | length)) == 177 and
+             .version_state.requested_version == "0.11.0" and
+             .version_state.source.crate_version == "0.10.1" and
+             .version_state.source.extension_version == "0.10.1" and
+             .version_state.source.changelog_mentions_version == false' \
+            _generated/preflight/source-promotion-preflight.json >/dev/null
+
+          jq -r '.dry_merge.conflicts[]' _generated/preflight/source-promotion-preflight.json | sort > _generated/preflight-conflicts.txt
+          cat > _generated/expected-preflight-conflicts.txt <<'EOF'
+          .github/workflows/source-of-truth.yml
+          CHANGELOG.md
+          Cargo.lock
+          crates/ripr/Cargo.toml
+          crates/ripr/src/analysis/probes/diff.rs
+          crates/ripr/src/output/review_comments.rs
+          docs/DOCUMENTATION.md
+          docs/specs/README.md
+          docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md
+          docs/swarm-development.md
+          editors/vscode/package-lock.json
+          editors/vscode/package.json
+          fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json
+          policy/doc-artifacts.toml
+          policy/network_allowlist.txt
+          policy/non-rust-allowlist.toml
+          policy/process_allowlist.txt
+          xtask/src/dispatch.rs
+          xtask/src/main.rs
+          xtask/src/reports/mod.rs
+          EOF
+          sed -i 's/^          //' _generated/expected-preflight-conflicts.txt
+          sort -o _generated/expected-preflight-conflicts.txt _generated/expected-preflight-conflicts.txt
+          diff -u _generated/expected-preflight-conflicts.txt _generated/preflight-conflicts.txt
+
+      - name: Re-evaluate every disposition and bind exact immutable sidecars
+        run: |
+          set -euo pipefail
+          git show "$OLD_CONTROL:docs/release/source-promotion/resolution-manifest.json" > _generated/precedent-resolution-manifest.json
+
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          root = Path('_generated')
+          preflight_path = root / 'preflight' / 'source-promotion-preflight.json'
+          preflight_bytes = preflight_path.read_bytes()
+          preflight = json.loads(preflight_bytes)
+          precedent = json.loads((root / 'precedent-resolution-manifest.json').read_text())
+          source = os.environ['SOURCE_PARENT']
+          swarm = os.environ['SWARM_PARENT']
+          tree = os.environ['JOIN_TREE']
+          join = os.environ['JOIN_HEAD']
+          merge_base = os.environ['MERGE_BASE']
+
+          def blob_at(treeish: str, path: str):
+              proc = subprocess.run(
+                  ['git', 'rev-parse', f'{treeish}:{path}'],
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.DEVNULL,
+              )
+              return proc.stdout.strip() if proc.returncode == 0 else None
+
+          expected = (
+              {('conflict', x) for x in preflight['dry_merge']['conflicts']} |
+              {('source_survivor', x) for x in preflight['source_survivor_candidates']} |
+              {('swarm_exclusion', x) for x in preflight['swarm_authority_resolution_candidates']}
+          )
+          precedent_pairs = {(row['kind'], row['key']) for row in precedent['dispositions']}
+          assert precedent_pairs == expected
+          assert len(precedent['dispositions']) == len(expected) == 177
+
+          rows = []
+          for previous in precedent['dispositions']:
+              kind = previous['kind']
+              key = previous['key']
+              join_blob = blob_at(tree, key)
+              if kind == 'conflict':
+                  disposition = 'integrated'
+                  rationale = 'Reviewed conflict resolution retained in the exact current-pair JOIN_TREE.'
+                  evidence = f'JOIN_TREE {tree}'
+              elif kind == 'source_survivor':
+                  source_blob = blob_at(source, key)
+                  if join_blob is not None and join_blob == source_blob:
+                      disposition = 'source_blob'
+                      rationale = 'Source-authoritative surface retained exactly from the current source parent.'
+                      evidence = f'SOURCE_PARENT {source}'
+                  else:
+                      disposition = 'integrated'
+                      rationale = 'Reviewed integration differs from the unmodified current source blob.'
+                      evidence = f'JOIN_TREE {tree}'
+              elif kind == 'swarm_exclusion':
+                  swarm_blob = blob_at(swarm, key)
+                  if join_blob is not None and join_blob == swarm_blob:
+                      disposition = 'swarm_blob'
+                      rationale = 'Frozen W7 product/dependency surface retained exactly where applicable.'
+                      evidence = f'SWARM_PARENT {swarm}'
+                  else:
+                      disposition = 'integrated'
+                      rationale = 'Reviewed integration intentionally differs from the unmodified W7 blob.'
+                      evidence = f'JOIN_TREE {tree}'
+              else:
+                  raise AssertionError(f'unknown disposition kind: {kind}')
+              rows.append({
+                  'kind': kind,
+                  'key': key,
+                  'disposition': disposition,
+                  'rationale': rationale,
+                  'evidence': evidence,
+              })
+
+          actual = {(row['kind'], row['key']) for row in rows}
+          assert actual == expected and len(rows) == len(actual) == 177
+
+          manifest = {
+              'schema': 'ripr.source_promotion_resolution.v1',
+              'preflight_sha256': 'sha256:' + hashlib.sha256(preflight_bytes).hexdigest(),
+              'source_parent': source,
+              'swarm_parent': swarm,
+              'merge_base': merge_base,
+              'reviewed_join_tree': tree,
+              'dispositions': rows,
+          }
+          resolution_path = root / 'resolution-manifest.json'
+          resolution_path.write_text(json.dumps(manifest, indent=2) + '\n')
+          resolution_bytes = resolution_path.read_bytes()
+
+          ci_inputs = {
+              'schema': 'ripr.source_promotion_ci_inputs.v2',
+              'source_main': source,
+              'join_head': join,
+              'preflight': 'docs/release/source-promotion/preflight.json',
+              'resolution_manifest': 'docs/release/source-promotion/resolution-manifest.json',
+              'preflight_sha256': hashlib.sha256(preflight_bytes).hexdigest(),
+              'resolution_manifest_sha256': hashlib.sha256(resolution_bytes).hexdigest(),
+          }
+          (root / 'contract-inputs.json').write_text(json.dumps(ci_inputs, indent=2) + '\n')
+
+          changed = subprocess.check_output(
+              ['git', 'diff', '--name-only', f'{source}...{join}', '--', '.github/workflows'],
+              text=True,
+          ).splitlines()
+          by_path = {}
+          for row in rows:
+              by_path.setdefault(row['key'], []).append(row['disposition'])
+          for path in changed:
+              values = by_path.get(path, [])
+              assert values, f'missing workflow authority for {path}'
+              assert all(v in {'swarm_blob', 'integrated'} for v in values), (path, values)
+
+          command_rows = [
+              row for row in rows
+              if row['kind'] == 'source_survivor' and row['key'] == 'xtask/src/command.rs'
+          ]
+          assert len(command_rows) == 1
+          assert command_rows[0]['disposition'] == 'integrated'
+          PY
+
+          sha256sum \
+            _generated/preflight/source-promotion-preflight.json \
+            _generated/resolution-manifest.json \
+            _generated/contract-inputs.json \
+            _generated/construction-receipt.json \
+            > _generated/SHA256SUMS
+
+      - name: Run trusted exact-J verifier from current source parent
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/ripr-trusted-verifier-target
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_WORKTREE"
+          cargo xtask source-promotion verify \
+            --preflight "$GITHUB_WORKSPACE/_generated/preflight/source-promotion-preflight.json" \
+            --resolution-manifest "$GITHUB_WORKSPACE/_generated/resolution-manifest.json" \
+            --join-head "$JOIN_HEAD" \
+            --source-main "$SOURCE_PARENT" \
+            --out "$GITHUB_WORKSPACE/_generated/verification"
+          jq -e '.status == "verified"' "$GITHUB_WORKSPACE/_generated/verification/source-promotion-verification.json" >/dev/null
+
+      - name: Exercise the repaired exact J through focused and required proof
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/ripr-j3-target
+        run: |
+          set -euo pipefail
+          join_worktree="$RUNNER_TEMP/ripr-j3"
+          git worktree add --detach "$join_worktree" "$JOIN_HEAD"
+          cd "$join_worktree"
+
+          cargo fmt --all -- --check 2>&1 | tee "$GITHUB_WORKSPACE/_generated/cargo-fmt.log"
+          cargo test --locked -p xtask command_catalog_ci_enforced_flags_match_repo_workflows -- --nocapture 2>&1 | tee "$GITHUB_WORKSPACE/_generated/command-catalog-test.log"
+          cargo test --locked -p xtask --test source_promotion_workflow_contract 2>&1 | tee "$GITHUB_WORKSPACE/_generated/source-promotion-workflow-contract.log"
+          cargo run --locked -p xtask -- check-workflows 2>&1 | tee "$GITHUB_WORKSPACE/_generated/check-workflows.log"
+          cargo run --locked -p xtask -- check-process-policy 2>&1 | tee "$GITHUB_WORKSPACE/_generated/check-process-policy.log"
+          cargo xtask required-gate --locked 2>&1 | tee "$GITHUB_WORKSPACE/_generated/required-gate.log"
+
+      - name: Revalidate held source and publish exact evidence refs
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | awk '{print $1}')" = "$SOURCE_PARENT"
+          test -z "$(git ls-remote origin "refs/heads/$JOIN_BRANCH")"
+          git push origin "$JOIN_HEAD:refs/heads/$JOIN_BRANCH"
+
+          mkdir -p docs/release/source-promotion
+          cp _generated/preflight/source-promotion-preflight.json docs/release/source-promotion/preflight.json
+          cp _generated/resolution-manifest.json docs/release/source-promotion/resolution-manifest.json
+          cp _generated/contract-inputs.json docs/release/source-promotion/contract-inputs.json
+          cp _generated/construction-receipt.json docs/release/source-promotion/join-construction.json
+          cp _generated/verification/source-promotion-verification.json docs/release/source-promotion/verification.json
+
+          git diff --check
+          git add docs/release/source-promotion
+          git config user.name 'EffortlessSteven'
+          git config user.email 'git@effortlesssteven.com'
+          git commit -m 'release(control): bind exact current-source W7 promotion inputs'
+          git push origin "HEAD:refs/heads/$CONTROL_BRANCH"
+
+          control_commit=$(git rev-parse HEAD)
+          echo "CONTROL_COMMIT=$control_commit" >> "$GITHUB_ENV"
+          printf '%s\n' "$control_commit" > _generated/control-commit.txt
+
+      - name: Upload immutable construction and verification packet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ripr-0.11.0-current-source-w7-j3-control
+          path: |
+            _generated/
+            docs/release/source-promotion/contract-inputs.json
+            docs/release/source-promotion/preflight.json
+            docs/release/source-promotion/resolution-manifest.json
+            docs/release/source-promotion/join-construction.json
+            docs/release/source-promotion/verification.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Record exact transaction identities
+        if: success()
+        run: |
+          set -euo pipefail
+          {
+            echo '## 0.11.0 current-source W7 promotion control'
+            echo
+            printf -- '- source parent: `%s`\n' "$SOURCE_PARENT"
+            printf -- '- W7: `%s`\n' "$SWARM_PARENT"
+            printf -- '- J: `%s`\n' "$JOIN_HEAD"
+            printf -- '- JOIN_TREE: `%s`\n' "$JOIN_TREE"
+            printf -- '- control commit: `%s`\n' "$CONTROL_COMMIT"
+            printf -- '- preflight run consumed: `%s`\n' "$PREFLIGHT_RUN"
+            printf -- '- preflight artifact consumed: `%s`\n' "$PREFLIGHT_ARTIFACT"
+          } >> "$GITHUB_STEP_SUMMARY"
