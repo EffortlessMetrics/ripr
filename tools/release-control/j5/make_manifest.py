@@ -141,7 +141,7 @@ def main() -> int:
             "usage: make_manifest.py <preflight> <old-manifest> <out-manifest> <delta-out> "
             "<repo> <source> <swarm> <join> <tree> <changed-paths-json>"
         )
-    (
+    [
         preflight_path,
         old_manifest_path,
         out_path,
@@ -152,7 +152,7 @@ def main() -> int:
         join,
         tree,
         changed_path,
-    ) = sys.argv[1:]
+    ] = sys.argv[1:]
     preflight_bytes = Path(preflight_path).read_bytes()
     preflight = json.loads(preflight_bytes)
     old_manifest = json.loads(Path(old_manifest_path).read_text(encoding="utf-8"))
