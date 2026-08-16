@@ -140,6 +140,25 @@ jobs:
           resolution="$control_dir/docs/release/source-promotion/resolution-manifest.json"
           inputs="$control_dir/docs/release/source-promotion/contract-inputs.json"
 
+          python - "$preflight" "$INVALID_TREE" "$new_tree" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          old_tree, new_tree = sys.argv[2:]
+          data = json.loads(path.read_text(encoding="utf-8"))
+          dry_merge = data.get("dry_merge")
+          if not isinstance(dry_merge, dict):
+              raise SystemExit("preflight has no dry_merge object")
+          if dry_merge.get("reviewed_resolved_tree") != old_tree:
+              raise SystemExit("preflight is not bound to the rejected reviewed tree")
+          if dry_merge.get("reviewed_resolved_tree_verified") is not True:
+              raise SystemExit("preflight does not mark the rejected reviewed tree verified")
+          dry_merge["reviewed_resolved_tree"] = new_tree
+          path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+          PY
+
           python - "$resolution" "$INVALID_TREE" "$new_tree" <<'PY'
           import json
           from pathlib import Path
@@ -193,6 +212,7 @@ jobs:
           jq -e . "$inputs" >/dev/null
           test "$(jq -r .source_main "$inputs")" = "$SOURCE_PARENT"
           test "$(jq -r .join_head "$inputs")" = "$j2"
+          test "$(jq -r .dry_merge.reviewed_resolved_tree "$preflight")" = "$new_tree"
           test "$(jq -r .reviewed_join_tree "$resolution")" = "$new_tree"
           test "$(jq -r '[.dispositions[] | select(.kind == "source_survivor" and .key == "xtask/src/command.rs" and .disposition == "integrated")] | length' "$resolution")" = 1
 
