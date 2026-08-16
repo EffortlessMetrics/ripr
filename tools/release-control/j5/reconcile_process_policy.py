@@ -26,12 +26,6 @@ class Row:
         return f"{self.path}|{self.pattern}|{self.maximum}|{self.owner}|{self.reason}"
 
 
-def normalize_pattern(path: str, pattern: str) -> str:
-    if path == "xtask/tests/source_promotion_workflow_contract.rs" and pattern == "use std::process::{Command, Stdio}":
-        return "use std::process::{"
-    return pattern
-
-
 def parse(path: Path, origin: str) -> tuple[list[str], dict[tuple[str, str], Row]]:
     header: list[str] = []
     rows: dict[tuple[str, str], Row] = {}
@@ -47,7 +41,6 @@ def parse(path: Path, origin: str) -> tuple[list[str], dict[tuple[str, str], Row
         if len(parts) != 5:
             raise SystemExit(f"{path}:{number}: malformed process-policy row")
         row_path, pattern, maximum, owner, reason = parts
-        pattern = normalize_pattern(row_path, pattern)
         try:
             maximum_value = int(maximum)
         except ValueError as error:
@@ -140,20 +133,38 @@ def main() -> int:
             )
             continue
         selected, decision = select(base, j2, source, actual)
-        result.append(selected)
+        tightened = Row(
+            selected.path,
+            selected.pattern,
+            actual,
+            selected.owner,
+            selected.reason,
+            selected.origin,
+        )
+        result.append(tightened)
         decisions.append(
             {
-                "path": selected.path,
-                "pattern": selected.pattern,
+                "path": tightened.path,
+                "pattern": tightened.pattern,
                 "actual_count": actual,
                 "selected_origin": selected.origin,
                 "decision": decision,
                 "old_source_maximum": None if base is None else base.maximum,
                 "j2_maximum": None if j2 is None else j2.maximum,
                 "live_source_maximum": None if source is None else source.maximum,
-                "result_maximum": selected.maximum,
+                "selected_maximum": selected.maximum,
+                "result_maximum": tightened.maximum,
+                "tightened_to_actual": selected.maximum != actual,
             }
         )
+
+    for row in result:
+        actual = count_literal(root, row)
+        if actual != row.maximum:
+            raise SystemExit(
+                f"reconciled process-policy row is not exact for {row.path}|{row.pattern}: "
+                f"maximum={row.maximum} actual={actual}"
+            )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     header_text = "\n".join(header).rstrip()
@@ -163,7 +174,7 @@ def main() -> int:
     receipt_path.write_text(
         json.dumps(
             {
-                "schema": "ripr.source_promotion_process_policy_resolution.v2",
+                "schema": "ripr.source_promotion_process_policy_resolution.v3",
                 "inputs": {
                     "old_source_sha256": sha256(old_path),
                     "j2_sha256": sha256(j2_path),
@@ -176,8 +187,9 @@ def main() -> int:
                 "invariants": [
                     "source-only and J2-only live patterns survive",
                     "both-changed rows use an existing maximum covering the reviewed tree",
+                    "every retained maximum is tightened to the exact reviewed-tree literal count",
                     "no maximum is widened implicitly",
-                    "grouped jq imports use the formatting-stable prefix use std::process::{",
+                    "process patterns remain exact and grouped imports are not normalized into prefixes",
                     "orphaned literals are removed",
                     "check-process-policy remains the final uncovered-surface detector",
                 ],
