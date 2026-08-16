@@ -1,0 +1,11 @@
+diff --git a/src/badge.tsx b/src/badge.tsx
+index 0000000..1111111 100644
+--- a/src/badge.tsx
++++ b/src/badge.tsx
+@@ -1,5 +1,5 @@
+ export function formatBadge(count: number): string {
+-  return count > 9 ? "9+" : String(count);
++  return count > 99 ? "99+" : String(count);
+ }
+ export function Badge({ count }: { count: number }): string {
+   return `<span class="badge">${formatBadge(count)}</span>`;

@@ -4,67 +4,40 @@ root: fixtures/python_parametrize_basic/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-WARNING src/tax.py:2
+Changed file(s) by language: python: 1, rust: 0.
 
-Changed
-  after:      if amount >= 100:
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
-Probe
-  family: predicate
-  delta:  control
-  owner:  python:src/tax.py::tax_band
-  canonical gap: gap:python:src/tax.py:tax_band:predicate_boundary:predicate:amount>=100
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/tax.py:2
+  Language: python
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Canonical gap: gap:python:src/tax.py:tax_band:predicate_boundary:predicate:amount>=100
+  Changed behavior: if amount >= 100:
+  Missing discriminator: Related Python test reaches `tax_band` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the changed boundary.
+  Related test: tests/test_tax.py:7 test_tax_band
+  Suggested test file: tests/test_tax.py
+  Suggested test: test_tax_band
+  Test node: tests/test_tax.py::test_tax_band
+  Verify command: pytest tests/test_tax.py::test_tax_band (high)
+  Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == 100`.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `tax_band`
+    - infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`
+    - 5 more evidence line(s) hidden
 
-Language
-  language: python
-  status: preview
-  owner kind: function
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_parametrize_basic/input --diff fixtures/python_parametrize_basic/diff.patch --mode fast probe:src_tax.py:python_preview:076d8ade
+  ripr context --root fixtures/python_parametrize_basic/input --diff fixtures/python_parametrize_basic/diff.patch --mode fast --at probe:src_tax.py:python_preview:076d8ade
 
-Static exposure
-  weakly_exposed (warning, confidence 0.40)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `tax_band`
-  - infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`
-  - propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.
-  - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
-  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `amount == 100`.
-  - local flow reaches unknown sink: if amount >= 100: (line 2)
-  - related test tests/test_tax.py:7 test_tax_band uses unknown unknown oracle: pytest.mark.parametrize
-
-Weakness
-  - Related Python test reaches `tax_band` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the changed boundary.
-  - missing discriminator amount == 100: changed Python equality-boundary at line 2 lacks a concrete repair discriminator
-
-Python repair card (preview/advisory)
-  card version: python_repair_card.v1
-  canonical gap: gap:python:src/tax.py:tax_band:predicate_boundary:predicate:amount>=100
-  authority: preview_advisory_only (python/preview)
-  repair action: strengthen_existing_test
-  changed owner: tax_band
-  changed behavior: predicate_boundary changed at src/tax.py:2: `if amount >= 100:`
-  current test evidence: tests/test_tax.py:7 test_tax_band currently has oracle_strength=unknown, oracle_kind=unknown: pytest.mark.parametrize
-  missing discriminator: amount == 100
-  recommended test shape: Strengthen the existing pytest boundary assertion for `amount == 100`. Keep the equality case as the minimum repair; optional pytest parameterization can add `99`, `100`, and `101` rows when expected values are clear.
-  suggested assertion: Assert the owner result or effect at `amount == 100` first. Optional pytest shape: @pytest.mark.parametrize("amount, expected", [(99, ...), (100, ...), (101, ...)]); fill expected values from domain behavior only.
-  suggested file: tests/test_tax.py
-  suggested test: test_tax_band
-  pytest node: tests/test_tax.py::test_tax_band
-  verify: pytest tests/test_tax.py::test_tax_band (high)
-  receipt: unavailable_until_python_gap_ledger
-  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
-  stop conditions:
-    - Stop if imports, fixtures, or test setup cannot call the changed owner.
-    - Stop if the expected value for the missing discriminator is ambiguous.
-    - Stop if adding the test appears to require a production-code edit.
-    - Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion.
-  limits:
-    - Syntax-first Python preview evidence only.
-    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
-    - Verify success alone is not a gap-closure receipt.
-
-Next step
-  Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == 100`.
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

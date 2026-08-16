@@ -1,0 +1,43 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/rust_async_fn_owner/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+NOTE fixtures/rust_async_fn_owner/input/src/lib.rs:2
+
+Changed
+  before: if capacity >= threshold { capacity - 10 } else { capacity }
+  after:  capacity > threshold
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::fetch_limit
+
+Static exposure
+  propagation_unknown (note, confidence 0.66)
+
+Evidence
+  - reach yes: Related tests appear to reach fetch_limit: above_threshold_gets_reduced
+  - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - related test src/lib.rs:10 above_threshold_gets_reduced uses strong exact value oracle: assert_eq!(result, 90);
+  - observed function argument value capacity = 100 at line 11
+  - observed function argument value threshold = 50 at line 11
+  - observed assertion argument value 90 at line 12
+
+Weakness
+  - No clear propagation path from changed behavior to an observable sink
+  - missing discriminator capacity == threshold: No related test call uses capacity equal to threshold; observed capacity values: 100; observed threshold values: 50
+
+Stop reasons:
+  - propagation_evidence_unknown
+
+Next step
+  Escalate to real mutation testing or deep static analysis for this probe.

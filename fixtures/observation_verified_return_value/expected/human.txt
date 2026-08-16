@@ -4,62 +4,29 @@ root: fixtures/observation_verified_return_value/input
 
 Summary: 2 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-INFO fixtures/observation_verified_return_value/input/src/lib.rs:4
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
-Changed
-  before: x + 1
-  after:  x * SCALE_FACTOR
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/observation_verified_return_value/input/src/lib.rs:4
+  Static exposure: static_unknown (note, confidence 0.50)
+  Why static_unknown: the analysis could not determine a static exposure state
+  Changed behavior: x + 1
+  Missing discriminator: No strong discriminator was detected
+  Related test: tests/score_tests.rs:4 score_uses_scale_factor
+  Next step: Escalate to real mutation testing or deep static analysis for this probe.
+  Evidence:
+    - reach yes: Related tests appear to reach compute_score: score_uses_scale_factor
+    - infection unknown: Changed syntax is not mapped to a high-confidence probe family
+    - 7 more evidence line(s) hidden
 
-Probe
-  family: return_value
-  delta:  value
-  owner:  src/lib.rs::compute_score
+Next: drill into the top finding:
+  ripr explain --root fixtures/observation_verified_return_value/input --diff fixtures/observation_verified_return_value/diff.patch --mode fast probe:src_lib.rs:static_unknown:35a08f71
+  ripr context --root fixtures/observation_verified_return_value/input --diff fixtures/observation_verified_return_value/diff.patch --mode fast --at probe:src_lib.rs:static_unknown:35a08f71
 
-Static exposure
-  exposed (info, confidence 1.00)
-
-Evidence
-  - reach yes: Related tests appear to reach compute_score: score_uses_scale_factor
-  - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence returned value: x * SCALE_FACTOR
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator yes: Strong oracle found: exact value or pattern assertion
-  - local flow reaches returned value: x * SCALE_FACTOR (line 4)
-  - related test tests/score_tests.rs:4 score_uses_scale_factor uses strong exact value oracle: assert_eq!(compute_score(3), 3 * SCALE_FACTOR);
-  - observed assertion argument value 3 at line 5
-  - observed function argument value x = 3 at line 5
-
-NOTE fixtures/observation_verified_return_value/input/src/lib.rs:4
-
-Changed
-  before: x + 1
-  expr:   x + 1
-
-Probe
-  family: static_unknown
-  delta:  unknown
-  owner:  src/lib.rs::compute_score
-
-Static exposure
-  static_unknown (note, confidence 0.50)
-
-Evidence
-  - reach yes: Related tests appear to reach compute_score: score_uses_scale_factor
-  - infection unknown: Changed syntax is not mapped to a high-confidence probe family
-  - propagation unknown: No propagation model is available for this changed syntax
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator unknown: Assertions exist, but oracle strength is unknown
-  - local flow reaches unknown sink: unknown sink (line 4)
-  - related test tests/score_tests.rs:4 score_uses_scale_factor uses unknown exact value oracle: assert_eq!(compute_score(3), 3 * SCALE_FACTOR);
-  - observed assertion argument value 3 at line 5
-  - observed function argument value x = 3 at line 5
-
-Weakness
-  - No strong discriminator was detected
-  - Syntax-first analysis cannot classify this change; use deep mode or real mutation
-
-Stop reasons:
-  - static_probe_unknown
-
-Next step
-  Escalate to real mutation testing or deep static analysis for this probe.
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

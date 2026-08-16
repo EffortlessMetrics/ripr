@@ -1,0 +1,14 @@
+{
+  "name": "release-transaction-pins",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/tags/ripr-release-*"]
+    }
+  },
+  "rules": [
+    {"type": "update"},
+    {"type": "deletion"}
+  ]
+}

@@ -81,27 +81,27 @@ Expected future themes:
 Closeout validation:
 
 ```bash
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr-shape
-rtk git diff --check
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr-shape
+git diff --check
 ```
 
 The immediately preceding campaign PRs also carried focused route proof,
 including:
 
 ```bash
-rtk cargo test -p xtask cross_language_oracle_graph -- --test-threads=1
-rtk cargo test -p ripr cross_language -- --test-threads=1
-rtk cargo test -p xtask evidence_quality_scorecard_summarizes_cross_language_oracle_route_quality -- --test-threads=1
-rtk cargo test -p xtask dogfood_bun_ub_cross_language_receipts_are_checked -- --test-threads=1
-rtk cargo xtask dogfood
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-static-language
+cargo test -p xtask cross_language_oracle_graph -- --test-threads=1
+cargo test -p ripr cross_language -- --test-threads=1
+cargo test -p xtask evidence_quality_scorecard_summarizes_cross_language_oracle_route_quality -- --test-threads=1
+cargo test -p xtask dogfood_bun_ub_cross_language_receipts_are_checked -- --test-threads=1
+cargo xtask dogfood
+cargo xtask check-output-contracts
+cargo xtask check-static-language
 ```
 
 ## Archive Updates

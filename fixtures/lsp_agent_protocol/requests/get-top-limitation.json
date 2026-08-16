@@ -1,0 +1,9 @@
+{
+  "protocol_version": "0.1",
+  "schema_version": "0.1",
+  "request": "ripr/getTopLimitation",
+  "mode": "read_only",
+  "snapshot_id": "snapshot:6",
+  "profile": null,
+  "continuation_id": null
+}

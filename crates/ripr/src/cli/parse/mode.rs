@@ -7,6 +7,8 @@ pub(crate) fn parse_mode(value: &str) -> Result<Mode, String> {
         "fast" => Ok(Mode::Fast),
         "deep" => Ok(Mode::Deep),
         "ready" => Ok(Mode::Ready),
-        _ => Err(format!("unknown mode {value:?}")),
+        _ => Err(format!(
+            "unknown mode {value:?}; expected `instant`, `draft`, `fast`, `deep`, or `ready`"
+        )),
     }
 }

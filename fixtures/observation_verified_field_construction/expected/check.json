@@ -4,12 +4,16 @@
   "mode": "fast",
   "root": "fixtures/observation_verified_field_construction/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":0},
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:dc1f78a1d493820b574d552cb2228ca576df7154813dbab10361bbed9405e1e6","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
     {
       "id": "probe:src_lib.rs:field_construction:66b24106",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:field_construction:66b24106",
@@ -26,12 +30,12 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach default_config: config_has_three_retries", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence constructed field: retries: 1", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches constructed field: retries: 1 (line 9)", "related test tests/item_tests.rs:4 config_has_three_retries uses strong exact value oracle: assert_eq!(cfg.retries, 3);", "observed assertion argument value 3 at line 6"],
+      "evidence_path": ["reach yes: Related tests appear to reach default_config: config_has_three_retries", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence constructed field: retries: 1", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches constructed field: retries: 1 (line 9)", "related test tests/item_tests.rs:4 config_has_three_retries uses strong exact value oracle: assert_eq!(cfg.retries, 3);", "observed assertion argument value 3 at line 6", "missing discriminator retries: 1,: No field-value assertion observes the constructed field: retries: 1,"],
       "flow_sinks": [
         {"kind":"struct_field","text":"retries: 1","line":9}
       ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence constructed field: retries: 1", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach default_config: config_has_three_retries", "Strong oracle found: exact value or pattern assertion"],
-      "missing": [],
+      "missing": ["Missing discriminator value: retries: 1,"],
       "assertion_texts": {
         "6": "assert_eq!(cfg.retries, 3);"
       },
@@ -44,6 +48,11 @@
           }
         ],
         "missing_discriminators": [
+          {
+            "value": "retries: 1,",
+            "reason": "No field-value assertion observes the constructed field: retries: 1,",
+            "flow_sink": {"kind":"struct_field","text":"retries: 1","line":9}
+          }
         ]
       },
       "observed_values": [
@@ -54,6 +63,11 @@
         }
       ],
       "missing_discriminators": [
+        {
+          "value": "retries: 1,",
+          "reason": "No field-value assertion observes the constructed field: retries: 1,",
+          "flow_sink": {"kind":"struct_field","text":"retries: 1","line":9}
+        }
       ],
       "related_tests_total": 1,
       "related_tests": [

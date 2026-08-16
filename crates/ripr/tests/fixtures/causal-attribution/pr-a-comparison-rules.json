@@ -1,0 +1,144 @@
+[
+  {
+    "name": "introduced_by_change",
+    "base_available": true,
+    "head_available": true,
+    "base_state": null,
+    "head_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "actionable",
+      "oracle_strength": "Weak"
+    },
+    "expected": "introduced_by_change"
+  },
+  {
+    "name": "weakened_by_change",
+    "base_available": true,
+    "head_available": true,
+    "base_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "actionable",
+      "oracle_strength": "Strong"
+    },
+    "head_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "actionable",
+      "oracle_strength": "Weak"
+    },
+    "expected": "weakened_by_change"
+  },
+  {
+    "name": "reintroduced_by_change",
+    "base_available": true,
+    "head_available": true,
+    "base_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "resolved",
+      "oracle_strength": "Strong"
+    },
+    "head_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "actionable",
+      "oracle_strength": "Strong"
+    },
+    "expected": "reintroduced_by_change"
+  },
+  {
+    "name": "comparison_unknown_when_base_is_unavailable",
+    "base_available": false,
+    "head_available": true,
+    "base_state": null,
+    "head_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "actionable",
+      "oracle_strength": "Weak"
+    },
+    "expected": "comparison_unknown"
+  },
+  {
+    "name": "resolved_by_gap_state_without_oracle_increase",
+    "base_available": true,
+    "head_available": true,
+    "base_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "actionable",
+      "oracle_strength": "Weak"
+    },
+    "head_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "resolved",
+      "oracle_strength": "Weak"
+    },
+    "expected": "resolved_by_change"
+  },
+  {
+    "name": "comparison_unknown_for_same_identity_unsupported_state",
+    "base_available": true,
+    "head_available": true,
+    "base_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "actionable",
+      "oracle_strength": "Weak"
+    },
+    "head_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "unknown",
+      "oracle_strength": "Weak"
+    },
+    "expected": "comparison_unknown"
+  },
+  {
+    "name": "comparison_unknown_when_head_is_unavailable",
+    "base_available": true,
+    "head_available": false,
+    "base_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "actionable",
+      "oracle_strength": "Weak"
+    },
+    "head_state": null,
+    "expected": "comparison_unknown"
+  },
+  {
+    "name": "resolved_aliases_are_existing_evidence",
+    "base_available": true,
+    "head_available": true,
+    "base_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "resolved",
+      "oracle_strength": "Weak"
+    },
+    "head_state": {
+      "canonical_owner": "crate::pricing::discount",
+      "behavior_identity": "predicate:amount>=threshold",
+      "discriminator_identity": "amount==threshold",
+      "gap_state": "already_observed",
+      "oracle_strength": "Weak"
+    },
+    "expected": "changed_surface_existing"
+  }
+]

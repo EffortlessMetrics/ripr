@@ -123,6 +123,41 @@ observable behavior.
 | [RIPR-SPEC-0110](RIPR-SPEC-0110-receipt-gap-cross-reference.md) | accepted | Receipt-gap cross-reference: `ripr receipt check --ledger` cross-references receipt's canonical_gap_id against the live gap set; orphan_receipt/receipt_gap_mismatch exit non-zero; ledger-absent → not_available (never receipt_ok, fail-closed); real producer for #1130-deferred labels; closes #1123 PR 4 |
 | [RIPR-SPEC-0111](RIPR-SPEC-0111-gate-new-unsuppressed-receipt.md) | accepted | Gate new_unsuppressed receipt field: additive top-level object in gate-decision.json for downstream thresholding (max_new_unsuppressed=0); count = policy-eligible blocking+advisory decisions (NOT just blocking); basis=diff/baseline/null; null+reason = fail-closed when config_errors non-empty; schema_version stays 0.1; closes #1038 |
 | [RIPR-SPEC-0112](RIPR-SPEC-0112-bounded-subprocess-adapter-boundary.md) | accepted | Bounded literal allowlisted subprocess adapters with argument, timeout, captured-output, and cleanup evidence use the existing side_effect probe family; dynamic, shell, and unbounded commands retain strict exposure behavior; closes #1454 |
+| [RIPR-SPEC-0113](RIPR-SPEC-0113-honest-no-static-path-messaging.md) | accepted | Honest `no_static_path` messaging |
+| [RIPR-SPEC-0114](RIPR-SPEC-0114-rust-transitive-reach-limitation.md) | accepted | Rust transitive-reach limitation |
+| [RIPR-SPEC-0115](RIPR-SPEC-0115-rust-transitive-reach-witness.md) | accepted | Rust transitive-reach witness |
+| [RIPR-SPEC-0116](RIPR-SPEC-0116-check-worktree-mode.md) | accepted | `check --worktree` mode |
+| [RIPR-SPEC-0117](RIPR-SPEC-0117-rust-macro-reach-limitation.md) | accepted | Rust macro-reach limitation |
+| [RIPR-SPEC-0118](RIPR-SPEC-0118-rust-integration-public-api-path-limitation.md) | accepted | Rust integration public-API path limitation |
+| [RIPR-SPEC-0119](RIPR-SPEC-0119-rust-direct-test-macro-call-limitation.md) | accepted | Rust direct test macro-call limitation |
+| [RIPR-SPEC-0120](RIPR-SPEC-0120-rust-macro-wrapped-assertion-limitation.md) | accepted | Rust macro-wrapped assertion limitation |
+| [RIPR-SPEC-0121](RIPR-SPEC-0121-perl-lsp-swarm-scratch-gc-orphan-reaper-paths.md) | proposed | perl-lsp-swarm CI scratch-GC orphan-reaper paths |
+| [RIPR-SPEC-0122](RIPR-SPEC-0122-bounded-human-check-output.md) | accepted | Bounded human check output |
+| [RIPR-SPEC-0123](RIPR-SPEC-0123-targeted-rerun.md) | accepted | Targeted rerun |
+| [RIPR-SPEC-0124](RIPR-SPEC-0124-lsp-diagnostic-delivery-stability.md) | accepted | LSP diagnostic delivery stability |
+| [RIPR-SPEC-0125](RIPR-SPEC-0125-rust-missing-discriminator-evidence-fixtures.md) | proposed | Rust missing-discriminator evidence fixtures |
+| [RIPR-SPEC-0126](RIPR-SPEC-0126-lsp-diagnostic-delivery-budget.md) | accepted | LSP diagnostic delivery budget |
+| [RIPR-SPEC-0127](RIPR-SPEC-0127-lsp-diagnostic-code-catalog.md) | accepted | LSP diagnostic code catalog |
+| [RIPR-SPEC-0128](RIPR-SPEC-0128-retired-active-goal-authority-audit.md) | deprecated | Retired active-goal authority audit |
+| [RIPR-SPEC-0129](RIPR-SPEC-0129-editor-integration-contract.md) | accepted | Editor integration contract |
+| [RIPR-SPEC-0130](RIPR-SPEC-0130-ripr-authority-map.md) | proposed | RIPR authority map |
+| [RIPR-SPEC-0131](RIPR-SPEC-0131-ripr-agent-protocol-contract.md) | proposed | Versioned riprAgent protocol contract |
+| [RIPR-SPEC-0132](RIPR-SPEC-0132-spec-v2-runtime-promotion.md) | proposed | Spec-v2 runtime-promotion boundary |
+| [RIPR-SPEC-0133](RIPR-SPEC-0133-assertion-shaped-owner-guidance.md) | accepted | Assertion-shaped owner guidance |
+| [RIPR-SPEC-0134](RIPR-SPEC-0134-repair-artifact-provenance.md) | accepted | Repair artifact provenance |
+| [RIPR-SPEC-0135](RIPR-SPEC-0135-assurance-state-vocabulary.md) | accepted | Assurance state vocabulary |
+| [RIPR-SPEC-0136](RIPR-SPEC-0136-lsp-configuration-pull.md) | accepted | LSP configuration pull |
+| [RIPR-SPEC-0137](RIPR-SPEC-0137-lsp-protocol-tracing.md) | accepted | LSP protocol tracing |
+| [RIPR-SPEC-0138](RIPR-SPEC-0138-lsp-codelens-refresh.md) | accepted | LSP CodeLens refresh lifecycle |
+| [RIPR-SPEC-0139](RIPR-SPEC-0139-lsp-workspace-folder-set-authority.md) | accepted | LSP workspace-folder set authority |
+| [RIPR-SPEC-0140](RIPR-SPEC-0140-check-artifact-reuse.md) | accepted | Check-artifact reuse |
+| [RIPR-SPEC-0141](RIPR-SPEC-0141-lsp-typed-component-degradation.md) | accepted | LSP typed component degradation |
+| [RIPR-SPEC-0142](RIPR-SPEC-0142-lsp-git-input-authority.md) | accepted | LSP Git input authority |
+| [RIPR-SPEC-0143](RIPR-SPEC-0143-lsp-client-feature-profile.md) | accepted | LSP client feature profile |
+| [RIPR-SPEC-0144](RIPR-SPEC-0144-release-control-lens.md) | accepted | Release-control lens |
+| [RIPR-SPEC-0145](RIPR-SPEC-0145-release-execution-scope.md) | accepted | Release execution scope |
+| [RIPR-SPEC-0146](RIPR-SPEC-0146-release-denominator.md) | accepted | Release denominator |
+| [RIPR-SPEC-0147](RIPR-SPEC-0147-analysis-outcome-projection.md) | proposed | Typed analysis-outcome projection |
 | [RIPR-SPEC-0148](RIPR-SPEC-0148-source-promotion-preflight.md) | accepted | Exact source-promotion preflight receipt |
 | [RIPR-SPEC-0149](RIPR-SPEC-0149-source-promotion-verifier.md) | proposed | Exact source-promotion graph and resolution verifier |
 | [RIPR-SPEC-0150](RIPR-SPEC-0150-source-promotion-ci-contract.md) | proposed | Exact PR-head source-promotion CI contract and post-merge reachability |

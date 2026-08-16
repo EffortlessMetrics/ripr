@@ -4,7 +4,11 @@
   "mode": "fast",
   "root": "fixtures/typescript_awaited_promise_reject/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":0,"probes":2,"findings":2,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:b8b79c97a4efb21b97796b28e1f6d1387258c5267446da148dd08cd1b6c22e8f","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":4,"candidate_line_count":2,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
     {
       "id": "probe:src_profile.ts:typescript_preview:9da98202",
@@ -147,7 +151,7 @@
     {
       "id": "probe:src_profile.ts:typescript_preview:1733d672",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 0.60,
       "probe": {
         "id": "probe:src_profile.ts:typescript_preview:1733d672",

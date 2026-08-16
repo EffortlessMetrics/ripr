@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.effortlessmetrics.dev/ripr/ripr-agent-capability.schema.json",
+  "title": "RIPR riprAgent capability",
+  "description": "Versioned, fail-closed capability discovery for generic headless clients.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "schema_version",
+    "implementation_state",
+    "supported_requests",
+    "reserved_requests",
+    "supported_profiles",
+    "reserved_profiles",
+    "diagnostic_modes",
+    "snapshot_handles",
+    "continuations",
+    "work_done_progress",
+    "cancellation",
+    "source_edit_capability",
+    "analysis_status_notification",
+    "compatibility_commands",
+    "error_kinds",
+    "claim_boundary"
+  ],
+  "properties": {
+    "protocol_version": { "const": "0.1" },
+    "schema_version": { "const": "0.1" },
+    "implementation_state": { "const": "capability_only" },
+    "supported_requests": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": [] }
+    },
+    "reserved_requests": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "ripr/workspaceStatus",
+          "ripr/refreshAnalysis",
+          "ripr/listActionableItems",
+          "ripr/getRepairPacket",
+          "ripr/getEvidenceContext",
+          "ripr/getTopLimitation",
+          "ripr/getReceiptStatus"
+        ]
+      }
+    },
+    "supported_profiles": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": [] }
+    },
+    "reserved_profiles": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["actionable", "full"] }
+    },
+    "diagnostic_modes": {
+      "type": "array",
+      "const": ["push"]
+    },
+    "snapshot_handles": { "const": false },
+    "continuations": { "const": false },
+    "work_done_progress": { "const": false },
+    "cancellation": { "const": false },
+    "source_edit_capability": { "const": "none" },
+    "analysis_status_notification": { "const": "ripr/analysisStatus" },
+    "compatibility_commands": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "error_kinds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "ripr-agent-error.schema.json#/$defs/error_kind" }
+    },
+    "claim_boundary": { "type": "string", "minLength": 1 }
+  }
+}

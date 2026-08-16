@@ -32,6 +32,10 @@
       "actionability_category": "incomplete_repair_packet",
       "static_limit_kind": null,
       "repair_packet_ready": false,
+      "must_have_verify_command": true,
+      "must_have_receipt_command": true,
+      "must_not_invent_verify_command": true,
+      "must_not_emit_repair_packet": true,
       "authority_boundary": "preview_advisory_only",
       "expected_test_or_observer_shape": "exact equality-boundary assertion for amount == threshold",
       "verify_command": "npm test -- discount",
@@ -408,6 +412,65 @@
         "no support-tier promotion"
       ],
       "reason": "The unchanged case proves separately labeled JavaScript preview evidence can be useful without creating repair work."
+    },
+    {
+      "id": "typescript_complete_boundary_packet_closed",
+      "source_fixture": "fixtures/ts_repair_packet_complete",
+      "source_finding_id": "probe:src_discount.ts:typescript_preview:2396aec1",
+      "language": "typescript",
+      "language_status": "preview",
+      "classification": "weakly_exposed",
+      "changed_owner": "applyDiscount",
+      "probe_family": "predicate",
+      "oracle_kind": "relational_check",
+      "oracle_strength": "weak",
+      "gap_state": "actionable",
+      "actionability_category": "complete_repair_packet",
+      "static_limit_kind": null,
+      "repair_packet_ready": true,
+      "must_have_verify_command": true,
+      "must_have_receipt_command": true,
+      "must_not_invent_verify_command": false,
+      "must_not_emit_repair_packet": false,
+      "authority_boundary": "preview_advisory_only",
+      "expected_test_or_observer_shape": "test-only exact boundary assertion for amount == threshold using expect(result).toBe(50)",
+      "verify_command": "jest tests/discount.test.ts",
+      "verify_result": "pass",
+      "receipt_command": "ripr outcome --before fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json --after fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/after-check.json --format json",
+      "receipt_state": "closed_advisory_outcome_receipt",
+      "outcome": "resolved",
+      "why_not_actionable": "complete repair packet; package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable as advisory preview evidence",
+      "repair_route": "add or strengthen the focused assertion `expect(result).toBe(50)` in the related test",
+      "operator_note": "This records the current complete TypeScript preview packet loop: the packet is delegatable as advisory evidence, the verify command is concrete, and the closed receipt proves static gap movement without support-tier promotion.",
+      "must_not_change": [
+        "src/discount.ts",
+        "production TypeScript files",
+        "public API",
+        "preview support tier",
+        "default gate or badge policy",
+        "public badge, baseline, or RIPR Zero authority",
+        "provider integration",
+        "mutation execution"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/ts_repair_packet_complete/expected/check.json#probe:src_discount.ts:typescript_preview:2396aec1",
+        "fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json#gap:typescript:typescript_preview:2396aec1",
+        "fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/after-check.json#gap:typescript:typescript_preview:2396aec1",
+        "fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.json#gap:typescript:typescript_preview:2396aec1"
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Jest/Vitest execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion"
+      ],
+      "reason": "The complete TypeScript preview packet is checked as advisory route evidence only: it has a concrete verify command and closed static outcome receipt, but it still does not create gate, badge, baseline, RIPR Zero, runtime, mutation, provider, or support-tier authority."
     }
   ]
 }

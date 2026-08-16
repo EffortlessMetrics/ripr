@@ -17,6 +17,9 @@ use std::time::{Duration, Instant};
 /// upper bound.
 const POST_KILL_DRAIN_GRACE: Duration = Duration::from_secs(5);
 
+#[cfg(windows)]
+const WINDOWS_TREE_EXIT_GRACE: Duration = Duration::from_millis(500);
+
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
@@ -24,6 +27,68 @@ pub(crate) struct CapturedOutput {
     pub(crate) status: ExitStatus,
     pub(crate) stdout: String,
     pub(crate) stderr: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ProcessErrorKind {
+    Launch,
+    Exit,
+}
+
+#[derive(Debug)]
+pub(crate) struct ProcessError {
+    pub(crate) kind: ProcessErrorKind,
+    pub(crate) message: String,
+}
+
+pub(crate) fn capture_process_output(
+    program: &str,
+    args: &[String],
+    envs: &[(&str, &str)],
+) -> Result<Vec<u8>, ProcessError> {
+    let mut command = Command::new(program);
+    command.args(args);
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    let output = command.output().map_err(|error| ProcessError {
+        kind: ProcessErrorKind::Launch,
+        message: format!("failed to launch {program}: {error}"),
+    })?;
+    if output.status.success() {
+        Ok(output.stdout)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Err(ProcessError {
+            kind: ProcessErrorKind::Exit,
+            message: format!(
+                "{program} {} failed with {}; stdout: {}; stderr: {}",
+                args.join(" "),
+                output.status,
+                stdout,
+                stderr
+            ),
+        })
+    }
+}
+
+pub(crate) fn run_process_status(program: &str, args: &[String]) -> Result<(), ProcessError> {
+    let status = Command::new(program)
+        .args(args)
+        .status()
+        .map_err(|error| ProcessError {
+            kind: ProcessErrorKind::Launch,
+            message: format!("failed to launch {program}: {error}"),
+        })?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(ProcessError {
+            kind: ProcessErrorKind::Exit,
+            message: format!("{program} {} failed with {status}", args.join(" ")),
+        })
+    }
 }
 
 pub(crate) struct TimedOutput {
@@ -92,15 +157,7 @@ pub(crate) fn command_success_owned(program: &str, args: &[String]) -> Result<bo
 }
 
 pub(crate) fn run_owned(program: &str, args: &[String]) -> Result<(), String> {
-    let status = Command::new(program)
-        .args(args)
-        .status()
-        .map_err(|err| format!("failed to run {program}: {err}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("{program} {} failed with {status}", args.join(" ")))
-    }
+    run_process_status(program, args).map_err(|error| error.message)
 }
 
 pub(crate) fn run_in_dir(program: &Path, args: &[&str], cwd: &Path) -> Result<ExitStatus, String> {
@@ -170,22 +227,102 @@ pub(crate) fn run_output(program: &str, args: &[&str]) -> Result<String, String>
 }
 
 pub(crate) fn run_output_owned(program: &str, args: &[String]) -> Result<String, String> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|err| format!("failed to run {program}: {err}"))?;
-    if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    run_output_owned_with_envs(program, args, &[])
+}
+
+/// `run_output_owned` with an explicit child environment overlay.
+///
+/// Callers that must pin a child's environment — for example a fixture run that
+/// pins `RIPR_CACHE_DIR` so the cache it writes is the cache the caller cleared
+/// (#3054) — use this instead of mutating the xtask process environment, which
+/// the rayon-parallel fixture runs share.
+pub(crate) fn run_output_owned_with_envs(
+    program: &str,
+    args: &[String],
+    envs: &[(&str, &str)],
+) -> Result<String, String> {
+    let output = capture_process_output(program, args, envs).map_err(|error| error.message)?;
+    Ok(String::from_utf8_lossy(&output).into_owned())
+}
+
+/// Default deadline for building the ripr binary inside PR-evidence commands.
+///
+/// The required Rust gates build the workspace before PR evidence runs, so
+/// this build is incremental in CI; fifteen minutes stays generous for a cold
+/// local build while still bounding a wedged toolchain (issue #2230).
+pub(crate) const DEFAULT_TOOL_BUILD_TIMEOUT_SECS: u64 = 900;
+
+/// Env override (seconds, positive integer) for the tool-build deadline.
+pub(crate) const TOOL_BUILD_TIMEOUT_ENV: &str = "RIPR_TOOL_BUILD_TIMEOUT_SECS";
+
+pub(crate) fn tool_build_timeout() -> Result<Duration, String> {
+    env_timeout_secs(TOOL_BUILD_TIMEOUT_ENV, DEFAULT_TOOL_BUILD_TIMEOUT_SECS)
+}
+
+pub(crate) fn env_timeout_secs(name: &str, default_secs: u64) -> Result<Duration, String> {
+    // A malformed override must fail fast, not silently fall back to the
+    // default: NotPresent means "no override", anything else is validated.
+    match std::env::var(name) {
+        Ok(value) => {
+            parse_env_timeout_secs(name, Some(&value), default_secs).map(Duration::from_secs)
+        }
+        Err(std::env::VarError::NotPresent) => Ok(Duration::from_secs(default_secs)),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!(
+            "{name} must be valid UTF-8 text naming a positive integer"
+        )),
+    }
+}
+
+fn parse_env_timeout_secs(
+    name: &str,
+    value: Option<&str>,
+    default_secs: u64,
+) -> Result<u64, String> {
+    let Some(value) = value else {
+        return Ok(default_secs);
+    };
+    let parsed = value
+        .trim()
+        .parse::<u64>()
+        .map_err(|err| format!("{name} must be a positive integer: {err}"))?;
+    if parsed > 0 {
+        Ok(parsed)
+    } else {
+        Err(format!("{name} must be a positive integer"))
+    }
+}
+
+/// Like `run_output_owned`, but bounds the child with the shared
+/// timed-process machinery so a wedged build cannot hang the caller. A
+/// timeout is a named result: the child process tree is terminated and the
+/// error names the deadline and the calling context.
+pub(crate) fn run_output_owned_with_timeout(
+    program: &str,
+    args: &[String],
+    timeout: Duration,
+    error_context: &str,
+) -> Result<String, String> {
+    let output = capture_output_with_timeout(program, args, &[], timeout, error_context)?;
+    if output.timed_out {
+        let seconds = timeout.as_secs();
         return Err(format!(
-            "{program} {} failed with {}\nstdout:\n{}\nstderr:\n{}",
-            args.join(" "),
-            output.status,
-            stdout.trim(),
-            stderr.trim()
+            "{error_context} timed out after {seconds} {}; the child process tree was terminated",
+            if seconds == 1 { "second" } else { "seconds" }
         ));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    let Some(status) = output.status else {
+        return Err(format!("{error_context} did not report a process status"));
+    };
+    if status.success() {
+        Ok(output.stdout)
+    } else {
+        Err(format!(
+            "{program} {} failed with {status}\nstdout:\n{}\nstderr:\n{}",
+            args.join(" "),
+            output.stdout.trim(),
+            output.stderr.trim()
+        ))
+    }
 }
 
 pub(crate) fn run_output_optional(program: &str, args: &[&str]) -> Result<String, String> {
@@ -209,6 +346,41 @@ pub(crate) fn capture_output(
         .args(args)
         .output()
         .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    Ok(CapturedOutput {
+        status: output.status,
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
+pub(crate) fn capture_output_in_dir(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    error_context: &str,
+) -> Result<CapturedOutput, String> {
+    capture_output_in_dir_with_envs(program, args, cwd, error_context, &[], &[])
+}
+
+pub(crate) fn capture_output_in_dir_with_envs(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    error_context: &str,
+    envs: &[(&str, &str)],
+    env_remove: &[&str],
+) -> Result<CapturedOutput, String> {
+    let mut command = Command::new(program);
+    command.args(args).current_dir(cwd);
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    for name in env_remove {
+        command.env_remove(name);
+    }
+    let output = command
+        .output()
+        .map_err(|err| format!("failed to run {error_context} in {}: {err}", cwd.display()))?;
     Ok(CapturedOutput {
         status: output.status,
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -468,7 +640,21 @@ fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<boo
     }
     let tree_terminated = terminate_timed_process_tree(child);
     if tree_terminated {
-        return Ok(true);
+        #[cfg(windows)]
+        {
+            // `taskkill /T /F` can report success before the direct parent
+            // has actually exited. Confirm the parent is gone before
+            // returning; otherwise its post-wait continuation can still run.
+            // If it remains alive, the direct kill below is the bounded
+            // fallback while the tree kill remains responsible for descendants.
+            if wait_for_child_exit(child, WINDOWS_TREE_EXIT_GRACE, error_context)? {
+                return Ok(true);
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            return Ok(true);
+        }
     }
     match child.kill() {
         Ok(()) => Ok(true),
@@ -478,13 +664,49 @@ fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<boo
                 .map_err(|err| format!("failed to poll {error_context}: {err}"))?
                 .is_some()
             {
-                Ok(false)
+                // A successful Windows tree-kill request still represents an
+                // enforced timeout even if the parent exits in the race
+                // between the final poll and the direct-kill fallback.
+                Ok(tree_terminated)
             } else {
                 Err(format!(
                     "failed to terminate timed-out {error_context}: {kill_err}"
                 ))
             }
         }
+    }
+}
+
+#[cfg(windows)]
+fn wait_for_child_exit(
+    child: &mut Child,
+    grace: Duration,
+    error_context: &str,
+) -> Result<bool, String> {
+    let started = Instant::now();
+    let deadline = started
+        .checked_add(grace)
+        .ok_or_else(|| format!("failed to establish child-exit deadline for {error_context}"))?;
+    loop {
+        if Instant::now() >= deadline {
+            return Ok(false);
+        }
+
+        let exited = child
+            .try_wait()
+            .map_err(|err| format!("failed to poll {error_context}: {err}"))?;
+        if exited.is_some() {
+            // Only accept an exit observed strictly before the bounded grace
+            // deadline. A late observation must not turn a failed tree-kill
+            // test into a pass merely because the child eventually exited.
+            return Ok(Instant::now() < deadline);
+        }
+
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Ok(false);
+        }
+        thread::sleep(remaining.min(Duration::from_millis(10)));
     }
 }
 
@@ -676,10 +898,12 @@ mod tests {
     use super::{
         CapturedOutput, POST_KILL_DRAIN_GRACE, capture_output, capture_output_with_timeout,
         capture_stdout_to_file_with_timeout, command_success_owned, drain_stream_reader_bounded,
-        read_stream_with_latency_progress, run, run_in_dir, run_output, run_output_optional,
-        run_output_owned, run_owned, spawn_stream_reader_channel, terminate_after_timeout,
-        timeout_was_enforced,
+        parse_env_timeout_secs, read_stream_with_latency_progress, run, run_in_dir, run_output,
+        run_output_optional, run_output_owned, run_output_owned_with_envs,
+        run_output_owned_with_timeout, run_owned, spawn_stream_reader_channel,
+        terminate_after_timeout, timeout_was_enforced,
     };
+    use crate::acquire_test_cwd_read_guard;
     use std::fs;
     use std::io::{Cursor, Read};
     use std::path::Path;
@@ -692,6 +916,9 @@ mod tests {
 
     #[test]
     fn run_reports_success_and_failure_status() -> Result<(), String> {
+        // Hold the shared cwd lock so concurrent cwd-manipulating tests in
+        // main.rs cannot race this subprocess spawn (issue #2044).
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let status = run("rustc", &["--version"])?;
         if !status.success() {
             return Err("rustc --version should succeed".to_string());
@@ -708,6 +935,7 @@ mod tests {
 
     #[test]
     fn owned_run_helpers_report_success_and_failure_status() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let version_args = vec!["--version".to_string()];
         if !command_success_owned("rustc", &version_args)? {
             return Err("rustc --version should report success".to_string());
@@ -729,6 +957,7 @@ mod tests {
 
     #[test]
     fn run_in_dir_reports_success_and_failure_with_cwd() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let cwd = Path::new(env!("CARGO_MANIFEST_DIR"));
         let status = run_in_dir(Path::new("rustc"), &["--version"], cwd)?;
         if !status.success() {
@@ -748,6 +977,7 @@ mod tests {
 
     #[test]
     fn run_output_reports_stdout_and_failure() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let stdout = run_output("rustc", &["--version"])?;
         if !stdout.contains("rustc") {
             return Err(format!("rustc version output should name rustc: {stdout}"));
@@ -762,8 +992,54 @@ mod tests {
         Ok(())
     }
 
+    /// Fixture runs pin `RIPR_CACHE_DIR` through this overlay so the cache the
+    /// child writes is the cache the runner cleared (#3054). `git var
+    /// GIT_AUTHOR_IDENT` echoes `GIT_AUTHOR_NAME` back, which makes the child's
+    /// view of the environment observable without a shell.
+    #[test]
+    fn run_output_owned_with_envs_overlays_the_child_environment() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
+        // Echo the variable through the platform shell rather than through
+        // `git`. Both earlier attempts used `git var`, and both failed on a CI
+        // runner for reasons that had nothing to do with env overlaying:
+        // `GIT_AUTHOR_IDENT` needs `user.name`/`user.email` from ambient config
+        // (exit 128), and `GIT_EDITOR` exits 1 with empty output when no editor
+        // resolves. A shell `echo` always exits 0 and prints exactly what the
+        // child environment holds, so this asserts the overlay and nothing else.
+        #[cfg(windows)]
+        let (program, args) = (
+            "cmd",
+            vec!["/C".to_string(), "echo %RIPR_ENV_PROBE%".to_string()],
+        );
+        #[cfg(not(windows))]
+        let (program, args) = (
+            "sh",
+            vec![
+                "-c".to_string(),
+                "printf %s \"$RIPR_ENV_PROBE\"".to_string(),
+            ],
+        );
+
+        let overlaid =
+            run_output_owned_with_envs(program, &args, &[("RIPR_ENV_PROBE", "ripr-env-overlay")])?;
+        if !overlaid.contains("ripr-env-overlay") {
+            return Err(format!(
+                "the overlaid value should reach the child: {overlaid}"
+            ));
+        }
+
+        let plain = run_output_owned(program, &args)?;
+        if plain.contains("ripr-env-overlay") {
+            return Err(format!(
+                "an empty overlay must not set the variable: {plain}"
+            ));
+        }
+        Ok(())
+    }
+
     #[test]
     fn run_output_owned_includes_stderr_on_failure() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let args = vec!["--version".to_string()];
         let stdout = run_output_owned("rustc", &args)?;
         if !stdout.contains("rustc") {
@@ -784,6 +1060,7 @@ mod tests {
 
     #[test]
     fn run_output_optional_returns_empty_for_failure() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let stdout = run_output_optional("rustc", &["--version"])?;
         if !stdout.contains("rustc") {
             return Err(format!("rustc version output should name rustc: {stdout}"));
@@ -797,7 +1074,80 @@ mod tests {
     }
 
     #[test]
+    fn run_output_owned_with_timeout_returns_stdout_on_success() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
+        let args = vec!["--version".to_string()];
+        let stdout = run_output_owned_with_timeout(
+            "rustc",
+            &args,
+            Duration::from_secs(30),
+            "rustc version",
+        )?;
+        if !stdout.contains("rustc") {
+            return Err(format!("rustc version output should name rustc: {stdout}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn run_output_owned_with_timeout_reports_named_timeout() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
+        let (program, args, _envs) = long_running_command()?;
+        let err = match run_output_owned_with_timeout(
+            &program,
+            &args,
+            Duration::from_secs(1),
+            "bounded build probe",
+        ) {
+            Ok(stdout) => {
+                return Err(format!(
+                    "long-running command should time out, got stdout: {stdout}"
+                ));
+            }
+            Err(err) => err,
+        };
+        for expected in [
+            "bounded build probe",
+            "timed out after 1 second;",
+            "process tree was terminated",
+        ] {
+            if !err.contains(expected) {
+                return Err(format!("timeout message should name {expected:?}: {err}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_env_timeout_secs_validates_values() -> Result<(), String> {
+        assert_eq!(
+            parse_env_timeout_secs("RIPR_TEST_TIMEOUT", None, 900),
+            Ok(900)
+        );
+        assert_eq!(
+            parse_env_timeout_secs("RIPR_TEST_TIMEOUT", Some("120"), 900),
+            Ok(120)
+        );
+        assert_eq!(
+            parse_env_timeout_secs("RIPR_TEST_TIMEOUT", Some(" 45 "), 900),
+            Ok(45)
+        );
+        assert_eq!(
+            parse_env_timeout_secs("RIPR_TEST_TIMEOUT", Some("0"), 900),
+            Err("RIPR_TEST_TIMEOUT must be a positive integer".to_string())
+        );
+        let err = match parse_env_timeout_secs("RIPR_TEST_TIMEOUT", Some("abc"), 900) {
+            Ok(value) => return Err(format!("invalid timeout should fail, got {value}")),
+            Err(err) => err,
+        };
+        assert!(err.contains("RIPR_TEST_TIMEOUT"));
+        assert!(err.contains("positive integer"));
+        Ok(())
+    }
+
+    #[test]
     fn capture_output_returns_status_stdout_and_stderr() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let CapturedOutput {
             status,
             stdout,
@@ -818,6 +1168,7 @@ mod tests {
 
     #[test]
     fn capture_output_with_timeout_reports_completed_process() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let args = vec!["--version".to_string()];
         let output = capture_output_with_timeout(
             "rustc",
@@ -844,6 +1195,7 @@ mod tests {
 
     #[test]
     fn capture_output_with_timeout_reports_timed_out_process() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let (program, args, envs) = long_running_command()?;
         let env_refs = envs
             .iter()
@@ -891,6 +1243,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn capture_output_with_timeout_terminates_pipe_inheriting_descendants() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let args = vec!["-c".to_string(), "sleep 30 & wait".to_string()];
         // The timeout must comfortably exceed the time for `sh` to fork
         // `sleep 30` INTO its process group, otherwise the group-kill on
@@ -918,6 +1271,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn capture_output_with_timeout_terminates_pipe_inheriting_descendants() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let marker = std::env::temp_dir().join(format!(
             "ripr-xtask-pipe-descendant-{}-{}.txt",
             std::process::id(),
@@ -926,20 +1280,22 @@ mod tests {
                 .map(|duration| duration.as_nanos())
                 .unwrap_or(0)
         ));
-        let args = vec![
-            "/C".to_string(),
-            format!(
-                "ping -n 8 127.0.0.1 & echo alive > \"{}\"",
-                marker.display()
-            ),
-        ];
-        // Same race as the unix variant: give `cmd` ample time to spawn the
-        // `ping` descendant before the timeout's taskkill /T fires, so the
-        // tree-kill reliably catches it under parallel load (#1022).
+        let script = [
+            "$p = Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 30') -NoNewWindow -PassThru",
+            "Wait-Process -Id $p.Id",
+            "Set-Content -LiteralPath $env:RIPR_XTASK_DESCENDANT_MARKER -Value alive",
+        ]
+        .join("; ");
+        let args = vec!["-NoProfile".to_string(), "-Command".to_string(), script];
+        let marker_env = marker.to_string_lossy().into_owned();
+        let envs = [("RIPR_XTASK_DESCENDANT_MARKER", marker_env.as_str())];
+        // Same race as the unix variant: give the parent ample time to spawn
+        // the PowerShell descendant before the timeout's taskkill /T fires, so
+        // the tree-kill reliably catches it under parallel load (#1022).
         let output = capture_output_with_timeout(
-            "cmd",
+            "powershell",
             &args,
-            &[],
+            &envs,
             Duration::from_secs(5),
             "pipe-inheriting descendant",
         )?;
@@ -957,6 +1313,7 @@ mod tests {
 
     #[test]
     fn capture_stdout_to_file_with_timeout_streams_stdout_to_file() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let path = std::env::temp_dir().join(format!(
             "ripr-xtask-stdout-file-{}-{}.txt",
             std::process::id(),
@@ -1029,6 +1386,7 @@ mod tests {
 
     #[test]
     fn terminate_after_timeout_returns_false_for_already_finished_child() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let mut child = Command::new("rustc")
             .arg("--version")
             .stdout(Stdio::null())
@@ -1060,6 +1418,7 @@ mod tests {
 
     #[test]
     fn timeout_was_enforced_reports_requested_termination() -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
         let success = capture_output("rustc", &["--version"], "rustc version")?.status;
         let failure =
             capture_output("rustc", &["--ripr-invalid-test-flag"], "rustc invalid flag")?.status;

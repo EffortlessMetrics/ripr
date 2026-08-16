@@ -1,0 +1,78 @@
+{
+  "schema_version": "0.1",
+  "kind": "release_denominator_snapshot",
+  "captured_at": "2026-07-30T12:00:00Z",
+  "source": {
+    "mode": "captured",
+    "stage": "provisional",
+    "freshness": "current",
+    "historical_base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "candidate_ref": "candidate-fixture",
+    "candidate_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "range_commits": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "cccccccccccccccccccccccccccccccccccccccc", "dddddddddddddddddddddddddddddddddddddddd", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"],
+    "candidate_tree_commits": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "cccccccccccccccccccccccccccccccccccccccc", "dddddddddddddddddddddddddddddddddddddddd", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"]
+  },
+  "records": [
+    {
+      "commit_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "first_parent_position": 1,
+      "subject": "release: include infrastructure disposition",
+      "pr_refs": [2788], "issue_refs": [2767],
+      "references": [
+        {"kind": "merge_pr", "number": 2788, "source": "associated_pull_request", "evidence_url": "https://github.com/EffortlessMetrics/ripr-swarm/pull/2788", "observed_for_commit_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "reviewed": true, "limitation": ""},
+        {"kind": "issue", "number": 2767, "source": "closing_reference", "evidence_url": "https://github.com/EffortlessMetrics/ripr-swarm/issues/2767", "observed_for_commit_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "reviewed": true, "limitation": ""}
+      ],
+      "theme_or_surface": "release_infrastructure",
+      "release_disposition": "include_release_infrastructure", "acceptance_owner": "release maintainer",
+      "candidate_tree_state": "present_in_candidate", "review_refs": ["2788"],
+      "proof_refs": ["30510628377"],
+      "source_survivor_or_swarm_exclusion_effect": "preserves the merged execution-surface decision",
+      "limitation_or_operator_decision": "provisional denominator only"
+    },
+    {
+      "commit_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "first_parent_position": 2,
+      "subject": "release: retain control-plane honesty",
+      "pr_refs": [2790, 2791], "issue_refs": [2768],
+      "references": [
+        {"kind": "merge_pr", "number": 2790, "source": "associated_pull_request", "evidence_url": "https://github.com/EffortlessMetrics/ripr-swarm/pull/2790", "observed_for_commit_sha": "cccccccccccccccccccccccccccccccccccccccc", "reviewed": true, "limitation": ""},
+        {"kind": "pull_request", "number": 2791, "source": "body_reference", "evidence_url": "https://github.com/EffortlessMetrics/ripr-swarm/pull/2791", "observed_for_commit_sha": "cccccccccccccccccccccccccccccccccccccccc", "reviewed": true, "limitation": "referenced in body, not the merge PR"},
+        {"kind": "issue", "number": 2768, "source": "closing_reference", "evidence_url": "https://github.com/EffortlessMetrics/ripr-swarm/issues/2768", "observed_for_commit_sha": "cccccccccccccccccccccccccccccccccccccccc", "reviewed": true, "limitation": ""
+        }
+      ],
+      "theme_or_surface": "control_or_honesty",
+      "release_disposition": "include_control_or_honesty", "acceptance_owner": "release maintainer",
+      "candidate_tree_state": "present_in_candidate", "review_refs": ["2760"],
+      "proof_refs": ["release-control-fixture"],
+      "source_survivor_or_swarm_exclusion_effect": "keeps the source survivor in the supplemental denominator",
+      "limitation_or_operator_decision": "final candidate tree remains unqualified"
+    },
+    {
+      "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "first_parent_position": 3,
+      "subject": "refactor: preserve release report structure",
+      "pr_refs": [], "issue_refs": [],
+      "theme_or_surface": "structural_no_semantic_delta",
+      "release_disposition": "structural_no_semantic_delta", "acceptance_owner": "release maintainer",
+      "candidate_tree_state": "present_in_candidate", "review_refs": [],
+      "proof_refs": ["shape-report"],
+      "source_survivor_or_swarm_exclusion_effect": "does not remove a source commit from review",
+      "limitation_or_operator_decision": "requires ordinary candidate review"
+    },
+    {
+      "commit_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "first_parent_position": 4,
+      "subject": "release: defer post-0.11 follow-up",
+      "pr_refs": [], "issue_refs": [2769],
+      "references": [
+        {"kind": "issue", "number": 2769, "source": "closing_reference", "evidence_url": "https://github.com/EffortlessMetrics/ripr-swarm/issues/2769", "observed_for_commit_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "reviewed": true, "limitation": ""}
+      ],
+      "theme_or_surface": "safe_defer_post_0_11",
+      "release_disposition": "safe_defer_post_0_11", "acceptance_owner": "follow-up owner",
+      "candidate_tree_state": "present_in_candidate", "review_refs": [],
+      "proof_refs": ["2769"],
+      "source_survivor_or_swarm_exclusion_effect": "keeps deferred work visible without counting it as absent",
+      "limitation_or_operator_decision": "requires a later release decision"
+    }
+  ]
+}

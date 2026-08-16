@@ -1,0 +1,59 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "fixtures/combined-diff/input",
+  "base": "origin/main",
+  "summary": {
+    "changed_rust_files": 1,
+    "probes": 0,
+    "findings": 0,
+    "exposed": 0,
+    "weakly_exposed": 0,
+    "reachable_unrevealed": 0,
+    "no_static_path": 0,
+    "infection_unknown": 0,
+    "propagation_unknown": 0,
+    "static_unknown": 0,
+    "changed_files_by_language": [
+      { "language": "rust", "files": 1 }
+    ]
+  },
+  "analysis_outcome": {
+    "analysis_complete": false,
+    "outcome": {
+      "schema_version": "0.1",
+      "kind": "partial_with_limitations",
+      "identity": {
+        "repository_identity": null,
+        "root_identity": null,
+        "config_identity": null,
+        "base_revision": "origin/main",
+        "input_identity": "sha256:incomplete-fixture",
+        "snapshot_identity": null
+      },
+      "counts": {
+        "changed_file_count": 1,
+        "changed_line_count": 2,
+        "candidate_line_count": 0,
+        "probe_count": 0,
+        "finding_count": 0
+      },
+      "limitations": [
+        {
+          "kind": "combined_hunk_unsupported",
+          "producer_stage": "diff_parse",
+          "path": "src/lib.rs",
+          "affected_items": 1,
+          "bounded_detail": "The input could not be analyzed as a supported two-parent diff.",
+          "recovery": {
+            "kind": "use_two_way_diff",
+            "detail": "Provide a supported two-way diff before treating an empty result as clean."
+          }
+        }
+      ],
+      "claim_boundary": "Static analysis is incomplete; an empty findings array is not a clean result."
+    }
+  },
+  "findings": []
+}

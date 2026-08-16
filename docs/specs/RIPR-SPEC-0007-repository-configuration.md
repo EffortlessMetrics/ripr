@@ -14,11 +14,14 @@ LSP, reports, and future CI policy harder to keep aligned.
 
 ## Behavior
 
-`ripr` should discover and parse a repo-root `ripr.toml` file.
+`ripr` should discover and parse the nearest repository-owned `ripr.toml` file
+from the selected root.
 
 The configuration layer should:
 
-- look for `ripr.toml` at the workspace root;
+- walk from the selected root toward its parents for the nearest `ripr.toml`;
+- stop after checking a Cargo manifest with a `[workspace]` table or at a
+  `.git` boundary; a package-only `Cargo.toml` does not stop discovery;
 - use behavior-preserving defaults when the file is absent;
 - reject malformed config with actionable errors;
 - reject unknown keys so typos do not silently change policy;
@@ -34,6 +37,8 @@ The configuration layer should:
   supports that cap;
 - make loaded, missing, and malformed config state observable through
   `ripr doctor`;
+- provide `ripr config validate [--root PATH]` for isolated ancestor-aware TOML
+  validation without workspace tool probes;
 - keep output schemas stable unless a later scoped PR explicitly adds config
   metadata.
 
@@ -43,12 +48,26 @@ Precedence is:
 explicit CLI or LSP option > ripr.toml > built-in default
 ```
 
+Scoped amendment (RIPR-SPEC-0136): when the LSP client supports the
+server-originated `workspace/configuration` pull model, the five governed LSP
+session keys resolve per key as
+
+```text
+valid pulled setting > LSP initialization option > ripr.toml > built-in default
+```
+
+so initialization options become the compatibility fallback for keys the pull
+did not return. In the push-fallback and initialization-only modes the
+precedence above is unchanged.
+
 ## Required Evidence
 
 Repository configuration evidence should cover:
 
 - absent config preserving previous defaults;
 - valid config changing each supported policy surface;
+- nested selected roots discovering the nearest config and respecting
+  repository boundaries;
 - explicit CLI options overriding config values;
 - explicit LSP initialization options overriding config values;
 - malformed values returning actionable errors;
@@ -56,6 +75,9 @@ Repository configuration evidence should cover:
 - unsafe relative-path shapes being rejected where paths are configurable;
 - `ripr doctor` reporting loaded config path, missing-config defaults, and
   malformed config errors without printing config source text;
+- `ripr config validate` accepting valid config, following the existing
+  missing-config defaults path, and returning path-qualified errors for
+  malformed or policy-invalid config;
 - output schemas remaining unchanged when severity or report caps come from
   config;
 - docs and example config staying aligned with supported keys.
@@ -108,6 +130,16 @@ when the editor sends initializationOptions.seamDiagnostics = false,
 then the LSP server keeps seam diagnostics disabled for that session.
 ```
 
+### Valid pulled LSP settings win over initialization options (pull mode)
+
+```text
+Given the LSP client supports workspace/configuration,
+and initializationOptions.checkMode = "fast",
+when the pulled ripr section returns checkMode = "ready",
+then the LSP session uses ready mode,
+and initialization options supply only the keys the pull did not return.
+```
+
 ### Malformed config is actionable
 
 ```text
@@ -138,6 +170,8 @@ Current tests:
 - `crates/ripr/src/config.rs::tests::oracle_policy_rewrites_configurable_oracle_strengths`
 - `crates/ripr/src/lsp/config.rs::tests::repo_config_sets_defaults_when_initialization_options_are_missing`
 - `crates/ripr/src/lsp/config.rs::tests::initialization_options_override_repo_config_defaults`
+- `crates/ripr/src/lsp/config.rs::tests::pulled_settings_override_initialization_options_for_returned_keys`
+- `crates/ripr/src/lsp/config.rs::tests::repository_reload_preserves_pulled_overrides`
 - `crates/ripr/src/app.rs::tests::configured_finding_severity_applies_to_human_json_and_github`
 - `crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::configured_seam_severity_can_disable_a_class`
 - `crates/ripr/tests/cli_smoke.rs::doctor_reports_missing_config_defaults`

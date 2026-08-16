@@ -29,7 +29,7 @@
     "lsp"
   ],
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.91.0"
   },
   "extensionKind": [
     "workspace"
@@ -43,7 +43,9 @@
     "onLanguage:python",
     "workspaceContains:Cargo.toml",
     "onCommand:ripr.restartServer",
+    "onCommand:ripr.refreshDiagnostics",
     "onCommand:ripr.showStatus",
+    "onCommand:ripr.showOutput",
     "onCommand:ripr.diagnoseSetup",
     "onCommand:ripr.startCurrentRepair",
     "onCommand:ripr.copyCurrentRepairPacket",
@@ -51,6 +53,7 @@
     "onCommand:ripr.openFirstPrPacket",
     "onCommand:ripr.copyFirstPrSummary",
     "onCommand:ripr.copyFirstPrRepairPacket",
+    "onCommand:ripr.copyRepairPacketAtCursor",
     "onCommand:ripr.copyFirstPrVerifyCommand",
     "onCommand:ripr.copyFirstPrReceiptCommand",
     "onCommand:ripr.copyFirstPrRegenerationGuidance",
@@ -72,11 +75,11 @@
     "test:e2e": "cargo xtask vscode-test-e2e"
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "10.1.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24.13.2",
+    "@types/node": "^24.13.3",
     "@types/vscode": "~1.90.0",
     "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "^3.9.2",
@@ -93,6 +96,20 @@
       "serialize-javascript": "^7.0.5"
     }
   },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Server download, launch, analysis, and repair require a trusted workspace.",
+      "restrictedConfigurations": [
+        "ripr.server.path",
+        "ripr.server.args",
+        "ripr.server.autoDownload",
+        "ripr.server.version",
+        "ripr.server.downloadBaseUrl"
+      ]
+    },
+    "virtualWorkspaces": false
+  },
   "contributes": {
     "configuration": {
       "title": "ripr",
@@ -105,7 +122,8 @@
         "ripr.server.path": {
           "type": "string",
           "default": "",
-          "description": "Absolute path to a ripr executable. Overrides bundled, downloaded, and PATH server resolution."
+          "description": "Absolute path to a ripr executable. Overrides bundled, downloaded, and PATH server resolution.",
+          "scope": "resource"
         },
         "ripr.server.args": {
           "type": "array",
@@ -116,22 +134,26 @@
             "lsp",
             "--stdio"
           ],
-          "description": "Arguments used to start the ripr language server."
+          "description": "Arguments used to start the ripr language server.",
+          "scope": "resource"
         },
         "ripr.server.autoDownload": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically download the matching ripr server binary when no configured, bundled, or cached server is available."
+          "description": "Automatically download the matching ripr server binary when no configured, bundled, or cached server is available. Downloads over HTTPS — by default from github.com/EffortlessMetrics/ripr releases, configurable via ripr.server.downloadBaseUrl — and archives are SHA-256 verified against the release manifest before extraction.",
+          "scope": "resource"
         },
         "ripr.server.version": {
           "type": "string",
           "default": "",
-          "description": "Pinned ripr server version. Empty means match the extension version."
+          "description": "Pinned ripr server version. Empty means match the extension version.",
+          "scope": "resource"
         },
         "ripr.server.downloadBaseUrl": {
           "type": "string",
           "default": "",
-          "description": "Override the server manifest base URL for internal mirrors. Empty uses GitHub Releases."
+          "description": "Override the server manifest base URL for internal mirrors. Empty uses GitHub Releases.",
+          "scope": "resource"
         },
         "ripr.check.mode": {
           "type": "string",
@@ -142,6 +164,13 @@
             "deep",
             "ready"
           ],
+          "enumDescriptions": [
+            "Instant: fastest, scopes to changed file only",
+            "Draft: default developer mode, scopes to changed package",
+            "Fast: currently equivalent to draft",
+            "Deep: scopes to the entire workspace",
+            "Ready: review-ready mode, deep scope with stricter evidence"
+          ],
           "default": "draft",
           "description": "Preferred ripr check mode for editor-triggered analysis."
         },
@@ -150,6 +179,44 @@
           "default": "origin/main",
           "description": "Git base ref used by ripr editor diagnostics and context commands."
         },
+        "ripr.includeUnchangedTests": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include unchanged tests as static evidence when analyzing editor diagnostics. Forwarded as initializationOptions.includeUnchangedTests and workspace/configuration.",
+          "scope": "resource"
+        },
+        "ripr.seamDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable saved-workspace repository seam diagnostics in addition to diff-derived findings. Forwarded as initializationOptions.seamDiagnostics.",
+          "scope": "resource"
+        },
+        "ripr.diagnosticProfile": {
+          "type": "string",
+          "enum": [
+            "actionable",
+            "full"
+          ],
+          "enumDescriptions": [
+            "Actionable: publish only producer-backed bounded finding routes",
+            "Full: preserve audit and debug finding and seam visibility"
+          ],
+          "default": "actionable",
+          "description": "Diagnostic projection profile forwarded as initializationOptions.diagnosticProfile.",
+          "scope": "resource"
+        },
+        "ripr.gitTimeoutMs": {
+          "type": "number",
+          "minimum": 1000,
+          "default": 30000,
+          "description": "Deadline in milliseconds for each git invocation in the ripr language server's refresh path. A git command that exceeds the deadline is terminated and the refresh commits a limited snapshot naming git_invocation_timeout; run the ripr.refreshDiagnostics command to retry."
+        },
+        "ripr.refreshDeadlineMs": {
+          "type": "number",
+          "minimum": 1000,
+          "default": 600000,
+          "description": "Physical deadline in milliseconds for one whole refresh analysis attempt in the ripr language server. An attempt that exceeds the deadline is dropped fail-closed with the named deadline_exceeded outcome and an 'analysis deadline exceeded' progress end — no limited snapshot is committed; the next save or the ripr.refreshDiagnostics command starts a fresh attempt."
+        },
         "ripr.trace.server": {
           "type": "string",
           "enum": [
@@ -157,8 +224,13 @@
             "messages",
             "verbose"
           ],
+          "enumDescriptions": [
+            "Off: no trace output",
+            "Messages: log request/response method names and byte counts",
+            "Verbose: log full message transport (not analysis reasoning)"
+          ],
           "default": "off",
-          "description": "Trace ripr language-server messages in the ripr output channel."
+          "description": "Trace ripr language-server message transport in the ripr output channel. This traces LSP JSON-RPC messages, not analysis-stage reasoning — use `ripr explain` or `ripr check --json` for analysis detail."
         }
       }
     },
@@ -166,6 +238,14 @@
       {
         "command": "ripr.restartServer",
         "title": "ripr: Restart Server"
+      },
+      {
+        "command": "ripr.refreshDiagnostics",
+        "title": "ripr: Refresh Diagnostics"
+      },
+      {
+        "command": "ripr.selectWorkspaceRoot",
+        "title": "ripr: Select Workspace Root"
       },
       {
         "command": "ripr.showOutput",
@@ -202,6 +282,10 @@
       {
         "command": "ripr.copyFirstPrRepairPacket",
         "title": "ripr: First PR - Copy Repair Packet"
+      },
+      {
+        "command": "ripr.copyRepairPacketAtCursor",
+        "title": "ripr: Copy Repair Packet at Cursor"
       },
       {
         "command": "ripr.copyFirstPrVerifyCommand",
@@ -265,7 +349,7 @@
       },
       {
         "command": "ripr.copyTopReceiptCommand",
-        "title": "ripr: Copy Receipt Command"
+        "title": "ripr: Copy Receipt Command (Top Repair Packet)"
       },
       {
         "command": "ripr.openReport",
@@ -277,20 +361,135 @@
       },
       {
         "command": "ripr.showReceiptStatus",
-        "title": "RIPR: Show Receipt Status"
+        "title": "ripr: Show Receipt Status"
       },
       {
         "command": "ripr.copyReceiptCommand",
-        "title": "RIPR: Copy Receipt Command"
+        "title": "ripr: Copy Receipt Command"
       },
       {
         "command": "ripr.openAttemptLedger",
-        "title": "RIPR: Open Attempt Ledger"
+        "title": "ripr: Open Attempt Ledger"
       },
       {
         "command": "ripr.showRouteQuality",
-        "title": "RIPR: Show Route Quality"
+        "title": "ripr: Show Route Quality"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "ripr.copyRepairPacketAtCursor",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@1"
+        },
+        {
+          "command": "ripr.copyTopRepairPacket",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@2"
+        },
+        {
+          "command": "ripr.copyTopVerifyCommand",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@3"
+        },
+        {
+          "command": "ripr.copyTopReceiptCommand",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@4"
+        },
+        {
+          "command": "ripr.showTopLimitation",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@5"
+        },
+        {
+          "command": "ripr.showStatus",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@6"
+        },
+        {
+          "command": "ripr.showReceiptStatus",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@7"
+        },
+        {
+          "command": "ripr.showRouteQuality",
+          "when": "editorTextFocus && resourceLangId =~ /^(rust|typescript|typescriptreact|javascript|javascriptreact|python)$/",
+          "group": "ripr@8"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "ripr.copyRepairPacketAtCursor",
+        "key": "ctrl+alt+shift+p",
+        "mac": "cmd+alt+shift+p",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "ripr.showStatus",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "ripr.copyTopRepairPacket",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p",
+        "when": "editorTextFocus"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "ripr.getStarted",
+        "title": "ripr: Get Started",
+        "description": "First-run guide for ripr's static mutation-exposure diagnostics: trust, open, diagnose, act.",
+        "steps": [
+          {
+            "id": "ripr.trustWorkspace",
+            "title": "Trust this workspace",
+            "description": "ripr starts its server only in trusted workspaces.\n[Why trust matters](walkthrough/trust.md)",
+            "media": {
+              "markdown": "walkthrough/trust.md"
+            },
+            "completionEvents": [
+              "onContext:workspaceTrusted"
+            ]
+          },
+          {
+            "id": "ripr.openRustFile",
+            "title": "Open a Rust file",
+            "description": "ripr analyzes the saved workspace in the background.\n[What happens on open](walkthrough/open-file.md)",
+            "media": {
+              "markdown": "walkthrough/open-file.md"
+            },
+            "completionEvents": [
+              "onContext:resourceLangId == rust"
+            ]
+          },
+          {
+            "id": "ripr.readDiagnostics",
+            "title": "Read ripr diagnostics",
+            "description": "Problems panel entries carry the `ripr` source label.\n[Reading ripr evidence](walkthrough/diagnostics.md)",
+            "media": {
+              "markdown": "walkthrough/diagnostics.md"
+            }
+          },
+          {
+            "id": "ripr.tryCodeAction",
+            "title": "Try a ripr code action",
+            "description": "Copy the missing test assertion (the check that would catch a wrong behavior) or the repair packet from the lightbulb.\n[ripr actions](walkthrough/code-action.md)",
+            "media": {
+              "markdown": "walkthrough/code-action.md"
+            },
+            "completionEvents": [
+              "onCommand:ripr.showStatus"
+            ]
+          }
+        ]
       }
     ]
   }
 }
+

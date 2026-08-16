@@ -1,0 +1,43 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_adversarial_changed_sink_non_delta_operand/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+Changed file(s) by language: python: 1, rust: 0.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/account.py:7
+  Language: python
+  Language status: preview
+  Static exposure: static_unknown (note, confidence 0.20)
+  Why static_unknown: the analysis could not determine a static exposure state
+  Changed behavior: return max(0, self._balance)
+  Missing discriminator: Static limit `decorator_indirection`: owner `Account.balance` is decorated with `property`; syntax-first preview evidence does not resolve decorator-modified call behavior.
+  Related test: tests/test_account.py:4 test_account_init
+  Evidence:
+    - reach weak: 1 heuristic Python test link(s) found for owner `balance`; relation is uncertain
+    - infection unknown: Static limit `decorator_indirection` prevents a safe Python infection claim.
+    - 4 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_adversarial_changed_sink_non_delta_operand/input --diff fixtures/python_adversarial_changed_sink_non_delta_operand/diff.patch --mode fast probe:src_account.py:python_preview:c7d70a2d
+  ripr context --root fixtures/python_adversarial_changed_sink_non_delta_operand/input --diff fixtures/python_adversarial_changed_sink_non_delta_operand/diff.patch --mode fast --at probe:src_account.py:python_preview:c7d70a2d
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. Scope
+  analyzed: 1 changed expression(s) and 1 statically linked related test(s). This is not a coverage
+  assessment. A test may already exercise these changes through macros, helper-call chains, or
+  integration tests that ripr's static model does not yet trace; if none does, add co-located tests
+  that observe the changed behavior.
+
+Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

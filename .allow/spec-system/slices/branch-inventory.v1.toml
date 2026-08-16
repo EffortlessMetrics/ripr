@@ -1,0 +1,61 @@
+schema_version = "2.0"
+id = "ripr.slice.branch-inventory.v1"
+generation = 1
+
+source_issue = "issue:2024"
+design_reference = "issue:2024"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds one repo-ops xtask command that regenerates the remote-branch inventory
+from current GitHub/Git data, writes deterministic review artifacts plus a
+digest-bound deletion plan under target/ripr/reports/, and exposes an explicit
+operator-only apply path bound to the reviewed plan digest with pre-deletion
+rechecks and SHA-leased non-force ref deletion. Nothing is deleted
+automatically: deletion happens only when an operator explicitly runs apply
+against a reviewed plan digest, never in this change, never in CI or hooks,
+and never against local worktrees, caches, tags, releases, or
+source-repository refs.
+"""
+
+non_goals = [
+  "any automatic or CI-triggered branch deletion",
+  "wiring branch deletion into CI, hooks, or scheduled jobs",
+  "local worktree, Cargo/npm cache, tag, or release cleanup (#1034/#1635)",
+  "source-repository ref governance",
+  "spec or product analyzer behavior changes",
+]
+
+return_conditions = [
+  "Return to root if the all-state PR lookup cannot paginate the full pull history, leaving branches below a fixed window misclassified.",
+  "Return to root if the apply path cannot be kept structurally out of CI while remaining operator-runnable.",
+]
+
+owned_seams = [
+  "seam:ripr:xtask:branch-inventory",
+  "seam:ripr:docs:pr-automation-branch-inventory",
+]
+
+shared_seams = [
+  "seam:ripr:xtask:command-catalog",
+  "seam:ripr:policy:process-allowlist",
+]
+
+forbidden_seams = [
+  "seam:ripr:crates:product-analysis",
+  "seam:ripr:workflows:ci-definitions",
+  "seam:ripr:fixtures:golden-corpus",
+]
+
+[[requirement_delta]]
+requirement_id = "issue:2024#remote-branch-inventory"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

@@ -8,6 +8,11 @@ pub(in crate::analysis) struct ProbeContext<'a> {
     /// can tag each emitted `RelatedTest` with `relation_reason` /
     /// `relation_confidence`.
     pub related_tests: Vec<(&'a TestSummary, RelationReason)>,
+    /// RIPR-SPEC-0133: true when the changed owner is an assertion-shaped
+    /// helper (an oracle), computed by `classify::owner_shape` at
+    /// classification time where the full index is available. Guidance is
+    /// reframed for oracle-shaped owners; the exposure class never changes.
+    pub owner_assertion_shaped: bool,
 }
 
 impl<'a> ProbeContext<'a> {
@@ -15,11 +20,13 @@ impl<'a> ProbeContext<'a> {
         probe: &'a Probe,
         owner_fn: Option<&'a FunctionSummary>,
         related_tests: Vec<(&'a TestSummary, RelationReason)>,
+        owner_assertion_shaped: bool,
     ) -> Self {
         Self {
             probe,
             owner_fn,
             related_tests,
+            owner_assertion_shaped,
         }
     }
 
@@ -51,7 +58,7 @@ mod tests {
             required_oracles: Vec::new(),
         };
 
-        let context = ProbeContext::new(&probe, None, Vec::new());
+        let context = ProbeContext::new(&probe, None, Vec::new(), false);
 
         assert_eq!(context.probe.id.0, "probe:test");
         assert!(context.owner_fn.is_none());

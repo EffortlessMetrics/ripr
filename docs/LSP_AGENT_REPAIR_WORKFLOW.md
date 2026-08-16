@@ -179,32 +179,35 @@ Run after the receipt command completes.
 
 The receipt status panel reports:
 
-- The `latest_attempt_outcome`: `improved`, `unchanged`, `regressed`, or
-  `unknown`.
-- The `receipt_backed` flag: whether the outcome is supported by receipt
-  evidence or is provisional.
-- Any honesty caveats: if the evidence was incomplete or the snapshot was stale,
-  the panel says so explicitly.
+- The `receipt_status`: `improved`, `unchanged`, or `not_available` for the
+  current gap's receipt movement state.
+- The `latest_attempt_outcome`: `evidence_improved`, `unchanged`, `regressed`,
+  `unknown`, or `not_available`.
+- The `missing_receipt_reason`: why receipt movement is unavailable when it
+  cannot be derived.
 
-If `latest_attempt_outcome` is `improved` and `receipt_backed` is true, the
-evidence for this gap moved in the expected direction. The packet loop is
-complete for this gap.
+If `receipt_status` is `improved`
+and `latest_attempt_outcome` is `evidence_improved`,
+the current receipt evidence reports movement in the expected direction. The
+packet loop is complete for this gap.
 
 If `latest_attempt_outcome` is `unchanged`, `regressed`, or `unknown`, do not
 repeat the edit blindly. Proceed to step 7.
 
 ---
 
-## Step 7 — Show Route Quality (`ripr.showRouteQuality`)
+## Step 7 — Show Route Quality (VS Code command)
 
 **Command palette:** `RIPR: Show Route Quality`
-**LSP command:** `ripr.showRouteQuality`
+**Backing LSP executeCommand:** `ripr.collectReceiptStatus`
 
 Run when the receipt outcome is `unchanged`, `regressed`, or `unknown`, or any
 time you want to understand whether this `repair_kind` tends to move evidence.
 
 Route quality reports:
 
+- The report `status` and up to three `top_repair_kind_rows` entries, including
+  each row's `repair_kind`, `attempted`, and `success_rate` when available.
 - Whether this `repair_kind` has a track record of moving exposure evidence in
   the `improved` direction.
 - Whether the gap structure (exposure class, propagation path, oracle strength)
@@ -271,7 +274,7 @@ Stop iterating when one of the following is true:
 
 | Condition | Action |
 | --- | --- |
-| Receipt outcome `improved`, `receipt_backed: true` | Gap is validated by receipt evidence for this attempt. Record and move to the next gap. |
+| `receipt_status: improved`, `latest_attempt_outcome: evidence_improved` | Gap is validated by receipt evidence for this attempt. Record and move to the next gap. |
 | Route quality advises against this repair kind | Record the outcome, read the guidance, escalate or defer. |
 | Two consecutive `unchanged` or `regressed` outcomes | Do not iterate a third time without re-reading route quality and the packet. |
 | Status reports stale or incomplete evidence | Refresh evidence first (`ripr check --base origin/main`), then re-evaluate. |

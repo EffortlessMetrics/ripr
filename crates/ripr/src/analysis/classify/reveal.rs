@@ -1,8 +1,18 @@
 use super::super::rust_index::{OracleFact, TestSummary, extract_identifier_tokens};
+use super::rust_string_literals;
 use crate::domain::*;
 
-pub(in crate::analysis) fn reveal_evidence(
+#[cfg(test)]
+fn reveal_evidence(
     probe: &Probe,
+    related_tests: &[(&TestSummary, RelationReason)],
+) -> (StageEvidence, StageEvidence, Vec<RelatedTest>) {
+    reveal_evidence_with_expression(probe, &probe.expression, related_tests)
+}
+
+pub(in crate::analysis) fn reveal_evidence_with_expression(
+    probe: &Probe,
+    analysis_expression: &str,
     related_tests: &[(&TestSummary, RelationReason)],
 ) -> (StageEvidence, StageEvidence, Vec<RelatedTest>) {
     if related_tests.is_empty() {
@@ -21,7 +31,7 @@ pub(in crate::analysis) fn reveal_evidence(
         );
     }
 
-    let analysis = analyze_related_assertions(probe, related_tests);
+    let analysis = analyze_related_assertions(probe, analysis_expression, related_tests);
     let related = finalize_related_tests(analysis.related);
     let observe = build_observe_evidence(analysis.matched_any);
     let discriminate = build_discriminate_evidence(
@@ -101,6 +111,11 @@ fn is_effect_family(family: &ProbeFamily) -> bool {
     matches!(family, ProbeFamily::SideEffect | ProbeFamily::CallDeletion)
 }
 
+fn effect_target_tokens(expression: &str) -> Vec<String> {
+    let target_end = expression.find(['(', '=']).unwrap_or(expression.len());
+    extract_identifier_tokens(&expression[..target_end])
+}
+
 /// Returns true when `assertion` is a genuine **effect observer** that
 /// kind-matches an effect seam: a mock/expectation, a snapshot, or a
 /// whole-object equality capturing the resulting state. This is intentionally
@@ -153,15 +168,25 @@ fn match_arm_variant_tokens(expression: &str) -> Vec<String> {
 
 fn analyze_related_assertions(
     probe: &Probe,
+    analysis_expression: &str,
     related_tests: &[(&TestSummary, RelationReason)],
 ) -> RevealAssertionAnalysis {
-    let probe_tokens = extract_identifier_tokens(&probe.expression);
+    let probe_tokens = if is_effect_family(&probe.family) {
+        effect_target_tokens(analysis_expression)
+    } else {
+        extract_identifier_tokens(analysis_expression)
+    };
+    let effect_literals = if is_effect_family(&probe.family) {
+        rust_string_literals(analysis_expression)
+    } else {
+        Vec::new()
+    };
     // For MatchArm: collect variant-only tokens (post-`::`) for the specificity
     // check. Qualifier tokens (e.g. the type name before `::`) are excluded so
     // that a sibling-arm assertion sharing the qualifier cannot spuriously
     // confirm observation of this arm.
     let match_arm_variants = if matches!(probe.family, ProbeFamily::MatchArm) {
-        match_arm_variant_tokens(&probe.expression)
+        match_arm_variant_tokens(analysis_expression)
     } else {
         Vec::new()
     };
@@ -171,6 +196,7 @@ fn analyze_related_assertions(
     // match this probe. RIPR-SPEC-0106 (Part B).
     let error_path_variant = if matches!(probe.family, ProbeFamily::ErrorPath) {
         error_path_variant_token(&probe.expression)
+            .or_else(|| error_path_variant_token(analysis_expression))
     } else {
         None
     };
@@ -200,8 +226,9 @@ fn analyze_related_assertions(
             continue;
         }
         for assertion in &test.assertions {
-            let (matched, has_token_match) = assertion_matches_probe_detail(
+            let (matched, has_token_match) = assertion_matches_probe_detail_with_literals(
                 &probe_tokens,
+                &effect_literals,
                 &match_arm_variants,
                 error_path_variant.as_deref(),
                 &probe.family,
@@ -310,8 +337,9 @@ fn error_path_variant_token(expression: &str) -> Option<String> {
 /// qualifier token, but only the variant token (`TooLarge`) is specific.
 /// Without `error_path_variant` (probe has no qualified variant), falls back
 /// to the standard `token_match` behavior.
-fn assertion_matches_probe_detail(
+fn assertion_matches_probe_detail_with_literals(
     probe_tokens: &[String],
+    effect_literals: &[String],
     match_arm_variants: &[String],
     error_path_variant: Option<&str>,
     family: &ProbeFamily,
@@ -320,16 +348,20 @@ fn assertion_matches_probe_detail(
 ) -> (bool, bool) {
     let token_match = probe_tokens
         .iter()
-        .any(|token| token.len() > 3 && assertion.text.contains(token.as_str()));
+        .any(|token| contains_as_whole_word(&assertion.text, token));
+    let effect_literal_match = !effect_literals.is_empty()
+        && rust_string_literals(&assertion.text)
+            .iter()
+            .any(|literal| effect_literals.contains(literal));
     // For MatchArm probes, restrict the confirmation check to variant-only
     // tokens (post-`::`). The qualifier ("Mode" in "Mode::Frozen") is shared
     // across all arms and therefore cannot confirm this specific arm.
     let has_token_match = if matches!(family, ProbeFamily::MatchArm) {
         match_arm_variants
             .iter()
-            .any(|v| v.len() > 3 && assertion.text.contains(v.as_str()))
+            .any(|v| contains_as_whole_word(&assertion.text, v))
     } else {
-        token_match
+        token_match || effect_literal_match
     };
     // For ErrorPath probes with ExactErrorVariant assertions: restrict `matched`
     // to require the probe's specific variant token, not just the qualifier.
@@ -339,13 +371,64 @@ fn assertion_matches_probe_detail(
         && matches!(assertion.kind, OracleKind::ExactErrorVariant)
         && let Some(variant) = error_path_variant
     {
-        let variant_matches = variant.len() > 3 && assertion.text.contains(variant);
+        let variant_matches = contains_as_whole_word(&assertion.text, variant);
         return (variant_matches, variant_matches);
         // Probe has no parseable variant: falls through to standard match below.
     }
     let family_match = oracle_matches_family(family, assertion);
-    let matched = token_match || family_match || assertion_count == 1;
+    let matched = token_match || effect_literal_match || family_match || assertion_count == 1;
     (matched, has_token_match)
+}
+
+#[cfg(test)]
+fn assertion_matches_probe_detail(
+    probe_tokens: &[String],
+    match_arm_variants: &[String],
+    error_path_variant: Option<&str>,
+    family: &ProbeFamily,
+    assertion: &OracleFact,
+    assertion_count: usize,
+) -> (bool, bool) {
+    assertion_matches_probe_detail_with_literals(
+        probe_tokens,
+        &[],
+        match_arm_variants,
+        error_path_variant,
+        family,
+        assertion,
+        assertion_count,
+    )
+}
+
+/// Check whether `text` contains `token` as a whole word — delimited by
+/// non-identifier characters (or string boundaries) on both sides. This
+/// replaces the old `token.len() > 3` gate, which filtered out short tokens
+/// like `id`, `key`, `sum` entirely. With word-boundary matching, a short
+/// token matches `result.id` or `id == 42` but NOT `provider` or `middle`
+/// (#2397).
+///
+/// Uses `is_ident_char` (alphanumeric + underscore) for boundary checks,
+/// matching Rust identifier rules: `_` is part of an identifier, so `err`
+/// does NOT match inside `is_err`.
+pub(in crate::analysis) fn contains_as_whole_word(text: &str, token: &str) -> bool {
+    fn is_ident_char(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || byte == b'_'
+    }
+    if token.is_empty() {
+        return false;
+    }
+    let mut start = 0;
+    while let Some(pos) = text[start..].find(token) {
+        let abs_pos = start + pos;
+        let end_pos = abs_pos + token.len();
+        let before_ok = abs_pos == 0 || !is_ident_char(text.as_bytes()[abs_pos - 1]);
+        let after_ok = end_pos >= text.len() || !is_ident_char(text.as_bytes()[end_pos]);
+        if before_ok && after_ok {
+            return true;
+        }
+        start = abs_pos + 1;
+    }
+    false
 }
 
 fn finalize_related_tests(mut related: Vec<RelatedTest>) -> Vec<RelatedTest> {
@@ -452,103 +535,280 @@ fn build_discriminate_evidence(
     }
 }
 
+/// Typed family/kind relationships are kept in data so the supported oracle
+/// shapes can be audited without following nested family and kind matches.
+/// Text heuristics remain below because they are intentionally conservative
+/// fallback signals, not typed oracle classifications. `ProbeFamily::StaticUnknown`
+/// has no typed relationships.
+const ORACLE_FAMILY_MATCHES: &[(ProbeFamily, OracleKind)] = &[
+    (ProbeFamily::ErrorPath, OracleKind::ExactErrorVariant),
+    (ProbeFamily::ErrorPath, OracleKind::BroadError),
+    (ProbeFamily::SideEffect, OracleKind::MockExpectation),
+    (ProbeFamily::FieldConstruction, OracleKind::ExactValue),
+    (
+        ProbeFamily::FieldConstruction,
+        OracleKind::WholeObjectEquality,
+    ),
+    (ProbeFamily::FieldConstruction, OracleKind::RelationalCheck),
+    (ProbeFamily::FieldConstruction, OracleKind::Snapshot),
+    (ProbeFamily::Predicate, OracleKind::ExactValue),
+    (ProbeFamily::Predicate, OracleKind::RelationalCheck),
+    (ProbeFamily::Predicate, OracleKind::ExactErrorVariant),
+    (ProbeFamily::Predicate, OracleKind::Snapshot),
+    (ProbeFamily::ReturnValue, OracleKind::ExactValue),
+    (ProbeFamily::ReturnValue, OracleKind::WholeObjectEquality),
+    (ProbeFamily::ReturnValue, OracleKind::RelationalCheck),
+    (ProbeFamily::ReturnValue, OracleKind::Snapshot),
+    (ProbeFamily::ReturnValue, OracleKind::SmokeOnly),
+    (ProbeFamily::CallDeletion, OracleKind::MockExpectation),
+    (ProbeFamily::CallDeletion, OracleKind::ExactValue),
+    (ProbeFamily::CallDeletion, OracleKind::RelationalCheck),
+    (ProbeFamily::CallDeletion, OracleKind::SmokeOnly),
+    (ProbeFamily::MatchArm, OracleKind::ExactErrorVariant),
+    (ProbeFamily::MatchArm, OracleKind::ExactValue),
+    (ProbeFamily::MatchArm, OracleKind::RelationalCheck),
+    (ProbeFamily::MatchArm, OracleKind::Snapshot),
+];
+
+/// Family-specific strength overrides. A missing entry preserves the
+/// classifier's parsed assertion strength; entries are only for kinds whose
+/// relative strength is fixed by the probe family.
+const ORACLE_FAMILY_STRENGTH_OVERRIDES: &[(ProbeFamily, OracleKind, OracleStrength)] = &[
+    (
+        ProbeFamily::ErrorPath,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::ErrorPath,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::ReturnValue,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::ReturnValue,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::ReturnValue,
+        OracleKind::WholeObjectEquality,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::ReturnValue,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::ReturnValue,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+    (
+        ProbeFamily::Predicate,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::Predicate,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::Predicate,
+        OracleKind::WholeObjectEquality,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::Predicate,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::Predicate,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+    (
+        ProbeFamily::FieldConstruction,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::FieldConstruction,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::FieldConstruction,
+        OracleKind::WholeObjectEquality,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::FieldConstruction,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::FieldConstruction,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+    (
+        ProbeFamily::MatchArm,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::MatchArm,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::MatchArm,
+        OracleKind::WholeObjectEquality,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::MatchArm,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::MatchArm,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+    (
+        ProbeFamily::SideEffect,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::SideEffect,
+        OracleKind::WholeObjectEquality,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::SideEffect,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Medium,
+    ),
+    (
+        ProbeFamily::SideEffect,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::SideEffect,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+    (
+        ProbeFamily::CallDeletion,
+        OracleKind::ExactValue,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::CallDeletion,
+        OracleKind::WholeObjectEquality,
+        OracleStrength::Strong,
+    ),
+    (
+        ProbeFamily::CallDeletion,
+        OracleKind::ExactErrorVariant,
+        OracleStrength::Medium,
+    ),
+    (
+        ProbeFamily::CallDeletion,
+        OracleKind::SmokeOnly,
+        OracleStrength::Smoke,
+    ),
+    (
+        ProbeFamily::CallDeletion,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+    (
+        ProbeFamily::StaticUnknown,
+        OracleKind::Unknown,
+        OracleStrength::Unknown,
+    ),
+];
+
 fn oracle_matches_family(family: &ProbeFamily, assertion: &OracleFact) -> bool {
+    let typed_match = ORACLE_FAMILY_MATCHES
+        .iter()
+        .any(|(rule_family, rule_kind)| rule_family == family && rule_kind == &assertion.kind);
     let text = assertion.text.as_str();
-    match family {
-        ProbeFamily::ErrorPath => {
-            matches!(
-                assertion.kind,
-                OracleKind::ExactErrorVariant | OracleKind::BroadError
-            ) || text.contains("Error::")
-                || text.contains("Err")
-        }
+    let text_match = match family {
+        ProbeFamily::ErrorPath => text.contains("Error::") || text.contains("Err"),
         ProbeFamily::SideEffect => {
-            matches!(assertion.kind, OracleKind::MockExpectation)
-                || text.contains("expect")
+            text.contains("expect")
                 || text.contains("mock")
                 || text.contains("saved")
                 || text.contains("published")
         }
-        ProbeFamily::FieldConstruction => {
-            matches!(
-                assertion.kind,
-                OracleKind::ExactValue
-                    | OracleKind::WholeObjectEquality
-                    | OracleKind::RelationalCheck
-                    | OracleKind::Snapshot
-            ) || text.contains('.')
+        ProbeFamily::FieldConstruction => contains_member_access(text),
+        ProbeFamily::CallDeletion => text.contains("assert") || text.contains("expect"),
+        ProbeFamily::Predicate
+        | ProbeFamily::ReturnValue
+        | ProbeFamily::MatchArm
+        | ProbeFamily::StaticUnknown => false,
+    };
+    typed_match || text_match
+}
+
+/// Returns true when the assertion contains a Rust-style member access.
+///
+/// A bare dot is not enough: decimal literals such as `3.14` and range
+/// operators also contain dots without observing a constructed field.
+/// String-literal contents are also excluded: `assert_eq!(msg, "a.b")`
+/// contains a dot between two alphabetic chars but does not observe a
+/// constructed field (#2904).
+fn contains_member_access(text: &str) -> bool {
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut prev_was_dot = false;
+    for (_, ch) in text.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
         }
-        ProbeFamily::Predicate => {
-            matches!(
-                assertion.kind,
-                OracleKind::ExactValue
-                    | OracleKind::RelationalCheck
-                    | OracleKind::ExactErrorVariant
-                    | OracleKind::Snapshot
-            )
+        if ch == '"' {
+            in_string = true;
+            continue;
         }
-        ProbeFamily::ReturnValue => [
-            OracleKind::ExactValue,
-            OracleKind::WholeObjectEquality,
-            OracleKind::RelationalCheck,
-            OracleKind::Snapshot,
-            OracleKind::SmokeOnly,
-        ]
-        .contains(&assertion.kind),
-        ProbeFamily::CallDeletion => {
-            matches!(
-                assertion.kind,
-                OracleKind::MockExpectation
-                    | OracleKind::ExactValue
-                    | OracleKind::RelationalCheck
-                    | OracleKind::SmokeOnly
-            ) || text.contains("assert")
-                || text.contains("expect")
+        if prev_was_dot && (ch == '_' || ch.is_alphabetic()) {
+            return true;
         }
-        ProbeFamily::MatchArm => [
-            OracleKind::ExactErrorVariant,
-            OracleKind::ExactValue,
-            OracleKind::RelationalCheck,
-            OracleKind::Snapshot,
-        ]
-        .contains(&assertion.kind),
-        ProbeFamily::StaticUnknown => false,
+        prev_was_dot = ch == '.';
     }
+    false
 }
 
 fn probe_relative_oracle_strength(family: &ProbeFamily, assertion: &OracleFact) -> OracleStrength {
-    match family {
-        ProbeFamily::ErrorPath => match assertion.kind {
-            OracleKind::ExactErrorVariant => OracleStrength::Strong,
-            OracleKind::BroadError => assertion.strength.clone(),
-            OracleKind::SmokeOnly => OracleStrength::Smoke,
-            _ => assertion.strength.clone(),
-        },
-        ProbeFamily::ReturnValue
-        | ProbeFamily::Predicate
-        | ProbeFamily::FieldConstruction
-        | ProbeFamily::MatchArm => match assertion.kind {
-            OracleKind::ExactValue
-            | OracleKind::ExactErrorVariant
-            | OracleKind::WholeObjectEquality => OracleStrength::Strong,
-            OracleKind::Snapshot
-            | OracleKind::MockExpectation
-            | OracleKind::RelationalCheck
-            | OracleKind::BroadError => assertion.strength.clone(),
-            OracleKind::SmokeOnly => OracleStrength::Smoke,
-            OracleKind::Unknown => OracleStrength::Unknown,
-        },
-        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => match assertion.kind {
-            OracleKind::MockExpectation => assertion.strength.clone(),
-            OracleKind::ExactValue | OracleKind::WholeObjectEquality => OracleStrength::Strong,
-            OracleKind::RelationalCheck | OracleKind::BroadError => assertion.strength.clone(),
-            OracleKind::SmokeOnly => OracleStrength::Smoke,
-            OracleKind::ExactErrorVariant => OracleStrength::Medium,
-            OracleKind::Snapshot => assertion.strength.clone(),
-            OracleKind::Unknown => OracleStrength::Unknown,
-        },
-        ProbeFamily::StaticUnknown => OracleStrength::Unknown,
+    if matches!(family, ProbeFamily::StaticUnknown) {
+        return OracleStrength::Unknown;
     }
+    ORACLE_FAMILY_STRENGTH_OVERRIDES
+        .iter()
+        .find(|(rule_family, rule_kind, _)| rule_family == family && rule_kind == &assertion.kind)
+        .map_or_else(
+            || assertion.strength.clone(),
+            |(_, _, strength)| strength.clone(),
+        )
 }
 
 #[cfg(test)]
@@ -918,6 +1178,23 @@ mod tests {
             &ProbeFamily::FieldConstruction,
             &oracle(
                 "assert_eq!(item.id, 3);",
+                OracleKind::Unknown,
+                OracleStrength::Unknown
+            )
+        ));
+        assert!(!oracle_matches_family(
+            &ProbeFamily::FieldConstruction,
+            &oracle(
+                "assert!(3.14_f64 > 0.0_f64);",
+                OracleKind::Unknown,
+                OracleStrength::Unknown
+            )
+        ));
+        // #2904: a dot inside a string literal is not a field access.
+        assert!(!oracle_matches_family(
+            &ProbeFamily::FieldConstruction,
+            &oracle(
+                "assert_eq!(msg, \"error.timeout\");",
                 OracleKind::Unknown,
                 OracleStrength::Unknown
             )
@@ -1496,13 +1773,15 @@ mod tests {
     #[test]
     fn call_deletion_with_token_match_does_not_emit_observation_unverified() {
         // "log_audit_event(record)" — tokens: ["log_audit_event", "record"].
-        // Assertion "assert!(log_audit_event_was_called);" contains
-        // "log_audit_event" (the full call token).
+        // Assertion "assert!(log_audit_event());" contains
+        // "log_audit_event" as a whole-word match (#2397: the word-boundary
+        // check correctly distinguishes `log_audit_event` from a different
+        // identifier like `log_audit_event_was_called`).
         let probe = probe(ProbeFamily::CallDeletion, "log_audit_event(record)");
         let test = test_with_assertions(
             "audit_event_logged",
             vec![oracle(
-                "assert!(log_audit_event_was_called);",
+                "assert!(log_audit_event());",
                 OracleKind::ExactValue,
                 OracleStrength::Strong,
             )],
@@ -1697,6 +1976,36 @@ mod tests {
         );
     }
 
+    #[test]
+    fn error_path_parser_context_cannot_replace_emitted_probe_variant() {
+        let probe = probe(ProbeFamily::ErrorPath, "Err(ParseError::TooLong(len))");
+        let test = test_with_assertions(
+            "too_long_is_exact",
+            vec![oracle(
+                "assert_eq!(err, ParseError::TooLong(12));",
+                OracleKind::ExactErrorVariant,
+                OracleStrength::Strong,
+            )],
+        );
+
+        let (_observe, discriminate, _related) = reveal_evidence_with_expression(
+            &probe,
+            "Err(ParseError::SiblingVariant)",
+            &[(&test, RelationReason::DirectOwnerCall)],
+        );
+
+        assert_eq!(
+            discriminate.state,
+            StageState::Yes,
+            "the emitted exact variant remains authoritative when parser context resolves a sibling"
+        );
+        assert!(
+            !discriminate.summary.contains("observation_unverified"),
+            "variant fallback must preserve exact-error confirmation: got `{}`",
+            discriminate.summary
+        );
+    }
+
     /// RIPR-SPEC-0107 Control B continued: `matches!(err, ParseError::TooLong(_))`
     /// also pins the variant token and must keep the seam `exposed`.
     #[test]
@@ -1730,5 +2039,42 @@ mod tests {
             !is_effect_family(&ProbeFamily::ErrorPath),
             "ErrorPath must not be classified as an effect family (mocks must not clear observation_unverified)"
         );
+    }
+
+    // ── Short-token word-boundary matching (#2397) ───────────────────────────
+
+    #[test]
+    fn whole_word_match_accepts_short_token_in_field_access() {
+        assert!(contains_as_whole_word("assert_eq!(result.id, 42)", "id"));
+    }
+
+    #[test]
+    fn whole_word_match_accepts_short_token_in_equality() {
+        assert!(contains_as_whole_word("assert!(id == 42)", "id"));
+    }
+
+    #[test]
+    fn whole_word_match_rejects_short_token_as_substring() {
+        // The anti-substring property: `id` must NOT match inside `provider`
+        // or `middle`. This is what the old `> 3` gate tried to protect
+        // against — word-boundary matching achieves it without filtering by
+        // length.
+        assert!(!contains_as_whole_word("provider", "id"));
+        assert!(!contains_as_whole_word("middle", "id"));
+        assert!(!contains_as_whole_word("candidate", "id"));
+    }
+
+    #[test]
+    fn whole_word_match_accepts_long_token() {
+        // Long tokens that matched under the old gate still match.
+        assert!(contains_as_whole_word(
+            "assert_eq!(priority, high)",
+            "priority"
+        ));
+    }
+
+    #[test]
+    fn whole_word_match_rejects_empty_token() {
+        assert!(!contains_as_whole_word("anything", ""));
     }
 }
