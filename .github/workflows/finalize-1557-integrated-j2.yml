@@ -1,0 +1,227 @@
+name: Finalize exact #1557 integrated J2
+
+on:
+  push:
+    branches:
+      - control/0.11.0-j2-catalog-builder
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-1557-integrated-j2
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_PARENT: a072b7efe80f1a32d7b5ba7342559a114edeb12e
+      SWARM_PARENT: 83217e97ec6847db41d757f57279a8b1ca433fe6
+      INVALID_J: 87cc06cfb7f686248a35f93871d8794bdbe30ba1
+      INVALID_TREE: c53a89dcace27f54fdb78df4d16037959dfa2e2a
+      OLD_BLOB: 9891a2a8d1f18797affd55cc4ba15ccba5736fd0
+      NEW_BLOB: 800ff76ccdf1cf76b6496b2208fbfca8aed0c2d5
+      NEW_FILE_SHA256: 7a51ce6cac1be971e2cab978c977f2570bd73ebcbe6434c65a14e6ee8a961776
+      CONTROL_BASE: b39644977b60af2ee18c2a4c9d3caf28c739ccd0
+      J2_BRANCH: promote/0.11.0-swarm-w7-a072b7-j2-catalog
+      CONTROL_BRANCH: release/0.11.0-promotion-control-a072b7-w7-j2
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Build exact tree, J2, sidecars, and verifier receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name EffortlessSteven
+          git config user.email git@effortlesssteven.com
+          git fetch --no-tags origin "$SOURCE_PARENT" "$SWARM_PARENT" "$INVALID_J" "$CONTROL_BASE"
+
+          root="$PWD"
+          j2_dir="$RUNNER_TEMP/ripr-j2"
+          control_dir="$RUNNER_TEMP/ripr-j2-control"
+          source_dir="$RUNNER_TEMP/ripr-j2-source"
+          rm -rf "$j2_dir" "$control_dir" "$source_dir"
+          git worktree add --detach "$j2_dir" "$INVALID_J"
+          git worktree add --detach "$control_dir" "$CONTROL_BASE"
+          git worktree add --detach "$source_dir" "$SOURCE_PARENT"
+
+          test "$(git -C "$j2_dir" rev-parse HEAD^{tree})" = "$INVALID_TREE"
+          test "$(git -C "$j2_dir" rev-parse HEAD:xtask/src/command.rs)" = "$OLD_BLOB"
+
+          python - "$j2_dir/xtask/src/command.rs" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          path = Path(sys.argv[1])
+          text = path.read_text(encoding="utf-8")
+          targets = [
+              "precommit", "check-agent-skills", "check-workspace-shape",
+              "check-architecture", "check-public-api", "check-doc-artifacts",
+              "check-readme-state", "markdown-links", "check-pr-shape",
+              "check-lint-policy", "check-proof-packs", "check-release-targets",
+          ]
+          block_re = re.compile(r"(?ms)^        command_entry\(\n(?P<body>.*?)^        \),\n")
+          blocks = list(block_re.finditer(text))
+          replacements = []
+          for target in targets:
+              matches = []
+              for match in blocks:
+                  body = match.group("body")
+                  first = re.match(r'^            "([^"]+)",\n', body)
+                  if first and (first.group(1) == target or first.group(1).startswith(target + " [")):
+                      matches.append((match, body, first.group(1)))
+              if len(matches) != 1:
+                  raise SystemExit(f"expected one entry for {target}, found {len(matches)}")
+              match, body, specification = matches[0]
+              booleans = list(re.finditer(r"(?m)^            (true|false),$", body))
+              if len(booleans) < 2 or booleans[1].group(1) != "false":
+                  raise SystemExit(f"{specification} does not have ci_enforced=false")
+              flag = booleans[1]
+              repaired = body[:flag.start(1)] + "true" + body[flag.end(1):]
+              replacements.append((match.start("body"), match.end("body"), repaired))
+          if len(replacements) != 12 or len({start for start, _, _ in replacements}) != 12:
+              raise SystemExit("repair is not twelve distinct entries")
+          for start, end, repaired in sorted(replacements, reverse=True):
+              text = text[:start] + repaired + text[end:]
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          test "$(git -C "$j2_dir" hash-object xtask/src/command.rs)" = "$NEW_BLOB"
+          test "$(sha256sum "$j2_dir/xtask/src/command.rs" | awk '{print $1}')" = "$NEW_FILE_SHA256"
+          test "$(git -C "$j2_dir" diff --numstat -- xtask/src/command.rs)" = $'12\t12\txtask/src/command.rs'
+          git -C "$j2_dir" diff --check
+          git -C "$j2_dir" add xtask/src/command.rs
+          new_tree=$(git -C "$j2_dir" write-tree)
+          test "$(git -C "$j2_dir" diff-tree --no-commit-id --name-only -r "$INVALID_TREE" "$new_tree")" = "xtask/src/command.rs"
+
+          export GIT_AUTHOR_NAME=EffortlessSteven GIT_AUTHOR_EMAIL=git@effortlesssteven.com
+          export GIT_COMMITTER_NAME=EffortlessSteven GIT_COMMITTER_EMAIL=git@effortlesssteven.com
+          export GIT_AUTHOR_DATE=2026-08-16T00:10:00Z GIT_COMMITTER_DATE=2026-08-16T00:10:00Z
+          j2=$(printf '%s\n' \
+            'promote: integrate exact catalog authority repair for 0.11.0' '' \
+            'Preserve the frozen source/W7 parent pair and replace only' \
+            'xtask/src/command.rs with the reviewed #1557 repair blob.' \
+            | git -C "$j2_dir" commit-tree "$new_tree" -p "$SOURCE_PARENT" -p "$SWARM_PARENT")
+          test "$(git -C "$j2_dir" show -s --format='%P' "$j2")" = "$SOURCE_PARENT $SWARM_PARENT"
+          test "$(git -C "$j2_dir" rev-parse "$j2^{tree}")" = "$new_tree"
+
+          preflight="$control_dir/docs/release/source-promotion/preflight.json"
+          resolution="$control_dir/docs/release/source-promotion/resolution-manifest.json"
+          inputs="$control_dir/docs/release/source-promotion/contract-inputs.json"
+          python - "$preflight" "$resolution" "$inputs" "$INVALID_TREE" "$new_tree" "$j2" <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          import sys
+
+          preflight_path, resolution_path, inputs_path = map(Path, sys.argv[1:4])
+          old_tree, new_tree, join_head = sys.argv[4:]
+
+          preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+          dry = preflight.get("dry_merge")
+          if not isinstance(dry, dict) or dry.get("reviewed_resolved_tree") != old_tree:
+              raise SystemExit("preflight is not bound to rejected reviewed tree")
+          if dry.get("reviewed_resolved_tree_verified") is not True:
+              raise SystemExit("preflight reviewed tree was not verified")
+          dry["reviewed_resolved_tree"] = new_tree
+          preflight_path.write_text(json.dumps(preflight, indent=2) + "\n", encoding="utf-8")
+          preflight_sha = hashlib.sha256(preflight_path.read_bytes()).hexdigest()
+
+          resolution = json.loads(resolution_path.read_text(encoding="utf-8"))
+          if resolution.get("reviewed_join_tree") != old_tree:
+              raise SystemExit("resolution is not bound to rejected reviewed tree")
+          resolution["preflight_sha256"] = "sha256:" + preflight_sha
+          resolution["reviewed_join_tree"] = new_tree
+          repaired = 0
+          for row in resolution.get("dispositions", []):
+              evidence = row.get("evidence")
+              if isinstance(evidence, str):
+                  row["evidence"] = evidence.replace(old_tree, new_tree)
+              if row.get("kind") == "source_survivor" and row.get("key") == "xtask/src/command.rs":
+                  repaired += 1
+                  row["disposition"] = "integrated"
+                  row["rationale"] = (
+                      "Integrated-tree correction: source main has no ci_enforced field; "
+                      "the W7 command catalog must agree with blocking joined workflows."
+                  )
+                  row["evidence"] = (
+                      f"JOIN_TREE {new_tree}; #1557 artifact 9254525510; "
+                      "old blob 9891a2a8d1f18797affd55cc4ba15ccba5736fd0; "
+                      "new blob 800ff76ccdf1cf76b6496b2208fbfca8aed0c2d5"
+                  )
+          if repaired != 1:
+              raise SystemExit(f"expected one repaired source-survivor row, found {repaired}")
+          resolution_path.write_text(json.dumps(resolution, indent=2) + "\n", encoding="utf-8")
+          resolution_sha = hashlib.sha256(resolution_path.read_bytes()).hexdigest()
+
+          inputs = json.loads(inputs_path.read_text(encoding="utf-8"))
+          inputs["join_head"] = join_head
+          inputs["preflight_sha256"] = preflight_sha
+          inputs["resolution_manifest_sha256"] = resolution_sha
+          inputs_path.write_text(json.dumps(inputs, indent=2) + "\n", encoding="utf-8")
+          PY
+
+          preflight_sha=$(sha256sum "$preflight" | awk '{print $1}')
+          resolution_sha=$(sha256sum "$resolution" | awk '{print $1}')
+          test "$(jq -r .dry_merge.reviewed_resolved_tree "$preflight")" = "$new_tree"
+          test "$(jq -r .preflight_sha256 "$resolution")" = "sha256:$preflight_sha"
+          test "$(jq -r .reviewed_join_tree "$resolution")" = "$new_tree"
+          test "$(jq -r .join_head "$inputs")" = "$j2"
+          test "$(jq -r .preflight_sha256 "$inputs")" = "$preflight_sha"
+          test "$(jq -r .resolution_manifest_sha256 "$inputs")" = "$resolution_sha"
+          test "$(jq -r '[.dispositions[] | select(.kind == "source_survivor" and .key == "xtask/src/command.rs" and .disposition == "integrated")] | length' "$resolution")" = 1
+
+          trusted_target="$RUNNER_TEMP/ripr-j2-trusted-target"
+          CARGO_TARGET_DIR="$trusted_target" cargo build --locked --manifest-path "$source_dir/Cargo.toml" -p xtask --bin xtask
+          "$trusted_target/debug/xtask" source-promotion verify \
+            --preflight "$preflight" --resolution-manifest "$resolution" \
+            --join-head "$j2" --source-main "$SOURCE_PARENT" \
+            --out "$RUNNER_TEMP/source-promotion-j2"
+          jq -e '.status == "verified" and .join_head == $join and .tree == $tree' \
+            --arg join "$j2" --arg tree "$new_tree" \
+            "$RUNNER_TEMP/source-promotion-j2/source-promotion-verification.json" >/dev/null
+
+          git -C "$control_dir" add docs/release/source-promotion
+          control_tree=$(git -C "$control_dir" write-tree)
+          export GIT_AUTHOR_DATE=2026-08-16T00:11:00Z GIT_COMMITTER_DATE=2026-08-16T00:11:00Z
+          control_commit=$(printf '%s\n' \
+            'release(control): bind exact #1557 integrated J2 inputs' '' \
+            'Update the reviewed tree, command disposition, exact J2, and sidecar digests.' \
+            | git -C "$control_dir" commit-tree "$control_tree" -p "$CONTROL_BASE")
+          test "$(git -C "$control_dir" merge-base "$control_commit" "$j2" || true)" != "$control_commit"
+          test "$(git -C "$control_dir" merge-base "$control_commit" "$j2" || true)" != "$j2"
+
+          git push origin "$j2:refs/heads/$J2_BRANCH"
+          git push origin "$control_commit:refs/heads/$CONTROL_BRANCH"
+
+          out="$root/target/j2-final"
+          mkdir -p "$out"
+          cp "$inputs" "$out/contract-inputs.json"
+          cp "$preflight" "$out/preflight.json"
+          cp "$resolution" "$out/resolution-manifest.json"
+          cp "$RUNNER_TEMP/source-promotion-j2/source-promotion-verification.json" "$out/verification.json"
+          jq -n \
+            --arg source "$SOURCE_PARENT" --arg swarm "$SWARM_PARENT" \
+            --arg rejected_j "$INVALID_J" --arg rejected_tree "$INVALID_TREE" \
+            --arg old_blob "$OLD_BLOB" --arg new_blob "$NEW_BLOB" \
+            --arg file_sha "$NEW_FILE_SHA256" --arg j2 "$j2" --arg tree "$new_tree" \
+            --arg control_base "$CONTROL_BASE" --arg control "$control_commit" \
+            --arg preflight_sha "$preflight_sha" --arg resolution_sha "$resolution_sha" \
+            '{schema:"ripr.integrated_j2_builder.v1",source_parent:$source,swarm_parent:$swarm,rejected:{join:$rejected_j,tree:$rejected_tree},repair:{path:"xtask/src/command.rs",old_blob:$old_blob,new_blob:$new_blob,file_sha256:$file_sha,added:12,deleted:12},j2:{commit:$j2,tree:$tree,parents:[$source,$swarm]},control:{base:$control_base,commit:$control,preflight_sha256:$preflight_sha,resolution_sha256:$resolution_sha},verification:"verified",non_claims:["no merge","no version change","no tag","no publication","no signing","no marketplace mutation","no secret use","no back-sync"]}' \
+            > "$out/receipt.json"
+          printf 'J2=%s\nJ2_TREE=%s\nCONTROL_COMMIT=%s\nPREFLIGHT_SHA256=%s\nRESOLUTION_SHA256=%s\n' \
+            "$j2" "$new_tree" "$control_commit" "$preflight_sha" "$resolution_sha" \
+            | tee "$out/identities.env"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ripr-1557-integrated-j2-final
+          path: target/j2-final
+          if-no-files-found: error
+          retention-days: 30
