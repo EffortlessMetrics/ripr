@@ -1,0 +1,126 @@
+name: Emit complete #1559 source patch
+
+on:
+  push:
+    branches:
+      - control/0.11.0-j2-catalog-builder
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emit-1559-complete-source-patch
+  cancel-in-progress: false
+
+jobs:
+  emit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: a072b7efe80f1a32d7b5ba7342559a114edeb12e
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Apply and verify the source-owned contract repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow_path = Path('.github/workflows/source-promotion-contract.yml')
+          tests_path = Path('xtask/tests/source_promotion_workflow_contract.rs')
+          workflow = workflow_path.read_text(encoding='utf-8')
+          bad = '(.swarm_reachability.verified_through_parent_2 | type) == "boolean")))\' "$verification"'
+          good = '(.swarm_reachability.verified_through_parent_2 | type) == "boolean"))\' "$verification"'
+          if workflow.count(bad) != 1:
+              raise SystemExit(f'expected one malformed predicate, found {workflow.count(bad)}')
+          workflow = workflow.replace(bad, good, 1)
+
+          boundary = '\n  post-merge-reachability:\n'
+          if workflow.count(boundary) != 1:
+              raise SystemExit(f'expected one post-merge boundary, found {workflow.count(boundary)}')
+          enforcement = '\n'.join([
+              '      - name: Enforce normalized source-promotion contract',
+              '        if: always()',
+              '        env:',
+              '          SOURCE_PROMOTION_CONTRACT: target/ripr/source-promotion/source-promotion-contract.json',
+              '        run: |',
+              '          set -euo pipefail',
+              '          test -f "$SOURCE_PROMOTION_CONTRACT"',
+              "          jq -e '",
+              '            .schema == "ripr.source_promotion_contract.v2" and',
+              '            .status == "verified" and',
+              '            .validation.status == "passed" and',
+              '            .verifier_receipt_status == "present" and',
+              '            .verifier_exit_code == "0"',
+              "          ' \"$SOURCE_PROMOTION_CONTRACT\"",
+              '',
+          ])
+          workflow = workflow.replace(boundary, '\n' + enforcement + '  post-merge-reachability:\n', 1)
+          workflow_path.write_text(workflow, encoding='utf-8')
+
+          tests = tests_path.read_text(encoding='utf-8')
+          addition = textwrap.dedent(r'''
+              #[test]
+              fn verifier_receipt_schema_predicate_is_balanced() -> Result<(), String> {
+                  let workflow = workflow_text()?;
+                  let malformed =
+                      "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\")))' \"$verification\"";
+                  let balanced =
+                      "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\"))' \"$verification\"";
+                  assert!(!workflow.contains(malformed));
+                  assert!(workflow.contains(balanced));
+                  Ok(())
+              }
+
+              #[test]
+              fn rejected_normalized_contract_is_uploaded_then_fails_the_job() -> Result<(), String> {
+                  let workflow = workflow_text()?;
+                  let upload = workflow
+                      .find("- name: Upload SHA-bound promotion receipts")
+                      .ok_or_else(|| "missing promotion receipt upload step".to_string())?;
+                  let enforce = workflow
+                      .find("- name: Enforce normalized source-promotion contract")
+                      .ok_or_else(|| "missing terminal normalized-contract enforcement step".to_string())?;
+                  let next_job = workflow
+                      .find("\n  post-merge-reachability:\n")
+                      .ok_or_else(|| "missing post-merge job boundary".to_string())?;
+                  assert!(upload < enforce && enforce < next_job);
+                  for needle in [
+                      "SOURCE_PROMOTION_CONTRACT: target/ripr/source-promotion/source-promotion-contract.json",
+                      ".schema == \"ripr.source_promotion_contract.v2\"",
+                      ".status == \"verified\"",
+                      ".validation.status == \"passed\"",
+                      ".verifier_receipt_status == \"present\"",
+                      ".verifier_exit_code == \"0\"",
+                  ] {
+                      assert!(workflow[enforce..next_job].contains(needle), "missing: {needle}");
+                  }
+                  Ok(())
+              }
+          ''').lstrip()
+          if 'fn verifier_receipt_schema_predicate_is_balanced' in tests:
+              raise SystemExit('focused #1559 tests already exist')
+          tests_path.write_text(tests.rstrip() + '\n\n' + addition, encoding='utf-8')
+          PY
+
+          cargo fmt --all
+          git diff --check
+          cargo test -p xtask --test source_promotion_workflow_contract --locked
+          mkdir -p target/1559-complete/.github/workflows target/1559-complete/xtask/tests
+          cp .github/workflows/source-promotion-contract.yml target/1559-complete/.github/workflows/source-promotion-contract.yml
+          cp xtask/tests/source_promotion_workflow_contract.rs target/1559-complete/xtask/tests/source_promotion_workflow_contract.rs
+          git diff --binary > target/1559-complete/repair.patch
+          sha256sum target/1559-complete/.github/workflows/source-promotion-contract.yml target/1559-complete/xtask/tests/source_promotion_workflow_contract.rs > target/1559-complete/sha256sums.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ripr-1559-complete-source-patch
+          path: target/1559-complete
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
