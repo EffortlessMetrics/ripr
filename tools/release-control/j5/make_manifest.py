@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 KIND_ORDER = {"conflict": 0, "source_survivor": 1, "swarm_exclusion": 2}
+WORKFLOW_PROMOTION_AUTHORITY = {"swarm_blob", "integrated"}
 
 
 def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -62,13 +63,13 @@ def inventory(preflight: dict[str, Any]) -> list[tuple[str, str]]:
 
 
 def rationale(kind: str, disposition: str, path: str, changed: set[str]) -> str:
-    if kind == "swarm_exclusion":
-        return "Swarm-only repository authority remains excluded from the promoted source tree."
     if disposition == "source_blob":
         return "Live source-authoritative surface retained exactly from the frozen source parent."
     if disposition == "swarm_blob":
-        return "Frozen W7 product surface retained exactly."
+        return "Frozen W7 surface retained exactly."
     if disposition == "excluded":
+        if kind == "swarm_exclusion":
+            return "Swarm-only repository authority remains excluded from the promoted source tree."
         return "Fresh exact-pair resolution excludes this path from the promoted tree."
     if path == "policy/process_allowlist.txt":
         return (
@@ -81,6 +82,51 @@ def rationale(kind: str, disposition: str, path: str, changed: set[str]) -> str:
             "J2 product tree without changing frozen W7."
         )
     return "Previously reviewed integrated J2 surface retained in the fresh exact-pair tree."
+
+
+def changed_workflows(repo: Path, source: str, join: str) -> list[str]:
+    result = git(
+        repo,
+        "diff",
+        "--name-only",
+        f"{source}...{join}",
+        "--",
+        ".github/workflows",
+    )
+    return sorted(path for path in result.stdout.splitlines() if path)
+
+
+def validate_changed_workflow_authority(
+    repo: Path,
+    source: str,
+    join: str,
+    rows: list[dict[str, str]],
+) -> dict[str, list[str]]:
+    dispositions_by_path: dict[str, list[str]] = {}
+    for row in rows:
+        dispositions_by_path.setdefault(row["key"], []).append(row["disposition"])
+
+    reviewed: dict[str, list[str]] = {}
+    rejected: dict[str, list[str]] = {}
+    for path in changed_workflows(repo, source, join):
+        dispositions = dispositions_by_path.get(path, [])
+        if dispositions and all(
+            disposition in WORKFLOW_PROMOTION_AUTHORITY for disposition in dispositions
+        ):
+            reviewed[path] = dispositions
+        else:
+            rejected[path] = dispositions
+
+    if rejected:
+        rendered = ", ".join(
+            f"{path}={dispositions or ['missing']}"
+            for path, dispositions in sorted(rejected.items())
+        )
+        raise SystemExit(
+            "fresh manifest leaves changed workflows without unanimous reviewed non-source "
+            f"authority: {rendered}"
+        )
+    return reviewed
 
 
 def main() -> int:
@@ -108,7 +154,7 @@ def main() -> int:
     rows: list[dict[str, str]] = []
     classifications: dict[str, str] = {}
     for kind, key in expected:
-        disposition = "excluded" if kind == "swarm_exclusion" else disposition_for(repo, join, source, swarm, key)
+        disposition = disposition_for(repo, join, source, swarm, key)
         row = {
             "kind": kind,
             "key": key,
@@ -118,6 +164,8 @@ def main() -> int:
         }
         rows.append(row)
         classifications[f"{kind}:{key}"] = disposition
+
+    workflow_authority = validate_changed_workflow_authority(repo, source, join, rows)
 
     merge_base = preflight.get("merge_base")
     if not isinstance(merge_base, str):
@@ -136,7 +184,7 @@ def main() -> int:
     Path(delta_path).write_text(
         json.dumps(
             {
-                "schema": "ripr.source_promotion_resolution_refresh.v2",
+                "schema": "ripr.source_promotion_resolution_refresh.v3",
                 "old_rows": len(old_rows),
                 "fresh_rows": len(expected_set),
                 "retained_kind_keys": sorted(f"{kind}:{key}" for kind, key in old_rows & expected_set),
@@ -144,6 +192,13 @@ def main() -> int:
                 "removed_kind_keys": sorted(f"{kind}:{key}" for kind, key in old_rows - expected_set),
                 "changed_source_paths": sorted(changed),
                 "classifications": classifications,
+                "changed_workflow_authority": workflow_authority,
+                "invariants": [
+                    "every disposition is derived from exact final/source/W7 blob identity",
+                    "swarm_exclusion inventory membership does not override retained W7 blob authority",
+                    "every workflow changed by the promotion has one or more reviewed rows",
+                    "every row for a changed workflow is swarm_blob or integrated",
+                ],
             },
             indent=2,
         )
