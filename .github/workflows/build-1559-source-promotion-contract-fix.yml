@@ -1,0 +1,174 @@
+name: Build #1559 source-promotion contract fix
+
+on:
+  push:
+    branches:
+      - control/0.11.0-j2-catalog-builder
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-1559-source-promotion-contract-fix
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_BASE: a072b7efe80f1a32d7b5ba7342559a114edeb12e
+      REPAIR_BRANCH: fix/source-promotion-receipt-contract-1559
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Build and prove the exact source repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name EffortlessSteven
+          git config user.email git@effortlesssteven.com
+          git fetch --no-tags origin "$SOURCE_BASE"
+          repair_dir="$RUNNER_TEMP/ripr-1559"
+          rm -rf "$repair_dir"
+          git worktree add --detach "$repair_dir" "$SOURCE_BASE"
+
+          python - "$repair_dir/.github/workflows/source-promotion-contract.yml" "$repair_dir/xtask/tests/source_promotion_workflow_contract.rs" <<'PY'
+          from pathlib import Path
+          import sys
+
+          workflow_path = Path(sys.argv[1])
+          tests_path = Path(sys.argv[2])
+          workflow = workflow_path.read_text(encoding="utf-8")
+
+          bad = '(.swarm_reachability.verified_through_parent_2 | type) == "boolean")))\' "$verification"'
+          good = '(.swarm_reachability.verified_through_parent_2 | type) == "boolean"))\' "$verification"'
+          if workflow.count(bad) != 1:
+              raise SystemExit(f"expected one malformed predicate, found {workflow.count(bad)}")
+          workflow = workflow.replace(bad, good, 1)
+
+          upload = '''      - name: Upload SHA-bound promotion receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: source-promotion-contract-${{ github.event.pull_request.head.sha }}
+          path: target/ripr/source-promotion
+          if-no-files-found: error
+
+'''
+          enforcement = '''      - name: Enforce normalized source-promotion contract
+        if: always()
+        env:
+          SOURCE_PROMOTION_CONTRACT: target/ripr/source-promotion/source-promotion-contract.json
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_PROMOTION_CONTRACT"
+          jq -e '
+            .schema == "ripr.source_promotion_contract.v2" and
+            .status == "verified" and
+            .validation.status == "passed" and
+            .verifier_receipt_status == "present" and
+            .verifier_exit_code == "0"
+          ' "$SOURCE_PROMOTION_CONTRACT"
+
+'''
+          if workflow.count(upload) != 1:
+              raise SystemExit(f"expected one upload block, found {workflow.count(upload)}")
+          if "Enforce normalized source-promotion contract" in workflow:
+              raise SystemExit("terminal contract enforcement already exists")
+          workflow = workflow.replace(upload, upload + enforcement, 1)
+          workflow_path.write_text(workflow, encoding="utf-8")
+
+          tests = tests_path.read_text(encoding="utf-8")
+          addition = r'''
+
+#[test]
+fn verifier_receipt_schema_predicate_is_balanced() -> Result<(), String> {
+    let workflow = workflow_text()?;
+    let malformed =
+        "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\")))' \"$verification\"";
+    let balanced =
+        "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\"))' \"$verification\"";
+    assert!(
+        !workflow.contains(malformed),
+        "verifier receipt predicate must not retain an unmatched trailing parenthesis"
+    );
+    assert!(
+        workflow.contains(balanced),
+        "workflow must retain the balanced verified-receipt predicate"
+    );
+    Ok(())
+}
+
+#[test]
+fn rejected_normalized_contract_is_uploaded_then_fails_the_job() -> Result<(), String> {
+    let workflow = workflow_text()?;
+    let upload = workflow
+        .find("- name: Upload SHA-bound promotion receipts")
+        .ok_or_else(|| "missing promotion receipt upload step".to_string())?;
+    let enforce = workflow
+        .find("- name: Enforce normalized source-promotion contract")
+        .ok_or_else(|| "missing terminal normalized-contract enforcement step".to_string())?;
+    assert!(
+        upload < enforce,
+        "rejected receipts must be uploaded before the hosted job fails"
+    );
+    for needle in [
+        "SOURCE_PROMOTION_CONTRACT: target/ripr/source-promotion/source-promotion-contract.json",
+        ".schema == \"ripr.source_promotion_contract.v2\"",
+        ".status == \"verified\"",
+        ".validation.status == \"passed\"",
+        ".verifier_receipt_status == \"present\"",
+        ".verifier_exit_code == \"0\"",
+    ] {
+        assert!(
+            workflow[enforce..].contains(needle),
+            "terminal enforcement missing contract predicate: {needle}"
+        );
+    }
+    Ok(())
+}
+'''
+          if "fn verifier_receipt_schema_predicate_is_balanced" in tests:
+              raise SystemExit("focused #1559 tests already exist")
+          tests_path.write_text(tests.rstrip() + addition + "\n", encoding="utf-8")
+          PY
+
+          cargo fmt --manifest-path "$repair_dir/Cargo.toml" --all
+          git -C "$repair_dir" diff --check
+          cargo test --manifest-path "$repair_dir/Cargo.toml" -p xtask --test source_promotion_workflow_contract --locked
+
+          test "$(git -C "$repair_dir" diff --name-only)" = $'.github/workflows/source-promotion-contract.yml\nxtask/tests/source_promotion_workflow_contract.rs'
+          git -C "$repair_dir" add .github/workflows/source-promotion-contract.yml xtask/tests/source_promotion_workflow_contract.rs
+          git -C "$repair_dir" commit -m "fix(promotion): fail closed on rejected contract receipts (#1559)"
+          repair_head=$(git -C "$repair_dir" rev-parse HEAD)
+          repair_tree=$(git -C "$repair_dir" rev-parse HEAD^{tree})
+
+          set +e
+          git -C "$repair_dir" push origin "$repair_head:refs/heads/$REPAIR_BRANCH"
+          push_status=$?
+          set -e
+
+          out="$PWD/target/source-promotion-1559"
+          mkdir -p "$out/.github/workflows" "$out/xtask/tests"
+          cp "$repair_dir/.github/workflows/source-promotion-contract.yml" "$out/.github/workflows/source-promotion-contract.yml"
+          cp "$repair_dir/xtask/tests/source_promotion_workflow_contract.rs" "$out/xtask/tests/source_promotion_workflow_contract.rs"
+          git -C "$repair_dir" format-patch -1 --stdout > "$out/repair.patch"
+          jq -n \
+            --arg schema ripr.source_promotion_contract_repair.v1 \
+            --arg source_base "$SOURCE_BASE" --arg repair_head "$repair_head" \
+            --arg repair_tree "$repair_tree" --arg repair_branch "$REPAIR_BRANCH" \
+            --argjson push_status "$push_status" \
+            '{schema:$schema,source_base:$source_base,repair_head:$repair_head,repair_tree:$repair_tree,repair_branch:$repair_branch,push_status:$push_status,changed_paths:[".github/workflows/source-promotion-contract.yml","xtask/tests/source_promotion_workflow_contract.rs"],proof:["cargo fmt --all","cargo test -p xtask --test source_promotion_workflow_contract --locked","git diff --check"],non_claims:["no merge","no J reconstruction","no version change","no tag","no publication","no signing","no marketplace mutation","no secret use","no back-sync"]}' \
+            > "$out/receipt.json"
+          printf 'REPAIR_HEAD=%s\nREPAIR_TREE=%s\nPUSH_STATUS=%s\n' "$repair_head" "$repair_tree" "$push_status" > "$out/identities.env"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ripr-1559-source-promotion-contract-fix
+          path: target/source-promotion-1559
+          if-no-files-found: error
+          retention-days: 30
