@@ -70,6 +70,13 @@ def rationale(kind: str, disposition: str, path: str, changed: set[str]) -> str:
         return "Swarm product surface retained exactly from frozen W7."
     if disposition == "excluded":
         return "Reviewed exact-pair resolution excludes this path from the promoted tree."
+    if path == "policy/process_allowlist.txt":
+        return (
+            "Integrated policy resolution preserves live J2/W7 process ownership, restores "
+            "surviving source-owned rows, normalizes the grouped jq-test import to a "
+            "formatting-stable literal, removes only patterns absent from the reviewed J3 "
+            "tree, and leaves check-process-policy as the final detector."
+        )
     if path in changed:
         return (
             "Reviewed three-way integration applies the #1560 source-control repair to the "
