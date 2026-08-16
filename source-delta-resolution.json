@@ -1,0 +1,144 @@
+{
+  "schema": "ripr.source_promotion_source_delta_resolution.v2",
+  "old_source_parent": "a072b7efe80f1a32d7b5ba7342559a114edeb12e",
+  "live_source_parent": "6cc5d6135593d9fb9a745eb215c5b0f92cbd14d5",
+  "reviewed_baseline_join": "a2a743abd139566499f80cdca8ed999ec4ee01d4",
+  "changed_path_count": 5,
+  "changed_paths": [
+    ".github/workflows/source-promotion-contract.yml",
+    "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+    "policy/process_allowlist.txt",
+    "xtask/src/command.rs",
+    "xtask/tests/source_promotion_workflow_contract.rs"
+  ],
+  "resolutions": [
+    {
+      "path": ".github/workflows/source-promotion-contract.yml",
+      "old_source": {
+        "mode": "100644",
+        "oid": "a09689d671c998f70164b8941b49b6728aa3e8ab"
+      },
+      "j2": {
+        "mode": "100644",
+        "oid": "a09689d671c998f70164b8941b49b6728aa3e8ab"
+      },
+      "live_source": {
+        "mode": "100644",
+        "oid": "7b7b1cbe0428c45cf185b307b9ca9b9faf70fbaf"
+      },
+      "resolution": "live_source"
+    },
+    {
+      "path": "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+      "old_source": {
+        "mode": "100644",
+        "oid": "11db05bc809fe419d326a26ac293c341bda9ee7d"
+      },
+      "j2": {
+        "mode": "100644",
+        "oid": "11db05bc809fe419d326a26ac293c341bda9ee7d"
+      },
+      "live_source": {
+        "mode": "100644",
+        "oid": "c901426502adfaaba8b89950b41d4096f082e257"
+      },
+      "resolution": "live_source"
+    },
+    {
+      "path": "policy/process_allowlist.txt",
+      "old_source": {
+        "mode": "100644",
+        "oid": "3132270a533303beb5b330448883cd6d95622e75"
+      },
+      "j2": {
+        "mode": "100644",
+        "oid": "0952c27c782e5f19d28e7115dd6eed99165eea3c"
+      },
+      "live_source": {
+        "mode": "100644",
+        "oid": "95f8e609fe22d684f43e0d166c71755a4bfbcf02"
+      },
+      "resolution": "deferred_process_policy_union"
+    },
+    {
+      "path": "xtask/src/command.rs",
+      "old_source": {
+        "mode": "100644",
+        "oid": "f765e53136e99e2cbd3de96f82529f82a2785985"
+      },
+      "j2": {
+        "mode": "100644",
+        "oid": "800ff76ccdf1cf76b6496b2208fbfca8aed0c2d5"
+      },
+      "live_source": {
+        "mode": "100644",
+        "oid": "c7f4c2a3c785f0570a83f187684b3a4b298591ea"
+      },
+      "resolution": "integrated_three_way",
+      "merged_sha256": "933941549788547313c2dc849ebeed594d23b560c2e28f39527f313f8d42972a",
+      "mode": "100644"
+    },
+    {
+      "path": "xtask/tests/source_promotion_workflow_contract.rs",
+      "old_source": {
+        "mode": "100644",
+        "oid": "bd58035c2f640127905cab74e3fa755cdf079b56"
+      },
+      "j2": {
+        "mode": "100644",
+        "oid": "bd58035c2f640127905cab74e3fa755cdf079b56"
+      },
+      "live_source": {
+        "mode": "100644",
+        "oid": "e15daf410267859f0b13223fc2e26d9bea16fbc6"
+      },
+      "resolution": "live_source"
+    }
+  ],
+  "reviewed_integration_repairs": [
+    {
+      "path": "xtask/src/tests.rs",
+      "resolution": "integrated_current_ci_catalog_truth",
+      "j2_blob": "1bff24fb3fb2f27f4db4b8a9f4ffe6c5f217a45b",
+      "result_blob": "7c562846136214f03f2c2087a842f42f158524bb",
+      "applied": [
+        {
+          "old": "fn command_catalog_pins_ci_enforced_classification() -> Result<(), String> {",
+          "new": "fn command_catalog_ci_enforced_flags_match_repo_workflows_pins_classification() -> Result<(), String>\n{"
+        },
+        {
+          "old": "    assert!(!ci_enforced(\"precommit\")?);",
+          "new": "    assert!(ci_enforced(\"precommit\")?);"
+        },
+        {
+          "old": "    assert!(!ci_enforced(\"check-architecture\")?);",
+          "new": "    assert!(ci_enforced(\"check-architecture\")?);"
+        },
+        {
+          "old": "    assert!(!ci_enforced(\"check-doc-artifacts\")?);",
+          "new": "    assert!(ci_enforced(\"check-doc-artifacts\")?);"
+        },
+        {
+          "old": "    assert!(!ci_enforced(\"markdown-links\")?);",
+          "new": "    assert!(ci_enforced(\"markdown-links\")?);"
+        }
+      ],
+      "retained_advisory_assertions": [
+        "release-readiness --version <version>",
+        "goldens bless <name> --reason <reason>",
+        "check-supply-chain"
+      ],
+      "verification_filter": "command_catalog_ci_enforced_flags_match_repo_workflows",
+      "reason": "Current routed workflows and the integrated command catalog enforce precommit, check-architecture, check-doc-artifacts, and markdown-links. The inherited J2 test still pinned the superseded source topology."
+    }
+  ],
+  "invariants": [
+    "source-only movement is copied exactly",
+    "J2-only movement is retained exactly",
+    "both-changed regular text requires conflict-free three-way integration",
+    "binary, delete/add, symlink, and incompatible mode conflicts fail closed",
+    "process policy is reconciled separately against the completed reviewed tree",
+    "the inherited catalog classification test is patched only from its exact reviewed J2 blob",
+    "the focused workflow-drift test filter also executes the repaired classification pin"
+  ]
+}

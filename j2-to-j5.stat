@@ -1,0 +1,7 @@
+ .github/workflows/source-promotion-contract.yml    |  29 +++-
+ .../RIPR-SPEC-0150-source-promotion-ci-contract.md |  30 +++-
+ policy/process_allowlist.txt                       |  12 +-
+ xtask/src/command.rs                               |   3 +-
+ xtask/src/tests.rs                                 |  11 +-
+ xtask/tests/source_promotion_workflow_contract.rs  | 175 +++++++++++++++++++++
+ 6 files changed, 238 insertions(+), 22 deletions(-)

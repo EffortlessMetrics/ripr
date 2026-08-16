@@ -1,0 +1,6 @@
+- `M	.github/workflows/source-promotion-contract.yml`
+- `M	docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md`
+- `M	policy/process_allowlist.txt`
+- `M	xtask/src/command.rs`
+- `M	xtask/src/tests.rs`
+- `M	xtask/tests/source_promotion_workflow_contract.rs`

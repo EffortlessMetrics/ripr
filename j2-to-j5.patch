@@ -1,0 +1,424 @@
+diff --git a/.github/workflows/source-promotion-contract.yml b/.github/workflows/source-promotion-contract.yml
+index a09689d6..7b7b1cbe 100644
+--- a/.github/workflows/source-promotion-contract.yml
++++ b/.github/workflows/source-promotion-contract.yml
+@@ -289,7 +289,7 @@ jobs:
+           VALIDATION_REASON: ${{ steps.live-governance.outputs.validation_reason || steps.inputs.outputs.validation_reason }}
+           VALIDATION_STATUS: ${{ steps.live-governance.outputs.validation_status || steps.inputs.outputs.validation_status }}
+           TRUSTED_VERIFIER: ${{ steps.trusted-verifier.outputs.path }}
+-          SOURCE_PROMOTION_OUT: target/ripr/source-promotion
++          SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion
+         run: |
+           set +e
+           status=0
+@@ -316,6 +316,7 @@ jobs:
+           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+           PR_HEAD: ${{ github.event.pull_request.head.sha }}
+           SOURCE_MAIN: ${{ steps.inputs.outputs.source_main }}
++          SOURCE_PARENT: ${{ steps.inputs.outputs.source_parent }}
+           JOIN_HEAD: ${{ steps.inputs.outputs.join_head }}
+           PREFLIGHT: ${{ steps.inputs.outputs.preflight }}
+           RESOLUTION_MANIFEST: ${{ steps.inputs.outputs.resolution_manifest }}
+@@ -332,7 +333,7 @@ jobs:
+           LIVE_TAG: ${{ steps.live-governance.outputs.tag }}
+           LIVE_RULESET: ${{ steps.live-governance.outputs.ruleset }}
+           VALIDATION_FAILURE_PATH: ${{ runner.temp }}/source-promotion-validation-failure.txt
+-          SOURCE_PROMOTION_OUT: target/ripr/source-promotion
++          SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion
+         run: |
+           set -euo pipefail
+           out="$SOURCE_PROMOTION_OUT"
+@@ -341,7 +342,7 @@ jobs:
+           verification="$out/source-promotion-verification.json"
+           contract="$out/source-promotion-contract.json"
+           if test -f "$verification"; then
+-            if jq -e 'type == "object" and .schema == "ripr.source_promotion_verification.v2" and (.status == "verified" or .status == "rejected") and (.join_head | type) == "string" and (.source_main | type) == "string" and (.main_head == null or (.main_head | type) == "string") and (.parents | type) == "array" and (.tree == null or (.tree | type) == "string") and (.preflight_sha256 == null or (.preflight_sha256 | type) == "string") and (.resolution_manifest_sha256 == null or (.resolution_manifest_sha256 | type) == "string") and (.merge_base == null or (.merge_base | type) == "string") and (.swarm_reachability | type) == "object" and (.release_metadata_surfaces | type) == "array" and (.checks | type) == "object" and (.failure_reasons | type) == "array" and (.invalidation_rules | type) == "array" and (.non_claims | type) == "array" and (.status == "rejected" or ((.tree | type) == "string" and (.preflight_sha256 | type) == "string" and (.resolution_manifest_sha256 | type) == "string" and (.merge_base | type) == "string" and (.parents | length) == 2 and all(.parents[]; type == "string") and (.swarm_reachability.all_reachable_count | type) == "number" and (.swarm_reachability.first_parent_count | type) == "number" and (.swarm_reachability.all_reachable_sha256 | type) == "string" and (.swarm_reachability.first_parent_ordered_sha256 | type) == "string" and (.swarm_reachability.verified_through_parent_2 | type) == "boolean")))' "$verification" >/dev/null 2>&1; then
++            if jq -e 'type == "object" and .schema == "ripr.source_promotion_verification.v2" and (.status == "verified" or .status == "rejected") and (.join_head | type) == "string" and (.source_main | type) == "string" and (.main_head == null or (.main_head | type) == "string") and (.parents | type) == "array" and (.tree == null or (.tree | type) == "string") and (.preflight_sha256 == null or (.preflight_sha256 | type) == "string") and (.resolution_manifest_sha256 == null or (.resolution_manifest_sha256 | type) == "string") and (.merge_base == null or (.merge_base | type) == "string") and (.swarm_reachability | type) == "object" and (.release_metadata_surfaces | type) == "array" and (.checks | type) == "object" and (.failure_reasons | type) == "array" and (.invalidation_rules | type) == "array" and (.non_claims | type) == "array" and (.status == "rejected" or ((.tree | type) == "string" and (.preflight_sha256 | type) == "string" and (.resolution_manifest_sha256 | type) == "string" and (.merge_base | type) == "string" and (.parents | length) == 2 and all(.parents[]; type == "string") and (.swarm_reachability.all_reachable_count | type) == "number" and (.swarm_reachability.first_parent_count | type) == "number" and (.swarm_reachability.all_reachable_sha256 | type) == "string" and (.swarm_reachability.first_parent_ordered_sha256 | type) == "string" and (.swarm_reachability.verified_through_parent_2 | type) == "boolean"))' "$verification" >/dev/null 2>&1; then
+               verifier_receipt_status=present
+               status=$(jq -r '.status' "$verification")
+               preflight_sha256=$(jq -r '.preflight_sha256 // "not_available"' "$verification")
+@@ -479,9 +480,23 @@ jobs:
+         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+         with:
+           name: source-promotion-contract-${{ github.event.pull_request.head.sha }}
+-          path: target/ripr/source-promotion
++          path: ${{ runner.temp }}/ripr-source-promotion
+           if-no-files-found: error
+ 
++      - name: Enforce normalized source-promotion contract
++        if: always()
++        env:
++          SOURCE_PROMOTION_CONTRACT: ${{ runner.temp }}/ripr-source-promotion/source-promotion-contract.json
++        run: |
++          set -euo pipefail
++          test -f "$SOURCE_PROMOTION_CONTRACT"
++          jq -e '
++            .schema == "ripr.source_promotion_contract.v2" and
++            .status == "verified" and
++            .validation.status == "passed" and
++            .verifier_receipt_status == "present" and
++            .verifier_exit_code == "0"
++          ' "$SOURCE_PROMOTION_CONTRACT"
+   post-merge-reachability:
+     name: Source Promotion Post-Merge Reachability
+     if: github.event_name == 'workflow_dispatch'
+@@ -588,7 +603,7 @@ jobs:
+           SOURCE_PARENT: ${{ inputs.source_parent }}
+           CONTROL_COMMIT: ${{ inputs.control_commit }}
+           TRUSTED_VERIFIER: ${{ steps.trusted-verifier.outputs.path }}
+-          SOURCE_PROMOTION_OUT: target/ripr/source-promotion
++          SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion
+         run: |
+           set -euo pipefail
+           test "$(git rev-parse HEAD)" = "$MAIN_HEAD" || {
+@@ -620,7 +635,7 @@ jobs:
+           SOURCE_MAIN: ${{ inputs.source_main }}
+           SOURCE_PARENT: ${{ inputs.source_parent }}
+           MAIN_HEAD: ${{ inputs.main_head }}
+-          SOURCE_PROMOTION_OUT: target/ripr/source-promotion
++          SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion
+         run: |
+           set -euo pipefail
+           out="$SOURCE_PROMOTION_OUT"
+@@ -634,5 +649,5 @@ jobs:
+         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+         with:
+           name: source-promotion-post-merge-${{ inputs.join_head }}-${{ inputs.main_head }}
+-          path: target/ripr/source-promotion
++          path: ${{ runner.temp }}/ripr-source-promotion
+           if-no-files-found: error
+diff --git a/docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md b/docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md
+index 11db05bc..c9014265 100644
+--- a/docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md
++++ b/docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md
+@@ -50,8 +50,19 @@ workflow-name exception for reviewed resolution authority.
+ 
+ The workflow runs `cargo xtask source-promotion verify` and emits one
+ normalized `ripr.source_promotion_contract.v2` receipt plus the verifier
+-JSON/Markdown receipts. Every receipt is bound to the PR head, control commit,
+-and input digests and is uploaded under a SHA-containing artifact name.
++JSON/Markdown receipts. PR and post-merge receipt directories live under the
++runner-owned temporary directory rather than the candidate checkout. Every
++receipt is bound to the PR head, control commit, and input digests and is
++uploaded under a SHA-containing artifact name. The normalized PR receipt also
++preserves the trusted `source_parent` identity emitted by input validation.
++
++After the PR receipt upload, an always-run terminal enforcement step reads the
++normalized contract and succeeds only when its schema is
++`ripr.source_promotion_contract.v2`, its status is `verified`, validation is
++`passed`, the verifier receipt is `present`, and the verifier exit code is zero.
++Rejected evidence is therefore retained before the hosted job fails; a missing,
++malformed, rejected, candidate-supplied, or non-zero-verifier receipt cannot
++produce a green `Source Promotion Contract` check.
+ 
+ Before invoking the verifier, the workflow resolves the declared `swarm_ref`
+ with `git ls-remote --refs` against the fixed public
+@@ -95,7 +106,14 @@ exact J object to remain reachable from merged source `main`.
+ - a valid two-parent join passes the verifier;
+ - a single-parent or equivalent-tree flattened history fails post-merge;
+ - uploaded receipts retain exact heads, ordered parents, input digests, checks,
+-  failure reasons, and claim boundaries.
++  failure reasons, and claim boundaries;
++- the retained verified `ripr.source_promotion_verification.v2` shape passes the
++  balanced normalizer predicate while malformed shapes fail closed;
++- a rejected normalized contract is uploaded and then fails the hosted job,
++  while a verified, passed, present, zero-exit contract passes terminal
++  enforcement;
++- candidate-checkout files cannot substitute for runner-owned verifier or
++  normalized-contract receipts.
+ - The uploaded post-merge contract receipt uses schema
+   `ripr.source_promotion_post_merge_contract.v1` and retains the exact
+   `control_commit` alongside J, source, trusted-parent, and merged-main SHAs.
+@@ -132,8 +150,10 @@ Executable proof lives in
+ `source_promotion_workflow_binds_trusted_source_parent`,
+ `source_promotion_workflow_refutes_crlf_rewrite_thread`, and the integration
+ contract tests in `xtask/tests/source_promotion_workflow_contract.rs`, including
+-missing/source-only, mixed allowed/source, and one-or-more unanimously allowed
+-workflow-disposition cases. The exact-J graph, `kind:key` completeness, duplicate
++missing/source-only, mixed allowed/source, one-or-more unanimously allowed
++workflow-disposition cases, the balanced verifier-receipt predicate, and
++runner-owned upload-before-enforcement ordering. The exact-J graph, `kind:key`
++completeness, duplicate
+ `kind:key`, and flattened-history controls remain covered by the verifier tests
+ mapped in `.ripr/traceability.toml`.
+ 
+diff --git a/policy/process_allowlist.txt b/policy/process_allowlist.txt
+index 0952c27c..d13d57ff 100644
+--- a/policy/process_allowlist.txt
++++ b/policy/process_allowlist.txt
+@@ -12,6 +12,7 @@ crates/ripr/src/agent/artifact.rs|use std::process::Command|1|repair-artifact-pr
+ crates/ripr/src/agent/loop_commands.rs|Command::new|3|agent/advisory-commands|#2347: the bash argv encoder is proved by executing the encoded token in a real bash — a round-trip transcript over hostile values, a redirect-clobber guard, and a usability probe that rejects a WSL bash which cannot open host paths. Test module only; no production spawn.
+ crates/ripr/src/analysis/diff/load.rs|Command::new|7|analysis/diff|RIPR-SPEC-0084: git diff adapter resolves the real default base branch (symbolic-ref, origin/main, origin/master, local main/master) and fail-closes with a named message; production helpers (run_git_diff, git_symbolic_ref_quiet, git_ref_exists) plus test module temp-repo setup. RIPR-SPEC-0112: working_tree_has_tracked_changes (git status --porcelain) discloses when --base excludes uncommitted edits.
+ crates/ripr/src/analysis/diff/load.rs|use std::process::Command|2|analysis/diff|Git diff adapter and its test module both import Command directly.
++crates/ripr/src/analysis/probes/subprocess.rs|Command::new|7|analysis/probes|RIPR-SPEC-0112: bounded subprocess adapter recognizer inspects source text and fixture bodies for one literal allowlisted command; it does not execute a subprocess or broaden the runtime command surface.
+ crates/ripr/src/app/check.rs|Command::new|1|perl-managed-producer|Campaign 31 Phase D (#1407): managed producer mode invokes perllsp --ripr-facts to generate a fact packet. Explicit opt-in only ([perl] producer = "perllsp"); no silent invocation.
+ crates/ripr/src/app/check.rs|use std::process::Command|1|perl-managed-producer|Managed producer mode imports Command for the perllsp invocation.
+ crates/ripr/src/app/check_artifact/tests.rs|Command::new|2|app/check-artifact|RIPR-SPEC-0140 (#2251): worktree artifact-reuse tests initialize temp git repos and mutate tracked files to prove reuse fails closed on diff_bytes_hash when the worktree drifts.
+@@ -30,6 +31,8 @@ crates/ripr/src/output/doctor.rs|Command::new|1|output/doctor|Doctor core evalua
+ crates/ripr/src/output/first_pr.rs|Command::new|4|first-pr/front-door-polish|First-pr setup preflight validates git worktree, base/head refs, and diff range before assigning repair work; unit tests initialize temp git repos for those fail-closed packets.
+ crates/ripr/src/output/first_pr.rs|use std::process::Command|1|first-pr/front-door-polish|First-pr setup preflight imports Command for bounded git probes and temp-git test setup.
+ crates/ripr/src/output/review_comments_receipt.rs|Command::new|1|review-comments-receipt|Review-comments receipts resolve the requested base/head revisions with a bounded git rev-parse probe so cache identity and terminal receipts are tied to the actual repository revisions.
++crates/ripr/tests/cli_help_hierarchy.rs|Command::new|1|cli-tests|#2930: rendered-help drift tests run the built ripr binary (`--help`, `help --all`, `agent --help`) to pin the canonical command hierarchy against actual output rather than source text.
++crates/ripr/tests/cli_help_hierarchy.rs|use std::process::Command|1|cli-tests|#2930: rendered-help drift tests import Command to run the built ripr binary.
+ crates/ripr/tests/cli_smoke.rs|Command::new|13|cli-tests|#3158/#3159: smoke tests run the built CLI binary directly, with env-var overrides, and through the isolated installed-binary version contract; Evidence: isolated_installed_binary_version_contract_is_side_effect_free records exact stdout/stderr/status and stable filesystem snapshots; Review: revisit when the version-case spawn matrix changes. Existing coverage: RIPR-SPEC-0083, RIPR-SPEC-0112, and Campaign 31 item 8.
+ crates/ripr/tests/lsp_lifecycle.rs|Command::new|3|lsp-lifecycle-conformance|Issue #2030: the lifecycle conformance harness spawns the worktree-absolute ripr binary under test once per session (ripr lsp --stdio); every session guard kills and reaps the child so no server survives the suite. Issue #1930: the compatibility-command journey builds a temp git fixture root (init/add/commit helper, one Command::new site) and probes the binary under test with ripr --version for the harness receipt (one site).
+ crates/ripr/tests/perl_two_binary_harness.rs|Command::new|3|perl-two-binary-harness|Campaign 31 item 3: the perllsp-to-ripr two-binary proof harness spawns the external perllsp producer (run_producer), the worktree-absolute ripr binary under test (run_ripr), and the which()/where lookup (which). Producer is opt-in via PATH; the harness skips cleanly when perllsp is absent.
+@@ -42,14 +45,15 @@ editors/vscode/src/serverResolver.ts|child_process|1|lsp/editor|Server resolver
+ editors/vscode/src/serverResolver.ts|cp.spawn|1|lsp/editor|Server resolver runs ripr --version without shell expansion.
+ editors/vscode/test/runTest.ts|child_process|1|vscode-packaged-integration|#2528: packaged Electron proof creates an isolated external Git fixture and launches the opt-in trust-boundary host through bounded child-process calls; no shell expansion.
+ xtask/src/main.rs|Command::new|1|gate-runner|#2343: diff-aware gate runner reads changed files via git diff
++xtask/src/reports/back_sync.rs|Command::new|3|back-sync-verifier|RIPR-SPEC-0149: exact-object back-sync verification uses bounded Git probes to inspect commit parents, trees, ancestry, refs, and tags, plus synthetic temporary-repository tests; it does not execute product commands or mutate release repositories.
++xtask/src/reports/back_sync.rs|use std::process::Command|1|back-sync-verifier|RIPR-SPEC-0149: back-sync verification imports Command solely for bounded Git observation and synthetic temporary-repository construction.
+ xtask/src/reports/release_scope.rs|Command::new|2|release-scope|RIPR-SPEC-0145: candidate-only scope reconciliation invokes bounded git probes for current ref, commit, path, and preserved-path verification; no arbitrary command execution.
+ xtask/src/reports/release_scope.rs|use std::process::Command|1|release-scope|RIPR-SPEC-0145: release-scope imports Command for bounded Git observation only.
+ xtask/src/reports/source_promotion.rs|Command::new|7|source-promotion-preflight|RIPR-SPEC-0148: read-only source-promotion preflight invokes bounded Git probes in separately rooted source, swarm, and disposable repositories to verify exact parents, immutable ref identity, ancestry, changed paths, object availability, and dry-merge output; no shell or product command execution.
+ xtask/src/reports/source_promotion.rs|use std::process::Command|1|source-promotion-preflight|RIPR-SPEC-0148: source-promotion preflight imports Command for bounded Git observation and disposable-repository construction only.
+-xtask/src/reports/back_sync.rs|Command::new|3|back-sync-verifier|RIPR-SPEC-0149: exact-object back-sync verification uses bounded Git probes to inspect commit parents, trees, ancestry, refs, and tags, plus synthetic temporary-repository tests; it does not execute product commands or mutate release repositories.
+-xtask/src/reports/back_sync.rs|use std::process::Command|1|back-sync-verifier|RIPR-SPEC-0149: back-sync verification imports Command solely for bounded Git observation and synthetic temporary-repository construction.
++xtask/src/reports/source_promotion_verify.rs|Command::new|4|source-promotion-verifier|RIPR-SPEC-0149: exact-J verification uses bounded Git probes to validate parents, tree, ancestry, ranges, main reachability, and adversarial synthetic repositories; it does not execute product commands or mutate source release refs.
++xtask/src/reports/source_promotion_verify.rs|use std::process::Command|1|source-promotion-verifier|RIPR-SPEC-0149: source-promotion verification imports Command solely for bounded Git observation and synthetic temporary-repository construction.
+ xtask/src/run.rs|Command::new|14|repo-policy|xtask run helpers are the repository command runner for Cargo, git, fixture execution, extension build orchestration, release upload orchestration, supply-chain report capture, bounded latency probes, stdout-to-file report inputs, cwd-bound packaged-release smoke, timeout-race regression coverage, Unix process-group termination, Windows process-tree termination, and Windows timeout regression helpers.
+ xtask/src/version.rs|Command::new|1|release-version-bump|#2711: gated version-bump validation invokes `cargo metadata --no-deps --format-version 1` after coordinated manifest updates and restores the originals on validation failure.
+ xtask/src/version.rs|use std::process::Command|1|release-version-bump|#2711: version-bump validation imports Command for the bounded cargo metadata probe only.
+-crates/ripr/tests/cli_help_hierarchy.rs|Command::new|1|cli-tests|#2930: rendered-help drift tests run the built ripr binary (`--help`, `help --all`, `agent --help`) to pin the canonical command hierarchy against actual output rather than source text.
+-crates/ripr/tests/cli_help_hierarchy.rs|use std::process::Command|1|cli-tests|#2930: rendered-help drift tests import Command to run the built ripr binary.
++xtask/tests/source_promotion_workflow_contract.rs|Command::new|1|source-promotion-workflow-contract|RIPR-SPEC-0150: focused contract proof executes the exact inline jq verifier-receipt predicate against valid and malformed JSON so syntax and parent-2 boolean validation cannot drift.
+diff --git a/xtask/src/command.rs b/xtask/src/command.rs
+index 800ff76c..ecddbdbb 100644
+--- a/xtask/src/command.rs
++++ b/xtask/src/command.rs
+@@ -2095,7 +2095,8 @@ mod tests {
+     -> Result<(), String> {
+         let workflow = source_promotion_workflow()?;
+         for needle in [
+-            "SOURCE_PROMOTION_OUT: target/ripr/source-promotion",
++            "SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion",
++            "SOURCE_PARENT: ${{ steps.inputs.outputs.source_parent }}",
+             "--out \"$SOURCE_PROMOTION_OUT\"",
+             "out=\"$SOURCE_PROMOTION_OUT\"",
+             "verification=\"$out/source-promotion-verification.json\"",
+diff --git a/xtask/src/tests.rs b/xtask/src/tests.rs
+index 1bff24fb..7c562846 100644
+--- a/xtask/src/tests.rs
++++ b/xtask/src/tests.rs
+@@ -26413,7 +26413,8 @@ fn commands_report_json_and_markdown_are_structured() -> Result<(), String> {
+ }
+ 
+ #[test]
+-fn command_catalog_pins_ci_enforced_classification() -> Result<(), String> {
++fn command_catalog_ci_enforced_flags_match_repo_workflows_pins_classification() -> Result<(), String>
++{
+     let catalog = command_catalog();
+     let ci_enforced = |command: &str| {
+         catalog
+@@ -26429,10 +26430,10 @@ fn command_catalog_pins_ci_enforced_classification() -> Result<(), String> {
+     // The source-authoritative workflow topology keeps these commands local or
+     // advisory; they must not be presented as branch-protection gates.
+     assert!(!ci_enforced("release-readiness --version <version>")?);
+-    assert!(!ci_enforced("precommit")?);
+-    assert!(!ci_enforced("check-architecture")?);
+-    assert!(!ci_enforced("check-doc-artifacts")?);
+-    assert!(!ci_enforced("markdown-links")?);
++    assert!(ci_enforced("precommit")?);
++    assert!(ci_enforced("check-architecture")?);
++    assert!(ci_enforced("check-doc-artifacts")?);
++    assert!(ci_enforced("markdown-links")?);
+     assert!(!ci_enforced("goldens bless <name> --reason <reason>")?);
+     assert!(!ci_enforced("check-supply-chain")?);
+     Ok(())
+diff --git a/xtask/tests/source_promotion_workflow_contract.rs b/xtask/tests/source_promotion_workflow_contract.rs
+index bd58035c..e15daf41 100644
+--- a/xtask/tests/source_promotion_workflow_contract.rs
++++ b/xtask/tests/source_promotion_workflow_contract.rs
+@@ -1,5 +1,7 @@
+ use std::fs;
++use std::io::Write;
+ use std::path::PathBuf;
++use std::process::{Command, Stdio};
+ 
+ use serde_json::{Value, json};
+ 
+@@ -12,6 +14,38 @@ fn workflow_text() -> Result<String, String> {
+         .map_err(|error| format!("read source-promotion contract workflow: {error}"))
+ }
+ 
++fn jq_filter_matches(filter: &str, value: &Value) -> Result<bool, String> {
++    let mut child = Command::new("jq")
++        .args(["-e", filter])
++        .stdin(Stdio::piped())
++        .stdout(Stdio::null())
++        .stderr(Stdio::piped())
++        .spawn()
++        .map_err(|error| format!("start jq for source-promotion contract test: {error}"))?;
++    let input = serde_json::to_vec(value)
++        .map_err(|error| format!("serialize jq contract fixture: {error}"))?;
++    {
++        let mut stdin = child
++            .stdin
++            .take()
++            .ok_or_else(|| "jq contract test has no stdin".to_string())?;
++        stdin
++            .write_all(&input)
++            .map_err(|error| format!("write jq contract fixture: {error}"))?;
++    }
++    let output = child
++        .wait_with_output()
++        .map_err(|error| format!("wait for jq contract test: {error}"))?;
++    match output.status.code() {
++        Some(0) => Ok(true),
++        Some(1) => Ok(false),
++        code => Err(format!(
++            "jq contract filter failed with status {code:?}: {}",
++            String::from_utf8_lossy(&output.stderr).trim()
++        )),
++    }
++}
++
+ fn workflow_disposition_is_authorized(manifest: &Value, path: &str) -> bool {
+     let Some(dispositions) = manifest.get("dispositions").and_then(Value::as_array) else {
+         return false;
+@@ -107,3 +141,144 @@ fn workflow_rejection_reason_is_single_line_after_multiple_unreviewed_paths() ->
+     );
+     Ok(())
+ }
++
++#[test]
++fn verifier_receipt_schema_predicate_is_balanced() -> Result<(), String> {
++    let workflow = workflow_text()?;
++    let line = workflow
++        .lines()
++        .find(|line| line.contains("jq -e '") && line.contains("verified_through_parent_2"))
++        .ok_or_else(|| "missing verifier-receipt jq predicate".to_string())?;
++    let prefix = "jq -e '";
++    let suffix = "' \"$verification\"";
++    let start = line
++        .find(prefix)
++        .ok_or_else(|| "verifier predicate has no jq prefix".to_string())?
++        + prefix.len();
++    let end = line
++        .rfind(suffix)
++        .ok_or_else(|| "verifier predicate has no verification-file suffix".to_string())?;
++    let filter = &line[start..end];
++
++    let valid = json!({
++        "schema": "ripr.source_promotion_verification.v2",
++        "status": "verified",
++        "join_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
++        "source_main": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
++        "main_head": null,
++        "parents": [
++            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
++            "cccccccccccccccccccccccccccccccccccccccc"
++        ],
++        "tree": "dddddddddddddddddddddddddddddddddddddddd",
++        "preflight_sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
++        "resolution_manifest_sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
++        "merge_base": "1111111111111111111111111111111111111111",
++        "swarm_reachability": {
++            "all_reachable_count": 1,
++            "first_parent_count": 1,
++            "all_reachable_sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
++            "first_parent_ordered_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
++            "verified_through_parent_2": true
++        },
++        "release_metadata_surfaces": [],
++        "checks": {},
++        "failure_reasons": [],
++        "invalidation_rules": [],
++        "non_claims": []
++    });
++    assert!(
++        jq_filter_matches(filter, &valid)?,
++        "complete verifier-receipt jq predicate rejected a valid receipt"
++    );
++
++    let mut malformed = valid;
++    malformed["swarm_reachability"]["verified_through_parent_2"] = json!("true");
++    assert!(
++        !jq_filter_matches(filter, &malformed)?,
++        "verifier-receipt jq predicate accepted a non-boolean parent-2 proof"
++    );
++    Ok(())
++}
++
++#[test]
++fn normalized_contract_is_runner_owned_uploaded_then_enforced() -> Result<(), String> {
++    let workflow = workflow_text()?;
++    let (promotion_job, post_merge_job) = workflow
++        .split_once("\n  post-merge-reachability:\n")
++        .ok_or_else(|| "missing post-merge-reachability job".to_string())?;
++    let runner_out = "SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion";
++    let runner_path = "path: ${{ runner.temp }}/ripr-source-promotion";
++
++    for forbidden in [
++        "SOURCE_PROMOTION_OUT: target/ripr/source-promotion",
++        "path: target/ripr/source-promotion",
++    ] {
++        assert!(
++            !workflow.contains(forbidden),
++            "candidate checkout still owns promotion evidence: {forbidden}"
++        );
++    }
++    for (lane_name, lane) in [
++        ("promotion-contract", promotion_job),
++        ("post-merge-reachability", post_merge_job),
++    ] {
++        assert_eq!(
++            lane.matches(runner_out).count(),
++            2,
++            "{lane_name} must bind both verifier and receipt writer to runner-owned output"
++        );
++        assert_eq!(
++            lane.matches(runner_path).count(),
++            1,
++            "{lane_name} artifact upload must use the runner-owned receipt path"
++        );
++    }
++    for required in [
++        "SOURCE_PARENT: ${{ steps.inputs.outputs.source_parent }}",
++        "SOURCE_PROMOTION_CONTRACT: ${{ runner.temp }}/ripr-source-promotion/source-promotion-contract.json",
++    ] {
++        assert!(
++            promotion_job.contains(required),
++            "promotion contract missing runner-owned identity or receipt binding: {required}"
++        );
++    }
++
++    let upload = promotion_job
++        .find("- name: Upload SHA-bound promotion receipts")
++        .ok_or_else(|| "missing promotion receipt upload step".to_string())?;
++    let enforce = promotion_job
++        .find("- name: Enforce normalized source-promotion contract")
++        .ok_or_else(|| "missing terminal normalized-contract enforcement step".to_string())?;
++    assert!(
++        upload < enforce,
++        "rejected evidence must be uploaded before the hosted job fails"
++    );
++    assert!(
++        promotion_job[upload..enforce].contains("if: always()"),
++        "promotion receipt upload must run on rejected paths"
++    );
++    let post_merge_upload = post_merge_job
++        .find("- name: Upload SHA-bound post-merge receipts")
++        .ok_or_else(|| "missing post-merge receipt upload step".to_string())?;
++    assert!(
++        post_merge_job[post_merge_upload..].contains("if: always()"),
++        "post-merge receipt upload must run on rejected paths"
++    );
++
++    let enforcement = &promotion_job[enforce..];
++    for required in [
++        "if: always()",
++        ".schema == \"ripr.source_promotion_contract.v2\"",
++        ".status == \"verified\"",
++        ".validation.status == \"passed\"",
++        ".verifier_receipt_status == \"present\"",
++        ".verifier_exit_code == \"0\"",
++    ] {
++        assert!(
++            enforcement.contains(required),
++            "terminal enforcement missing: {required}"
++        );
++    }
++    Ok(())
++}

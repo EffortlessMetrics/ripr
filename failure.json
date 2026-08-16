@@ -1,0 +1,17 @@
+{
+  "schema": "ripr.source_promotion_j5_builder_failure.v1",
+  "status": "failed",
+  "phase": "create_closed_exact_body_pr",
+  "exit_code": 1,
+  "source_parent": "6cc5d6135593d9fb9a745eb215c5b0f92cbd14d5",
+  "swarm_parent": "83217e97ec6847db41d757f57279a8b1ca433fe6",
+  "j5": "7fcb62a3433424dddadd1afb47025ee284c5755e",
+  "j5_tree": "7a915ae9827358aab88eca6ddad746720cbe92a4",
+  "control_commit": "675636061680c2a7602e27960d7409fc3f6c83cf",
+  "candidate_branch": "promote/0.11.0-swarm-w7-6cc5d6135593-j5",
+  "control_branch": "release/0.11.0-promotion-control-6cc5d6135593-w7-j5",
+  "pr_number": "1569",
+  "claim_boundary": [
+    "No merge, version bump, public tag, publication, signing, marketplace mutation, release-secret use, or back-sync was performed."
+  ]
+}
