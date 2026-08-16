@@ -173,13 +173,54 @@ the file extension alone.
 
 ```text
 expect(value).toBe(...)            -> exact_value
-expect(value).toEqual(...)         -> deep_value
-expect(value).toStrictEqual(...)   -> deep_value
+expect(value).toEqual(...)         -> exact_value
+expect(value).toStrictEqual(...)   -> exact_value
 expect(fn).toThrow(...)            -> error_variant
 await expect(p).rejects.toThrow(...) -> promise_rejection
-assert.equal / strictEqual / deepStrictEqual -> exact_value / deep_value
-t.equal / t.deepEqual              -> exact_value / deep_value
+assert.equal / strictEqual / deepStrictEqual -> exact_value
+t.equal / t.deepEqual              -> exact_value
 ```
+
+#### Execution-context (`t.*`) assertion shapes
+
+AVA, tape, and `node:test` do not use the global `expect(...)`; they assert
+on the execution context passed as the test callback's first parameter
+(conventionally `t`):
+
+```text
+test('name', t => { t.is(actual, expected) })
+```
+
+These are recognized **only** when the member object identifier matches the
+callback's first parameter name (extracted from the `test(...)` / `it(...)`
+callback). This receiver gate is the fail-closed guard: an unrelated
+`helper.is(a, b)` or `validator.equal(x, y)` is **not** an assertion, because
+its receiver is not the test parameter. The argument order is
+`(actual, expected[, message])`, so `observed_expression` = arg 0 and
+`expected_value_or_variant` = arg 1 when it is a concrete literal.
+
+```text
+t.is                                -> exact_value (strong)      # AVA
+t.not                               -> relational_check (weak)   # AVA
+t.equal / t.strictEqual             -> exact_value (strong)      # tape / node:test
+t.notEqual / t.notStrictEqual       -> relational_check (weak)   # tape / node:test
+t.deepEqual                         -> exact_value (strong)      # shared
+t.notDeepEqual                      -> relational_check (weak)   # shared
+t.truthy / t.falsy / t.pass / t.fail / t.assert / t.ok / t.notOk -> smoke_only (smoke)
+t.throws / t.throwsAsync / t.notThrows / t.notThrowsAsync -> broad_error (weak)
+t.regex / t.notRegex / t.like / t.notLike -> relational_check (weak)
+<any other t.method>                -> not an oracle (fail-closed)
+```
+
+The v1 TypeScript adapter does not emit a separate `deep_value` oracle kind:
+positive deep equality forms are represented as `exact_value` / strong when the
+matcher is recognized and receiver-gated. Negated deep equality is relational /
+weak because it proves non-equality rather than the exact changed value.
+
+An unrecognized `t.method(...)` is **not** credited as an oracle (it yields
+no assertion at all), so a method ripr does not understand can never inflate
+a finding to `exposed`. A callback that takes no receiver parameter (the
+Jest/Vitest convention) never attempts `t.*` matching.
 
 Each extracted oracle carries `file:line`, `oracle_kind`,
 `observed_expression`, `expected_value_or_variant`, `confidence`, and a
@@ -201,6 +242,13 @@ typescript_dynamic_assertion_unresolved
 typescript_target_unresolved
 typescript_import_graph_unresolved
 ```
+
+`typescript_table_case_unresolved` is emitted only from a real table-case
+producer: an oracle-eligible `test.each(...)` / `it.each(...)` test whose
+matcher expected value is row-derived or otherwise dynamic. The finding may
+still carry useful preview evidence, but the adapter does not bind table rows
+to concrete expected values, so the limitation stays advisory and emits no
+repair packet by itself.
 
 ### Source-to-test ownership and the cross-language boundary
 
@@ -313,7 +361,7 @@ PR 9  bun_bridge.rs    cross-language bridge inventory (report-only)
 PR 10 classifier.rs    cross-language oracle routing
 PR 11 bun_bridge.rs    Bun stable-byte profile (consumes the adapter, never forks it)
 PR 12 dogfood          real TS evidence-to-repair attempts
-PR 13 reports          TypeScript route-quality slice
+PR 13 reports          TypeScript limitation leaderboard + route-quality slice
 ```
 
 ## Metrics
@@ -322,5 +370,14 @@ PR 13 reports          TypeScript route-quality slice
   proposed status of this contract until the wave implements and dogfoods
   it. Real capability metrics (packets attempted/improved, unknown-runner
   count, helper-gated count, cross-language unknown-bridge count) are
-  introduced by the route-quality PR and remain `not_available` until a
+  introduced by route-quality reports and remain `not_available` until a
   real producer populates them.
+- `typescript_limitation_leaderboard_reports` — `ripr reports ts-limitations`
+  can aggregate existing check-output limitation evidence by kind without
+  rerunning analysis or promoting TypeScript/JavaScript preview authority.
+- `language_adapter_typescript_false_actionable_audit` — the checked
+  TypeScript-family preview false-actionable audit corpus and the dogfood/report
+  projections track whether rows that must remain non-actionable accidentally
+  become packet-ready, actionable, or complete-packet-shaped. The metric remains
+  advisory and does not promote TypeScript/JavaScript support tiers, gates,
+  badge inputs, baselines, or RIPR Zero authority.

@@ -4,12 +4,16 @@
   "mode": "fast",
   "root": "fixtures/observation_verified_return_value/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:9d3e114d00b9708564ec384b4e9a75b92ee96912ec9bf93a1cbcca51a66bb7ab","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
     {
       "id": "probe:src_lib.rs:return_value:bc806f88",
       "classification": "exposed",
-      "severity": "info",
+      "severity": "warning",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:return_value:bc806f88",

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum XtaskCommand {
     Shape,
@@ -9,15 +11,19 @@ pub(crate) enum XtaskCommand {
     PrReady,
     Cockpit,
     PrTriageReport,
+    BranchInventory(Vec<String>),
     GhPrStatus(Vec<String>),
     CiBudget(Vec<String>),
     ModuleHealth(Vec<String>),
+    WindowsAdvisorySummary(Vec<String>),
     SuggestedFixes,
     Precommit,
+    CheckFast,
     CheckPr,
-    Fixtures(Option<String>),
+    Fixtures(Vec<String>),
     Goldens(Vec<String>),
     Metrics,
+    RustRepairTrustReport,
     TestOracleReport,
     TestEfficiencyReport,
     BadgeArtifacts,
@@ -28,9 +34,8 @@ pub(crate) enum XtaskCommand {
     RepoExposureReport,
     RepoExposureSummaryReport,
     RepoExposureLatencyReport,
+    TargetedRerunBenchmark(Vec<String>),
     RepoContractReport,
-    PrBody(Vec<String>),
-    Closeout(Vec<String>),
     EvidenceHealth,
     Lane1EvidenceAudit,
     EvidenceQualityScorecard,
@@ -42,10 +47,16 @@ pub(crate) enum XtaskCommand {
     LspCockpitReport,
     OperatorCockpitReport,
     ReleaseReadiness(Vec<String>),
+    ReleaseNegativeCorpus(Vec<String>),
+    BumpVersion(Vec<String>),
+    ReleaseControl(Vec<String>),
+    ReleaseDenominator(Vec<String>),
+    SourcePromotion(Vec<String>),
+    BackSync(Vec<String>),
+    ReleaseScope(Vec<String>),
     ReleaseServerArchive(Vec<String>),
     ReleaseServerManifest(Vec<String>),
     ReleaseUploadAssets(Vec<String>),
-    SourcePromotion(Vec<String>),
     TargetedTestOutcome(Vec<String>),
     MutationCalibration(Vec<String>),
     BunUbCalibration(Vec<String>),
@@ -64,7 +75,6 @@ pub(crate) enum XtaskCommand {
     Dogfood,
     EvalSweep(Vec<String>),
     Critic,
-    Goals(Vec<String>),
     Reports(Vec<String>),
     Cache(Vec<String>),
     Receipts(Vec<String>),
@@ -74,6 +84,7 @@ pub(crate) enum XtaskCommand {
     CiFast,
     CiFull,
     CheckStaticLanguage,
+    CheckAgentSkills,
     CheckNoPanicFamily(Vec<String>),
     CheckAllowAttributes,
     CheckLocalContext,
@@ -87,6 +98,7 @@ pub(crate) enum XtaskCommand {
     CheckFixtureContracts,
     CheckTraceability,
     CheckCapabilities,
+    CheckCampaign,
     CheckWorkspaceShape,
     CheckArchitecture,
     CheckPublicApi,
@@ -96,11 +108,10 @@ pub(crate) enum XtaskCommand {
     CheckDocIndex,
     CheckReadmeState,
     MarkdownLinks,
-    CheckCampaign,
     CheckPrShape,
     CheckGenerated,
     CheckCommandCatalog,
-    CheckEvidencePromotionHonesty,
+    CheckEvidencePromotionHonesty(Vec<String>),
     CheckBadgeDiffPolicy,
     CheckGeneratedClean,
     CheckVerificationContracts(Vec<String>),
@@ -114,6 +125,7 @@ pub(crate) enum XtaskCommand {
     CheckProductCopy,
     CheckPositioningLanguage,
     CheckDocRoles,
+    CheckReleaseTargets,
     VscodeCompile,
     VscodePackage,
     VscodeTest,
@@ -121,6 +133,7 @@ pub(crate) enum XtaskCommand {
     Package,
     PublishDryRun,
     Help(Vec<String>),
+    IssueIntake(Vec<String>),
     Unknown(String),
 }
 
@@ -141,16 +154,20 @@ impl XtaskCommand {
             "pr-ready" => Self::PrReady,
             "cockpit" => Self::Cockpit,
             "pr-triage-report" => Self::PrTriageReport,
+            "branch-inventory" => Self::BranchInventory(rest),
             "gh-pr-status" => Self::GhPrStatus(rest),
             "ci-budget" => Self::CiBudget(rest),
             "module-health" => Self::ModuleHealth(rest),
+            "windows-advisory-summary" => Self::WindowsAdvisorySummary(rest),
             "eval-sweep" => Self::EvalSweep(rest),
             "suggested-fixes" => Self::SuggestedFixes,
             "precommit" => Self::Precommit,
+            "check-fast" => Self::CheckFast,
             "check-pr" => Self::CheckPr,
-            "fixtures" => Self::Fixtures(rest.first().cloned()),
+            "fixtures" => Self::Fixtures(rest),
             "goldens" => Self::Goldens(rest),
             "metrics" => Self::Metrics,
+            "rust-repair-trust-report" => Self::RustRepairTrustReport,
             "test-oracle-report" | "check-test-oracles" => Self::TestOracleReport,
             "test-efficiency-report" => Self::TestEfficiencyReport,
             "badge-artifacts" => Self::BadgeArtifacts,
@@ -161,9 +178,8 @@ impl XtaskCommand {
             "repo-exposure-report" => Self::RepoExposureReport,
             "repo-exposure-summary-report" => Self::RepoExposureSummaryReport,
             "repo-exposure-latency-report" => Self::RepoExposureLatencyReport,
+            "targeted-rerun-benchmark" => Self::TargetedRerunBenchmark(rest),
             "repo-contract-report" => Self::RepoContractReport,
-            "pr-body" => Self::PrBody(rest),
-            "closeout" => Self::Closeout(rest),
             "evidence-health" => Self::EvidenceHealth,
             "lane1-evidence-audit" | "evidence-quality-audit" => Self::Lane1EvidenceAudit,
             "evidence-quality-scorecard" => Self::EvidenceQualityScorecard,
@@ -175,10 +191,16 @@ impl XtaskCommand {
             "lsp-cockpit-report" => Self::LspCockpitReport,
             "operator-cockpit" | "operator-cockpit-report" => Self::OperatorCockpitReport,
             "release-readiness" => Self::ReleaseReadiness(rest),
+            "release-negative-corpus" => Self::ReleaseNegativeCorpus(rest),
+            "bump-version" => Self::BumpVersion(rest),
+            "release-control" => Self::ReleaseControl(rest),
+            "release-denominator" => Self::ReleaseDenominator(rest),
+            "source-promotion" => Self::SourcePromotion(rest),
+            "back-sync" => Self::BackSync(rest),
+            "release-scope" => Self::ReleaseScope(rest),
             "release-server-archive" => Self::ReleaseServerArchive(rest),
             "release-server-manifest" => Self::ReleaseServerManifest(rest),
             "release-upload-assets" => Self::ReleaseUploadAssets(rest),
-            "source-promotion" => Self::SourcePromotion(rest),
             "targeted-test-outcome" => Self::TargetedTestOutcome(rest),
             "mutation-calibration" => Self::MutationCalibration(rest),
             "bun-ub-calibration" => Self::BunUbCalibration(rest),
@@ -198,7 +220,6 @@ impl XtaskCommand {
             "check-badge-endpoints" => Self::CheckBadgeEndpoints(rest),
             "dogfood" => Self::Dogfood,
             "critic" => Self::Critic,
-            "goals" => Self::Goals(rest),
             "reports" => Self::Reports(rest),
             "cache" => Self::Cache(rest),
             "receipts" => Self::Receipts(rest),
@@ -209,6 +230,7 @@ impl XtaskCommand {
             "ci-fast" => Self::CiFast,
             "ci-full" => Self::CiFull,
             "check-static-language" => Self::CheckStaticLanguage,
+            "check-agent-skills" => Self::CheckAgentSkills,
             "check-no-panic-family" => Self::CheckNoPanicFamily(rest),
             "check-allow-attributes" => Self::CheckAllowAttributes,
             "check-local-context" => Self::CheckLocalContext,
@@ -220,11 +242,12 @@ impl XtaskCommand {
             "check-spec-format" => Self::CheckSpecFormat,
             "check-spec-numbering" => Self::CheckSpecNumbering,
             "check-fixture-contracts" => Self::CheckFixtureContracts,
-            "check-evidence-promotion-honesty" => Self::CheckEvidencePromotionHonesty,
+            "check-evidence-promotion-honesty" => Self::CheckEvidencePromotionHonesty(rest),
             "check-traceability" | "check-spec-ids" | "check-behavior-manifest" => {
                 Self::CheckTraceability
             }
             "check-capabilities" => Self::CheckCapabilities,
+            "check-campaign" | "check-goals" => Self::CheckCampaign,
             "check-workspace-shape" => Self::CheckWorkspaceShape,
             "check-architecture" => Self::CheckArchitecture,
             "check-public-api" => Self::CheckPublicApi,
@@ -234,7 +257,6 @@ impl XtaskCommand {
             "check-doc-index" => Self::CheckDocIndex,
             "check-readme-state" => Self::CheckReadmeState,
             "markdown-links" => Self::MarkdownLinks,
-            "check-campaign" | "check-goals" => Self::CheckCampaign,
             "check-pr-shape" => Self::CheckPrShape,
             "check-generated" => Self::CheckGenerated,
             "check-command-catalog" => Self::CheckCommandCatalog,
@@ -251,12 +273,14 @@ impl XtaskCommand {
             "check-product-copy" => Self::CheckProductCopy,
             "check-positioning-language" => Self::CheckPositioningLanguage,
             "check-doc-roles" => Self::CheckDocRoles,
+            "check-release-targets" => Self::CheckReleaseTargets,
             "vscode-compile" => Self::VscodeCompile,
             "vscode-package" => Self::VscodePackage,
             "vscode-test" => Self::VscodeTest,
             "vscode-test-e2e" => Self::VscodeTestE2e,
             "package" => Self::Package,
             "publish-dry-run" => Self::PublishDryRun,
+            "issue-intake" => Self::IssueIntake(rest),
             "help" => Self::Help(rest),
             other => Self::Unknown(other.to_string()),
         }
@@ -270,7 +294,12 @@ pub(crate) fn print_help(args: &[String]) -> Result<(), String> {
 
 pub(crate) fn help_message(args: &[String]) -> Result<String, String> {
     if args.is_empty() {
-        return Ok(format_top_level_help(&known_commands()));
+        let ci_enforced: BTreeSet<&str> = command_catalog()
+            .into_iter()
+            .filter(|entry| entry.ci_enforced)
+            .map(|entry| entry.command)
+            .collect();
+        return Ok(format_top_level_help(&known_commands(), &ci_enforced));
     }
 
     let query = args.join(" ");
@@ -307,17 +336,22 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "pr-ready",
         "cockpit",
         "pr-triage-report",
+        "branch-inventory [--input <path>] [--dry-run]",
+        "branch-inventory apply --plan <path> --digest <digest>",
         "gh-pr-status --pr <number>",
         "ci-budget [--workflow <name>] [--limit <n>] [--input <path>]",
         "module-health [--threshold <n>]",
+        "windows-advisory-summary --run1 <path> --run1-status <path> --run2 <path> --run2-status <path>",
         "suggested-fixes",
         "precommit",
         "check-pr",
         "fixtures [name]",
+        "fixtures new <name>",
         "goldens check",
         "goldens bless <name> --reason <reason>",
         "golden-drift",
         "metrics",
+        "rust-repair-trust-report",
         "test-oracle-report",
         "check-test-oracles",
         "test-efficiency-report",
@@ -329,9 +363,8 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "repo-exposure-report",
         "repo-exposure-summary-report",
         "repo-exposure-latency-report",
+        "targeted-rerun-benchmark --root <path> --changed-test <path> [--samples <n>] [--timeout-ms <n>]",
         "repo-contract-report",
-        "pr-body --work-item <id>",
-        "closeout --goal <goal-id>",
         "evidence-health",
         "lane1-evidence-audit",
         "evidence-quality-audit",
@@ -348,6 +381,18 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "operator-cockpit",
         "operator-cockpit-report",
         "release-readiness --version <version>",
+        "release-negative-corpus --version <version>",
+        "bump-version <version>",
+        "release-control --input <captured-snapshot.json>",
+        "release-control --live",
+        "release-denominator --input <ledger.json>",
+        "release-denominator --live --input <ledger.json>",
+        "release-denominator --capture-github --input <ledger.json> --output <capture.json>",
+        "release-denominator --import-github --input <ledger.json> --capture <capture.json> --output <ledger.json>",
+        "release-denominator --apply-adjudication --input <ledger.json> --decisions <adjudication.json> --output <ledger.json>",
+        "source-promotion preflight --source-parent <sha> --swarm-parent <sha> --swarm-ref <protected-tag-ref> --source-repo <path> --swarm-repo <path> --version <version> [--resolved-tree <full-tree-sha>] [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
+        "back-sync verify --swarm-before <sha> --source-release-head <sha> --source-release-tag <tag> --join <sha> --tree <tree-sha> --swarm-repo <path> --source-repo <path> --version <version> --release-receipt <path> --policy-before <path> --policy-exception <path> --policy-after <path> [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
+        "release-scope --input <scope.json>",
         "release-server-archive --version <version> --target <triple> --executable <name> --archive <zip|tar.gz>",
         "release-server-manifest --version <version> --repository <owner/repo>",
         "release-upload-assets --version <version>",
@@ -362,7 +407,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "impacted-evidence [--pr-evidence <path>] [--label <label>] [--labels <csv>] [--check]",
         "ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check]",
         "first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--out-dir <path>] [--check]",
-        "ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check]",
+        "ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check-output <path>] [--check]",
         "ripr-pr-summary [--check]",
         "ripr-annotations [--comments <path>] [--out <path>] [--check]",
         "badges [--check] [--gap-ledger <path>]",
@@ -370,7 +415,6 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "check-badge-endpoints",
         "dogfood",
         "critic",
-        "goals status|next|report",
         "reports index",
         "cache report",
         "cache gc [--dry-run] [--max-size-gb <n>] [--ttl-days <n>]",
@@ -381,6 +425,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "ci-fast",
         "ci-full",
         "check-static-language",
+        "check-agent-skills",
         "check-no-panic-family [--propose]",
         "check-allow-attributes",
         "check-local-context",
@@ -392,11 +437,12 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "check-spec-format",
         "check-spec-numbering",
         "check-fixture-contracts",
-        "check-evidence-promotion-honesty",
+        "check-evidence-promotion-honesty [--pinned-external] [--clone] [--case <id>] [--checkout-root <path>] [--timeout-secs <n>]",
         "check-traceability",
         "check-spec-ids",
         "check-behavior-manifest",
         "check-capabilities",
+        "check-campaign",
         "check-workspace-shape",
         "check-architecture",
         "check-public-api",
@@ -406,8 +452,6 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "check-doc-index",
         "check-readme-state",
         "markdown-links",
-        "check-campaign",
-        "check-goals",
         "check-pr-shape",
         "check-generated",
         "check-command-catalog",
@@ -424,12 +468,14 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "check-product-copy",
         "check-positioning-language",
         "check-doc-roles",
+        "check-release-targets",
         "vscode-compile",
         "vscode-package",
         "vscode-test",
         "vscode-test-e2e",
         "package",
         "publish-dry-run",
+        "issue-intake --issue <number>",
     ]
 }
 
@@ -439,6 +485,7 @@ pub(crate) struct CommandCatalogEntry {
     pub(crate) mutability: &'static str,
     pub(crate) writes: &'static str,
     pub(crate) judgment_required: bool,
+    pub(crate) ci_enforced: bool,
     pub(crate) notes: &'static str,
 }
 
@@ -449,12 +496,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "mutating",
             "source files and target/ripr/reports",
             false,
+            false,
             "Runs deterministic local shaping such as formatting and repo shape report generation.",
         ),
         command_entry(
             "fix-pr",
             "mutating",
             "source files and target/ripr/reports",
+            false,
             false,
             "Runs safe PR shaping and refreshes the reviewer packet.",
         ),
@@ -463,12 +512,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "mutating",
             ".git/hooks",
             false,
+            false,
             "Installs repo-managed local hooks.",
         ),
         command_entry(
             "commands",
             "report_only",
             "target/ripr/reports/commands.{md,json}",
+            false,
             false,
             "Writes this command mutability catalog.",
         ),
@@ -477,12 +528,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/pr-summary.md",
             false,
+            false,
             "Summarizes the current diff for review.",
         ),
         command_entry(
             "proof route [--base <rev>] [--head <rev>]",
             "report_only",
             "target/ripr/reports/proof-route.{json,md}",
+            false,
             false,
             "Maps changed files onto proof packs and reports required, advisory, skipped, and never-routed CI lanes; read-only and advisory, it executes no proof commands and changes no CI behavior.",
         ),
@@ -491,12 +544,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/proof-preflight.{json,md} plus the generated evidence the executed proof commands write under target/",
             false,
+            false,
             "Executes the routed proof packs' required commands locally (deduplicated, fail-fast; advisory commands are listed but never run) and writes a local, advisory preflight receipt; it does not replace CI and changes no CI behavior.",
         ),
         command_entry(
             "pr-ready",
             "report_only",
             "target/ripr/reports/pr-ready.{md,json}, target/ripr/reports/index.{md,json}, and composed repo-ops reports",
+            false,
             false,
             "Composes local readiness signals and points to safe next action, receipt state, and check-pr proof before opening or updating a PR.",
         ),
@@ -505,6 +560,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "external_state_read",
             "target/ripr/reports/cockpit.{md,json}, target/ripr/reports/index.{md,json}, and composed repo-ops reports",
             false,
+            false,
             "Composes repo-level operating packets into an advisory front panel that names the next safe command and stop states before more work.",
         ),
         command_entry(
@@ -512,12 +568,30 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "external_state_read",
             "target/ripr/reports/pr-triage.{md,json}",
             false,
+            false,
             "Reads GitHub PR metadata and writes an advisory queue report.",
+        ),
+        command_entry(
+            "branch-inventory [--input <path>] [--dry-run]",
+            "external_state_read",
+            "target/ripr/reports/branch-inventory.{md,json}, branch-inventory-input.json, and branch-inventory-plan.json",
+            false,
+            false,
+            "Regenerates the remote-branch inventory from current GitHub/Git data (full all-state PR pagination; classification by head branch name, never Git ancestry) and writes a deterministic review artifact plus a separate digest-bound deletion plan; read-only and never deletes branches.",
+        ),
+        command_entry(
+            "branch-inventory apply --plan <path> --digest <digest>",
+            "external_state_mutating",
+            "remote branch refs (non-force deletion only) and target/ripr/reports/branch-inventory-cleanup.{md,json}",
+            true,
+            false,
+            "Applies an exact reviewed deletion plan: refuses a regenerated or changed plan (sha256 digest), rechecks open PR heads and branch SHAs immediately before each deletion, uses non-force ref deletion bound to the rechecked SHA (--force-with-lease=<ref>:<sha>, never plain --force), refuses to run under CI, and writes a cleanup receipt; never wired into CI, hooks, or other commands.",
         ),
         command_entry(
             "gh-pr-status --pr <number>",
             "external_state_read",
             "target/ripr/reports/gh-pr-status.{md,json}",
+            false,
             false,
             "Reads one GitHub PR and reports safe next action.",
         ),
@@ -526,6 +600,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "external_state_read",
             "target/ripr/reports/ci-budget.{json,md}",
             false,
+            false,
             "Reads recent routed-workflow runs through gh (or a supplied --input JSON file) and writes an advisory CI budget and merge-queue hygiene report; it separates disk-guard infrastructure tempfails (issue #1058) from product failures, never reruns or mutates any run, and changes no CI behavior.",
         ),
         command_entry(
@@ -533,12 +608,22 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/module-health.{json,md}",
             false,
+            false,
             "Walks crates/ripr/src/ and xtask/src/ for *.rs files, counts lines per file, and writes an advisory ranked report flagging files over the configurable line threshold (default 2000); always exits 0, never mutates source, and is never wired into CI gates.",
+        ),
+        command_entry(
+            "windows-advisory-summary --run1 <path> --run1-status <path> --run2 <path> --run2-status <path>",
+            "report_only",
+            "stdout only",
+            false,
+            false,
+            "Turns two `cargo test --workspace --no-fail-fast` logs plus their captured cargo exit statuses into a Markdown verdict on stdout. Classifies each failing test from a three-state observation per run (failed / observed pass / not observed) into repeated_failure, unstable, or masked_unknown, so a test absent from one run is never counted as having passed there. Derives run state from the real exit status rather than log prose. Exits non-zero when a log or status file is missing, because the lane's test outcomes are advisory but its evidence is not. Reads only the supplied files and writes none.",
         ),
         command_entry(
             "suggested-fixes",
             "report_only",
             "target/ripr/reports/suggested-fixes.{patch,md}",
+            false,
             false,
             "Emits deterministic repair suggestions only; never writes badge values, goldens, baselines, suppressions, dependency exceptions, or schema changes.",
         ),
@@ -547,12 +632,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/precommit.md",
             false,
-            "Cheap local guardrail for formatting and policy checks.",
+            true,
+            "Cheap local guardrail for formatting and policy checks; local-only in the source workflow topology.",
         ),
         command_entry(
             "check-pr",
             "non_mutating_check",
             "target/ripr/reports and target/ripr/receipts",
+            false,
             false,
             "Review-ready gate; must not mutate tracked files.",
         ),
@@ -561,6 +648,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports and fixture actual outputs under target",
             false,
+            true,
             "Runs fixture checks and writes local evidence.",
         ),
         command_entry(
@@ -568,6 +656,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/goldens.md",
             false,
+            true,
             "Checks golden drift without updating expected outputs.",
         ),
         command_entry(
@@ -575,12 +664,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "mutating",
             "fixtures/**/expected/**",
             true,
+            false,
             "Updates golden expected outputs and requires explicit review reason.",
         ),
         command_entry(
             "golden-drift",
             "report_only",
             "target/ripr/reports/golden-drift.{md,json}",
+            false,
             false,
             "Reports golden drift without blessing changes.",
         ),
@@ -589,12 +680,22 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/metrics.{md,json}",
             false,
+            false,
             "Writes capability metrics reports.",
+        ),
+        command_entry(
+            "rust-repair-trust-report",
+            "report_only",
+            "target/ripr/reports/rust-repair-trust.{md,json}",
+            false,
+            false,
+            "Scores only authorized, receipt-backed Rust repair attempts; incomplete input stays limited.",
         ),
         command_entry(
             "test-oracle-report",
             "report_only",
             "target/ripr/reports/test-oracles.{md,json}",
+            false,
             false,
             "Writes advisory test-oracle report.",
         ),
@@ -603,12 +704,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/test-oracles.{md,json}",
             false,
+            false,
             "Alias for test-oracle-report.",
         ),
         command_entry(
             "test-efficiency-report",
             "report_only",
             "target/ripr/reports/test-efficiency.{md,json}",
+            false,
             false,
             "Writes advisory test-efficiency report.",
         ),
@@ -617,12 +720,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports",
             false,
+            false,
             "Writes PR-scoped badge evidence under target.",
         ),
         command_entry(
             "repo-badge-artifacts [--gap-ledger <path>]",
             "report_only",
             "target/ripr/reports",
+            false,
             false,
             "Writes repo-scoped badge evidence under target.",
         ),
@@ -631,12 +736,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/badge-basis.{json,md}",
             false,
+            false,
             "Audits public badge endpoint counts, current repo badge basis, seam-native inventory pressure, and the recommended actionable gap projection without editing badges/*.json; --include-seam-classes opts into the expensive full class breakdown.",
         ),
         command_entry(
             "ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]",
             "report_only",
             "target/ripr/reports/ripr-plus.{json,md}",
+            false,
             false,
             "Writes the repo-wide RIPR+ quality receipt from bounded repo-exposure-summary-json canonical actionable gaps, not raw seam inventory; --repo-exposure-summary reuses a downstream-consumable bounded summary artifact, and --gap-ledger uses an existing gap decision ledger through repo-badge-json to avoid an expensive fresh repo scan.",
         ),
@@ -645,12 +752,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/repo-seams.{json,md}",
             false,
+            false,
             "Writes repo seam inventory reports.",
         ),
         command_entry(
             "repo-exposure-report",
             "report_only",
             "target/ripr/reports/repo-exposure.{json,md}",
+            false,
             false,
             "Writes full evidence-heavy repo exposure reports for explicit deep inspection.",
         ),
@@ -659,6 +768,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/repo-exposure-summary.json",
             false,
+            false,
             "Writes the bounded repo exposure summary JSON for ordinary local metrics, planning, and CI-safe inspection.",
         ),
         command_entry(
@@ -666,33 +776,30 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/repo-exposure-latency.{json,md}",
             false,
+            false,
             "Writes repo exposure latency reports.",
+        ),
+        command_entry(
+            "targeted-rerun-benchmark --root <path> --changed-test <path> [--samples <n>] [--timeout-ms <n>]",
+            "report_only",
+            "target/ripr/reports/targeted-rerun-benchmark.{json,md}",
+            false,
+            false,
+            "Runs a bounded cold full, cold targeted, warm targeted, explicit cache-reset invalidation, and parity comparison benchmark for SPEC-0123.",
         ),
         command_entry(
             "repo-contract-report",
             "report_only",
             "target/ripr/reports/source-of-truth-graph.{md,json}",
             false,
-            "Writes the source-of-truth contract graph report.",
-        ),
-        command_entry(
-            "pr-body --work-item <id>",
-            "report_only",
-            "target/ripr/reports/source-of-truth-pr-body.md",
             false,
-            "Writes a PR body scaffold from the active goal work item.",
-        ),
-        command_entry(
-            "closeout --goal <goal-id>",
-            "mutating",
-            "docs/handoffs/<date>-<goal-id>-closeout.md and .ripr/goals/archive/<date>-<goal-id>.toml",
-            true,
-            "Writes a closeout scaffold and archived active-goal manifest for maintainer review.",
+            "Writes the source-of-truth contract graph report.",
         ),
         command_entry(
             "evidence-health",
             "report_only",
             "target/ripr/reports/evidence-health.{json,md}",
+            false,
             false,
             "Writes evidence-health reports.",
         ),
@@ -701,12 +808,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/lane1-evidence-audit.{json,md}",
             false,
+            false,
             "Writes Lane 1 evidence audit reports.",
         ),
         command_entry(
             "evidence-quality-audit",
             "report_only",
             "target/ripr/reports/lane1-evidence-audit.{json,md}",
+            false,
             false,
             "Alias for lane1-evidence-audit.",
         ),
@@ -715,12 +824,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/evidence-quality-scorecard.{json,md}",
             false,
+            false,
             "Writes evidence-quality scorecard reports.",
         ),
         command_entry(
             "evidence-quality-trend [--current <path>] [--previous <path>]",
             "report_only",
             "target/ripr/reports/evidence-quality-trend.{json,md}",
+            false,
             false,
             "Writes evidence-quality trend reports.",
         ),
@@ -729,12 +840,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/actionable-gap-outcomes.{json,md}",
             false,
+            false,
             "Joins actionable gap packets with optional receipt and targeted-test outcome artifacts.",
         ),
         command_entry(
             "agent-seam-packets [root]",
             "report_only",
             "target/ripr/reports/agent-seam-packets.json",
+            false,
             false,
             "Writes agent seam packets under target.",
         ),
@@ -743,12 +856,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/swarm-plan.{json,md}",
             false,
+            false,
             "Ranks existing actionable canonical gap packets into swarm-ready and blocked repair candidates; does not edit files, run tests, call providers, create receipts, or infer work from raw findings.",
         ),
         command_entry(
             "ripr-swarm attempt --packet <id> --dry-run [--actionable-gaps <path>]",
             "report_only",
             "stdout",
+            false,
             false,
             "Prints one bounded swarm repair packet for operator handoff without editing files, running tests, calling providers, or creating receipts.",
         ),
@@ -757,12 +872,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/swarm-attempt-ledger.{json,md}",
             false,
+            false,
             "Builds durable attempt history from swarm plan, outcome, prior ledger, and real repair attempt artifacts without executing repairs.",
         ),
         command_entry(
             "ripr-swarm readiness [--swarm-plan <path>] [--actionable-gap-outcomes <path>] [--attempt-ledger <path>]",
             "report_only",
             "target/ripr/reports/swarm-readiness.{json,md}",
+            false,
             false,
             "Rolls up swarm plan, actionable-gap outcome, and attempt-ledger artifacts into advisory repair-coordination readiness counts and next actions.",
         ),
@@ -771,12 +888,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/route-quality.{json,md}",
             false,
+            false,
             "Surfaces repair-route quality rows as a standalone report (RIPR-SPEC-0080). Reads from the swarm-attempt-ledger artifact; does not execute repairs or recompute attempt counts.",
         ),
         command_entry(
             "lsp-cockpit-report",
             "report_only",
             "target/ripr/reports/lsp-cockpit.{json,md}",
+            false,
             false,
             "Writes LSP cockpit reports.",
         ),
@@ -785,12 +904,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/operator-cockpit.{json,md}",
             false,
+            false,
             "Writes operator cockpit reports.",
         ),
         command_entry(
             "operator-cockpit-report",
             "report_only",
             "target/ripr/reports/operator-cockpit.{json,md}",
+            false,
             false,
             "Alias for operator-cockpit.",
         ),
@@ -799,13 +920,111 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/release-readiness.{json,md}",
             false,
+            false,
             "Writes release-readiness evidence; does not publish.",
+        ),
+        command_entry(
+            "release-negative-corpus --version <version>",
+            "report_only",
+            "target/ripr/reports/release-negative-corpus.{json,md}",
+            false,
+            false,
+            "Runs the installed candidate through the integrated negative corpus for readiness-chain authority (#2824): one mutation per case, closed reason tokens, byte-exact restoration, and control reruns; retains per-case failure receipts and writes the case matrix.",
+        ),
+        command_entry(
+            "bump-version <version>",
+            "mutating",
+            "Cargo.toml and editor version manifests",
+            true,
+            false,
+            "Updates the workspace release version and both VS Code manifest version surfaces after fail-closed consistency checks; validates Cargo metadata and rolls back on failure.",
+        ),
+        command_entry(
+            "release-control --input <captured-snapshot.json>",
+            "report_only",
+            "target/ripr/reports/release-control.{json,md}",
+            false,
+            false,
+            "Replays the historical captured 0.11 release lens for PR dispositions; missing or contradictory authority input fails closed and the command never selects the live-head candidate, merges, closes, or publishes.",
+        ),
+        command_entry(
+            "release-control --live",
+            "external_state_read",
+            "target/ripr/reports/release-control.{json,md}",
+            false,
+            false,
+            "Collects current GitHub/main observations through bounded read-only adapters; incomplete portfolio or claim authority remains reconcile_required, and the report never substitutes for the transaction-boundary live-head pin.",
+        ),
+        command_entry(
+            "release-denominator --input <ledger.json>",
+            "report_only",
+            "target/ripr/reports/release-denominator.{json,md}",
+            false,
+            false,
+            "Validates a captured historical supplemental release denominator ledger without selecting or qualifying the live-head candidate.",
+        ),
+        command_entry(
+            "release-denominator --live --input <ledger.json>",
+            "external_state_read",
+            "target/ripr/reports/release-denominator.{json,md}",
+            false,
+            false,
+            "Reconciles a historical supplemental release denominator ledger with bounded live Git facts; it does not select the active release head.",
+        ),
+        command_entry(
+            "release-denominator --capture-github --input <ledger.json> --output <capture.json>",
+            "external_state_read",
+            "<capture.json>",
+            false,
+            false,
+            "Captures replayable typed PR, issue, and body-reference authority from GitHub for the exact ledger range; captured references remain unreviewed until adjudicated.",
+        ),
+        command_entry(
+            "release-denominator --import-github --input <ledger.json> --capture <capture.json> --output <ledger.json>",
+            "report_only",
+            "<ledger.json>",
+            false,
+            false,
+            "Imports an exact GitHub capture into a replayable denominator ledger and converts inherited blanket post-cutoff exclusions into explicit pending operator decisions.",
+        ),
+        command_entry(
+            "release-denominator --apply-adjudication --input <ledger.json> --decisions <adjudication.json> --output <ledger.json>",
+            "report_only",
+            "<ledger.json>",
+            false,
+            false,
+            "Applies a reviewed, range-complete #2832 adjudication manifest through the pinned provisional cutoff without qualifying a candidate.",
+        ),
+        command_entry(
+            "source-promotion preflight --source-parent <sha> --swarm-parent <sha> --swarm-ref <protected-tag-ref> --source-repo <path> --swarm-repo <path> --version <version> [--resolved-tree <full-tree-sha>] [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
+            "external_state_read",
+            "<out>/source-promotion-preflight.{json,md}",
+            false,
+            false,
+            "Validates exact source/swarm parents, repository identity and reachability, deterministic ancestry counts/digests, and a disposable merge-tree conflict inventory; it never mutates either repository, constructs a join, changes versions, or publishes.",
+        ),
+        command_entry(
+            "back-sync verify --swarm-before <sha> --source-release-head <sha> --source-release-tag <tag> --join <sha> --tree <tree-sha> --swarm-repo <path> --source-repo <path> --version <version> --release-receipt <path> --policy-before <path> --policy-exception <path> --policy-after <path> [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
+            "external_state_read",
+            "<out>/back-sync-verification.{json,md}",
+            true,
+            false,
+            "Verifies the exact ancestry-preserving source-to-swarm back-sync object, release tag and policy-transition evidence; it writes only deterministic receipts and never mutates repository refs, settings, or publication state.",
+        ),
+        command_entry(
+            "release-scope --input <scope.json>",
+            "report_only",
+            "target/ripr/reports/release-scope.{json,md}",
+            false,
+            false,
+            "Verifies a candidate-only 0.11 execution-surface disposition against the named commit and candidate parent; it never constructs, merges, or publishes a candidate.",
         ),
         command_entry(
             "release-server-archive --version <version> --target <triple> --executable <name> --archive <zip|tar.gz>",
             "mutating",
             "target/release artifacts",
             false,
+            true,
             "Builds local release server archive artifacts.",
         ),
         command_entry(
@@ -813,12 +1032,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "mutating",
             "target/release artifacts",
             false,
+            true,
             "Builds local release server manifest artifacts.",
         ),
         command_entry(
             "release-upload-assets --version <version>",
             "external_state_mutating",
             "GitHub release assets",
+            true,
             true,
             "Uploads release assets; requires explicit release approval.",
         ),
@@ -827,12 +1048,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/source-promotion/source-promotion-verification.{json,md} or explicit --out <dir>",
             false,
+            false,
             "Verifies an exact history-preserving join, reviewed resolution manifest, ancestry digests, and metadata identity without constructing or mutating Git refs.",
         ),
         command_entry(
             "targeted-test-outcome --before <path> --after <path>",
             "report_only",
             "target/ripr/reports/targeted-test-outcome.{json,md}",
+            false,
             false,
             "Writes targeted-test outcome receipts under target.",
         ),
@@ -841,12 +1064,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/mutation-calibration.{json,md}",
             false,
+            false,
             "Imports supplied runtime mutation results into advisory reports; does not run mutation testing.",
         ),
         command_entry(
             "bun-ub-calibration [--corpus <path>] [--out <path>] [--out-md <path>]",
             "report_only",
             "target/ripr/reports/bun-ub-calibration.{json,md} or explicit --out paths",
+            false,
             false,
             "Writes advisory Bun UB TypeScript calibration reports; does not run Bun, TypeScript, mutation, providers, generated tests, or source edits.",
         ),
@@ -855,12 +1080,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/bun-ub-preview-summary.{json,md} or explicit --out paths",
             false,
+            false,
             "Writes a compact advisory Bun UB preview summary from existing calibration, graph, and dogfood data; does not run Bun, TypeScript, mutation, providers, generated tests, or source edits.",
         ),
         command_entry(
             "configured-bridge-inventory [--graph-corpus <path>] [--out <path>] [--out-md <path>]",
             "report_only",
             "target/ripr/reports/configured-bridge-inventory.{json,md} or explicit --out paths",
+            false,
             false,
             "Writes a report-only configured bridge inventory from existing cross-language oracle graph data; does not infer reachability, create repair packets, suggest placement from missing inventory rows, run Bun or TypeScript, create gates/badges, or promote support status.",
         ),
@@ -869,12 +1096,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports or explicit --out",
             false,
+            false,
             "Writes recommendation calibration reports.",
         ),
         command_entry(
             "sarif-policy --current <path> [--baseline <path>]",
             "report_only",
             "target/ripr/reports/sarif-policy.{json,md}",
+            false,
             false,
             "Writes advisory SARIF policy report; blocking only if caller requests a failing policy mode.",
         ),
@@ -883,6 +1112,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "argument_dependent",
             "target/ripr/reports or check-only",
             false,
+            true,
             "Writes or checks impacted-evidence reports depending on --check.",
         ),
         command_entry(
@@ -890,6 +1120,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "argument_dependent",
             "target/ripr/reports or check-only",
             false,
+            true,
             "Writes or checks PR evidence packets depending on --check.",
         ),
         command_entry(
@@ -897,13 +1128,15 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "argument_dependent",
             "target/ripr/reports or check-only",
             false,
+            false,
             "Writes the start-here packet when --check is absent; checks existing packets when --check is present. The packet names one repairable gap, fallback state, verify command, receipt command, and receipt path.",
         ),
         command_entry(
-            "ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check]",
+            "ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check-output <path>] [--check]",
             "argument_dependent",
             "target/ripr/reports or check-only",
             false,
+            true,
             "Writes or checks review-comment wrapper output depending on --check.",
         ),
         command_entry(
@@ -911,6 +1144,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "argument_dependent",
             "target/ripr/reports or check-only",
             false,
+            true,
             "Writes or checks PR summary output depending on --check.",
         ),
         command_entry(
@@ -918,12 +1152,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "argument_dependent",
             "target/ripr/reports or explicit --out",
             false,
+            true,
             "Writes or checks annotation output depending on --check.",
         ),
         command_entry(
             "badges",
             "mutating",
             "badges/*.json and target/ripr/reports",
+            false,
             false,
             "Refreshes committed public badge endpoint JSON; use only in explicit badge refresh work.",
         ),
@@ -932,12 +1168,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports",
             false,
+            false,
             "Compares generated badge endpoint output without updating committed badges/*.json.",
         ),
         command_entry(
             "update-badge-endpoints",
             "mutating",
             "badges/*.json",
+            false,
             false,
             "Refreshes committed public badge endpoint JSON; use only in explicit badge refresh work.",
         ),
@@ -946,12 +1184,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/badge-endpoints.md",
             false,
+            false,
             "Checks committed public badge endpoint JSON against generated target output.",
         ),
         command_entry(
             "dogfood",
             "report_only",
             "target/ripr/dogfood and target/ripr/reports",
+            false,
             false,
             "Writes repo-local dogfood evidence and receipts under target.",
         ),
@@ -960,19 +1200,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/critic.{md,json}",
             false,
-            "Writes advisory reviewer-risk report.",
-        ),
-        command_entry(
-            "goals status|next|report",
-            "report_only",
-            "target/ripr/reports/goals*.md",
             false,
-            "Reports active goal state without changing manifests.",
+            "Writes advisory reviewer-risk report.",
         ),
         command_entry(
             "reports index",
             "report_only",
             "target/ripr/reports/index.{md,json}",
+            false,
             false,
             "Indexes generated report packets under target.",
         ),
@@ -981,12 +1216,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "stdout and target/ripr/reports/cache-report.{md,json}",
             false,
+            false,
             "Reports target/ripr/cache families, largest files, and sharded cache sets without reading or deleting source, build, report, receipt, PR, review, workflow, or agent artifacts.",
         ),
         command_entry(
             "cache gc [--dry-run] [--max-size-gb <n>] [--ttl-days <n>]",
             "argument_dependent",
             "target/ripr/cache and target/ripr/reports/cache-gc.{md,json}",
+            false,
             false,
             "Depending on --dry-run, deletes only selected files under target/ripr/cache or writes the exact deletion plan without deleting files.",
         ),
@@ -995,12 +1232,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "argument_dependent",
             "target/ripr/receipts and target/ripr/reports/receipts.md",
             false,
+            false,
             "Writes receipts by default; checks existing receipts with `receipts check`.",
         ),
         command_entry(
             "doctor",
             "report_only",
             "target/ripr/reports/worktree-doctor.md",
+            false,
             false,
             "Shortcut for worktree doctor; use before first-pr when setup, missing artifacts, stale evidence, or wrong-root state is unclear.",
         ),
@@ -1009,12 +1248,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/worktree-doctor.md",
             false,
+            false,
             "Writes advisory setup and worktree hygiene status before choosing a start-here repair path.",
         ),
         command_entry(
             "specs next",
             "report_only",
             "stdout",
+            false,
             false,
             "Prints the next available RIPR-SPEC ID.",
         ),
@@ -1023,12 +1264,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports and target/ripr/receipts",
             false,
+            false,
             "Runs the fast CI lane and writes local receipts.",
         ),
         command_entry(
             "ci-full",
             "non_mutating_check",
             "target/ripr/reports and target/ripr/receipts",
+            false,
             false,
             "Runs the full CI lane and writes local receipts.",
         ),
@@ -1037,13 +1280,23 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/static-language.md",
             false,
+            true,
             "Checks static language policy.",
+        ),
+        command_entry(
+            "check-agent-skills",
+            "non_mutating_check",
+            "target/ripr/reports/agent-skills.{md,json}",
+            false,
+            true,
+            "Checks both Codex and Claude instruction roots and their six canonical skills for structural validity, provider separation, retired orchestration drift, sibling references, and required yielding states; it does not enforce prose symmetry or model choices.",
         ),
         command_entry(
             "check-no-panic-family [--propose]",
             "argument_dependent",
             "target/ripr/reports or proposal output",
             false,
+            true,
             "Checks panic-family policy; --propose only emits proposed allowlist material for review.",
         ),
         command_entry(
@@ -1051,6 +1304,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports",
             false,
+            true,
             "Checks allow-attribute policy.",
         ),
         command_entry(
@@ -1058,6 +1312,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/local-context.json",
             false,
+            true,
             "Checks local-context leak policy.",
         ),
         command_entry(
@@ -1065,12 +1320,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/file-policy.md",
             false,
+            true,
             "Checks file policy.",
         ),
         command_entry(
             "rust-conversion-candidates",
             "report_only",
             "target/ripr/reports/rust-conversion-candidates.{md,json}",
+            false,
             false,
             "Reports non-Rust and workflow-shell surfaces that are candidates for migration into Rust/xtask, while documenting approved external-runtime and fixture boundaries.",
         ),
@@ -1079,6 +1336,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/executable-files.md",
             false,
+            true,
             "Checks executable-file policy.",
         ),
         command_entry(
@@ -1086,6 +1344,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/workflows.md",
             false,
+            true,
             "Checks workflow policy.",
         ),
         command_entry(
@@ -1093,6 +1352,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/droid-review-config.md",
             false,
+            true,
             "Checks Droid review configuration.",
         ),
         command_entry(
@@ -1100,6 +1360,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/spec-format.md",
             false,
+            true,
             "Checks spec formatting.",
         ),
         command_entry(
@@ -1107,6 +1368,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/spec-numbering.md",
             false,
+            true,
             "Checks spec ID uniqueness and references.",
         ),
         command_entry(
@@ -1114,26 +1376,30 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/fixture-contracts.md",
             false,
+            true,
             "Checks fixture contracts.",
         ),
         command_entry(
-            "check-evidence-promotion-honesty",
+            "check-evidence-promotion-honesty [--pinned-external] [--clone] [--case <id>] [--checkout-root <path>] [--timeout-secs <n>]",
             "non_mutating_check",
-            "target/ripr/reports/evidence-promotion-honesty.md",
+            "target/ripr/reports/evidence-promotion-honesty.md, target/ripr/reports/corpus-summary.{json,md}, and optional target/ripr/reports/evidence-promotion-pinned-external.{json,md}",
             false,
-            "Reads byte-pinned golden check.json files for each charter member and asserts that must_remain_non_promoted cases show no `exposed` finding and control cases retain at least one `exposed` finding; catches a dishonest golden re-bless that would bypass goldens check.",
+            true,
+            "Reads byte-pinned golden check.json files for pure charter members, writes a typed corpus summary envelope, and asserts semantic promotion honesty; with --pinned-external, runs exact external repo+commit+patch cases through the current ripr binary using an opt-in clone/cache path.",
         ),
         command_entry(
             "check-traceability",
             "non_mutating_check",
             "target/ripr/reports/traceability.md",
             false,
+            true,
             "Checks traceability references.",
         ),
         command_entry(
             "check-spec-ids",
             "non_mutating_check",
             "target/ripr/reports/traceability.md",
+            false,
             false,
             "Alias for check-traceability.",
         ),
@@ -1142,6 +1408,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/traceability.md",
             false,
+            false,
             "Alias for check-traceability.",
         ),
         command_entry(
@@ -1149,13 +1416,23 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/capabilities.md",
             false,
+            true,
             "Checks capability metadata.",
+        ),
+        command_entry(
+            "check-campaign",
+            "non_mutating_check",
+            "target/ripr/reports/campaign.md",
+            false,
+            false,
+            "Checks campaign/source-of-truth consistency.",
         ),
         command_entry(
             "check-workspace-shape",
             "non_mutating_check",
             "target/ripr/reports/workspace-shape.md",
             false,
+            true,
             "Checks workspace shape.",
         ),
         command_entry(
@@ -1163,6 +1440,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/architecture.md",
             false,
+            true,
             "Checks architecture boundaries.",
         ),
         command_entry(
@@ -1170,6 +1448,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/public-api.md",
             false,
+            true,
             "Checks public API boundaries.",
         ),
         command_entry(
@@ -1177,6 +1456,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/output-contracts.md",
             false,
+            true,
             "Checks output contract registry.",
         ),
         command_entry(
@@ -1184,12 +1464,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/doc-artifacts.md",
             false,
+            true,
             "Checks the source-of-truth document artifact ledger.",
         ),
         command_entry(
             "check-support-tiers",
             "non_mutating_check",
             "target/ripr/reports/support-tiers.md",
+            false,
             false,
             "Checks support-tier claim proof mapping.",
         ),
@@ -1198,6 +1480,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/doc-index.md",
             false,
+            true,
             "Checks documentation index coverage.",
         ),
         command_entry(
@@ -1205,6 +1488,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/readme-state.md",
             false,
+            true,
             "Checks README state.",
         ),
         command_entry(
@@ -1212,27 +1496,15 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/markdown-links.md",
             false,
+            true,
             "Checks Markdown links.",
-        ),
-        command_entry(
-            "check-campaign",
-            "non_mutating_check",
-            "target/ripr/reports/campaign.md",
-            false,
-            "Checks campaign/source-of-truth consistency.",
-        ),
-        command_entry(
-            "check-goals",
-            "non_mutating_check",
-            "target/ripr/reports/campaign.md",
-            false,
-            "Alias for check-campaign.",
         ),
         command_entry(
             "check-pr-shape",
             "non_mutating_check",
             "target/ripr/reports/pr-shape.md",
             false,
+            true,
             "Checks PR shape.",
         ),
         command_entry(
@@ -1240,6 +1512,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/generated.md",
             false,
+            true,
             "Checks generated file policy.",
         ),
         command_entry(
@@ -1247,6 +1520,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/command-catalog.md",
             false,
+            true,
             "Checks that every xtask command is classified by the command mutability catalog.",
         ),
         command_entry(
@@ -1254,6 +1528,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/badge-diff-policy.md",
             false,
+            true,
             "Rejects ordinary badge endpoint diffs.",
         ),
         command_entry(
@@ -1261,12 +1536,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/generated-clean.md",
             false,
+            true,
             "Rejects generated residue in ordinary PRs.",
         ),
         command_entry(
             "check-verification-contracts [--check]",
             "argument_dependent",
             "target/ripr/reports or check-only",
+            false,
             false,
             "Writes or checks verification contract reports depending on --check.",
         ),
@@ -1275,12 +1552,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/dependencies.md",
             false,
+            true,
             "Checks dependency policy.",
         ),
         command_entry(
             "check-supply-chain",
             "non_mutating_check",
             "target/ripr/reports/supply-chain.md",
+            false,
             false,
             "Checks supply-chain policy.",
         ),
@@ -1289,6 +1568,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/process-policy.md",
             false,
+            true,
             "Checks process policy.",
         ),
         command_entry(
@@ -1296,6 +1576,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/network-policy.md",
             false,
+            true,
             "Checks network policy.",
         ),
         command_entry(
@@ -1303,12 +1584,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/lint-policy.md",
             false,
+            true,
             "Checks lint policy.",
         ),
         command_entry(
             "check-ci-lane-whitelist",
             "non_mutating_check",
             "target/ripr/reports/ci-lane-whitelist.md",
+            false,
             false,
             "Checks CI lane whitelist.",
         ),
@@ -1317,12 +1600,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/proof-packs.md",
             false,
+            true,
             "Checks the proof-pack manifest structure; manifest-only, no routing.",
         ),
         command_entry(
             "check-product-copy",
             "non_mutating_check",
             "target/ripr/reports/product-copy.md",
+            false,
             false,
             "Checks public product-copy policy.",
         ),
@@ -1331,6 +1616,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/positioning-language.md",
             false,
+            false,
             "Checks positioning-language policy.",
         ),
         command_entry(
@@ -1338,12 +1624,22 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "target/ripr/reports/doc-roles.md",
             false,
+            false,
             "Checks documentation role policy.",
+        ),
+        command_entry(
+            "check-release-targets",
+            "non_mutating_check",
+            "target/ripr/reports/release-targets.{json,md}",
+            false,
+            true,
+            "Checks policy/release-targets.toml for internal release graph integrity offline; never reads GitHub and never qualifies or publishes a candidate.",
         ),
         command_entry(
             "vscode-compile",
             "non_mutating_check",
             "editors/vscode build output",
+            false,
             false,
             "Runs VS Code extension compile.",
         ),
@@ -1352,12 +1648,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "mutating",
             "editors/vscode/dist",
             false,
+            false,
             "Builds VS Code extension package artifacts.",
         ),
         command_entry(
             "vscode-test",
             "non_mutating_check",
             "editor test output",
+            false,
             false,
             "Runs VS Code tests.",
         ),
@@ -1366,12 +1664,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "editor test output",
             false,
+            false,
             "Runs VS Code end-to-end tests.",
         ),
         command_entry(
             "package",
             "non_mutating_check",
             "cargo package staging output",
+            false,
             false,
             "Lists package contents without publishing.",
         ),
@@ -1380,7 +1680,16 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "non_mutating_check",
             "cargo publish dry-run staging output",
             false,
+            false,
             "Runs publish dry run without publishing.",
+        ),
+        command_entry(
+            "issue-intake --issue <number>",
+            "external_state_read",
+            "target/ripr/reports/issue-intake-<number>.json",
+            false,
+            false,
+            "Fetches a live GitHub issue and emits a typed intake packet.",
         ),
     ]
 }
@@ -1390,6 +1699,7 @@ const fn command_entry(
     mutability: &'static str,
     writes: &'static str,
     judgment_required: bool,
+    ci_enforced: bool,
     notes: &'static str,
 ) -> CommandCatalogEntry {
     CommandCatalogEntry {
@@ -1397,12 +1707,22 @@ const fn command_entry(
         mutability,
         writes,
         judgment_required,
+        ci_enforced,
         notes,
     }
 }
 
 pub(crate) fn unknown_command_message(command: &str) -> String {
     let normalized = command.trim();
+    // Retired commands: point users to the GitHub-based reconciliation flow.
+    if matches!(
+        normalized,
+        "goals" | "check-goals" | "check-campaign" | "closeout" | "pr-body"
+    ) {
+        return format!(
+            "unknown xtask command `{normalized}`.\nThe `{normalized}` command was retired when the .ripr/goals/ scheduler was deleted (#1701).\nLive work selection now comes from GitHub issues, PRs, and checks; implementation slices are scope records for already-selected work.\nRun `gh issue list --state open` or `cargo xtask help` for the full list of current commands."
+        );
+    }
     let suggestion = known_commands()
         .into_iter()
         .filter_map(|candidate| {
@@ -1507,6 +1827,26 @@ mod tests {
     }
 
     #[test]
+    fn top_level_help_marks_ci_enforced_commands() -> Result<(), String> {
+        let help = help_message(&[])?;
+        assert!(help.contains("check-static-language [CI]"));
+        assert!(help.contains("goldens check [CI]"));
+        assert!(!help.contains("check-supply-chain [CI]"));
+        assert!(!help.contains("goldens bless <name> --reason <reason> [CI]"));
+        assert!(help.contains("advisory or local-only"));
+        Ok(())
+    }
+
+    #[test]
+    fn per_command_help_reports_ci_enforcement() -> Result<(), String> {
+        let enforced = help_message(&["check-static-language".to_string()])?;
+        assert!(enforced.contains("CI enforced: true"));
+        let advisory = help_message(&["check-supply-chain".to_string()])?;
+        assert!(advisory.contains("CI enforced: false"));
+        Ok(())
+    }
+
+    #[test]
     fn levenshtein_distance_handles_ascii_and_unicode_inputs() {
         assert_eq!(levenshtein("check-pr", "check-pr"), 0);
         assert_eq!(levenshtein("chek-pr", "check-pr"), 1);
@@ -1565,23 +1905,6 @@ mod tests {
             "toolchain: 1.95.0",
             "PR_NUMBER: ${{ github.event.pull_request.number }}",
             "resolution_sha256",
-            "validation_phase",
-            "validation_reason",
-            "validation_status",
-            "version",
-            "source_parent",
-            "source_parent:$source_parent",
-            "control_sidecars",
-            "control_preflight_path",
-            "control_resolution_manifest_path",
-            "phase=$validation_phase",
-            "reason=$validation_reason",
-            "if: steps.inputs.outcome == 'success'",
-            "if: steps.inputs.outcome == 'success' && steps.live-governance.outcome == 'success'",
-            "source-promotion-validation.log",
-            "mkdir -p \"$out\"",
-            "trusted verifier checkout identity mismatch",
-            "jq -e . \"$PREFLIGHT\"",
             "control preflight digest mismatch",
             "control resolution digest mismatch",
             "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",
@@ -1812,87 +2135,6 @@ mod tests {
             || workflow.contains("echo \"Failure reasons: `")
         {
             return Err("receipt summary still executes interpolated Markdown backticks".into());
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn source_promotion_workflow_has_failure_fixture_corpus() -> Result<(), String> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .ok_or_else(|| "xtask manifest has no repository parent".to_string())?
-            .join("tests/fixtures/source_promotion_contract");
-        for (name, expected_phase, expected_reason) in [
-            (
-                "malformed-control.json",
-                "control_marker",
-                "exactly one lowercase source-promotion-control marker is required",
-            ),
-            (
-                "unreachable-control.json",
-                "control_repository",
-                "control commit is unreachable from the source repository",
-            ),
-            (
-                "source-mismatch.json",
-                "control_identity",
-                "control source_main does not equal the PR base SHA",
-            ),
-            (
-                "missing-receipt.json",
-                "verifier_receipt",
-                "trusted verifier receipt missing",
-            ),
-            (
-                "schema-mismatch.json",
-                "verifier_receipt",
-                "trusted verifier receipt schema mismatch",
-            ),
-            (
-                "empty-artifact-dir.json",
-                "verifier_receipt",
-                "trusted verifier receipt missing",
-            ),
-        ] {
-            let path = root.join(name);
-            let text = std::fs::read_to_string(&path)
-                .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-            let value: serde_json::Value = serde_json::from_str(&text)
-                .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
-            for key in ["case", "validation_phase", "validation_reason", "status"] {
-                if value.get(key).and_then(serde_json::Value::as_str).is_none() {
-                    return Err(format!("{} is missing string field {key}", path.display()));
-                }
-            }
-            if value["status"] != "rejected" {
-                return Err(format!("{} must pin fail-closed rejection", path.display()));
-            }
-            if value["validation_phase"] != expected_phase {
-                return Err(format!(
-                    "{} must pin emitted validation phase {expected_phase}",
-                    path.display()
-                ));
-            }
-            if value["validation_reason"] != expected_reason {
-                return Err(format!(
-                    "{} must pin emitted validation reason {expected_reason}",
-                    path.display()
-                ));
-            }
-            if matches!(name, "missing-receipt.json" | "empty-artifact-dir.json")
-                && value["receipt_status"] != "missing"
-            {
-                return Err(format!(
-                    "{} must pin a missing verifier receipt",
-                    path.display()
-                ));
-            }
-            if name == "schema-mismatch.json" && value["receipt_status"] != "schema_mismatch" {
-                return Err(format!(
-                    "{} must pin a schema-mismatched verifier receipt",
-                    path.display()
-                ));
-            }
         }
         Ok(())
     }

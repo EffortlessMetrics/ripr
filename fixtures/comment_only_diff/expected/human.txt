@@ -4,4 +4,7 @@ root: fixtures/comment_only_diff/input
 
 Summary: 0 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
+Analysis outcome: no_behavioral_candidates (analysis complete).
+  Counts: 1 changed file(s), 1 changed line(s), 0 candidate line(s), 0 probe(s), 0 finding(s).
+
 No diff-derived static exposure probes found.

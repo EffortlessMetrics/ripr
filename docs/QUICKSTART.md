@@ -16,17 +16,21 @@ It does not edit source, generate tests, run mutation testing, or prove test
 adequacy. The normal first-hour loop is:
 
 ```text
-find the top test gap
--> inspect why ripr thinks the current tests are weak
+inspect one change
+-> select one named gap
+-> start the repair transaction
 -> write one focused test outside RIPR
--> capture an after snapshot
--> verify static movement
--> attach the receipt or review summary when useful
+-> finish the transaction
+-> keep the advisory receipt
 ```
 
 RIPR calls these locations "seams" in JSON, specs, and reports. First-hour docs
 use plain language first; [Terminology](TERMINOLOGY.md) bridges to the internal
 model when you need it.
+
+The [public command hierarchy](COMMAND_HIERARCHY.md) keeps the first-hour roles
+distinct: `check` is ordinary first value, `pilot` is guided repo adoption,
+`agent repair` is the repair transaction, and `first-pr` composes PR evidence.
 
 ## Choose Your Path
 
@@ -34,9 +38,9 @@ Most adopters should choose one of these first-hour paths:
 
 | Path | Use when | Start with | First success |
 | --- | --- | --- | --- |
-| CLI first | You want one local before/after proof. | `ripr pilot --root .` | Top Rust gap or Python preview repair card, one focused proof, advisory receipt status. |
+| CLI first | You want one local before/after proof. | `ripr check --base origin/main` | Top Rust gap or an honest no-action/limited state, followed by one bounded repair attempt. |
 | PR first | You want reviewers to see advisory evidence in GitHub. | `ripr init --ci github` | Non-blocking summary, repair card, artifact packet. |
-| Editor or agent first | You are repairing while coding, or handing work to an LLM. | VS Code `ripr: Show Status` or `ripr agent status --root .` | Current-work packet, related test, verify command. |
+| Editor or agent first | You are repairing while coding, or handing work to an LLM. | VS Code `ripr: Show Status` or `ripr agent repair --seam-id <id> --phase before` | Current gap, related test, edit cage, verify route, and receipt. |
 
 For TypeScript, JavaScript, or broader Python static-fact evaluation, first read
 [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md). Preview
@@ -60,6 +64,15 @@ Rust.
 4. Open the Problems panel, hover a RIPR diagnostic, and inspect the gap.
 5. Use `ripr: Start Current Repair` or the focused-test actions to copy the
    repair packet, open the related test, and copy the verify command.
+
+The current editor command is the contextual shell for the same bounded
+before/edit/after idea. The explicit CLI/agent equivalent is:
+
+```bash
+ripr agent repair --root . --seam-id <id> --phase before
+# edit one focused test outside RIPR
+ripr agent repair --root . --seam-id <id> --phase after
+```
 
 Normal editor install should not require `cargo install ripr`. The extension
 resolves the server from `ripr.server.path`, bundled or cached assets, verified
@@ -120,41 +133,64 @@ From this repository, use:
 cargo install --path crates/ripr
 ```
 
-Run the zero-config pilot:
+Inspect the current change:
+
+```bash
+ripr check --base origin/main
+```
+
+The bounded human output begins with one `Start here:` state. It either names
+the top repair-ready gap, reports an honest no-action state, or names the
+limitation that prevents current guidance. Use `--format human-full` for the
+complete evidence and `--format json` for machine data.
+
+For a repair-ready gap, start the ordinary repair transaction:
+
+```bash
+ripr agent repair --root . --seam-id <id> --phase before
+```
+
+Make one focused test edit outside RIPR, then finish:
+
+```bash
+ripr agent repair --root . --seam-id <id> --phase after
+```
+
+The before phase writes the pre-edit snapshot and repair packet. The after phase
+writes the post-edit snapshot, persists static verification JSON, and emits a
+receipt. RIPR does not author or apply the test edit.
+
+For guided repository adoption and materialized pilot reports, use:
 
 ```bash
 ripr pilot --root .
 ```
 
-Read `target/ripr/pilot/pilot-summary.md`. Pick the top actionable Rust gap, or
-for Python preview roots the top repair card with its missing discriminator and
-verify command. Write one focused test or output proof outside RIPR.
+`pilot` is broader than the ordinary one-change check. If it reports a partial
+result, use the retry command it prints rather than guessing at cache or timeout
+settings.
 
-After the test is added, capture the after snapshot:
+For explicit low-level before/after comparison, the underlying commands remain
+available:
 
 ```bash
 ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json
-```
-
-Compare before and after:
-
-```bash
 ripr outcome \
   --before target/ripr/pilot/repo-exposure.json \
   --after target/ripr/pilot/after.repo-exposure.json
 ```
 
-If the pilot reports a partial result, use the retry command it prints rather
-than guessing at cache or timeout settings.
+Those commands are useful for control and debugging; they are not required
+plumbing for the ordinary two-phase repair path.
 
-For the first-run front-door packet, use:
+To compose PR-facing evidence from existing artifacts, use:
 
 ```bash
 ripr first-pr --root . --base origin/main --head HEAD
 ```
 
-It composes existing artifacts into `target/ripr/reports/start-here.{json,md}`
-and does not add analyzer truth. Inside this repo, `cargo xtask first-pr` is a
+It writes `target/ripr/reports/start-here.{json,md}` and does not add analyzer
+truth or repair a gap. Inside this repo, `cargo xtask first-pr` is a
 compatibility wrapper over the same public command.
 
 Read the front door with the same vocabulary across CLI, editor, and PR
@@ -180,25 +216,33 @@ packets, badges, PR evidence, and gate authority.
 Use this path when a human or external coding agent needs a deterministic work
 packet for one focused test.
 
-Ask RIPR what already exists:
+When a current finding supplies a seam ID, use the primary repair command:
+
+```bash
+ripr agent repair --root . --seam-id <seam_id> --phase before
+# edit one focused test outside RIPR
+ripr agent repair --root . --seam-id <seam_id> --phase after
+```
+
+Ask RIPR what local artifacts already exist when resuming or diagnosing:
 
 ```bash
 ripr agent status --root .
 ```
 
-When you have selected a seam, write a source-edit-free workflow packet:
+For explicit low-level control, `ripr agent start`, `brief`, `packet`, `verify`,
+`receipt`, and `review-summary` remain available. For example:
 
 ```bash
 ripr agent start --root . --seam-id <seam_id> --out target/ripr/workflow
 ```
 
-Then follow the generated `target/ripr/workflow/commands.md`. It should give
-the task, context, repair route, verification command, stop conditions, and
-receipt path.
+The generated `target/ripr/workflow/commands.md` exposes the task, context,
+repair route, verification command, stop conditions, and receipt path.
 
-The status and workflow commands read or write artifacts. They do not edit
-source files, generate tests, call an LLM API, run mutation testing, refresh LSP
-state, or enable CI blocking.
+The repair, status, and workflow commands read or write artifacts. They do not
+edit source files, generate tests, call an LLM API, run mutation testing,
+refresh LSP state, or enable CI blocking.
 
 See [LLM operator guide](LLM_OPERATOR_GUIDE.md).
 
@@ -239,6 +283,7 @@ RIPR findings.
 
 ## Next Docs
 
+- [Public command hierarchy](COMMAND_HIERARCHY.md) for the stable task roles.
 - [Terminology](TERMINOLOGY.md) for the bridge between plain wording and the
   internal model (seam, discriminator, grip, canonical gap, etc.).
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md) for the one-PR path from

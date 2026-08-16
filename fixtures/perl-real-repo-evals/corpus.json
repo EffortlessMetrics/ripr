@@ -1,0 +1,100 @@
+{
+  "kind": "perl_real_repo_eval_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0064",
+  "tracker": ".ripr/goals/perl-repair-routing.toml",
+  "description": "Producer-dependent Perl eval launchpoints for the CPAN alpha fixture. These records preserve expected outcomes and claim boundaries; they do not claim the five-repo alpha promotion thresholds.",
+  "limits": [
+    "fixture_scoped_only",
+    "producer_required_on_path",
+    "no_five_repo_metrics",
+    "no_public_repair_packet_authority",
+    "no_support_tier_promotion"
+  ],
+  "cases": [
+    {
+      "id": "cpan_alpha_actionable_real_exporter_eval",
+      "repo_shape": "cpan_style_test_more",
+      "source_kind": "local_repo_fixture",
+      "source_ref": "fixtures/perl_cpan_alpha/input",
+      "command": "PERL_RIPR_FACTS=<path-to-perl-ripr-facts> cargo test -p ripr --features lang-perl --test perl_two_binary_harness -- --test-threads=1",
+      "producer": "perl-ripr-facts",
+      "packet_schema": "ripr-perl-facts-v1",
+      "diff": "fixtures/perl_cpan_alpha/input/diff.patch",
+      "oracle_shape": "weak_test_more_ok",
+      "expected_outcome": "actionable",
+      "expected_classification": "reachable_unrevealed_or_weakly_exposed",
+      "changed_owner": "perl:lib/Pricing.pm::Pricing::calculate_discount",
+      "missing_discriminator": "$amount == 100",
+      "repair_packet_expected": false,
+      "agent_packet_expected": false,
+      "receipt_expected": false,
+      "harness_assertion": "The two-binary harness asserts a Pricing reachable_unrevealed or weakly_exposed finding and rejects exposed for the weak oracle.",
+      "evidence_source": "PR #1491 reported PERL_RIPR_FACTS=<merged perl-ripr-facts binary> cargo test -p ripr --features lang-perl --test perl_two_binary_harness -- --test-threads=1 passed.",
+      "claim_boundary": [
+        "Fixture-scoped preview proof only",
+        "No >=5 real Perl repo evidence",
+        "No top-1 precision or verify-validity promotion metric",
+        "No public repair-packet authority",
+        "No support-tier promotion"
+      ],
+      "reason": "The weak Test::More ok() oracle reaches the changed boundary but does not pin the equality discriminator, so the checked outcome is actionable static evidence without public packet authority."
+    },
+    {
+      "id": "cpan_alpha_already_observed_real_exporter_eval",
+      "repo_shape": "cpan_style_test_more",
+      "source_kind": "local_repo_fixture",
+      "source_ref": "fixtures/perl_cpan_alpha/input",
+      "command": "PERL_RIPR_FACTS=<path-to-perl-ripr-facts> cargo test -p ripr --features lang-perl --test perl_two_binary_harness -- --test-threads=1",
+      "producer": "perl-ripr-facts",
+      "packet_schema": "ripr-perl-facts-v1",
+      "diff": "fixtures/perl_cpan_alpha/input/boundary_change.diff",
+      "oracle_shape": "exact_test_more_is",
+      "expected_outcome": "already_observed",
+      "expected_classification": "exposed",
+      "changed_owner": "perl:lib/Pricing.pm::Pricing::calculate_discount",
+      "missing_discriminator": "not_applicable_already_observed",
+      "repair_packet_expected": false,
+      "agent_packet_expected": false,
+      "receipt_expected": false,
+      "harness_assertion": "The two-binary harness asserts a Pricing exposed finding and no repair packet or canonical repair gap for the exact is() oracle.",
+      "evidence_source": "PR #1491 reported PERL_RIPR_FACTS=<merged perl-ripr-facts binary> cargo test -p ripr --features lang-perl --test perl_two_binary_harness -- --test-threads=1 passed.",
+      "claim_boundary": [
+        "Fixture-scoped preview proof only",
+        "No >=5 real Perl repo evidence",
+        "No top-1 precision or verify-validity promotion metric",
+        "No public repair-packet authority",
+        "No support-tier promotion"
+      ],
+      "reason": "The exact Test::More is() oracle aligns to the changed sink, so no new test-repair packet should be routed."
+    },
+    {
+      "id": "cpan_alpha_dynamic_dispatch_real_exporter_eval",
+      "repo_shape": "cpan_style_test_more",
+      "source_kind": "local_repo_fixture",
+      "source_ref": "fixtures/perl_cpan_alpha/input",
+      "command": "PERL_RIPR_FACTS=<path-to-perl-ripr-facts> cargo test -p ripr --features lang-perl --test perl_two_binary_harness -- --test-threads=1",
+      "producer": "perl-ripr-facts",
+      "packet_schema": "ripr-perl-facts-v1",
+      "diff": "fixtures/perl_cpan_alpha/input/dynamic_dispatch.diff",
+      "oracle_shape": "dynamic_method_dispatch",
+      "expected_outcome": "limited",
+      "expected_classification": "dynamic_dispatch_limitation",
+      "changed_owner": "perl:lib/Pricing.pm::Pricing::dynamic_method",
+      "missing_discriminator": "not_applicable_dynamic_dispatch",
+      "repair_packet_expected": false,
+      "agent_packet_expected": false,
+      "receipt_expected": false,
+      "harness_assertion": "The two-binary harness asserts a named dynamic_dispatch limitation and no repair packet or canonical repair gap.",
+      "evidence_source": "PR #1491 reported PERL_RIPR_FACTS=<merged perl-ripr-facts binary> cargo test -p ripr --features lang-perl --test perl_two_binary_harness -- --test-threads=1 passed.",
+      "claim_boundary": [
+        "Fixture-scoped preview proof only",
+        "No >=5 real Perl repo evidence",
+        "No top-1 precision or verify-validity promotion metric",
+        "No public repair-packet authority",
+        "No support-tier promotion"
+      ],
+      "reason": "Dynamic method dispatch is a named static limitation for the Perl lane; it must fail closed instead of becoming a repair-ready packet."
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use crate::command::CommandCatalogEntry;
 
 const STARTING_POINTS: &[&str] = &[
@@ -10,11 +12,23 @@ const STARTING_POINTS: &[&str] = &[
 
 const START_HERE_NOTES: &str = "Start-here language uses the same words for safe next action, missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, preview-limited evidence, verify command, receipt command, and receipt path.";
 
-pub(crate) fn format_top_level_help(commands: &[&str]) -> String {
-    let commands = commands.join("\n  ");
+const CI_MARKER_NOTES: &str = "[CI] marks commands a CI workflow enforces: the workflow fails when the command fails. Unmarked commands are advisory or local-only.";
+
+pub(crate) fn format_top_level_help(commands: &[&str], ci_enforced: &BTreeSet<&str>) -> String {
+    let commands = commands
+        .iter()
+        .map(|command| {
+            if ci_enforced.contains(command) {
+                format!("{command} [CI]")
+            } else {
+                (*command).to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n  ");
     let starting_points = STARTING_POINTS.join("\n");
     format!(
-        "xtask commands:\n\n  {commands}\n\nCommon starting points:\n{starting_points}\n\n{START_HERE_NOTES}\n\nRun `cargo xtask help <command>` for mutability, writes, and notes.\nRun `cargo xtask commands` to write the full command catalog report."
+        "xtask commands:\n\n  {commands}\n\nCommon starting points:\n{starting_points}\n\n{START_HERE_NOTES}\n\n{CI_MARKER_NOTES}\n\nRun `cargo xtask help <command>` for mutability, writes, and notes.\nRun `cargo xtask commands` to write the full command catalog report."
     )
 }
 
@@ -25,6 +39,7 @@ pub(crate) fn format_help_entries(query: &str, entries: &[CommandCatalogEntry]) 
         lines.push(format!("Mutability: {}", entry.mutability));
         lines.push(format!("Writes: {}", entry.writes));
         lines.push(format!("Judgment required: {}", entry.judgment_required));
+        lines.push(format!("CI enforced: {}", entry.ci_enforced));
         lines.push(format!("Notes: {}", entry.notes));
         lines.push(String::new());
     }

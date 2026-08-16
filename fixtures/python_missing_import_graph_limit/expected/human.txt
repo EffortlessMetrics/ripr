@@ -4,39 +4,34 @@ root: fixtures/python_missing_import_graph_limit/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-NOTE src/totals.py:4
+Changed file(s) by language: python: 1, rust: 0.
 
-Changed
-  after:      return remote_total(client, include_tax=True)
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
-Probe
-  family: return_value
-  delta:  value
-  owner:  python:src/totals.py::total
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/totals.py:4
+  Language: python
+  Language status: preview
+  Static exposure: static_unknown (note, confidence 0.20)
+  Why static_unknown: the analysis could not determine a static exposure state
+  Changed behavior: return remote_total(client, include_tax=True)
+  Missing discriminator: Static limit `missing_import_graph`: the changed line calls an imported symbol; the Python preview adapter does not build an import graph or resolve imported implementation semanti…
+  Related test: tests/test_totals.py:4 test_total_includes_tax
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `total`
+    - infection unknown: Static limit `missing_import_graph` prevents a safe Python infection claim.
+    - 4 more evidence line(s) hidden
 
-Language
-  language: python
-  status: preview
-  owner kind: function
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_missing_import_graph_limit/input --diff fixtures/python_missing_import_graph_limit/diff.patch --mode fast probe:src_totals.py:python_preview:1274639f
+  ripr context --root fixtures/python_missing_import_graph_limit/input --diff fixtures/python_missing_import_graph_limit/diff.patch --mode fast --at probe:src_totals.py:python_preview:1274639f
 
-Static exposure
-  static_unknown (note, confidence 0.20)
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `total`
-  - infection unknown: Static limit `missing_import_graph` prevents a safe Python infection claim.
-  - propagation unknown: Static limit `missing_import_graph` prevents a safe Python propagation claim.
-  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator unknown: Static limit `missing_import_graph` prevents a safe Python discriminator claim.
-  - related test tests/test_totals.py:4 test_total_includes_tax uses strong exact value oracle: assert total(client) == 12
-
-Weakness
-  - Static limit `missing_import_graph`: the changed line calls an imported symbol; the Python preview adapter does not build an import graph or resolve imported implementation semantics.
-
-Stop reasons:
-  - static_probe_unknown
-
-
-Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

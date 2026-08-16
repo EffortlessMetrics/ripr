@@ -16,6 +16,9 @@ targets = [
 
 [advisories]
 yanked = "deny"
+# cargo-deny advisory ignore entries accept IDs or `{ id, reason }` metadata,
+# but reject per-entry `until` fields (verified with cargo-deny 0.19.0). Keep
+# expiry metadata in comments and enforce it with `cargo xtask check-dependencies`.
 ignore = [
   # The `rust-unic` Unicode crate family is declared unmaintained
   # (umbrella announcement: RUSTSEC-2025-0098). Each crate has its
@@ -36,12 +39,12 @@ ignore = [
   # upgrade (e.g., a CVE) will produce a new ID that fails the
   # check again. Revisit when `rustpython-parser` migrates off
   # `rust-unic` or when ADR 0009 is itself superseded.
-  "RUSTSEC-2025-0075",  # unic-char-range
-  "RUSTSEC-2025-0080",  # unic-common
-  "RUSTSEC-2025-0081",  # unic-char-property
-  "RUSTSEC-2025-0090",  # unic-emoji-char
-  "RUSTSEC-2025-0098",  # rust-unic umbrella announcement
-  "RUSTSEC-2025-0100",  # unic-ucd-ident
+  "RUSTSEC-2025-0075",  # unic-char-range; expires: 2026-10-01
+  "RUSTSEC-2025-0080",  # unic-common; expires: 2026-10-01
+  "RUSTSEC-2025-0081",  # unic-char-property; expires: 2026-10-01
+  "RUSTSEC-2025-0090",  # unic-emoji-char; expires: 2026-10-01
+  "RUSTSEC-2025-0098",  # rust-unic umbrella announcement; expires: 2026-10-01
+  "RUSTSEC-2025-0100",  # unic-ucd-ident; expires: 2026-10-01
 ]
 
 [licenses]

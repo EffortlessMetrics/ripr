@@ -5,9 +5,11 @@
 //! and calling into the app layer.
 
 use crate::app::receipt::{
-    ReceiptCheckOptions, ReceiptWriteOptions, check_receipt, receipt_out_path, write_receipt,
+    ReceiptCheckOptions, ReceiptWriteOptions, check_receipt, receipt_out_path,
+    validate_current_head, write_receipt,
 };
 use crate::cli::parse::expect_value;
+use crate::cli::suggest::unknown_argument;
 use crate::output;
 use std::path::PathBuf;
 
@@ -51,7 +53,7 @@ fn run_receipt_write(args: &[String]) -> Result<(), String> {
             .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
     }
 
-    std::fs::write(&path, &rendered).map_err(|err| {
+    crate::atomic_file::write(&path, rendered.as_bytes(), "receipt").map_err(|err| {
         format!(
             "write {} failed: {err}",
             output::outcome::display_path(&path)
@@ -95,7 +97,9 @@ pub(in crate::cli) fn parse_receipt_write_options(
     let mut packet_id: Option<String> = None;
     let mut verify_command: Option<String> = None;
     let mut verify_status: Option<String> = None;
+    let mut current_head: Option<String> = None;
     let mut out: Option<PathBuf> = None;
+    let mut root: Option<PathBuf> = None;
     let mut json = false;
 
     let mut i = 0usize;
@@ -132,6 +136,12 @@ pub(in crate::cli) fn parse_receipt_write_options(
                 let value = expect_value(args, i, "--status")?;
                 verify_status = Some(value.to_string());
             }
+            "--current-head" => {
+                i += 1;
+                let value = expect_value(args, i, "--current-head")?;
+                validate_current_head(value)?;
+                current_head = Some(value.to_string());
+            }
             "--out" => {
                 i += 1;
                 let value = expect_value(args, i, "--out")?;
@@ -141,7 +151,11 @@ pub(in crate::cli) fn parse_receipt_write_options(
                 out = Some(PathBuf::from(value));
             }
             "--json" => json = true,
-            other => return Err(format!("unknown receipt write argument {other:?}")),
+            "--root" => {
+                i += 1;
+                root = Some(PathBuf::from(expect_value(args, i, "--root")?));
+            }
+            other => return Err(unknown_argument("receipt write", other)),
         }
         i += 1;
     }
@@ -158,8 +172,10 @@ pub(in crate::cli) fn parse_receipt_write_options(
         packet_id,
         verify_command,
         verify_status,
+        current_head,
         out,
         json,
+        root,
     })
 }
 
@@ -211,7 +227,7 @@ pub(in crate::cli) fn parse_receipt_check_options(
                 }
                 path = Some(PathBuf::from(other));
             }
-            other => return Err(format!("unknown receipt check argument {other:?}")),
+            other => return Err(unknown_argument("receipt check", other)),
         }
         i += 1;
     }
@@ -239,6 +255,8 @@ Usage: ripr receipt <subcommand>
 
 Subcommands:
   write    Author a receipt JSON for a completed repair attempt.
+             Options:
+               --current-head <SHA>  Optional asserted HEAD; must match the actual repository HEAD.
   check    Structurally validate a receipt JSON file.
 
 The `ripr receipt write` command is the canonical receipt command.
@@ -261,8 +279,21 @@ Options:
   --verify-command CMD  The exact shell command run to verify the repair. Required.
   --status STATUS       Outcome of the verify command. Required.
                         Valid values: passed, failed, not_run, unknown.
+  --current-head SHA    Optional 40-character hex SHA asserted as the repository
+                        HEAD at write time. When --root is also provided, the
+                        receipt writer validates this sha against the actual git
+                        HEAD at that root and rejects mismatches (#1941).
+  --root PATH           Repository root for git HEAD validation. When provided
+                        alongside --current-head, the writer resolves the actual
+                        git rev-parse HEAD and rejects if the caller-provided
+                        sha does not match. Without --root, --current-head is
+                        format-checked only.
   --out PATH            Write receipt JSON to this path. When omitted, writes to
-                        target/ripr/receipts/<canonical_gap_id>.json.
+                        target/ripr/receipts/<canonical_gap_id>.json with
+                        filename-unsafe characters (`:`, etc.) percent-encoded
+                        so the default path is portable across platforms. The
+                        complete relative default path is capped at 260 bytes;
+                        long IDs use a bounded prefix and digest.
   --json                Print JSON output to stdout (also written to --out path).
 
 Fail-closed:
@@ -282,7 +313,10 @@ Usage: ripr receipt check [--path <receipt_path>] [--gap <canonical_gap_id>]
 Options:
   --path PATH       Path to the receipt JSON file to validate.
   --gap ID          Resolve path from canonical location
-                    target/ripr/receipts/<canonical_gap_id>.json.
+                    target/ripr/receipts/<canonical_gap_id>.json with
+                    filename-unsafe characters (`:`, etc.) percent-encoded. The
+                    complete relative default path is capped at 260 bytes;
+                    long IDs use the same bounded prefix and digest.
   --ledger PATH     Path to a gap-decision-ledger JSON file.  When provided,
                     cross-references the receipt's canonical_gap_id against the
                     live gap set and classifies the result as:
@@ -324,6 +358,8 @@ mod tests {
             "cargo test -p ripr",
             "--status",
             "passed",
+            "--current-head",
+            "0123456789abcdef0123456789abcdef01234567",
             "--out",
             "target/ripr/receipts/r.json",
             "--json",
@@ -332,6 +368,10 @@ mod tests {
         assert_eq!(result.packet_id, Some("packet-123".to_string()));
         assert_eq!(result.verify_command, "cargo test -p ripr");
         assert_eq!(result.verify_status, "passed");
+        assert_eq!(
+            result.current_head,
+            Some("0123456789abcdef0123456789abcdef01234567".to_string())
+        );
         assert_eq!(
             result.out,
             Some(PathBuf::from("target/ripr/receipts/r.json"))
@@ -458,7 +498,14 @@ mod tests {
 
     #[test]
     fn receipt_write_requires_values_for_value_flags() -> Result<(), String> {
-        for flag in &["--gap", "--packet", "--verify-command", "--status", "--out"] {
+        for flag in &[
+            "--gap",
+            "--packet",
+            "--verify-command",
+            "--status",
+            "--current-head",
+            "--out",
+        ] {
             match parse_receipt_write_options(&args(&[flag])) {
                 Ok(_) => {
                     return Err(format!("flag {flag} should require value"));
@@ -469,6 +516,35 @@ mod tests {
                             "flag {flag} should say 'missing value', got: {err}"
                         ));
                     }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_write_rejects_invalid_current_head() -> Result<(), String> {
+        for current_head in ["abc1234567890", "0123456789abcdef0123456789abcdef0123456g"] {
+            match parse_receipt_write_options(&args(&[
+                "--gap",
+                "gap:test:aabbccdd",
+                "--verify-command",
+                "cargo test",
+                "--status",
+                "passed",
+                "--current-head",
+                current_head,
+            ])) {
+                Ok(_) => {
+                    return Err(format!(
+                        "parser should reject invalid current head {current_head:?}"
+                    ));
+                }
+                Err(err) if err.contains("40-character hexadecimal SHA") => {}
+                Err(err) => {
+                    return Err(format!(
+                        "error should explain current-head format, got: {err}"
+                    ));
                 }
             }
         }

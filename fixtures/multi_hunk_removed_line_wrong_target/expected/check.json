@@ -4,7 +4,11 @@
   "mode": "fast",
   "root": "fixtures/multi_hunk_removed_line_wrong_target/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":6,"findings":6,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":3,"infection_unknown":0,"propagation_unknown":0,"static_unknown":3},
+  "summary": {"changed_rust_files":1,"probes":6,"findings":6,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":3,"infection_unknown":0,"propagation_unknown":0,"static_unknown":3,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:4a6f97903829fbe4b17872b1862c41c90755c9eea6b9877970a643d5a74c0244","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":6,"candidate_line_count":4,"probe_count":6,"finding_count":6},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
     {
       "id": "probe:src_lib.rs:static_unknown:17e03c34",
@@ -194,22 +198,22 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
-      "suggested_next_action": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust"
     },
     {
-      "id": "probe:src_lib.rs:predicate:e41c5ecf",
+      "id": "probe:src_lib.rs:predicate:431be027",
       "classification": "no_static_path",
       "severity": "warning",
       "confidence": 0.35,
       "probe": {
-        "id": "probe:src_lib.rs:predicate:e41c5ecf",
+        "id": "probe:src_lib.rs:predicate:431be027",
         "family": "predicate",
         "delta": "control",
         "file": "fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs",
         "line": 8,
-        "expression": "if x >= 0 {"
+        "expression": "x >= 0"
        },
       "ripr": {
         "reach": {"state":"no","confidence":"medium","summary":"No static test path found for the changed owner"},
@@ -241,8 +245,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
-      "suggested_next_action": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust"
     },
     {
@@ -288,8 +292,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
-      "suggested_next_action": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust"
     }
   ]

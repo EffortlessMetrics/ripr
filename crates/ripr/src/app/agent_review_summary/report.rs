@@ -8,7 +8,7 @@ use std::path::Path;
 
 use super::artifacts::{
     LSP_COCKPIT_ARTIFACT, OPERATOR_COCKPIT_ARTIFACT, REPO_EXPOSURE_ARTIFACT, agent_status_surface,
-    ci_artifacts, read_json_surface,
+    ci_artifacts, read_analysis_outcome, read_json_surface,
 };
 use super::receipt::{ReceiptSnapshot, receipt_snapshot};
 use super::types::AgentReviewNextAction;
@@ -59,6 +59,7 @@ pub(crate) fn build_agent_review_summary_report(
         LSP_COCKPIT_ARTIFACT,
         false,
     );
+    let (analysis_outcome, analysis_outcome_surface) = read_analysis_outcome(root, &root_display);
 
     let receipt_snapshot = receipt.value.as_ref().and_then(receipt_snapshot);
     let target_seam = target_seam(
@@ -75,13 +76,20 @@ pub(crate) fn build_agent_review_summary_report(
         operator_cockpit.surface,
         repo_exposure.surface,
         lsp_cockpit.surface,
+        analysis_outcome_surface,
     ]);
     let ci_artifacts = ci_artifacts(root);
-    let status = review_status(&agent_status, &static_movement, &surfaces);
+    let status = review_status(
+        &agent_status,
+        &static_movement,
+        analysis_outcome.as_ref(),
+        &surfaces,
+    );
     let reviewer_summary = reviewer_summary(
         &status,
         target_seam.as_ref(),
         &static_movement,
+        analysis_outcome.as_ref(),
         &next_command,
         &surfaces,
     );
@@ -93,6 +101,7 @@ pub(crate) fn build_agent_review_summary_report(
         root: root_display,
         target_seam,
         static_movement,
+        analysis_outcome,
         next_command,
         surfaces,
         ci_artifacts,
@@ -186,9 +195,13 @@ fn static_movement(receipt: Option<&ReceiptSnapshot>) -> AgentReviewStaticMoveme
 fn review_status(
     agent_status: &AgentStatusReport,
     movement: &AgentReviewStaticMovement,
+    analysis_outcome: Option<&crate::analysis_outcome::AnalysisOutcome>,
     surfaces: &[AgentReviewSurface],
 ) -> String {
-    if movement.state == "missing_artifact" {
+    if movement.state == "missing_artifact"
+        || analysis_outcome.is_none()
+        || analysis_outcome.is_some_and(|outcome| !outcome.kind.is_complete())
+    {
         return "incomplete".to_string();
     }
     if agent_status.status() != "complete"
@@ -205,17 +218,32 @@ fn reviewer_summary(
     status: &str,
     seam: Option<&AgentReviewTargetSeam>,
     movement: &AgentReviewStaticMovement,
+    analysis_outcome: Option<&crate::analysis_outcome::AnalysisOutcome>,
     next_command: &Option<AgentStatusCommand>,
     surfaces: &[AgentReviewSurface],
 ) -> AgentReviewTextSummary {
     let target = seam
         .map(|seam| seam.seam_id.as_str())
         .unwrap_or("unknown seam");
-    let headline = match movement.state.as_str() {
-        "missing_artifact" => format!("Review packet is incomplete for {target}."),
+    let headline = match (movement.state.as_str(), analysis_outcome) {
+        (_, None) => format!(
+            "Review packet is incomplete for {target}: producer analysis outcome is unavailable."
+        ),
+        (_, Some(outcome)) if !outcome.kind.is_complete() => format!(
+            "Review packet is incomplete for {target}: producer analysis is {}.",
+            outcome.kind.as_str()
+        ),
+        ("missing_artifact", _) => format!("Review packet is incomplete for {target}."),
         _ => format!("Review packet is {status} for seam {target}."),
     };
-    let what_changed = if movement.state == "missing_artifact" {
+    let what_changed = if analysis_outcome.is_none() {
+        "No producer-backed completeness result is available; static review evidence cannot be treated as complete.".to_string()
+    } else if let Some(outcome) = analysis_outcome.filter(|outcome| !outcome.kind.is_complete()) {
+        format!(
+            "Producer analysis is {} and remains incomplete; static movement is not a clean-result claim.",
+            outcome.kind.as_str()
+        )
+    } else if movement.state == "missing_artifact" {
         "No static before/after movement is available because the agent receipt is missing."
             .to_string()
     } else {
@@ -248,6 +276,8 @@ fn reviewer_summary(
         WORKFLOW_AGENT_RECEIPT_ARTIFACT.to_string(),
         WORKFLOW_AGENT_VERIFY_ARTIFACT.to_string(),
     ];
+    reviewer_should_inspect
+        .push(crate::agent::loop_commands::WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT.to_string());
     for surface in surfaces {
         if (surface.name == "operator_cockpit" || surface.name == "repo_exposure")
             && let Some(path) = &surface.path

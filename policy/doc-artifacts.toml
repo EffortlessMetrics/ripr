@@ -513,3 +513,147 @@ path = "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md"
 status = "proposed"
 owner = "release"
 standalone_reason = "Exact PR-head source-promotion workflow, SHA-bound receipts, merge-command guard, and manual post-merge reachability contract for ripr#1494."
+
+[[artifact]]
+id = "RIPR-SPEC-0112"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0112-bounded-subprocess-adapter-boundary.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Bounded literal allowlisted subprocess adapters with argument, timeout, captured-output, and cleanup evidence use the existing side_effect probe family; dynamic, shell, and unbounded commands retain strict exposure behavior; closes #1454."
+
+[[artifact]]
+id = "RIPR-SPEC-0113"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0113-honest-no-static-path-messaging.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Honest no_static_path messaging (P2 first-run-trust campaign): replace misleading add-a-test wording with bounded static-model disclosure; message-only change with no classification, schema, or exit-code change."
+
+[[artifact]]
+id = "RIPR-SPEC-0114"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0114-rust-transitive-reach-limitation.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Rust transitive-reach limitation: a bounded lexical call walk may name a candidate path while remaining fail-closed for classification and static reach claims."
+
+[[artifact]]
+id = "RIPR-SPEC-0115"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0115-rust-transitive-reach-witness.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Rust transitive-reach witness: expose a deterministic candidate test and public entry symbol as guidance only; classification and related-test credit remain unchanged."
+
+[[artifact]]
+id = "RIPR-SPEC-0116"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0116-check-worktree-mode.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Explicit check --worktree mode includes staged and unstaged tracked edits while preserving committed-history --base behavior; incompatible diff/worktree combinations fail closed."
+
+[[artifact]]
+id = "RIPR-SPEC-0117"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0117-rust-macro-reach-limitation.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Rust macro-reach limitation names same-repository macro boundaries only when lexical ownership evidence exists; classification and repair claims remain fail-closed."
+
+[[artifact]]
+id = "RIPR-SPEC-0118"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0118-rust-integration-public-api-path-limitation.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Rust integration public-API path limitation distinguishes integration witnesses from ordinary helper chains while retaining no_static_path classification and no related-test credit."
+
+[[artifact]]
+id = "RIPR-SPEC-0119"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0119-rust-direct-test-macro-call-limitation.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Rust direct test macro-call limitation distinguishes test-body macro witnesses from production-entry macro boundaries without expansion or promotion claims."
+
+[[artifact]]
+id = "RIPR-SPEC-0120"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0120-rust-macro-wrapped-assertion-limitation.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Rust macro-wrapped assertion limitation names reachable tests with unrecognized assertion-like macros without expanding macros or claiming oracle evidence."
+
+[[artifact]]
+id = "RIPR-SPEC-0121"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0121-perl-lsp-swarm-scratch-gc-orphan-reaper-paths.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Spec-only record of the perl-lsp-swarm scratch-GC orphan-reaper path mismatch; the implementation belongs to the separate perl-lsp-swarm repository."
+
+[[artifact]]
+id = "RIPR-SPEC-0122"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0122-bounded-human-check-output.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Bounded human check output provides a concise triage view while retaining an explicit exhaustive mode; repo-scoped formats disclose their unchanged base/diff boundaries."
+
+[[artifact]]
+id = "RIPR-SPEC-0123"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0123-targeted-rerun.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Targeted Rust rerun contract defines explicit selection, content-keyed fact reuse, invalidation, identity continuity, provenance, and reproducible cold/warm evidence."
+
+[[artifact]]
+id = "RIPR-SPEC-0124"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0124-lsp-diagnostic-delivery-stability.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "LSP diagnostic delivery contract defines canonical ordering, root-independent identities, unchanged-publication suppression, removed-URI clearing, and publication telemetry."
+
+[[artifact]]
+id = "RIPR-SPEC-0131"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0131-ripr-agent-protocol-contract.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Capability-only riprAgent v0.1 request, success, and error envelopes with independent protocol/schema identities and repository-owned schemas; handlers and provider integration remain out of scope."
+
+[[artifact]]
+id = "RIPR-SPEC-0132"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0132-spec-v2-runtime-promotion.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Spec-v2 governance prevents a specification slice from claiming runtime implementation, current runtime proof, or support promotion without compatible implementation and evidence."
+
+[[artifact]]
+id = "RIPR-SPEC-0133"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0133-assertion-shaped-owner-guidance.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Assertion-shaped owner guidance reframes the next step toward oracles when ownership evidence is test-dominated, without changing classification or repair readiness."
+
+[[artifact]]
+id = "RIPR-SPEC-0134"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0134-repair-artifact-provenance.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Repair-artifact provenance defines producer-owned identity, repository/root and revision disclosure, bounded raw-JSON commitment, and fail-closed verification ingress."
+
+[[artifact]]
+id = "RIPR-SPEC-0135"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md"
+status = "accepted"
+owner = "product-swarm"
+standalone_reason = "Assurance vocabulary separates static movement, explicit command execution, receipt issuance, and externally supplied runtime mutation evidence with typed validation boundaries."

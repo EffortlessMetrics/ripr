@@ -1,0 +1,70 @@
+schema_version = "2.0"
+id = "ripr.slice.rayon-parallel-parse.v1"
+generation = 1
+
+source_issue = "issue:2300"
+design_reference = "RIPR-SPEC-0001"
+change_class = "refactor"
+
+claim_boundary = """
+Parallelizes the read+parse phase of the facts index build
+(`analysis::facts::build`) with rayon: per-file reads and
+ra_ap_syntax/lexical summaries run on the default rayon pool in batches of
+64 files, and results are collected per batch in input order, then inserted
+into `RustIndex` sequentially in the original input order so the
+order-sensitive `tests`/`functions` vectors, the first-error-in-input-order
+precedence, cache statistics, and corrupt-entry stderr ordering are
+byte-identical to the previous sequential loop. Cancellation stays
+cooperative: the thread-local cancellation token is not visible on rayon
+workers, so `cancellation::checkpoint()` runs on the calling thread before
+each batch and after each ordered insert (error first, then checkpoint),
+bounding cancellation latency to one batch of parses. The adapter
+parameters of the two crate-private builders gain `Send + Sync` bounds so
+`&dyn RustSyntaxAdapter` can cross worker threads; all in-repo adapters are
+unit structs that satisfy them. This adds the `rayon` dependency (recorded
+in `policy/dependency_allowlist.txt`) and changes no analysis result,
+classification, output contract, golden, fixture, or public API behavior.
+"""
+
+non_goals = [
+  "custom rayon thread pools or pool sizing configuration",
+  "parallel cache stores or parallel cache lookups (kept sequential)",
+  "changes to cancellation token plumbing (thread-local install is unchanged)",
+  "analysis result, classification, output contract, golden, or fixture changes",
+  "parallelizing probe generation, classification, or other analysis phases",
+]
+
+return_conditions = [
+  "Return to root if any golden or fixture drift appears (stop, do not re-bless).",
+  "Return to root if repeated builds over the same input do not produce identical indexes.",
+  "Return to root if the first error in input order no longer wins for a deterministic corpus.",
+  "Return to root if cancellation stops being observed during a long index build.",
+]
+
+owned_seams = [
+  "seam:ripr:analysis:facts-build",
+]
+
+shared_seams = [
+  "seam:ripr:analysis:cancellation",
+  "seam:ripr:analysis:seam-cache",
+]
+
+forbidden_seams = [
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:cli:commands",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0001"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

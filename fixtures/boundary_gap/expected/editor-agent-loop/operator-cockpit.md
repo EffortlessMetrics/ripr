@@ -18,7 +18,7 @@ Status: warn
 | before snapshot | present | present | before_snapshot_available | 1 seams; 1 weakly_gripped, 0 ungripped, 0 reachable_unrevealed. |
 | after snapshot | present | present | after_snapshot_available | 1 seams; 1 weakly_gripped, 0 ungripped, 0 reachable_unrevealed. |
 | agent verify | present | advisory | agent_verify_counts_available | 0 improved, 0 changed, 0 regressed, 1 unchanged seams. |
-| agent receipt | present | advisory | agent_receipt_available | Receipt for seam 67fc764ba37d77bd: unchanged; before weakly_gripped, after weakly_gripped. Static grip class did not move. |
+| agent receipt | present | incomplete | agent_receipt_available | Receipt for seam 67fc764ba37d77bd: unchanged; before weakly_gripped, after weakly_gripped. Static grip class did not move. |
 | SARIF policy | missing | missing | not_available | Report has not been generated yet. |
 | badge status | missing | missing | not_available | Report has not been generated yet. |
 | targeted-test outcome | present | advisory | targeted_outcome_artifact_present | 0 moved, 0 regressed, 1 unchanged seams. |
