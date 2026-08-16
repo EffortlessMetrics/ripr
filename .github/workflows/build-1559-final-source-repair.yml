@@ -1,0 +1,370 @@
+name: Build final #1559 source repair
+
+on:
+  push:
+    branches:
+      - control/0.11.0-j2-catalog-builder
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-1559-final-source-repair
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_BASE: a072b7efe80f1a32d7b5ba7342559a114edeb12e
+      TRANSPORT_BRANCH: transport/1559-final-source-repair
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: a072b7efe80f1a32d7b5ba7342559a114edeb12e
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply the complete source-owned repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name EffortlessSteven
+          git config user.email git@effortlesssteven.com
+
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow_path = Path('.github/workflows/source-promotion-contract.yml')
+          command_path = Path('xtask/src/command.rs')
+          integration_path = Path('xtask/tests/source_promotion_workflow_contract.rs')
+          spec_path = Path('docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md')
+
+          workflow = workflow_path.read_text(encoding='utf-8')
+          malformed = '(.swarm_reachability.verified_through_parent_2 | type) == "boolean")))\' "$verification"'
+          balanced = '(.swarm_reachability.verified_through_parent_2 | type) == "boolean"))\' "$verification"'
+          if workflow.count(malformed) != 1:
+              raise SystemExit(f'expected one malformed verifier predicate, found {workflow.count(malformed)}')
+          workflow = workflow.replace(malformed, balanced, 1)
+
+          old_out = 'SOURCE_PROMOTION_OUT: target/ripr/source-promotion'
+          new_out = 'SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion'
+          if workflow.count(old_out) != 4:
+              raise SystemExit(f'expected four candidate/workflow output paths, found {workflow.count(old_out)}')
+          workflow = workflow.replace(old_out, new_out)
+
+          old_upload = '          path: target/ripr/source-promotion'
+          new_upload = '          path: ${{ runner.temp }}/ripr-source-promotion'
+          if workflow.count(old_upload) != 2:
+              raise SystemExit(f'expected two artifact paths, found {workflow.count(old_upload)}')
+          workflow = workflow.replace(old_upload, new_upload)
+
+          boundary = '\n  post-merge-reachability:\n'
+          if workflow.count(boundary) != 1:
+              raise SystemExit(f'expected one post-merge boundary, found {workflow.count(boundary)}')
+          if 'Enforce normalized source-promotion contract' in workflow:
+              raise SystemExit('terminal enforcement already exists')
+          enforcement = '\n'.join([
+              '      - name: Enforce normalized source-promotion contract',
+              '        if: always()',
+              '        env:',
+              '          SOURCE_PROMOTION_CONTRACT: ${{ runner.temp }}/ripr-source-promotion/source-promotion-contract.json',
+              '        run: |',
+              '          set -euo pipefail',
+              '          test -f "$SOURCE_PROMOTION_CONTRACT"',
+              "          jq -e '",
+              '            .schema == "ripr.source_promotion_contract.v2" and',
+              '            .status == "verified" and',
+              '            .validation.status == "passed" and',
+              '            .verifier_receipt_status == "present" and',
+              '            .verifier_exit_code == "0"',
+              "          ' \"$SOURCE_PROMOTION_CONTRACT\"",
+              '',
+          ])
+          workflow = workflow.replace(boundary, '\n' + enforcement + '  post-merge-reachability:\n', 1)
+          workflow_path.write_text(workflow, encoding='utf-8')
+
+          command = command_path.read_text(encoding='utf-8')
+          old_needle = '            "SOURCE_PROMOTION_OUT: target/ripr/source-promotion",\n'
+          new_needle = '            "SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion",\n'
+          if command.count(old_needle) != 1:
+              raise SystemExit(f'expected one old command-test output needle, found {command.count(old_needle)}')
+          command = command.replace(old_needle, new_needle, 1)
+          insertion_anchor = '            "trusted verifier exited non-zero",\n'
+          insertion = ''.join([
+              insertion_anchor,
+              '            "Enforce normalized source-promotion contract",\n',
+              '            "SOURCE_PROMOTION_CONTRACT: ${{ runner.temp }}/ripr-source-promotion/source-promotion-contract.json",\n',
+              '            ".schema == \\"ripr.source_promotion_contract.v2\\"",\n',
+              '            ".validation.status == \\"passed\\"",\n',
+              '            ".verifier_receipt_status == \\"present\\"",\n',
+              '            ".verifier_exit_code == \\"0\\"",\n',
+          ])
+          if command.count(insertion_anchor) != 1:
+              raise SystemExit(f'expected one receipt-test insertion anchor, found {command.count(insertion_anchor)}')
+          command = command.replace(insertion_anchor, insertion, 1)
+          closing_anchor = '''        if workflow.contains("echo \\"- PR head / candidate SHA: `")
+            || workflow.contains("echo \\"Failure reasons: `")
+        {
+            return Err("receipt summary still executes interpolated Markdown backticks".into());
+        }
+        Ok(())
+    }
+'''
+          closing_replacement = '''        if workflow.contains("echo \\"- PR head / candidate SHA: `")
+            || workflow.contains("echo \\"Failure reasons: `")
+        {
+            return Err("receipt summary still executes interpolated Markdown backticks".into());
+        }
+        for forbidden in [
+            "SOURCE_PROMOTION_OUT: target/ripr/source-promotion",
+            "path: target/ripr/source-promotion",
+        ] {
+            if workflow.contains(forbidden) {
+                return Err(format!(
+                    "promotion receipts remain candidate-checkout controlled: {forbidden}"
+                ));
+            }
+        }
+        Ok(())
+    }
+'''
+          if command.count(closing_anchor) != 1:
+              raise SystemExit('receipt-test closing anchor did not match exactly once')
+          command = command.replace(closing_anchor, closing_replacement, 1)
+          command_path.write_text(command, encoding='utf-8')
+
+          integration = integration_path.read_text(encoding='utf-8')
+          addition = textwrap.dedent(r'''
+              #[test]
+              fn verifier_receipt_schema_predicate_is_balanced() -> Result<(), String> {
+                  let workflow = workflow_text()?;
+                  let malformed =
+                      "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\")))' \"$verification\"";
+                  let balanced =
+                      "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\"))' \"$verification\"";
+                  assert!(
+                      !workflow.contains(malformed),
+                      "verifier-receipt jq predicate retains an unmatched parenthesis"
+                  );
+                  assert!(
+                      workflow.contains(balanced),
+                      "workflow no longer contains the balanced verified-receipt predicate"
+                  );
+                  Ok(())
+              }
+
+              #[test]
+              fn normalized_contract_is_runner_owned_uploaded_then_enforced() -> Result<(), String> {
+                  let workflow = workflow_text()?;
+                  let promotion_job = workflow
+                      .split("\n  post-merge-reachability:\n")
+                      .next()
+                      .ok_or_else(|| "missing promotion-contract job".to_string())?;
+                  for forbidden in [
+                      "SOURCE_PROMOTION_OUT: target/ripr/source-promotion",
+                      "path: target/ripr/source-promotion",
+                  ] {
+                      assert!(
+                          !promotion_job.contains(forbidden),
+                          "candidate checkout still owns promotion evidence: {forbidden}"
+                      );
+                  }
+                  for required in [
+                      "SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion",
+                      "path: ${{ runner.temp }}/ripr-source-promotion",
+                      "SOURCE_PROMOTION_CONTRACT: ${{ runner.temp }}/ripr-source-promotion/source-promotion-contract.json",
+                  ] {
+                      assert!(
+                          promotion_job.contains(required),
+                          "runner-owned promotion contract missing: {required}"
+                      );
+                  }
+
+                  let upload = promotion_job
+                      .find("- name: Upload SHA-bound promotion receipts")
+                      .ok_or_else(|| "missing promotion receipt upload step".to_string())?;
+                  let enforce = promotion_job
+                      .find("- name: Enforce normalized source-promotion contract")
+                      .ok_or_else(|| "missing terminal normalized-contract enforcement step".to_string())?;
+                  assert!(
+                      upload < enforce,
+                      "rejected evidence must be uploaded before the hosted job fails"
+                  );
+                  let enforcement = &promotion_job[enforce..];
+                  for required in [
+                      "if: always()",
+                      ".schema == \"ripr.source_promotion_contract.v2\"",
+                      ".status == \"verified\"",
+                      ".validation.status == \"passed\"",
+                      ".verifier_receipt_status == \"present\"",
+                      ".verifier_exit_code == \"0\"",
+                  ] {
+                      assert!(
+                          enforcement.contains(required),
+                          "terminal enforcement missing: {required}"
+                      );
+                  }
+                  Ok(())
+              }
+          ''').lstrip()
+          if 'fn verifier_receipt_schema_predicate_is_balanced' in integration:
+              raise SystemExit('focused #1559 integration tests already exist')
+          integration_path.write_text(integration.rstrip() + '\n\n' + addition, encoding='utf-8')
+
+          spec = spec_path.read_text(encoding='utf-8')
+          behavior_anchor = '''The workflow runs `cargo xtask source-promotion verify` and emits one
+normalized `ripr.source_promotion_contract.v2` receipt plus the verifier
+JSON/Markdown receipts. Every receipt is bound to the PR head, control commit,
+and input digests and is uploaded under a SHA-containing artifact name.
+'''
+          behavior_replacement = '''The workflow runs `cargo xtask source-promotion verify` and emits one
+normalized `ripr.source_promotion_contract.v2` receipt plus the verifier
+JSON/Markdown receipts. PR and post-merge receipt directories live under the
+runner-owned temporary directory rather than the candidate checkout. Every
+receipt is bound to the PR head, control commit, and input digests and is
+uploaded under a SHA-containing artifact name.
+
+After the PR receipt upload, an always-run terminal enforcement step reads the
+normalized contract and succeeds only when its schema is
+`ripr.source_promotion_contract.v2`, its status is `verified`, validation is
+`passed`, the verifier receipt is `present`, and the verifier exit code is zero.
+Rejected evidence is therefore retained before the hosted job fails; a missing,
+malformed, rejected, candidate-supplied, or non-zero-verifier receipt cannot
+produce a green `Source Promotion Contract` check.
+'''
+          if spec.count(behavior_anchor) != 1:
+              raise SystemExit('spec behavior anchor did not match exactly once')
+          spec = spec.replace(behavior_anchor, behavior_replacement, 1)
+          evidence_anchor = '''- uploaded receipts retain exact heads, ordered parents, input digests, checks,
+  failure reasons, and claim boundaries.
+'''
+          evidence_replacement = '''- uploaded receipts retain exact heads, ordered parents, input digests, checks,
+  failure reasons, and claim boundaries;
+- the retained verified `ripr.source_promotion_verification.v2` shape passes the
+  balanced normalizer predicate while malformed shapes fail closed;
+- a rejected normalized contract is uploaded and then fails the hosted job,
+  while a verified, passed, present, zero-exit contract passes terminal
+  enforcement;
+- candidate-checkout files cannot substitute for runner-owned verifier or
+  normalized-contract receipts.
+'''
+          if spec.count(evidence_anchor) != 1:
+              raise SystemExit('spec evidence anchor did not match exactly once')
+          spec = spec.replace(evidence_anchor, evidence_replacement, 1)
+          mapping_anchor = '''contract tests in `xtask/tests/source_promotion_workflow_contract.rs`, including
+missing/source-only, mixed allowed/source, and one-or-more unanimously allowed
+workflow-disposition cases. The exact-J graph, `kind:key` completeness, duplicate
+'''
+          mapping_replacement = '''contract tests in `xtask/tests/source_promotion_workflow_contract.rs`, including
+missing/source-only, mixed allowed/source, one-or-more unanimously allowed
+workflow-disposition cases, the balanced verifier-receipt predicate, and
+runner-owned upload-before-enforcement ordering. The exact-J graph, `kind:key`
+completeness, duplicate
+'''
+          if spec.count(mapping_anchor) != 1:
+              raise SystemExit('spec test-mapping anchor did not match exactly once')
+          spec_path.write_text(spec.replace(mapping_anchor, mapping_replacement, 1), encoding='utf-8')
+          PY
+
+      - name: Run source tests and exact jq controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          git diff --check
+          cargo test --locked -p xtask --test source_promotion_workflow_contract
+          cargo test --locked -p xtask source_promotion_workflow -- --nocapture
+          cargo run --locked -p xtask -- check-workflows
+          cargo run --locked -p xtask -- check-spec-format
+          cargo run --locked -p xtask -- check-traceability
+          cargo run --locked -p xtask -- check-doc-artifacts
+
+          cat > "$RUNNER_TEMP/verified-receipt.json" <<'JSON'
+          {
+            "checks": {"ancestry_and_digest": true, "caller_state_mutated": false, "head_is_declared_join": true, "main_reachability": "not_run", "ordered_parents": true, "release_version_identity": true, "reviewed_tree": true},
+            "failure_reasons": [],
+            "invalidation_rules": ["exact retained J2 verification shape"],
+            "join_head": "a2a743abd139566499f80cdca8ed999ec4ee01d4",
+            "main_head": null,
+            "merge_base": "36909460db013ed3a3238ee8b2fc3ccda1135c15",
+            "non_claims": ["no merge"],
+            "parents": ["a072b7efe80f1a32d7b5ba7342559a114edeb12e", "83217e97ec6847db41d757f57279a8b1ca433fe6"],
+            "preflight_sha256": "sha256:f37c98ea450cb8642c04bf7c5e76bf1cb6ec51a494920cb7be0448bae45c29b5",
+            "release_metadata_surfaces": ["Cargo.toml"],
+            "resolution_manifest_sha256": "sha256:e95376e16cd52eea7959e5890db047123ce71a4a60ae7c0abbfb68ffb9580c8c",
+            "schema": "ripr.source_promotion_verification.v2",
+            "source_main": "a072b7efe80f1a32d7b5ba7342559a114edeb12e",
+            "status": "verified",
+            "swarm_reachability": {"all_reachable_count": 859, "all_reachable_sha256": "sha256:d92e4a218aedae9937627a5d5cdae1ac5335caec0a67841cfe3762f8591d38a1", "first_parent_count": 859, "first_parent_ordered_sha256": "sha256:d92e4a218aedae9937627a5d5cdae1ac5335caec0a67841cfe3762f8591d38a1", "verified_through_parent_2": true},
+            "tree": "e9206995263876f087bce0da5f3aeac35895c040"
+          }
+          JSON
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          workflow = Path('.github/workflows/source-promotion-contract.yml').read_text(encoding='utf-8')
+          start_marker = 'if test -f "$verification"; then\n            if jq -e \''
+          end_marker = '\' "$verification" >/dev/null 2>&1; then'
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          Path('/tmp/verifier-filter.jq').write_text(workflow[start:end] + '\n', encoding='utf-8')
+
+          block_start = workflow.index('- name: Enforce normalized source-promotion contract')
+          block_end = workflow.index('\n  post-merge-reachability:\n', block_start)
+          block = workflow[block_start:block_end]
+          start_marker = "jq -e '\n"
+          end_marker = "\n          ' \"$SOURCE_PROMOTION_CONTRACT\""
+          start = block.index(start_marker) + len(start_marker)
+          end = block.index(end_marker, start)
+          Path('/tmp/contract-filter.jq').write_text(block[start:end] + '\n', encoding='utf-8')
+
+          verified = json.loads(Path('/tmp/verified-receipt.json').read_text(encoding='utf-8'))
+          verified['swarm_reachability']['verified_through_parent_2'] = 'true'
+          Path('/tmp/malformed-receipt.json').write_text(json.dumps(verified), encoding='utf-8')
+          PY
+          jq -e -f /tmp/verifier-filter.jq "$RUNNER_TEMP/verified-receipt.json" >/dev/null
+          if jq -e -f /tmp/verifier-filter.jq /tmp/malformed-receipt.json >/dev/null; then
+            echo 'malformed verifier receipt unexpectedly passed' >&2
+            exit 1
+          fi
+          cat > /tmp/verified-contract.json <<'JSON'
+          {"schema":"ripr.source_promotion_contract.v2","status":"verified","validation":{"status":"passed"},"verifier_receipt_status":"present","verifier_exit_code":"0"}
+          JSON
+          jq -e -f /tmp/contract-filter.jq /tmp/verified-contract.json >/dev/null
+          jq '.status="rejected"' /tmp/verified-contract.json > /tmp/rejected-contract.json
+          if jq -e -f /tmp/contract-filter.jq /tmp/rejected-contract.json >/dev/null; then
+            echo 'rejected normalized contract unexpectedly passed' >&2
+            exit 1
+          fi
+
+      - name: Publish safe blob transport branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf transport/1559-final
+          mkdir -p transport/1559-final
+          cp .github/workflows/source-promotion-contract.yml transport/1559-final/source-promotion-contract.yml
+          cp xtask/src/command.rs transport/1559-final/command.rs
+          cp xtask/tests/source_promotion_workflow_contract.rs transport/1559-final/source_promotion_workflow_contract.rs
+          cp docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md transport/1559-final/RIPR-SPEC-0150-source-promotion-ci-contract.md
+          sha256sum transport/1559-final/* > transport/1559-final/sha256sums.txt
+          jq -n \
+            --arg schema ripr.source_promotion_contract_repair_transport.v1 \
+            --arg source_base "$SOURCE_BASE" \
+            --arg workflow_sha256 "$(sha256sum transport/1559-final/source-promotion-contract.yml | awk '{print $1}')" \
+            --arg command_sha256 "$(sha256sum transport/1559-final/command.rs | awk '{print $1}')" \
+            --arg integration_sha256 "$(sha256sum transport/1559-final/source_promotion_workflow_contract.rs | awk '{print $1}')" \
+            --arg spec_sha256 "$(sha256sum transport/1559-final/RIPR-SPEC-0150-source-promotion-ci-contract.md | awk '{print $1}')" \
+            '{schema:$schema,source_base:$source_base,files:{workflow:$workflow_sha256,command_tests:$command_sha256,integration_tests:$integration_sha256,spec:$spec_sha256},proof:["cargo fmt --all","git diff --check","cargo test -p xtask --test source_promotion_workflow_contract","cargo test -p xtask source_promotion_workflow","check-workflows","check-spec-format","check-traceability","check-doc-artifacts","retained verified receipt accepted by exact jq filter","malformed verifier receipt rejected","verified normalized contract accepted","rejected normalized contract rejected"]}' \
+            > transport/1559-final/receipt.json
+
+          git reset --hard "$SOURCE_BASE"
+          git clean -fdx
+          git switch -c "$TRANSPORT_BRANCH"
+          git add transport/1559-final
+          git commit -m "chore(transport): retain verified #1559 source repair blobs"
+          git push origin "HEAD:refs/heads/$TRANSPORT_BRANCH"
