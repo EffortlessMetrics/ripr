@@ -1,0 +1,70 @@
+{
+  "schema": "ripr.source_promotion_contract.v2",
+  "status": "rejected",
+  "pr_number": 1558,
+  "base_sha": "a072b7efe80f1a32d7b5ba7342559a114edeb12e",
+  "head_sha": "a2a743abd139566499f80cdca8ed999ec4ee01d4",
+  "version": "0.11.0",
+  "source_main": "a072b7efe80f1a32d7b5ba7342559a114edeb12e",
+  "source_parent": "not_available",
+  "join_head": "a2a743abd139566499f80cdca8ed999ec4ee01d4",
+  "control_commit": "ce6c3996d9a656180eee7b95ccb03c4327c1e813",
+  "trusted_verifier_sha": "a072b7efe80f1a32d7b5ba7342559a114edeb12e",
+  "verifier_receipt_status": "schema_mismatch",
+  "verifier_exit_code": "0",
+  "validation": {
+    "status": "rejected",
+    "phase": "verifier_receipt",
+    "reason": "trusted verifier receipt schema mismatch"
+  },
+  "inputs": {
+    "preflight": "/home/runner/work/_temp/source-promotion-preflight.json",
+    "resolution_manifest": "/home/runner/work/_temp/source-promotion-resolution.json"
+  },
+  "control_sidecars": {
+    "contract_inputs": "docs/release/source-promotion/contract-inputs.json",
+    "preflight": "docs/release/source-promotion/preflight.json",
+    "resolution_manifest": "docs/release/source-promotion/resolution-manifest.json"
+  },
+  "preflight_sha256": "not_available",
+  "resolution_manifest_sha256": "not_available",
+  "parents": [],
+  "tree": "not_available",
+  "merge_base": "not_available",
+  "inventory": {
+    "conflicts": 20,
+    "source_survivors": 100,
+    "swarm_exclusions": 57
+  },
+  "version_state": {
+    "requested_version": "0.11.0",
+    "source": {
+      "workspace_version": null,
+      "crate_version": "0.10.1",
+      "extension_version": "0.10.1",
+      "cargo_lock_package_version": "0.10.1",
+      "npm_lock_root_version": "0.10.1",
+      "changelog_mentions_version": false
+    },
+    "swarm": {
+      "workspace_version": "0.10.0",
+      "crate_version": "0.10.0",
+      "extension_version": "0.10.0",
+      "cargo_lock_package_version": "0.10.0",
+      "npm_lock_root_version": "0.10.0",
+      "changelog_mentions_version": false
+    }
+  },
+  "governance": {
+    "protected_candidate_tag": "passed",
+    "protected_ruleset": "passed"
+  },
+  "checks": {},
+  "failure_reasons": [
+    "trusted verifier receipt schema mismatch"
+  ],
+  "claim_boundary": [
+    "Exact PR head, ordered two-parent ancestry, reviewed tree, metadata identity, live protected tag and ruleset bindings only.",
+    "No merge, publication, tag, release, settings, branch-protection, or product-correctness claim."
+  ]
+}
