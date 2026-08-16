@@ -53,7 +53,8 @@ normalized `ripr.source_promotion_contract.v2` receipt plus the verifier
 JSON/Markdown receipts. PR and post-merge receipt directories live under the
 runner-owned temporary directory rather than the candidate checkout. Every
 receipt is bound to the PR head, control commit, and input digests and is
-uploaded under a SHA-containing artifact name.
+uploaded under a SHA-containing artifact name. The normalized PR receipt also
+preserves the trusted `source_parent` identity emitted by input validation.
 
 After the PR receipt upload, an always-run terminal enforcement step reads the
 normalized contract and succeeds only when its schema is

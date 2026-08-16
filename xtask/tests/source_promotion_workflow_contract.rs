@@ -1,5 +1,7 @@
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 use serde_json::{Value, json};
 
@@ -10,6 +12,38 @@ fn workflow_text() -> Result<String, String> {
         .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
     fs::read_to_string(root.join(".github/workflows/source-promotion-contract.yml"))
         .map_err(|error| format!("read source-promotion contract workflow: {error}"))
+}
+
+fn jq_filter_matches(filter: &str, value: &Value) -> Result<bool, String> {
+    let mut child = Command::new("jq")
+        .args(["-e", filter])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("start jq for source-promotion contract test: {error}"))?;
+    let input = serde_json::to_vec(value)
+        .map_err(|error| format!("serialize jq contract fixture: {error}"))?;
+    {
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "jq contract test has no stdin".to_string())?;
+        stdin
+            .write_all(&input)
+            .map_err(|error| format!("write jq contract fixture: {error}"))?;
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("wait for jq contract test: {error}"))?;
+    match output.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        code => Err(format!(
+            "jq contract filter failed with status {code:?}: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )),
+    }
 }
 
 fn workflow_disposition_is_authorized(manifest: &Value, path: &str) -> bool {
@@ -111,15 +145,58 @@ fn workflow_rejection_reason_is_single_line_after_multiple_unreviewed_paths() ->
 #[test]
 fn verifier_receipt_schema_predicate_is_balanced() -> Result<(), String> {
     let workflow = workflow_text()?;
-    let malformed = "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\")))' \"$verification\"";
-    let balanced = "(.swarm_reachability.verified_through_parent_2 | type) == \"boolean\"))' \"$verification\"";
+    let line = workflow
+        .lines()
+        .find(|line| line.contains("jq -e '") && line.contains("verified_through_parent_2"))
+        .ok_or_else(|| "missing verifier-receipt jq predicate".to_string())?;
+    let prefix = "jq -e '";
+    let suffix = "' \"$verification\"";
+    let start = line
+        .find(prefix)
+        .ok_or_else(|| "verifier predicate has no jq prefix".to_string())?
+        + prefix.len();
+    let end = line
+        .rfind(suffix)
+        .ok_or_else(|| "verifier predicate has no verification-file suffix".to_string())?;
+    let filter = &line[start..end];
+
+    let valid = json!({
+        "schema": "ripr.source_promotion_verification.v2",
+        "status": "verified",
+        "join_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "source_main": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "main_head": null,
+        "parents": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "cccccccccccccccccccccccccccccccccccccccc"
+        ],
+        "tree": "dddddddddddddddddddddddddddddddddddddddd",
+        "preflight_sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "resolution_manifest_sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "merge_base": "1111111111111111111111111111111111111111",
+        "swarm_reachability": {
+            "all_reachable_count": 1,
+            "first_parent_count": 1,
+            "all_reachable_sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "first_parent_ordered_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "verified_through_parent_2": true
+        },
+        "release_metadata_surfaces": [],
+        "checks": {},
+        "failure_reasons": [],
+        "invalidation_rules": [],
+        "non_claims": []
+    });
     assert!(
-        !workflow.contains(malformed),
-        "verifier-receipt jq predicate retains an unmatched parenthesis"
+        jq_filter_matches(filter, &valid)?,
+        "complete verifier-receipt jq predicate rejected a valid receipt"
     );
+
+    let mut malformed = valid;
+    malformed["swarm_reachability"]["verified_through_parent_2"] = json!("true");
     assert!(
-        workflow.contains(balanced),
-        "workflow no longer contains the balanced verified-receipt predicate"
+        !jq_filter_matches(filter, &malformed)?,
+        "verifier-receipt jq predicate accepted a non-boolean parent-2 proof"
     );
     Ok(())
 }
@@ -127,28 +204,43 @@ fn verifier_receipt_schema_predicate_is_balanced() -> Result<(), String> {
 #[test]
 fn normalized_contract_is_runner_owned_uploaded_then_enforced() -> Result<(), String> {
     let workflow = workflow_text()?;
-    let promotion_job = workflow
-        .split("\n  post-merge-reachability:\n")
-        .next()
-        .ok_or_else(|| "missing promotion-contract job".to_string())?;
+    let (promotion_job, post_merge_job) = workflow
+        .split_once("\n  post-merge-reachability:\n")
+        .ok_or_else(|| "missing post-merge-reachability job".to_string())?;
+    let runner_out = "SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion";
+    let runner_path = "path: ${{ runner.temp }}/ripr-source-promotion";
 
     for forbidden in [
         "SOURCE_PROMOTION_OUT: target/ripr/source-promotion",
         "path: target/ripr/source-promotion",
     ] {
         assert!(
-            !promotion_job.contains(forbidden),
+            !workflow.contains(forbidden),
             "candidate checkout still owns promotion evidence: {forbidden}"
         );
     }
+    for (lane_name, lane) in [
+        ("promotion-contract", promotion_job),
+        ("post-merge-reachability", post_merge_job),
+    ] {
+        assert_eq!(
+            lane.matches(runner_out).count(),
+            2,
+            "{lane_name} must bind both verifier and receipt writer to runner-owned output"
+        );
+        assert_eq!(
+            lane.matches(runner_path).count(),
+            1,
+            "{lane_name} artifact upload must use the runner-owned receipt path"
+        );
+    }
     for required in [
-        "SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion",
-        "path: ${{ runner.temp }}/ripr-source-promotion",
+        "SOURCE_PARENT: ${{ steps.inputs.outputs.source_parent }}",
         "SOURCE_PROMOTION_CONTRACT: ${{ runner.temp }}/ripr-source-promotion/source-promotion-contract.json",
     ] {
         assert!(
             promotion_job.contains(required),
-            "runner-owned promotion contract missing: {required}"
+            "promotion contract missing runner-owned identity or receipt binding: {required}"
         );
     }
 
@@ -162,6 +254,18 @@ fn normalized_contract_is_runner_owned_uploaded_then_enforced() -> Result<(), St
         upload < enforce,
         "rejected evidence must be uploaded before the hosted job fails"
     );
+    assert!(
+        promotion_job[upload..enforce].contains("if: always()"),
+        "promotion receipt upload must run on rejected paths"
+    );
+    let post_merge_upload = post_merge_job
+        .find("- name: Upload SHA-bound post-merge receipts")
+        .ok_or_else(|| "missing post-merge receipt upload step".to_string())?;
+    assert!(
+        post_merge_job[post_merge_upload..].contains("if: always()"),
+        "post-merge receipt upload must run on rejected paths"
+    );
+
     let enforcement = &promotion_job[enforce..];
     for required in [
         "if: always()",

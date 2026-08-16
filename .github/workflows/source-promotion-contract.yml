@@ -316,6 +316,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           SOURCE_MAIN: ${{ steps.inputs.outputs.source_main }}
+          SOURCE_PARENT: ${{ steps.inputs.outputs.source_parent }}
           JOIN_HEAD: ${{ steps.inputs.outputs.join_head }}
           PREFLIGHT: ${{ steps.inputs.outputs.preflight }}
           RESOLUTION_MANIFEST: ${{ steps.inputs.outputs.resolution_manifest }}
