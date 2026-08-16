@@ -111,6 +111,16 @@ def main() -> int:
     _, source_rows = parse(source_path, "live_source")
     root = root_path.resolve()
 
+    checker_untracked: dict[tuple[str, str], str] = {
+        (
+            "xtask/tests/source_promotion_workflow_contract.rs",
+            "use std::process::{Command, Stdio}",
+        ): (
+            "repository check-process-policy does not track grouped process imports; "
+            "the bounded Command::new execution row remains tracked"
+        ),
+    }
+
     result: list[Row] = []
     decisions: list[dict[str, Any]] = []
     dropped: list[dict[str, Any]] = []
@@ -120,6 +130,17 @@ def main() -> int:
         source = source_rows.get(key)
         probe = source or j2 or base
         if probe is None:
+            continue
+        if key in checker_untracked:
+            dropped.append(
+                {
+                    "path": key[0],
+                    "pattern": key[1],
+                    "origins": [row.origin for row in (base, j2, source) if row is not None],
+                    "literal_count": count_literal(root, probe),
+                    "reason": checker_untracked[key],
+                }
+            )
             continue
         actual = count_literal(root, probe)
         if actual == 0:
@@ -174,7 +195,7 @@ def main() -> int:
     receipt_path.write_text(
         json.dumps(
             {
-                "schema": "ripr.source_promotion_process_policy_resolution.v3",
+                "schema": "ripr.source_promotion_process_policy_resolution.v4",
                 "inputs": {
                     "old_source_sha256": sha256(old_path),
                     "j2_sha256": sha256(j2_path),
@@ -185,11 +206,12 @@ def main() -> int:
                 "decisions": decisions,
                 "dropped_orphaned": dropped,
                 "invariants": [
-                    "source-only and J2-only live patterns survive",
+                    "source-only and J2-only checker-tracked process surfaces survive",
                     "both-changed rows use an existing maximum covering the reviewed tree",
                     "every retained maximum is tightened to the exact reviewed-tree literal count",
                     "no maximum is widened implicitly",
-                    "process patterns remain exact and grouped imports are not normalized into prefixes",
+                    "process patterns remain exact and are not normalized into prefixes",
+                    "the one explicitly checker-untracked grouped import is omitted while its Command::new execution remains tracked",
                     "orphaned literals are removed",
                     "check-process-policy remains the final uncovered-surface detector",
                 ],
