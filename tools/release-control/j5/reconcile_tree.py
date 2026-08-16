@@ -12,6 +12,32 @@ from pathlib import Path
 from typing import Any
 
 
+CATALOG_TEST_PATH = "xtask/src/tests.rs"
+CATALOG_TEST_J2_BLOB = "1bff24fb3fb2f27f4db4b8a9f4ffe6c5f217a45b"
+CATALOG_TEST_REPLACEMENTS = [
+    (
+        "fn command_catalog_pins_ci_enforced_classification() -> Result<(), String> {",
+        "fn command_catalog_ci_enforced_flags_match_repo_workflows_pins_classification() -> Result<(), String> {",
+    ),
+    (
+        '    assert!(!ci_enforced("precommit")?);',
+        '    assert!(ci_enforced("precommit")?);',
+    ),
+    (
+        '    assert!(!ci_enforced("check-architecture")?);',
+        '    assert!(ci_enforced("check-architecture")?);',
+    ),
+    (
+        '    assert!(!ci_enforced("check-doc-artifacts")?);',
+        '    assert!(ci_enforced("check-doc-artifacts")?);',
+    ),
+    (
+        '    assert!(!ci_enforced("markdown-links")?);',
+        '    assert!(ci_enforced("markdown-links")?);',
+    ),
+]
+
+
 @dataclass(frozen=True)
 class Entry:
     mode: str
@@ -49,7 +75,18 @@ def blob(repo: Path, oid: str) -> bytes:
     return git(repo, "cat-file", "blob", oid).stdout
 
 
-def write_entry(repo: Path, worktree: Path, path: str, entry: Entry | None, data: bytes | None = None) -> None:
+def blob_oid(data: bytes) -> str:
+    header = f"blob {len(data)}\0".encode("ascii")
+    return hashlib.sha1(header + data).hexdigest()
+
+
+def write_entry(
+    repo: Path,
+    worktree: Path,
+    path: str,
+    entry: Entry | None,
+    data: bytes | None = None,
+) -> None:
     target = worktree / path
     if entry is None:
         if target.is_symlink() or target.is_file():
@@ -84,7 +121,20 @@ def merge_text(path: str, base: bytes, ours: bytes, theirs: bytes) -> bytes:
         base_path.write_bytes(base)
         theirs_path.write_bytes(theirs)
         proc = subprocess.run(
-            ["git", "merge-file", "-p", "-L", "reviewed J2", "-L", "old source", "-L", "live source", str(ours_path), str(base_path), str(theirs_path)],
+            [
+                "git",
+                "merge-file",
+                "-p",
+                "-L",
+                "reviewed J2",
+                "-L",
+                "old source",
+                "-L",
+                "live source",
+                str(ours_path),
+                str(base_path),
+                str(theirs_path),
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
@@ -105,6 +155,73 @@ def choose_mode(path: str, base: Entry, ours: Entry, theirs: Entry) -> str:
     raise RuntimeError(
         f"incompatible both-changed mode for {path}: base={base.mode} j2={ours.mode} source={theirs.mode}"
     )
+
+
+def integrate_current_ci_catalog_test(
+    repo: Path,
+    worktree: Path,
+    j2: str,
+) -> dict[str, Any]:
+    entry = entry_at(repo, j2, CATALOG_TEST_PATH)
+    if entry is None or entry.kind != "blob" or entry.mode != "100644":
+        raise RuntimeError(
+            f"reviewed J2 must contain a regular {CATALOG_TEST_PATH}: {entry}"
+        )
+    if entry.oid != CATALOG_TEST_J2_BLOB:
+        raise RuntimeError(
+            f"reviewed J2 {CATALOG_TEST_PATH} blob moved: "
+            f"expected={CATALOG_TEST_J2_BLOB} actual={entry.oid}"
+        )
+
+    target = worktree / CATALOG_TEST_PATH
+    before = target.read_bytes()
+    if blob_oid(before) != CATALOG_TEST_J2_BLOB:
+        raise RuntimeError(
+            f"source reconciliation unexpectedly changed {CATALOG_TEST_PATH} before the "
+            "reviewed CI-classification repair"
+        )
+    text = before.decode("utf-8", "strict")
+    applied: list[dict[str, str]] = []
+    for old, new in CATALOG_TEST_REPLACEMENTS:
+        count = text.count(old)
+        if count != 1:
+            raise RuntimeError(
+                f"expected exactly one reviewed catalog-test preimage {old!r}, found {count}"
+            )
+        text = text.replace(old, new, 1)
+        applied.append({"old": old, "new": new})
+
+    for retained in [
+        '    assert!(!ci_enforced("release-readiness --version <version>")?);',
+        '    assert!(!ci_enforced("goldens bless <name> --reason <reason>")?);',
+        '    assert!(!ci_enforced("check-supply-chain")?);',
+    ]:
+        if text.count(retained) != 1:
+            raise RuntimeError(
+                f"catalog-test repair lost retained advisory assertion {retained!r}"
+            )
+
+    after = text.encode("utf-8")
+    target.write_bytes(after)
+    target.chmod(0o644)
+    return {
+        "path": CATALOG_TEST_PATH,
+        "resolution": "integrated_current_ci_catalog_truth",
+        "j2_blob": CATALOG_TEST_J2_BLOB,
+        "result_blob": blob_oid(after),
+        "applied": applied,
+        "retained_advisory_assertions": [
+            "release-readiness --version <version>",
+            "goldens bless <name> --reason <reason>",
+            "check-supply-chain",
+        ],
+        "verification_filter": "command_catalog_ci_enforced_flags_match_repo_workflows",
+        "reason": (
+            "Current routed workflows and the integrated command catalog enforce precommit, "
+            "check-architecture, check-doc-artifacts, and markdown-links. The inherited J2 "
+            "test still pinned the superseded source topology."
+        ),
+    }
 
 
 def main() -> int:
@@ -132,7 +249,9 @@ def main() -> int:
             "path": path,
             "old_source": None if base is None else {"mode": base.mode, "oid": base.oid},
             "j2": None if ours is None else {"mode": ours.mode, "oid": ours.oid},
-            "live_source": None if theirs is None else {"mode": theirs.mode, "oid": theirs.oid},
+            "live_source": None
+            if theirs is None
+            else {"mode": theirs.mode, "oid": theirs.oid},
         }
         if ours == base:
             write_entry(repo, worktree, path, theirs)
@@ -147,10 +266,18 @@ def main() -> int:
             raise RuntimeError(
                 f"delete/add conflict requires review for {path}: old={base} j2={ours} source={theirs}"
             )
-        elif any(entry.kind != "blob" or entry.mode == "120000" for entry in (base, ours, theirs)):
+        elif any(
+            entry.kind != "blob" or entry.mode == "120000"
+            for entry in (base, ours, theirs)
+        ):
             raise RuntimeError(f"non-regular both-changed path requires review: {path}")
         else:
-            merged = merge_text(path, blob(repo, base.oid), blob(repo, ours.oid), blob(repo, theirs.oid))
+            merged = merge_text(
+                path,
+                blob(repo, base.oid),
+                blob(repo, ours.oid),
+                blob(repo, theirs.oid),
+            )
             mode = choose_mode(path, base, ours, theirs)
             write_entry(repo, worktree, path, Entry(mode, "blob", ours.oid), merged)
             record["resolution"] = "integrated_three_way"
@@ -158,25 +285,30 @@ def main() -> int:
             record["mode"] = mode
         records.append(record)
 
+    catalog_test_repair = integrate_current_ci_catalog_test(repo, worktree, j2)
+
     changed_path.parent.mkdir(parents=True, exist_ok=True)
     changed_path.write_text(json.dumps(paths, indent=2) + "\n", encoding="utf-8")
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
     receipt_path.write_text(
         json.dumps(
             {
-                "schema": "ripr.source_promotion_source_delta_resolution.v1",
+                "schema": "ripr.source_promotion_source_delta_resolution.v2",
                 "old_source_parent": old_source,
                 "live_source_parent": live_source,
                 "reviewed_baseline_join": j2,
                 "changed_path_count": len(paths),
                 "changed_paths": paths,
                 "resolutions": records,
+                "reviewed_integration_repairs": [catalog_test_repair],
                 "invariants": [
                     "source-only movement is copied exactly",
                     "J2-only movement is retained exactly",
                     "both-changed regular text requires conflict-free three-way integration",
                     "binary, delete/add, symlink, and incompatible mode conflicts fail closed",
                     "process policy is reconciled separately against the completed reviewed tree",
+                    "the inherited catalog classification test is patched only from its exact reviewed J2 blob",
+                    "the focused workflow-drift test filter also executes the repaired classification pin",
                 ],
             },
             indent=2,
