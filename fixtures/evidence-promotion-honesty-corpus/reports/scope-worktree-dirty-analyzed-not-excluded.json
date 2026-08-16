@@ -1,0 +1,25 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": ".",
+  "base": "HEAD",
+  "summary": {
+    "changed_rust_files": 1,
+    "probes": 1,
+    "findings": 1
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:4e6b5f28",
+      "classification": "no_static_path",
+      "probe": {
+        "file": "src/lib.rs",
+        "line": 2
+      },
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "language": "rust"
+    }
+  ]
+}

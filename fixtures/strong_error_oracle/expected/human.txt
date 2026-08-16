@@ -2,85 +2,28 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/strong_error_oracle/input
 
-Summary: 3 probe(s), 2 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 2 probe(s), 2 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-WARNING fixtures/strong_error_oracle/input/src/lib.rs:7
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
-Changed
-  before: return Err(AuthError::EmptyToken);
-  after:  return Err(AuthError::RevokedToken);
+Start here:
+  State: no_actionable_gap
+  Safe next action: no non-exposed diff finding was selected. This is not runtime proof, coverage adequacy, or mutation confirmation.
+  File: fixtures/strong_error_oracle/input/src/lib.rs:7
+  Static exposure: exposed (warning, confidence 1.00)
+  Changed behavior: return Err(AuthError::RevokedToken);
+  Related test: tests/errors.rs:4 empty_token_rejects_with_revoked_token
+  Evidence:
+    - reach yes: Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 7 more evidence line(s) hidden
 
-Probe
-  family: call_deletion
-  delta:  effect
-  owner:  src/lib.rs::authenticate
+Next: drill into the top finding:
+  ripr explain --root fixtures/strong_error_oracle/input --diff fixtures/strong_error_oracle/diff.patch --mode fast probe:src_lib.rs:error_path:99b06ce7
+  ripr context --root fixtures/strong_error_oracle/input --diff fixtures/strong_error_oracle/diff.patch --mode fast --at probe:src_lib.rs:error_path:99b06ce7
 
-Static exposure
-  weakly_exposed (warning, confidence 0.92)
-
-Evidence
-  - reach yes: Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token
-  - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Medium oracle found: property or partial structural assertion
-  - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
-  - related test tests/errors.rs:4 empty_token_rejects_with_revoked_token uses medium exact error variant oracle: assert!(matches!(authenticate(""), Err(AuthError::RevokedToken)));
-  - observed enum variant value AuthError::RevokedToken at line 5
-  - observed function argument value token = "" at line 5
-
-Weakness
-  - No strong discriminator was detected
-
-Next step
-  Strengthen the related assertion so it discriminates the changed behavior.
-
-INFO fixtures/strong_error_oracle/input/src/lib.rs:7
-
-Changed
-  before: return Err(AuthError::EmptyToken);
-  after:  return Err(AuthError::RevokedToken);
-
-Probe
-  family: error_path
-  delta:  value
-  owner:  src/lib.rs::authenticate
-
-Static exposure
-  exposed (info, confidence 1.00)
-
-Evidence
-  - reach yes: Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token
-  - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator yes: Strong oracle found: exact error variant assertion
-  - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
-  - related test tests/errors.rs:4 empty_token_rejects_with_revoked_token uses strong exact error variant oracle: assert!(matches!(authenticate(""), Err(AuthError::RevokedToken)));
-  - observed enum variant value AuthError::RevokedToken at line 5
-  - observed function argument value token = "" at line 5
-
-INFO fixtures/strong_error_oracle/input/src/lib.rs:7
-
-Changed
-  before: return Err(AuthError::EmptyToken);
-  after:  return Err(AuthError::RevokedToken);
-
-Probe
-  family: return_value
-  delta:  value
-  owner:  src/lib.rs::authenticate
-
-Static exposure
-  exposed (info, confidence 1.00)
-
-Evidence
-  - reach yes: Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token
-  - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator yes: Strong oracle found: exact error variant assertion
-  - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
-  - related test tests/errors.rs:4 empty_token_rejects_with_revoked_token uses strong exact error variant oracle: assert!(matches!(authenticate(""), Err(AuthError::RevokedToken)));
-  - observed enum variant value AuthError::RevokedToken at line 5
-  - observed function argument value token = "" at line 5
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

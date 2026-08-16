@@ -10,6 +10,9 @@ pub(crate) struct AgentReviewSummaryReport {
     pub(crate) root: String,
     pub(crate) target_seam: Option<AgentReviewTargetSeam>,
     pub(crate) static_movement: AgentReviewStaticMovement,
+    /// Producer-owned completeness and limitation facts for the diff review.
+    /// This is distinct from the agent packet's seam-budget state.
+    pub(crate) analysis_outcome: Option<crate::analysis_outcome::AnalysisOutcome>,
     pub(crate) next_command: Option<AgentStatusCommand>,
     pub(crate) surfaces: Vec<AgentReviewSurface>,
     pub(crate) ci_artifacts: Vec<AgentReviewArtifact>,

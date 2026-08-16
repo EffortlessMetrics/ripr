@@ -138,7 +138,8 @@ fn predicate_flow_sinks(
             owner,
         )];
     }
-    if let Some(field) = first_field_construction(owner_fn, probe.location.line) {
+    let operands = predicate_operand_tokens(&probe.expression);
+    if let Some(field) = first_field_construction(owner_fn, probe.location.line, &operands) {
         return vec![flow_sink(
             FlowSinkKind::StructField,
             field_sink_text(&field.text),
@@ -146,7 +147,7 @@ fn predicate_flow_sinks(
             owner,
         )];
     }
-    if let Some(branch) = next_branch_value(owner_fn, probe.location.line) {
+    if let Some(branch) = next_branch_value(owner_fn, probe.location.line, &operands) {
         return vec![flow_sink(
             FlowSinkKind::ReturnValue,
             branch.text,
@@ -155,6 +156,52 @@ fn predicate_flow_sinks(
         )];
     }
     Vec::new()
+}
+
+/// Identifier-like tokens (`amount`, `threshold`, …) referenced by a predicate
+/// expression such as `amount >= threshold`. Used to require that a forward
+/// text scan for a flow sink only credits a line that plausibly derives from
+/// the changed predicate, instead of the first colon- or value-shaped line
+/// found anywhere later in the function body regardless of relevance.
+fn predicate_operand_tokens(expression: &str) -> Vec<String> {
+    expression
+        .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+        .filter(|token| !token.is_empty())
+        .filter(|token| {
+            token
+                .chars()
+                .next()
+                .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+        })
+        .filter(|token| !token.chars().all(|ch| ch == '_'))
+        .map(str::to_string)
+        .collect()
+}
+
+/// Whether `text` references `token` as a whole identifier (not merely a
+/// substring of a longer identifier).
+fn contains_operand_token(text: &str, token: &str) -> bool {
+    if token.is_empty() {
+        return false;
+    }
+    text.match_indices(token).any(|(start, _)| {
+        let end = start.saturating_add(token.len());
+        let before_ok = start == 0
+            || !text
+                .as_bytes()
+                .get(start - 1)
+                .is_some_and(|byte| is_ident_byte(*byte));
+        let after_ok = end >= text.len()
+            || !text
+                .as_bytes()
+                .get(end)
+                .is_some_and(|byte| is_ident_byte(*byte));
+        before_ok && after_ok
+    })
+}
+
+fn is_ident_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
 fn return_value_sink(
@@ -258,17 +305,33 @@ fn nearest_return(owner_fn: Option<&FunctionSummary>, probe_line: usize) -> Opti
 fn next_branch_value(
     owner_fn: Option<&FunctionSummary>,
     probe_line: usize,
+    predicate_operands: &[String],
 ) -> Option<LocalTextFact> {
     let function = owner_fn?;
     let start_index = probe_line.saturating_sub(function.start_line);
+    let adjacent_offset = start_index + 1;
     function
         .body
         .lines()
         .enumerate()
-        .skip(start_index + 1)
+        .skip(adjacent_offset)
         .find_map(|(offset, line)| {
             let text = line.trim().trim_end_matches(',').to_string();
             if !looks_like_branch_tail_expression(&text) {
+                return None;
+            }
+            // The line immediately after the predicate is trusted without
+            // token correlation: for `if cond { value }`, `value` is the
+            // branch's produced result by control-flow adjacency alone, even
+            // when it shares no identifier with `cond` (e.g. a fixed literal
+            // like `"ok".to_string()`). Any later candidate must correlate —
+            // otherwise a forward scan can walk past the real branch body
+            // into unrelated code and credit an unconnected value.
+            if offset != adjacent_offset
+                && !predicate_operands
+                    .iter()
+                    .any(|operand| contains_operand_token(&text, operand))
+            {
                 return None;
             }
             Some(LocalTextFact {
@@ -281,6 +344,7 @@ fn next_branch_value(
 fn first_field_construction(
     owner_fn: Option<&FunctionSummary>,
     probe_line: usize,
+    predicate_operands: &[String],
 ) -> Option<LocalTextFact> {
     owner_fn.and_then(|function| {
         function
@@ -290,7 +354,11 @@ fn first_field_construction(
             .skip(probe_line.saturating_sub(function.start_line))
             .find_map(|(offset, line)| {
                 let text = line.trim().trim_end_matches(',').to_string();
-                if looks_like_field_assignment(&text) {
+                let is_relevant_field = looks_like_field_assignment(&text)
+                    && predicate_operands
+                        .iter()
+                        .any(|operand| contains_operand_token(&text, operand));
+                if is_relevant_field {
                     Some(LocalTextFact {
                         line: function.start_line + offset,
                         text,
@@ -427,8 +495,11 @@ fn looks_like_field_store_of(line: &str, receiver: &str) -> bool {
 /// flagged (the value continues to flow).
 fn value_is_swallowed(text: &str) -> bool {
     let trimmed = text.trim();
-    // Pattern 1: `let _ = <expr>;`  — wildcard-discard binding
-    if trimmed.starts_with("let _ =") {
+    // Pattern 1: `let _ = <expr>;`  — wildcard-discard binding.
+    // Also `let _: <ty> = <expr>;`  — typed wildcard discard (#2401).
+    // Must match both so the flow stage agrees with the infection stage's
+    // `is_wildcard_discard` (infection.rs:112), which already handles both.
+    if trimmed.starts_with("let _ =") || trimmed.starts_with("let _:") {
         return true;
     }
     // Pattern 2: trailing `.ok();`  — result converted to Option and dropped
@@ -448,21 +519,51 @@ fn value_is_swallowed(text: &str) -> bool {
     false
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FlowEffectKind {
+    Event,
+    StateWrite,
+    Persistence,
+    Log,
+    Config,
+}
+
+impl FlowEffectKind {
+    /// Classify the normalized expression once. The order is intentional:
+    /// logging wins over configuration, persistence, event, and state-write
+    /// signals, matching the former `FlowSinkKind` selection precedence.
+    fn from_text(text: &str) -> Option<Self> {
+        if looks_like_log_effect(text) {
+            Some(Self::Log)
+        } else if looks_like_config_effect(text) {
+            Some(Self::Config)
+        } else if looks_like_persistence_effect(text) {
+            Some(Self::Persistence)
+        } else if looks_like_event_call_effect(text) {
+            Some(Self::Event)
+        } else if looks_like_state_write_effect(text) {
+            Some(Self::StateWrite)
+        } else {
+            None
+        }
+    }
+
+    fn sink_kind(self) -> FlowSinkKind {
+        match self {
+            Self::Event => FlowSinkKind::EventCall,
+            Self::StateWrite => FlowSinkKind::StateWrite,
+            Self::Persistence => FlowSinkKind::Persistence,
+            Self::Log => FlowSinkKind::LogMessage,
+            Self::Config => FlowSinkKind::ConfigChange,
+        }
+    }
+}
+
 fn effect_sink_kind(text: &str) -> FlowSinkKind {
     let normalized = text.to_ascii_lowercase();
-    if looks_like_log_effect(&normalized) {
-        FlowSinkKind::LogMessage
-    } else if looks_like_config_effect(&normalized) {
-        FlowSinkKind::ConfigChange
-    } else if looks_like_persistence_effect(&normalized) {
-        FlowSinkKind::Persistence
-    } else if looks_like_event_call_effect(&normalized) {
-        FlowSinkKind::EventCall
-    } else if looks_like_state_write_effect(&normalized) {
-        FlowSinkKind::StateWrite
-    } else {
-        FlowSinkKind::CallEffect
-    }
+    FlowEffectKind::from_text(&normalized)
+        .map(FlowEffectKind::sink_kind)
+        .unwrap_or(FlowSinkKind::CallEffect)
 }
 
 fn looks_like_event_call_effect(text: &str) -> bool {
@@ -761,6 +862,41 @@ mod tests {
     }
 
     #[test]
+    fn flow_effect_kind_parses_each_effect_and_preserves_precedence() {
+        let cases = [
+            ("events.publish(score);", Some(FlowEffectKind::Event)),
+            (
+                "cache.insert(key, value);",
+                Some(FlowEffectKind::StateWrite),
+            ),
+            (
+                "repository.save(invoice);",
+                Some(FlowEffectKind::Persistence),
+            ),
+            ("log::info!(\"saved\");", Some(FlowEffectKind::Log)),
+            (
+                "config.set_option(\"mode\", mode);",
+                Some(FlowEffectKind::Config),
+            ),
+            ("calculate(score);", None),
+        ];
+
+        for (expression, expected_kind) in cases {
+            assert_eq!(
+                FlowEffectKind::from_text(&expression.to_ascii_lowercase()),
+                expected_kind,
+                "{expression}"
+            );
+        }
+
+        assert_eq!(
+            FlowEffectKind::from_text("log::info!(config.set_option(\"mode\", mode));"),
+            Some(FlowEffectKind::Log),
+            "log classification must retain the former precedence"
+        );
+    }
+
+    #[test]
     fn call_deletion_flow_distinguishes_return_value() {
         let probe = probe(ProbeFamily::CallDeletion, "return Ok(total);", 2);
 
@@ -822,7 +958,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 5,
-            body: "pub fn score(amount: i32) -> Response {\n    if amount > 10 {\n        status: ready,\n    }\n}"
+            body: "pub fn score(amount: i32) -> Response {\n    if amount > 10 {\n        status: amount,\n    }\n}"
                 .to_string(),
             calls: Vec::new(),
             returns: Vec::new(),
@@ -836,7 +972,64 @@ mod tests {
 
         assert_eq!(sinks.len(), 1);
         assert_eq!(sinks[0].kind, FlowSinkKind::StructField);
-        assert_eq!(sinks[0].text, "status: ready");
+        assert_eq!(sinks[0].text, "status: amount");
+    }
+
+    // Regression for a false propagation claim: a `let`-bound predicate with
+    // no return in scope must not credit an unrelated struct field (one whose
+    // value expression shares no identifier with the predicate) as the flow
+    // sink. Picking the first colon-shaped line regardless of relevance
+    // reported a fabricated "propagation: yes" for a field that could never
+    // have been influenced by the changed comparison.
+    #[test]
+    fn predicate_flow_does_not_credit_unrelated_struct_field() {
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::quote".to_string()),
+            name: "quote".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 6,
+            body: "pub fn quote(amount: i32, threshold: i32) -> Quote {\n    let eligible = amount >= threshold;\n    Quote {\n        code: 200,\n        eligible,\n    }\n}"
+                .to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            is_test: false,
+            attrs: Vec::new(),
+        };
+        let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert!(
+            sinks.is_empty(),
+            "an unrelated literal field must not be credited as the predicate's flow sink, got {sinks:?}"
+        );
+    }
+
+    #[test]
+    fn predicate_flow_credits_struct_field_that_references_predicate_operand() {
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::quote".to_string()),
+            name: "quote".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 6,
+            body: "pub fn quote(amount: i32, threshold: i32) -> Quote {\n    let eligible = amount >= threshold;\n    Quote {\n        code: 200,\n        remaining: threshold,\n    }\n}"
+                .to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            is_test: false,
+            attrs: Vec::new(),
+        };
+        let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::StructField);
+        assert_eq!(sinks[0].text, "remaining: threshold");
     }
 
     fn function(body: &str) -> FunctionSummary {
@@ -875,6 +1068,21 @@ mod tests {
         let sinks = local_flow_sinks(&probe, None);
         assert_eq!(sinks.len(), 1);
         assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    #[test]
+    fn typed_wildcard_discard_binding_yields_unknown_sink() {
+        // #2401: `let _: Ty = expr;` is a typed wildcard discard. The flow
+        // stage must flag it as swallowed, matching the infection stage's
+        // is_wildcard_discard (which already handles `let _:`).
+        let probe = probe(ProbeFamily::SideEffect, "let _: i32 = compute(x);", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(
+            sinks[0].kind,
+            FlowSinkKind::Unknown,
+            "typed wildcard `let _:` must be swallowed, matching infection stage"
+        );
     }
 
     #[test]

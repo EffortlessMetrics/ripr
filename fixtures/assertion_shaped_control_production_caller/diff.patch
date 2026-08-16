@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -5,6 +5,6 @@ pub fn validate_score(value: i32) -> bool {
+ }
+ 
+ fn check_score_invariants(value: i32) {
+-    let clamped = if value > 0 { value } else { 0 };
++    let clamped = if value >= 0 { value } else { 0 };
+     assert!(clamped <= 100, "score above maximum");
+     assert_eq!(clamped, value);

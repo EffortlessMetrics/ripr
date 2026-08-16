@@ -1,0 +1,9 @@
+{
+  "protocol_version": "0.1",
+  "schema_version": "0.1",
+  "request": "ripr/workspaceStatus",
+  "status": "error",
+  "error": { "kind": "workspace_ambiguous", "retryable": false, "recovery_route": "select_workspace", "snapshot_id": null },
+  "allowed_edit_surface": "read_only",
+  "must_not_change": ["source_edits", "workspace_edit", "autonomous_repair"]
+}

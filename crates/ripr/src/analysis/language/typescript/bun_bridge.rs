@@ -535,6 +535,7 @@ pub(crate) fn collect_related_bun_bridge_hints(
     let mut hints = Vec::new();
     for profile in [
         BUN_BLOB_ARRAY_BUFFER_BRIDGE_PROFILE,
+        BUN_ARRAY_BUFFER_COPY_TO_UNSHARED_BRIDGE_PROFILE,
         BUN_MARKDOWN_RESIZABLE_BRIDGE_PROFILE,
     ] {
         if let Some(hint) = bun_bridge_hint_for_profile(facts, profile) {

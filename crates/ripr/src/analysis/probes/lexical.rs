@@ -33,6 +33,15 @@ pub fn classify_changed_line(text: &str) -> Vec<ProbeFamily> {
 }
 
 fn has_predicate_shape(text: &str) -> bool {
+    // Guard against assertion-shaped probes (#2131): a line like
+    // `debug_assert!(x > 5)` would match the ` > ` predicate token and be
+    // misclassified as a Predicate probe. The guidance would then say
+    // "Add boundary tests for below, equal, and above the changed threshold"
+    // — meaningless advice for an assertion that has no threshold semantics.
+    // Mirror the existing guard in has_call_shape (line 125).
+    if is_assertion_macro(text) {
+        return false;
+    }
     text.contains(" if ")
         || text.starts_with("if ")
         || text.starts_with("while ")
@@ -118,11 +127,57 @@ fn has_effect_shape(text: &str) -> bool {
     .any(|needle| lower.contains(needle))
 }
 
+/// Whether the text begins with an assertion macro invocation (#2131).
+/// These lines are never predicate probes — they are assertions that should
+/// route to the default guidance ("Strengthen the related assertion so it
+/// discriminates the changed behavior") rather than the predicate guidance
+/// ("Add boundary tests for below, equal, and above the changed threshold").
+fn is_assertion_macro(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    [
+        "assert!",
+        "assert_eq!",
+        "assert_ne!",
+        "debug_assert!",
+        "debug_assert_eq!",
+        "debug_assert_ne!",
+        "ensure!",
+        "panic!",
+        "unreachable!",
+        "unimplemented!",
+        "todo!",
+    ]
+    .iter()
+    .any(|prefix| trimmed.starts_with(prefix))
+}
+
 fn has_call_shape(text: &str) -> bool {
     text.contains('(')
         && text.contains(')')
         && !is_function_signature(text)
         && !text.contains("assert")
+        && !has_return_shape(text)
+        && !starts_with_binding_or_control(text)
+        && !text.trim_end().ends_with(',')
+        && call_prefix_is_named(text)
+}
+
+fn starts_with_binding_or_control(text: &str) -> bool {
+    ["let ", "if ", "while ", "for ", "match "]
+        .iter()
+        .any(|prefix| text.starts_with(prefix))
+}
+
+fn call_prefix_is_named(text: &str) -> bool {
+    text.split_once('(')
+        .map(|(prefix, _)| {
+            prefix
+                .trim_end()
+                .chars()
+                .next_back()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '!'))
+        })
+        .unwrap_or(false)
 }
 
 fn has_field_shape(text: &str) -> bool {
@@ -275,5 +330,23 @@ mod tests {
                 "{text} should stay static_unknown"
             );
         }
+    }
+
+    #[test]
+    fn classify_changed_line_rejects_non_standalone_call_shapes() -> Result<(), String> {
+        for text in [
+            "let value = read()?;",
+            "let Some(value) = selected else { return None; };",
+            "if let Some(value) = selected {",
+            "(GateState::Pending, None)",
+            "Ok(())",
+            "Vec::new(),",
+        ] {
+            let families = classify_changed_line(text);
+            if families.contains(&ProbeFamily::CallDeletion) {
+                return Err(format!("{text} should not be a call-deletion probe"));
+            }
+        }
+        Ok(())
     }
 }

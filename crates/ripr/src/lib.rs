@@ -50,6 +50,23 @@
 //! ```
 //!
 
+// Shared internal outcome vocabulary for parser and output children under
+// #2827. The public Rust API remains unchanged while internal projections
+// deliberately carry the contract.
+mod analysis_outcome;
+mod atomic_file;
+// Shared internal repair-guidance availability vocabulary for the agent packet
+// children under #2830. The public Rust API remains unchanged until those
+// consumers adopt and deliberately expose the contract.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "staged internal contract; #2657 connects the first producer before public projection"
+    )
+)]
+mod repair_guidance;
+
 #[cfg(not(feature = "lang-rust"))]
 compile_error!(
     "ripr requires the `lang-rust` Cargo feature; build rust-only binaries with `--no-default-features --features lang-rust`."
@@ -60,6 +77,7 @@ compile_error!(
 pub(crate) mod agent;
 #[doc(hidden)]
 pub mod analysis;
+pub(crate) mod git;
 // Kept public for compatibility; prefer the crate-root re-exports for new
 // integrations.
 #[doc(hidden)]
@@ -67,7 +85,8 @@ pub mod app;
 // Kept public for compatibility with existing embedders.
 #[doc(hidden)]
 pub mod cli;
-pub(crate) mod config;
+mod command_spec_digest;
+pub mod config;
 // Kept public for compatibility; prefer the crate-root domain type re-exports
 // for new integrations.
 #[doc(hidden)]
@@ -79,7 +98,36 @@ pub mod lsp;
 #[doc(hidden)]
 pub mod output;
 
+pub use analysis::LanguageRun;
+pub use analysis::LanguageRunStatus;
+pub use analysis::PartialDiffScope;
+pub use analysis::PartialDiffStopReason;
+pub use analysis::PreviewLanguageAdvisory;
 /// Analyze a workspace diff using the default RIPR static pipeline.
-pub use app::{CheckInput, CheckOutput, check_workspace, collect_context, explain_finding};
+pub use app::{
+    CheckInput, CheckOutput, check_workspace, collect_context, explain_finding,
+    explain_finding_with_input, render_check,
+};
+/// Field types of the public entrypoint types (#2112): every public field
+/// on `CheckInput` / `CheckOutput` is nameable from the crate root, so a
+/// consumer never needs the `#[doc(hidden)]` modules to annotate,
+/// pattern-match, or re-render a result.
+pub use app::{Mode, OutputFormat};
 /// Domain model types exposed as part of the stable public contract.
 pub use domain::{ExposureClass, Finding, Probe, ProbeFamily, RiprEvidence};
+pub use domain::{LanguageFileCount, Summary};
+pub use output::suppressions::CheckSuppressionOutcome;
+pub use output::suppressions::SuppressedCheckFinding;
+
+// #2610: global verbose flag. Set by the binary entry point before dispatch.
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+pub fn set_verbose(on: bool) {
+    VERBOSE.store(on, Ordering::Relaxed);
+}
+
+pub(crate) fn is_verbose() -> bool {
+    VERBOSE.load(Ordering::Relaxed)
+}

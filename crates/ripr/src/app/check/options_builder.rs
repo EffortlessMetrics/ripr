@@ -2,7 +2,7 @@ use super::CheckInput;
 use crate::analysis::AnalysisOptions;
 use crate::config::RiprConfig;
 
-pub(super) fn analysis_options_from_input_and_config(
+pub(crate) fn analysis_options_from_input_and_config(
     input: &CheckInput,
     config: &RiprConfig,
 ) -> AnalysisOptions {
@@ -13,5 +13,7 @@ pub(super) fn analysis_options_from_input_and_config(
         mode: input.mode.analysis_mode(),
         include_unchanged_tests: input.include_unchanged_tests,
         resolve_tsconfig_paths: config.typescript().resolve_tsconfig_paths(),
+        perl_facts_path: input.perl_facts_path.clone(),
+        git_timeout: input.git_timeout,
     }
 }

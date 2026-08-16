@@ -110,6 +110,7 @@ confirmation.
 ## Commands
 
 - `ripr: Restart Server`
+- `ripr: Select Workspace Root`
 - `ripr: Diagnose Setup`
 - `ripr: Show Status`
 - `ripr: Show Output`
@@ -131,6 +132,17 @@ confirmation.
 - `ripr: Write Targeted Test - Open Best Related Test`
 - `ripr: Open Settings`
 
+The repair-loop commands also appear in the editor context menu for Rust
+and preview-language files (ripr groups, right-click in the editor). The
+targeted-test and agent-loop commands stay code-action-only because their
+handlers need the diagnostic payload a code action carries, which a
+context-menu click cannot supply. `ripr: Show Status` (`Ctrl+Alt+R`,
+`Cmd+Alt+R` on macOS) and `ripr: Copy Top Repair Packet` (`Ctrl+Alt+P`,
+`Cmd+Alt+P` on macOS) ship default keybindings; both are user-overridable.
+VS Code when-clauses have no diagnostic-source context key, so the context
+menu is gated on the document language rather than on the `ripr` diagnostic
+source.
+
 ## Preview Limitations
 
 The `0.8.x` extension uses a universal VSIX and downloads native server
@@ -138,3 +150,36 @@ binaries from matching GitHub Releases when available. It does not auto-install
 Rust tooling, run mutation tests, make automatic edits, or analyze unsaved
 buffer overlays by default. Bundled platform-specific VSIXs are planned after
 the downloader path is proven.
+
+## Remote / Web support
+
+- **Remote-SSH / Containers / WSL**: the extension is workspace-kind, so it
+  must be installed **on the remote host** (VS Code prompts "Install in
+  Remote" for workspace extensions). Installing it only locally does nothing
+  for a remote workspace — the ripr server runs where the workspace lives.
+- **VS Code for the Web** (vscode.dev, github.dev): not supported. The ripr
+  server is a native binary spawned as a process by the extension host —
+  for Remote-SSH that means on the remote host — and the downloader uses
+  Node APIs, none of which exist in a browser host; the extension
+  declares `virtualWorkspaces: false`, so it simply does not activate there.
+
+## Coexisting with rust-analyzer
+
+ripr and rust-analyzer both publish diagnostics for Rust files, and both are
+expected to appear in the Problems panel at the same time. They answer
+different questions and are not duplicates:
+
+- **rust-analyzer** reports compiler, type, and lint diagnostics for the code
+  as written.
+- **ripr** reports static mutation-exposure evidence for the behavior changed
+  in your diff: whether the current tests appear to contain a discriminator
+  that would notice if the changed behavior were wrong.
+
+Every ripr diagnostic carries the source label `ripr`, so you can tell the two
+apart in the Problems panel and use the panel's source filter to show only one
+tool. ripr diagnostics never suppress, rewrite, or merge rust-analyzer
+diagnostics, and disabling one tool does not affect the other.
+
+There is no client-side de-duplication setting today. If the volume bothers
+you, prefer the Problems panel source filter over disabling either tool, and
+file an issue describing the collision you are seeing.

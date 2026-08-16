@@ -19,7 +19,22 @@
     "severe_gaps": 1,
     "requires_targeted_mutation": true,
     "ripr_severe_gap": true,
-    "routing_reason": "ripr severe gap"
+    "routing_reason": "ripr severe gap",
+    "targeted_mutation_route": {
+      "status": "candidate",
+      "candidates": [
+        {
+          "file": "src/lib.rs",
+          "line": 8,
+          "kind": "predicate_operator_flip",
+          "from": ">=",
+          "to": ">",
+          "command": "cargo mutants --file \"src/lib.rs\"",
+          "expected_observation": "the focused boundary test should observe the predicate change >= -> >"
+        }
+      ],
+      "limitations": []
+    }
   },
   "artifacts": [
     {

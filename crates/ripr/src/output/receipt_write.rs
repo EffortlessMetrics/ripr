@@ -47,7 +47,7 @@ mod tests {
                 "cargo xtask fixtures boundary_gap",
                 Some("target/ripr/receipts/gap-rust-pricing.json"),
             ),
-            "ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command \"cargo xtask fixtures boundary_gap\" --status not_run --out target/ripr/receipts/gap-rust-pricing.json"
+            "ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command 'cargo xtask fixtures boundary_gap' --status not_run --out target/ripr/receipts/gap-rust-pricing.json"
         );
     }
 
@@ -59,7 +59,7 @@ mod tests {
                 "cargo xtask fixtures boundary_gap",
                 None,
             ),
-            "ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command \"cargo xtask fixtures boundary_gap\" --status not_run"
+            "ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command 'cargo xtask fixtures boundary_gap' --status not_run"
         );
     }
 

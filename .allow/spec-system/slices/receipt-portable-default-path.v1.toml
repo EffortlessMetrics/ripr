@@ -1,0 +1,57 @@
+schema_version = "2.0"
+id = "ripr.slice.receipt-portable-default-path.v1"
+generation = 1
+
+source_issue = "issue:2229"
+design_reference = "RIPR-SPEC-0079#default-path-portability"
+change_class = "behavior_change"
+
+claim_boundary = """
+Makes the default receipt file location portable for colon-delimited
+canonical gap ids by percent-encoding only the filesystem representation
+(filename-unsafe characters become `%XX`, with `%` itself encoded, so the
+mapping is injective and collision-free) in the shared write/check path
+derivation. The canonical gap id inside the receipt JSON is unchanged, and
+explicit --out / --path values are used verbatim. This slice does not change
+receipt structure, validation, provenance binding, or ledger semantics.
+"""
+
+non_goals = [
+  "receipt schema changes",
+  "verification-result provenance",
+  "command execution",
+  "gate authority",
+  "migrating previously written colon-named receipt files",
+]
+
+return_conditions = [
+  "Return to root if receipt write and receipt check derive different default paths.",
+  "Return to root if the canonical gap id inside the receipt JSON is rewritten.",
+  "Return to root if explicit --out or --path values are sanitized.",
+]
+
+owned_seams = [
+  "seam:ripr:app:canonical-receipt-writer",
+]
+
+shared_seams = [
+  "seam:ripr:contract:canonical-receipt-command",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:output:gate-authority",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0079#default-path-portability"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

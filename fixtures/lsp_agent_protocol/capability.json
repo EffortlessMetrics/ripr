@@ -1,0 +1,49 @@
+{
+  "protocol_version": "0.1",
+  "schema_version": "0.1",
+  "implementation_state": "capability_only",
+  "supported_requests": [],
+  "reserved_requests": [
+    "ripr/workspaceStatus",
+    "ripr/refreshAnalysis",
+    "ripr/listActionableItems",
+    "ripr/getRepairPacket",
+    "ripr/getEvidenceContext",
+    "ripr/getTopLimitation",
+    "ripr/getReceiptStatus"
+  ],
+  "supported_profiles": [],
+  "reserved_profiles": ["actionable", "full"],
+  "diagnostic_modes": ["push"],
+  "snapshot_handles": false,
+  "continuations": false,
+  "work_done_progress": false,
+  "cancellation": false,
+  "source_edit_capability": "none",
+  "analysis_status_notification": "ripr/analysisStatus",
+  "compatibility_commands": [
+    "ripr.refresh",
+    "ripr.collectContext",
+    "ripr.collectEvidenceContext",
+    "ripr.collectWorkspaceStatus",
+    "ripr.collectRepairPacket",
+    "ripr.collectTopLimitation",
+    "ripr.collectReceiptStatus"
+  ],
+  "error_kinds": [
+    "no_snapshot",
+    "analysis_in_flight",
+    "stale_snapshot",
+    "stale_continuation",
+    "workspace_ambiguous",
+    "config_invalid",
+    "item_not_found",
+    "route_static_limitation",
+    "unsupported_protocol_version",
+    "unsupported_schema_version",
+    "unsupported_profile",
+    "cancelled",
+    "superseded"
+  ],
+  "claim_boundary": "Capability negotiation only; no riprAgent requests are implemented by this slice."
+}

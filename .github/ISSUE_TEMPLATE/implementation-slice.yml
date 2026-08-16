@@ -7,7 +7,7 @@ body:
     id: work_item
     attributes:
       label: Work item
-      description: Work-item ID from `.ripr/goals/active.toml` or the linked plan.
+      description: Issue number or work-item ID from the controlling GitHub issue or the linked plan.
       placeholder: "first-pr/front-door-polish"
     validations:
       required: true

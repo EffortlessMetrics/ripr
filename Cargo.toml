@@ -4,6 +4,12 @@ default-members = ["crates/ripr"]
 resolver = "2"
 
 [workspace.package]
+# Single source of truth for the released version. `crates/ripr` inherits this
+# with `version.workspace = true`; the VS Code extension is compared against it
+# by `cargo xtask release-readiness` (`extension-version-match`). Bumping a
+# release means editing this line plus the two editor manifests, not three
+# scattered package versions (#2711).
+version = "0.10.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
@@ -154,3 +160,11 @@ blanket_clippy_restriction_lints = "deny"
 lto = true
 strip = true
 codegen-units = 1
+
+# Dev profile: line-tables-only gives backtraces with file:line resolution
+# without the full variable-debuginfo cost of the default `debug = "full"`.
+# This cuts link time and binary size for the daily check/test/xtask loop.
+# Full debuginfo is still available via `CARGO_PROFILE_DEV_DEBUG=true cargo
+# test` when a developer needs to step-debug with variable inspection.
+[profile.dev]
+debug = "line-tables-only"

@@ -4,6 +4,15 @@ use crate::app::agent_workflow::{
 };
 use serde_json::{Value, json};
 
+/// Shell that every `command` string in this packet is written for.
+///
+/// The command strings are built with POSIX single-quote escaping and `>`
+/// redirection (`agent::loop_commands::shell_arg`), so they are bash source,
+/// not shell-neutral text. Naming the shell keeps the packet honest on Windows,
+/// where cmd.exe treats `'` as a literal character and PowerShell rejects the
+/// `'\''` escape. Emitting an argv form for other shells is out of scope here.
+const COMMAND_SHELL: &str = "bash";
+
 pub(crate) fn render_agent_workflow_json(
     manifest: &AgentWorkflowManifest,
 ) -> Result<String, String> {
@@ -11,6 +20,7 @@ pub(crate) fn render_agent_workflow_json(
         "schema_version": AGENT_WORKFLOW_SCHEMA_VERSION,
         "tool": "ripr",
         "status": "ready",
+        "command_shell": COMMAND_SHELL,
         "root": manifest.root,
         "mode": manifest.mode,
         "out_dir": manifest.out_dir,
@@ -95,6 +105,8 @@ mod markdown {
         lines.push("# RIPR Agent Workflow".to_string());
         lines.push(String::new());
         lines.push("This workflow packet is advisory and source-edit-free. It gives a human or agent the static context and commands for one focused test loop.".to_string());
+        lines.push(String::new());
+        lines.push("Generated commands are bash command lines. They use POSIX single-quote quoting and `>` redirection, so run them from bash — on Windows, Git Bash. cmd.exe and PowerShell do not interpret this quoting the same way and will mis-pass or reject the quoted arguments. WSL bash is not a drop-in substitute: paths here keep their Windows drive-letter prefix, which WSL resolves as a relative path, so running them there requires rewriting each path under `/mnt/` and having ripr available inside WSL.".to_string());
         lines.push(String::new());
     }
 
@@ -238,6 +250,80 @@ mod tests {
         assert_eq!(
             value["next_command"]["command"],
             "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn workflow_markdown_discloses_the_bash_assumption_before_the_first_command_fence()
+    -> Result<(), String> {
+        let rendered = render_agent_workflow_commands_md(&manifest());
+
+        // A bare `bash` substring proves nothing here: every command block is
+        // already fenced as ```bash. The disclosure must be prose that reaches
+        // the reader before the first copyable command.
+        // Pinned literally rather than shared with the renderer: a constant
+        // imported from production would make this test agree with whatever the
+        // renderer happens to emit.
+        let disclosure = rendered
+            .find("Generated commands are bash command lines.")
+            .ok_or_else(|| format!("commands.md must disclose the bash assumption: {rendered}"))?;
+        let first_fence = rendered
+            .find("```bash")
+            .ok_or_else(|| "commands.md must still fence commands as bash".to_string())?;
+        assert!(
+            disclosure < first_fence,
+            "bash disclosure at {disclosure} must precede the first command fence at {first_fence}"
+        );
+        assert!(
+            rendered.contains("PowerShell"),
+            "disclosure must name the shells that do not accept these commands: {rendered}"
+        );
+        Ok(())
+    }
+
+    /// `display_path` (`agent::loop_commands`) only swaps `\` for `/`, so an
+    /// absolute Windows root keeps its drive-letter prefix. Git Bash resolves that; WSL bash
+    /// reads it as a path relative to the current directory and the `>`
+    /// redirection fails before ripr runs. Recommending "bash on Windows"
+    /// without that distinction sends the one affected reader to an environment
+    /// where the copied command still breaks, so the caveat is load-bearing and
+    /// is pinned here rather than left to review.
+    #[test]
+    fn workflow_markdown_does_not_offer_wsl_as_an_unqualified_windows_shell() -> Result<(), String>
+    {
+        let rendered = render_agent_workflow_commands_md(&manifest());
+
+        let wsl = rendered
+            .find("WSL")
+            .ok_or_else(|| format!("disclosure must address WSL explicitly: {rendered}"))?;
+        let git_bash = rendered
+            .find("Git Bash")
+            .ok_or_else(|| format!("disclosure must name Git Bash: {rendered}"))?;
+        assert!(
+            git_bash < wsl,
+            "Git Bash must be the recommendation the reader meets first, \
+             with WSL qualified afterwards: {rendered}"
+        );
+        assert!(
+            rendered.contains("/mnt/"),
+            "the WSL caveat must name the translation a reader has to perform, \
+             not merely discourage it: {rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn workflow_json_declares_bash_as_the_command_shell() -> Result<(), String> {
+        let rendered = render_agent_workflow_json(&manifest())?;
+        let value: Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse JSON: {err}"))?;
+
+        // Machine consumers never read commands.md, so the manifest must carry
+        // the same boundary the Markdown header states.
+        assert_eq!(
+            value["command_shell"], "bash",
+            "workflow manifest must name the shell its command strings assume: {rendered}"
         );
         Ok(())
     }
