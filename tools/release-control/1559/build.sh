@@ -20,6 +20,7 @@ git config user.email git@effortlesssteven.com
 rm -rf "$source_dir"
 git worktree add --detach "$source_dir" "$SOURCE_BASE"
 python "$apply_script" "$source_dir"
+cd "$source_dir"
 
 cargo fmt --manifest-path "$source_dir/Cargo.toml" --all
 git -C "$source_dir" diff --check
