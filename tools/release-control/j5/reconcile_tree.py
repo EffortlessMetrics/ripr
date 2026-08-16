@@ -17,7 +17,7 @@ CATALOG_TEST_J2_BLOB = "1bff24fb3fb2f27f4db4b8a9f4ffe6c5f217a45b"
 CATALOG_TEST_REPLACEMENTS = [
     (
         "fn command_catalog_pins_ci_enforced_classification() -> Result<(), String> {",
-        "fn command_catalog_ci_enforced_flags_match_repo_workflows_pins_classification() -> Result<(), String> {",
+        "fn command_catalog_ci_enforced_flags_match_repo_workflows_pins_classification() -> Result<(), String>\n{",
     ),
     (
         '    assert!(!ci_enforced("precommit")?);',
