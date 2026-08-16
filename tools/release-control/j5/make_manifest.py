@@ -76,6 +76,12 @@ def rationale(kind: str, disposition: str, path: str, changed: set[str]) -> str:
             "Integrated policy union preserves reviewed J2/W7 and live-source ownership, "
             "drops absent literals, and refuses implicit maximum widening."
         )
+    if path == "xtask/src/tests.rs":
+        return (
+            "Integrated current routed-precommit catalog truth into the inherited J2/W7 "
+            "classification pin: only the four stale negative assertions and its precise test "
+            "name changed; release-readiness and other advisory classifications remain false."
+        )
     if path in changed:
         return (
             "Conflict-free three-way integration carries live source movement onto the reviewed "
@@ -135,12 +141,25 @@ def main() -> int:
             "usage: make_manifest.py <preflight> <old-manifest> <out-manifest> <delta-out> "
             "<repo> <source> <swarm> <join> <tree> <changed-paths-json>"
         )
-    preflight_path, old_manifest_path, out_path, delta_path, repo_path, source, swarm, join, tree, changed_path = sys.argv[1:]
+    (
+        preflight_path,
+        old_manifest_path,
+        out_path,
+        delta_path,
+        repo_path,
+        source,
+        swarm,
+        join,
+        tree,
+        changed_path,
+    ) = sys.argv[1:]
     preflight_bytes = Path(preflight_path).read_bytes()
     preflight = json.loads(preflight_bytes)
     old_manifest = json.loads(Path(old_manifest_path).read_text(encoding="utf-8"))
     changed_values = json.loads(Path(changed_path).read_text(encoding="utf-8"))
-    if not isinstance(changed_values, list) or not all(isinstance(value, str) for value in changed_values):
+    if not isinstance(changed_values, list) or not all(
+        isinstance(value, str) for value in changed_values
+    ):
         raise SystemExit("changed paths JSON is malformed")
     changed = set(changed_values)
     old_rows = {
@@ -160,7 +179,10 @@ def main() -> int:
             "key": key,
             "disposition": disposition,
             "rationale": rationale(kind, disposition, key, changed),
-            "evidence": f"SOURCE_PARENT {source}; SWARM_PARENT {swarm}; JOIN_TREE {tree}; exact J5 {join}",
+            "evidence": (
+                f"SOURCE_PARENT {source}; SWARM_PARENT {swarm}; "
+                f"JOIN_TREE {tree}; exact J5 {join}"
+            ),
         }
         rows.append(row)
         classifications[f"{kind}:{key}"] = disposition
@@ -184,12 +206,18 @@ def main() -> int:
     Path(delta_path).write_text(
         json.dumps(
             {
-                "schema": "ripr.source_promotion_resolution_refresh.v3",
+                "schema": "ripr.source_promotion_resolution_refresh.v4",
                 "old_rows": len(old_rows),
                 "fresh_rows": len(expected_set),
-                "retained_kind_keys": sorted(f"{kind}:{key}" for kind, key in old_rows & expected_set),
-                "added_kind_keys": sorted(f"{kind}:{key}" for kind, key in expected_set - old_rows),
-                "removed_kind_keys": sorted(f"{kind}:{key}" for kind, key in old_rows - expected_set),
+                "retained_kind_keys": sorted(
+                    f"{kind}:{key}" for kind, key in old_rows & expected_set
+                ),
+                "added_kind_keys": sorted(
+                    f"{kind}:{key}" for kind, key in expected_set - old_rows
+                ),
+                "removed_kind_keys": sorted(
+                    f"{kind}:{key}" for kind, key in old_rows - expected_set
+                ),
                 "changed_source_paths": sorted(changed),
                 "classifications": classifications,
                 "changed_workflow_authority": workflow_authority,
@@ -198,6 +226,7 @@ def main() -> int:
                     "swarm_exclusion inventory membership does not override retained W7 blob authority",
                     "every workflow changed by the promotion has one or more reviewed rows",
                     "every row for a changed workflow is swarm_blob or integrated",
+                    "the integrated catalog-test rationale preserves the remaining advisory classifications",
                 ],
             },
             indent=2,
