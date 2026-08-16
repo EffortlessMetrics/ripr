@@ -289,7 +289,7 @@ jobs:
           VALIDATION_REASON: ${{ steps.live-governance.outputs.validation_reason || steps.inputs.outputs.validation_reason }}
           VALIDATION_STATUS: ${{ steps.live-governance.outputs.validation_status || steps.inputs.outputs.validation_status }}
           TRUSTED_VERIFIER: ${{ steps.trusted-verifier.outputs.path }}
-          SOURCE_PROMOTION_OUT: target/ripr/source-promotion
+          SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion
         run: |
           set +e
           status=0
@@ -316,6 +316,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           SOURCE_MAIN: ${{ steps.inputs.outputs.source_main }}
+          SOURCE_PARENT: ${{ steps.inputs.outputs.source_parent }}
           JOIN_HEAD: ${{ steps.inputs.outputs.join_head }}
           PREFLIGHT: ${{ steps.inputs.outputs.preflight }}
           RESOLUTION_MANIFEST: ${{ steps.inputs.outputs.resolution_manifest }}
@@ -332,7 +333,7 @@ jobs:
           LIVE_TAG: ${{ steps.live-governance.outputs.tag }}
           LIVE_RULESET: ${{ steps.live-governance.outputs.ruleset }}
           VALIDATION_FAILURE_PATH: ${{ runner.temp }}/source-promotion-validation-failure.txt
-          SOURCE_PROMOTION_OUT: target/ripr/source-promotion
+          SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion
         run: |
           set -euo pipefail
           out="$SOURCE_PROMOTION_OUT"
@@ -341,7 +342,7 @@ jobs:
           verification="$out/source-promotion-verification.json"
           contract="$out/source-promotion-contract.json"
           if test -f "$verification"; then
-            if jq -e 'type == "object" and .schema == "ripr.source_promotion_verification.v2" and (.status == "verified" or .status == "rejected") and (.join_head | type) == "string" and (.source_main | type) == "string" and (.main_head == null or (.main_head | type) == "string") and (.parents | type) == "array" and (.tree == null or (.tree | type) == "string") and (.preflight_sha256 == null or (.preflight_sha256 | type) == "string") and (.resolution_manifest_sha256 == null or (.resolution_manifest_sha256 | type) == "string") and (.merge_base == null or (.merge_base | type) == "string") and (.swarm_reachability | type) == "object" and (.release_metadata_surfaces | type) == "array" and (.checks | type) == "object" and (.failure_reasons | type) == "array" and (.invalidation_rules | type) == "array" and (.non_claims | type) == "array" and (.status == "rejected" or ((.tree | type) == "string" and (.preflight_sha256 | type) == "string" and (.resolution_manifest_sha256 | type) == "string" and (.merge_base | type) == "string" and (.parents | length) == 2 and all(.parents[]; type == "string") and (.swarm_reachability.all_reachable_count | type) == "number" and (.swarm_reachability.first_parent_count | type) == "number" and (.swarm_reachability.all_reachable_sha256 | type) == "string" and (.swarm_reachability.first_parent_ordered_sha256 | type) == "string" and (.swarm_reachability.verified_through_parent_2 | type) == "boolean")))' "$verification" >/dev/null 2>&1; then
+            if jq -e 'type == "object" and .schema == "ripr.source_promotion_verification.v2" and (.status == "verified" or .status == "rejected") and (.join_head | type) == "string" and (.source_main | type) == "string" and (.main_head == null or (.main_head | type) == "string") and (.parents | type) == "array" and (.tree == null or (.tree | type) == "string") and (.preflight_sha256 == null or (.preflight_sha256 | type) == "string") and (.resolution_manifest_sha256 == null or (.resolution_manifest_sha256 | type) == "string") and (.merge_base == null or (.merge_base | type) == "string") and (.swarm_reachability | type) == "object" and (.release_metadata_surfaces | type) == "array" and (.checks | type) == "object" and (.failure_reasons | type) == "array" and (.invalidation_rules | type) == "array" and (.non_claims | type) == "array" and (.status == "rejected" or ((.tree | type) == "string" and (.preflight_sha256 | type) == "string" and (.resolution_manifest_sha256 | type) == "string" and (.merge_base | type) == "string" and (.parents | length) == 2 and all(.parents[]; type == "string") and (.swarm_reachability.all_reachable_count | type) == "number" and (.swarm_reachability.first_parent_count | type) == "number" and (.swarm_reachability.all_reachable_sha256 | type) == "string" and (.swarm_reachability.first_parent_ordered_sha256 | type) == "string" and (.swarm_reachability.verified_through_parent_2 | type) == "boolean"))' "$verification" >/dev/null 2>&1; then
               verifier_receipt_status=present
               status=$(jq -r '.status' "$verification")
               preflight_sha256=$(jq -r '.preflight_sha256 // "not_available"' "$verification")
@@ -479,9 +480,23 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: source-promotion-contract-${{ github.event.pull_request.head.sha }}
-          path: target/ripr/source-promotion
+          path: ${{ runner.temp }}/ripr-source-promotion
           if-no-files-found: error
 
+      - name: Enforce normalized source-promotion contract
+        if: always()
+        env:
+          SOURCE_PROMOTION_CONTRACT: ${{ runner.temp }}/ripr-source-promotion/source-promotion-contract.json
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_PROMOTION_CONTRACT"
+          jq -e '
+            .schema == "ripr.source_promotion_contract.v2" and
+            .status == "verified" and
+            .validation.status == "passed" and
+            .verifier_receipt_status == "present" and
+            .verifier_exit_code == "0"
+          ' "$SOURCE_PROMOTION_CONTRACT"
   post-merge-reachability:
     name: Source Promotion Post-Merge Reachability
     if: github.event_name == 'workflow_dispatch'
@@ -588,7 +603,7 @@ jobs:
           SOURCE_PARENT: ${{ inputs.source_parent }}
           CONTROL_COMMIT: ${{ inputs.control_commit }}
           TRUSTED_VERIFIER: ${{ steps.trusted-verifier.outputs.path }}
-          SOURCE_PROMOTION_OUT: target/ripr/source-promotion
+          SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$MAIN_HEAD" || {
@@ -620,7 +635,7 @@ jobs:
           SOURCE_MAIN: ${{ inputs.source_main }}
           SOURCE_PARENT: ${{ inputs.source_parent }}
           MAIN_HEAD: ${{ inputs.main_head }}
-          SOURCE_PROMOTION_OUT: target/ripr/source-promotion
+          SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion
         run: |
           set -euo pipefail
           out="$SOURCE_PROMOTION_OUT"
@@ -634,5 +649,5 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: source-promotion-post-merge-${{ inputs.join_head }}-${{ inputs.main_head }}
-          path: target/ripr/source-promotion
+          path: ${{ runner.temp }}/ripr-source-promotion
           if-no-files-found: error

@@ -1772,7 +1772,8 @@ mod tests {
     -> Result<(), String> {
         let workflow = source_promotion_workflow()?;
         for needle in [
-            "SOURCE_PROMOTION_OUT: target/ripr/source-promotion",
+            "SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion",
+            "SOURCE_PARENT: ${{ steps.inputs.outputs.source_parent }}",
             "--out \"$SOURCE_PROMOTION_OUT\"",
             "out=\"$SOURCE_PROMOTION_OUT\"",
             "verification=\"$out/source-promotion-verification.json\"",
