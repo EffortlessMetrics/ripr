@@ -30,7 +30,7 @@ jobs:
 
       - name: Build, verify, and publish exact J3 and immutable control inputs
         shell: bash
-        run: bash tools/release-control/j3/build.sh
+        run: bash tools/release-control/j3/run.sh
 
       - name: Upload the exact J3 construction packet
         uses: actions/upload-artifact@v4
