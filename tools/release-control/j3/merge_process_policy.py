@@ -104,7 +104,7 @@ def main() -> int:
     changed_by_source = {
         key
         for key in set(old_source_rows) & set(source_rows)
-        if old_source_rows[key] != source_rows[key]
+        if old_source_rows[key].render() != source_rows[key].render()
     }
     expected_source_additions = {
         (
@@ -208,6 +208,7 @@ def main() -> int:
         "decisions": decisions,
         "invariants": [
             "#1560 source movement is exactly two additive policy rows",
+            "row equality ignores provenance labels and compares rendered policy bytes",
             "J2 rows are preferred whenever they cover the reviewed J3 occurrence count",
             "source rows restore surviving source-owned process surfaces absent from J2 policy",
             "the grouped jq-test import is normalized to the formatting-stable prefix use std::process::{",
