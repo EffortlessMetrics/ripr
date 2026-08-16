@@ -1,0 +1,43 @@
+{
+  "schema": "ripr.source_promotion_contract_repair_transport.v2",
+  "source_base": "a072b7efe80f1a32d7b5ba7342559a114edeb12e",
+  "files": {
+    "workflow": "10dd760f8afd4350789d08644f85a70c3972387efee15dc04aed5b8935d9c83e",
+    "command_tests": "3849198704b775bcdcfc8f2b6343cda9eb83b70eb50d9c48751ffc5dd20cce54",
+    "integration_tests": "50688e1ee8159b04d1c034a00c80519ea75d6669a2905a9f2ee423af9acbc1d6",
+    "spec": "08e5210c0d2006f50b65c516724c42bb1f819aadf55dfd7bdc629b9decbab951",
+    "process_policy": "0be09829c8e66225345d013c9da567842d8d503c03172ca060355091d056f397"
+  },
+  "proof": [
+    "cargo fmt --all",
+    "git diff --check",
+    "cargo test -p xtask --test source_promotion_workflow_contract",
+    "cargo test -p xtask source_promotion_workflow",
+    "check-workflows",
+    "check-spec-format",
+    "check-traceability",
+    "check-doc-artifacts",
+    "check-process-policy",
+    "retained verified J2 receipt accepted by exact jq filter",
+    "malformed verifier receipt rejected",
+    "verified normalized contract accepted",
+    "retained rejected normalized contract rejected"
+  ],
+  "review_fixes": [
+    "normalized receipt exports trusted source_parent",
+    "committed test executes complete jq predicate",
+    "PR and post-merge runner-owned paths are lane-scoped",
+    "both receipt uploads require if: always()"
+  ],
+  "non_claims": [
+    "no merge",
+    "no J reconstruction",
+    "no version change",
+    "no tag",
+    "no publication",
+    "no signing",
+    "no marketplace mutation",
+    "no secret use",
+    "no back-sync"
+  ]
+}

@@ -1,0 +1,28 @@
+# Allowlisted process-spawn surfaces.
+#
+# Format:
+# path|pattern|max_count|owner|reason
+#
+# Process spawning belongs in adapters, smoke tests, and xtask. New occurrences
+# must name the owner and reason instead of drifting into domain or analysis
+# logic unnoticed.
+
+crates/ripr/src/analysis/diff/load.rs|Command::new|15|analysis/diff|RIPR-SPEC-0084: git diff adapter resolves the real default base branch (symbolic-ref, origin/main, origin/master, local main/master) and fail-closes with a named message; production helpers (run_git_diff, git_symbolic_ref_quiet, git_ref_exists) plus test module temp-repo setup.
+crates/ripr/src/analysis/probes/subprocess.rs|Command::new|7|analysis/probes|RIPR-SPEC-0112: bounded subprocess adapter recognizer inspects source text and fixture bodies for one literal allowlisted command; it does not execute a subprocess or broaden the runtime command surface.
+crates/ripr/src/analysis/diff/load.rs|use std::process::Command|2|analysis/diff|Git diff adapter and its test module both import Command directly.
+crates/ripr/src/cli/commands.rs|Command::new|2|cli/doctor|Doctor command probes git and cargo availability.
+crates/ripr/src/output/first_pr.rs|Command::new|4|first-pr/front-door-polish|First-pr setup preflight validates git worktree, base/head refs, and diff range before assigning repair work; unit tests initialize temp git repos for those fail-closed packets.
+crates/ripr/src/output/first_pr.rs|use std::process::Command|1|first-pr/front-door-polish|First-pr setup preflight imports Command for bounded git probes and temp-git test setup.
+crates/ripr/tests/cli_smoke.rs|Command::new|5|cli-tests|Smoke tests run the built CLI binary directly and with env-var overrides; +2 for RIPR-SPEC-0083 regression guard smoke tests.
+crates/ripr/tests/cli_smoke.rs|use std::process::Command|1|cli-tests|Smoke tests run the built CLI binary.
+editors/vscode/src/client.ts|child_process|1|lsp/editor|VS Code client invokes ripr context through the resolved server command.
+editors/vscode/src/client.ts|cp.execFile|1|lsp/editor|VS Code client invokes ripr context without shell expansion.
+editors/vscode/src/downloader.ts|child_process|1|lsp/editor|Downloader extracts archives with platform tools.
+editors/vscode/src/downloader.ts|cp.execFile|1|lsp/editor|Downloader invokes tar or PowerShell archive extraction without shell expansion.
+editors/vscode/src/serverResolver.ts|child_process|1|lsp/editor|Server resolver probes candidate ripr binaries.
+editors/vscode/src/serverResolver.ts|cp.spawn|1|lsp/editor|Server resolver runs ripr --version without shell expansion.
+xtask/src/reports/source_promotion_verify.rs|Command::new|6|source-promotion-verifier|RIPR-SPEC-0149: exact-J verification uses bounded Git probes to validate parents, tree, ancestry, ranges, main reachability, and adversarial synthetic repositories; it does not execute product commands or mutate source release refs.
+xtask/src/reports/source_promotion_verify.rs|use std::process::Command|1|source-promotion-verifier|RIPR-SPEC-0149: source-promotion verification imports Command solely for bounded Git observation and synthetic temporary-repository construction.
+xtask/src/run.rs|Command::new|14|repo-policy|xtask run helpers are the repository command runner for Cargo, git, fixture execution, extension build orchestration, release upload orchestration, supply-chain report capture, bounded latency probes, stdout-to-file report inputs, timeout-race regression coverage, Unix process-group termination, Windows process-tree termination, and Windows timeout regression helpers.
+xtask/tests/source_promotion_workflow_contract.rs|Command::new|1|source-promotion-workflow-contract|RIPR-SPEC-0150: focused contract proof executes the exact inline jq verifier-receipt predicate against valid and malformed JSON so syntax and parent-2 boolean validation cannot drift.
+xtask/tests/source_promotion_workflow_contract.rs|use std::process::{Command, Stdio}|1|source-promotion-workflow-contract|RIPR-SPEC-0150: focused contract proof imports bounded jq process types solely to execute the workflow predicate against in-memory fixtures.
