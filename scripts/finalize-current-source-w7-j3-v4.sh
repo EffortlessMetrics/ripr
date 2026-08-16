@@ -48,12 +48,12 @@ command_count=$(jq -r '[.dispositions[] | select(.kind == "source_survivor" and 
 allow_count=$(jq -r '[.dispositions[] | select(.key == "policy/process_allowlist.txt" and .disposition == "integrated")] | length' "$resolution")
 conflict_count=$(jq -r '[.dispositions[] | select(.kind == "conflict")] | length' "$resolution")
 survivor_count=$(jq -r '[.dispositions[] | select(.kind == "source_survivor")] | length' "$resolution")
-authority_count=$(jq -r '[.dispositions[] | select(.kind == "swarm_authority")] | length' "$resolution")
-printf 'resolution_counts command_integrated=%s allowlist_integrated=%s conflicts=%s survivors=%s swarm_authority=%s\n' \
-  "$command_count" "$allow_count" "$conflict_count" "$survivor_count" "$authority_count"
+exclusion_count=$(jq -r '[.dispositions[] | select(.kind == "swarm_exclusion")] | length' "$resolution")
+printf 'resolution_counts command_integrated=%s allowlist_integrated=%s conflicts=%s survivors=%s swarm_exclusions=%s\n' \
+  "$command_count" "$allow_count" "$conflict_count" "$survivor_count" "$exclusion_count"
 if test "$command_count" != 1 || test "$allow_count" != 2 || \
    test "$conflict_count" != 20 || test "$survivor_count" != 100 || \
-   test "$authority_count" != 57; then
+   test "$exclusion_count" != 57; then
   printf 'reviewed resolution denominator or integrated-row count mismatch\n' >&2
   exit 1
 fi
