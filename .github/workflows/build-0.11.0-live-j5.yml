@@ -1,0 +1,52 @@
+name: Build exact live-source 0.11.0 J5
+
+on:
+  push:
+    branches:
+      - control/0.11.0-j3-builder
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: build-exact-live-source-0.11.0-j5
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Check out the J5 control builder exactly
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Build, verify, publish, and prepare the exact J5 pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/release-control/j5/build.sh
+
+      - name: Publish the exact success or failure packet
+        if: always()
+        shell: bash
+        run: bash tools/release-control/j5/publish_status.sh
+
+      - name: Upload the exact J5 construction packet
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ripr-0.11.0-live-j5-${{ github.run_id }}
+          path: target/j5-final
+          if-no-files-found: error
+          retention-days: 30
