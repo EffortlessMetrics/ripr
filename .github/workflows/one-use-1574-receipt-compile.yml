@@ -1,8 +1,9 @@
 name: One-use #1574 receipt compile repair
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize]
+  push:
+    branches:
+      - feat/source-promotion-resolved-tree-validator-1574
 
 permissions:
   contents: write
@@ -13,10 +14,7 @@ concurrency:
 
 jobs:
   repair:
-    if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'feat/source-promotion-resolved-tree-validator-1574' &&
-      github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -152,11 +150,13 @@ jobs:
         run: |
           set -euo pipefail
           rm .github/workflows/one-use-1574-receipt-compile.yml
+          rm -f .github/one-use-1574-receipt-trigger.txt
           git config user.name 'EffortlessSteven'
           git config user.email 'git@effortlesssteven.com'
           git add -- \
             xtask/src/reports/source_promotion_validate_resolved_tree.rs \
             policy/process_allowlist.txt \
-            .github/workflows/one-use-1574-receipt-compile.yml
+            .github/workflows/one-use-1574-receipt-compile.yml \
+            .github/one-use-1574-receipt-trigger.txt
           git commit -m 'fix(promotion): stabilize resolved-tree validation receipts'
           git push origin HEAD:feat/source-promotion-resolved-tree-validator-1574
