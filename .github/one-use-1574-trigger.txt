@@ -1,0 +1,1 @@
+one-use trigger for the #1574 self-deleting shared-authority workflow
