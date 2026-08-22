@@ -190,7 +190,10 @@ fn drain_bounded_stream_reader(
     known = '        "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",\n'
     new_known = known + '        "source-promotion validate-resolved-tree --source-parent <sha> --swarm-parent <sha> --reviewed-tree <tree> --preflight <receipt.json> --preflight-sha256 <digest> --resolution-manifest <manifest.json> --resolution-sha256 <digest> [--out <dir>]",\n'
     if new_known not in text:
-        text = replace_once(text, known, new_known, "known command")
+        position = text.find(known)
+        if position < 0:
+            raise SystemExit("known-command insertion point drifted")
+        text = text[:position] + new_known + text[position + len(known):]
 
     catalog = '''        command_entry(
             "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
