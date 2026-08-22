@@ -3,8 +3,7 @@
 //! The command is compiled from the held source parent, validates the complete
 //! preflight and resolution contracts, materializes the reviewed tree without
 //! moving an authoritative ref, and executes the source-owned governance
-//! catalog with bounded retained evidence. A receipt is written for every
-//! disposition, including malformed input and unavailable commands.
+//! catalog with bounded retained evidence.
 
 use super::source_promotion_verify::{validate_manifest, validate_preflight};
 use crate::run::{TimedBoundedOutput, capture_output_in_dir_with_timeout_bounded};
@@ -69,8 +68,8 @@ struct ValidationState {
     inputs: InputEcho,
     preflight_verified: bool,
     resolution_verified: bool,
-    trusted_checker_source_sha: Option<String>,
-    trusted_checker_executable_sha256: Option<String>,
+    checker_source_sha: Option<String>,
+    checker_executable_sha256: Option<String>,
     materialized_tree: Option<String>,
     disposable_commit: Option<String>,
     materialization_created: bool,
@@ -97,8 +96,8 @@ impl ValidationState {
             inputs,
             preflight_verified: false,
             resolution_verified: false,
-            trusted_checker_source_sha: None,
-            trusted_checker_executable_sha256: None,
+            checker_source_sha: None,
+            checker_executable_sha256: None,
             materialized_tree: None,
             disposable_commit: None,
             materialization_created: false,
@@ -122,7 +121,7 @@ impl ValidationState {
                         command,
                         "not_run",
                         None,
-                        0,
+                        Duration::ZERO,
                         false,
                         false,
                         Some("validation did not reach governed command execution"),
@@ -150,10 +149,10 @@ pub(crate) fn source_promotion_validate_resolved_tree(args: &[String]) -> Result
 
     let mut state = ValidationState::new(input_echo_from_options(&options));
     let validation = validate(&options, &mut state);
-    if let Err(reason) = &validation
-        && !state.failure_reasons.iter().any(|existing| existing == reason)
-    {
-        state.failure_reasons.push(reason.clone());
+    if let Err(reason) = &validation {
+        if !state.failure_reasons.iter().any(|existing| existing == reason) {
+            state.failure_reasons.push(reason.clone());
+        }
     }
     let status = if validation.is_ok() {
         "validated"
@@ -234,8 +233,8 @@ fn validate(options: &Options, state: &mut ValidationState) -> Result<(), String
             checker.display()
         ));
     }
-    state.trusted_checker_source_sha = Some(options.source_parent.clone());
-    state.trusted_checker_executable_sha256 = Some(digest_file(&checker)?);
+    state.checker_source_sha = Some(options.source_parent.clone());
+    state.checker_executable_sha256 = Some(digest_file(&checker)?);
 
     let refs_before = snapshot_refs(&options.repo)?;
     let worktrees_before = snapshot_worktrees(&options.repo)?;
@@ -253,12 +252,8 @@ fn validate(options: &Options, state: &mut ValidationState) -> Result<(), String
     state.materialized_tree = Some(options.reviewed_tree.clone());
     state.disposable_commit = Some(materialized.commit.clone());
 
-    let execution_result = validate_materialized_tree(
-        options,
-        state,
-        &checker,
-        &materialized.root,
-    );
+    let execution_result =
+        validate_materialized_tree(options, state, &checker, &materialized.root);
 
     let cleanup = materialized.cleanup();
     state.worktree_remove_succeeded = cleanup.worktree_remove_succeeded;
@@ -272,9 +267,7 @@ fn validate(options: &Options, state: &mut ValidationState) -> Result<(), String
 
     observe_repository_after(options, state, &refs_before, &worktrees_before)?;
 
-    if let Err(reason) = execution_result {
-        return Err(reason);
-    }
+    execution_result?;
     if state.ref_mutation_observed {
         return Err("repository refs changed during resolved-tree validation".to_string());
     }
@@ -329,7 +322,7 @@ fn validate_materialized_tree(
                 command,
                 "not_run",
                 None,
-                0,
+                Duration::ZERO,
                 false,
                 false,
                 Some(&format!(
@@ -413,10 +406,8 @@ struct CleanupResult {
 
 impl MaterializedTree {
     fn create(options: &Options) -> Result<Self, String> {
-        let parent = create_exclusive_temp_dir(
-            "ripr-resolved-tree-validation",
-            &options.reviewed_tree,
-        )?;
+        let parent =
+            create_exclusive_temp_dir("ripr-resolved-tree-validation", &options.reviewed_tree)?;
         let root = parent.join("tree");
 
         let commit = git(
@@ -479,7 +470,6 @@ impl MaterializedTree {
             &[],
         )
         .is_ok();
-
         if !result.worktree_remove_succeeded {
             let _ = fs::remove_dir_all(&self.root);
         }
@@ -490,14 +480,20 @@ impl MaterializedTree {
         )
         .is_ok();
 
-        let worktrees = snapshot_worktrees(&self.source_repo).unwrap_or_default();
+        let worktrees = match snapshot_worktrees(&self.source_repo) {
+            Ok(worktrees) => worktrees,
+            Err(error) => {
+                result.failure_reason = Some(error);
+                String::new()
+            }
+        };
         result.worktree_residue_observed = worktrees.contains(&root_text);
 
-        if self.parent.exists() {
-            result.materialization_directory_removed = fs::remove_dir_all(&self.parent).is_ok();
+        result.materialization_directory_removed = if self.parent.exists() {
+            fs::remove_dir_all(&self.parent).is_ok()
         } else {
-            result.materialization_directory_removed = true;
-        }
+            true
+        };
 
         let mut failures = Vec::new();
         if !result.worktree_remove_succeeded && !result.worktree_prune_succeeded {
@@ -510,7 +506,11 @@ impl MaterializedTree {
             failures.push("disposable materialization directory remains on disk".to_string());
         }
         if !failures.is_empty() {
-            result.failure_reason = Some(failures.join("; "));
+            let joined = failures.join("; ");
+            result.failure_reason = match result.failure_reason.take() {
+                Some(existing) => Some(format!("{existing}; {joined}")),
+                None => Some(joined),
+            };
         }
         self.cleaned = result.failure_reason.is_none();
         result
@@ -531,10 +531,8 @@ fn run_required_command(
     logs_dir: &Path,
     source_parent: &str,
 ) -> Value {
-    let stdout_name = format!("{:02}-{command}.stdout.log", index + 1);
-    let stderr_name = format!("{:02}-{command}.stderr.log", index + 1);
-    let stdout_path = logs_dir.join(&stdout_name);
-    let stderr_path = logs_dir.join(&stderr_name);
+    let stdout_path = logs_dir.join(format!("{:02}-{command}.stdout.log", index + 1));
+    let stderr_path = logs_dir.join(format!("{:02}-{command}.stderr.log", index + 1));
     let args = vec![command.to_string()];
     let output = capture_output_in_dir_with_timeout_bounded(
         checker,
@@ -551,40 +549,36 @@ fn run_required_command(
 
     match output {
         Ok(output) => {
-            let log_error = write_command_logs(
-                &stdout_path,
-                &stderr_path,
-                &output,
-            )
-            .err();
-            if let Some(reason) = log_error {
+            if let Err(reason) = write_command_logs(&stdout_path, &stderr_path, &output) {
                 return command_receipt(
                     command,
                     "unavailable",
-                    output.status.and_then(|status| status.code()),
-                    duration_ms(output.duration),
+                    output.status.as_ref().and_then(|status| status.code()),
+                    output.duration,
                     output.stdout_truncated,
                     output.stderr_truncated,
                     Some(&reason),
                 );
             }
-            let exit_code = output.status.and_then(|status| status.code());
+            let exit_code = output.status.as_ref().and_then(|status| status.code());
             if output.timed_out {
                 command_receipt(
                     command,
                     "failed",
                     exit_code,
-                    duration_ms(output.duration),
+                    output.duration,
                     output.stdout_truncated,
                     output.stderr_truncated,
-                    Some("command exceeded the 180 second bound and its process tree was terminated"),
+                    Some(
+                        "command exceeded the 180 second bound and its process tree was terminated",
+                    ),
                 )
-            } else if output.status.is_some_and(|status| status.success()) {
+            } else if output.status.as_ref().is_some_and(|status| status.success()) {
                 command_receipt(
                     command,
                     "passed",
                     exit_code,
-                    duration_ms(output.duration),
+                    output.duration,
                     output.stdout_truncated,
                     output.stderr_truncated,
                     None,
@@ -594,7 +588,7 @@ fn run_required_command(
                     command,
                     "failed",
                     exit_code,
-                    duration_ms(output.duration),
+                    output.duration,
                     output.stdout_truncated,
                     output.stderr_truncated,
                     Some("command exited non-zero"),
@@ -605,7 +599,7 @@ fn run_required_command(
             command,
             "unavailable",
             None,
-            0,
+            Duration::ZERO,
             false,
             false,
             Some(&reason),
@@ -629,18 +623,22 @@ fn command_receipt(
     command: &str,
     state: &str,
     exit_code: Option<i32>,
-    duration_ms: u64,
+    duration: Duration,
     stdout_truncated: bool,
     stderr_truncated: bool,
     failure_reason: Option<&str>,
 ) -> Value {
+    let evidence_index = REQUIRED_COMMANDS
+        .iter()
+        .position(|candidate| *candidate == command)
+        .map_or(1, |index| index + 1);
     serde_json::json!({
         "command": command,
         "state": state,
         "exit_code": exit_code,
-        "duration_ms": duration_ms,
-        "stdout_path": format!("commands/{command}.stdout.log"),
-        "stderr_path": format!("commands/{command}.stderr.log"),
+        "duration_ms": duration_ms(duration),
+        "stdout_path": format!("commands/{evidence_index:02}-{command}.stdout.log"),
+        "stderr_path": format!("commands/{evidence_index:02}-{command}.stderr.log"),
         "stdout_truncated": stdout_truncated,
         "stderr_truncated": stderr_truncated,
         "failure_reason": failure_reason,
@@ -652,30 +650,30 @@ fn report_value(state: &ValidationState, status: &str) -> Value {
         "schema": RECEIPT_SCHEMA,
         "tool_version": env!("CARGO_PKG_VERSION"),
         "status": status,
-        "source_parent": state.inputs.source_parent,
-        "swarm_parent": state.inputs.swarm_parent,
-        "reviewed_tree": state.inputs.reviewed_tree,
+        "source_parent": &state.inputs.source_parent,
+        "swarm_parent": &state.inputs.swarm_parent,
+        "reviewed_tree": &state.inputs.reviewed_tree,
         "preflight": {
             "path_role": "source_checkout_regular_file",
-            "path": state.inputs.preflight_path,
-            "sha256": state.inputs.preflight_sha256,
+            "path": &state.inputs.preflight_path,
+            "sha256": &state.inputs.preflight_sha256,
             "verified": state.preflight_verified,
         },
         "resolution_manifest": {
             "path_role": "source_checkout_regular_file",
-            "path": state.inputs.resolution_path,
-            "sha256": state.inputs.resolution_sha256,
+            "path": &state.inputs.resolution_path,
+            "sha256": &state.inputs.resolution_sha256,
             "verified": state.resolution_verified,
         },
         "trusted_checker": {
             "selection": "running xtask executable from checkout whose HEAD equals source_parent",
-            "source_sha": state.trusted_checker_source_sha,
-            "executable_sha256": state.trusted_checker_executable_sha256,
+            "source_sha": &state.checker_source_sha,
+            "executable_sha256": &state.checker_executable_sha256,
         },
         "materialization": {
             "path_role": "os_temp_disposable_checkout",
-            "reviewed_tree": state.materialized_tree,
-            "disposable_commit": state.disposable_commit,
+            "reviewed_tree": &state.materialized_tree,
+            "disposable_commit": &state.disposable_commit,
             "created": state.materialization_created,
             "clean_before": state.materialization_clean_before,
             "clean_after": state.materialization_clean_after,
@@ -683,16 +681,16 @@ fn report_value(state: &ValidationState, status: &str) -> Value {
             "worktree_prune_succeeded": state.worktree_prune_succeeded,
             "directory_removed": state.materialization_directory_removed,
             "worktree_residue_observed": state.worktree_residue_observed,
-            "cleanup_failure_reason": state.cleanup_failure_reason,
+            "cleanup_failure_reason": &state.cleanup_failure_reason,
             "authoritative": false,
         },
         "required_command_catalog": REQUIRED_COMMANDS,
-        "commands": state.commands,
+        "commands": &state.commands,
         "repository_observation": {
-            "refs_before_sha256": state.refs_before_sha256,
-            "refs_after_sha256": state.refs_after_sha256,
-            "worktrees_before_sha256": state.worktrees_before_sha256,
-            "worktrees_after_sha256": state.worktrees_after_sha256,
+            "refs_before_sha256": &state.refs_before_sha256,
+            "refs_after_sha256": &state.refs_after_sha256,
+            "worktrees_before_sha256": &state.worktrees_before_sha256,
+            "worktrees_after_sha256": &state.worktrees_after_sha256,
             "ref_mutation_observed": state.ref_mutation_observed,
             "worktree_registry_changed": state.worktree_registry_changed,
         },
@@ -702,7 +700,7 @@ fn report_value(state: &ValidationState, status: &str) -> Value {
         "tag_attempted": false,
         "push_attempted": false,
         "ref_mutation_attempted": false,
-        "failure_reasons": state.failure_reasons,
+        "failure_reasons": &state.failure_reasons,
         "invalidation_rules": [
             "Changing the exact source parent, W7 parent, reviewed tree, preflight bytes, resolution-manifest bytes, running checker identity, required-command catalog, or receipt schema invalidates this validation.",
             "A failed, unavailable, or not_run required command rejects construction eligibility.",
@@ -840,9 +838,7 @@ fn usage() -> String {
 }
 
 fn output_path_from_args(args: &[String]) -> Option<PathBuf> {
-    value_after(args, "--out")
-        .filter(|value| !value.starts_with("--"))
-        .map(PathBuf::from)
+    value_after(args, "--out").map(PathBuf::from)
 }
 
 fn input_echo(args: &[String]) -> InputEcho {
@@ -874,7 +870,9 @@ fn input_echo_from_options(options: &Options) -> InputEcho {
 
 fn value_after(args: &[String], key: &str) -> Option<String> {
     args.windows(2)
-        .find(|pair| pair[0] == key && !pair[1].trim().is_empty())
+        .find(|pair| {
+            pair[0] == key && !pair[1].trim().is_empty() && !pair[1].starts_with("--")
+        })
         .map(|pair| pair[1].clone())
 }
 
@@ -931,7 +929,11 @@ fn reject_parent_components(path: &Path, label: &str) -> Result<(), String> {
 }
 
 fn verify_exact_commit(repo: &Path, value: &str, label: &str) -> Result<(), String> {
-    let resolved = git(repo, &["rev-parse", "--verify", &format!("{value}^{{commit}}")], &[])?;
+    let resolved = git(
+        repo,
+        &["rev-parse", "--verify", &format!("{value}^{{commit}}")],
+        &[],
+    )?;
     if resolved.trim() != value {
         return Err(format!("{label} is not an exact commit object"));
     }
@@ -939,7 +941,11 @@ fn verify_exact_commit(repo: &Path, value: &str, label: &str) -> Result<(), Stri
 }
 
 fn verify_exact_tree(repo: &Path, value: &str) -> Result<(), String> {
-    let resolved = git(repo, &["rev-parse", "--verify", &format!("{value}^{{tree}}")], &[])?;
+    let resolved = git(
+        repo,
+        &["rev-parse", "--verify", &format!("{value}^{{tree}}")],
+        &[],
+    )?;
     if resolved.trim() != value {
         return Err("--reviewed-tree is not an exact tree object".to_string());
     }
@@ -980,7 +986,7 @@ fn git(repo: &Path, args: &[&str], envs: &[(&str, &str)]) -> Result<String, Stri
             args.join(" ")
         ));
     }
-    if !output.status.is_some_and(|status| status.success()) {
+    if !output.status.as_ref().is_some_and(|status| status.success()) {
         return Err(format!(
             "git {} failed: {}",
             args.join(" "),
@@ -1085,10 +1091,7 @@ fn normalize_path(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        REQUIRED_COMMANDS, ValidationState, input_echo, report_value,
-        validate_exact_hex,
-    };
+    use super::{REQUIRED_COMMANDS, ValidationState, input_echo, report_value, validate_exact_hex};
 
     #[test]
     fn exact_identity_rejects_abbreviated_and_uppercase_values() {
@@ -1115,22 +1118,26 @@ mod tests {
     }
 
     #[test]
-    fn option_value_that_is_another_flag_is_not_echoed_as_a_value() {
+    fn option_value_that_is_another_flag_is_rejected_as_a_value() {
         let args = vec![
             "validate-resolved-tree".to_string(),
             "--source-parent".to_string(),
             "--swarm-parent".to_string(),
         ];
         let echo = input_echo(&args);
-        assert_eq!(echo.source_parent.as_deref(), Some("--swarm-parent"));
+        assert_eq!(echo.source_parent, None);
     }
 
     #[test]
     fn rejected_and_validated_receipts_share_the_same_top_level_keys() {
         let rejected = report_value(&ValidationState::new(Default::default()), "rejected");
         let validated = report_value(&ValidationState::new(Default::default()), "validated");
-        let rejected_keys = rejected.as_object().map(|object| object.keys().collect::<Vec<_>>());
-        let validated_keys = validated.as_object().map(|object| object.keys().collect::<Vec<_>>());
+        let rejected_keys = rejected
+            .as_object()
+            .map(|object| object.keys().collect::<Vec<_>>());
+        let validated_keys = validated
+            .as_object()
+            .map(|object| object.keys().collect::<Vec<_>>());
         assert_eq!(rejected_keys, validated_keys);
     }
 }
