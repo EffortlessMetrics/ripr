@@ -56,6 +56,11 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::ReleaseServerArchive(args) => super::release_server_archive(&args),
         XtaskCommand::ReleaseServerManifest(args) => super::release_server_manifest(&args),
         XtaskCommand::ReleaseUploadAssets(args) => super::release_upload_assets(&args),
+        XtaskCommand::SourcePromotion(args)
+            if args.first().map(String::as_str) == Some("validate-resolved-tree") =>
+        {
+            super::reports::source_promotion_validate_resolved_tree(&args)
+        }
         XtaskCommand::SourcePromotion(args) => super::reports::source_promotion_verify(&args),
         XtaskCommand::TargetedTestOutcome(args) => super::reports::targeted_test_outcome(&args),
         XtaskCommand::MutationCalibration(args) => super::reports::mutation_calibration(&args),
