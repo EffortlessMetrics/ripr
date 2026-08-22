@@ -1,0 +1,70 @@
+name: One-use #1574 command-catalog registration
+
+on:
+  push:
+    branches:
+      - feat/source-promotion-resolved-tree-validator-1574
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-use-1574-command-catalog
+  cancel-in-progress: false
+
+jobs:
+  register:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: feat/source-promotion-resolved-tree-validator-1574
+          fetch-depth: 0
+
+      - name: Register command and remove one-use control
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('xtask/src/command.rs')
+          text = path.read_text(encoding='utf-8')
+
+          known = '        "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",\n'
+          known_replacement = known + '        "source-promotion validate-resolved-tree --source-parent <sha> --swarm-parent <sha> --reviewed-tree <tree> --preflight <receipt.json> --preflight-sha256 <digest> --resolution-manifest <manifest.json> --resolution-sha256 <digest> [--out <dir>]",\n'
+          if text.count(known) != 1:
+              raise SystemExit('known-command insertion point drifted')
+          text = text.replace(known, known_replacement, 1)
+
+          catalog = '''        command_entry(
+            "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
+            "report_only",
+            "target/ripr/source-promotion/source-promotion-verification.{json,md} or explicit --out <dir>",
+            false,
+            "Verifies an exact history-preserving join, reviewed resolution manifest, ancestry digests, and metadata identity without constructing or mutating Git refs.",
+        ),
+'''
+          addition = catalog + '''        command_entry(
+            "source-promotion validate-resolved-tree --source-parent <sha> --swarm-parent <sha> --reviewed-tree <tree> --preflight <receipt.json> --preflight-sha256 <digest> --resolution-manifest <manifest.json> --resolution-sha256 <digest> [--out <dir>]",
+            "report_only",
+            "target/ripr/source-promotion/resolved-tree/{resolved-tree-validation.json,resolved-tree-validation.md,commands/**} or explicit --out <dir>",
+            false,
+            "Materializes one exact reviewed tree under a disposable unreferenced Git object, runs the source-parent governance catalog with bounded retained evidence, and rejects any missing command, failed state, identity drift, or authoritative ref movement before J construction.",
+        ),
+'''
+          if text.count(catalog) != 1:
+              raise SystemExit('command-catalog insertion point drifted')
+          text = text.replace(catalog, addition, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          rm .github/workflows/one-use-1574-command-catalog.yml
+          git diff --check
+          git config user.name 'EffortlessSteven'
+          git config user.email 'git@effortlesssteven.com'
+          git add -- xtask/src/command.rs .github/workflows/one-use-1574-command-catalog.yml
+          git commit -m 'feat(promotion): register resolved-tree validation command'
+          git push origin HEAD:feat/source-promotion-resolved-tree-validator-1574
