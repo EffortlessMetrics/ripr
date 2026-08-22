@@ -1,0 +1,60 @@
+name: One-use #1574 focused finalization
+
+on:
+  push:
+    branches:
+      - feat/source-promotion-resolved-tree-validator-1574
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-use-1574-focused-finalization
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout live candidate branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: feat/source-promotion-resolved-tree-validator-1574
+          fetch-depth: 0
+
+      - name: Install governed Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+
+      - name: Format and prove focused candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          cargo check -p xtask --locked
+          cargo test -p xtask source_promotion_validate_resolved_tree --locked -- --nocapture
+          cargo test -p xtask --test source_promotion_resolved_tree --locked -- --nocapture
+          cargo xtask check-process-policy
+          cargo xtask check-command-catalog
+          cargo xtask check-network-policy
+          git diff --check
+
+      - name: Remove one-use lane and publish exact focused candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/one-use-1574-finalize.yml
+          rm -f .github/one-use-1574-finalize-trigger.txt
+          git config user.name 'EffortlessSteven'
+          git config user.email 'git@effortlesssteven.com'
+          git add -- \
+            xtask/src/reports/source_promotion_validate_resolved_tree.rs \
+            xtask/tests/source_promotion_resolved_tree.rs \
+            policy/process_allowlist.txt \
+            .github/workflows/one-use-1574-finalize.yml \
+            .github/one-use-1574-finalize-trigger.txt
+          git commit -m 'test(promotion): qualify resolved-tree validator candidate'
+          git push origin HEAD:feat/source-promotion-resolved-tree-validator-1574
