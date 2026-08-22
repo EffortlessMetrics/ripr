@@ -111,7 +111,10 @@ pub(crate) fn source_promotion_validate_resolved_tree(args: &[String]) -> Result
         "rejected"
     };
     if let Err(reason) = &validation_result
-        && !state.failure_reasons.iter().any(|existing| existing == reason)
+        && !state
+            .failure_reasons
+            .iter()
+            .any(|existing| existing == reason)
     {
         state.failure_reasons.push(reason.clone());
     }
@@ -299,9 +302,9 @@ impl MaterializedTree {
             .env("GIT_COMMITTER_NAME", "ripr resolved-tree validator")
             .env("GIT_COMMITTER_EMAIL", "ripr-validator@invalid")
             .env("GIT_COMMITTER_DATE", "1970-01-01T00:00:00Z");
-        let commit_output = commit_command
-            .output()
-            .map_err(|error| format!("failed to create disposable materialization object: {error}"))?;
+        let commit_output = commit_command.output().map_err(|error| {
+            format!("failed to create disposable materialization object: {error}")
+        })?;
         if !commit_output.status.success() {
             let stderr = String::from_utf8_lossy(&commit_output.stderr);
             let _ = fs::remove_dir_all(&parent);
@@ -825,7 +828,10 @@ fn validate_resolution_manifest(manifest: &Value, options: &Options) -> Result<(
 }
 
 fn verify_exact_commit(repo: &Path, value: &str, label: &str) -> Result<(), String> {
-    let resolved = git(repo, &["rev-parse", "--verify", &format!("{value}^{{commit}}")])?;
+    let resolved = git(
+        repo,
+        &["rev-parse", "--verify", &format!("{value}^{{commit}}")],
+    )?;
     if resolved.trim() != value {
         return Err(format!("{label} is not an exact commit object"));
     }
@@ -833,7 +839,10 @@ fn verify_exact_commit(repo: &Path, value: &str, label: &str) -> Result<(), Stri
 }
 
 fn verify_exact_tree(repo: &Path, value: &str) -> Result<(), String> {
-    let resolved = git(repo, &["rev-parse", "--verify", &format!("{value}^{{tree}}")])?;
+    let resolved = git(
+        repo,
+        &["rev-parse", "--verify", &format!("{value}^{{tree}}")],
+    )?;
     if resolved.trim() != value {
         return Err("--reviewed-tree is not an exact tree object".to_string());
     }
@@ -879,10 +888,7 @@ fn unique_temp_path(prefix: &str) -> Result<PathBuf, String> {
         .duration_since(UNIX_EPOCH)
         .map_err(|error| format!("system clock predates Unix epoch: {error}"))?
         .as_nanos();
-    Ok(std::env::temp_dir().join(format!(
-        "{prefix}-{}-{timestamp}",
-        std::process::id()
-    )))
+    Ok(std::env::temp_dir().join(format!("{prefix}-{}-{timestamp}", std::process::id())))
 }
 
 fn duration_ms(duration: Duration) -> u64 {
@@ -931,18 +937,20 @@ mod tests {
     #[test]
     fn exact_identity_rejects_abbreviated_and_uppercase_values() {
         assert!(validate_exact_hex("sha", "abc123", 40).is_err());
-        assert!(
-            validate_exact_hex("sha", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 40).is_err()
-        );
-        assert!(
-            validate_exact_hex("sha", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 40).is_ok()
-        );
+        assert!(validate_exact_hex("sha", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 40).is_err());
+        assert!(validate_exact_hex("sha", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 40).is_ok());
     }
 
     #[test]
     fn required_command_catalog_is_complete_and_stable() {
         assert_eq!(REQUIRED_COMMANDS.len(), 13);
-        assert_eq!(REQUIRED_COMMANDS.first().copied(), Some("check-network-policy"));
-        assert_eq!(REQUIRED_COMMANDS.last().copied(), Some("check-architecture"));
+        assert_eq!(
+            REQUIRED_COMMANDS.first().copied(),
+            Some("check-network-policy")
+        );
+        assert_eq!(
+            REQUIRED_COMMANDS.last().copied(),
+            Some("check-architecture")
+        );
     }
 }
