@@ -204,14 +204,14 @@ pub(crate) fn resolved_tree_receipt_is_admissible(report: &Value) -> bool {
     };
     if preflight.get("verified").and_then(Value::as_bool) != Some(true)
         || resolution.get("verified").and_then(Value::as_bool) != Some(true)
-        || !preflight
+        || preflight
             .get("path")
             .and_then(Value::as_str)
-            .is_some_and(|value| !value.is_empty())
-        || !resolution
+            .is_none_or(|value| value.is_empty())
+        || resolution
             .get("path")
             .and_then(Value::as_str)
-            .is_some_and(|value| !value.is_empty())
+            .is_none_or(|value| value.is_empty())
         || !preflight
             .get("sha256")
             .and_then(Value::as_str)
