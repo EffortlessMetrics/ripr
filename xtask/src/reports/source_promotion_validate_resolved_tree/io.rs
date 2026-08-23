@@ -168,7 +168,7 @@ fn read_bound_json(
         .map_err(|error| format!("malformed {label} JSON: {error}"))?;
     let relative = canonical
         .strip_prefix(&canonical_repo)
-        .map_err(|_| format!("{label} is outside the source checkout"))?;
+        .map_err(|error| format!("{label} is outside the source checkout: {error}"))?;
     Ok((value, normalize_path(relative)))
 }
 
@@ -299,7 +299,7 @@ fn collect_packet_paths(root: &Path, current: &Path, paths: &mut Vec<PathBuf>) -
         } else if metadata.is_file() {
             let relative = path
                 .strip_prefix(root)
-                .map_err(|_| "packet entry escaped staging root".to_string())?;
+                .map_err(|error| format!("packet entry escaped staging root: {error}"))?;
             paths.push(relative.to_path_buf());
         } else {
             return Err(format!("packet entry has unsupported type: {}", path.display()));
@@ -424,10 +424,7 @@ fn digest_file(path: &Path) -> Result<String, String> {
 }
 
 fn duration_ms(duration: Duration) -> u64 {
-    match u64::try_from(duration.as_millis()) {
-        Ok(value) => value,
-        Err(_) => u64::MAX,
-    }
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 fn digest_bytes(bytes: &[u8]) -> String {
