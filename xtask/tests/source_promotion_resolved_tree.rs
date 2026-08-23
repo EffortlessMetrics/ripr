@@ -101,9 +101,20 @@ fn combined_output(output: &Output) -> String {
 fn network_violation_multiset(output: &str) -> BTreeSet<String> {
     output
         .lines()
-        .filter_map(|line| line.trim().strip_prefix("- "))
-        .filter(|line| line.contains(" | curl | "))
-        .map(str::to_string)
+        .filter_map(|raw| {
+            let line = raw.trim();
+            if let Some(semantic) = line.strip_prefix("- ") {
+                return semantic
+                    .contains(" | curl | ")
+                    .then(|| semantic.to_string());
+            }
+            let (path, suffix) = line.split_once(" contains `curl` ")?;
+            let count = suffix.strip_suffix(" time(s), allowed 0")?;
+            count
+                .parse::<usize>()
+                .ok()
+                .map(|count| format!("{path} | curl | actual {count} | allowed 0"))
+        })
         .collect()
 }
 
