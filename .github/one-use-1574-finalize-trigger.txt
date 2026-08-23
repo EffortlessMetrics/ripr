@@ -1,1 +1,1 @@
-one-use trigger for the #1574 focused finalization lane
+trigger the bounded parent-owned #1574 exact patch
