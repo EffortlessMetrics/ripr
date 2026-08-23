@@ -47,7 +47,8 @@ fn write(root: &Path, relative: &str, contents: &str) -> Result<(), String> {
         .ok_or_else(|| format!("fixture path has no parent: {}", path.display()))?;
     fs::create_dir_all(parent)
         .map_err(|error| format!("create fixture parent {}: {error}", parent.display()))?;
-    fs::write(&path, contents).map_err(|error| format!("write fixture {}: {error}", path.display()))
+    fs::write(&path, contents)
+        .map_err(|error| format!("write fixture {}: {error}", path.display()))
 }
 
 fn repeated_literal(literal: &str, count: usize) -> String {
@@ -222,7 +223,7 @@ xtask/src/tests.rs|curl|2|swarm|W7-owned live row
         "crates/ripr/src/output/perl_gap_record_projection.rs|curl|5|swarm|W7-owned live row\n",
         "",
     );
-    write(root, "policy/network_allowlist.txt", &removal_control)?;
+    write(root, "policy/network_allowlist.txt", removal_control)?;
     let removal = run_network_policy(root)?;
     assert!(
         !removal.status.success(),
