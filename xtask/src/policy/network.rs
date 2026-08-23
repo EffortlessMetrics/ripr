@@ -123,25 +123,28 @@ mod tests {
 
     #[test]
     fn duplicate_detection_uses_trimmed_path_and_pattern_as_semantic_key() {
-        let policy = "a.rs|curl|1|source|first\n  a.rs | curl |2|swarm|duplicate\n";
+        let policy = "a.rs|probe-token|1|source|first\n  a.rs | probe-token |2|swarm|duplicate\n";
         assert_eq!(
             duplicate_key_violations_from_text(policy),
-            vec!["a.rs | curl | duplicate semantic key at line 2"]
+            vec!["a.rs | probe-token | duplicate semantic key at line 2"]
         );
     }
 
     #[test]
     fn orphan_detection_reports_only_positive_zero_count_rows() {
         let allowlist = BTreeMap::from([
-            (("live.rs".to_string(), "curl".to_string()), 2),
-            (("orphan.rs".to_string(), "curl".to_string()), 3),
-            (("zero.rs".to_string(), "curl".to_string()), 0),
+            (("live.rs".to_string(), "probe-token".to_string()), 2),
+            (("orphan.rs".to_string(), "probe-token".to_string()), 3),
+            (("zero.rs".to_string(), "probe-token".to_string()), 0),
         ]);
-        let counts = BTreeMap::from([(("live.rs".to_string(), "curl".to_string()), 1)]);
+        let counts = BTreeMap::from([((
+            "live.rs".to_string(),
+            "probe-token".to_string(),
+        ), 1)]);
 
         assert_eq!(
             orphan_violations_from_counts(&allowlist, &counts),
-            vec!["orphan.rs | curl | orphaned max_count=3"]
+            vec!["orphan.rs | probe-token | orphaned max_count=3"]
         );
     }
 }
