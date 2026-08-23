@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use super::{
-        CommandEvidence, PACKET_INDEX, PacketWorkspace, REQUIRED_COMMANDS, ValidationState,
-        command_receipt, commands_are_terminal_green, create_exclusive_temp_dir,
+        CommandEvidence, PACKET_INDEX, PacketWorkspace, REPORT_JSON, REQUIRED_COMMANDS,
+        ValidationState, command_receipt, commands_are_terminal_green, create_exclusive_temp_dir,
         ensure_checker_source_identity, git, input_echo, packet_entries, parse_args, read_bound_json,
         reject_parent_components, render_markdown, report_value, resolved_tree_receipt_is_admissible,
         snapshot_refs, snapshot_worktrees, validate_exact_hex, verify_exact_commit,
