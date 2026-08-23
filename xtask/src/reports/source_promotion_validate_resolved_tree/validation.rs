@@ -317,32 +317,53 @@ mod manifest_disposition_tests {
     #[test]
     fn disposition_enum_is_exact() {
         for disposition in ["source_blob", "swarm_blob", "excluded"] {
-            assert!(validate_resolution_manifest_dispositions(&manifest(row(disposition))).is_ok());
+            assert!(matches!(
+                validate_resolution_manifest_dispositions(&manifest(row(disposition))),
+                Ok(())
+            ));
         }
         for disposition in ["source", "swarm", "merge", "drop", ""] {
-            assert!(validate_resolution_manifest_dispositions(&manifest(row(disposition))).is_err());
+            assert!(matches!(
+                validate_resolution_manifest_dispositions(&manifest(row(disposition))),
+                Err(_)
+            ));
         }
     }
 
     #[test]
     fn integrated_requires_typed_digest_bound_evidence() {
         let mut integrated = row("integrated");
-        assert!(validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_err());
+        assert!(matches!(
+            validate_resolution_manifest_dispositions(&manifest(integrated.clone())),
+            Err(_)
+        ));
 
         integrated["integration_evidence"] = serde_json::json!({
             "type": "digest_bound_artifact",
             "ref": "receipts/network-policy.json",
             "sha256": "a".repeat(64)
         });
-        assert!(validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_ok());
+        assert!(matches!(
+            validate_resolution_manifest_dispositions(&manifest(integrated.clone())),
+            Ok(())
+        ));
 
         integrated["integration_evidence"]["type"] = serde_json::json!("free_form");
-        assert!(validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_err());
+        assert!(matches!(
+            validate_resolution_manifest_dispositions(&manifest(integrated.clone())),
+            Err(_)
+        ));
         integrated["integration_evidence"]["type"] = serde_json::json!("digest_bound_artifact");
         integrated["integration_evidence"]["sha256"] = serde_json::json!("deadbeef");
-        assert!(validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_err());
+        assert!(matches!(
+            validate_resolution_manifest_dispositions(&manifest(integrated.clone())),
+            Err(_)
+        ));
         integrated["integration_evidence"]["sha256"] = serde_json::json!("a".repeat(64));
         integrated["integration_evidence"]["ref"] = serde_json::json!("   ");
-        assert!(validate_resolution_manifest_dispositions(&manifest(integrated)).is_err());
+        assert!(matches!(
+            validate_resolution_manifest_dispositions(&manifest(integrated)),
+            Err(_)
+        ));
     }
 }
