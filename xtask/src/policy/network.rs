@@ -49,9 +49,8 @@ fn orphan_violations_from_counts(
                 .get(&(path.clone(), pattern.clone()))
                 .copied()
                 .unwrap_or(0);
-            (*maximum > 0 && actual == 0).then(|| {
-                format!("{path} | {pattern} | orphaned max_count={maximum}")
-            })
+            (*maximum > 0 && actual == 0)
+                .then(|| format!("{path} | {pattern} | orphaned max_count={maximum}"))
         })
         .collect::<Vec<_>>();
     violations.sort();
