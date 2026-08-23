@@ -14,3 +14,4 @@
 crates/ripr/src/output/typescript_packet_projection.rs|curl|4|analysis-typescript|F7 absence-assertions: comments + unit tests verifying the TS receipt_command is a fixed `ripr outcome` shape that never invokes curl/an external provider. No network behavior; these reference the term only to prove it is absent.
 crates/ripr/src/analysis/probes/subprocess.rs|curl|6|analysis/probes|RIPR-SPEC-0112: bounded subprocess adapter recognizer and fixture corpus inspect an allowlisted literal command; this source does not execute networking or add a network client.
 editors/vscode/src/downloader.ts|https.get|1|lsp/editor|VS Code extension downloads verified server assets from the configured release source.
+xtask/tests/source_promotion_resolved_tree.rs|curl|21|release/source-promotion|J5 regression fixture intentionally embeds governed curl literals to prove source-only network ledgers reject and semantic reconciliation passes without executing networking.
