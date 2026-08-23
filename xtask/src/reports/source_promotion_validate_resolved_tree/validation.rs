@@ -36,6 +36,7 @@ fn validate(
         &preflight,
         &format!("sha256:{}", options.preflight_sha256),
     )?;
+    validate_resolution_manifest_dispositions(&manifest)?;
     state.resolution_verified = true;
 
     verify_exact_commit(&options.repo, &options.source_parent, "--source-parent")?;
@@ -127,6 +128,69 @@ fn validate(
         return Err("one or more required governance commands did not pass".to_string());
     }
     Ok(())
+}
+
+fn validate_resolution_manifest_dispositions(manifest: &Value) -> Result<(), String> {
+    let dispositions = manifest
+        .get("dispositions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "resolution manifest missing dispositions array".to_string())?;
+
+    for (index, row) in dispositions.iter().enumerate() {
+        let disposition = row
+            .get("disposition")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("resolution manifest row {index} missing disposition"))?;
+        match disposition {
+            "source_blob" | "swarm_blob" | "excluded" => {}
+            "integrated" => validate_integrated_evidence(row, index)?,
+            other => {
+                return Err(format!(
+                    "resolution manifest row {index} has unknown disposition {other:?}; expected source_blob, swarm_blob, integrated, or excluded"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_integrated_evidence(row: &Value, index: usize) -> Result<(), String> {
+    let evidence = row
+        .get("integration_evidence")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            format!(
+                "resolution manifest integrated row {index} requires typed digest-bound integration_evidence"
+            )
+        })?;
+    if evidence.get("type").and_then(Value::as_str) != Some("digest_bound_artifact") {
+        return Err(format!(
+            "resolution manifest integrated row {index} integration_evidence.type must be digest_bound_artifact"
+        ));
+    }
+    let reference = evidence
+        .get("ref")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            format!(
+                "resolution manifest integrated row {index} integration_evidence.ref must be non-empty"
+            )
+        })?;
+    if reference.contains('\n') || reference.contains('\r') {
+        return Err(format!(
+            "resolution manifest integrated row {index} integration_evidence.ref must be one line"
+        ));
+    }
+    let digest = evidence
+        .get("sha256")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            format!(
+                "resolution manifest integrated row {index} integration_evidence.sha256 is required"
+            )
+        })?;
+    validate_exact_hex("integration_evidence.sha256", digest, 64)
 }
 
 fn validate_materialized_tree(
@@ -230,4 +294,55 @@ fn observe_repository_after(
     state.ref_mutation_observed = refs_before != refs_after;
     state.worktree_registry_changed = worktrees_before != worktrees_after;
     Ok(())
+}
+
+#[cfg(test)]
+mod manifest_disposition_tests {
+    use super::validate_resolution_manifest_dispositions;
+
+    fn row(disposition: &str) -> serde_json::Value {
+        serde_json::json!({
+            "kind": "conflict",
+            "key": "x",
+            "disposition": disposition,
+            "rationale": "reviewed",
+            "evidence": "review"
+        })
+    }
+
+    fn manifest(row: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({"dispositions": [row]})
+    }
+
+    #[test]
+    fn disposition_enum_is_exact() {
+        for disposition in ["source_blob", "swarm_blob", "excluded"] {
+            assert!(validate_resolution_manifest_dispositions(&manifest(row(disposition))).is_ok());
+        }
+        for disposition in ["source", "swarm", "merge", "drop", ""] {
+            assert!(validate_resolution_manifest_dispositions(&manifest(row(disposition))).is_err());
+        }
+    }
+
+    #[test]
+    fn integrated_requires_typed_digest_bound_evidence() {
+        let mut integrated = row("integrated");
+        assert!(validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_err());
+
+        integrated["integration_evidence"] = serde_json::json!({
+            "type": "digest_bound_artifact",
+            "ref": "receipts/network-policy.json",
+            "sha256": "a".repeat(64)
+        });
+        assert!(validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_ok());
+
+        integrated["integration_evidence"]["type"] = serde_json::json!("free_form");
+        assert!(validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_err());
+        integrated["integration_evidence"]["type"] = serde_json::json!("digest_bound_artifact");
+        integrated["integration_evidence"]["sha256"] = serde_json::json!("deadbeef");
+        assert!(validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_err());
+        integrated["integration_evidence"]["sha256"] = serde_json::json!("a".repeat(64));
+        integrated["integration_evidence"]["ref"] = serde_json::json!("   ");
+        assert!(validate_resolution_manifest_dispositions(&manifest(integrated)).is_err());
+    }
 }
