@@ -137,10 +137,7 @@ mod tests {
             (("orphan.rs".to_string(), "probe-token".to_string()), 3),
             (("zero.rs".to_string(), "probe-token".to_string()), 0),
         ]);
-        let counts = BTreeMap::from([((
-            "live.rs".to_string(),
-            "probe-token".to_string(),
-        ), 1)]);
+        let counts = BTreeMap::from([(("live.rs".to_string(), "probe-token".to_string()), 1)]);
 
         assert_eq!(
             orphan_violations_from_counts(&allowlist, &counts),
