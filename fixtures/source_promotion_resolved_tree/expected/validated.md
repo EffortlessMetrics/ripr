@@ -1,0 +1,241 @@
+# Resolved-tree validation
+
+- Schema: `ripr.source_promotion_resolved_tree_validation.v1`
+- Status: **validated**
+- SOURCE_PARENT: `not available`
+- SWARM_PARENT: `not available`
+- REVIEWED_TREE: `not available`
+
+## Claim boundary
+
+This source-parent-selected receipt reports the named repository-governance commands on one exact reviewed tree. It does not construct J, move an authoritative ref, qualify product/editor behavior, or authorize publication.
+
+## Structured receipt
+
+```json
+{
+  "authoritative_commit_attempted": false,
+  "branch_attempted": false,
+  "commands": [
+    {
+      "command": "check-network-policy",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/01-check-network-policy.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/01-check-network-policy.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    },
+    {
+      "command": "check-process-policy",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/02-check-process-policy.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/02-check-process-policy.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    },
+    {
+      "command": "check-workflows",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/03-check-workflows.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/03-check-workflows.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    },
+    {
+      "command": "check-file-policy",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/04-check-file-policy.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/04-check-file-policy.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    },
+    {
+      "command": "check-dependencies",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/05-check-dependencies.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/05-check-dependencies.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    },
+    {
+      "command": "check-generated-clean",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/06-check-generated-clean.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/06-check-generated-clean.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    },
+    {
+      "command": "check-executable-files",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/07-check-executable-files.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/07-check-executable-files.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    },
+    {
+      "command": "check-command-catalog",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/08-check-command-catalog.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/08-check-command-catalog.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    },
+    {
+      "command": "check-spec-format",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/09-check-spec-format.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/09-check-spec-format.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    },
+    {
+      "command": "check-traceability",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/10-check-traceability.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/10-check-traceability.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    },
+    {
+      "command": "check-doc-artifacts",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/11-check-doc-artifacts.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/11-check-doc-artifacts.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    },
+    {
+      "command": "check-public-api",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/12-check-public-api.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/12-check-public-api.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    },
+    {
+      "command": "check-architecture",
+      "exit_code": null,
+      "failure_reason": "validation did not reach governed command execution",
+      "state": "not_run",
+      "stderr_path": "commands/13-check-architecture.stderr.log",
+      "stderr_truncated": false,
+      "stdout_path": "commands/13-check-architecture.stdout.log",
+      "stdout_truncated": false,
+      "timeout_bound_ms": 180000
+    }
+  ],
+  "disposable_git_object_write_attempted": false,
+  "failure_reasons": [],
+  "invalidation_rules": [
+    "Changing the exact source parent, W7 parent, reviewed tree, preflight bytes, resolution-manifest bytes, running checker identity, required-command catalog, or receipt schema invalidates this validation.",
+    "A failed, unavailable, or not_run required command rejects construction eligibility.",
+    "Any observed or attempted authoritative ref mutation or retained worktree residue rejects construction eligibility."
+  ],
+  "materialization": {
+    "authoritative": false,
+    "clean_after": false,
+    "clean_before": false,
+    "cleanup_failure_reason": null,
+    "created": false,
+    "directory_removed": false,
+    "disposable_commit": null,
+    "path_role": "os_temp_disposable_checkout",
+    "reviewed_tree": null,
+    "worktree_prune_succeeded": false,
+    "worktree_remove_succeeded": false,
+    "worktree_residue_observed": false
+  },
+  "non_claims": [
+    "The disposable commit is an unreferenced materialization object only; it is not J, a release object, a branch, or publication authority.",
+    "The checker claim is bounded to the running executable selected from a checkout whose HEAD equals the exact source parent and whose executable digest is recorded.",
+    "This receipt proves only the named source-governed repository contracts on one exact reviewed tree.",
+    "It does not prove product correctness, editor journeys, release readiness, merge eligibility beyond the named contracts, or publication authority."
+  ],
+  "preflight": {
+    "path": null,
+    "path_role": "source_checkout_regular_file",
+    "sha256": null,
+    "verified": false
+  },
+  "push_attempted": false,
+  "ref_mutation_attempted": false,
+  "repository_observation": {
+    "ref_mutation_observed": false,
+    "refs_after_sha256": null,
+    "refs_before_sha256": null,
+    "worktree_registry_changed": false,
+    "worktrees_after_sha256": null,
+    "worktrees_before_sha256": null
+  },
+  "required_command_catalog": [
+    "check-network-policy",
+    "check-process-policy",
+    "check-workflows",
+    "check-file-policy",
+    "check-dependencies",
+    "check-generated-clean",
+    "check-executable-files",
+    "check-command-catalog",
+    "check-spec-format",
+    "check-traceability",
+    "check-doc-artifacts",
+    "check-public-api",
+    "check-architecture"
+  ],
+  "resolution_manifest": {
+    "path": null,
+    "path_role": "source_checkout_regular_file",
+    "sha256": null,
+    "verified": false
+  },
+  "reviewed_tree": null,
+  "schema": "ripr.source_promotion_resolved_tree_validation.v1",
+  "source_parent": null,
+  "status": "validated",
+  "swarm_parent": null,
+  "tag_attempted": false,
+  "tool_version": "0.1.0",
+  "trusted_checker": {
+    "executable_sha256": null,
+    "selection": "running xtask executable from checkout whose HEAD equals source_parent",
+    "source_sha": null
+  }
+}
+```

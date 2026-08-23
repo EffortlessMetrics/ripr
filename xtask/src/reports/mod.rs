@@ -62,7 +62,9 @@ pub(crate) use repo::{
 };
 pub(crate) use review_comments::ripr_review_comments;
 pub(crate) use sarif::sarif_policy;
-pub(crate) use source_promotion_validate_resolved_tree::source_promotion_validate_resolved_tree;
+pub(crate) use source_promotion_validate_resolved_tree::{
+    SOURCE_PROMOTION_VALIDATE_RESOLVED_TREE_SUBCOMMAND, source_promotion_validate_resolved_tree,
+};
 pub(crate) use source_promotion_verify::source_promotion_verify;
 pub(crate) use targeted_test::targeted_test_outcome;
 pub(crate) use test_oracles::{test_efficiency_report, test_oracle_report};

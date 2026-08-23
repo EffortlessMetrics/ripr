@@ -90,3 +90,12 @@ value_context|function_argument|Activation value context.
 value_context|return_value|Activation value context.
 value_context|table_row|Activation value context.
 value_context|unknown|Activation value context.
+source_promotion_resolved_tree_schema|ripr.source_promotion_resolved_tree_validation.v1|Canonical source-trusted reviewed-tree validation receipt schema.
+source_promotion_resolved_tree_status|rejected|Reviewed tree is ineligible for direct-J construction.
+source_promotion_resolved_tree_status|validated|Every required source-governed command passed for the exact bound tree and sidecars.
+source_promotion_command_state|failed|Required governed command executed and failed.
+source_promotion_command_state|not_run|Required governed command did not execute and carries an explicit stop reason.
+source_promotion_command_state|passed|Required governed command executed successfully.
+source_promotion_command_state|unavailable|Required governed command could not be executed or its evidence could not be retained.
+source_promotion_path_role|os_temp_disposable_checkout|Materialized reviewed tree lives in an operating-system temporary checkout and is not authoritative.
+source_promotion_path_role|source_checkout_regular_file|Bound sidecar is a non-symlink regular file beneath the exact source checkout.

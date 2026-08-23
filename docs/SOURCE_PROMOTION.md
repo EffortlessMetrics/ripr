@@ -297,6 +297,45 @@ The verifier is read-only and does not construct J, resolve conflicts, publish,
 or perform the later ancestry-preserving K back-sync; K verification is a
 separate follow-up contract.
 
+## Preconstruction reviewed-tree validation
+
+Before constructing or publishing a direct two-parent join, validate the exact
+reviewed tree with the source-parent-selected governance implementation:
+
+```bash
+cargo xtask source-promotion validate-resolved-tree \
+  --source-parent <exact-source-parent> \
+  --swarm-parent <exact-frozen-W7> \
+  --reviewed-tree <exact-reviewed-tree> \
+  --preflight <exact-preflight.json> \
+  --preflight-sha256 <exact-preflight-digest> \
+  --resolution-manifest <exact-resolution.json> \
+  --resolution-sha256 <exact-resolution-digest> \
+  --out target/ripr/source-promotion/resolved-tree
+```
+
+The command requires exact lowercase object identities, canonical non-symlink
+sidecars inside the source checkout, and matching sidecar digests. It records
+the running source-checkout SHA and executable digest, materializes the reviewed
+tree only through an unreferenced disposable object/worktree, runs the ordered
+source-owned governance catalog with bounded process-tree termination and
+bounded logs, then removes the temporary worktree. A missing, failed,
+`not_run`, or unavailable command, source/checker mismatch, sidecar movement,
+ref movement, dirty materialization, or cleanup residue produces `rejected`.
+
+The canonical JSON and Markdown receipts use schema
+`ripr.source_promotion_resolved_tree_validation.v1`. They omit observed
+wall-clock duration so identical semantic states remain byte-stable; each
+command instead records the fixed timeout bound. The receipt proves only the
+named repository-governance commands on one exact reviewed tree. It does not
+construct J, qualify product/editor behavior, or authorize merge or
+publication.
+
+Parent-comparative semantic policy decisions remain reviewer-owned inputs. For
+0.11.0, #1572 produces the exact network-ledger reconciliation and #1478 binds
+that receipt into the complete resolution manifest before this command runs the
+source-trusted final-tree checks.
+
 ## Source Promotion Contract workflow
 
 Promotion PRs opt into the source-side contract check with this exact body

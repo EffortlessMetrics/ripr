@@ -15,6 +15,11 @@ use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+pub(crate) const SOURCE_PROMOTION_VALIDATE_RESOLVED_TREE_SUBCOMMAND: &str =
+    "validate-resolved-tree";
+pub(crate) const SOURCE_PROMOTION_RESOLVED_TREE_DEFAULT_OUT: &str =
+    "target/ripr/source-promotion/resolved-tree";
+
 const RECEIPT_SCHEMA: &str = "ripr.source_promotion_resolved_tree_validation.v1";
 const REPORT_JSON: &str = "resolved-tree-validation.json";
 const REPORT_MD: &str = "resolved-tree-validation.md";
@@ -136,21 +141,29 @@ impl ValidationState {
 pub(crate) fn source_promotion_validate_resolved_tree(args: &[String]) -> Result<(), String> {
     let echo = input_echo(args);
     let out = output_path_from_args(args)
-        .unwrap_or_else(|| PathBuf::from("target/ripr/source-promotion/resolved-tree"));
+        .unwrap_or_else(|| PathBuf::from(SOURCE_PROMOTION_RESOLVED_TREE_DEFAULT_OUT));
     let options = match parse_args(args) {
         Ok(options) => options,
         Err(reason) => {
             let mut state = ValidationState::new(echo);
             state.failure_reasons.push(reason.clone());
-            write_report(&out, &report_value(&state, "rejected"))?;
-            return Err(reason);
+            return match write_report(&out, &report_value(&state, "rejected")) {
+                Ok(()) => Err(reason),
+                Err(write_error) => Err(format!(
+                    "{reason}; failed to write resolved-tree validation receipt: {write_error}"
+                )),
+            };
         }
     };
 
     let mut state = ValidationState::new(input_echo_from_options(&options));
     let validation = validate(&options, &mut state);
     if let Err(reason) = &validation {
-        if !state.failure_reasons.iter().any(|existing| existing == reason) {
+        if !state
+            .failure_reasons
+            .iter()
+            .any(|existing| existing == reason)
+        {
             state.failure_reasons.push(reason.clone());
         }
     }
@@ -211,13 +224,7 @@ fn validate(options: &Options, state: &mut ValidationState) -> Result<(), String
     verify_exact_tree(&options.repo, &options.reviewed_tree)?;
 
     let live_head = git(&options.repo, &["rev-parse", "HEAD"], &[])?;
-    if live_head.trim() != options.source_parent {
-        return Err(format!(
-            "validator checkout HEAD {} does not equal exact source parent {}",
-            live_head.trim(),
-            options.source_parent
-        ));
-    }
+    ensure_checker_source_identity(live_head.trim(), &options.source_parent)?;
 
     let checker = std::env::current_exe()
         .map_err(|error| format!("failed to identify running xtask executable: {error}"))?;
@@ -244,16 +251,19 @@ fn validate(options: &Options, state: &mut ValidationState) -> Result<(), String
     let mut materialized = match MaterializedTree::create(options) {
         Ok(materialized) => materialized,
         Err(reason) => {
-            observe_repository_after(options, state, &refs_before, &worktrees_before)?;
-            return Err(reason);
+            return match observe_repository_after(options, state, &refs_before, &worktrees_before) {
+                Ok(()) => Err(reason),
+                Err(observation_error) => Err(format!(
+                    "{reason}; failed to observe repository state after materialization failure: {observation_error}"
+                )),
+            };
         }
     };
     state.materialization_created = true;
     state.materialized_tree = Some(options.reviewed_tree.clone());
     state.disposable_commit = Some(materialized.commit.clone());
 
-    let execution_result =
-        validate_materialized_tree(options, state, &checker, &materialized.root);
+    let execution_result = validate_materialized_tree(options, state, &checker, &materialized.root);
 
     let cleanup = materialized.cleanup();
     state.worktree_remove_succeeded = cleanup.worktree_remove_succeeded;
@@ -265,9 +275,18 @@ fn validate(options: &Options, state: &mut ValidationState) -> Result<(), String
         state.failure_reasons.push(reason);
     }
 
-    observe_repository_after(options, state, &refs_before, &worktrees_before)?;
-
-    execution_result?;
+    let observation_result =
+        observe_repository_after(options, state, &refs_before, &worktrees_before);
+    match (execution_result, observation_result) {
+        (Ok(()), Ok(())) => {}
+        (Err(reason), Ok(())) => return Err(reason),
+        (Ok(()), Err(observation_error)) => return Err(observation_error),
+        (Err(reason), Err(observation_error)) => {
+            return Err(format!(
+                "{reason}; failed to observe repository state after validation: {observation_error}"
+            ));
+        }
+    }
     if state.ref_mutation_observed {
         return Err("repository refs changed during resolved-tree validation".to_string());
     }
@@ -277,12 +296,7 @@ fn validate(options: &Options, state: &mut ValidationState) -> Result<(), String
     if state.cleanup_failure_reason.is_some() {
         return Err("resolved-tree materialization cleanup failed".to_string());
     }
-    if state.commands.iter().any(|command| {
-        command
-            .get("state")
-            .and_then(Value::as_str)
-            .is_none_or(|value| value != "passed")
-    }) {
+    if !commands_are_terminal_green(&state.commands) {
         return Err("one or more required governance commands did not pass".to_string());
     }
     Ok(())
@@ -366,9 +380,20 @@ fn validate_materialized_tree(
     state.materialization_clean_after = true;
 
     if let Some(command) = prior_failure {
-        return Err(format!("required governance command {command} did not pass"));
+        return Err(format!(
+            "required governance command {command} did not pass"
+        ));
     }
     Ok(())
+}
+
+fn ensure_checker_source_identity(observed: &str, expected: &str) -> Result<(), String> {
+    if observed == expected {
+        return Ok(());
+    }
+    Err(format!(
+        "validator checkout HEAD {observed} does not equal exact source parent {expected}"
+    ))
 }
 
 fn observe_repository_after(
@@ -438,8 +463,44 @@ impl MaterializedTree {
             &["worktree", "add", "--detach", &root_text, &commit],
             &[],
         ) {
-            let _ = fs::remove_dir_all(&parent);
-            return Err(reason);
+            let _ = git(
+                &options.repo,
+                &["worktree", "remove", "--force", &root_text],
+                &[],
+            );
+            let mut cleanup_failures = Vec::new();
+            if let Err(error) = git(
+                &options.repo,
+                &["worktree", "prune", "--expire", "now"],
+                &[],
+            ) {
+                cleanup_failures.push(error);
+            }
+            if let Err(error) = fs::remove_dir_all(&parent) {
+                if parent.exists() {
+                    cleanup_failures.push(format!(
+                        "failed to remove partial materialization directory: {error}"
+                    ));
+                }
+            }
+            match snapshot_worktrees(&options.repo) {
+                Ok(worktrees)
+                    if worktree_listing_contains_path(&worktrees, &normalize_path(&root)) =>
+                {
+                    cleanup_failures.push(
+                        "partial materialization remains registered as a worktree".to_string(),
+                    );
+                }
+                Ok(_) => {}
+                Err(error) => cleanup_failures.push(error),
+            }
+            if cleanup_failures.is_empty() {
+                return Err(reason);
+            }
+            return Err(format!(
+                "{reason}; failed to clean partial materialization: {}",
+                cleanup_failures.join("; ")
+            ));
         }
 
         Ok(Self {
@@ -464,6 +525,12 @@ impl MaterializedTree {
 
         let mut result = CleanupResult::default();
         let root_text = self.root.to_string_lossy().into_owned();
+        let normalized_root_text = normalize_path(&self.root);
+        let canonical_root_text = self
+            .root
+            .canonicalize()
+            .ok()
+            .map(|path| normalize_path(&path));
         result.worktree_remove_succeeded = git(
             &self.source_repo,
             &["worktree", "remove", "--force", &root_text],
@@ -487,7 +554,11 @@ impl MaterializedTree {
                 String::new()
             }
         };
-        result.worktree_residue_observed = worktrees.contains(&root_text);
+        result.worktree_residue_observed =
+            worktree_listing_contains_path(&worktrees, &normalized_root_text)
+                || canonical_root_text
+                    .as_deref()
+                    .is_some_and(|canonical| worktree_listing_contains_path(&worktrees, canonical));
 
         result.materialization_directory_removed = if self.parent.exists() {
             fs::remove_dir_all(&self.parent).is_ok()
@@ -538,6 +609,7 @@ fn run_required_command(
         checker,
         &args,
         &[
+            ("GIT_NO_REPLACE_OBJECTS", "1"),
             ("RIPR_SOURCE_PROMOTION_TRUSTED_CHECKER_SHA", source_parent),
             ("RIPR_SOURCE_PROMOTION_VALIDATION", "1"),
         ],
@@ -573,7 +645,11 @@ fn run_required_command(
                         "command exceeded the 180 second bound and its process tree was terminated",
                     ),
                 )
-            } else if output.status.as_ref().is_some_and(|status| status.success()) {
+            } else if output
+                .status
+                .as_ref()
+                .is_some_and(|status| status.success())
+            {
                 command_receipt(
                     command,
                     "passed",
@@ -623,7 +699,7 @@ fn command_receipt(
     command: &str,
     state: &str,
     exit_code: Option<i32>,
-    duration: Duration,
+    _duration: Duration,
     stdout_truncated: bool,
     stderr_truncated: bool,
     failure_reason: Option<&str>,
@@ -636,13 +712,24 @@ fn command_receipt(
         "command": command,
         "state": state,
         "exit_code": exit_code,
-        "duration_ms": duration_ms(duration),
+        "timeout_bound_ms": duration_ms(COMMAND_TIMEOUT),
         "stdout_path": format!("commands/{evidence_index:02}-{command}.stdout.log"),
         "stderr_path": format!("commands/{evidence_index:02}-{command}.stderr.log"),
         "stdout_truncated": stdout_truncated,
         "stderr_truncated": stderr_truncated,
         "failure_reason": failure_reason,
     })
+}
+
+fn commands_are_terminal_green(commands: &[Value]) -> bool {
+    commands.len() == REQUIRED_COMMANDS.len()
+        && commands
+            .iter()
+            .zip(REQUIRED_COMMANDS)
+            .all(|(receipt, expected)| {
+                receipt.get("command").and_then(Value::as_str) == Some(*expected)
+                    && receipt.get("state").and_then(Value::as_str) == Some("passed")
+            })
 }
 
 fn report_value(state: &ValidationState, status: &str) -> Value {
@@ -766,7 +853,8 @@ fn render_markdown(report: &Value) -> Result<String, String> {
 }
 
 fn parse_args(args: &[String]) -> Result<Options, String> {
-    if args.first().map(String::as_str) != Some("validate-resolved-tree") {
+    if args.first().map(String::as_str) != Some(SOURCE_PROMOTION_VALIDATE_RESOLVED_TREE_SUBCOMMAND)
+    {
         return Err(usage());
     }
     let mut values = BTreeMap::<&str, String>::new();
@@ -819,7 +907,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     let out = values
         .get("--out")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("target/ripr/source-promotion/resolved-tree"));
+        .unwrap_or_else(|| PathBuf::from(SOURCE_PROMOTION_RESOLVED_TREE_DEFAULT_OUT));
     Ok(Options {
         repo,
         source_parent,
@@ -870,9 +958,7 @@ fn input_echo_from_options(options: &Options) -> InputEcho {
 
 fn value_after(args: &[String], key: &str) -> Option<String> {
     args.windows(2)
-        .find(|pair| {
-            pair[0] == key && !pair[1].trim().is_empty() && !pair[1].starts_with("--")
-        })
+        .find(|pair| pair[0] == key && !pair[1].trim().is_empty() && !pair[1].starts_with("--"))
         .map(|pair| pair[1].clone())
 }
 
@@ -970,7 +1056,8 @@ fn snapshot_worktrees(repo: &Path) -> Result<String, String> {
 }
 
 fn git(repo: &Path, args: &[&str], envs: &[(&str, &str)]) -> Result<String, String> {
-    let owned_args: Vec<String> = args.iter().map(|value| (*value).to_string()).collect();
+    let mut owned_args = vec!["--no-replace-objects".to_string()];
+    owned_args.extend(args.iter().map(|value| (*value).to_string()));
     let output = capture_output_in_dir_with_timeout_bounded(
         Path::new("git"),
         &owned_args,
@@ -986,7 +1073,11 @@ fn git(repo: &Path, args: &[&str], envs: &[(&str, &str)]) -> Result<String, Stri
             args.join(" ")
         ));
     }
-    if !output.status.as_ref().is_some_and(|status| status.success()) {
+    if !output
+        .status
+        .as_ref()
+        .is_some_and(|status| status.success())
+    {
         return Err(format!(
             "git {} failed: {}",
             args.join(" "),
@@ -1070,6 +1161,20 @@ fn string_field<'a>(value: &'a Value, key: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("missing string field {key}"))
 }
 
+fn worktree_listing_contains_path(listing: &str, candidate: &str) -> bool {
+    listing
+        .lines()
+        .filter_map(|line| line.strip_prefix("worktree "))
+        .map(|path| path.replace('\\', "/"))
+        .any(|path| {
+            if cfg!(windows) {
+                path.eq_ignore_ascii_case(candidate)
+            } else {
+                path == candidate
+            }
+        })
+}
+
 fn path_for_receipt(repo: &Path, path: &Path) -> String {
     let candidate = if path.is_absolute() {
         path.to_path_buf()
@@ -1091,17 +1196,61 @@ fn normalize_path(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{REQUIRED_COMMANDS, ValidationState, input_echo, report_value, validate_exact_hex};
+    use super::{
+        Options, REQUIRED_COMMANDS, ValidationState, command_receipt, commands_are_terminal_green,
+        create_exclusive_temp_dir, ensure_checker_source_identity, git, input_echo, parse_args,
+        read_bound_json, reject_parent_components, render_markdown, report_value, snapshot_refs,
+        snapshot_worktrees, validate_exact_hex, verify_exact_commit, verify_exact_tree,
+        worktree_listing_contains_path,
+    };
+    use serde_json::Value;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::Duration;
+
+    struct TempRoot(PathBuf);
+
+    impl TempRoot {
+        fn create(label: &str) -> Result<Self, String> {
+            create_exclusive_temp_dir("ripr-resolved-tree-test", label).map(Self)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn valid_args() -> Vec<String> {
+        vec![
+            "validate-resolved-tree".to_string(),
+            "--source-parent".to_string(),
+            "a".repeat(40),
+            "--swarm-parent".to_string(),
+            "b".repeat(40),
+            "--reviewed-tree".to_string(),
+            "c".repeat(40),
+            "--preflight".to_string(),
+            "preflight.json".to_string(),
+            "--preflight-sha256".to_string(),
+            "d".repeat(64),
+            "--resolution-manifest".to_string(),
+            "resolution.json".to_string(),
+            "--resolution-sha256".to_string(),
+            "e".repeat(64),
+        ]
+    }
 
     #[test]
     fn exact_identity_rejects_abbreviated_and_uppercase_values() {
         assert!(validate_exact_hex("sha", "abc123", 40).is_err());
-        assert!(
-            validate_exact_hex("sha", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 40).is_err()
-        );
-        assert!(
-            validate_exact_hex("sha", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 40).is_ok()
-        );
+        assert!(validate_exact_hex("sha", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 40).is_err());
+        assert!(validate_exact_hex("sha", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 40).is_ok());
     }
 
     #[test]
@@ -1126,6 +1275,263 @@ mod tests {
         ];
         let echo = input_echo(&args);
         assert_eq!(echo.source_parent, None);
+        assert!(parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn duplicate_and_unknown_options_fail_closed() {
+        let mut duplicate = valid_args();
+        duplicate.extend(["--source-parent".to_string(), "f".repeat(40)]);
+        assert!(parse_args(&duplicate).is_err());
+
+        let mut unknown = valid_args();
+        unknown.extend(["--unknown".to_string(), "value".to_string()]);
+        assert!(parse_args(&unknown).is_err());
+    }
+
+    #[test]
+    fn parent_escape_and_digest_mismatch_fail_closed() -> Result<(), String> {
+        assert!(reject_parent_components(Path::new("../escape.json"), "fixture").is_err());
+        let root = TempRoot::create("digest-mismatch")?;
+        fs::write(root.path().join("input.json"), b"{}\n")
+            .map_err(|error| format!("write digest fixture: {error}"))?;
+        let error = read_bound_json(
+            root.path(),
+            Path::new("input.json"),
+            &"0".repeat(64),
+            "fixture",
+        )
+        .err()
+        .ok_or_else(|| "digest mismatch unexpectedly passed".to_string())?;
+        assert!(error.contains("SHA-256 mismatch"));
+        Ok(())
+    }
+
+    #[test]
+    fn checker_source_identity_rejects_non_source_checkout() {
+        assert!(ensure_checker_source_identity(&"a".repeat(40), &"a".repeat(40)).is_ok());
+        assert!(ensure_checker_source_identity(&"a".repeat(40), &"b".repeat(40)).is_err());
+    }
+
+    #[test]
+    fn command_catalog_requires_exact_order_and_terminal_passes() {
+        let passed = REQUIRED_COMMANDS
+            .iter()
+            .map(|command| {
+                command_receipt(
+                    command,
+                    "passed",
+                    Some(0),
+                    Duration::from_millis(1),
+                    false,
+                    false,
+                    None,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert!(commands_are_terminal_green(&passed));
+
+        for state in ["failed", "not_run", "unavailable"] {
+            let mut control = passed.clone();
+            control[0]["state"] = Value::String(state.to_string());
+            assert!(!commands_are_terminal_green(&control));
+        }
+        let mut missing = passed.clone();
+        let _ = missing.pop();
+        assert!(!commands_are_terminal_green(&missing));
+        let mut reordered = passed.clone();
+        reordered.swap(0, 1);
+        assert!(!commands_are_terminal_green(&reordered));
+    }
+
+    #[test]
+    fn canonical_command_receipt_excludes_observed_wall_clock_duration() {
+        let first = command_receipt(
+            "check-network-policy",
+            "passed",
+            Some(0),
+            Duration::from_millis(1),
+            false,
+            false,
+            None,
+        );
+        let second = command_receipt(
+            "check-network-policy",
+            "passed",
+            Some(0),
+            Duration::from_millis(999),
+            false,
+            false,
+            None,
+        );
+        assert_eq!(first, second);
+        assert_eq!(first["timeout_bound_ms"].as_u64(), Some(180_000));
+        assert!(first.get("duration_ms").is_none());
+    }
+
+    #[test]
+    fn worktree_listing_matches_exact_normalized_paths() {
+        let listing = "worktree /private/var/tmp/ripr-tree\nHEAD deadbeef\n\n";
+        assert!(worktree_listing_contains_path(
+            listing,
+            "/private/var/tmp/ripr-tree"
+        ));
+        assert!(!worktree_listing_contains_path(
+            listing,
+            "/var/tmp/ripr-tree"
+        ));
+        assert!(!worktree_listing_contains_path(
+            listing,
+            "/private/var/tmp/ripr"
+        ));
+    }
+
+    #[test]
+    fn exact_object_helpers_reject_wrong_git_object_kinds() -> Result<(), String> {
+        let root = TempRoot::create("object-kinds")?;
+        git(root.path(), &["init", "--quiet"], &[])?;
+        fs::write(root.path().join("value.txt"), "value\n")
+            .map_err(|error| format!("write object-kind fixture: {error}"))?;
+        git(root.path(), &["add", "value.txt"], &[])?;
+        git(
+            root.path(),
+            &["commit", "--quiet", "-m", "fixture"],
+            &[
+                ("GIT_AUTHOR_NAME", "ripr test"),
+                ("GIT_AUTHOR_EMAIL", "ripr-test@invalid"),
+                ("GIT_COMMITTER_NAME", "ripr test"),
+                ("GIT_COMMITTER_EMAIL", "ripr-test@invalid"),
+            ],
+        )?;
+        let commit = git(root.path(), &["rev-parse", "HEAD"], &[])?;
+        let tree = git(root.path(), &["rev-parse", "HEAD^{tree}"], &[])?;
+        assert!(verify_exact_commit(root.path(), commit.trim(), "commit").is_ok());
+        assert!(verify_exact_tree(root.path(), tree.trim()).is_ok());
+        assert!(verify_exact_commit(root.path(), tree.trim(), "tree").is_err());
+        assert!(verify_exact_tree(root.path(), commit.trim()).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn repository_observation_detects_ref_mutation() -> Result<(), String> {
+        let root = TempRoot::create("ref-mutation")?;
+        git(root.path(), &["init", "--quiet"], &[])?;
+        fs::write(root.path().join("value.txt"), "value\n")
+            .map_err(|error| format!("write ref fixture: {error}"))?;
+        git(root.path(), &["add", "value.txt"], &[])?;
+        git(
+            root.path(),
+            &["commit", "--quiet", "-m", "fixture"],
+            &[
+                ("GIT_AUTHOR_NAME", "ripr test"),
+                ("GIT_AUTHOR_EMAIL", "ripr-test@invalid"),
+                ("GIT_COMMITTER_NAME", "ripr test"),
+                ("GIT_COMMITTER_EMAIL", "ripr-test@invalid"),
+            ],
+        )?;
+        let before_refs = snapshot_refs(root.path())?;
+        let before_worktrees = snapshot_worktrees(root.path())?;
+        let head = git(root.path(), &["rev-parse", "HEAD"], &[])?;
+        git(
+            root.path(),
+            &["update-ref", "refs/heads/mutated-control", head.trim()],
+            &[],
+        )?;
+        let options = Options {
+            repo: root.path().to_path_buf(),
+            source_parent: "a".repeat(40),
+            swarm_parent: "b".repeat(40),
+            reviewed_tree: "c".repeat(40),
+            preflight: PathBuf::new(),
+            preflight_sha256: "d".repeat(64),
+            resolution_manifest: PathBuf::new(),
+            resolution_sha256: "e".repeat(64),
+            out: root.path().join("out"),
+        };
+        let mut state = ValidationState::new(Default::default());
+        super::observe_repository_after(&options, &mut state, &before_refs, &before_worktrees)?;
+        assert!(state.ref_mutation_observed);
+        Ok(())
+    }
+
+    #[test]
+    fn git_object_view_ignores_replacement_refs() -> Result<(), String> {
+        let root = TempRoot::create("object-view")?;
+        git(root.path(), &["init", "--quiet"], &[])?;
+        fs::write(root.path().join("value.txt"), "original\n")
+            .map_err(|error| format!("write original fixture: {error}"))?;
+        git(root.path(), &["add", "value.txt"], &[])?;
+        git(
+            root.path(),
+            &["commit", "--quiet", "-m", "original"],
+            &[
+                ("GIT_AUTHOR_NAME", "ripr test"),
+                ("GIT_AUTHOR_EMAIL", "ripr-test@invalid"),
+                ("GIT_COMMITTER_NAME", "ripr test"),
+                ("GIT_COMMITTER_EMAIL", "ripr-test@invalid"),
+            ],
+        )?;
+        let original = git(root.path(), &["rev-parse", "HEAD"], &[])?;
+        fs::write(root.path().join("value.txt"), "replacement\n")
+            .map_err(|error| format!("write replacement fixture: {error}"))?;
+        git(root.path(), &["add", "value.txt"], &[])?;
+        git(
+            root.path(),
+            &["commit", "--quiet", "-m", "replacement"],
+            &[
+                ("GIT_AUTHOR_NAME", "ripr test"),
+                ("GIT_AUTHOR_EMAIL", "ripr-test@invalid"),
+                ("GIT_COMMITTER_NAME", "ripr test"),
+                ("GIT_COMMITTER_EMAIL", "ripr-test@invalid"),
+            ],
+        )?;
+        let replacement = git(root.path(), &["rev-parse", "HEAD"], &[])?;
+        git(
+            root.path(),
+            &["replace", original.trim(), replacement.trim()],
+            &[],
+        )?;
+        let observed = git(
+            root.path(),
+            &["show", &format!("{}:value.txt", original.trim())],
+            &[],
+        )?;
+        assert_eq!(observed, "original\n");
+        Ok(())
+    }
+
+    #[test]
+    fn canonical_receipt_fixtures_are_byte_stable() -> Result<(), String> {
+        for (status, expected_json, expected_markdown) in [
+            (
+                "rejected",
+                include_str!(
+                    "../../../fixtures/source_promotion_resolved_tree/expected/rejected.json"
+                ),
+                include_str!(
+                    "../../../fixtures/source_promotion_resolved_tree/expected/rejected.md"
+                ),
+            ),
+            (
+                "validated",
+                include_str!(
+                    "../../../fixtures/source_promotion_resolved_tree/expected/validated.json"
+                ),
+                include_str!(
+                    "../../../fixtures/source_promotion_resolved_tree/expected/validated.md"
+                ),
+            ),
+        ] {
+            let report = report_value(&ValidationState::new(Default::default()), status);
+            let json = format!(
+                "{}\n",
+                serde_json::to_string_pretty(&report)
+                    .map_err(|error| format!("serialize fixture receipt: {error}"))?
+            );
+            assert_eq!(json, expected_json);
+            assert_eq!(render_markdown(&report)?, expected_markdown);
+        }
+        Ok(())
     }
 
     #[test]

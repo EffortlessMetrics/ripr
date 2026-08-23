@@ -47,8 +47,7 @@ fn write(root: &Path, relative: &str, contents: &str) -> Result<(), String> {
         .ok_or_else(|| format!("fixture path has no parent: {}", path.display()))?;
     fs::create_dir_all(parent)
         .map_err(|error| format!("create fixture parent {}: {error}", parent.display()))?;
-    fs::write(&path, contents)
-        .map_err(|error| format!("write fixture {}: {error}", path.display()))
+    fs::write(&path, contents).map_err(|error| format!("write fixture {}: {error}", path.display()))
 }
 
 fn repeated_literal(literal: &str, count: usize) -> String {
@@ -57,12 +56,37 @@ fn repeated_literal(literal: &str, count: usize) -> String {
         .join("\n")
 }
 
-fn run_network_policy(root: &Path) -> Result<Output, String> {
-    Command::new(env!("CARGO_BIN_EXE_xtask"))
-        .arg("check-network-policy")
+fn run_command(root: &Path, program: &Path, args: &[&str], label: &str) -> Result<Output, String> {
+    Command::new(program)
+        .args(args)
         .current_dir(root)
         .output()
-        .map_err(|error| format!("run production network-policy checker: {error}"))
+        .map_err(|error| format!("run {label}: {error}"))
+}
+
+fn run_git(root: &Path, args: &[&str]) -> Result<(), String> {
+    let output = run_command(root, Path::new("git"), args, "Git fixture command")?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "Git fixture command failed: {}",
+        combined_output(&output)
+    ))
+}
+
+fn initialize_git_fixture(root: &Path) -> Result<(), String> {
+    run_git(root, &["init", "--quiet"])?;
+    run_git(root, &["add", "--all"])
+}
+
+fn run_network_policy(root: &Path) -> Result<Output, String> {
+    run_command(
+        root,
+        Path::new(env!("CARGO_BIN_EXE_xtask")),
+        &["check-network-policy"],
+        "production network-policy checker",
+    )
 }
 
 fn combined_output(output: &Output) -> String {
@@ -116,6 +140,7 @@ crates/ripr/src/output/typescript_packet_projection.rs|curl|4|shared|shared live
 crates/ripr/src/output/typescript_packet_projection.rs|http|3|source|stale zero-count row
 "#;
     write(root, "policy/network_allowlist.txt", source_only_ledger)?;
+    initialize_git_fixture(root)?;
 
     let rejected = run_network_policy(root)?;
     assert!(
@@ -154,6 +179,55 @@ xtask/src/tests.rs|curl|2|swarm|W7-owned live row
         accepted.status.success(),
         "semantically reconciled ledger failed: {}",
         combined_output(&accepted)
+    );
+
+    let duplicate_control = format!(
+        "{reconciled_ledger}{}",
+        "xtask/src/tests.rs|curl|2|swarm|duplicate semantic key\n"
+    );
+    write(root, "policy/network_allowlist.txt", &duplicate_control)?;
+    let duplicate = run_network_policy(root)?;
+    assert!(
+        !duplicate.status.success(),
+        "duplicate semantic-key row unexpectedly passed"
+    );
+
+    let under_count_control = reconciled_ledger.replace(
+        "crates/ripr/src/output/perl_gap_record_projection.rs|curl|5|swarm|W7-owned live row",
+        "crates/ripr/src/output/perl_gap_record_projection.rs|curl|4|swarm|W7-owned live row",
+    );
+    write(root, "policy/network_allowlist.txt", &under_count_control)?;
+    let under_count = run_network_policy(root)?;
+    assert!(
+        !under_count.status.success(),
+        "actual count above maximum unexpectedly passed"
+    );
+
+    let orphan_control = format!(
+        "{reconciled_ledger}{}",
+        "crates/ripr/src/output/typescript_packet_projection.rs|http|3|source|raw-union orphan\n"
+    );
+    write(root, "policy/network_allowlist.txt", &orphan_control)?;
+    let orphan = run_network_policy(root)?;
+    assert!(
+        !orphan.status.success(),
+        "raw-union orphan unexpectedly passed"
+    );
+
+    let removal_control = reconciled_ledger.replace(
+        "crates/ripr/src/output/perl_gap_record_projection.rs|curl|5|swarm|W7-owned live row\n",
+        "",
+    );
+    write(root, "policy/network_allowlist.txt", &removal_control)?;
+    let removal = run_network_policy(root)?;
+    assert!(
+        !removal.status.success(),
+        "removing a required semantic row did not falsify the reconciled control"
+    );
+    assert!(
+        combined_output(&removal).contains("crates/ripr/src/output/perl_gap_record_projection.rs"),
+        "removal control did not name the missing live row: {}",
+        combined_output(&removal)
     );
     Ok(())
 }

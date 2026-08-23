@@ -833,9 +833,9 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
         command_entry(
             "source-promotion validate-resolved-tree --source-parent <sha> --swarm-parent <sha> --reviewed-tree <tree> --preflight <receipt.json> --preflight-sha256 <digest> --resolution-manifest <manifest.json> --resolution-sha256 <digest> [--out <dir>]",
             "report_only",
-            "target/ripr/source-promotion/resolved-tree/{resolved-tree-validation.json,resolved-tree-validation.md,commands/**} or explicit --out <dir>",
+            "target/ripr/source-promotion/resolved-tree/{resolved-tree-validation.json,resolved-tree-validation.md,commands/**} or explicit --out <dir>; transient unreferenced Git object and worktree-registry entries in the caller repository are removed before return",
             false,
-            "Validates one exact reviewed tree with the source-parent governance catalog and retained bounded evidence before direct-J construction.",
+            "Validates one exact reviewed tree with the source-parent governance catalog and retained bounded evidence before direct-J construction; retained worktree state or authoritative ref movement rejects validation.",
         ),
         command_entry(
             "targeted-test-outcome --before <path> --after <path>",
