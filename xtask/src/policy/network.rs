@@ -1,24 +1,28 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+
+const NETWORK_POLICY_PATH: &str = "policy/network_allowlist.txt";
 
 pub(crate) fn check_network_policy() -> Result<(), String> {
     let ordinary_result = crate::check_network_policy_impl();
-    let orphan_result = network_policy_orphan_violations();
+    let semantic_result = network_policy_semantic_violations();
 
-    match (ordinary_result, orphan_result) {
+    match (ordinary_result, semantic_result) {
         (Ok(()), Ok(violations)) if violations.is_empty() => Ok(()),
         (Ok(()), Ok(violations)) => Err(render_network_policy_failure(&violations)),
         (Err(error), Ok(violations)) if violations.is_empty() => Err(error),
         (Err(error), Ok(violations)) => Err(append_network_policy_violations(error, &violations)),
         (Ok(()), Err(error)) => Err(error),
-        (Err(policy_error), Err(orphan_error)) => Err(format!(
-            "{policy_error}; failed to evaluate orphaned network-policy rows: {orphan_error}"
+        (Err(policy_error), Err(semantic_error)) => Err(format!(
+            "{policy_error}; failed to evaluate semantic network-policy rows: {semantic_error}"
         )),
     }
 }
 
-fn network_policy_orphan_violations() -> Result<Vec<String>, String> {
-    let allowlist = crate::read_count_policy_allowlist("policy/network_allowlist.txt")?;
+fn network_policy_semantic_violations() -> Result<Vec<String>, String> {
+    let policy_text = crate::read_text_lossy(Path::new(NETWORK_POLICY_PATH))?;
+    let mut violations = duplicate_key_violations_from_text(&policy_text);
+    let allowlist = crate::read_count_policy_allowlist(NETWORK_POLICY_PATH)?;
     let patterns = crate::network_policy_patterns();
     let mut counts = BTreeMap::<(String, String), usize>::new();
 
@@ -35,7 +39,42 @@ fn network_policy_orphan_violations() -> Result<Vec<String>, String> {
         }
     }
 
-    Ok(orphan_violations_from_counts(&allowlist, &counts))
+    violations.extend(orphan_violations_from_counts(&allowlist, &counts));
+    violations.sort();
+    Ok(violations)
+}
+
+fn duplicate_key_violations_from_text(policy: &str) -> Vec<String> {
+    let mut seen = BTreeSet::<(String, String)>::new();
+    let mut violations = Vec::new();
+
+    for (index, raw_line) in policy.lines().enumerate() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let mut fields = line.split('|').map(str::trim);
+        let Some(path) = fields.next() else {
+            continue;
+        };
+        let Some(pattern) = fields.next() else {
+            continue;
+        };
+        if path.is_empty() || pattern.is_empty() {
+            continue;
+        }
+
+        let key = (path.to_string(), pattern.to_string());
+        if !seen.insert(key) {
+            violations.push(format!(
+                "{path} | {pattern} | duplicate semantic key at line {}",
+                index + 1
+            ));
+        }
+    }
+
+    violations
 }
 
 fn orphan_violations_from_counts(
@@ -79,8 +118,17 @@ fn append_network_policy_violations(mut error: String, violations: &[String]) ->
 
 #[cfg(test)]
 mod tests {
-    use super::orphan_violations_from_counts;
+    use super::{duplicate_key_violations_from_text, orphan_violations_from_counts};
     use std::collections::BTreeMap;
+
+    #[test]
+    fn duplicate_detection_uses_trimmed_path_and_pattern_as_semantic_key() {
+        let policy = "a.rs|curl|1|source|first\n  a.rs | curl |2|swarm|duplicate\n";
+        assert_eq!(
+            duplicate_key_violations_from_text(policy),
+            vec!["a.rs | curl | duplicate semantic key at line 2"]
+        );
+    }
 
     #[test]
     fn orphan_detection_reports_only_positive_zero_count_rows() {
