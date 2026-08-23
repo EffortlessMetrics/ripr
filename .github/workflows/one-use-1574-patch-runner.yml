@@ -40,9 +40,9 @@ jobs:
           EXPECTED_SCRIPT_SHA256: b4f13425cca1aa90f705c948479e76038a0b0fcf86a0f076a73817da96a1f526
         run: |
           set -euxo pipefail
-          test "$(git show -s --format=%s HEAD)" = 'chore(control): trigger chunked #1574 transformer'
+          test "$(git show -s --format=%s HEAD)" = 'chore(control): trigger chunked #1574 transformer with fixtures'
           test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = '.github/one-use-1574-finalize-trigger.txt'
-          test "$(git show -s --format=%s HEAD^)" = 'chore(control): enable chunked #1574 transformer'
+          test "$(git show -s --format=%s HEAD^)" = 'chore(control): account for new #1574 fixtures'
 
           test "$(sha256sum tools/one_use_1574_patch_parts/part00 | awk '{print $1}')" = a64bdc9da3016c2e3d7399b55a6da4829c7edd46de10d08f52a7fe7360715862
           test "$(sha256sum tools/one_use_1574_patch_parts/part01 | awk '{print $1}')" = c3163d7c7a92cb4d074e33e211631f57b1ce5e6dc57b84ba6700115e88aa93d2
@@ -61,6 +61,7 @@ jobs:
           python3 /tmp/one_use_1574_patch.py
 
           cargo fmt --all
+          git add -N fixtures/source_promotion_resolved_tree
           git diff --check
 
           changed="$(git diff --name-only | sort)"
