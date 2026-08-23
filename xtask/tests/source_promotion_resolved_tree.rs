@@ -223,7 +223,7 @@ xtask/src/tests.rs|curl|2|swarm|W7-owned live row
         "crates/ripr/src/output/perl_gap_record_projection.rs|curl|5|swarm|W7-owned live row\n",
         "",
     );
-    write(root, "policy/network_allowlist.txt", removal_control)?;
+    write(root, "policy/network_allowlist.txt", &removal_control)?;
     let removal = run_network_policy(root)?;
     assert!(
         !removal.status.success(),
