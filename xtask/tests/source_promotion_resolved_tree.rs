@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -97,6 +98,15 @@ fn combined_output(output: &Output) -> String {
     )
 }
 
+fn network_violation_multiset(output: &str) -> BTreeSet<String> {
+    output
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("- "))
+        .filter(|line| line.contains(" | curl | "))
+        .map(str::to_string)
+        .collect()
+}
+
 #[test]
 fn j5_source_ledger_rejects_and_semantic_reconciliation_passes() -> Result<(), String> {
     let fixture = TempRoot::create()?;
@@ -153,17 +163,19 @@ crates/ripr/src/output/typescript_packet_projection.rs|curl|4|shared|shared live
         "J5-shaped source-only ledger unexpectedly passed"
     );
     let rejection = combined_output(&rejected);
-    for expected in [
-        ".github/workflows/server-archive-qualification.yml",
-        ".github/workflows/stale-network-surface.yml",
-        "crates/ripr/src/output/perl_gap_record_projection.rs",
-        "xtask/src/tests.rs",
-    ] {
-        assert!(
-            rejection.contains(expected),
-            "J5-shaped rejection did not name {expected}: {rejection}"
-        );
-    }
+    let actual = network_violation_multiset(&rejection);
+    let expected = BTreeSet::from([
+        ".github/workflows/server-archive-qualification.yml | curl | actual 1 | allowed 0"
+            .to_string(),
+        ".github/workflows/stale-network-surface.yml | curl | orphaned max_count=3".to_string(),
+        "crates/ripr/src/output/perl_gap_record_projection.rs | curl | actual 5 | allowed 0"
+            .to_string(),
+        "xtask/src/tests.rs | curl | actual 2 | allowed 0".to_string(),
+    ]);
+    assert_eq!(
+        actual, expected,
+        "J5-shaped rejection must be exactly three missing live rows plus one orphan: {rejection}"
+    );
 
     let reconciled_ledger = r#"# Allowlisted network surfaces.
 #
