@@ -55,12 +55,12 @@ impl MaterializedTree {
                 &[],
             );
             let mut cleanup_failures = Vec::new();
-            if let Err(error) = fs::remove_dir_all(&parent) {
-                if parent.exists() {
-                    cleanup_failures.push(format!(
-                        "failed to remove partial materialization directory: {error}"
-                    ));
-                }
+            if let Err(error) = fs::remove_dir_all(&parent)
+                && parent.exists()
+            {
+                cleanup_failures.push(format!(
+                    "failed to remove partial materialization directory: {error}"
+                ));
             }
             match snapshot_worktrees(&options.repo) {
                 Ok(worktrees)
@@ -188,6 +188,7 @@ fn run_required_command(
 
     match output {
         Ok(output) => {
+            let _ = output.duration;
             let evidence = match write_command_logs(logs_dir, command, index, &output) {
                 Ok(evidence) => evidence,
                 Err(reason) => {
