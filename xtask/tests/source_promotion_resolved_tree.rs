@@ -47,8 +47,7 @@ fn write(root: &Path, relative: &str, contents: &str) -> Result<(), String> {
         .ok_or_else(|| format!("fixture path has no parent: {}", path.display()))?;
     fs::create_dir_all(parent)
         .map_err(|error| format!("create fixture parent {}: {error}", parent.display()))?;
-    fs::write(&path, contents)
-        .map_err(|error| format!("write fixture {}: {error}", path.display()))
+    fs::write(&path, contents).map_err(|error| format!("write fixture {}: {error}", path.display()))
 }
 
 fn repeated_literal(literal: &str, count: usize) -> String {
