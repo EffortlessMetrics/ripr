@@ -125,6 +125,11 @@ fn j5_source_ledger_rejects_and_semantic_reconciliation_passes() -> Result<(), S
     )?;
     write(
         root,
+        ".github/workflows/stale-network-surface.yml",
+        "name: stale network surface\n",
+    )?;
+    write(
+        root,
         "crates/ripr/src/output/perl_gap_record_projection.rs",
         &repeated_literal("curl", 5),
     )?;
@@ -135,9 +140,9 @@ fn j5_source_ledger_rejects_and_semantic_reconciliation_passes() -> Result<(), S
 # Format:
 # path|pattern|max_count|owner|reason
 .github/workflows/source-promotion-contract.yml|curl|1|source|source-only live row
+.github/workflows/stale-network-surface.yml|curl|3|source|stale zero-count row
 crates/ripr/src/analysis/probes/subprocess.rs|curl|6|source|source-only live row
 crates/ripr/src/output/typescript_packet_projection.rs|curl|4|shared|shared live row
-crates/ripr/src/output/typescript_packet_projection.rs|http|3|source|stale zero-count row
 "#;
     write(root, "policy/network_allowlist.txt", source_only_ledger)?;
     initialize_git_fixture(root)?;
@@ -150,10 +155,9 @@ crates/ripr/src/output/typescript_packet_projection.rs|http|3|source|stale zero-
     let rejection = combined_output(&rejected);
     for expected in [
         ".github/workflows/server-archive-qualification.yml",
+        ".github/workflows/stale-network-surface.yml",
         "crates/ripr/src/output/perl_gap_record_projection.rs",
         "xtask/src/tests.rs",
-        "crates/ripr/src/output/typescript_packet_projection.rs",
-        "http",
     ] {
         assert!(
             rejection.contains(expected),
@@ -205,7 +209,7 @@ xtask/src/tests.rs|curl|2|swarm|W7-owned live row
 
     let orphan_control = format!(
         "{reconciled_ledger}{}",
-        "crates/ripr/src/output/typescript_packet_projection.rs|http|3|source|raw-union orphan\n"
+        ".github/workflows/stale-network-surface.yml|curl|3|source|raw-union orphan\n"
     );
     write(root, "policy/network_allowlist.txt", &orphan_control)?;
     let orphan = run_network_policy(root)?;
