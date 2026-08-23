@@ -18,8 +18,8 @@ const PACKET_SCHEMA: &str = "ripr.source_promotion_resolved_tree_packet.v1";
 const REPORT_JSON: &str = "resolved-tree-validation.json";
 const REPORT_MD: &str = "resolved-tree-validation.md";
 const PACKET_INDEX: &str = "packet-index.json";
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(180);
-const GIT_TIMEOUT: Duration = Duration::from_secs(60);
+const COMMAND_TIMEOUT: Duration = Duration::from_mins(3);
+const GIT_TIMEOUT: Duration = Duration::from_mins(1);
 const MAX_STREAM_BYTES: usize = 2 * 1024 * 1024;
 const TEMP_ATTEMPTS: u32 = 128;
 
