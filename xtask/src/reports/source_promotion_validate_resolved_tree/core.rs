@@ -276,6 +276,18 @@ pub(crate) fn source_promotion_validate_resolved_tree(args: &[String]) -> Result
             };
         }
     };
+    if options.out != out {
+        let reason = "resolved-tree output path changed between packet selection and argument parsing";
+        let mut state = ValidationState::new(input_echo_from_options(&options));
+        state.failure_reasons.push(reason.to_string());
+        let report = report_value(&state);
+        return match packet.publish(&report) {
+            Ok(()) => Err(reason.to_string()),
+            Err(write_error) => Err(format!(
+                "{reason}; failed to publish resolved-tree validation packet: {write_error}"
+            )),
+        };
+    }
 
     let mut state = ValidationState::new(input_echo_from_options(&options));
     let mut validation = validate(&options, &mut state, packet.root());
