@@ -1,10 +1,13 @@
 # Source-promotion resolved-tree fixture
 
-This fixture pins the canonical rejected and validated receipt shapes for
-`ripr.source_promotion_resolved_tree_validation.v1`. The fixture state contains
-no real source/W7/tree identity and makes no validation claim; it exists to
-prove deterministic key sets, explicit `not_run` reasons, fixed timeout bounds,
-and byte-stable JSON/Markdown rendering.
+Spec: RIPR-SPEC-0150
+
+This is a dedicated receipt-snapshot corpus for
+`ripr.source_promotion_resolved_tree_validation.v1`. Its dedicated validator
+owns the exact JSON and Markdown members, schema and status checks, semantic
+admission checks, and canonical embedded JSON mirrors. It is not a
+Given/When/Then analyzer fixture and therefore has no `diff.patch` or
+`expected/check.json`.
 
 The J5 final-tree behavioral corpus lives in
 `xtask/tests/source_promotion_resolved_tree.rs` and executes the production
