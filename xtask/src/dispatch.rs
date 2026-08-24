@@ -104,7 +104,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckDroidReviewConfig => super::check_droid_review_config(),
         XtaskCommand::CheckSpecFormat => super::check_spec_format(),
         XtaskCommand::CheckSpecNumbering => super::check_spec_numbering(),
-        XtaskCommand::CheckFixtureContracts => super::check_fixture_contracts(),
+        XtaskCommand::CheckFixtureContracts => super::reports::check_fixture_contracts_report(),
         XtaskCommand::CheckEvidencePromotionHonesty => super::check_evidence_promotion_honesty(),
         XtaskCommand::CheckTraceability => super::check_traceability(),
         XtaskCommand::CheckCapabilities => super::check_capabilities(),
