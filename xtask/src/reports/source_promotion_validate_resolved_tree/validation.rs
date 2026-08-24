@@ -315,50 +315,55 @@ mod manifest_disposition_tests {
     }
 
     #[test]
-    fn disposition_enum_is_exact() {
+    fn disposition_enum_is_exact() -> Result<(), String> {
         for disposition in ["source_blob", "swarm_blob", "excluded"] {
-            assert!(matches!(
-                validate_resolution_manifest_dispositions(&manifest(row(disposition))),
-                Ok(())
-            ));
+            validate_resolution_manifest_dispositions(&manifest(row(disposition)))?;
         }
         for disposition in ["source", "swarm", "merge", "drop", ""] {
-            assert!(
-                validate_resolution_manifest_dispositions(&manifest(row(disposition))).is_err()
-            );
+            let Err(_) = validate_resolution_manifest_dispositions(&manifest(row(disposition)))
+            else {
+                return Err(format!(
+                    "invalid resolution disposition {disposition:?} unexpectedly passed"
+                ));
+            };
         }
+        Ok(())
     }
 
     #[test]
-    fn integrated_requires_typed_digest_bound_evidence() {
+    fn integrated_requires_typed_digest_bound_evidence() -> Result<(), String> {
         let mut integrated = row("integrated");
-        assert!(
-            validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_err()
-        );
+        let Err(_) =
+            validate_resolution_manifest_dispositions(&manifest(integrated.clone()))
+        else {
+            return Err("integrated disposition without typed evidence unexpectedly passed".to_string());
+        };
 
         integrated["integration_evidence"] = serde_json::json!({
             "type": "digest_bound_artifact",
             "ref": "receipts/network-policy.json",
             "sha256": "a".repeat(64)
         });
-        assert!(matches!(
-            validate_resolution_manifest_dispositions(&manifest(integrated.clone())),
-            Ok(())
-        ));
+        validate_resolution_manifest_dispositions(&manifest(integrated.clone()))?;
 
         integrated["integration_evidence"]["type"] = serde_json::json!("free_form");
-        assert!(
-            validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_err()
-        );
+        let Err(_) =
+            validate_resolution_manifest_dispositions(&manifest(integrated.clone()))
+        else {
+            return Err("free-form integration evidence unexpectedly passed".to_string());
+        };
         integrated["integration_evidence"]["type"] = serde_json::json!("digest_bound_artifact");
         integrated["integration_evidence"]["sha256"] = serde_json::json!("deadbeef");
-        assert!(
-            validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_err()
-        );
+        let Err(_) =
+            validate_resolution_manifest_dispositions(&manifest(integrated.clone()))
+        else {
+            return Err("short integration evidence digest unexpectedly passed".to_string());
+        };
         integrated["integration_evidence"]["sha256"] = serde_json::json!("a".repeat(64));
         integrated["integration_evidence"]["ref"] = serde_json::json!("   ");
-        assert!(
-            validate_resolution_manifest_dispositions(&manifest(integrated)).is_err()
-        );
+        let Err(_) = validate_resolution_manifest_dispositions(&manifest(integrated)) else {
+            return Err("blank integration evidence reference unexpectedly passed".to_string());
+        };
+        Ok(())
     }
 }

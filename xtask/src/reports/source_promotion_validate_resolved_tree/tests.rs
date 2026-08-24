@@ -96,15 +96,16 @@ mod tests {
     }
 
     #[test]
-    fn exact_identity_rejects_abbreviated_and_uppercase_values() {
-        assert!(validate_exact_hex("sha", "abc123", 40).is_err());
-        assert!(
-            validate_exact_hex("sha", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 40).is_err()
-        );
-        assert!(matches!(
-            validate_exact_hex("sha", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 40),
-            Ok(())
-        ));
+    fn exact_identity_rejects_abbreviated_and_uppercase_values() -> Result<(), String> {
+        let Err(_) = validate_exact_hex("sha", "abc123", 40) else {
+            return Err("abbreviated identity unexpectedly passed".to_string());
+        };
+        let Err(_) =
+            validate_exact_hex("sha", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 40)
+        else {
+            return Err("uppercase identity unexpectedly passed".to_string());
+        };
+        validate_exact_hex("sha", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 40)
     }
 
     #[test]
@@ -115,7 +116,7 @@ mod tests {
     }
 
     #[test]
-    fn option_value_that_is_another_flag_is_rejected_as_a_value() {
+    fn option_value_that_is_another_flag_is_rejected_as_a_value() -> Result<(), String> {
         let args = vec![
             "validate-resolved-tree".to_string(),
             "--source-parent".to_string(),
@@ -123,23 +124,33 @@ mod tests {
         ];
         let echo = input_echo(&args);
         assert_eq!(echo.source_parent, None);
-        assert!(parse_args(&args).is_err());
+        let Err(_) = parse_args(&args) else {
+            return Err("flag-shaped option value unexpectedly parsed".to_string());
+        };
+        Ok(())
     }
 
     #[test]
-    fn duplicate_and_unknown_options_fail_closed() {
+    fn duplicate_and_unknown_options_fail_closed() -> Result<(), String> {
         let mut duplicate = valid_args();
         duplicate.extend(["--source-parent".to_string(), "f".repeat(40)]);
-        assert!(parse_args(&duplicate).is_err());
+        let Err(_) = parse_args(&duplicate) else {
+            return Err("duplicate option unexpectedly parsed".to_string());
+        };
 
         let mut unknown = valid_args();
         unknown.extend(["--unknown".to_string(), "value".to_string()]);
-        assert!(parse_args(&unknown).is_err());
+        let Err(_) = parse_args(&unknown) else {
+            return Err("unknown option unexpectedly parsed".to_string());
+        };
+        Ok(())
     }
 
     #[test]
     fn parent_escape_and_digest_mismatch_fail_closed() -> Result<(), String> {
-        assert!(reject_parent_components(Path::new("../escape.json"), "fixture").is_err());
+        let Err(_) = reject_parent_components(Path::new("../escape.json"), "fixture") else {
+            return Err("parent path escape unexpectedly passed".to_string());
+        };
         let root = TempRoot::create("digest-mismatch")?;
         fs::write(root.path().join("input.json"), b"{}\n")
             .map_err(|error| format!("write digest fixture: {error}"))?;
@@ -156,12 +167,12 @@ mod tests {
     }
 
     #[test]
-    fn checker_source_identity_rejects_non_source_checkout() {
-        assert!(matches!(
-            ensure_checker_source_identity(&"a".repeat(40), &"a".repeat(40)),
-            Ok(())
-        ));
-        assert!(ensure_checker_source_identity(&"a".repeat(40), &"b".repeat(40)).is_err());
+    fn checker_source_identity_rejects_non_source_checkout() -> Result<(), String> {
+        ensure_checker_source_identity(&"a".repeat(40), &"a".repeat(40))?;
+        let Err(_) = ensure_checker_source_identity(&"a".repeat(40), &"b".repeat(40)) else {
+            return Err("non-source checker identity unexpectedly passed".to_string());
+        };
+        Ok(())
     }
 
     #[test]
@@ -239,13 +250,14 @@ mod tests {
         )?;
         let commit = git(root.path(), &["rev-parse", "HEAD"], &[])?;
         let tree = git(root.path(), &["rev-parse", "HEAD^{tree}"], &[])?;
-        assert!(matches!(
-            verify_exact_commit(root.path(), commit.trim(), "commit"),
-            Ok(())
-        ));
-        assert!(matches!(verify_exact_tree(root.path(), tree.trim()), Ok(())));
-        assert!(verify_exact_commit(root.path(), tree.trim(), "tree").is_err());
-        assert!(verify_exact_tree(root.path(), commit.trim()).is_err());
+        verify_exact_commit(root.path(), commit.trim(), "commit")?;
+        verify_exact_tree(root.path(), tree.trim())?;
+        let Err(_) = verify_exact_commit(root.path(), tree.trim(), "tree") else {
+            return Err("tree object unexpectedly passed commit verification".to_string());
+        };
+        let Err(_) = verify_exact_tree(root.path(), commit.trim()) else {
+            return Err("commit object unexpectedly passed tree verification".to_string());
+        };
         Ok(())
     }
 
@@ -336,7 +348,9 @@ mod tests {
         let command_dir = packet.root().join("commands");
         fs::create_dir(&command_dir).map_err(|error| error.to_string())?;
         write_new_file(&command_dir.join("evidence.log"), b"evidence\n")?;
-        assert!(write_new_file(&command_dir.join("evidence.log"), b"replace\n").is_err());
+        let Err(_) = write_new_file(&command_dir.join("evidence.log"), b"replace\n") else {
+            return Err("create-new evidence write unexpectedly replaced a file".to_string());
+        };
         packet.publish(&report_value(&ValidationState::new(Default::default())))?;
         assert!(final_out.join(PACKET_INDEX).is_file());
         assert!(packet_entries(&final_out)?
@@ -350,16 +364,16 @@ mod tests {
         let root = TempRoot::create("packet-collision")?;
         let existing = root.path().join("existing");
         fs::write(&existing, b"occupied").map_err(|error| error.to_string())?;
-        assert!(PacketWorkspace::create(&existing, "existing").is_err());
+        let Err(_) = PacketWorkspace::create(&existing, "existing") else {
+            return Err("existing output path unexpectedly admitted".to_string());
+        };
 
         let final_out = root.path().join("late-collision");
         let mut packet = PacketWorkspace::create(&final_out, "late")?;
         fs::create_dir(&final_out).map_err(|error| error.to_string())?;
-        assert!(
-            packet
-                .publish(&report_value(&ValidationState::new(Default::default())))
-                .is_err()
-        );
+        let Err(_) = packet.publish(&report_value(&ValidationState::new(Default::default()))) else {
+            return Err("partial publish collision unexpectedly succeeded".to_string());
+        };
         Ok(())
     }
 
@@ -373,11 +387,15 @@ mod tests {
         fs::create_dir(&target).map_err(|error| error.to_string())?;
         let output_link = root.path().join("output-link");
         symlink(&target, &output_link).map_err(|error| error.to_string())?;
-        assert!(PacketWorkspace::create(&output_link, "output-link").is_err());
+        let Err(_) = PacketWorkspace::create(&output_link, "output-link") else {
+            return Err("symlink output path unexpectedly admitted".to_string());
+        };
 
         let parent_link = root.path().join("parent-link");
         symlink(&target, &parent_link).map_err(|error| error.to_string())?;
-        assert!(PacketWorkspace::create(&parent_link.join("packet"), "parent-link").is_err());
+        let Err(_) = PacketWorkspace::create(&parent_link.join("packet"), "parent-link") else {
+            return Err("symlink parent path unexpectedly admitted".to_string());
+        };
         Ok(())
     }
 
