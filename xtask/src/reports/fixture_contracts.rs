@@ -1,7 +1,7 @@
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const CORPUS_ROOT: &str = "fixtures/source_promotion_resolved_tree";
 const RECEIPT_SCHEMA: &str = "ripr.source_promotion_resolved_tree_validation.v1";
@@ -76,7 +76,10 @@ fn validate_source_promotion_resolved_tree_corpus(
     violations: &mut Vec<String>,
 ) -> Result<(), String> {
     if !root.is_dir() {
-        violations.push(format!("source-promotion receipt corpus is missing {}", display(root)));
+        violations.push(format!(
+            "source-promotion receipt corpus is missing {}",
+            display(root)
+        ));
         return Ok(());
     }
 
@@ -117,7 +120,10 @@ fn require_exact_members(
         violations.push(format!("{} is missing {missing}", display(root)));
     }
     for unexpected in observed.difference(&required) {
-        violations.push(format!("{} has unexpected member {unexpected}", display(root)));
+        violations.push(format!(
+            "{} has unexpected member {unexpected}",
+            display(root)
+        ));
     }
     Ok(())
 }
@@ -196,10 +202,16 @@ fn validate_markdown_mirror(
     let schema_line = format!("- Schema: `{RECEIPT_SCHEMA}`");
     let status_line = format!("- Status: **{status}**");
     if !markdown.contains(&schema_line) {
-        violations.push(format!("{} is missing canonical schema line", display(path)));
+        violations.push(format!(
+            "{} is missing canonical schema line",
+            display(path)
+        ));
     }
     if !markdown.contains(&status_line) {
-        violations.push(format!("{} is missing canonical status line", display(path)));
+        violations.push(format!(
+            "{} is missing canonical status line",
+            display(path)
+        ));
     }
 
     let canonical = serde_json::to_string_pretty(value)
