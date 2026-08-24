@@ -254,7 +254,7 @@ This source-parent-selected receipt reports the named repository-governance comm
     "cleanup_failure_reason": null,
     "created": true,
     "directory_removed": true,
-    "disposable_commit": "1111111111111111111111111111111111111",
+    "disposable_commit": "1111111111111111111111111111111111111111",
     "path_role": "os_temp_disposable_checkout",
     "reviewed_tree": "cccccccccccccccccccccccccccccccccccccccc",
     "worktree_remove_succeeded": true,
@@ -278,7 +278,7 @@ This source-parent-selected receipt reports the named repository-governance comm
   "preflight": {
     "path": "docs/release/source-promotion/preflight.json",
     "path_role": "source_checkout_regular_file",
-    "sha256": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
     "verified": true
   },
   "push_attempted": false,
@@ -312,11 +312,11 @@ This source-parent-selected receipt reports the named repository-governance comm
   "schema": "ripr.source_promotion_resolved_tree_validation.v1",
   "source_parent": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "status": "validated",
-  "swarm_parent": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "swarm_parent": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "tag_attempted": false,
   "tool_version": "0.1.0",
   "trusted_checker": {
-    "executable_sha256": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "executable_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
     "selection": "running xtask executable from checkout whose HEAD equals source_parent",
     "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   }
