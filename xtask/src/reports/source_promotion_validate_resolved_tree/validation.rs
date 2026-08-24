@@ -323,20 +323,18 @@ mod manifest_disposition_tests {
             ));
         }
         for disposition in ["source", "swarm", "merge", "drop", ""] {
-            assert!(matches!(
-                validate_resolution_manifest_dispositions(&manifest(row(disposition))),
-                Err(_)
-            ));
+            assert!(
+                validate_resolution_manifest_dispositions(&manifest(row(disposition))).is_err()
+            );
         }
     }
 
     #[test]
     fn integrated_requires_typed_digest_bound_evidence() {
         let mut integrated = row("integrated");
-        assert!(matches!(
-            validate_resolution_manifest_dispositions(&manifest(integrated.clone())),
-            Err(_)
-        ));
+        assert!(
+            validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_err()
+        );
 
         integrated["integration_evidence"] = serde_json::json!({
             "type": "digest_bound_artifact",
@@ -349,21 +347,18 @@ mod manifest_disposition_tests {
         ));
 
         integrated["integration_evidence"]["type"] = serde_json::json!("free_form");
-        assert!(matches!(
-            validate_resolution_manifest_dispositions(&manifest(integrated.clone())),
-            Err(_)
-        ));
+        assert!(
+            validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_err()
+        );
         integrated["integration_evidence"]["type"] = serde_json::json!("digest_bound_artifact");
         integrated["integration_evidence"]["sha256"] = serde_json::json!("deadbeef");
-        assert!(matches!(
-            validate_resolution_manifest_dispositions(&manifest(integrated.clone())),
-            Err(_)
-        ));
+        assert!(
+            validate_resolution_manifest_dispositions(&manifest(integrated.clone())).is_err()
+        );
         integrated["integration_evidence"]["sha256"] = serde_json::json!("a".repeat(64));
         integrated["integration_evidence"]["ref"] = serde_json::json!("   ");
-        assert!(matches!(
-            validate_resolution_manifest_dispositions(&manifest(integrated)),
-            Err(_)
-        ));
+        assert!(
+            validate_resolution_manifest_dispositions(&manifest(integrated)).is_err()
+        );
     }
 }

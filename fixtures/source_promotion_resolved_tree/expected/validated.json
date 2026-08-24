@@ -112,7 +112,7 @@
       "state": "passed",
       "stderr_bytes": 0,
       "stderr_path": "commands/07-check-executable-files.stderr.log",
-      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca4959991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stderr_truncated": false,
       "stdout_bytes": 0,
       "stdout_path": "commands/07-check-executable-files.stdout.log",
@@ -135,7 +135,7 @@
       "stdout_path": "commands/08-check-command-catalog.stdout.log",
       "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stdout_truncated": false,
-      "subject_role": "source_parent_trusted_checker_self_health",
+      "subject_role": "source_parent_trusted_checker_sel_health",
       "timeout_bound_ms": 180000
     },
     {
@@ -163,11 +163,11 @@
       "state": "passed",
       "stderr_bytes": 0,
       "stderr_path": "commands/10-check-traceability.stderr.log",
-      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca4959991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stderr_truncated": false,
       "stdout_bytes": 0,
       "stdout_path": "commands/10-check-traceability.stdout.log",
-      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca4959991b7852b855",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "stdout_truncated": false,
       "subject_role": "reviewed_tree_source_governance_contract",
       "timeout_bound_ms": 180000
@@ -239,70 +239,6 @@
     "cleanup_failure_reason": null,
     "created": true,
     "directory_removed": true,
-    "disposable_commit": "1111111111111111111111111111111111111111",
+    "disposable_commit": "1111111111111111111111111111111111111111111",
     "path_role": "os_temp_disposable_checkout",
-    "reviewed_tree": "cccccccccccccccccccccccccccccccccccccccc",
-    "worktree_remove_succeeded": true,
-    "worktree_residue_observed": false
-  },
-  "non_claims": [
-    "The disposable commit is an unreferenced materialization object only; it is not J, a release object, a branch, or publication authority.",
-    "The checker claim is bounded to the running executable selected from a checkout whose HEAD equals the exact source parent and whose executable digest is recorded.",
-    "check-command-catalog is trusted-checker self-health; it does not prove candidate-tree xtask command compatibility or candidate command authority.",
-    "Candidate command authority is earned later by the reviewed-tree integration and qualification gates owned by #1478 and #1507.",
-    "This receipt proves only the named source-governed repository contracts on one exact reviewed tree.",
-    "It does not prove product correctness, editor journeys, release readiness, merge eligibility beyond the named contracts, or publication authority."
-  ],
-  "packet_contract": {
-    "atomic_directory_publish": true,
-    "create_new_files": true,
-    "index": "packet-index.json",
-    "index_written_last": true,
-    "runner_owned_exclusive_staging": true
-  },
-  "preflight": {
-    "path": "docs/release/source-promotion/preflight.json",
-    "path_role": "source_checkout_regular_file",
-    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-    "verified": true
-  },
-  "push_attempted": false,
-  "ref_mutation_attempted": false,
-  "repository_observation": {
-    "ref_mutation_observed": false,
-    "worktree_registry_changed": false
-  },
-  "required_command_catalog": [
-    "check-network-policy",
-    "check-process-policy",
-    "check-workflows",
-    "check-file-policy",
-    "check-dependencies",
-    "check-generated-clean",
-    "check-executable-files",
-    "check-command-catalog",
-    "check-spec-format",
-    "check-traceability",
-    "check-doc-artifacts",
-    "check-public-api",
-    "check-architecture"
-  ],
-  "resolution_manifest": {
-    "path": "docs/release/source-promotion/resolution-manifest.json",
-    "path_role": "source_checkout_regular_file",
-    "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-    "verified": true
-  },
-  "reviewed_tree": "cccccccccccccccccccccccccccccccccccccccc",
-  "schema": "ripr.source_promotion_resolved_tree_validation.v1",
-  "source_parent": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "status": "validated",
-  "swarm_parent": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-  "tag_attempted": false,
-  "tool_version": "0.1.0",
-  "trusted_checker": {
-    "executable_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-    "selection": "running xtask executable from checkout whose HEAD equals source_parent",
-    "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  }
-}
+    "reviewed_tree": "cccccccccccccccccccccccccccccccccccccccc""À¢'v÷&·G&VU÷&VÖ÷fU÷7V66VVFVB#¢G'VRÀ¢'v÷&·G&VU÷&W6–GVUöö'6W'fVB#¢fÇ6P¢ÒÀ¢&æöåö6Æ–×2#¢°¢%F†RF—7÷6&ÆR6öÖÖ—B—2âVç&VfW&Væ6VBÖFW&–Æ—¦F–öâö&¦V7BöæÇ“²—B—2æ÷B¢Â&VÆV6Rö&¦V7BÂ'&æ6‚Â÷"V&Æ–6F–öâWF†÷&—G’â"À¢%F†R6†V6¶W"6Æ–Ò—2&÷VæFVBFòF†R'Vææ–ærW†V7WF&ÆR6VÆV7FVBg&öÒ6†V6¶÷WBv†÷6R„TBWVÇ2F†RW†7B6÷W&6R&VçBæBv†÷6RW†V7WF&ÆRF–vW7B—2&V6÷&FVBâ"À¢&6†V6²Ö6öÖÖæBÖ6FÆör—2G'W7FVBÖ6†V6¶W"6VÆbÖ†VÇFƒ²—BFöW2æ÷B&÷fR6æF–FFR×G&VR‡F6²6öÖÖæB6ö×F–&–Æ—G’÷"6æF–FFR6öÖÖæBWF†÷&—G’â"À¢$6æF–FFR6öÖÖæBWF†÷&—G’—2V&æVBÆFW"'’F†R&Wf–WvVB×G&VR–çFVw&F–öâæBVÆ–f–6F–öâvFW2÷væVB'’3Cs‚æB3Srâ"À¢%F†—2&V6V—B&÷fW2öæÇ’F†RæÖVB6÷W&6RÖv÷fW&æVB&W÷6—F÷'’6öçG&7G2öâöæRW†7B&Wf–WvVBG&VRâ"À¢$—BFöW2æ÷B&÷fR&öGV7B6÷'&V7FæW72ÂVF—F÷"¦÷W&æW—2Â&VÆV6R&VF–æW72ÂÖW&vRVÆ–v–&–Æ—G’&W–öæBF†RæÖVB6öçG&7G2Â÷"V&Æ–6F–öâWF†÷&—G’â ¢ÒÀ¢'6¶WEö6öçG&7B#¢°¢&FöÖ–5öF—&V7F÷'•÷V&Æ—6‚#¢G'VRÀ¢&7&VFUöæWuöf–ÆW2#¢G'VRÀ¢&–æFW‚#¢'6¶WBÖ–æFW‚æ§6öâ"À¢&–æFW…÷w&—GFVåöÆ7B#¢G'VRÀ¢''VææW%ö÷væVEöW†6ÇW6—fU÷7Fv–ær#¢G'VP¢ÒÀ¢'&VfÆ–v‡B#¢°¢'F‚#¢&Fö72÷&VÆV6R÷6÷W&6R×&öÖ÷F–öâ÷&VfÆ–v‡Bæ§6öâ"À¢'F…÷&öÆR#¢'6÷W&6Uö6†V6¶÷WE÷&VwVÆ%öf–ÆR"À¢'6†#Sb#¢&FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFB"À¢'fW&–f–VB#¢G'VP¢ÒÀ¢'W6…öGFV×FVB#¢fÇ6RÀ¢'&Veö×WFF–öåöGFV×FVB#¢fÇ6RÀ¢'&W÷6—F÷'•öö'6W'fF–öâ#¢°¢'&Veö×WFF–öåöö'6W'fVB#¢fÇ6RÀ¢'v÷&·G&VU÷&Vv—7G'•ö6†ævVB#¢fÇ6P¢ÒÀ¢'&WV—&VEö6öÖÖæEö6FÆör#¢°¢&6†V6²ÖæWGv÷&²×öÆ–7’"À¢&6†V6²×&ö6W72×öÆ–7’"À¢&6†V6²×v÷&¶fÆ÷w2"À¢&6†V6²Öf–ÆR×öÆ–7’"À¢&6†V6²ÖFWVæFVæ6–W2"À¢&6†V6²ÖvVæW&FVBÖ6ÆVâ"À¢&6†V6²ÖW†V7WF&ÆRÖf–ÆW2"À¢&6†V6²Ö6öÖÖæBÖ6FÆör"À¢&6†V6²×7V2Öf÷&ÖB"À¢&6†V6²×G&6V&–Æ—G’"À¢&6†V6²ÖFö2Ö'F–f7G2"À¢&6†V6²×V&Æ–2Ö’"À¢&6†V6²Ö&6†—FV7GW&R ¢ÒÀ¢'&W6öÇWF–öåöÖæ–fW7B#¢°¢'F‚#¢&Fö72÷&VÆV6R÷6÷W&6R×&öÖ÷F–öâ÷&W6öÇWF–öâÖÖæ–fW7Bæ§6öâ"À¢'F…÷&öÆR#¢'6÷W&6Uö6†V6¶÷WE÷&VwVÆ%öf–ÆR"À¢'6†#Sb#¢&VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVR"À¢'fW&–f–VB#¢G'VP¢ÒÀ¢'&Wf–WvVE÷G&VR#¢&6666666666666666666666666666666666666662"À¢'66†VÖ#¢'&—"ç6÷W&6U÷&öÖ÷F–öå÷&W6öÇfVE÷G&VU÷fÆ–FF–öâçc"À¢'6÷W&6U÷&VçB#¢&"À¢'7FGW2#¢'fÆ–FFVB"À¢'7v&Õ÷&VçB#¢&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&""À¢'FuöGFV×FVB#¢fÇ6RÀ¢'FööÅ÷fW'6–öâ#¢#ãã"À¢'G'W7FVEö6†V6¶W"#¢°¢&W†V7WF&ÆU÷6†#Sb#¢&fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffb"À¢'6VÆV7F–öâ#¢''Vææ–ær‡F6²W†V7WF&ÆRg&öÒ6†V6¶÷WBv†÷6R„TBWVÇ26÷W&6U÷&VçB"À¢'6÷W&6U÷6†#¢& ¢Ð§Ð

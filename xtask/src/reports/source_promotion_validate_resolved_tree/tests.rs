@@ -97,11 +97,10 @@ mod tests {
 
     #[test]
     fn exact_identity_rejects_abbreviated_and_uppercase_values() {
-        assert!(matches!(validate_exact_hex("sha", "abc123", 40), Err(_)));
-        assert!(matches!(
-            validate_exact_hex("sha", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 40),
-            Err(_)
-        ));
+        assert!(validate_exact_hex("sha", "abc123", 40).is_err());
+        assert!(
+            validate_exact_hex("sha", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 40).is_err()
+        );
         assert!(matches!(
             validate_exact_hex("sha", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 40),
             Ok(())
@@ -124,26 +123,23 @@ mod tests {
         ];
         let echo = input_echo(&args);
         assert_eq!(echo.source_parent, None);
-        assert!(matches!(parse_args(&args), Err(_)));
+        assert!(parse_args(&args).is_err());
     }
 
     #[test]
     fn duplicate_and_unknown_options_fail_closed() {
         let mut duplicate = valid_args();
         duplicate.extend(["--source-parent".to_string(), "f".repeat(40)]);
-        assert!(matches!(parse_args(&duplicate), Err(_)));
+        assert!(parse_args(&duplicate).is_err());
 
         let mut unknown = valid_args();
         unknown.extend(["--unknown".to_string(), "value".to_string()]);
-        assert!(matches!(parse_args(&unknown), Err(_)));
+        assert!(parse_args(&unknown).is_err());
     }
 
     #[test]
     fn parent_escape_and_digest_mismatch_fail_closed() -> Result<(), String> {
-        assert!(matches!(
-            reject_parent_components(Path::new("../escape.json"), "fixture"),
-            Err(_)
-        ));
+        assert!(reject_parent_components(Path::new("../escape.json"), "fixture").is_err());
         let root = TempRoot::create("digest-mismatch")?;
         fs::write(root.path().join("input.json"), b"{}\n")
             .map_err(|error| format!("write digest fixture: {error}"))?;
@@ -165,10 +161,7 @@ mod tests {
             ensure_checker_source_identity(&"a".repeat(40), &"a".repeat(40)),
             Ok(())
         ));
-        assert!(matches!(
-            ensure_checker_source_identity(&"a".repeat(40), &"b".repeat(40)),
-            Err(_)
-        ));
+        assert!(ensure_checker_source_identity(&"a".repeat(40), &"b".repeat(40)).is_err());
     }
 
     #[test]
@@ -251,11 +244,8 @@ mod tests {
             Ok(())
         ));
         assert!(matches!(verify_exact_tree(root.path(), tree.trim()), Ok(())));
-        assert!(matches!(
-            verify_exact_commit(root.path(), tree.trim(), "tree"),
-            Err(_)
-        ));
-        assert!(matches!(verify_exact_tree(root.path(), commit.trim()), Err(_)));
+        assert!(verify_exact_commit(root.path(), tree.trim(), "tree").is_err());
+        assert!(verify_exact_tree(root.path(), commit.trim()).is_err());
         Ok(())
     }
 
@@ -346,13 +336,12 @@ mod tests {
         let command_dir = packet.root().join("commands");
         fs::create_dir(&command_dir).map_err(|error| error.to_string())?;
         write_new_file(&command_dir.join("evidence.log"), b"evidence\n")?;
-        assert!(matches!(
-            write_new_file(&command_dir.join("evidence.log"), b"replace\n"),
-            Err(_)
-        ));
+        assert!(write_new_file(&command_dir.join("evidence.log"), b"replace\n").is_err());
         packet.publish(&report_value(&ValidationState::new(Default::default())))?;
         assert!(final_out.join(PACKET_INDEX).is_file());
-        assert!(packet_entries(&final_out)?.iter().any(|entry| entry["path"] == REPORT_JSON));
+        assert!(packet_entries(&final_out)?
+            .iter()
+            .any(|entry| entry["path"] == REPORT_JSON));
         Ok(())
     }
 
@@ -361,15 +350,16 @@ mod tests {
         let root = TempRoot::create("packet-collision")?;
         let existing = root.path().join("existing");
         fs::write(&existing, b"occupied").map_err(|error| error.to_string())?;
-        assert!(matches!(PacketWorkspace::create(&existing, "existing"), Err(_)));
+        assert!(PacketWorkspace::create(&existing, "existing").is_err());
 
         let final_out = root.path().join("late-collision");
         let mut packet = PacketWorkspace::create(&final_out, "late")?;
         fs::create_dir(&final_out).map_err(|error| error.to_string())?;
-        assert!(matches!(
-            packet.publish(&report_value(&ValidationState::new(Default::default()))),
-            Err(_)
-        ));
+        assert!(
+            packet
+                .publish(&report_value(&ValidationState::new(Default::default())))
+                .is_err()
+        );
         Ok(())
     }
 
@@ -383,17 +373,11 @@ mod tests {
         fs::create_dir(&target).map_err(|error| error.to_string())?;
         let output_link = root.path().join("output-link");
         symlink(&target, &output_link).map_err(|error| error.to_string())?;
-        assert!(matches!(
-            PacketWorkspace::create(&output_link, "output-link"),
-            Err(_)
-        ));
+        assert!(PacketWorkspace::create(&output_link, "output-link").is_err());
 
         let parent_link = root.path().join("parent-link");
         symlink(&target, &parent_link).map_err(|error| error.to_string())?;
-        assert!(matches!(
-            PacketWorkspace::create(&parent_link.join("packet"), "parent-link"),
-            Err(_)
-        ));
+        assert!(PacketWorkspace::create(&parent_link.join("packet"), "parent-link").is_err());
         Ok(())
     }
 
