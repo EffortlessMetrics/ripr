@@ -34,10 +34,7 @@ pub(crate) fn check_fixture_contracts_report() -> Result<(), String> {
     }
 
     let mut violations = Vec::new();
-    validate_source_promotion_resolved_tree_corpus(
-        Path::new(CORPUS_ROOT),
-        &mut violations,
-    )?;
+    validate_source_promotion_resolved_tree_corpus(Path::new(CORPUS_ROOT), &mut violations)?;
     if violations.is_empty() {
         println!("fixture contracts are valid");
         return Ok(());
@@ -172,7 +169,8 @@ fn validate_receipt_pair(
     if value.get("status").and_then(Value::as_str) != Some(stem) {
         violations.push(format!("{} must have status {stem}", display(&json_path)));
     }
-    let admissible = super::source_promotion_validate_resolved_tree::resolved_tree_receipt_is_admissible(&value);
+    let admissible =
+        super::source_promotion_validate_resolved_tree::resolved_tree_receipt_is_admissible(&value);
     if admissible != expected_admissible {
         violations.push(format!(
             "{} admission result was {admissible}, expected {expected_admissible}",
@@ -280,10 +278,7 @@ mod tests {
             .parent()
             .ok_or_else(|| "xtask manifest must have a parent".to_string())?;
         let mut violations = Vec::new();
-        validate_source_promotion_resolved_tree_corpus(
-            &repo.join(CORPUS_ROOT),
-            &mut violations,
-        )?;
+        validate_source_promotion_resolved_tree_corpus(&repo.join(CORPUS_ROOT), &mut violations)?;
         assert_eq!(violations, Vec::<String>::new());
         Ok(())
     }
