@@ -152,7 +152,7 @@ fn validate_receipt_pair(
 ) -> Result<(), String> {
     let json_path = expected.join(format!("{stem}.json"));
     let markdown_path = expected.join(format!("{stem}.md"));
-    if !json_path.is_file() || !markdown_path.is_file() {
+    if !json_path.is_file() {
         return Ok(());
     }
 
@@ -178,6 +178,9 @@ fn validate_receipt_pair(
         ));
     }
 
+    if !markdown_path.is_file() {
+        return Ok(());
+    }
     let markdown = fs::read_to_string(&markdown_path)
         .map_err(|error| format!("failed to read {}: {error}", display(&markdown_path)))?;
     validate_markdown_mirror(&markdown_path, &markdown, stem, &value, violations)
