@@ -5,6 +5,7 @@ mod ci_budget;
 mod dogfood;
 mod eval_sweep;
 mod first_pr;
+mod fixture_contracts;
 mod fixtures;
 mod impacted_evidence;
 mod index;
@@ -24,6 +25,7 @@ mod release;
 mod repo;
 mod review_comments;
 mod sarif;
+mod source_promotion_validate_resolved_tree;
 mod source_promotion_verify;
 mod targeted_test;
 mod test_oracles;
@@ -38,6 +40,7 @@ pub(crate) use ci_budget::ci_budget;
 pub(crate) use dogfood::dogfood;
 pub(crate) use eval_sweep::eval_sweep;
 pub(crate) use first_pr::first_pr;
+pub(crate) use fixture_contracts::check_fixture_contracts_report;
 pub(crate) use fixtures::{fixtures, golden_drift, goldens};
 pub(crate) use impacted_evidence::impacted_evidence;
 pub(crate) use index::{reports, reports_index};
@@ -61,6 +64,9 @@ pub(crate) use repo::{
 };
 pub(crate) use review_comments::ripr_review_comments;
 pub(crate) use sarif::sarif_policy;
+pub(crate) use source_promotion_validate_resolved_tree::{
+    SOURCE_PROMOTION_VALIDATE_RESOLVED_TREE_SUBCOMMAND, source_promotion_validate_resolved_tree,
+};
 pub(crate) use source_promotion_verify::source_promotion_verify;
 pub(crate) use targeted_test::targeted_test_outcome;
 pub(crate) use test_oracles::{test_efficiency_report, test_oracle_report};

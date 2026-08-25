@@ -88,6 +88,32 @@ rebase. The command is printed only; the workflow never executes it. A manual
 workflow-dispatch lane reruns the verifier with `--main-head` and requires the
 exact J object to remain reachable from merged source `main`.
 
+### Resolved-tree preconstruction gate
+
+Before an authoritative direct-J object or promotion ref exists,
+`cargo xtask source-promotion validate-resolved-tree` consumes one exact source
+parent, frozen W7 parent, reviewed tree, preflight file/digest, and resolution
+manifest file/digest. The running checkout must equal the source parent; the
+receipt records the running executable digest without claiming that a digest
+alone proves build provenance. The command materializes only an unreferenced
+disposable object/worktree, runs the fixed source-owned governance catalog in
+order, retains byte-bounded logs, terminates timed-out process trees, and
+restores the caller repository's ref/worktree state.
+
+The canonical receipt schema is
+`ripr.source_promotion_resolved_tree_validation.v1`. Every required command has
+one of `passed`, `failed`, `not_run`, or `unavailable`, with an explicit reason
+when it did not pass. Canonical JSON/Markdown omit observed wall-clock duration
+and record the fixed timeout bound instead. Any non-pass state, exact-identity
+mismatch, malformed or moved sidecar, source-checker mismatch, replacement-ref
+object substitution, dirty checkout, observed ref movement, changed worktree
+registry, or cleanup residue rejects construction eligibility.
+
+The validator checks final-tree policy with source-owned commands. It does not
+invent parent-comparative semantic resolutions: the reviewed manifest must bind
+the separately reviewed #1557/#1572 integrated-policy receipts, and #1478 owns
+the complete disposition set and reviewed tree.
+
 ## Required Evidence
 
 - unrelated PRs skip without a success claim;
@@ -118,7 +144,18 @@ exact J object to remain reachable from merged source `main`.
   `ripr.source_promotion_post_merge_contract.v1` and retains the exact
   `control_commit` alongside J, source, trusted-parent, and merged-main SHAs.
 - the verifier is built from the trusted source-parent SHA in an isolated target
-  and invoked against the candidate checkout; the candidate cannot supply it.
+  and invoked against the candidate checkout; the candidate cannot supply it;
+- malformed, abbreviated, uppercase, duplicate, missing, moved, symlinked, or
+  digest-mismatched resolved-tree inputs fail closed;
+- a J5-shaped Git-tracked tree with the source-only network ledger fails with
+  three missing live rows and one orphan, while the semantic reconciliation
+  passes and duplicate, under-counted, raw-union orphan, and removal controls
+  fail;
+- rejected and validated resolved-tree JSON/Markdown fixtures are byte-stable,
+  every command state is explicit, and observed elapsed time cannot perturb the
+  canonical bytes;
+- replacement refs, source-checker mismatch, wrong object kinds, ref movement,
+  and worktree-residue path aliases are exercised by production-helper tests.
 
 ## Non-Goals
 
@@ -162,6 +199,9 @@ mapped in `.ripr/traceability.toml`.
 - Workflow: `.github/workflows/source-promotion-contract.yml`
 - Operator contract: `docs/SOURCE_PROMOTION.md`
 - Exact verifier: `xtask/src/reports/source_promotion_verify.rs`
+- Resolved-tree validator: `xtask/src/reports/source_promotion_validate_resolved_tree.rs`
+- J5 final-tree corpus: `xtask/tests/source_promotion_resolved_tree.rs`
+- Byte-stable receipts: `fixtures/source_promotion_resolved_tree/expected/`
 - External control sidecar: the fixed source-repository commit named by the
   PR-body `source-promotion-control` marker; its files never enter J.
 

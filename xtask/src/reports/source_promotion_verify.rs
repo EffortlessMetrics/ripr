@@ -301,7 +301,7 @@ fn validate_identity(name: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_preflight(preflight: &Value, source_main: &str) -> Result<(), String> {
+pub(crate) fn validate_preflight(preflight: &Value, source_main: &str) -> Result<(), String> {
     let schema = string_field(preflight, "schema")?;
     if schema != PREFLIGHT_SCHEMA {
         return Err(format!("unsupported preflight schema {schema:?}"));
@@ -386,7 +386,11 @@ fn validate_protected_candidate_tag_ref(
     Ok(())
 }
 
-fn validate_manifest(manifest: &Value, preflight: &Value, digest: &str) -> Result<(), String> {
+pub(crate) fn validate_manifest(
+    manifest: &Value,
+    preflight: &Value,
+    digest: &str,
+) -> Result<(), String> {
     if string_field(manifest, "schema")? != RESOLUTION_SCHEMA {
         return Err("unsupported resolution manifest schema".to_string());
     }

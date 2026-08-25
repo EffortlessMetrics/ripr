@@ -56,6 +56,12 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::ReleaseServerArchive(args) => super::release_server_archive(&args),
         XtaskCommand::ReleaseServerManifest(args) => super::release_server_manifest(&args),
         XtaskCommand::ReleaseUploadAssets(args) => super::release_upload_assets(&args),
+        XtaskCommand::SourcePromotion(args)
+            if args.first().map(String::as_str)
+                == Some(super::reports::SOURCE_PROMOTION_VALIDATE_RESOLVED_TREE_SUBCOMMAND) =>
+        {
+            super::reports::source_promotion_validate_resolved_tree(&args)
+        }
         XtaskCommand::SourcePromotion(args) => super::reports::source_promotion_verify(&args),
         XtaskCommand::TargetedTestOutcome(args) => super::reports::targeted_test_outcome(&args),
         XtaskCommand::MutationCalibration(args) => super::reports::mutation_calibration(&args),
@@ -98,7 +104,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckDroidReviewConfig => super::check_droid_review_config(),
         XtaskCommand::CheckSpecFormat => super::check_spec_format(),
         XtaskCommand::CheckSpecNumbering => super::check_spec_numbering(),
-        XtaskCommand::CheckFixtureContracts => super::check_fixture_contracts(),
+        XtaskCommand::CheckFixtureContracts => super::reports::check_fixture_contracts_report(),
         XtaskCommand::CheckEvidencePromotionHonesty => super::check_evidence_promotion_honesty(),
         XtaskCommand::CheckTraceability => super::check_traceability(),
         XtaskCommand::CheckCapabilities => super::check_capabilities(),

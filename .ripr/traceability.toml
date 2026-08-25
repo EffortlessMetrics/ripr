@@ -6100,16 +6100,31 @@ tests = [
   "xtask/src/command.rs::tests::source_promotion_workflow_refutes_crlf_rewrite_thread",
   "xtask/src/reports/source_promotion_verify.rs::tests::range_and_main_reachability_fail_closed",
   "xtask/src/reports/source_promotion_verify.rs::tests::synthetic_join_rejects_graph_and_tree_adversaries",
+  "xtask/src/reports/source_promotion_validate_resolved_tree.rs::tests::canonical_receipt_fixtures_are_byte_stable",
+  "xtask/src/reports/source_promotion_validate_resolved_tree.rs::tests::command_catalog_requires_exact_order_and_terminal_passes",
+  "xtask/src/reports/source_promotion_validate_resolved_tree.rs::tests::git_object_view_ignores_replacement_refs",
+  "xtask/src/reports/source_promotion_validate_resolved_tree.rs::tests::repository_observation_detects_ref_mutation",
+  "xtask/tests/source_promotion_resolved_tree.rs::j5_source_ledger_rejects_and_semantic_reconciliation_passes",
 ]
-fixtures = ["fixtures/source_promotion_verification"]
+fixtures = [
+  "fixtures/source_promotion_verification",
+  "fixtures/source_promotion_resolved_tree",
+]
 code = [
   ".github/workflows/source-promotion-contract.yml",
   "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
   "xtask/src/reports/source_promotion_verify.rs",
+  "xtask/src/reports/source_promotion_validate_resolved_tree.rs",
 ]
 outputs = [
   "docs/SOURCE_PROMOTION.md",
   ".github/workflows/source-promotion-contract.yml",
+  "fixtures/source_promotion_resolved_tree/expected/rejected.json",
+  "fixtures/source_promotion_resolved_tree/expected/rejected.md",
+  "fixtures/source_promotion_resolved_tree/expected/validated.json",
+  "fixtures/source_promotion_resolved_tree/expected/validated.md",
+  "policy/output_contracts.txt",
 ]
 metrics = ["unit_test_pass_rate"]
 

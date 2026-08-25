@@ -352,6 +352,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "release-server-manifest --version <version> --repository <owner/repo>",
         "release-upload-assets --version <version>",
         "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
+        "source-promotion validate-resolved-tree --source-parent <sha> --swarm-parent <sha> --reviewed-tree <tree> --preflight <receipt.json> --preflight-sha256 <digest> --resolution-manifest <manifest.json> --resolution-sha256 <digest> [--out <dir>]",
         "targeted-test-outcome --before <path> --after <path>",
         "mutation-calibration [root] --mutants-json <path>",
         "bun-ub-calibration [--corpus <path>] [--out <path>] [--out-md <path>]",
@@ -828,6 +829,13 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/source-promotion/source-promotion-verification.{json,md} or explicit --out <dir>",
             false,
             "Verifies an exact history-preserving join, reviewed resolution manifest, ancestry digests, and metadata identity without constructing or mutating Git refs.",
+        ),
+        command_entry(
+            "source-promotion validate-resolved-tree --source-parent <sha> --swarm-parent <sha> --reviewed-tree <tree> --preflight <receipt.json> --preflight-sha256 <digest> --resolution-manifest <manifest.json> --resolution-sha256 <digest> [--out <dir>]",
+            "report_only",
+            "target/ripr/source-promotion/resolved-tree/{resolved-tree-validation.json,resolved-tree-validation.md,commands/**} or explicit --out <dir>; transient unreferenced Git object and worktree-registry entries in the caller repository are removed before return",
+            false,
+            "Validates one exact reviewed tree with the source-parent governance catalog and retained bounded evidence before direct-J construction; retained worktree state or authoritative ref movement rejects validation.",
         ),
         command_entry(
             "targeted-test-outcome --before <path> --after <path>",
