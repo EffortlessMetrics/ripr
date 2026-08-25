@@ -1,0 +1,188 @@
+name: one-use stage YAML-safe complete 1575 candidate
+
+on:
+  push:
+    branches:
+      - feat/source-promotion-resolved-tree-enforcement-1575
+    paths:
+      - .github/workflows/one-use-stage-1575-complete2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Verify transient trigger boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=2e8e1d5a790ff21dca82f8104a00e703ea6179c5
+          test "$(git rev-parse HEAD^)" = "$base"
+          changed=$(git diff --name-only "$base" HEAD)
+          printf 'transient changed paths:\n%s\n' "$changed"
+          test "$changed" = ".github/workflows/one-use-stage-1575-complete2.yml"
+
+      - name: Materialize and verify complete candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAYLOAD_SHA256: 6321329573ad03bea0cadc918791952a6c70e30456a9e5b3fe971385487aa4d1
+          PUBLICATION_APPEND_SHA256: 063cb1e61d95746eb9a572dd4695b9e64827f2a61b6fceb38938bc76056a59c0
+          PUBLICATION_APPEND_B64: Zm4gcGFyc2VfcHVibGljYXRpb25fb3B0aW9ucyhhcmdzOiAmW1N0cmluZ10pIC0+IFJlc3VsdDxQdWJsaWNhdGlvbk9wdGlvbnMsIFN0cmluZz4gewogICAgbGV0IHBhcnNlZCA9IHBhcnNlX2FyZ3MoCiAgICAgICAgYXJncywKICAgICAgICAmWwogICAgICAgICAgICAiLS1yZXBvIiwKICAgICAgICAgICAgIi0tY29uc3RydWN0aW9uLXBhY2tldCIsCiAgICAgICAgICAgICItLXNvdXJjZS1tYWluLXJlZiIsCiAgICAgICAgICAgICItLXJlbW90ZSIsCiAgICAgICAgICAgICItLXRhcmdldC1yZWYiLAogICAgICAgICAgICAiLS1leHBlY3RlZC1vbGQiLAogICAgICAgICAgICAiLS1vdXQiLAogICAgICAgIF0sCiAgICAgICAgJlsiLS1leHBlY3RlZC1hYnNlbnQiXSwKICAgICk/OwogICAgbGV0IHJlcG8gPSBQYXRoQnVmOjpmcm9tKAogICAgICAgIHBhcnNlZAogICAgICAgICAgICAub3B0aW9uYWwoIi0tcmVwbyIpCiAgICAgICAgICAgIC51bndyYXBfb3JfZWxzZSh8fCAiLiIudG9fc3RyaW5nKCkpLAogICAgKTsKICAgIGxldCBjb25zdHJ1Y3Rpb25fcGFja2V0ID0gUGF0aEJ1Zjo6ZnJvbShwYXJzZWQucmVxdWlyZWQoIi0tY29uc3RydWN0aW9uLXBhY2tldCIpPyk7CiAgICBsZXQgc291cmNlX21haW5fcmVmID0gcGFyc2VkLnJlcXVpcmVkKCItLXNvdXJjZS1tYWluLXJlZiIpPzsKICAgIGxldCByZW1vdGUgPSBwYXJzZWQucmVxdWlyZWQoIi0tcmVtb3RlIik/OwogICAgbGV0IHRhcmdldF9yZWYgPSBwYXJzZWQucmVxdWlyZWQoIi0tdGFyZ2V0LXJlZiIpPzsKICAgIGxldCBleHBlY3RlZF9vbGQgPSBwYXJzZWQub3B0aW9uYWwoIi0tZXhwZWN0ZWQtb2xkIik7CiAgICBsZXQgZXhwZWN0ZWRfYWJzZW50ID0gcGFyc2VkLmhhc19mbGFnKCItLWV4cGVjdGVkLWFic2VudCIpOwoKICAgIHZhbGlkYXRlX3JlZl9uYW1lKCZyZXBvLCAmc291cmNlX21haW5fcmVmKT87CiAgICB2YWxpZGF0ZV9yZWZfbmFtZSgmcmVwbywgJnRhcmdldF9yZWYpPzsKICAgIGlmIHNvdXJjZV9tYWluX3JlZiA9PSB0YXJnZXRfcmVmIHsKICAgICAgICByZXR1cm4gRXJyKCItLXRhcmdldC1yZWYgbXVzdCBiZSBkaXN0aW5jdCBmcm9tIHNvdXJjZSBtYWluIi50b19zdHJpbmcoKSk7CiAgICB9CiAgICBpZiByZW1vdGUgIT0gIm9yaWdpbiIgewogICAgICAgIHJldHVybiBFcnIoIi0tcmVtb3RlIG11c3QgYmUgb3JpZ2luIi50b19zdHJpbmcoKSk7CiAgICB9CiAgICBtYXRjaCAoJmV4cGVjdGVkX29sZCwgZXhwZWN0ZWRfYWJzZW50KSB7CiAgICAgICAgKFNvbWUoZXhwZWN0ZWQpLCBmYWxzZSkgPT4gdmFsaWRhdGVfZXhhY3RfaGV4KCItLWV4cGVjdGVkLW9sZCIsIGV4cGVjdGVkLCA0MCk/LAogICAgICAgIChOb25lLCB0cnVlKSA9PiB7fQogICAgICAgIF8gPT4gewogICAgICAgICAgICByZXR1cm4gRXJyKAogICAgICAgICAgICAgICAgInByb3ZpZGUgZXhhY3RseSBvbmUgb2YgLS1leHBlY3RlZC1vbGQgb3IgLS1leHBlY3RlZC1hYnNlbnQiLnRvX3N0cmluZygpLAogICAgICAgICAgICApOwogICAgICAgIH0KICAgIH0KCiAgICBPayhQdWJsaWNhdGlvbk9wdGlvbnMgewogICAgICAgIHJlcG8sCiAgICAgICAgY29uc3RydWN0aW9uX3BhY2tldCwKICAgICAgICBzb3VyY2VfbWFpbl9yZWYsCiAgICAgICAgcmVtb3RlLAogICAgICAgIHRhcmdldF9yZWYsCiAgICAgICAgZXhwZWN0ZWRfb2xkLAogICAgICAgIGV4cGVjdGVkX2Fic2VudCwKICAgICAgICBvdXQ6IGNhbmRpZGF0ZV9vdXQoJnBhcnNlZCwgREVGQVVMVF9QVUJMSUNBVElPTl9PVVQpPywKICAgIH0pCn0KCmZuIHNuYXBzaG90X3B1YmxpY2F0aW9uKAogICAgcmVwbzogJlBhdGgsCiAgICBzb3VyY2VfbWFpbl9yZWY6ICZzdHIsCiAgICBzd2FybV9yZWY6ICZzdHIsCiAgICByZW1vdGU6ICZzdHIsCiAgICB0YXJnZXRfcmVmOiAmc3RyLAogICAgam9pbl90cmVlOiAmc3RyLAogICAgam9pbl9jb21taXQ6ICZzdHIsCikgLT4gUmVzdWx0PFB1YmxpY2F0aW9uU25hcHNob3QsIFN0cmluZz4gewogICAgbGV0IGpvaW5fY29tbWl0X3ByZXNlbnQgPSBnaXQoCiAgICAgICAgcmVwbywKICAgICAgICAmWyJjYXQtZmlsZSIsICItZSIsICZmb3JtYXQhKCJ7am9pbl9jb21taXR9Xnt7Y29tbWl0fX0iKV0sCiAgICApCiAgICAuaXNfb2soKTsKICAgIE9rKFB1YmxpY2F0aW9uU25hcHNob3QgewogICAgICAgIHNvdXJjZV9oZWFkOiByZWZfb2lkKHJlcG8sIHNvdXJjZV9tYWluX3JlZik/CiAgICAgICAgICAgIC5va19vcl9lbHNlKHx8IGZvcm1hdCEoIntzb3VyY2VfbWFpbl9yZWZ9IGlzIG1pc3NpbmciKSk/LAogICAgICAgIHN3YXJtX2hlYWQ6IHJlZl9vaWQocmVwbywgc3dhcm1fcmVmKT8KICAgICAgICAgICAgLm9rX29yX2Vsc2UofHwgZm9ybWF0ISgie3N3YXJtX3JlZn0gaXMgbWlzc2luZyIpKT8sCiAgICAgICAgam9pbl90cmVlOiBvYmplY3Rfa2luZChyZXBvLCBqb2luX3RyZWUpPywKICAgICAgICBqb2luX2NvbW1pdF9wcmVzZW50LAogICAgICAgIHRhcmdldF9sb2NhbDogcmVmX29pZChyZXBvLCB0YXJnZXRfcmVmKT8sCiAgICAgICAgdGFyZ2V0X3JlbW90ZTogcmVtb3RlX3JlZl9vaWQocmVwbywgcmVtb3RlLCB0YXJnZXRfcmVmKT8sCiAgICAgICAgcmVmc19zaGEyNTY6IHJlZnNfZGlnZXN0KHJlcG8pPywKICAgIH0pCn0K
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/ripr1575-stage"
+          archive="$RUNNER_TEMP/ripr1575-stage.tar.gz"
+          encoded="$RUNNER_TEMP/ripr1575-stage.b64"
+          append="$RUNNER_TEMP/publication-append.rs"
+          mkdir -p "$stage"
+          : > "$encoded"
+
+          blobs=(
+            d1fa6e9db717492e869448ec75f0a8f56c4bcc90
+            81289ee90ae939469a2e7e54c51414ce989360e1
+            d48d8b3aba0577f531d3b13dda0894af31b13e89
+            adc008d5a65f373d8f9b200b41ca60b6ee3e6815
+            2bcd0c601266ccb5fc6b2b9463cb9887f4cd8911
+          )
+          sizes=(8800 8800 8800 8800 128)
+
+          for index in "${!blobs[@]}"
+          do
+            part="$RUNNER_TEMP/ripr1575-chunk-$index"
+            gh api "repos/$GITHUB_REPOSITORY/git/blobs/${blobs[$index]}" --jq .content \
+              | tr -d '\n' \
+              | base64 -d > "$part"
+            actual_size=$(wc -c < "$part")
+            expected_size="${sizes[$index]}"
+            printf 'chunk %s %s: raw=%s expected=%s bytes\n' \
+              "$index" "${blobs[$index]}" "$actual_size" "$expected_size"
+            if (( actual_size < expected_size )); then
+              echo "payload chunk $index is truncated" >&2
+              exit 1
+            fi
+            head -c "$expected_size" "$part" >> "$encoded"
+          done
+
+          base64 -d "$encoded" > "$archive"
+          printf '%s  %s\n' "$PAYLOAD_SHA256" "$archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$stage"
+
+          for path in \
+            xtask/src/reports/source_promotion_control.rs \
+            xtask/src/reports/source_promotion_control \
+            xtask/tests/fixtures/source_promotion_control
+          do
+            if test -e "$path"; then
+              echo "unexpected pre-existing candidate path: $path" >&2
+              exit 1
+            fi
+          done
+
+          cp -a "$stage/xtask/." xtask/
+          python "$stage/apply_patch.py"
+          rm .github/workflows/one-use-stage-1575-complete2.yml
+
+          cargo fmt --all
+          python - <<'PY'
+          from pathlib import Path
+
+          construction = Path("xtask/src/reports/source_promotion_control/construction.rs")
+          lines = construction.read_text(encoding="utf-8").splitlines(keepends=True)
+          matches = [
+              index
+              for index, line in enumerate(lines)
+              if "let expected = format!" in line and "CONSTRUCTION_SCHEMA" in line
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one dead construction format line, found {len(matches)}")
+          index = matches[0]
+          if index + 2 >= len(lines):
+              raise SystemExit("dead construction block is truncated")
+          if lines[index + 1].strip() != ".into_bytes();":
+              raise SystemExit("dead construction block has unexpected conversion line")
+          if lines[index + 2].strip() != "let _ = expected;":
+              raise SystemExit("dead construction block has unexpected discard line")
+          del lines[index:index + 3]
+          construction.write_text("".join(lines), encoding="utf-8")
+          PY
+
+          publication=xtask/src/reports/source_promotion_control/publication.rs
+          if grep -Fq 'fn parse_publication_options(' "$publication"; then
+            echo 'parse_publication_options already exists' >&2
+            exit 1
+          fi
+          if grep -Fq 'fn snapshot_publication(' "$publication"; then
+            echo 'snapshot_publication already exists' >&2
+            exit 1
+          fi
+          printf '%s' "$PUBLICATION_APPEND_B64" | base64 -d > "$append"
+          printf '%s  %s\n' "$PUBLICATION_APPEND_SHA256" "$append" \
+            | sha256sum --check --strict
+          printf '\n' >> "$publication"
+          cat "$append" >> "$publication"
+
+          cargo fmt --all
+          cargo fmt --all -- --check
+          python -m json.tool \
+            xtask/tests/fixtures/source_promotion_control/impossible-validated.json \
+            >/dev/null
+          cargo check -p xtask --all-targets --locked
+          cargo test -p xtask source_promotion_control_tests --locked -- --nocapture
+          cargo clippy -p xtask --all-targets --locked -- -D warnings
+
+      - name: Publish one clean candidate commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=2e8e1d5a790ff21dca82f8104a00e703ea6179c5
+          branch=feat/source-promotion-resolved-tree-enforcement-1575
+          expected="$GITHUB_SHA"
+
+          git add -A
+          git diff --cached --check "$base" --
+          actual=$(git diff --cached --name-only "$base" -- | sort)
+          expected_paths=$(cat <<'EOF'
+          xtask/src/dispatch.rs
+          xtask/src/reports/mod.rs
+          xtask/src/reports/source_promotion_control.rs
+          xtask/src/reports/source_promotion_control/admission.rs
+          xtask/src/reports/source_promotion_control/construction.rs
+          xtask/src/reports/source_promotion_control/core.rs
+          xtask/src/reports/source_promotion_control/io.rs
+          xtask/src/reports/source_promotion_control/publication.rs
+          xtask/src/reports/source_promotion_control/tests.rs
+          xtask/tests/fixtures/source_promotion_control/impossible-validated.json
+          EOF
+          )
+          printf 'candidate changed paths against base:\n%s\n' "$actual"
+          test "$actual" = "$expected_paths"
+
+          tree=$(git write-tree)
+          export GIT_AUTHOR_NAME=EffortlessSteven
+          export GIT_AUTHOR_EMAIL=git@effortlesssteven.com
+          export GIT_COMMITTER_NAME=EffortlessSteven
+          export GIT_COMMITTER_EMAIL=git@effortlesssteven.com
+          timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          export GIT_AUTHOR_DATE="$timestamp"
+          export GIT_COMMITTER_DATE="$timestamp"
+          commit=$(printf '%s\n' \
+            'feat(promotion): add exact-join admission and transport guards' \
+            | git commit-tree "$tree" -p "$base")
+
+          git push \
+            --force-with-lease="refs/heads/$branch:$expected" \
+            origin "$commit:refs/heads/$branch"
+          echo "candidate_commit=$commit" >> "$GITHUB_STEP_SUMMARY"
