@@ -1,0 +1,171 @@
+name: one-use repair 1575 remote publication lease
+
+on:
+  push:
+    branches:
+      - feat/source-promotion-resolved-tree-enforcement-1575
+    paths:
+      - .github/workflows/one-use-repair-1575-remote-lease.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Verify transient trigger boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate=$(git rev-parse HEAD^)
+          changed=$(git diff --name-only "$candidate" HEAD)
+          printf 'transient changed paths:\n%s\n' "$changed"
+          test "$changed" = ".github/workflows/one-use-repair-1575-remote-lease.yml"
+          test ! -e .github/workflows/one-use-repair-1575-ref-binding.yml
+          test -f xtask/src/reports/source_promotion_control/publication.rs
+          test -f xtask/src/reports/source_promotion_control/tests.rs
+
+      - name: Make remote publication an atomic expected-state update
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          publication = Path("xtask/src/reports/source_promotion_control/publication.rs")
+          lines = publication.read_text(encoding="utf-8").splitlines(keepends=True)
+
+          if any("publication_force_with_lease(" in line for line in lines):
+              raise SystemExit("publication force-with-lease helper already exists")
+
+          candidates = []
+          for start, line in enumerate(lines):
+              match = re.fullmatch(r"(\s*)let ([A-Za-z_][A-Za-z0-9_]*) = git\(\s*\n?", line)
+              if match is None:
+                  continue
+              end = None
+              for index in range(start + 1, len(lines)):
+                  if lines[index].strip() == ");":
+                      end = index
+                      break
+              if end is None:
+                  continue
+              block = "".join(lines[start : end + 1])
+              if '"push"' in block and '"--porcelain"' in block:
+                  candidates.append((start, end, match.group(1), match.group(2), block))
+
+          if len(candidates) != 1:
+              raise SystemExit(f"expected one publication push call, found {len(candidates)}")
+
+          start, end, indent, variable, block = candidates[0]
+          if "options.remote" not in block or "options.target_ref" not in block:
+              raise SystemExit("publication push call does not have the expected remote/ref shape")
+
+          replacement = [
+              indent + "let force_with_lease = publication_force_with_lease(\n",
+              indent + "    &options.target_ref,\n",
+              indent + "    options.expected_old.as_deref(),\n",
+              indent + ");\n",
+              indent + 'let refspec = format!("{}:{}", options.target_ref, options.target_ref);\n',
+              indent + f"let {variable} = git(\n",
+              indent + "    &options.repo,\n",
+              indent + "    &[\n",
+              indent + '        "push",\n',
+              indent + '        "--porcelain",\n',
+              indent + "        &force_with_lease,\n",
+              indent + "        &options.remote,\n",
+              indent + "        &refspec,\n",
+              indent + "    ],\n",
+              indent + ");\n",
+          ]
+          lines[start : end + 1] = replacement
+
+          helper = '''
+
+fn publication_force_with_lease(target_ref: &str, expected_old: Option<&str>) -> String {
+    format!(
+        "--force-with-lease={target_ref}:{}",
+        expected_old.unwrap_or_default()
+    )
+}
+'''
+          publication.write_text("".join(lines).rstrip() + helper, encoding="utf-8")
+
+          tests = Path("xtask/src/reports/source_promotion_control/tests.rs")
+          test_text = tests.read_text(encoding="utf-8")
+          test_name = "publication_force_with_lease_pins_old_and_absent_states"
+          if test_name in test_text:
+              raise SystemExit("publication force-with-lease test already exists")
+          test_case = '''
+
+#[test]
+fn publication_force_with_lease_pins_old_and_absent_states() {
+    let target = "refs/heads/promote/0.11.0-w7";
+    let old = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    assert_eq!(
+        publication_force_with_lease(target, Some(old)),
+        "--force-with-lease=refs/heads/promote/0.11.0-w7:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    );
+    assert_eq!(
+        publication_force_with_lease(target, None),
+        "--force-with-lease=refs/heads/promote/0.11.0-w7:"
+    );
+}
+'''
+          tests.write_text(test_text.rstrip() + test_case, encoding="utf-8")
+          PY
+
+          rm .github/workflows/one-use-repair-1575-remote-lease.yml
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo check -p xtask --all-targets --locked
+          cargo test -p xtask source_promotion_control_tests --locked -- --nocapture
+          cargo clippy -p xtask --all-targets --locked -- -D warnings
+
+      - name: Publish workflow-free lease repair commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate=$(git rev-parse HEAD^)
+          branch=feat/source-promotion-resolved-tree-enforcement-1575
+          expected="$GITHUB_SHA"
+
+          git add -A
+          git diff --cached --check "$candidate" --
+          actual=$(git diff --cached --name-only "$candidate" -- | sort)
+          expected_paths=$(cat <<'EOF'
+          xtask/src/reports/source_promotion_control/publication.rs
+          xtask/src/reports/source_promotion_control/tests.rs
+          EOF
+          )
+          printf 'lease repair changed paths against candidate:\n%s\n' "$actual"
+          test "$actual" = "$expected_paths"
+
+          tree=$(git write-tree)
+          export GIT_AUTHOR_NAME=EffortlessSteven
+          export GIT_AUTHOR_EMAIL=git@effortlesssteven.com
+          export GIT_COMMITTER_NAME=EffortlessSteven
+          export GIT_COMMITTER_EMAIL=git@effortlesssteven.com
+          timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          export GIT_AUTHOR_DATE="$timestamp"
+          export GIT_COMMITTER_DATE="$timestamp"
+          commit=$(printf '%s\n' \
+            'fix(promotion): enforce atomic remote publication lease' \
+            | git commit-tree "$tree" -p "$candidate")
+
+          git push \
+            --force-with-lease="refs/heads/$branch:$expected" \
+            origin "$commit:refs/heads/$branch"
+          echo "lease_repair_commit=$commit" >> "$GITHUB_STEP_SUMMARY"
