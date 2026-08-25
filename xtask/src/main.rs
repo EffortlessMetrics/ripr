@@ -5520,6 +5520,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "python-judged-pr-panel"
                     | "python-real-repo-evals"
                     | "real-repair-attempts"
+                    | "source_promotion_resolved_tree"
                     | "surface-projection-alignment"
                     | "swarm-plan-packet-corpus"
                     | "typescript-bun-ub-calibration"
@@ -73814,6 +73815,9 @@ mod tests {
         )));
         assert!(!super::is_manifest_only_fixture_dir(Path::new(
             "fixtures/boundary_gap"
+        )));
+        assert!(super::is_manifest_only_fixture_dir(Path::new(
+            "fixtures/source_promotion_resolved_tree"
         )));
         let violations =
             super::fixture_contract_violations(Path::new("fixtures/evidence-quality-benchmark"))?;
