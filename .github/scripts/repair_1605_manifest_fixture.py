@@ -30,20 +30,33 @@ regression_start = text.find(
 )
 if regression_start < 0:
     raise SystemExit("manifest-only fixture regression test was not found")
-regression_end = text.find("\n    }", regression_start)
+regression_end_marker = "\n    fn perl_lsp_facts_exporter_corpus_path()"
+regression_end = text.find(regression_end_marker, regression_start)
 if regression_end < 0:
     raise SystemExit("manifest-only fixture regression test boundary was not found")
 regression_block = text[regression_start:regression_end]
 
-regression_assert = '''        assert!(super::is_manifest_only_fixture_dir(Path::new(
+regression_anchor = '''        assert!(!super::is_manifest_only_fixture_dir(Path::new(
+            "fixtures/boundary_gap"
+        )));
+        let violations =
+'''
+regression_replacement = '''        assert!(!super::is_manifest_only_fixture_dir(Path::new(
+            "fixtures/boundary_gap"
+        )));
+        assert!(super::is_manifest_only_fixture_dir(Path::new(
             "fixtures/source_promotion_resolved_tree"
         )));
+        let violations =
 '''
 if "fixtures/source_promotion_resolved_tree" not in regression_block:
-    ok_anchor = "        Ok(())\n"
-    if regression_block.count(ok_anchor) != 1:
-        raise SystemExit("manifest-only fixture regression insertion anchor is not unique")
-    regression_block = regression_block.replace(ok_anchor, regression_assert + ok_anchor, 1)
+    if regression_block.count(regression_anchor) != 1:
+        raise SystemExit("manifest-only fixture regression anchor is not unique")
+    regression_block = regression_block.replace(
+        regression_anchor,
+        regression_replacement,
+        1,
+    )
     text = text[:regression_start] + regression_block + text[regression_end:]
 
 main.write_text(text, encoding="utf-8")
