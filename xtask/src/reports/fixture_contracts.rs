@@ -104,8 +104,7 @@ fn finish_fixture_contract_report(violations: &[String]) -> Result<(), String> {
         crate::PolicyReportSpec {
             report_file: "fixture-contracts.md",
             check: "check-fixture-contracts",
-            why_it_matters:
-                "Fixtures are the BDD control bench for analyzer behavior and output contracts.",
+            why_it_matters: "Fixtures are the BDD control bench for analyzer behavior and output contracts.",
             fix_kind: crate::FixKind::AuthorDecisionRequired,
             recommended_fixes: &[
                 "Add missing fixture contract files.",
