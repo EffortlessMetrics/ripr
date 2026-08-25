@@ -1,0 +1,173 @@
+name: one-use repair 1575 candidate ref binding
+
+on:
+  push:
+    branches:
+      - feat/source-promotion-resolved-tree-enforcement-1575
+    paths:
+      - .github/workflows/one-use-repair-1575-ref-binding.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Verify transient trigger boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate=$(git rev-parse HEAD^)
+          changed=$(git diff --name-only "$candidate" HEAD)
+          printf 'transient changed paths:\n%s\n' "$changed"
+          test "$changed" = ".github/workflows/one-use-repair-1575-ref-binding.yml"
+          test -f xtask/src/reports/source_promotion_control/publication.rs
+          test -f xtask/src/reports/source_promotion_control/tests.rs
+
+      - name: Bind publication to the constructed candidate ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          publication = Path("xtask/src/reports/source_promotion_control/publication.rs")
+          lines = publication.read_text(encoding="utf-8").splitlines(keepends=True)
+
+          if any("validate_publication_ref_binding(" in line for line in lines):
+              raise SystemExit("publication ref binding already exists")
+
+          starts = [
+              index
+              for index, line in enumerate(lines)
+              if "if let Err(reason) = validate_construction_receipt" in line
+          ]
+          if len(starts) != 1:
+              raise SystemExit(
+                  f"expected one construction receipt rejection block, found {len(starts)}"
+              )
+          start = starts[0]
+          depth = 0
+          seen_open = False
+          end = None
+          for index in range(start, len(lines)):
+              depth += lines[index].count("{") - lines[index].count("}")
+              seen_open = seen_open or "{" in lines[index]
+              if seen_open and depth == 0:
+                  end = index
+                  break
+          if end is None:
+              raise SystemExit("construction receipt rejection block is unterminated")
+
+          indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())]
+          body = lines[start + 1 : end]
+          binding = [
+              "\n",
+              f"{indent}if let Err(reason) = validate_publication_ref_binding(\n",
+              f"{indent}    &options.target_ref,\n",
+              f"{indent}    &evidence.candidate_ref,\n",
+              f"{indent}) {{\n",
+              *body,
+              f"{indent}}}\n",
+          ]
+          lines[end + 1 : end + 1] = binding
+
+          helper = '''
+
+fn validate_publication_ref_binding(
+    target_ref: &str,
+    candidate_ref: &str,
+) -> Result<(), String> {
+    if target_ref == candidate_ref {
+        Ok(())
+    } else {
+        Err(format!(
+            "--target-ref {target_ref} does not match construction candidate_ref {candidate_ref}"
+        ))
+    }
+}
+'''
+          publication.write_text("".join(lines).rstrip() + helper, encoding="utf-8")
+
+          tests = Path("xtask/src/reports/source_promotion_control/tests.rs")
+          test_text = tests.read_text(encoding="utf-8")
+          test_name = "publication_ref_binding_requires_constructed_candidate_ref"
+          if test_name in test_text:
+              raise SystemExit("publication ref binding test already exists")
+          test_case = '''
+
+#[test]
+fn publication_ref_binding_requires_constructed_candidate_ref() {
+    let candidate = "refs/heads/promote/0.11.0-w7";
+    assert_eq!(
+        validate_publication_ref_binding(candidate, candidate),
+        Ok(())
+    );
+    assert_eq!(
+        validate_publication_ref_binding(
+            "refs/heads/promote/unreviewed",
+            candidate,
+        ),
+        Err(
+            "--target-ref refs/heads/promote/unreviewed does not match construction candidate_ref refs/heads/promote/0.11.0-w7"
+                .to_string()
+        )
+    );
+}
+'''
+          tests.write_text(test_text.rstrip() + test_case, encoding="utf-8")
+          PY
+
+          rm .github/workflows/one-use-repair-1575-ref-binding.yml
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo check -p xtask --all-targets --locked
+          cargo test -p xtask source_promotion_control_tests --locked -- --nocapture
+          cargo clippy -p xtask --all-targets --locked -- -D warnings
+
+      - name: Publish workflow-free repair commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate=$(git rev-parse HEAD^)
+          branch=feat/source-promotion-resolved-tree-enforcement-1575
+          expected="$GITHUB_SHA"
+
+          git add -A
+          git diff --cached --check "$candidate" --
+          actual=$(git diff --cached --name-only "$candidate" -- | sort)
+          expected_paths=$(cat <<'EOF'
+          xtask/src/reports/source_promotion_control/publication.rs
+          xtask/src/reports/source_promotion_control/tests.rs
+          EOF
+          )
+          printf 'repair changed paths against candidate:\n%s\n' "$actual"
+          test "$actual" = "$expected_paths"
+
+          tree=$(git write-tree)
+          export GIT_AUTHOR_NAME=EffortlessSteven
+          export GIT_AUTHOR_EMAIL=git@effortlesssteven.com
+          export GIT_COMMITTER_NAME=EffortlessSteven
+          export GIT_COMMITTER_EMAIL=git@effortlesssteven.com
+          timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          export GIT_AUTHOR_DATE="$timestamp"
+          export GIT_COMMITTER_DATE="$timestamp"
+          commit=$(printf '%s\n' \
+            'fix(promotion): bind publication to constructed candidate ref' \
+            | git commit-tree "$tree" -p "$candidate")
+
+          git push \
+            --force-with-lease="refs/heads/$branch:$expected" \
+            origin "$commit:refs/heads/$branch"
+          echo "repair_commit=$commit" >> "$GITHUB_STEP_SUMMARY"
