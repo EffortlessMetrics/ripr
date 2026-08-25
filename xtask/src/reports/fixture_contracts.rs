@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 
 const CORPUS_ROOT: &str = "fixtures/source_promotion_resolved_tree";
+const REPORT_PATH: &str = "target/ripr/reports/fixture-contracts.md";
 const RECEIPT_SCHEMA: &str = "ripr.source_promotion_resolved_tree_validation.v1";
 const REQUIRED_ROOT_MEMBERS: &[&str] = &["SPEC.md", "expected"];
 const REQUIRED_EXPECTED_MEMBERS: &[&str] = &[
@@ -24,48 +25,99 @@ const GENERIC_ANALYZER_TOKENS: &[&str] = &[
 ];
 
 pub(crate) fn check_fixture_contracts_report() -> Result<(), String> {
-    match crate::check_fixture_contracts() {
-        Ok(()) => {}
+    let mut violations = match crate::check_fixture_contracts() {
+        Ok(()) => Vec::new(),
         Err(error) => {
-            if let Some(remaining) = without_snapshot_category_errors(&error) {
-                return Err(remaining);
+            let report = fs::read_to_string(REPORT_PATH).map_err(|read_error| {
+                format!(
+                    "{error}\nfailed to read {REPORT_PATH} after the fixture-contract check: {read_error}"
+                )
+            })?;
+            let observed = fixture_contract_violations_from_report(&report).map_err(|parse_error| {
+                format!(
+                    "{error}\nfailed to parse {REPORT_PATH} after the fixture-contract check: {parse_error}"
+                )
+            })?;
+            if observed.is_empty() {
+                return Err(format!(
+                    "{error}\n{REPORT_PATH} contained no machine-readable violation blocks"
+                ));
             }
+            without_snapshot_category_errors(observed)
         }
-    }
+    };
+
+    validate_source_promotion_resolved_tree_corpus(Path::new(CORPUS_ROOT), &mut violations)?;
+    finish_fixture_contract_report(&violations)
+}
+
+fn fixture_contract_violations_from_report(report: &str) -> Result<Vec<String>, String> {
+    let (_, after_heading) = report
+        .split_once("## Violations")
+        .ok_or_else(|| "missing `## Violations` section".to_string())?;
+    let (section, _) = after_heading
+        .split_once("## Fix Kind")
+        .ok_or_else(|| "missing `## Fix Kind` section after violations".to_string())?;
 
     let mut violations = Vec::new();
-    validate_source_promotion_resolved_tree_corpus(Path::new(CORPUS_ROOT), &mut violations)?;
-    if violations.is_empty() {
-        println!("fixture contracts are valid");
-        return Ok(());
+    let mut lines = section.lines();
+    while let Some(line) = lines.next() {
+        if line.trim() != "```text" {
+            continue;
+        }
+        let mut block = Vec::new();
+        let mut closed = false;
+        for line in lines.by_ref() {
+            if line.trim() == "```" {
+                closed = true;
+                break;
+            }
+            block.push(line);
+        }
+        if !closed {
+            return Err("unterminated text block in violations section".to_string());
+        }
+        let violation = block.join("\n").trim().to_string();
+        if !violation.is_empty() {
+            violations.push(violation);
+        }
     }
-    Err(format!(
-        "fixture contracts failed:\n- {}",
-        violations.join("\n- ")
-    ))
+    Ok(violations)
 }
 
-fn without_snapshot_category_errors(error: &str) -> Option<String> {
-    let retained = error
-        .lines()
-        .filter(|line| !is_snapshot_category_error(line))
-        .collect::<Vec<_>>();
-    let has_retained_violation = retained.iter().any(|line| {
-        let trimmed = line.trim();
-        !trimmed.is_empty()
-            && !matches!(
-                trimmed,
-                "fixture contracts failed:" | "fixture contract check failed:"
-            )
-    });
-    has_retained_violation.then(|| retained.join("\n"))
+fn without_snapshot_category_errors(violations: Vec<String>) -> Vec<String> {
+    violations
+        .into_iter()
+        .filter(|violation| !is_snapshot_category_error(violation))
+        .collect()
 }
 
-fn is_snapshot_category_error(line: &str) -> bool {
-    line.contains(CORPUS_ROOT)
+fn is_snapshot_category_error(violation: &str) -> bool {
+    violation.contains(CORPUS_ROOT)
         && GENERIC_ANALYZER_TOKENS
             .iter()
-            .any(|token| line.contains(token))
+            .any(|token| violation.contains(token))
+}
+
+fn finish_fixture_contract_report(violations: &[String]) -> Result<(), String> {
+    crate::finish_policy_report(
+        crate::PolicyReportSpec {
+            report_file: "fixture-contracts.md",
+            check: "check-fixture-contracts",
+            why_it_matters:
+                "Fixtures are the BDD control bench for analyzer behavior and output contracts.",
+            fix_kind: crate::FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Add missing fixture contract files.",
+                "Use Given/When/Then/Must Not sections in fixture SPEC.md.",
+                "Keep manifest-only fixture corpora covered by their dedicated validators.",
+                "Keep expected output files aligned with the fixture behavior.",
+            ],
+            rerun_command: "cargo xtask check-fixture-contracts",
+            exception_template: None,
+        },
+        violations,
+    )
 }
 
 fn validate_source_promotion_resolved_tree_corpus(
@@ -234,8 +286,8 @@ fn display(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CORPUS_ROOT, validate_source_promotion_resolved_tree_corpus,
-        without_snapshot_category_errors,
+        CORPUS_ROOT, fixture_contract_violations_from_report,
+        validate_source_promotion_resolved_tree_corpus, without_snapshot_category_errors,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -265,14 +317,16 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_category_filter_preserves_unrelated_violations() {
-        let error = format!(
-            "fixture contracts failed:\n- {CORPUS_ROOT}/SPEC.md is missing Given\n- fixtures/boundary_gap is missing diff.patch"
+    fn snapshot_category_filter_preserves_unrelated_violations() -> Result<(), String> {
+        let report = format!(
+            "# check-fixture-contracts\n\nStatus: fail\n\n## Violations\n\n```text\n{CORPUS_ROOT}/SPEC.md is missing `## Given`\n```\n\n```text\nfixtures/boundary_gap is missing diff.patch\n```\n\n## Fix Kind\n"
         );
+        let observed = fixture_contract_violations_from_report(&report)?;
         assert_eq!(
-            without_snapshot_category_errors(&error).as_deref(),
-            Some("fixture contracts failed:\n- fixtures/boundary_gap is missing diff.patch")
+            without_snapshot_category_errors(observed),
+            vec!["fixtures/boundary_gap is missing diff.patch".to_string()]
         );
+        Ok(())
     }
 
     #[test]
