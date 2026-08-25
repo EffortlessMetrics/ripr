@@ -1,0 +1,1 @@
+Temporary exact-head CI retrigger for ripr#1605 after manifest-only fixture classification repair. Delete immediately; no product or release authority.
