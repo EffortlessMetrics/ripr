@@ -13782,3 +13782,34 @@ Do not remove fields, rename fields, or change enum meanings without bumping the
 schema version.
 
 Do not emit mutation-runtime terms such as `killed` or `survived` in static JSON.
+
+## Source-promotion resolved-tree validation receipt
+
+`cargo xtask source-promotion validate-resolved-tree` writes a deterministic,
+source-trusted preconstruction receipt with schema
+`ripr.source_promotion_resolved_tree_validation.v1`.
+
+The top-level `status` is one of:
+
+- `rejected` — the reviewed tree is ineligible for direct-J construction;
+- `validated` — every required source-governed command passed for the exact
+  bound source parent, frozen swarm parent, reviewed tree, and sidecars.
+
+Each required command records one `state`:
+
+- `failed` — the governed command executed and failed;
+- `not_run` — execution stopped before the command and the receipt carries the
+  reason;
+- `passed` — the governed command executed successfully;
+- `unavailable` — the command or its retained evidence could not be produced.
+
+Receipt paths carry an explicit role rather than ambient authority:
+
+- `os_temp_disposable_checkout` — the reviewed tree was materialized in an
+  operating-system temporary checkout and no authoritative ref points to it;
+- `source_checkout_regular_file` — the bound sidecar is a non-symlink regular
+  file beneath the exact source checkout.
+
+This receipt proves only the named source-governed repository contracts for one
+exact reviewed tree. It does not construct J, qualify later product or editor
+surfaces, move source or swarm authority, or authorize release publication.

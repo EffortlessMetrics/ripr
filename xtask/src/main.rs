@@ -59069,6 +59069,18 @@ fn check_output_contracts() -> Result<(), String> {
     let mutation_calibration =
         read_text_lossy(Path::new("crates/ripr/src/output/mutation_calibration.rs"))?;
     let swarm_ingest = read_text_lossy(Path::new("crates/ripr/src/output/swarm_ingest.rs"))?;
+    let mut source_promotion_resolved_tree = String::new();
+    for path in [
+        "xtask/src/reports/source_promotion_validate_resolved_tree.rs",
+        "xtask/src/reports/source_promotion_validate_resolved_tree/core.rs",
+        "xtask/src/reports/source_promotion_validate_resolved_tree/validation.rs",
+        "xtask/src/reports/source_promotion_validate_resolved_tree/materialization.rs",
+        "xtask/src/reports/source_promotion_validate_resolved_tree/receipt.rs",
+        "xtask/src/reports/source_promotion_validate_resolved_tree/io.rs",
+    ] {
+        source_promotion_resolved_tree.push_str(&read_text_lossy(Path::new(path))?);
+        source_promotion_resolved_tree.push('\n');
+    }
     let mut json_output = String::new();
     for path in [
         "crates/ripr/src/output/json/mod.rs",
@@ -59177,6 +59189,25 @@ fn check_output_contracts() -> Result<(), String> {
                 require_contract_value(
                     "crates/ripr/src/output/swarm_ingest.rs",
                     &swarm_ingest,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
+            "source_promotion_resolved_tree_schema"
+            | "source_promotion_resolved_tree_status"
+            | "source_promotion_command_state"
+            | "source_promotion_path_role" => {
+                require_contract_value(
+                    "xtask/src/reports/source_promotion_validate_resolved_tree/",
+                    &source_promotion_resolved_tree,
                     value,
                     kind,
                     &mut violations,
