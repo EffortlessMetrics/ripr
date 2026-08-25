@@ -1,0 +1,62 @@
+name: One-use manifest fixture repair for PR 1605
+
+on:
+  push:
+    branches:
+      - feat/source-promotion-resolved-tree-validator-1574
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-1605-manifest-fixture
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.repository == 'EffortlessMetrics/ripr'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact branch head
+        uses: actions/checkout@v6
+        with:
+          ref: feat/source-promotion-resolved-tree-validator-1574
+          fetch-depth: 0
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+
+      - name: Apply self-deleting repair
+        run: python3 .github/scripts/repair_1605_manifest_fixture.py
+
+      - name: Verify fixture ownership and generated outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo test -p xtask evidence_quality_benchmark_is_manifest_only_fixture_dir -- --exact
+          cargo xtask check-fixture-contracts
+          cargo xtask goldens check
+          cargo xtask fixtures
+          cargo xtask check-generated-clean
+          git diff --check
+
+      - name: Commit durable repair only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "EffortlessSteven"
+          git config user.email "git@effortlesssteven.com"
+          git add -A
+          git diff --cached --quiet && { echo "No repair required"; exit 0; }
+          git commit -m "fix(fixtures): classify resolved-tree corpus correctly"
+          git push origin HEAD:feat/source-promotion-resolved-tree-validator-1574
