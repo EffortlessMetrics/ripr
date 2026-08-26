@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: scratch-mailpack-uv-lock-${{ github.ref }}
@@ -27,7 +27,7 @@ jobs:
       - name: Checkout exact scratch source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          fetch-depth: 1
 
       - name: Install exact uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
@@ -119,6 +119,21 @@ jobs:
               encoding='utf-8',
           )
           PY
+
+      - name: Retain the verified lock in the scratch branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "${RUNNER_TEMP}/mailpack-lock/uv.lock" .scratch/mailpack-uv.lock
+          git config user.name 'EffortlessSteven'
+          git config user.email 'git@effortlesssteven.com'
+          git add -- .scratch/mailpack-uv.lock
+          if git diff --cached --quiet; then
+            echo 'Generated lock already matches the retained scratch object.'
+            exit 0
+          fi
+          git commit -m 'ci(scratch): retain generated mailpack uv lock'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Upload exact lock proof
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.4.3
