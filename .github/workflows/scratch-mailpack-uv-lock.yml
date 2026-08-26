@@ -1,0 +1,133 @@
+name: Scratch mailpack uv lock proof
+
+on:
+  push:
+    branches:
+      - scratch/mailpack-uv-lock-20260826
+    paths:
+      - '.github/workflows/scratch-mailpack-uv-lock.yml'
+      - '.scratch/mailpack-pyproject.toml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scratch-mailpack-uv-lock-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      UV_MANAGED_PYTHON: '1'
+      UV_NO_PROGRESS: '1'
+    steps:
+      - name: Checkout exact scratch source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install exact uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.12.6'
+          enable-cache: false
+
+      - name: Materialize exact mailpack project metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="${RUNNER_TEMP}/mailpack-lock"
+          rm -rf "$root"
+          mkdir -p "$root/src/mailpack"
+          cp .scratch/mailpack-pyproject.toml "$root/pyproject.toml"
+          printf '# Mailpack lock proof\n' > "$root/README.md"
+          printf 'MIT\n' > "$root/LICENSE-MIT"
+          printf 'Apache-2.0\n' > "$root/LICENSE-APACHE"
+          printf '__version__ = "0.5.0"\n' > "$root/src/mailpack/__init__.py"
+          : > "$root/src/mailpack/py.typed"
+          printf '3.13.15\n' > "$root/.python-version"
+
+      - name: Resolve and verify the universal lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="${RUNNER_TEMP}/mailpack-lock"
+          cd "$root"
+          uv --version
+          uv python install 3.13.15
+          uv lock
+          uv lock --check
+          UV_PROJECT_ENVIRONMENT="$root/.venv" \
+            uv sync --locked --no-install-project
+          UV_PROJECT_ENVIRONMENT="$root/.venv" \
+            uv run --locked --no-sync python -c \
+              'import sys; assert sys.version_info[:3] == (3, 13, 15)'
+          uv tree --locked > uv-tree.txt
+          uv export --locked --all-groups --all-extras \
+            --format cyclonedx1.5 \
+            --output-file dependencies.cdx.json
+
+      - name: Write exact-input proof receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="${RUNNER_TEMP}/mailpack-lock"
+          ROOT="$root" SCRATCH_SHA="${GITHUB_SHA}" python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          root = Path(os.environ['ROOT'])
+
+          def digest(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          receipt = {
+              'schema': 'mailpack-uv-lock-proof/1',
+              'scratch_repository': os.environ['GITHUB_REPOSITORY'],
+              'scratch_sha': os.environ['SCRATCH_SHA'],
+              'python_version': '3.13.15',
+              'uv_version': subprocess.check_output(
+                  ['uv', '--version'], text=True
+              ).strip(),
+              'pyproject': {
+                  'sha256': digest(root / 'pyproject.toml'),
+                  'size': (root / 'pyproject.toml').stat().st_size,
+              },
+              'lock': {
+                  'sha256': digest(root / 'uv.lock'),
+                  'size': (root / 'uv.lock').stat().st_size,
+              },
+              'tree': {
+                  'sha256': digest(root / 'uv-tree.txt'),
+                  'size': (root / 'uv-tree.txt').stat().st_size,
+              },
+              'cyclonedx': {
+                  'sha256': digest(root / 'dependencies.cdx.json'),
+                  'size': (root / 'dependencies.cdx.json').stat().st_size,
+              },
+          }
+          (root / 'proof.json').write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Upload exact lock proof
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.4.3
+        with:
+          name: mailpack-uv-lock-proof
+          path: |
+            ${{ runner.temp }}/mailpack-lock/uv.lock
+            ${{ runner.temp }}/mailpack-lock/uv-tree.txt
+            ${{ runner.temp }}/mailpack-lock/dependencies.cdx.json
+            ${{ runner.temp }}/mailpack-lock/proof.json
+          if-no-files-found: error
+          retention-days: 1
