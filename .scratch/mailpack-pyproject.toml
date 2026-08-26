@@ -1,0 +1,126 @@
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13"]
+build-backend = "uv_build"
+
+[project]
+name = "mailpack"
+version = "0.5.0"
+description = "Compile MBOX, EML, and PST exports into verified model and review corpora using msgvault"
+readme = "README.md"
+requires-python = ">=3.13.15"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
+authors = [{ name = "EffortlessMetrics" }]
+keywords = ["email", "mbox", "pst", "eml", "msgvault", "sqlite", "chatgpt", "claude"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Communications :: Email",
+  "Typing :: Typed",
+]
+dependencies = []
+import-names = ["mailpack"]
+
+[project.optional-dependencies]
+docling = ["docling>=2.120.3,<3"]
+pdf = ["pypdf>=5.0"]
+
+[dependency-groups]
+lint = [
+  "bandit>=1.8",
+  "ruff>=0.9",
+]
+typecheck = [
+  "mypy>=1.13",
+]
+test = [
+  "pytest>=8.3",
+  "pytest-cov>=6.0",
+]
+distribution = [
+  "twine>=6.0",
+]
+dev = [
+  { include-group = "lint" },
+  { include-group = "typecheck" },
+  { include-group = "test" },
+  { include-group = "distribution" },
+]
+
+[project.scripts]
+mailpack = "mailpack.cli:main"
+
+[project.urls]
+Repository = "https://github.com/EffortlessMetrics/mailpack"
+Issues = "https://github.com/EffortlessMetrics/mailpack/issues"
+Changelog = "https://github.com/EffortlessMetrics/mailpack/blob/main/CHANGELOG.md"
+
+[tool.uv]
+required-version = "==0.12.6"
+default-groups = ["dev"]
+
+[tool.uv.build-backend]
+module-name = "mailpack"
+source-include = [
+  "tests/**",
+  "docs/**",
+  "AGENTS.md",
+  "CHANGELOG.md",
+  "SECURITY.md",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+xfail_strict = true
+markers = [
+  "integration: requires a genuine msgvault binary and external fixture",
+  "docling: requires the optional Docling runtime",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_unreachable = true
+warn_unused_configs = true
+warn_unused_ignores = true
+exclude = '''(?x)(
+    ^src/mailpack/_cli_impl\.py$
+  | ^src/mailpack/_model_impl\.py$
+  | ^src/mailpack/_workspace_impl\.py$
+  | ^src/mailpack/model/__init__\.py$
+)'''
+
+[[tool.mypy.overrides]]
+module = ["mailpack._cli_impl"]
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = ["docling.*", "pypdf.*"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+branch = true
+relative_files = true
+source = ["mailpack"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 80
