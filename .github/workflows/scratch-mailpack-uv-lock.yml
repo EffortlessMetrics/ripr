@@ -28,6 +28,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
+          persist-credentials: true
 
       - name: Install exact uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
@@ -130,10 +131,64 @@ jobs:
           git add -- .scratch/mailpack-uv.lock
           if git diff --cached --quiet; then
             echo 'Generated lock already matches the retained scratch object.'
-            exit 0
+          else
+            git commit -m 'ci(scratch): retain generated mailpack uv lock'
+            git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
-          git commit -m 'ci(scratch): retain generated mailpack uv lock'
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Deliver the verified bytes to PR 257
+        shell: bash
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          [[ -n "${GH_PAT:-}" ]] || {
+            echo 'GH_PAT is not available to the scratch delivery lane' >&2
+            exit 78
+          }
+          source_lock="${RUNNER_TEMP}/mailpack-lock/uv.lock"
+          expected_lock_sha='fe1a3e42112eb55a8b9667c75646d3a1bed7634fecc7f5698165666a237e206d'
+          expected_pyproject_sha='f95ecef68ef77e28e6caa9719ccbdbd106bdc7e236942b1818ba062569a146d6'
+          [[ $(wc -c < "$source_lock") -eq 524395 ]]
+          printf '%s  %s\n' "$expected_lock_sha" "$source_lock" | sha256sum --check
+
+          askpass="${RUNNER_TEMP}/mailpack-git-askpass.sh"
+          cat > "$askpass" <<'SH'
+          #!/usr/bin/env bash
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$GH_PAT" ;;
+            *) exit 1 ;;
+          esac
+          SH
+          chmod 0700 "$askpass"
+
+          target="${RUNNER_TEMP}/mailpack"
+          rm -rf "$target"
+          GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 \
+            git clone --filter=blob:none --no-checkout \
+              https://github.com/EffortlessMetrics/mailpack.git "$target"
+          cd "$target"
+          GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 \
+            git fetch origin chore/uv-project-modernization
+          git checkout --detach FETCH_HEAD
+          [[ $(git rev-parse HEAD) == '1993faf1352498b00c5975f457e90f09010551ca' ]] || {
+            echo 'PR 257 head moved; refusing stale delivery' >&2
+            exit 75
+          }
+          printf '%s  %s\n' "$expected_pyproject_sha" pyproject.toml | sha256sum --check
+          cp -- "$source_lock" uv.lock
+          rm -f -- .github/workflows/import-verified-uv-lock.yml .ci/uv-lock-proof.json
+          uv lock --check
+          [[ $(wc -c < uv.lock) -eq 524395 ]]
+          printf '%s  %s\n' "$expected_lock_sha" uv.lock | sha256sum --check
+          git config user.name 'EffortlessSteven'
+          git config user.email 'git@effortlesssteven.com'
+          git add -- uv.lock .github/workflows/import-verified-uv-lock.yml .ci/uv-lock-proof.json
+          git diff --cached --check
+          git commit -m 'build(uv): commit the verified universal lock'
+          GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 \
+            git push origin HEAD:chore/uv-project-modernization
 
       - name: Upload exact lock proof
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.4.3
