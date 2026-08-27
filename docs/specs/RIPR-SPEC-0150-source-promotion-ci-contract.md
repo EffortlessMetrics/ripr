@@ -159,13 +159,20 @@ attempts. A constructed receipt reports exactly one commit-tree attempt and
 zero ref, push, and merge-command attempts. Publication never constructs a
 commit and always reports `merge_command_attempts: 0`.
 
-The requested control-packet output must be available before `commit-tree`,
-local-ref, or remote-push work becomes reachable. A pre-existing output path or
-an unsafe/non-directory output parent fails closed before those attempts; the
-controller never overwrites an earlier receipt to make a later mutation look
-successful.
+The requested control-packet output must be exclusively reserved before
+`commit-tree`, local-ref, or remote-push work becomes reachable. The reservation
+syncs a deterministic `control-attempt.json` before side effects; completed
+packets retain it and publish `packet-index.json` last. Its reconciliation
+context binds the protected refs, expected ref state, and maximum operation
+counters. A reserved directory
+without the index is an incomplete attempt whose Git and remote state must be
+reconciled before retry. A pre-existing output path or an unsafe/non-directory
+output parent fails closed before those attempts; the controller never
+overwrites an earlier receipt to make a later mutation look successful.
 
-Candidate-ref publication binds both fetch and push authority to
+Construction and publication require the exact protected source ref
+`refs/heads/main`; a caller-selected alias cannot satisfy source-main
+authority. Candidate-ref publication binds both fetch and push authority to
 `https://github.com/EffortlessMetrics/ripr.git`. Before local mutation, again
 after creating the local candidate ref, and after the push attempt, it rereads
 the local and remote source parent, local and remote protected W7 ref, complete
@@ -178,13 +185,14 @@ whether the rollback succeeded.
 
 Publication status follows observed state rather than process exit alone:
 
-- `published` means the remote target was reread at the exact constructed join
-  and all post-push authority rereads remained valid;
+- `published` means the guarded push process succeeded, the remote target was
+  reread at the exact constructed join, and all post-push authority rereads
+  remained valid;
 - `published_but_invalidated` means the remote target was observed at the exact
   join but a bound source, W7, packet, object, or URL authority invalidated
   during publication; and
-- `publication_state_unknown` means a push was attempted but the final remote
-  state could not be observed.
+- `publication_state_unknown` means the final remote state could not be
+  observed, or it equals the join without successful guarded-push attribution.
 
 `rejected`, `published_but_invalidated`, and `publication_state_unknown` grant
 no integration or release authority. No #1609 controller packet emits a merge
@@ -241,17 +249,19 @@ exist.
   complete set and rejects missing, extra, renamed, reordered, failed, or
   evidence-free lanes;
 - output-path collisions reject before commit-tree, local-ref, or remote-push
-  attempts;
+  attempts, while injected finalization failures retain a deterministic
+  incomplete attempt journal and no complete packet index;
 - target-ref mismatch and wrong expected local or remote state reject before
   publication, while a remote non-publication restores the exact prior local
   candidate-ref state;
 - before/after controls cover local and remote source, local and remote W7,
   complete indexed construction-packet bytes, the exact join object, and source
   fetch/push URLs;
-- publication receipts distinguish `published`,
+- source-main aliases reject, and publication receipts distinguish `published`,
   `published_but_invalidated`, `publication_state_unknown`, and `rejected` from
-  observed remote state, and every controller outcome retains a null merge
-  command with zero merge-command attempts.
+  guarded-push attribution plus observed remote and authority state; every
+  controller outcome retains a null merge command with zero merge-command
+  attempts.
 
 ## Non-Goals
 

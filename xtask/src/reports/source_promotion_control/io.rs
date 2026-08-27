@@ -300,14 +300,16 @@ fn packet_file_sha256(packet: &IndexedPacket, path: &str) -> Result<String, Stri
         .ok_or_else(|| format!("packet is missing {path}"))
 }
 
-fn write_control_packet(
+#[derive(Debug)]
+struct ControlPacketReservation {
+    out: PathBuf,
+}
+
+fn reserve_control_packet_output(
     out: &Path,
     kind: &str,
-    report_name: &str,
-    report: &Value,
-    title: &str,
-    claim_boundary: &str,
-) -> Result<(), String> {
+    reconciliation_context: &Value,
+) -> Result<ControlPacketReservation, String> {
     reject_parent_components(out, "control packet output")?;
     if fs::symlink_metadata(out).is_ok() {
         return Err(format!(
@@ -319,33 +321,63 @@ fn write_control_packet(
         .parent()
         .ok_or_else(|| "control packet output has no parent directory".to_string())?;
     ensure_directory_path(parent)?;
-    let file_name = out
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or_else(|| "control packet output must have a UTF-8 name".to_string())?;
-    let seed = format!(
-        "{}:{}:{}:{}",
-        kind,
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| format!("system clock predates Unix epoch: {error}"))?
-            .as_nanos(),
-        out.display()
-    );
-    let staging_token = digest_bytes(seed.as_bytes());
-    let staging_suffix = staging_token
-        .get(..24)
-        .ok_or_else(|| "packet staging token is shorter than 24 bytes".to_string())?;
-    let staging = parent.join(format!(".{file_name}.ripr-tmp-{staging_suffix}"));
-    fs::create_dir(&staging).map_err(|error| {
+    fs::create_dir(out).map_err(|error| {
         format!(
-            "failed to create exclusive packet staging directory {}: {error}",
-            staging.display()
+            "failed to reserve exclusive control packet output {}: {error}",
+            out.display()
         )
     })?;
+    let attempt = serde_json::json!({
+        "packet_schema": CONTROL_PACKET_SCHEMA,
+        "kind": kind,
+        "status": "reserved_before_side_effects",
+        "complete": false,
+        "reconciliation_context": reconciliation_context,
+        "claim_boundary": "If packet-index.json is absent, a controller attempt was reserved but its final Git and remote state is unknown and must be reconciled before retry.",
+    });
+    let attempt_bytes = serde_json::to_string_pretty(&attempt)
+        .map(|value| format!("{value}\n"))
+        .map_err(|error| format!("failed to serialize control attempt journal: {error}"));
+    let write_result = attempt_bytes
+        .and_then(|bytes| write_new_file(&out.join("control-attempt.json"), bytes.as_bytes()));
+    if let Err(error) = write_result {
+        let _ = fs::remove_dir_all(out);
+        return Err(error);
+    }
+    Ok(ControlPacketReservation {
+        out: out.to_path_buf(),
+    })
+}
 
-    let result = (|| {
+fn write_control_packet(
+    out: &Path,
+    kind: &str,
+    report_name: &str,
+    report: &Value,
+    title: &str,
+    claim_boundary: &str,
+) -> Result<(), String> {
+    let reservation = reserve_control_packet_output(out, kind, &Value::Null)?;
+    write_reserved_control_packet(
+        &reservation,
+        kind,
+        report_name,
+        report,
+        title,
+        claim_boundary,
+    )
+}
+
+fn write_reserved_control_packet(
+    reservation: &ControlPacketReservation,
+    kind: &str,
+    report_name: &str,
+    report: &Value,
+    title: &str,
+    claim_boundary: &str,
+) -> Result<(), String> {
+    let out = &reservation.out;
+    (|| {
         let json = serde_json::to_string_pretty(report)
             .map_err(|error| format!("failed to serialize {kind} receipt: {error}"))?;
         let markdown_name = report_name
@@ -353,11 +385,15 @@ fn write_control_packet(
             .map(|stem| format!("{stem}.md"))
             .ok_or_else(|| "control report name must end in .json".to_string())?;
         let markdown = render_control_markdown(title, report, claim_boundary)?;
-        write_new_file(&staging.join(report_name), format!("{json}\n").as_bytes())?;
-        write_new_file(&staging.join(&markdown_name), markdown.as_bytes())?;
+        write_new_file(&out.join(report_name), format!("{json}\n").as_bytes())?;
+        write_new_file(&out.join(&markdown_name), markdown.as_bytes())?;
         let mut entries = Vec::new();
-        for relative in [report_name.to_string(), markdown_name] {
-            let bytes = read_regular_file(&staging.join(&relative), "staged packet file")?;
+        for relative in [
+            "control-attempt.json".to_string(),
+            report_name.to_string(),
+            markdown_name,
+        ] {
+            let bytes = read_regular_file(&out.join(&relative), "staged packet file")?;
             entries.push(serde_json::json!({
                 "path": relative,
                 "bytes": bytes.len(),
@@ -375,38 +411,13 @@ fn write_control_packet(
         let index_json = serde_json::to_string_pretty(&index)
             .map_err(|error| format!("failed to serialize control packet index: {error}"))?;
         write_new_file(
-            &staging.join(PACKET_INDEX),
+            &out.join(PACKET_INDEX),
             format!("{index_json}\n").as_bytes(),
         )?;
-        fs::rename(&staging, out).map_err(|error| {
-            format!(
-                "failed to atomically publish control packet {}: {error}",
-                out.display()
-            )
-        })?;
         println!("Wrote {}", out.join(report_name).display());
         println!("Wrote {}", out.join(PACKET_INDEX).display());
         Ok(())
-    })();
-
-    if result.is_err() {
-        let _ = fs::remove_dir_all(&staging);
-    }
-    result
-}
-
-fn control_packet_output_available(out: &Path) -> Result<(), String> {
-    reject_parent_components(out, "control packet output")?;
-    if fs::symlink_metadata(out).is_ok() {
-        return Err(format!(
-            "control packet output already exists: {}",
-            out.display()
-        ));
-    }
-    let parent = out
-        .parent()
-        .ok_or_else(|| "control packet output has no parent directory".to_string())?;
-    ensure_directory_path(parent)
+    })()
 }
 
 fn render_control_markdown(
@@ -742,6 +753,30 @@ fn write_rejection_or_combine(
     reason: String,
 ) -> Result<(), String> {
     match write_control_packet(out, kind, report_name, report, title, claim_boundary) {
+        Ok(()) => Err(reason),
+        Err(write_error) => Err(format!(
+            "{reason}; failed to publish rejection packet: {write_error}"
+        )),
+    }
+}
+
+fn write_reserved_rejection_or_combine(
+    reservation: &ControlPacketReservation,
+    kind: &str,
+    report_name: &str,
+    report: &Value,
+    title: &str,
+    claim_boundary: &str,
+    reason: String,
+) -> Result<(), String> {
+    match write_reserved_control_packet(
+        reservation,
+        kind,
+        report_name,
+        report,
+        title,
+        claim_boundary,
+    ) {
         Ok(()) => Err(reason),
         Err(write_error) => Err(format!(
             "{reason}; failed to publish rejection packet: {write_error}"

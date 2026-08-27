@@ -13836,6 +13836,15 @@ Every receipt exposes numeric `commit_tree_attempts`, `local_ref_attempts`,
 pre-mutation rejection paths require zero forbidden attempts. This controller
 never emits a merge command, so `merge_command_attempts` remains zero.
 
+Before any construction or publication side effect, the controller exclusively
+creates the requested packet directory and syncs `control-attempt.json` with
+status `reserved_before_side_effects`. A complete packet indexes that journal
+and writes `packet-index.json` last. The journal's deterministic
+`reconciliation_context` binds the protected refs, expected ref state, and
+maximum per-operation attempt counters. A reserved directory without the index is
+an incomplete attempt with unknown final Git/remote state, not a rejection or
+success receipt, and must be reconciled before retry.
+
 Qualification requires exactly these ordered lane names:
 
 - `editor_package_linux`;
@@ -13847,9 +13856,11 @@ Qualification requires exactly these ordered lane names:
 - `untrusted_workspace_contract`;
 - `w7_product`.
 
-Candidate-ref publication binds both source remote URLs to the exact source
-repository, rereads local and remote source/W7 refs and the full indexed
+Construction and publication accept only `refs/heads/main` as source-main
+authority. Candidate-ref publication binds both source remote URLs to the exact
+source repository, rereads local and remote source/W7 refs and the full indexed
 construction packet before and after mutation, uses an exact expected-state
-lease, and reconciles the remote after every push attempt. A rejected remote
+lease, requires a successful push process plus every post-push authority bit
+for `published`, and reconciles the remote after every push attempt. A rejected remote
 push restores only the local candidate ref when the final remote state is
 observed and differs from the constructed join.

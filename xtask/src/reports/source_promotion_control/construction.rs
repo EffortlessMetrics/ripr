@@ -33,7 +33,7 @@ fn parse_construction_options(args: &[String]) -> Result<ConstructionOptions, St
     let source_main_ref = parsed.required("--source-main-ref")?;
     let swarm_ref = parsed.required("--swarm-ref")?;
     let candidate_ref = parsed.required("--candidate-ref")?;
-    validate_full_ref(&source_main_ref, "source main ref")?;
+    validate_source_main_ref(&source_main_ref)?;
     validate_full_ref(&swarm_ref, "protected W7 ref")?;
     validate_candidate_ref(&candidate_ref)?;
     let admission_packet = resolve("--admission-packet")?;
@@ -78,13 +78,25 @@ fn construct_exact_join(args: &[String]) -> Result<(), String> {
         }
     };
 
-    control_packet_output_available(&options.out)?;
+    let reservation = reserve_control_packet_output(
+        &options.out,
+        "exact_join_construction",
+        &serde_json::json!({
+            "source_main_ref": options.source_main_ref.as_str(),
+            "swarm_ref": options.swarm_ref.as_str(),
+            "candidate_ref": options.candidate_ref.as_str(),
+            "maximum_commit_tree_attempts": 1,
+            "maximum_local_ref_attempts": 0,
+            "maximum_remote_push_attempts": 0,
+            "maximum_merge_command_attempts": 0,
+        }),
+    )?;
 
     match construct_exact_join_inner(&options) {
         Ok(evidence) => {
             let report = construction_success_report(&evidence);
-            write_control_packet(
-                &options.out,
+            write_reserved_control_packet(
+                &reservation,
                 "exact_join_construction",
                 CONSTRUCTION_REPORT,
                 &report,
@@ -100,8 +112,8 @@ fn construct_exact_join(args: &[String]) -> Result<(), String> {
                 &reason,
                 attempted,
             );
-            write_rejection_or_combine(
-                &options.out,
+            write_reserved_rejection_or_combine(
+                &reservation,
                 "exact_join_construction",
                 CONSTRUCTION_REPORT,
                 &report,

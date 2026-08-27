@@ -7,7 +7,6 @@ use std::fs;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) const SOURCE_PROMOTION_TRUSTED_BUILDER_SUBCOMMAND: &str =
     "write-trusted-builder-receipt";
@@ -25,6 +24,7 @@ const INTEGRATION_INDEX_SCHEMA: &str = "ripr.source_promotion_integration_index.
 const QUALIFICATION_SCHEMA: &str = "ripr.source_promotion_tree_qualification.v1";
 const SOURCE_REPOSITORY_URL: &str = "https://github.com/EffortlessMetrics/ripr.git";
 const SWARM_REPOSITORY_URL: &str = "https://github.com/EffortlessMetrics/ripr-swarm.git";
+const SOURCE_MAIN_REF: &str = "refs/heads/main";
 
 const BUILDER_REPORT: &str = "trusted-builder.json";
 const ADMISSION_REPORT: &str = "resolved-tree-admission.json";
@@ -54,6 +54,16 @@ const REQUIRED_QUALIFICATION_LANES: &[&str] = &[
     "untrusted_workspace_contract",
     "w7_product",
 ];
+
+fn validate_source_main_ref(reference: &str) -> Result<(), String> {
+    validate_full_ref(reference, "source main ref")?;
+    if reference != SOURCE_MAIN_REF {
+        return Err(format!(
+            "source main ref must be the exact protected ref {SOURCE_MAIN_REF}"
+        ));
+    }
+    Ok(())
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PromotionIdentity {

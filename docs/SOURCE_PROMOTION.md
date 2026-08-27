@@ -384,12 +384,19 @@ admission and qualification, and never attempts a ref, push, or merge command.
 Publication never constructs a commit or attempts a merge command; a local-ref
 rollback is a second local-ref attempt and remains visible in the receipt.
 
-The `--out` packet destination is checked before any commit-tree, local-ref, or
-remote-push operation. An existing output path or unsafe/non-directory parent
-fails closed without overwriting the earlier packet and without advancing a
-Git-mutation attempt counter.
+The `--out` packet destination is exclusively reserved before any commit-tree,
+local-ref, or remote-push operation. The reservation durably writes
+`control-attempt.json`; a missing `packet-index.json` means final state is
+unknown and must be reconciled before retry. The journal binds the protected
+refs, expected state, and maximum operation counters needed for that
+reconciliation. Completed packets retain the
+attempt journal and publish the complete index last. An existing output path or
+unsafe/non-directory parent fails closed without overwriting the earlier packet
+and without advancing a Git-mutation attempt counter.
 
-Publication requires `--target-ref` to equal the construction receipt's
+Construction and publication require `--source-main-ref refs/heads/main`;
+caller-selected aliases never stand in for source authority. Publication
+requires `--target-ref` to equal the construction receipt's
 `candidate_ref`, requires exact matching old-or-absent state locally and
 remotely, and uses
 `--force-with-lease=<target-ref>:<expected-old-or-empty>`. Fetch and push URLs
@@ -408,13 +415,15 @@ guard and records whether that rollback succeeded.
 
 Publication receipts state what was observed:
 
-- `published` means the remote candidate ref was observed at the exact join and
-  every post-push authority reread remained valid;
+- `published` means the guarded push process succeeded, the remote candidate
+  ref was observed at the exact join, and every post-push authority reread
+  remained valid;
 - `published_but_invalidated` means the exact join reached the remote candidate
   ref but a bound source, W7, packet, object, or URL identity invalidated during
   publication;
-- `publication_state_unknown` means a push was attempted but the final remote
-  state could not be read; and
+- `publication_state_unknown` means the final remote state could not be read,
+  or it equals the join without a successful guarded-push process attribution;
+  and
 - `rejected` means the controller observed no authoritative publication.
 
 Only `published` is a successful candidate-ref transport result, and even it is

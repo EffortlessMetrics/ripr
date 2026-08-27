@@ -158,11 +158,11 @@
       "disposition": "imported_original_repaired",
       "final_post_repair_identity": {
         "status": "final",
-        "bytes": 29416,
-        "sha256": "969f5ee8455f729877603a19542b66e907e985e090921d0a3e72c6c29f75c334",
-        "git_blob": "ef3a4830c34d8c52c441b4c31c8e86c670b59385",
+        "bytes": 29896,
+        "sha256": "33566cf4e831cd7b6599fafd27669ec644f9ddd494d01a361b26e458b635ede1",
+        "git_blob": "5bf6bb99949d61bed9bb4d4220cb86190825f8d6",
         "classification": "intentional_repair_differs_from_imported_original",
-        "difference_from_imported_original": "Preflights the output packet path before commit-tree construction, propagates the trusted executable identity into integration-receipt validation, requires the exact ordered eight-lane qualification denominator, records exact attempt counters, and boxes the large failure payload; remaining differences are formatting cleanup."
+        "difference_from_imported_original": "Requires the protected source main input to be exactly refs/heads/main, exclusively reserves and journals the output packet before commit-tree construction, and binds the journal reconciliation_context to the source main ref, protected W7 ref, candidate ref, and maximum commit-tree/local-ref/push/merge-command attempt counts. It propagates the trusted executable identity into integration-receipt validation, requires the exact ordered eight-lane qualification denominator, records exact attempt counters, and boxes the large failure payload; remaining differences are formatting cleanup."
       }
     },
     {
@@ -174,11 +174,11 @@
       "disposition": "imported_original_repaired",
       "final_post_repair_identity": {
         "status": "final",
-        "bytes": 11542,
-        "sha256": "f75747d706773a028eb05c0bd4ce2baec2463a4b4ef4dc9003ec6332d0fafad2",
-        "git_blob": "edd62f867a025c570e900974ff0f7d451f0ccc10",
+        "bytes": 11851,
+        "sha256": "df69905e481322bf3d45d5f592aebc1be94f6b96c92cd34af147d0fb24e2d880",
+        "git_blob": "3f354c49f1989247c8ae4660922a2c8c7c167257",
         "classification": "intentional_repair_differs_from_imported_original",
-        "difference_from_imported_original": "Adds the bound source and swarm repository URLs, exact ordered qualification-lane denominator, publication attempt/reread/rollback state, equality for indexed packet rereads, and boxed construction/publication failure payloads; remaining differences are formatting cleanup."
+        "difference_from_imported_original": "Adds the bound source and swarm repository URLs, enforces the source main authority as exactly refs/heads/main rather than a caller-selected head alias, defines the exact ordered qualification-lane denominator, records publication attempt/reread/rollback state, supports equality for indexed packet rereads, and boxes construction/publication failure payloads; remaining differences are formatting cleanup."
       }
     },
     {
@@ -190,11 +190,11 @@
       "disposition": "imported_original_repaired",
       "final_post_repair_identity": {
         "status": "final",
-        "bytes": 26601,
-        "sha256": "30ff48e92306aa7c02846dc25af942f09ac0f9409e100f3ee8172b68d83af9c2",
-        "git_blob": "51391482b5c7da65cf4beeb0fcd9258bbac3a2a6",
+        "bytes": 27339,
+        "sha256": "8bc77a8dbad5a1e02925f1debbec328ee7613fad525c3e81c4cd049ceaad9982",
+        "git_blob": "df7f1a846187e13ea32fbc16250efb57c26a0fd9",
         "classification": "intentional_repair_differs_from_imported_original",
-        "difference_from_imported_original": "Adds fail-closed output packet collision preflight, checked staging-token slicing, exact optional local-ref reads, bound remote URL reads, and expected-old guarded local-ref update/delete support used for publication rollback; remaining differences are formatting cleanup."
+        "difference_from_imported_original": "Adds exclusive output-directory reservation before any controlled side effect, immediately writes a durable control-attempt.json journal with a caller-supplied deterministic reconciliation_context, retains that incomplete journal when finalization fails, and writes packet-index.json last as the completion boundary so an interrupted attempt must be reconciled rather than retried blindly. The construction and publication callers bind protected refs, expected state where applicable, and maximum commit-tree/local-ref/push/merge-command attempt counts into that journal. It also adds exact optional local-ref reads, bound remote URL reads, and expected-old guarded local-ref update/delete support used for publication rollback; remaining differences are formatting cleanup."
       }
     },
     {
@@ -206,11 +206,11 @@
       "disposition": "imported_original_repaired",
       "final_post_repair_identity": {
         "status": "final",
-        "bytes": 24546,
-        "sha256": "4f04cd93ff67d81a18a0a5d0cbbfcaa081183842fdfbfbbdf9f353d506bd41b0",
-        "git_blob": "eab196d181aa69fa5f430c50db6b1b1a8ab44c77",
+        "bytes": 26984,
+        "sha256": "3f872752dba662d1291b4347584f6a13f25c383834e479e41fa5a4ca9d8ab540",
+        "git_blob": "96ffd65d388c2baa7e06083844655b4ea3d99f58",
         "classification": "intentional_repair_differs_from_imported_original",
-        "difference_from_imported_original": "Binds source and swarm remote authorities, preflights output collision, performs guarded local candidate-ref mutation with rollback, rereads local/remote source, W7, construction packet, exact join, URL, and candidate-ref state around publication, records exact attempt counters and rollback outcome, reports published_but_invalidated or publication_state_unknown truthfully, and never emits a merge command."
+        "difference_from_imported_original": "Binds source and swarm remote authorities, requires the source main ref to be exactly refs/heads/main, and exclusively reserves and journals the output packet before local-ref or push side effects. The deterministic publication reconciliation_context records the source main ref, remote, target ref, exact expected old-or-absent state, and maximum commit-tree/local-ref/push/merge-command attempt counts. Publication performs guarded local candidate-ref mutation with rollback and rereads local/remote source, W7, construction packet, exact join, URL, and candidate-ref state around publication. A successful publication requires both a successful guarded push process and every post-push authority reread to be true; a coincidental remote join after an unsuccessful push is publication_state_unknown, while a successful push followed by invalidated authority is published_but_invalidated. It records exact attempt counters and rollback outcome and never emits a merge command."
       }
     },
     {
@@ -222,11 +222,11 @@
       "disposition": "imported_original_repaired",
       "final_post_repair_identity": {
         "status": "final",
-        "bytes": 36302,
-        "sha256": "597c353c960d19f3a7e6e6caee6fd409db4e74437de3795ebc870b6c121f0f96",
-        "git_blob": "44fc07ea66f5270734eef56096c24f1fc71a75eb",
+        "bytes": 42528,
+        "sha256": "087ee98dac61aa971a8a91bb2332dcb0a88455d14f94b81628fa6cd0470a6d2a",
+        "git_blob": "b095865b1b517c28fca1a261c72954d2cdc92d0f",
         "classification": "intentional_repair_differs_from_imported_original",
-        "difference_from_imported_original": "Converts temporary repository cleanup and assertion plumbing to fallible test support, updates fixtures and assertions for producer binding, exact lane denominator, attempt counters, output preflight, no merge-command authority, guarded local-ref publication and rollback, and adds rejection, rollback, stale-input, and remote-state regression coverage."
+        "difference_from_imported_original": "Converts temporary repository cleanup and assertion plumbing to fallible test support and updates fixtures and assertions for producer binding, exact lane denominator, attempt counters, no merge-command authority, guarded local-ref publication, and rollback. It adds discriminating coverage that rejects caller-selected source aliases in favor of exact refs/heads/main, rejects actual main movement before publication mutation, requires guarded-push success plus every post-push authority reread, classifies coincidental remote state after push failure as unknown, proves exclusive pre-side-effect output reservation and deterministic reconciliation_context journaling, and proves failed finalization retains control-attempt.json without publishing packet-index.json."
       }
     },
     {

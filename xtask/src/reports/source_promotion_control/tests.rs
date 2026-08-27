@@ -3,6 +3,7 @@ mod source_promotion_control_tests {
     use super::*;
     use std::fmt::Debug;
     use std::ops::Deref;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     struct TestDir {
         path: PathBuf,
@@ -267,20 +268,12 @@ mod source_promotion_control_tests {
             .map_err(|error| format!("failed to write base fixture: {error}"))?;
         git_test(&repo, &["add", "base.txt"])?;
         git_test(&repo, &["commit", "-m", "base"])?;
-        git_test(&repo, &["checkout", "-b", "source"])?;
-        fs::write(repo.join("source.txt"), "source\n")
-            .map_err(|error| format!("failed to write source fixture: {error}"))?;
-        git_test(&repo, &["add", "source.txt"])?;
-        git_test(&repo, &["commit", "-m", "source"])?;
-        let source_parent = current_head(&repo)?;
-        git_test(&repo, &["checkout", "main"])?;
+        git_test(&repo, &["checkout", "-b", "swarm"])?;
         fs::write(repo.join("swarm.txt"), "swarm\n")
             .map_err(|error| format!("failed to write swarm fixture: {error}"))?;
         git_test(&repo, &["add", "swarm.txt"])?;
         git_test(&repo, &["commit", "-m", "swarm"])?;
         let swarm_parent = current_head(&repo)?;
-        git_test(&repo, &["checkout", "source"])?;
-        let join_tree = commit_tree(&repo, &source_parent)?;
         git_test(
             &repo,
             &[
@@ -289,6 +282,13 @@ mod source_promotion_control_tests {
                 &swarm_parent,
             ],
         )?;
+        git_test(&repo, &["checkout", "main"])?;
+        fs::write(repo.join("source.txt"), "source\n")
+            .map_err(|error| format!("failed to write source fixture: {error}"))?;
+        git_test(&repo, &["add", "source.txt"])?;
+        git_test(&repo, &["commit", "-m", "source"])?;
+        let source_parent = current_head(&repo)?;
+        let join_tree = commit_tree(&repo, &source_parent)?;
         Ok((
             repo,
             PromotionIdentity {
@@ -694,7 +694,7 @@ mod source_promotion_control_tests {
             &[
                 "push",
                 "origin",
-                "refs/heads/source",
+                SOURCE_MAIN_REF,
                 evidence.swarm_ref.as_str(),
             ],
         )?;
@@ -702,7 +702,7 @@ mod source_promotion_control_tests {
         let options = PublicationOptions {
             repo: repo.to_path_buf(),
             construction_packet: packet_root,
-            source_main_ref: "refs/heads/source".to_string(),
+            source_main_ref: SOURCE_MAIN_REF.to_string(),
             remote: "origin".to_string(),
             source_remote_url: remote_text.clone(),
             swarm_remote_url: remote_text,
@@ -739,7 +739,7 @@ mod source_promotion_control_tests {
         )?;
         require_equal(
             read_remote_ref(&repo, "origin", &evidence.candidate_ref)?,
-            Some(join),
+            Some(join.clone()),
             "published remote ref identity",
         )?;
         let success = publication_success_report(&published, &options, &publication_state);
@@ -754,6 +754,25 @@ mod source_promotion_control_tests {
                 .and_then(Value::as_u64),
             Some(0),
             "successful publication merge-command attempts",
+        )?;
+
+        fs::write(repo.join("moved-main.txt"), "moved\n")
+            .map_err(|error| format!("failed to write moved-main fixture: {error}"))?;
+        git_test(&repo, &["add", "moved-main.txt"])?;
+        git_test(&repo, &["commit", "-m", "move source main"])?;
+        let moved_main_options = PublicationOptions {
+            expected_old: Some(join.clone()),
+            expected_absent: false,
+            ..options.clone()
+        };
+        let moved_main = publish_candidate_ref_inner(&moved_main_options);
+        require(
+            moved_main.as_ref().is_err_and(|failure| {
+                failure.0.contains("source main moved")
+                    && failure.2.local_ref_attempts == 0
+                    && failure.2.remote_push_attempts == 0
+            }),
+            "actual refs/heads/main movement must reject before publication mutation",
         )?;
 
         let second = publish_candidate_ref_inner(&options);
@@ -795,7 +814,7 @@ mod source_promotion_control_tests {
         git_test(&repo, &["add", "blocking.txt"])?;
         git_test(&repo, &["commit", "-m", "blocking"])?;
         let expected_old = current_head(&repo)?;
-        git_test(&repo, &["checkout", "source"])?;
+        git_test(&repo, &["checkout", "main"])?;
 
         let remote_root = test_temp_dir("rollback-remote")?;
         let remote = remote_root.join("remote.git");
@@ -807,7 +826,7 @@ mod source_promotion_control_tests {
             &[
                 "push",
                 "origin",
-                "refs/heads/source",
+                SOURCE_MAIN_REF,
                 evidence.swarm_ref.as_str(),
                 &format!("{expected_old}:{}", evidence.candidate_ref),
             ],
@@ -827,7 +846,7 @@ mod source_promotion_control_tests {
         let options = PublicationOptions {
             repo: repo.to_path_buf(),
             construction_packet: packet_root,
-            source_main_ref: "refs/heads/source".to_string(),
+            source_main_ref: SOURCE_MAIN_REF.to_string(),
             remote: "origin".to_string(),
             source_remote_url: remote_text.clone(),
             swarm_remote_url: remote_text,
@@ -954,5 +973,145 @@ mod source_promotion_control_tests {
             "unknown command option should reject",
         )?;
         Ok(())
+    }
+
+    #[test]
+    fn source_main_authority_rejects_caller_selected_aliases() -> Result<(), String> {
+        require(
+            validate_source_main_ref(SOURCE_MAIN_REF).is_ok(),
+            "the exact protected source main ref should pass",
+        )?;
+        require(
+            validate_source_main_ref("refs/heads/source").is_err(),
+            "a caller-selected source alias should reject",
+        )
+    }
+
+    #[test]
+    fn publication_authority_requires_successful_guarded_push_process() -> Result<(), String> {
+        let evidence = valid_construction_evidence(test_identity());
+        let mut state = PublicationState {
+            push_process_succeeded: Some(false),
+            remote_state_observed: true,
+            observed_final_ref: Some(evidence.join_commit.clone()),
+            remote_push_attempts: 1,
+            ..PublicationState::default()
+        };
+        require(
+            !authoritative_publication_observed(&state, &evidence),
+            "a coincidental remote join after a failed push must not grant publication authority",
+        )?;
+        let report = publication_rejection_report(
+            Some(&evidence),
+            Some(&evidence.candidate_ref),
+            "guarded push failed",
+            &state,
+        );
+        require_equal(
+            json_string(&report, "status"),
+            Some("publication_state_unknown"),
+            "failed-push coincidental remote state",
+        )?;
+        require_equal(
+            report.get("atomic_push"),
+            Some(&Value::Null),
+            "failed-push atomic authority",
+        )?;
+        state.push_process_succeeded = Some(true);
+        state.source_main_unchanged = Some(true);
+        state.swarm_parent_unchanged = Some(true);
+        state.construction_packet_unchanged = Some(true);
+        state.remote_authority_unchanged = Some(true);
+        require(
+            authoritative_publication_observed(&state, &evidence),
+            "a successful guarded push plus exact remote observation should be authoritative",
+        )?;
+        state.source_main_unchanged = Some(false);
+        require(
+            !authoritative_publication_observed(&state, &evidence),
+            "a known false post-push authority bit must block publication authority",
+        )?;
+        let invalidated = publication_rejection_report(
+            Some(&evidence),
+            Some(&evidence.candidate_ref),
+            "source main moved after push",
+            &state,
+        );
+        require_equal(
+            json_string(&invalidated, "status"),
+            Some("published_but_invalidated"),
+            "successful push with invalidated authority",
+        )
+    }
+
+    #[test]
+    fn control_packet_reservation_is_exclusive_and_journaled_before_side_effects()
+    -> Result<(), String> {
+        let root = test_temp_dir("packet-reservation")?;
+        let out = root.join("packet");
+        let context = serde_json::json!({"target_ref": "refs/heads/test"});
+        let reservation = reserve_control_packet_output(&out, "test_control", &context)?;
+        require(
+            out.join("control-attempt.json").is_file(),
+            "reservation should durably write the attempt journal",
+        )?;
+        require(
+            reserve_control_packet_output(&out, "test_control", &context).is_err(),
+            "a second writer must not claim the reserved output",
+        )?;
+        let report = serde_json::json!({"status": "rejected"});
+        write_reserved_control_packet(
+            &reservation,
+            "test_control",
+            "test-control.json",
+            &report,
+            "Test control",
+            "Test-only packet.",
+        )?;
+        let packet = read_indexed_packet(
+            &out,
+            CONTROL_PACKET_SCHEMA,
+            Some("test_control"),
+            Some("rejected"),
+            "test-control.json",
+        )?;
+        require(
+            packet.files.contains_key("control-attempt.json"),
+            "completed packet index should retain the pre-side-effect attempt journal",
+        )?;
+        root.cleanup()
+    }
+
+    #[test]
+    fn control_packet_finalization_failure_retains_incomplete_attempt_journal() -> Result<(), String>
+    {
+        let root = test_temp_dir("packet-finalization-failure")?;
+        let out = root.join("packet");
+        let reservation =
+            reserve_control_packet_output(&out, "test_control", &serde_json::json!({}))?;
+        fs::create_dir(out.join("test-control.json"))
+            .map_err(|error| format!("failed to inject report-path collision: {error}"))?;
+        let report = serde_json::json!({"status": "rejected"});
+        require(
+            write_reserved_control_packet(
+                &reservation,
+                "test_control",
+                "test-control.json",
+                &report,
+                "Test control",
+                "Test-only packet.",
+            )
+            .is_err(),
+            "injected finalization failure should be reported",
+        )?;
+        require(
+            out.join("control-attempt.json").is_file(),
+            "failed finalization should retain the durable pre-side-effect journal",
+        )?;
+        require(
+            !out.join(PACKET_INDEX).exists(),
+            "failed finalization must not publish a complete packet index",
+        )?;
+        root.cleanup()
     }
 }

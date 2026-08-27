@@ -109,9 +109,10 @@ source_promotion_control_schema|ripr.source_promotion_tree_qualification.v1|Term
 source_promotion_control_status|admitted|Exact resolved-tree evidence is eligible for later qualification and construction.
 source_promotion_control_status|built|Trusted builder evidence binds the source-built controller executable.
 source_promotion_control_status|constructed|One exact unreferenced two-parent join object was constructed.
-source_promotion_control_status|published|The exact guarded candidate ref was observed at the constructed join and all bound inputs remained current.
+source_promotion_control_status|published|The guarded push process succeeded, the exact candidate ref was observed at the constructed join, and all bound post-push authorities remained current.
 source_promotion_control_status|published_but_invalidated|The remote candidate ref reached the constructed join but a bound input invalidated during publication.
-source_promotion_control_status|publication_state_unknown|A push was attempted but the final remote candidate-ref state could not be observed.
+source_promotion_control_status|publication_state_unknown|Final remote state was unavailable or equaled the join without successful guarded-push attribution.
+source_promotion_control_status|reserved_before_side_effects|The exclusive output journal exists, but a missing packet index requires Git and remote reconciliation before retry.
 source_promotion_control_status|rejected|The controller denied authority; counters and observations describe any operation already attempted.
 source_promotion_attempt_field|commit_tree_attempts|Count of guarded git commit-tree starts.
 source_promotion_attempt_field|local_ref_attempts|Count of local candidate-ref create, update, or rollback attempts.

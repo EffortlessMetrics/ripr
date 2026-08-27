@@ -23,7 +23,7 @@ fn parse_publication_options(args: &[String]) -> Result<PublicationOptions, Stri
     let source_main_ref = parsed.required("--source-main-ref")?;
     let remote = parsed.required("--remote")?;
     let target_ref = parsed.required("--target-ref")?;
-    validate_full_ref(&source_main_ref, "source main ref")?;
+    validate_source_main_ref(&source_main_ref)?;
     validate_candidate_ref(&target_ref)?;
     if remote != "origin" {
         return Err("candidate-ref publisher requires the exact remote name origin".to_string());
@@ -75,13 +75,30 @@ fn publish_candidate_ref(args: &[String]) -> Result<(), String> {
         }
     };
 
-    control_packet_output_available(&options.out)?;
+    let reservation = reserve_control_packet_output(
+        &options.out,
+        "candidate_ref_publication",
+        &serde_json::json!({
+            "source_main_ref": options.source_main_ref.as_str(),
+            "remote": options.remote.as_str(),
+            "target_ref": options.target_ref.as_str(),
+            "expected_state": if options.expected_absent {
+                Value::String("absent".to_string())
+            } else {
+                options.expected_old.clone().map(Value::String).unwrap_or(Value::Null)
+            },
+            "maximum_commit_tree_attempts": 0,
+            "maximum_local_ref_attempts": 2,
+            "maximum_remote_push_attempts": 1,
+            "maximum_merge_command_attempts": 0,
+        }),
+    )?;
 
     match publish_candidate_ref_inner(&options) {
         Ok((evidence, state)) => {
             let report = publication_success_report(&evidence, &options, &state);
-            write_control_packet(
-                &options.out,
+            write_reserved_control_packet(
+                &reservation,
                 "candidate_ref_publication",
                 PUBLICATION_REPORT,
                 &report,
@@ -97,8 +114,8 @@ fn publish_candidate_ref(args: &[String]) -> Result<(), String> {
                 &reason,
                 &state,
             );
-            write_rejection_or_combine(
-                &options.out,
+            write_reserved_rejection_or_combine(
+                &reservation,
                 "candidate_ref_publication",
                 PUBLICATION_REPORT,
                 &report,
@@ -279,11 +296,27 @@ fn publish_candidate_ref_inner(
     );
 
     if state.observed_final_ref.as_deref() == Some(evidence.join_commit.as_str()) {
+        if state.push_process_succeeded != Some(true) {
+            return Err((
+                "remote candidate ref equals the join, but the guarded push process did not report success"
+                    .to_string(),
+                Some(evidence),
+                state,
+            ));
+        }
         if let Err(reason) = input_result {
             return Err((
                 format!(
                     "candidate ref published but inputs invalidated during publication: {reason}"
                 ),
+                Some(evidence),
+                state,
+            ));
+        }
+        if !authoritative_publication_observed(&state, &evidence) {
+            return Err((
+                "candidate ref published but one or more post-push authority rereads failed"
+                    .to_string(),
                 Some(evidence),
                 state,
             ));
@@ -300,6 +333,23 @@ fn publish_candidate_ref_inner(
         Err(reason) => reason,
     };
     Err((push_reason, Some(evidence), state))
+}
+
+fn authoritative_publication_observed(
+    state: &PublicationState,
+    evidence: &ConstructionEvidence,
+) -> bool {
+    state.push_process_succeeded == Some(true)
+        && state.remote_state_observed
+        && state.observed_final_ref.as_deref() == Some(evidence.join_commit.as_str())
+        && post_publication_authority_current(state)
+}
+
+fn post_publication_authority_current(state: &PublicationState) -> bool {
+    state.source_main_unchanged == Some(true)
+        && state.swarm_parent_unchanged == Some(true)
+        && state.construction_packet_unchanged == Some(true)
+        && state.remote_authority_unchanged == Some(true)
 }
 
 fn validate_publication_inputs(
@@ -546,26 +596,38 @@ fn publication_rejection_report(
     reason: &str,
     state: &PublicationState,
 ) -> Value {
-    let published_but_invalidated = evidence.is_some()
+    let published_but_invalidated = evidence.is_some_and(|value| {
+        state.push_process_succeeded == Some(true)
+            && state.remote_state_observed
+            && state.observed_final_ref.as_deref() == Some(value.join_commit.as_str())
+    });
+    let observed_join_without_successful_push = evidence.is_some()
+        && state.push_process_succeeded != Some(true)
         && state.remote_state_observed
         && state.observed_final_ref.as_deref() == evidence.map(|value| value.join_commit.as_str());
     let status = if published_but_invalidated {
         "published_but_invalidated"
-    } else if state.remote_push_attempts > 0 && !state.remote_state_observed {
+    } else if observed_join_without_successful_push
+        || (state.remote_push_attempts > 0 && !state.remote_state_observed)
+    {
         "publication_state_unknown"
     } else {
         "rejected"
     };
     let atomic_push = if published_but_invalidated {
         Some(true)
-    } else if state.remote_push_attempts > 0 && !state.remote_state_observed {
+    } else if observed_join_without_successful_push
+        || (state.remote_push_attempts > 0 && !state.remote_state_observed)
+    {
         None
     } else {
         Some(false)
     };
     let expected_state_guard_passed = if published_but_invalidated {
         Some(true)
-    } else if state.remote_push_attempts > 0 && !state.remote_state_observed {
+    } else if observed_join_without_successful_push
+        || (state.remote_push_attempts > 0 && !state.remote_state_observed)
+    {
         None
     } else {
         Some(false)
