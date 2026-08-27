@@ -46,6 +46,73 @@ fn current_repo() -> Result<PathBuf, String> {
         .map_err(|error| format!("failed to read current repository directory: {error}"))
 }
 
+#[derive(Debug)]
+struct OwnedProtectedRoot {
+    path: PathBuf,
+    label: &'static str,
+}
+
+fn control_out_from_args(args: &[String], default: &str) -> Result<PathBuf, String> {
+    let occurrences = args
+        .iter()
+        .enumerate()
+        .filter(|(_, value)| value.as_str() == "--out")
+        .collect::<Vec<_>>();
+    if occurrences.is_empty() {
+        return Ok(PathBuf::from(default));
+    }
+    if occurrences.len() != 1 {
+        return Err("duplicate option --out; rejection packet was not written because its destination is ambiguous".to_string());
+    }
+    let index = occurrences
+        .first()
+        .map(|(index, _)| *index)
+        .ok_or_else(|| "--out occurrence disappeared after cardinality validation".to_string())?;
+    let value = args.get(index + 1).filter(|value| {
+        !value.trim().is_empty() && !value.starts_with("--")
+    });
+    value.map(PathBuf::from).ok_or_else(|| {
+        "missing value for --out; rejection packet was not written because its destination is unavailable".to_string()
+    })
+}
+
+fn supplied_protected_roots(
+    repo: &Path,
+    args: &[String],
+    specs: &[(&'static str, &'static str, bool)],
+) -> Vec<OwnedProtectedRoot> {
+    let mut roots = Vec::new();
+    for (key, label, protect_parent) in specs {
+        for (index, value) in args.iter().enumerate() {
+            if value != key {
+                continue;
+            }
+            let Some(raw_path) = args
+                .get(index + 1)
+                .filter(|value| !value.trim().is_empty() && !value.starts_with("--"))
+            else {
+                continue;
+            };
+            let path = resolve_candidate_path(repo, Path::new(raw_path));
+            if *protect_parent && let Some(parent) = path.parent() {
+                roots.push(OwnedProtectedRoot {
+                    path: parent.to_path_buf(),
+                    label,
+                });
+            }
+            roots.push(OwnedProtectedRoot { path, label });
+        }
+    }
+    roots
+}
+
+fn borrowed_protected_roots(roots: &[OwnedProtectedRoot]) -> Vec<(&Path, &str)> {
+    roots
+        .iter()
+        .map(|root| (root.path.as_path(), root.label))
+        .collect()
+}
+
 fn validate_exact_hex(name: &str, value: &str, width: usize) -> Result<(), String> {
     if !is_exact_lower_hex(value, width) {
         return Err(format!(
@@ -313,12 +380,113 @@ struct ControlPacketReservation {
     out: PathBuf,
 }
 
+fn lexical_absolute_path(repo: &Path, path: &Path) -> PathBuf {
+    resolve_candidate_path(repo, path).components().collect()
+}
+
+fn canonical_control_path(repo: &Path, path: &Path, label: &str) -> Result<PathBuf, String> {
+    reject_parent_components(path, label)?;
+    let absolute = lexical_absolute_path(repo, path);
+    let mut existing = absolute.as_path();
+    let mut suffix = Vec::new();
+    loop {
+        match fs::symlink_metadata(existing) {
+            Ok(_) => break,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let name = existing.file_name().ok_or_else(|| {
+                    format!("failed to resolve existing ancestor for {label} {}", absolute.display())
+                })?;
+                suffix.push(name.to_os_string());
+                existing = existing.parent().ok_or_else(|| {
+                    format!("failed to resolve existing ancestor for {label} {}", absolute.display())
+                })?;
+            }
+            Err(error) => {
+                return Err(format!(
+                    "failed to inspect {label} {}: {error}",
+                    existing.display()
+                ));
+            }
+        }
+    }
+    let mut canonical = fs::canonicalize(existing).map_err(|error| {
+        format!(
+            "failed to canonicalize {label} ancestor {}: {error}",
+            existing.display()
+        )
+    })?;
+    for component in suffix.into_iter().rev() {
+        canonical.push(component);
+    }
+    Ok(canonical.components().collect())
+}
+
+fn control_path_key(path: &Path) -> String {
+    let normalized = normalize_path(path).trim_end_matches('/').to_string();
+    if cfg!(windows) {
+        normalized.to_lowercase()
+    } else {
+        normalized
+    }
+}
+
+fn path_is_same_or_descendant(candidate: &Path, protected_root: &Path) -> bool {
+    let candidate = control_path_key(candidate);
+    let protected_root = control_path_key(protected_root);
+    candidate == protected_root
+        || candidate
+            .strip_prefix(&protected_root)
+            .is_some_and(|suffix| suffix.starts_with('/'))
+}
+
+fn git_admin_path(repo: &Path, args: &[&str], label: &str) -> Result<PathBuf, String> {
+    let value = git(repo, args)?;
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(format!("Git returned an empty {label}"));
+    }
+    Ok(lexical_absolute_path(repo, Path::new(value)))
+}
+
+fn reject_control_packet_output_overlap(
+    repo: &Path,
+    out: &Path,
+    protected_roots: &[(&Path, &str)],
+) -> Result<(), String> {
+    reject_parent_components(out, "control packet output")?;
+    let candidate = canonical_control_path(repo, out, "control packet output")?;
+    let git_dir = git_admin_path(repo, &["rev-parse", "--absolute-git-dir"], "Git directory")?;
+    let git_common_dir = git_admin_path(
+        repo,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        "Git common directory",
+    )?;
+    for (protected_root, label) in [
+        (git_dir.as_path(), "Git directory"),
+        (git_common_dir.as_path(), "Git common directory"),
+    ]
+    .into_iter()
+    .chain(protected_roots.iter().copied())
+    {
+        let protected_root = canonical_control_path(repo, protected_root, label)?;
+        if path_is_same_or_descendant(&candidate, &protected_root) {
+            return Err(format!(
+                "control packet output {} overlaps protected {label} {}",
+                candidate.display(),
+                protected_root.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn reserve_control_packet_output(
     out: &Path,
     kind: &str,
     reconciliation_context: &Value,
 ) -> Result<ControlPacketReservation, String> {
-    reject_parent_components(out, "control packet output")?;
+    let repo = current_repo()?;
+    reject_control_packet_output_overlap(&repo, out, &[])?;
     if fs::symlink_metadata(out).is_ok() {
         return Err(format!(
             "control packet output already exists: {}",
@@ -357,6 +525,17 @@ fn reserve_control_packet_output(
     })
 }
 
+fn reserve_control_packet_output_protected(
+    repo: &Path,
+    out: &Path,
+    protected_roots: &[(&Path, &str)],
+    kind: &str,
+    reconciliation_context: &Value,
+) -> Result<ControlPacketReservation, String> {
+    reject_control_packet_output_overlap(repo, out, protected_roots)?;
+    reserve_control_packet_output(out, kind, reconciliation_context)
+}
+
 fn require_reconciliation_context_unchanged(
     expected: &Value,
     current: Result<Value, String>,
@@ -371,6 +550,7 @@ fn require_reconciliation_context_unchanged(
     Ok(())
 }
 
+#[cfg(test)]
 fn write_control_packet(
     out: &Path,
     kind: &str,
@@ -387,6 +567,37 @@ fn write_control_packet(
         report,
         title,
         claim_boundary,
+    )
+}
+
+struct ControlPacketWrite<'a> {
+    kind: &'a str,
+    report_name: &'a str,
+    report: &'a Value,
+    title: &'a str,
+    claim_boundary: &'a str,
+}
+
+fn write_control_packet_protected(
+    repo: &Path,
+    out: &Path,
+    protected_roots: &[(&Path, &str)],
+    packet: &ControlPacketWrite<'_>,
+) -> Result<(), String> {
+    let reservation = reserve_control_packet_output_protected(
+        repo,
+        out,
+        protected_roots,
+        packet.kind,
+        &Value::Null,
+    )?;
+    write_reserved_control_packet(
+        &reservation,
+        packet.kind,
+        packet.report_name,
+        packet.report,
+        packet.title,
+        packet.claim_boundary,
     )
 }
 
@@ -798,16 +1009,14 @@ fn commit_tree(repo: &Path, commit: &str) -> Result<String, String> {
     Ok(value)
 }
 
-fn write_rejection_or_combine(
+fn write_rejection_or_combine_protected(
+    repo: &Path,
     out: &Path,
-    kind: &str,
-    report_name: &str,
-    report: &Value,
-    title: &str,
-    claim_boundary: &str,
+    protected_roots: &[(&Path, &str)],
+    packet: &ControlPacketWrite<'_>,
     reason: String,
 ) -> Result<(), String> {
-    match write_control_packet(out, kind, report_name, report, title, claim_boundary) {
+    match write_control_packet_protected(repo, out, protected_roots, packet) {
         Ok(()) => Err(reason),
         Err(write_error) => Err(format!(
             "{reason}; failed to publish rejection packet: {write_error}"

@@ -1,23 +1,3 @@
-fn builder_out_from_args(args: &[String]) -> PathBuf {
-    args.windows(2)
-        .find(|pair| {
-            pair.first().is_some_and(|value| value == "--out")
-                && pair.get(1).is_some_and(|value| !value.trim().is_empty())
-        })
-        .and_then(|pair| pair.get(1).map(PathBuf::from))
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_BUILDER_OUT))
-}
-
-fn admission_out_from_args(args: &[String]) -> PathBuf {
-    args.windows(2)
-        .find(|pair| {
-            pair.first().is_some_and(|value| value == "--out")
-                && pair.get(1).is_some_and(|value| !value.trim().is_empty())
-        })
-        .and_then(|pair| pair.get(1).map(PathBuf::from))
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_ADMISSION_OUT))
-}
-
 fn parse_builder_options(args: &[String]) -> Result<BuilderOptions, String> {
     let parsed = parse_command_args(
         args,
@@ -59,10 +39,24 @@ fn parse_builder_options(args: &[String]) -> Result<BuilderOptions, String> {
 }
 
 fn write_trusted_builder_receipt(args: &[String]) -> Result<(), String> {
-    let out = builder_out_from_args(args);
+    let out = control_out_from_args(args, DEFAULT_BUILDER_OUT)?;
     let options = match parse_builder_options(args) {
         Ok(options) => options,
         Err(reason) => {
+            let repo = current_repo()?;
+            let mut owned_roots = supplied_protected_roots(
+                &repo,
+                args,
+                &[
+                    ("--cargo-target-dir", "isolated Cargo target directory", false),
+                    ("--executable", "built xtask executable", false),
+                ],
+            );
+            owned_roots.push(OwnedProtectedRoot {
+                path: repo.join("Cargo.lock"),
+                label: "Cargo.lock",
+            });
+            let protected_roots = borrowed_protected_roots(&owned_roots);
             let report = serde_json::json!({
                 "schema": BUILDER_SCHEMA,
                 "status": "rejected",
@@ -84,13 +78,17 @@ fn write_trusted_builder_receipt(args: &[String]) -> Result<(), String> {
                 "ref_mutation_attempted": false,
                 "push_attempted": false,
             });
-            return write_rejection_or_combine(
+            return write_rejection_or_combine_protected(
+                &repo,
                 &out,
-                "trusted_builder",
-                BUILDER_REPORT,
-                &report,
-                "Trusted source-promotion builder",
-                "A rejected builder packet grants no validation, construction, ref, merge, or publication authority.",
+                &protected_roots,
+                &ControlPacketWrite {
+                    kind: "trusted_builder",
+                    report_name: BUILDER_REPORT,
+                    report: &report,
+                    title: "Trusted source-promotion builder",
+                    claim_boundary: "A rejected builder packet grants no validation, construction, ref, merge, or publication authority.",
+                },
                 reason,
             );
         }
@@ -134,13 +132,27 @@ fn write_trusted_builder_receipt(args: &[String]) -> Result<(), String> {
             "The locked-build and isolated-target-dir facts are accepted only because the source-owned hosted workflow supplies those explicit flags and is separately contract-checked.",
         ],
     });
-    let write_result = write_control_packet(
+    let cargo_lock = options.repo.join("Cargo.lock");
+    let protected_roots = [
+        (
+            options.cargo_target_dir.as_path(),
+            "isolated Cargo target directory",
+        ),
+        (options.executable.as_path(), "built xtask executable"),
+        (cargo_lock.as_path(), "Cargo.lock"),
+    ];
+    reject_control_packet_output_overlap(&options.repo, &options.out, &protected_roots)?;
+    let write_result = write_control_packet_protected(
+        &options.repo,
         &options.out,
-        "trusted_builder",
-        BUILDER_REPORT,
-        &report,
-        "Trusted source-promotion builder",
-        "This packet binds one clean source checkout, Rust toolchain, Cargo.lock, isolated locked build, workflow source, and executable digest. It grants no candidate-tree, construction, ref, merge, release, or publication authority.",
+        &protected_roots,
+        &ControlPacketWrite {
+            kind: "trusted_builder",
+            report_name: BUILDER_REPORT,
+            report: &report,
+            title: "Trusted source-promotion builder",
+            claim_boundary: "This packet binds one clean source checkout, Rust toolchain, Cargo.lock, isolated locked build, workflow source, and executable digest. It grants no candidate-tree, construction, ref, merge, release, or publication authority.",
+        },
     );
     if status == "built" {
         write_result
@@ -292,44 +304,94 @@ fn parse_admission_options(args: &[String]) -> Result<AdmissionOptions, String> 
 }
 
 fn admit_resolved_tree(args: &[String]) -> Result<(), String> {
-    let out = admission_out_from_args(args);
+    let out = control_out_from_args(args, DEFAULT_ADMISSION_OUT)?;
     let options = match parse_admission_options(args) {
         Ok(options) => options,
         Err(reason) => {
+            let repo = current_repo()?;
+            let owned_roots = supplied_protected_roots(
+                &repo,
+                args,
+                &[
+                    ("--validation-packet", "resolved-tree validation packet", false),
+                    ("--builder-packet", "trusted-builder packet", false),
+                    ("--integration-index", "integration receipt sidecar directory", true),
+                    ("--preflight", "finalized P1 preflight", false),
+                    ("--resolution-manifest", "complete resolution manifest", false),
+                ],
+            );
+            let protected_roots = borrowed_protected_roots(&owned_roots);
             let report = admission_rejection_report(None, &reason);
-            return write_rejection_or_combine(
+            return write_rejection_or_combine_protected(
+                &repo,
                 &out,
-                "resolved_tree_admission",
-                ADMISSION_REPORT,
-                &report,
-                "Resolved-tree admission",
-                "A rejected admission packet is not construction eligibility and grants no object, ref, merge, release, or publication authority.",
+                &protected_roots,
+                &ControlPacketWrite {
+                    kind: "resolved_tree_admission",
+                    report_name: ADMISSION_REPORT,
+                    report: &report,
+                    title: "Resolved-tree admission",
+                    claim_boundary: "A rejected admission packet is not construction eligibility and grants no object, ref, merge, release, or publication authority.",
+                },
                 reason,
             );
         }
     };
 
+    let integration_root = options.integration_index.parent().ok_or_else(|| {
+        "integration receipt index has no protected parent directory".to_string()
+    })?;
+    let protected_roots: [(&Path, &str); 6] = [
+        (
+            options.validation_packet.as_path(),
+            "resolved-tree validation packet",
+        ),
+        (
+            options.builder_packet.as_path(),
+            "trusted-builder packet",
+        ),
+        (integration_root, "integration receipt sidecar directory"),
+        (
+            options.integration_index.as_path(),
+            "integration receipt index",
+        ),
+        (options.preflight.as_path(), "finalized P1 preflight"),
+        (
+            options.resolution_manifest.as_path(),
+            "complete resolution manifest",
+        ),
+    ];
+    reject_control_packet_output_overlap(&options.repo, &options.out, &protected_roots)?;
+
     match validate_admission(&options) {
         Ok(evidence) => {
             let report = admission_success_report(&evidence);
-            write_control_packet(
+            write_control_packet_protected(
+                &options.repo,
                 &options.out,
-                "resolved_tree_admission",
-                ADMISSION_REPORT,
-                &report,
-                "Resolved-tree admission",
-                "This packet admits one exact terminal-green resolved-tree transaction for later exact-tree qualification and guarded construction. It does not construct a commit, move a ref, print a merge command, or authorize release publication.",
+                &protected_roots,
+                &ControlPacketWrite {
+                    kind: "resolved_tree_admission",
+                    report_name: ADMISSION_REPORT,
+                    report: &report,
+                    title: "Resolved-tree admission",
+                    claim_boundary: "This packet admits one exact terminal-green resolved-tree transaction for later exact-tree qualification and guarded construction. It does not construct a commit, move a ref, print a merge command, or authorize release publication.",
+                },
             )
         }
         Err(reason) => {
             let report = admission_rejection_report(Some(&options.identity), &reason);
-            write_rejection_or_combine(
+            write_rejection_or_combine_protected(
+                &options.repo,
                 &options.out,
-                "resolved_tree_admission",
-                ADMISSION_REPORT,
-                &report,
-                "Resolved-tree admission",
-                "A rejected admission packet is not construction eligibility and grants no object, ref, merge, release, or publication authority.",
+                &protected_roots,
+                &ControlPacketWrite {
+                    kind: "resolved_tree_admission",
+                    report_name: ADMISSION_REPORT,
+                    report: &report,
+                    title: "Resolved-tree admission",
+                    claim_boundary: "A rejected admission packet is not construction eligibility and grants no object, ref, merge, release, or publication authority.",
+                },
                 reason,
             )
         }

@@ -1,13 +1,3 @@
-fn publication_out_from_args(args: &[String]) -> PathBuf {
-    args.windows(2)
-        .find(|pair| {
-            pair.first().is_some_and(|value| value == "--out")
-                && pair.get(1).is_some_and(|value| !value.trim().is_empty())
-        })
-        .and_then(|pair| pair.get(1).map(PathBuf::from))
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_PUBLICATION_OUT))
-}
-
 fn parse_publication_options(args: &[String]) -> Result<PublicationOptions, String> {
     let parsed = parse_command_args(
         args,
@@ -60,23 +50,39 @@ fn parse_publication_options(args: &[String]) -> Result<PublicationOptions, Stri
 }
 
 fn publish_candidate_ref(args: &[String]) -> Result<(), String> {
-    let out = publication_out_from_args(args);
+    let out = control_out_from_args(args, DEFAULT_PUBLICATION_OUT)?;
     let options = match parse_publication_options(args) {
         Ok(options) => options,
         Err(reason) => {
+            let repo = current_repo()?;
+            let owned_roots = supplied_protected_roots(
+                &repo,
+                args,
+                &[("--construction-packet", "exact-join construction packet", false)],
+            );
+            let protected_roots = borrowed_protected_roots(&owned_roots);
             let report =
                 publication_rejection_report(None, None, &reason, &PublicationState::default());
-            return write_rejection_or_combine(
+            return write_rejection_or_combine_protected(
+                &repo,
                 &out,
-                "candidate_ref_publication",
-                PUBLICATION_REPORT,
-                &report,
-                "Candidate-ref publication",
-                "A non-success publication packet records zero merge-command authority and truthfully preserves any observed or unknown remote mutation state. It grants no source integration or release authority.",
+                &protected_roots,
+                &ControlPacketWrite {
+                    kind: "candidate_ref_publication",
+                    report_name: PUBLICATION_REPORT,
+                    report: &report,
+                    title: "Candidate-ref publication",
+                    claim_boundary: "A non-success publication packet records zero merge-command authority and truthfully preserves any observed or unknown remote mutation state. It grants no source integration or release authority.",
+                },
                 reason,
             );
         }
     };
+    let protected_roots: [(&Path, &str); 1] = [(
+        options.construction_packet.as_path(),
+        "exact-join construction packet",
+    )];
+    reject_control_packet_output_overlap(&options.repo, &options.out, &protected_roots)?;
 
     let reconciliation_context = match publication_reconciliation_context(&options) {
         Ok(context) => context,
@@ -87,20 +93,26 @@ fn publish_candidate_ref(args: &[String]) -> Result<(), String> {
                 &reason,
                 &PublicationState::default(),
             );
-            return write_rejection_or_combine(
+            return write_rejection_or_combine_protected(
+                &options.repo,
                 &options.out,
-                "candidate_ref_publication",
-                PUBLICATION_REPORT,
-                &report,
-                "Candidate-ref publication",
-                "A rejected publication packet emits no merge command and grants no source, release, or publication authority.",
+                &protected_roots,
+                &ControlPacketWrite {
+                    kind: "candidate_ref_publication",
+                    report_name: PUBLICATION_REPORT,
+                    report: &report,
+                    title: "Candidate-ref publication",
+                    claim_boundary: "A rejected publication packet emits no merge command and grants no source, release, or publication authority.",
+                },
                 reason,
             );
         }
     };
 
-    let reservation = reserve_control_packet_output(
+    let reservation = reserve_control_packet_output_protected(
+        &options.repo,
         &options.out,
+        &protected_roots,
         "candidate_ref_publication",
         &reconciliation_context,
     )?;
@@ -269,8 +281,8 @@ fn run_guarded_candidate_push(
     options: &PublicationOptions,
     lease: &str,
     refspec: &str,
-) -> Result<(bool, bool, String), String> {
-    Command::new("git")
+) -> Result<(bool, Option<bool>, String), String> {
+    let output = Command::new("git")
         .current_dir(&options.repo)
         .env("GIT_NO_REPLACE_OBJECTS", "1")
         .args([
@@ -283,22 +295,60 @@ fn run_guarded_candidate_push(
             refspec,
         ])
         .output()
-        .map_err(|error| format!("failed to start guarded candidate-ref push: {error}"))
-        .and_then(|output| {
-            let stdout = String::from_utf8(output.stdout)
-                .map_err(|error| format!("guarded push output was not UTF-8: {error}"))?;
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let detail = [stdout.trim(), stderr.as_str()]
+        .map_err(|error| format!("failed to start guarded candidate-ref push: {error}"))?;
+    let process_succeeded = output.status.success();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Ok(classify_guarded_push_output(
+        process_succeeded,
+        output.stdout,
+        &stderr,
+        &options.target_ref,
+    ))
+}
+
+fn classify_guarded_push_output(
+    process_succeeded: bool,
+    stdout: Vec<u8>,
+    stderr: &str,
+    target_ref: &str,
+) -> (bool, Option<bool>, String) {
+    let stdout = match String::from_utf8(stdout)
+        .map_err(|error| format!("guarded push output was not UTF-8: {error}"))
+    {
+        Ok(stdout) => stdout,
+        Err(reason) => {
+            let attribution_diagnostic =
+                format!("target-update attribution unavailable: {reason}");
+            let detail = [stderr, attribution_diagnostic.as_str()]
                 .into_iter()
                 .filter(|part| !part.is_empty())
                 .collect::<Vec<_>>()
                 .join(" | ");
-            if !output.status.success() {
-                return Ok((false, false, detail));
-            }
-            parse_guarded_push_porcelain(&stdout, &options.target_ref)
-                .map(|target_updated| (true, target_updated, detail))
-        })
+            let target_updated = if process_succeeded { None } else { Some(false) };
+            return (process_succeeded, target_updated, detail);
+        }
+    };
+    let detail = [stdout.trim(), stderr]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" | ");
+    if !process_succeeded {
+        return (false, Some(false), detail);
+    }
+    match parse_guarded_push_porcelain(&stdout, target_ref) {
+        Ok(target_updated) => (true, Some(target_updated), detail),
+        Err(reason) => {
+            let attribution_diagnostic =
+                format!("target-update attribution unavailable: {reason}");
+            let detail = [detail.as_str(), attribution_diagnostic.as_str()]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(" | ");
+            (true, None, detail)
+        }
+    }
 }
 
 fn parse_guarded_push_porcelain(output: &str, target_ref: &str) -> Result<bool, String> {
@@ -351,7 +401,7 @@ fn publish_candidate_ref_inner_with_publication_runners<P, F, L>(
     post_push_local_reader: L,
 ) -> Result<(ConstructionEvidence, PublicationState), PublicationFailure>
 where
-    P: Fn(&PublicationOptions, &str, &str) -> Result<(bool, bool, String), String>,
+    P: Fn(&PublicationOptions, &str, &str) -> Result<(bool, Option<bool>, String), String>,
     F: Fn(&Path, &str, &str) -> Result<Option<String>, String>,
     L: Fn(&Path, &str) -> Result<Option<String>, String>,
 {
@@ -463,7 +513,7 @@ where
     state.remote_push_attempts = 1;
     let push = push_runner(options, lease.as_str(), refspec.as_str());
     state.push_process_succeeded = push.as_ref().ok().map(|output| output.0);
-    state.target_ref_updated = push.as_ref().ok().map(|output| output.1);
+    state.target_ref_updated = push.as_ref().ok().and_then(|output| output.1);
     let post_push_local = post_push_local_reader(&options.repo, &options.target_ref);
     state.local_ref_after = post_push_local.as_ref().ok().cloned().flatten();
 
@@ -518,9 +568,22 @@ where
         }
         if state.target_ref_updated != Some(true) {
             rollback_local_candidate(options, &evidence, &expected, &mut state);
-            return Err((
+            let reason = if state.target_ref_updated == Some(false) {
                 "remote candidate ref equals the join, but the guarded push reported no actual target update"
-                    .to_string(),
+                    .to_string()
+            } else {
+                let detail = push
+                    .as_ref()
+                    .ok()
+                    .map(|output| output.2.as_str())
+                    .filter(|detail| !detail.is_empty())
+                    .unwrap_or("guarded push target-update attribution was unavailable");
+                format!(
+                    "remote candidate ref equals the join, but actual target-update attribution was unavailable: {detail}"
+                )
+            };
+            return Err((
+                reason,
                 Some(evidence),
                 state,
             ));

@@ -184,10 +184,21 @@ counters together with the admitted or constructed identity and input packet
 digests. A reserved directory
 without the index is an incomplete attempt whose Git and remote state must be
 reconciled before retry. A pre-existing output path or an unsafe/non-directory
-output parent fails closed before those attempts; the controller never
-overwrites an earlier receipt to make a later mutation look successful. The
-contract covers process-visible interruption and synced file contents; it does
-not claim portable power-loss durability for directory entries.
+output parent fails closed before those attempts. Output equal to or beneath
+the worktree or common Git administration directory, a consumed packet, or an
+indexed-receipt sidecar directory also fails before creating any output path;
+the controller never corrupts an input or overwrites an earlier receipt to
+make a later mutation look successful. The same protection applies while
+emitting malformed-command rejection packets, and containment comparison
+resolves filesystem aliases. The contract covers process-visible
+interruption and synced file contents; it does not claim portable power-loss
+durability for directory entries.
+
+Immediately before the sole `commit-tree` attempt, construction performs a
+complete live snapshot of protected refs, tree and sidecar digests, every
+indexed packet member, every typed integration receipt, and terminal
+qualification bytes. Any unreadable or changed value rejects with zero
+commit-tree attempts.
 
 Construction and publication require the exact protected source ref
 `refs/heads/main`; a caller-selected alias cannot satisfy source-main
@@ -206,7 +217,10 @@ Publication status follows observed state rather than process exit alone:
 
 Publication receipts expose `push_process_succeeded` and
 `target_ref_updated` separately: an exit-zero no-op sets the former true and
-the latter false. `atomic_push` and `expected_state_guard_passed` record the
+the latter false. An exit-zero push whose porcelain output is malformed or
+otherwise cannot attribute the exact target update records true and null,
+respectively, and cannot produce `published`. `atomic_push` and
+`expected_state_guard_passed` record the
 guarded push operation independently from the later status classification:
 both are true when that operation is attributed as an actual target update,
 null after an attempted push without such attribution, and false when no push

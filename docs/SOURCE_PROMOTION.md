@@ -410,9 +410,18 @@ maximum operation counters needed for that
 reconciliation. Completed packets retain the
 attempt journal and publish the complete index last. An existing output path or
 unsafe/non-directory parent fails closed without overwriting the earlier packet
-and without advancing a Git-mutation attempt counter. This ordering detects
-process-visible interruption; it does not claim power-loss durability for
-directory entries on every supported filesystem.
+and without advancing a Git-mutation attempt counter. Outputs beneath either
+Git administration directory or a consumed packet/indexed-sidecar root reject
+before any output path is created, so a receipt cannot corrupt its own input.
+Malformed-command rejection paths protect every supplied known input, and the
+comparison resolves filesystem aliases before testing containment.
+This ordering detects process-visible interruption; it does not claim
+power-loss durability for directory entries on every supported filesystem.
+
+Construction performs its complete live reread of refs, tree and sidecar
+digests, indexed packet members, typed integration receipts, and qualification
+bytes immediately before `commit-tree`. A changed or unreadable value stops
+with zero commit-tree attempts.
 
 Construction and publication require `--source-main-ref refs/heads/main`;
 caller-selected aliases never stand in for source authority. Publication
@@ -440,6 +449,8 @@ Publication receipts state what was observed:
 
 The receipt keeps `push_process_succeeded` separate from
 `target_ref_updated`; an exit-zero no-op records true and false respectively.
+Exit-zero malformed or unparseable porcelain records true process success and
+null target-update attribution, remains fail closed, and cannot publish.
 The `atomic_push` and `expected_state_guard_passed` fields describe that
 guarded operation, not the later publication status: both are true for an
 attributed target update, null after an attempted push without attribution,

@@ -13827,7 +13827,8 @@ consumes the terminal `ripr.source_promotion_tree_qualification.v1` schema.
 
 Admission and construction final snapshots reread every indexed packet member
 and typed integration receipt. Matching index-file digests alone do not make
-changed member bytes current.
+changed member bytes current. Construction performs the complete final live
+snapshot immediately before its sole `commit-tree` attempt.
 
 Controller status values are `built`, `admitted`, `constructed`, `published`,
 `reserved_before_side_effects`, and `rejected`. `published` means
@@ -13844,7 +13845,9 @@ Neither status grants merge or release authority.
 
 Publication receipts report `push_process_succeeded` independently from
 `target_ref_updated`; an exit-zero up-to-date/no-op push records true and false
-respectively and cannot produce `published`. `atomic_push` and
+respectively and cannot produce `published`. Exit-zero malformed or unparseable
+porcelain records true and null, respectively, and likewise cannot produce
+`published`. `atomic_push` and
 `expected_state_guard_passed` report the guarded operation independently from
 the final status: both are true for an attributed target update, null after an
 attempt without attribution, and false when no push was attempted. A later
@@ -13866,7 +13869,11 @@ commit/tree and packet identities. A reserved directory without the index is
 an incomplete attempt with unknown final Git/remote state, not a rejection or
 success receipt, and must be reconciled before retry. This is a
 process-interruption ordering contract, not a portable power-loss durability
-claim for directory entries.
+claim for directory entries. Outputs equal to or beneath either Git
+administration directory, a consumed packet, or an indexed-receipt sidecar
+directory reject before any output path is created. This applies to rejection
+packets emitted for malformed commands as well as successful parses, and path
+comparison resolves filesystem aliases before testing containment.
 
 Qualification requires exactly these ordered lane names:
 

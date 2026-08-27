@@ -1873,6 +1873,57 @@ mod source_promotion_control_tests {
     }
 
     #[test]
+    fn constructor_final_live_snapshot_rejects_post_snapshot_receipt_change_before_commit_tree()
+    -> Result<(), String> {
+        let fixture = construction_snapshot_fixture("constructor-final-live-snapshot-race")?;
+        let refs_before = refs_digest(&fixture.repo)?;
+        let admission_receipt_sha256 =
+            packet_file_sha256(&fixture.admission_packet, ADMISSION_REPORT)?;
+        let integration_root = fixture
+            .options
+            .integration_index
+            .parent()
+            .ok_or_else(|| "integration index fixture has no parent".to_string())?;
+        let receipt_path = integration_root.join("command-catalog.json");
+        let mut changed_receipt = fs::read(&receipt_path)
+            .map_err(|error| format!("failed to read final-snapshot receipt: {error}"))?;
+        changed_receipt.push(b' ');
+        fs::write(&receipt_path, changed_receipt)
+            .map_err(|error| format!("failed to mutate final-snapshot receipt: {error}"))?;
+
+        let failure = construct_validated_join(
+            &fixture.options,
+            ValidatedConstructionInputs {
+                identity: Box::new(fixture.identity.clone()),
+                admission_packet: fixture.admission_packet.clone(),
+                admission_receipt_sha256,
+                validation_packet: fixture.validation_packet.clone(),
+                integration_index_sha256: fixture.integration.index_sha256.clone(),
+                qualification_sha256: fixture.qualification_sha256.clone(),
+            },
+            None,
+        )
+        .err()
+        .ok_or_else(|| {
+            "post-snapshot typed receipt change unexpectedly reached commit-tree".to_string()
+        })?;
+        require(
+            failure.0.contains("integration receipt digest mismatch"),
+            "final live snapshot must reject the changed typed receipt",
+        )?;
+        require(
+            !failure.2,
+            "final live snapshot rejection must report zero commit-tree attempts",
+        )?;
+        require_equal(
+            refs_digest(&fixture.repo)?,
+            refs_before,
+            "final live snapshot rejection preserves every ref",
+        )?;
+        fixture.repo.cleanup()
+    }
+
+    #[test]
     fn candidate_ref_and_remote_row_validation_fail_closed() -> Result<(), String> {
         require(
             validate_candidate_ref("refs/heads/promote/0.11.0-w7").is_ok(),
@@ -1950,6 +2001,51 @@ mod source_promotion_control_tests {
             )
             .is_err(),
             "unknown guarded-push output must not be ignored beside a valid row",
+        )?;
+        let malformed_success = classify_guarded_push_output(
+            true,
+            b"unexpected output\n".to_vec(),
+            "",
+            "refs/heads/promote/0.11.0-w7",
+        );
+        require_equal(
+            malformed_success.0,
+            true,
+            "exit-zero malformed porcelain preserves process success",
+        )?;
+        require_equal(
+            malformed_success.1,
+            None,
+            "exit-zero malformed porcelain leaves target-update attribution unavailable",
+        )?;
+        require(
+            malformed_success
+                .2
+                .contains("target-update attribution unavailable"),
+            "exit-zero malformed porcelain retains an attribution diagnostic",
+        )?;
+        let non_utf8_success = classify_guarded_push_output(
+            true,
+            vec![0xff],
+            "",
+            "refs/heads/promote/0.11.0-w7",
+        );
+        require_equal(
+            non_utf8_success.0,
+            true,
+            "exit-zero non-UTF-8 output preserves process success",
+        )?;
+        require_equal(
+            non_utf8_success.1,
+            None,
+            "exit-zero non-UTF-8 output leaves target-update attribution unavailable",
+        )?;
+        require(
+            non_utf8_success.2.contains("not UTF-8")
+                && non_utf8_success
+                    .2
+                    .contains("target-update attribution unavailable"),
+            "exit-zero non-UTF-8 output retains the decode and attribution diagnostic",
         )?;
         Ok(())
     }
@@ -2369,7 +2465,7 @@ mod source_promotion_control_tests {
             &options,
             Some(&context),
             |_options, _lease, _refspec| {
-                Ok((false, false, "injected push failure".to_string()))
+                Ok((false, Some(false), "injected push failure".to_string()))
             },
             |_repo, _remote, _reference| Ok(Some(join.clone())),
             read_optional_local_ref,
@@ -2476,6 +2572,106 @@ mod source_promotion_control_tests {
             &repo,
             &["push", "origin", &format!(":{}", evidence.candidate_ref)],
         )?;
+        let malformed_repo = repo.to_path_buf();
+        let malformed_remote = options.remote.clone();
+        let malformed_join = join.clone();
+        let malformed_target = evidence.candidate_ref.clone();
+        let malformed_success = publish_candidate_ref_inner_with_publication_runners(
+            &options,
+            Some(&context),
+            move |_options, _lease, _refspec| {
+                git_test(
+                    &malformed_repo,
+                    &[
+                        "push",
+                        malformed_remote.as_str(),
+                        &format!("{malformed_join}:{malformed_target}"),
+                    ],
+                )?;
+                Ok((
+                    true,
+                    None,
+                    "target-update attribution unavailable: injected malformed porcelain"
+                        .to_string(),
+                ))
+            },
+            read_remote_ref,
+            read_optional_local_ref,
+        )
+        .err()
+        .ok_or_else(|| {
+            "exit-zero malformed porcelain unexpectedly received publication attribution"
+                .to_string()
+        })?;
+        require(
+            malformed_success
+                .0
+                .contains("actual target-update attribution was unavailable"),
+            format!(
+                "exit-zero malformed porcelain should retain the attribution failure; observed: {}",
+                malformed_success.0
+            ),
+        )?;
+        require_equal(
+            malformed_success.2.push_process_succeeded,
+            Some(true),
+            "exit-zero malformed porcelain process truth",
+        )?;
+        require_equal(
+            malformed_success.2.target_ref_updated,
+            None,
+            "exit-zero malformed porcelain target attribution",
+        )?;
+        require_equal(
+            malformed_success.2.local_ref_attempts,
+            2,
+            "exit-zero malformed porcelain local update plus rollback attempts",
+        )?;
+        require_equal(
+            malformed_success.2.local_ref_rollback_succeeded,
+            Some(true),
+            "exit-zero malformed porcelain local rollback disposition",
+        )?;
+        require_equal(
+            read_optional_local_ref(&repo, &evidence.candidate_ref)?,
+            None,
+            "exit-zero malformed porcelain restores the absent local candidate ref",
+        )?;
+        require_equal(
+            read_remote_ref(&repo, "origin", &evidence.candidate_ref)?,
+            Some(join.clone()),
+            "exit-zero malformed porcelain leaves the observed remote join untouched",
+        )?;
+        let malformed_success_report = publication_rejection_report(
+            malformed_success.1.as_deref(),
+            Some(&evidence.candidate_ref),
+            &malformed_success.0,
+            &malformed_success.2,
+        );
+        require_equal(
+            json_string(&malformed_success_report, "status"),
+            Some("publication_state_unknown"),
+            "exit-zero malformed porcelain publication status",
+        )?;
+        require_equal(
+            json_bool(&malformed_success_report, "push_process_succeeded"),
+            Some(true),
+            "exit-zero malformed porcelain receipt process truth",
+        )?;
+        for field in [
+            "target_ref_updated",
+            "atomic_push",
+            "expected_state_guard_passed",
+        ] {
+            require(
+                malformed_success_report.get(field).is_some_and(Value::is_null),
+                format!("exit-zero malformed porcelain receipt {field} must be explicit null"),
+            )?;
+        }
+        git_test(
+            &repo,
+            &["push", "origin", &format!(":{}", evidence.candidate_ref)],
+        )?;
         let divergent_repo = repo.to_path_buf();
         let divergent_remote = options.remote.clone();
         let divergent_target = evidence.candidate_ref.clone();
@@ -2487,7 +2683,7 @@ mod source_promotion_control_tests {
                 let attributed = run_guarded_candidate_push(runner_options, lease, refspec)?;
                 require_equal(
                     (attributed.0, attributed.1),
-                    (true, true),
+                    (true, Some(true)),
                     "guarded push must attribute the target update before the injected race",
                 )?;
                 git_test(
@@ -3106,6 +3302,361 @@ mod source_promotion_control_tests {
             packet.files.contains_key("control-attempt.json"),
             "completed packet index should retain the pre-side-effect attempt journal",
         )?;
+        root.cleanup()
+    }
+
+    #[test]
+    fn control_packet_outputs_reject_git_admin_and_consumed_input_roots_before_creation()
+    -> Result<(), String> {
+        let (repo, identity) = init_synthetic_repo("packet-output-protection")?;
+        let context = serde_json::json!({"target_ref": "refs/heads/test"});
+        let git_dir = git_admin_path(
+            &repo,
+            &["rev-parse", "--absolute-git-dir"],
+            "test Git directory",
+        )?;
+        for relative in [
+            PathBuf::from("refs/heads/promote/0.11.0-output/packet"),
+            PathBuf::from("objects/output-packet"),
+        ] {
+            let out = git_dir.join(relative);
+            require(
+                reserve_control_packet_output_protected(
+                    &repo,
+                    &out,
+                    &[],
+                    "test_control",
+                    &context,
+                )
+                .is_err(),
+                "Git-administrative output must reject before reservation",
+            )?;
+            require(
+                !out.exists(),
+                "Git-administrative rejection must not create the output path",
+            )?;
+        }
+
+        let worktree_parent = test_temp_dir("packet-output-worktree")?;
+        let worktree = worktree_parent.join("linked");
+        let worktree_text = worktree.to_string_lossy().into_owned();
+        git_test(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "--detach",
+                worktree_text.as_str(),
+                identity.source_parent.as_str(),
+            ],
+        )?;
+        let linked_git_dir = git_admin_path(
+            &worktree,
+            &["rev-parse", "--absolute-git-dir"],
+            "linked-worktree Git directory",
+        )?;
+        let linked_common_dir = git_admin_path(
+            &worktree,
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            "linked-worktree Git common directory",
+        )?;
+        for (root, label) in [
+            (linked_git_dir, "linked-worktree Git directory"),
+            (linked_common_dir, "linked-worktree Git common directory"),
+        ] {
+            let out = root.join("source-promotion-output-test");
+            require(
+                reserve_control_packet_output_protected(
+                    &worktree,
+                    &out,
+                    &[],
+                    "test_control",
+                    &context,
+                )
+                .is_err(),
+                format!("{label} output must reject before reservation"),
+            )?;
+            require(
+                !out.exists(),
+                format!("{label} rejection must not create the output path"),
+            )?;
+        }
+        git_test(
+            &repo,
+            &["worktree", "remove", "--force", worktree_text.as_str()],
+        )?;
+        worktree_parent.cleanup()?;
+
+        let builder_target = repo.join("isolated-target");
+        fs::create_dir(&builder_target)
+            .map_err(|error| format!("failed to create builder target fixture: {error}"))?;
+        let builder_out = builder_target.join("receipt");
+        let builder_roots = [(builder_target.as_path(), "isolated Cargo target directory")];
+        require(
+            reserve_control_packet_output_protected(
+                &repo,
+                &builder_out,
+                &builder_roots,
+                "trusted_builder",
+                &context,
+            )
+            .is_err(),
+            "builder output nested in its target input must reject",
+        )?;
+        require(
+            !builder_out.exists(),
+            "builder nested-output rejection must create nothing",
+        )?;
+
+        let validation_root = repo.join("protected-validation-packet");
+        write_test_packet(
+            &validation_root,
+            RESOLVED_TREE_PACKET_SCHEMA,
+            "resolved_tree_validation",
+            "validated",
+            VALIDATION_REPORT,
+            &valid_resolved_tree_receipt(),
+        )?;
+        let admission_out = validation_root.join("admission-output");
+        let admission_roots = [(
+            validation_root.as_path(),
+            "resolved-tree validation packet",
+        )];
+        require(
+            reserve_control_packet_output_protected(
+                &repo,
+                &admission_out,
+                &admission_roots,
+                "resolved_tree_admission",
+                &context,
+            )
+            .is_err(),
+            "admission output nested in a consumed packet must reject",
+        )?;
+        require(!admission_out.exists(), "admission rejection creates nothing")?;
+        read_indexed_packet(
+            &validation_root,
+            RESOLVED_TREE_PACKET_SCHEMA,
+            Some("resolved_tree_validation"),
+            Some("validated"),
+            VALIDATION_REPORT,
+        )?;
+
+        let admission_root = repo.join("protected-admission-packet");
+        write_test_packet(
+            &admission_root,
+            CONTROL_PACKET_SCHEMA,
+            "resolved_tree_admission",
+            "admitted",
+            ADMISSION_REPORT,
+            &valid_admission_receipt(&identity),
+        )?;
+        let construction_out = admission_root.join("construction-output");
+        let construction_roots = [(
+            admission_root.as_path(),
+            "resolved-tree admission packet",
+        )];
+        require(
+            reserve_control_packet_output_protected(
+                &repo,
+                &construction_out,
+                &construction_roots,
+                "exact_join_construction",
+                &context,
+            )
+            .is_err(),
+            "construction output nested in a consumed packet must reject",
+        )?;
+        require(
+            !construction_out.exists(),
+            "construction rejection creates nothing",
+        )?;
+        read_indexed_packet(
+            &admission_root,
+            CONTROL_PACKET_SCHEMA,
+            Some("resolved_tree_admission"),
+            Some("admitted"),
+            ADMISSION_REPORT,
+        )?;
+
+        let admission = valid_admission_receipt(&identity);
+        let executable_sha256 = admission
+            .get("checker_executable_sha256")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "test admission receipt is missing executable identity".to_string())?;
+        let (integration_index, integration) = write_test_integration_index(
+            &repo.join("protected-integration-sidecars"),
+            &identity,
+            executable_sha256,
+        )?;
+        let integration_root = integration_index
+            .parent()
+            .ok_or_else(|| "test integration index has no sidecar root".to_string())?;
+        let integration_out = integration_root.join("admission-output");
+        let integration_roots = [(integration_root, "integration receipt sidecar directory")];
+        require(
+            reserve_control_packet_output_protected(
+                &repo,
+                &integration_out,
+                &integration_roots,
+                "resolved_tree_admission",
+                &context,
+            )
+            .is_err(),
+            "admission output nested in indexed sidecars must reject",
+        )?;
+        require(
+            !integration_out.exists(),
+            "indexed-sidecar rejection creates nothing",
+        )?;
+        require_equal(
+            validate_integration_index(
+                &integration_index,
+                &integration.index_sha256,
+                &identity,
+                executable_sha256,
+            )?,
+            integration,
+            "indexed-sidecar rejection preserves typed receipt readability",
+        )?;
+
+        let construction_root = repo.join("protected-construction-packet");
+        write_test_packet(
+            &construction_root,
+            CONTROL_PACKET_SCHEMA,
+            "exact_join_construction",
+            "constructed",
+            CONSTRUCTION_REPORT,
+            &construction_success_report(&valid_construction_evidence(identity)),
+        )?;
+        let publication_out = construction_root.join("publication-output");
+        let publication_roots = [(
+            construction_root.as_path(),
+            "exact-join construction packet",
+        )];
+        require(
+            reserve_control_packet_output_protected(
+                &repo,
+                &publication_out,
+                &publication_roots,
+                "candidate_ref_publication",
+                &context,
+            )
+            .is_err(),
+            "publication output nested in a consumed packet must reject",
+        )?;
+        require(
+            !publication_out.exists(),
+            "publication rejection creates nothing",
+        )?;
+        read_indexed_packet(
+            &construction_root,
+            CONTROL_PACKET_SCHEMA,
+            Some("exact_join_construction"),
+            Some("constructed"),
+            CONSTRUCTION_REPORT,
+        )?;
+        repo.cleanup()
+    }
+
+    #[test]
+    fn malformed_commands_cannot_write_rejections_inside_supplied_inputs() -> Result<(), String> {
+        let root = test_temp_dir("parse-rejection-output-protection")?;
+        let cases = [
+            (
+                root.join("builder-target"),
+                SOURCE_PROMOTION_TRUSTED_BUILDER_SUBCOMMAND,
+                "--cargo-target-dir",
+            ),
+            (
+                root.join("validation-packet"),
+                SOURCE_PROMOTION_ADMIT_RESOLVED_TREE_SUBCOMMAND,
+                "--validation-packet",
+            ),
+            (
+                root.join("admission-packet"),
+                SOURCE_PROMOTION_CONSTRUCT_EXACT_JOIN_SUBCOMMAND,
+                "--admission-packet",
+            ),
+            (
+                root.join("construction-packet"),
+                SOURCE_PROMOTION_PUBLISH_CANDIDATE_REF_SUBCOMMAND,
+                "--construction-packet",
+            ),
+        ];
+        for (protected, subcommand, input_key) in cases {
+            fs::create_dir(&protected).map_err(|error| {
+                format!("failed to create protected parse-failure fixture: {error}")
+            })?;
+            let out = protected.join("rejection");
+            let args = vec![
+                subcommand.to_string(),
+                input_key.to_string(),
+                protected.to_string_lossy().into_owned(),
+                "--out".to_string(),
+                out.to_string_lossy().into_owned(),
+            ];
+            let result = match subcommand {
+                SOURCE_PROMOTION_TRUSTED_BUILDER_SUBCOMMAND => {
+                    write_trusted_builder_receipt(&args)
+                }
+                SOURCE_PROMOTION_ADMIT_RESOLVED_TREE_SUBCOMMAND => admit_resolved_tree(&args),
+                SOURCE_PROMOTION_CONSTRUCT_EXACT_JOIN_SUBCOMMAND => construct_exact_join(&args),
+                SOURCE_PROMOTION_PUBLISH_CANDIDATE_REF_SUBCOMMAND => publish_candidate_ref(&args),
+                _ => return Err("test command table contains an unknown subcommand".to_string()),
+            };
+            let error = result.err().ok_or_else(|| {
+                format!("malformed {subcommand} command unexpectedly succeeded")
+            })?;
+            require(
+                error.contains("overlaps protected"),
+                format!("malformed {subcommand} must fail on protected output: {error}"),
+            )?;
+            require(
+                !out.exists(),
+                format!("malformed {subcommand} must not create a nested rejection packet"),
+            )?;
+        }
+        root.cleanup()
+    }
+
+    #[test]
+    fn control_packet_output_comparison_resolves_filesystem_aliases() -> Result<(), String> {
+        let root = test_temp_dir("packet-output-alias")?;
+        let real = root.join("real-input");
+        fs::create_dir(&real)
+            .map_err(|error| format!("failed to create real protected input: {error}"))?;
+        let alias = root.join("input-alias");
+        #[cfg(windows)]
+        {
+            let alias_text = alias.to_string_lossy().into_owned();
+            let real_text = real.to_string_lossy().into_owned();
+            let output = Command::new("cmd")
+                .args(["/c", "mklink", "/J", alias_text.as_str(), real_text.as_str()])
+                .output()
+                .map_err(|error| format!("failed to start junction fixture command: {error}"))?;
+            require(
+                output.status.success(),
+                format!(
+                    "failed to create protected input directory junction: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
+            )?;
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &alias)
+            .map_err(|error| format!("failed to create protected input directory alias: {error}"))?;
+        #[cfg(not(any(windows, unix)))]
+        return root.cleanup();
+
+        let out = real.join("rejection");
+        let protected_roots = [(alias.as_path(), "aliased input packet")];
+        let repo = current_repo()?;
+        require(
+            reject_control_packet_output_overlap(&repo, &out, &protected_roots).is_err(),
+            "output comparison must resolve a protected input alias to its real directory",
+        )?;
+        require(!out.exists(), "alias rejection must create nothing")?;
         root.cleanup()
     }
 
