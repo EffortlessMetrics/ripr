@@ -677,25 +677,44 @@ fn construction_snapshot(
     let preflight_sha256 = file_sha256(&options.preflight, "finalized P1 preflight")?;
     let resolution_sha256 =
         file_sha256(&options.resolution_manifest, "complete resolution manifest")?;
-    let validation_index_sha256 = file_sha256(
-        &options.validation_packet.join(PACKET_INDEX),
-        "resolved-tree packet index",
+    let observed_validation_packet = read_indexed_packet(
+        &options.validation_packet,
+        RESOLVED_TREE_PACKET_SCHEMA,
+        None,
+        Some("validated"),
+        VALIDATION_REPORT,
     )?;
-    let admission_index_sha256 = file_sha256(
-        &options.admission_packet.join(PACKET_INDEX),
-        "admission packet index",
+    let observed_admission_packet = read_indexed_packet(
+        &options.admission_packet,
+        CONTROL_PACKET_SCHEMA,
+        Some("resolved_tree_admission"),
+        Some("admitted"),
+        ADMISSION_REPORT,
     )?;
-    let integration_index_sha256 = file_sha256(&options.integration_index, "integration index")?;
+    let admission_receipt = packet_json(
+        admission_packet,
+        ADMISSION_REPORT,
+        "resolved-tree admission receipt",
+    )?;
+    let trusted_executable_sha256 = admission_receipt
+        .get("checker_executable_sha256")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "admission receipt is missing checker executable identity".to_string())?;
+    let observed_integration = validate_integration_index(
+        &options.integration_index,
+        &options.integration_index_sha256,
+        identity,
+        trusted_executable_sha256,
+    )?;
     let observed_qualification =
         file_sha256(&options.qualification_receipt, "tree qualification receipt")?;
     require_expected_qualification_sha256(
         &options.qualification_receipt_sha256,
         &observed_qualification,
     )?;
-    if admission_index_sha256 != admission_packet.index_sha256
-        || validation_index_sha256 != validation_packet.index_sha256
-        || integration_index_sha256 != options.integration_index_sha256
-        || integration_index_sha256 != integration.index_sha256
+    if observed_admission_packet != *admission_packet
+        || observed_validation_packet != *validation_packet
+        || observed_integration != *integration
         || observed_qualification != qualification_sha256
     {
         return Err("construction sidecar moved after validation".to_string());
@@ -706,9 +725,9 @@ fn construction_snapshot(
         join_tree,
         preflight_sha256,
         resolution_sha256,
-        validation_index_sha256,
-        admission_index_sha256,
-        integration_index_sha256,
+        validation_index_sha256: observed_validation_packet.index_sha256,
+        admission_index_sha256: observed_admission_packet.index_sha256,
+        integration_index_sha256: observed_integration.index_sha256,
         qualification_sha256: observed_qualification,
     })
 }

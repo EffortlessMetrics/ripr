@@ -232,7 +232,7 @@ struct ConstructionSnapshot {
     qualification_sha256: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct IntegrationEvidence {
     index_sha256: String,
     receipt_digests: BTreeMap<String, String>,
@@ -275,6 +275,7 @@ struct PublicationState {
     remote_state_observed: bool,
     local_ref_rollback_succeeded: Option<bool>,
     push_process_succeeded: Option<bool>,
+    target_ref_updated: Option<bool>,
     source_main_unchanged: Option<bool>,
     swarm_parent_unchanged: Option<bool>,
     construction_packet_unchanged: Option<bool>,

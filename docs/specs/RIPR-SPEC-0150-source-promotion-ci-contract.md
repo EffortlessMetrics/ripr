@@ -137,7 +137,10 @@ typed subcommands:
 
 Integration receipts are not accepted as schema-only self-assertions. Each is
 bound to `producer_source_sha == SOURCE_PARENT` and to the executable digest in
-the trusted-builder packet. The tree-qualification denominator is exactly this
+the trusted-builder packet. Admission and construction final snapshots reread
+and digest every indexed packet member and every typed integration receipt;
+unchanged index bytes do not make changed member bytes current. The
+tree-qualification denominator is exactly this
 ordered set, with every lane terminal `passed` and carrying a lowercase
 64-character evidence SHA-256:
 
@@ -200,6 +203,10 @@ local candidate ref behind an exact-state guard, and the receipt records
 whether the rollback succeeded.
 
 Publication status follows observed state rather than process exit alone:
+
+Publication receipts expose `push_process_succeeded` and
+`target_ref_updated` separately: an exit-zero no-op sets the former true and
+the latter false.
 
 - `published` means the guarded push's machine-readable status reported an
   actual update of the exact target ref, the remote target was reread at the

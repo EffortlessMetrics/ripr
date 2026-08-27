@@ -97,6 +97,26 @@ mod source_promotion_control_tests {
             .ok_or_else(|| format!("{context} is missing array field {key}"))
     }
 
+    fn normalized_contract_definition(
+        root: &Path,
+        contract_path: &str,
+        start: &str,
+        end: &str,
+    ) -> Result<String, String> {
+        let contract = fs::read_to_string(root.join(contract_path))
+            .map_err(|error| format!("read {contract_path}: {error}"))?
+            .replace("\r\n", "\n");
+        let definition = contract
+            .split_once(start)
+            .map(|(_, remainder)| remainder)
+            .and_then(|remainder| remainder.split_once(end).map(|(body, _)| body))
+            .ok_or_else(|| format!("{contract_path} status definition is missing"))?;
+        Ok(format!("{start}{definition}")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" "))
+    }
+
     fn test_identity() -> PromotionIdentity {
         PromotionIdentity {
             source_parent: "1111111111111111111111111111111111111111".to_string(),
@@ -751,6 +771,8 @@ mod source_promotion_control_tests {
             Some("admitted"),
             ADMISSION_REPORT,
         )?;
+        let unchanged_index = fs::read(root.join(PACKET_INDEX))
+            .map_err(|error| format!("failed to read packet-index race fixture: {error}"))?;
         require_equal(
             packet_file_sha256(&packet, ADMISSION_REPORT)?.len(),
             64,
@@ -775,6 +797,12 @@ mod source_promotion_control_tests {
 
         fs::write(root.join(ADMISSION_REPORT), "{}\n")
             .map_err(|error| format!("failed to corrupt packet report: {error}"))?;
+        require_equal(
+            fs::read(root.join(PACKET_INDEX))
+                .map_err(|error| format!("failed to reread packet-index race fixture: {error}"))?,
+            unchanged_index,
+            "member-only race leaves packet-index bytes unchanged",
+        )?;
         require(
             read_indexed_packet(
                 &root,
@@ -784,7 +812,7 @@ mod source_promotion_control_tests {
                 ADMISSION_REPORT,
             )
             .is_err(),
-            "packet with a digest mismatch should reject",
+            "final full-packet reread must reject a changed member behind an unchanged index",
         )?;
         temp.cleanup()
     }
@@ -898,7 +926,7 @@ mod source_promotion_control_tests {
         )?;
 
         let broken_ref = "refs/heads/promote/0.11.0-broken";
-        let broken_path = repo.join(".git").join(broken_ref.replace('/', "\\"));
+        let broken_path = repo.join(".git").join(broken_ref);
         let broken_parent = broken_path
             .parent()
             .ok_or_else(|| "broken-ref fixture has no parent".to_string())?;
@@ -1120,6 +1148,64 @@ mod source_promotion_control_tests {
             expected_absent: true,
             out,
         };
+        validate_source_main_authority(&options, &evidence)?;
+        validate_swarm_parent_authority(&options, &evidence)?;
+        git_test(
+            &repo,
+            &[
+                "--git-dir",
+                options.source_remote_url.as_str(),
+                "update-ref",
+                SOURCE_MAIN_REF,
+                identity.swarm_parent.as_str(),
+                identity.source_parent.as_str(),
+            ],
+        )?;
+        require(
+            validate_source_main_authority(&options, &evidence).is_err(),
+            "remote-only source-main movement must invalidate the source authority field",
+        )?;
+        require(
+            validate_swarm_parent_authority(&options, &evidence).is_ok(),
+            "remote-only source-main movement must not invalidate W7 authority",
+        )?;
+        git_test(
+            &repo,
+            &[
+                "--git-dir",
+                options.source_remote_url.as_str(),
+                "update-ref",
+                SOURCE_MAIN_REF,
+                identity.source_parent.as_str(),
+                identity.swarm_parent.as_str(),
+            ],
+        )?;
+        git_test(
+            &repo,
+            &[
+                "update-ref",
+                evidence.swarm_ref.as_str(),
+                identity.source_parent.as_str(),
+                identity.swarm_parent.as_str(),
+            ],
+        )?;
+        require(
+            validate_swarm_parent_authority(&options, &evidence).is_err(),
+            "local-only W7 movement must invalidate the W7 authority field",
+        )?;
+        require(
+            validate_source_main_authority(&options, &evidence).is_ok(),
+            "local-only W7 movement must not invalidate source-main authority",
+        )?;
+        git_test(
+            &repo,
+            &[
+                "update-ref",
+                evidence.swarm_ref.as_str(),
+                identity.swarm_parent.as_str(),
+                identity.source_parent.as_str(),
+            ],
+        )?;
         update_local_ref(
             &repo,
             &evidence.candidate_ref,
@@ -1220,7 +1306,9 @@ mod source_promotion_control_tests {
         let failed_push_observed_join = publish_candidate_ref_inner_with_publication_runners(
             &options,
             Some(&context),
-            |_options, _lease, _refspec| Ok((false, "injected push failure".to_string())),
+            |_options, _lease, _refspec| {
+                Ok((false, false, "injected push failure".to_string()))
+            },
             |_repo, _remote, _reference| Ok(Some(join.clone())),
             read_optional_local_ref,
         )
@@ -1273,13 +1361,18 @@ mod source_promotion_control_tests {
         require(
             no_op_race
                 .0
-                .contains("guarded push process did not report success"),
+                .contains("guarded push reported no actual target update"),
             "up-to-date race must remain explicitly unattributed",
         )?;
         require_equal(
             no_op_race.2.push_process_succeeded,
+            Some(true),
+            "up-to-date race process outcome",
+        )?;
+        require_equal(
+            no_op_race.2.target_ref_updated,
             Some(false),
-            "up-to-date race guarded-push attribution",
+            "up-to-date race target-update attribution",
         )?;
         require_equal(
             no_op_race.2.local_ref_rollback_succeeded,
@@ -1296,6 +1389,16 @@ mod source_promotion_control_tests {
             json_string(&no_op_report, "status"),
             Some("publication_state_unknown"),
             "up-to-date race publication status",
+        )?;
+        require_equal(
+            json_bool(&no_op_report, "push_process_succeeded"),
+            Some(true),
+            "up-to-date race receipt process truth",
+        )?;
+        require_equal(
+            json_bool(&no_op_report, "target_ref_updated"),
+            Some(false),
+            "up-to-date race receipt update truth",
         )?;
         require_equal(
             read_optional_local_ref(&repo, &evidence.candidate_ref)?,
@@ -1349,6 +1452,40 @@ mod source_promotion_control_tests {
         for (contract_path, start, end, expected_definition) in [
             (
                 "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+                "- `published` means",
+                "- `published_but_invalidated`",
+                "- `published` means the guarded push's machine-readable status reported an actual update of the exact target ref, the remote target was reread at the exact constructed join, and all post-push authority rereads remained valid;",
+            ),
+            (
+                "docs/SOURCE_PROMOTION.md",
+                "- `published` means",
+                "- `published_but_invalidated`",
+                "- `published` means the guarded push's machine-readable status reported an actual update of the exact target ref, the remote candidate ref was observed at the exact join, and every post-push authority reread remained valid;",
+            ),
+            (
+                "docs/OUTPUT_SCHEMA.md",
+                "`published` means",
+                "Publication additionally uses",
+                "`published` means machine-readable guarded-push status reported an actual update of the exact target ref, the exact join was observed there, and every bound post-push authority remained current.",
+            ),
+            (
+                "policy/output_contracts.txt",
+                "source_promotion_control_status|published|",
+                "\n",
+                "source_promotion_control_status|published|Machine-readable guarded-push status reported an actual update of the exact target ref, the exact candidate ref was observed at the constructed join, and all bound post-push authorities remained current.",
+            ),
+        ] {
+            let normalized_definition =
+                normalized_contract_definition(&root, contract_path, start, end)?;
+            require_equal(
+                normalized_definition.as_str(),
+                expected_definition,
+                &format!("{contract_path} published definition"),
+            )?;
+        }
+        for (contract_path, start, end, expected_definition) in [
+            (
+                "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
                 "- `published_but_invalidated` means",
                 "- `publication_state_unknown`",
                 "- `published_but_invalidated` means the remote target was observed at the exact join but a bound source, W7, packet, object, or URL authority invalidated during publication, or the post-push local candidate-ref observation was unavailable; and",
@@ -1372,22 +1509,46 @@ mod source_promotion_control_tests {
                 "source_promotion_control_status|published_but_invalidated|The remote candidate ref reached the constructed join but a bound input invalidated during publication or the post-push local candidate-ref observation was unavailable.",
             ),
         ] {
-            let contract = fs::read_to_string(root.join(contract_path))
-                .map_err(|error| format!("read {contract_path}: {error}"))?
-                .replace("\r\n", "\n");
-            let definition = contract
-                .split_once(start)
-                .map(|(_, remainder)| remainder)
-                .and_then(|remainder| remainder.split_once(end).map(|(body, _)| body))
-                .ok_or_else(|| format!("{contract_path} status definition is missing"))?;
-            let normalized_definition = format!("{start}{definition}")
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ");
+            let normalized_definition =
+                normalized_contract_definition(&root, contract_path, start, end)?;
             require_equal(
                 normalized_definition.as_str(),
                 expected_definition,
                 &format!("{contract_path} published_but_invalidated definition"),
+            )?;
+        }
+        for (contract_path, start, end, expected_definition) in [
+            (
+                "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+                "- `publication_state_unknown` means",
+                "\n\n`rejected`",
+                "- `publication_state_unknown` means the final remote state could not be observed, or it equals the join without an actual target-update attribution; an exit-zero up-to-date/no-op push is not publication attribution.",
+            ),
+            (
+                "docs/SOURCE_PROMOTION.md",
+                "- `publication_state_unknown` means",
+                "- `rejected`",
+                "- `publication_state_unknown` means the final remote state could not be read, or it equals the join without an actual target-update attribution; an exit-zero up-to-date/no-op push is not publication attribution; and",
+            ),
+            (
+                "docs/OUTPUT_SCHEMA.md",
+                "`publication_state_unknown` when",
+                "Neither status",
+                "`publication_state_unknown` when a push was attempted but its final remote state could not be observed or the exact join was observed without a machine-readable actual target-update attribution. An exit-zero up-to-date/no-op push is not publication attribution.",
+            ),
+            (
+                "policy/output_contracts.txt",
+                "source_promotion_control_status|publication_state_unknown|",
+                "\n",
+                "source_promotion_control_status|publication_state_unknown|Final remote state was unavailable or equaled the join without machine-readable actual target-update attribution; an exit-zero up-to-date/no-op push is not publication attribution.",
+            ),
+        ] {
+            let normalized_definition =
+                normalized_contract_definition(&root, contract_path, start, end)?;
+            require_equal(
+                normalized_definition.as_str(),
+                expected_definition,
+                &format!("{contract_path} publication_state_unknown definition"),
             )?;
         }
         require_equal(
@@ -1468,6 +1629,16 @@ mod source_promotion_control_tests {
             "published remote ref identity",
         )?;
         let success = publication_success_report(&published, &options, &publication_state);
+        require_equal(
+            json_bool(&success, "push_process_succeeded"),
+            Some(true),
+            "successful publication push-process result",
+        )?;
+        require_equal(
+            json_bool(&success, "target_ref_updated"),
+            Some(true),
+            "successful publication target-update attribution",
+        )?;
         require_equal(
             success.get("merge_command").is_some_and(Value::is_null),
             true,
@@ -1755,6 +1926,7 @@ mod source_promotion_control_tests {
         let evidence = valid_construction_evidence(test_identity());
         let mut state = PublicationState {
             push_process_succeeded: Some(false),
+            target_ref_updated: Some(false),
             remote_state_observed: true,
             observed_final_ref: Some(evidence.join_commit.clone()),
             remote_push_attempts: 1,
@@ -1781,6 +1953,7 @@ mod source_promotion_control_tests {
             "failed-push atomic authority",
         )?;
         state.push_process_succeeded = Some(true);
+        state.target_ref_updated = Some(true);
         state.source_main_unchanged = Some(true);
         state.swarm_parent_unchanged = Some(true);
         state.construction_packet_unchanged = Some(true);

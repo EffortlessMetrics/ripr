@@ -690,19 +690,29 @@ fn admission_snapshot(
     let preflight_sha256 = file_sha256(&options.preflight, "finalized P1 preflight")?;
     let resolution_sha256 =
         file_sha256(&options.resolution_manifest, "complete resolution manifest")?;
-    let validation_index_sha256 = file_sha256(
-        &options.validation_packet.join(PACKET_INDEX),
-        "resolved-tree packet index",
+    let observed_validation_packet = read_indexed_packet(
+        &options.validation_packet,
+        RESOLVED_TREE_PACKET_SCHEMA,
+        None,
+        Some("validated"),
+        VALIDATION_REPORT,
     )?;
-    let builder_index_sha256 = file_sha256(
-        &options.builder_packet.join(PACKET_INDEX),
-        "trusted-builder packet index",
+    let observed_builder_packet = read_indexed_packet(
+        &options.builder_packet,
+        CONTROL_PACKET_SCHEMA,
+        Some("trusted_builder"),
+        Some("built"),
+        BUILDER_REPORT,
     )?;
-    let integration_index_sha256 = file_sha256(&options.integration_index, "integration index")?;
-    if validation_index_sha256 != validation_packet.index_sha256
-        || builder_index_sha256 != builder_packet.index_sha256
-        || integration_index_sha256 != options.integration_index_sha256
-        || integration_index_sha256 != integration.index_sha256
+    let observed_integration = validate_integration_index(
+        &options.integration_index,
+        &options.integration_index_sha256,
+        &options.identity,
+        executable_sha256,
+    )?;
+    if observed_validation_packet != *validation_packet
+        || observed_builder_packet != *builder_packet
+        || observed_integration != *integration
     {
         return Err("indexed admission evidence moved after validation".to_string());
     }
@@ -716,9 +726,9 @@ fn admission_snapshot(
         join_tree,
         preflight_sha256,
         resolution_sha256,
-        validation_index_sha256,
-        builder_index_sha256,
-        integration_index_sha256,
+        validation_index_sha256: observed_validation_packet.index_sha256,
+        builder_index_sha256: observed_builder_packet.index_sha256,
+        integration_index_sha256: observed_integration.index_sha256,
         executable_sha256: observed_executable,
     })
 }

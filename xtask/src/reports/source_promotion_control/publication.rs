@@ -269,7 +269,7 @@ fn run_guarded_candidate_push(
     options: &PublicationOptions,
     lease: &str,
     refspec: &str,
-) -> Result<(bool, String), String> {
+) -> Result<(bool, bool, String), String> {
     Command::new("git")
         .current_dir(&options.repo)
         .env("GIT_NO_REPLACE_OBJECTS", "1")
@@ -294,10 +294,10 @@ fn run_guarded_candidate_push(
                 .collect::<Vec<_>>()
                 .join(" | ");
             if !output.status.success() {
-                return Ok((false, detail));
+                return Ok((false, false, detail));
             }
             parse_guarded_push_porcelain(&stdout, &options.target_ref)
-                .map(|target_updated| (target_updated, detail))
+                .map(|target_updated| (true, target_updated, detail))
         })
 }
 
@@ -351,7 +351,7 @@ fn publish_candidate_ref_inner_with_publication_runners<P, F, L>(
     post_push_local_reader: L,
 ) -> Result<(ConstructionEvidence, PublicationState), PublicationFailure>
 where
-    P: Fn(&PublicationOptions, &str, &str) -> Result<(bool, String), String>,
+    P: Fn(&PublicationOptions, &str, &str) -> Result<(bool, bool, String), String>,
     F: Fn(&Path, &str, &str) -> Result<Option<String>, String>,
     L: Fn(&Path, &str) -> Result<Option<String>, String>,
 {
@@ -463,6 +463,7 @@ where
     state.remote_push_attempts = 1;
     let push = push_runner(options, lease.as_str(), refspec.as_str());
     state.push_process_succeeded = push.as_ref().ok().map(|output| output.0);
+    state.target_ref_updated = push.as_ref().ok().map(|output| output.1);
     let post_push_local = post_push_local_reader(&options.repo, &options.target_ref);
     state.local_ref_after = post_push_local.as_ref().ok().cloned().flatten();
 
@@ -486,44 +487,39 @@ where
         }
     }
 
-    let input_result = validate_publication_inputs(options, &evidence, &packet);
-    state.source_main_unchanged = Some(
-        read_commit_ref(&options.repo, &options.source_main_ref, "source main ref")
-            .is_ok_and(|value| value == evidence.identity.source_parent),
+    let source_main_result = validate_source_main_authority(options, &evidence);
+    state.source_main_unchanged = Some(source_main_result.is_ok());
+    let swarm_parent_result = validate_swarm_parent_authority(options, &evidence);
+    state.swarm_parent_unchanged = Some(swarm_parent_result.is_ok());
+    let construction_packet_result = validate_construction_packet(options, &packet);
+    state.construction_packet_unchanged = Some(construction_packet_result.is_ok());
+    let remote_authority_result = validate_remote_authority(options);
+    state.remote_authority_unchanged = Some(remote_authority_result.is_ok());
+    let join_result = verify_constructed_join(
+        &options.repo,
+        &evidence.join_commit,
+        &evidence.identity,
     );
-    state.swarm_parent_unchanged = Some(
-        read_remote_ref(
-            &options.repo,
-            &options.swarm_remote_url,
-            &evidence.swarm_ref,
-        )
-        .is_ok_and(|value| value.as_deref() == Some(evidence.identity.swarm_parent.as_str())),
-    );
-    state.construction_packet_unchanged = Some(
-        read_indexed_packet(
-            &options.construction_packet,
-            CONTROL_PACKET_SCHEMA,
-            Some("exact_join_construction"),
-            Some("constructed"),
-            CONSTRUCTION_REPORT,
-        )
-        .is_ok_and(|value| value == packet),
-    );
-    state.remote_authority_unchanged = Some(
-        read_remote_urls(&options.repo, &options.remote).is_ok_and(|value| {
-            value
-                == (
-                    options.source_remote_url.clone(),
-                    options.source_remote_url.clone(),
-                )
-        }),
-    );
+    let input_result = source_main_result
+        .and(swarm_parent_result)
+        .and(construction_packet_result)
+        .and(remote_authority_result)
+        .and(join_result);
 
     if state.observed_final_ref.as_deref() == Some(evidence.join_commit.as_str()) {
         if state.push_process_succeeded != Some(true) {
             rollback_local_candidate(options, &evidence, &expected, &mut state);
             return Err((
                 "remote candidate ref equals the join, but the guarded push process did not report success"
+                    .to_string(),
+                Some(evidence),
+                state,
+            ));
+        }
+        if state.target_ref_updated != Some(true) {
+            rollback_local_candidate(options, &evidence, &expected, &mut state);
+            return Err((
+                "remote candidate ref equals the join, but the guarded push reported no actual target update"
                     .to_string(),
                 Some(evidence),
                 state,
@@ -562,7 +558,7 @@ where
     let push_reason = match push {
         Ok(output) => format!(
             "guarded candidate-ref push did not publish the exact join: {}",
-            output.1
+            output.2
         ),
         Err(reason) => reason,
     };
@@ -574,6 +570,7 @@ fn authoritative_publication_observed(
     evidence: &ConstructionEvidence,
 ) -> bool {
     state.push_process_succeeded == Some(true)
+        && state.target_ref_updated == Some(true)
         && state.remote_state_observed
         && state.observed_final_ref.as_deref() == Some(evidence.join_commit.as_str())
         && post_publication_authority_current(state)
@@ -591,6 +588,17 @@ fn validate_publication_inputs(
     evidence: &ConstructionEvidence,
     packet: &IndexedPacket,
 ) -> Result<(), String> {
+    validate_source_main_authority(options, evidence)?;
+    validate_swarm_parent_authority(options, evidence)?;
+    validate_construction_packet(options, packet)?;
+    validate_remote_authority(options)?;
+    verify_constructed_join(&options.repo, &evidence.join_commit, &evidence.identity)
+}
+
+fn validate_source_main_authority(
+    options: &PublicationOptions,
+    evidence: &ConstructionEvidence,
+) -> Result<(), String> {
     let source_local = read_commit_ref(&options.repo, &options.source_main_ref, "source main ref")?;
     let source_remote = read_remote_ref(
         &options.repo,
@@ -602,6 +610,13 @@ fn validate_publication_inputs(
     {
         return Err("local or remote source main moved after exact-join construction".to_string());
     }
+    Ok(())
+}
+
+fn validate_swarm_parent_authority(
+    options: &PublicationOptions,
+    evidence: &ConstructionEvidence,
+) -> Result<(), String> {
     let swarm_local = read_commit_ref(&options.repo, &evidence.swarm_ref, "protected W7 ref")?;
     let swarm_remote = read_remote_ref(
         &options.repo,
@@ -615,6 +630,13 @@ fn validate_publication_inputs(
             "local or remote protected W7 ref moved after exact-join construction".to_string(),
         );
     }
+    Ok(())
+}
+
+fn validate_construction_packet(
+    options: &PublicationOptions,
+    packet: &IndexedPacket,
+) -> Result<(), String> {
     let current_packet = read_indexed_packet(
         &options.construction_packet,
         CONTROL_PACKET_SCHEMA,
@@ -625,6 +647,10 @@ fn validate_publication_inputs(
     if current_packet != *packet {
         return Err("construction packet bytes or inventory moved before publication".to_string());
     }
+    Ok(())
+}
+
+fn validate_remote_authority(options: &PublicationOptions) -> Result<(), String> {
     let urls = read_remote_urls(&options.repo, &options.remote)?;
     if urls
         != (
@@ -634,7 +660,7 @@ fn validate_publication_inputs(
     {
         return Err("source remote authority moved before publication".to_string());
     }
-    verify_constructed_join(&options.repo, &evidence.join_commit, &evidence.identity)
+    Ok(())
 }
 
 fn rollback_local_candidate(
@@ -797,6 +823,7 @@ fn publication_success_report(
         "observed_final_ref": state.observed_final_ref,
         "atomic_push": true,
         "push_process_succeeded": state.push_process_succeeded,
+        "target_ref_updated": state.target_ref_updated,
         "expected_state_guard_passed": true,
         "source_main_unchanged": state.source_main_unchanged,
         "swarm_parent_unchanged": state.swarm_parent_unchanged,
@@ -832,16 +859,17 @@ fn publication_rejection_report(
 ) -> Value {
     let published_but_invalidated = evidence.is_some_and(|value| {
         state.push_process_succeeded == Some(true)
+            && state.target_ref_updated == Some(true)
             && state.remote_state_observed
             && state.observed_final_ref.as_deref() == Some(value.join_commit.as_str())
     });
-    let observed_join_without_successful_push = evidence.is_some()
-        && state.push_process_succeeded != Some(true)
+    let observed_join_without_attributed_update = evidence.is_some()
+        && (state.push_process_succeeded != Some(true) || state.target_ref_updated != Some(true))
         && state.remote_state_observed
         && state.observed_final_ref.as_deref() == evidence.map(|value| value.join_commit.as_str());
     let status = if published_but_invalidated {
         "published_but_invalidated"
-    } else if observed_join_without_successful_push
+    } else if observed_join_without_attributed_update
         || (state.remote_push_attempts > 0 && !state.remote_state_observed)
     {
         "publication_state_unknown"
@@ -850,7 +878,7 @@ fn publication_rejection_report(
     };
     let atomic_push = if published_but_invalidated {
         Some(true)
-    } else if observed_join_without_successful_push
+    } else if observed_join_without_attributed_update
         || (state.remote_push_attempts > 0 && !state.remote_state_observed)
     {
         None
@@ -859,7 +887,7 @@ fn publication_rejection_report(
     };
     let expected_state_guard_passed = if published_but_invalidated {
         Some(true)
-    } else if observed_join_without_successful_push
+    } else if observed_join_without_attributed_update
         || (state.remote_push_attempts > 0 && !state.remote_state_observed)
     {
         None
@@ -878,6 +906,7 @@ fn publication_rejection_report(
         "remote_state_observed": state.remote_state_observed,
         "atomic_push": atomic_push,
         "push_process_succeeded": state.push_process_succeeded,
+        "target_ref_updated": state.target_ref_updated,
         "expected_state_guard_passed": expected_state_guard_passed,
         "source_main_unchanged": state.source_main_unchanged,
         "swarm_parent_unchanged": state.swarm_parent_unchanged,

@@ -13825,8 +13825,15 @@ The source-owned controller writes indexed JSON/Markdown packets using
 the producer-bound `ripr.source_promotion_integration_index.v1` and terminal
 `ripr.source_promotion_tree_qualification.v1` schemas.
 
+Admission and construction final snapshots reread every indexed packet member
+and typed integration receipt. Matching index-file digests alone do not make
+changed member bytes current.
+
 Controller status values are `built`, `admitted`, `constructed`, `published`,
-`reserved_before_side_effects`, and `rejected`. Publication additionally uses
+`reserved_before_side_effects`, and `rejected`. `published` means
+machine-readable guarded-push status reported an actual update of the exact
+target ref, the exact join was observed there, and every bound post-push
+authority remained current. Publication additionally uses
 `published_but_invalidated` when the exact remote candidate ref moved but a
 bound input invalidated afterward or the post-push local candidate-ref
 observation was unavailable, and `publication_state_unknown` when a push was
@@ -13834,6 +13841,10 @@ attempted but its final remote state could not be observed or the exact join
 was observed without a machine-readable actual target-update attribution. An
 exit-zero up-to-date/no-op push is not publication attribution.
 Neither status grants merge or release authority.
+
+Publication receipts report `push_process_succeeded` independently from
+`target_ref_updated`; an exit-zero up-to-date/no-op push records true and false
+respectively and cannot produce `published`.
 
 Every receipt exposes numeric `commit_tree_attempts`, `local_ref_attempts`,
 `remote_push_attempts`, and `merge_command_attempts`. Admission and all

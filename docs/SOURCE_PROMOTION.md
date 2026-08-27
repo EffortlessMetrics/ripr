@@ -361,7 +361,9 @@ Issue #1609 adds four typed control-plane subcommands under
 The typed integration receipts must identify the admitted `SOURCE_PARENT` as
 `producer_source_sha` and the trusted-builder executable as
 `producer_executable_sha256`; matching schemas and status strings alone are not
-producer authority.
+producer authority. Admission and construction final snapshots reread every
+indexed packet member and typed integration receipt; unchanged index bytes do
+not authorize changed member bytes.
 
 The local #1609 controller validates exact content identity and internal
 consistency only. Its producer fields and digests do not independently prove
@@ -435,6 +437,9 @@ by an observed join: the remote ref is never rolled back, the join remains
 unattributed, and the receipt records `publication_state_unknown`.
 
 Publication receipts state what was observed:
+
+The receipt keeps `push_process_succeeded` separate from
+`target_ref_updated`; an exit-zero no-op records true and false respectively.
 
 - `published` means the guarded push's machine-readable status reported an
   actual update of the exact target ref, the remote candidate ref was observed
