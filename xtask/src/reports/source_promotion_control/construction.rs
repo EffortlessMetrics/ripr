@@ -402,6 +402,7 @@ fn construct_exact_join_inner(
         &admission,
         &admission_packet,
         &admission_receipt_sha256,
+        &integration,
         &qualification_sha256,
     )
     .map_err(|reason| (reason, Some(identity.clone()), false))?;
@@ -602,6 +603,7 @@ fn validate_qualification_receipt(
     admission: &Value,
     admission_packet: &IndexedPacket,
     admission_receipt_sha256: &str,
+    integration: &IntegrationEvidence,
     qualification_sha256: &str,
 ) -> Result<(), String> {
     validate_exact_hex(
@@ -617,16 +619,27 @@ fn validate_qualification_receipt(
     {
         return Err("TREE_QUALIFICATION receipt is not terminal qualified and exact".to_string());
     }
+    let admitted_integration_receipts = admission
+        .get("integration_receipts")
+        .ok_or_else(|| "admission receipt is missing integration receipts".to_string())?;
+    let validated_integration_receipts = serde_json::to_value(&integration.receipt_digests)
+        .map_err(|error| format!("could not serialize validated integration receipts: {error}"))?;
+    if admitted_integration_receipts != &validated_integration_receipts {
+        return Err(
+            "admission receipt integration receipts differ from validated integration evidence"
+                .to_string(),
+        );
+    }
     if json_string(qualification, "admission_packet_index_sha256")
         != Some(admission_packet.index_sha256.as_str())
         || json_string(qualification, "admission_receipt_sha256") != Some(admission_receipt_sha256)
         || json_string(qualification, "resolved_tree_validation_receipt_sha256")
             != json_string(admission, "resolved_tree_validation_receipt_sha256")
         || json_string(qualification, "network_policy_receipt_sha256")
-            != admission
-                .get("integration_receipts")
-                .and_then(|value| value.get("network_policy_integration"))
-                .and_then(Value::as_str)
+            != integration
+                .receipt_digests
+                .get("network_policy_integration")
+                .map(String::as_str)
     {
         return Err(
             "TREE_QUALIFICATION receipt is bound to different admission evidence".to_string(),

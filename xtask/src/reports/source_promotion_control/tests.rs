@@ -258,6 +258,90 @@ mod source_promotion_control_tests {
         })
     }
 
+    fn integration_evidence_from_admission(admission: &Value) -> Result<IntegrationEvidence, String> {
+        let index_sha256 = json_string(admission, "integration_index_sha256")
+            .ok_or_else(|| "admission fixture is missing integration index digest".to_string())?
+            .to_string();
+        let receipts = admission
+            .get("integration_receipts")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "admission fixture is missing integration receipts".to_string())?;
+        let mut receipt_digests = BTreeMap::new();
+        for kind in REQUIRED_INTEGRATION_KINDS {
+            let digest = receipts
+                .get(*kind)
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("admission fixture is missing {kind} digest"))?;
+            receipt_digests.insert((*kind).to_string(), digest.to_string());
+        }
+        Ok(IntegrationEvidence {
+            index_sha256,
+            receipt_digests,
+        })
+    }
+
+    fn valid_builder_receipt(
+        identity: &PromotionIdentity,
+        executable_sha256: &str,
+        cargo_lock_sha256: &str,
+    ) -> Value {
+        serde_json::json!({
+            "schema": BUILDER_SCHEMA,
+            "status": "built",
+            "source_parent": identity.source_parent.as_str(),
+            "workflow_source_sha": identity.source_parent.as_str(),
+            "clean_checkout": true,
+            "rust_toolchain": format!("rustc {RUST_TOOLCHAIN} test"),
+            "locked_build": true,
+            "isolated_cargo_target_dir": true,
+            "cargo_lock_sha256": cargo_lock_sha256,
+            "executable_sha256": executable_sha256,
+            "authoritative_commit_attempted": false,
+            "commit_tree_attempts": 0,
+            "local_ref_attempts": 0,
+            "remote_push_attempts": 0,
+            "merge_command_attempts": 0,
+            "ref_mutation_attempted": false,
+            "push_attempted": false,
+            "merge_command": null,
+            "failure_reasons": [],
+        })
+    }
+
+    fn valid_qualification_receipt_for(
+        identity: &PromotionIdentity,
+        admission: &Value,
+        admission_packet: &IndexedPacket,
+        admission_receipt_sha256: &str,
+        network_policy_receipt_sha256: &str,
+    ) -> Result<Value, String> {
+        let validation_receipt_sha256 =
+            json_string(admission, "resolved_tree_validation_receipt_sha256").ok_or_else(|| {
+                "admission fixture is missing resolved-tree validation digest".to_string()
+            })?;
+        Ok(serde_json::json!({
+            "schema": QUALIFICATION_SCHEMA,
+            "status": "qualified",
+            "source_parent": identity.source_parent.as_str(),
+            "swarm_parent": identity.swarm_parent.as_str(),
+            "join_tree": identity.join_tree.as_str(),
+            "preflight_sha256": identity.preflight_sha256.as_str(),
+            "resolution_manifest_sha256": identity.resolution_sha256.as_str(),
+            "admission_packet_index_sha256": admission_packet.index_sha256.as_str(),
+            "admission_receipt_sha256": admission_receipt_sha256,
+            "resolved_tree_validation_receipt_sha256": validation_receipt_sha256,
+            "network_policy_receipt_sha256": network_policy_receipt_sha256,
+            "promotion_ref_mutation_attempted": false,
+            "lanes": REQUIRED_QUALIFICATION_LANES.iter().map(|name| serde_json::json!({
+                "name": name,
+                "state": "passed",
+                "evidence_sha256":
+                    "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            })).collect::<Vec<_>>(),
+            "failure_reasons": [],
+        }))
+    }
+
     fn valid_construction_evidence(identity: PromotionIdentity) -> ConstructionEvidence {
         ConstructionEvidence {
             identity,
@@ -364,6 +448,7 @@ mod source_promotion_control_tests {
     struct AdmissionSnapshotFixture {
         repo: TestDir,
         options: AdmissionOptions,
+        evidence: AdmissionEvidence,
         swarm_ref: String,
         validation_packet: IndexedPacket,
         builder_packet: IndexedPacket,
@@ -592,26 +677,8 @@ mod source_promotion_control_tests {
         )?;
 
         let cargo_lock_sha256 = file_sha256(&repo.join("Cargo.lock"), "test Cargo.lock")?;
-        let builder = serde_json::json!({
-            "schema": BUILDER_SCHEMA,
-            "status": "built",
-            "source_parent": identity.source_parent.as_str(),
-            "workflow_source_sha": identity.source_parent.as_str(),
-            "clean_checkout": true,
-            "rust_toolchain": format!("rustc {RUST_TOOLCHAIN} test"),
-            "locked_build": true,
-            "isolated_cargo_target_dir": true,
-            "cargo_lock_sha256": cargo_lock_sha256,
-            "executable_sha256": executable_sha256.as_str(),
-            "authoritative_commit_attempted": false,
-            "commit_tree_attempts": 0,
-            "local_ref_attempts": 0,
-            "remote_push_attempts": 0,
-            "merge_command_attempts": 0,
-            "ref_mutation_attempted": false,
-            "push_attempted": false,
-            "failure_reasons": [],
-        });
+        let builder =
+            valid_builder_receipt(&identity, &executable_sha256, &cargo_lock_sha256);
         let builder_packet = write_test_packet(
             &evidence_root.join("builder-packet"),
             CONTROL_PACKET_SCHEMA,
@@ -636,10 +703,11 @@ mod source_promotion_control_tests {
             resolution_manifest: resolution_path,
             out: evidence_root.join("unused-output"),
         };
-        validate_admission(&options)?;
+        let evidence = validate_admission(&options)?;
         Ok(AdmissionSnapshotFixture {
             repo,
             options,
+            evidence,
             swarm_ref,
             validation_packet,
             builder_packet,
@@ -652,7 +720,31 @@ mod source_promotion_control_tests {
         let (repo, identity) = init_synthetic_repo(label)?;
         let admission_root = repo.join("admission-packet");
         let validation_root = repo.join("validation-packet");
-        let admission = valid_admission_receipt(&identity);
+        let mut admission = valid_admission_receipt(&identity);
+        let executable_sha256 = admission
+            .get("checker_executable_sha256")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "test admission receipt is missing executable identity".to_string())?
+            .to_string();
+        let (integration_index, integration) = write_test_integration_index(
+            &repo.join("integration"),
+            &identity,
+            &executable_sha256,
+        )?;
+        replace_object_field(
+            &mut admission,
+            "integration_index_sha256",
+            Value::String(integration.index_sha256.clone()),
+            "construction admission fixture",
+        )?;
+        replace_object_field(
+            &mut admission,
+            "integration_receipts",
+            serde_json::to_value(&integration.receipt_digests).map_err(|error| {
+                format!("failed to encode construction integration evidence: {error}")
+            })?,
+            "construction admission fixture",
+        )?;
         let admission_packet = write_test_packet(
             &admission_root,
             CONTROL_PACKET_SCHEMA,
@@ -669,12 +761,6 @@ mod source_promotion_control_tests {
             VALIDATION_REPORT,
             &valid_resolved_tree_receipt(),
         )?;
-        let executable_sha256 = admission
-            .get("checker_executable_sha256")
-            .and_then(Value::as_str)
-            .ok_or_else(|| "test admission receipt is missing executable identity".to_string())?;
-        let (integration_index, integration) =
-            write_test_integration_index(&repo.join("integration"), &identity, executable_sha256)?;
         let preflight = repo.join("preflight.json");
         let resolution_manifest = repo.join("resolution.json");
         let qualification_receipt = repo.join("qualification.json");
@@ -786,6 +872,34 @@ mod source_promotion_control_tests {
             report.get("merge_command").is_some_and(Value::is_null),
             "admission rejection must not emit merge authority",
         )
+    }
+
+    fn require_builder_rejection_without_merge_authority(root: &Path) -> Result<(), String> {
+        let packet = read_indexed_packet(
+            root,
+            CONTROL_PACKET_SCHEMA,
+            Some("trusted_builder"),
+            Some("rejected"),
+            BUILDER_REPORT,
+        )?;
+        let report = packet_json(&packet, BUILDER_REPORT, "rejected trusted builder receipt")?;
+        require(
+            report.get("merge_command").is_some_and(Value::is_null),
+            "rejected builder receipt must retain a null merge command",
+        )?;
+        for counter in [
+            "commit_tree_attempts",
+            "local_ref_attempts",
+            "remote_push_attempts",
+            "merge_command_attempts",
+        ] {
+            require_equal(
+                report.get(counter).and_then(Value::as_u64),
+                Some(0),
+                "rejected builder attempt counter",
+            )?;
+        }
+        Ok(())
     }
 
     #[test]
@@ -910,6 +1024,90 @@ mod source_promotion_control_tests {
     }
 
     #[test]
+    fn admission_consumer_requires_null_builder_merge_command() -> Result<(), String> {
+        let fixture = admission_snapshot_fixture("builder-merge-command-consumer")?;
+        let builder = packet_json(
+            &fixture.builder_packet,
+            BUILDER_REPORT,
+            "trusted builder fixture",
+        )?;
+        let validation = packet_json(
+            &fixture.validation_packet,
+            VALIDATION_REPORT,
+            "resolved-tree validation fixture",
+        )?;
+        require(
+            validate_builder_receipt(&builder, &validation, &fixture.options).is_ok(),
+            "builder consumer must accept an explicitly null merge command",
+        )?;
+
+        let mut missing = builder.clone();
+        let removed = missing
+            .as_object_mut()
+            .and_then(|object| object.remove("merge_command"));
+        require(
+            removed.is_some(),
+            "builder fixture must contain merge_command before removal",
+        )?;
+        require(
+            validate_builder_receipt(&missing, &validation, &fixture.options).is_err(),
+            "builder consumer must reject a missing merge command",
+        )?;
+
+        let mut non_null = builder;
+        replace_object_field(
+            &mut non_null,
+            "merge_command",
+            Value::String("git merge forbidden".to_string()),
+            "trusted builder fixture",
+        )?;
+        require(
+            validate_builder_receipt(&non_null, &validation, &fixture.options).is_err(),
+            "builder consumer must reject a non-null merge command",
+        )?;
+        fixture.repo.cleanup()
+    }
+
+    #[test]
+    fn builder_rejections_emit_null_merge_command_and_zero_attempts() -> Result<(), String> {
+        let root = test_temp_dir("builder-rejection-shape")?;
+        let parse_out = root.join("parse-rejection");
+        let parse_args = vec![
+            SOURCE_PROMOTION_TRUSTED_BUILDER_SUBCOMMAND.to_string(),
+            "--out".to_string(),
+            parse_out.to_string_lossy().into_owned(),
+        ];
+        require(
+            write_trusted_builder_receipt(&parse_args).is_err(),
+            "malformed builder invocation must reject",
+        )?;
+        require_builder_rejection_without_merge_authority(&parse_out)?;
+
+        let repo = current_repo()?;
+        let source_parent = current_head(&repo)?;
+        let live_out = root.join("live-validation-rejection");
+        let live_args = vec![
+            SOURCE_PROMOTION_TRUSTED_BUILDER_SUBCOMMAND.to_string(),
+            "--source-parent".to_string(),
+            source_parent.clone(),
+            "--workflow-source-sha".to_string(),
+            source_parent,
+            "--executable".to_string(),
+            "missing-builder-executable".to_string(),
+            "--cargo-target-dir".to_string(),
+            root.join("cargo-target").to_string_lossy().into_owned(),
+            "--out".to_string(),
+            live_out.to_string_lossy().into_owned(),
+        ];
+        require(
+            write_trusted_builder_receipt(&live_args).is_err(),
+            "parsed builder invocation must reject during live validation",
+        )?;
+        require_builder_rejection_without_merge_authority(&live_out)?;
+        root.cleanup()
+    }
+
+    #[test]
     fn integration_index_rejects_well_shaped_unbound_bytes_before_attempts()
     -> Result<(), String> {
         let directory = test_temp_dir("integration-index-bound-digest")?;
@@ -982,6 +1180,7 @@ mod source_promotion_control_tests {
     fn qualification_rejects_zero_step_failed_and_reordered_lanes() -> Result<(), String> {
         let identity = test_identity();
         let admission = valid_admission_receipt(&identity);
+        let integration = integration_evidence_from_admission(&admission)?;
         let packet = IndexedPacket {
             index_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                 .to_string(),
@@ -991,29 +1190,17 @@ mod source_promotion_control_tests {
             "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
         let qualification_sha256 =
             "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
-        let base = serde_json::json!({
-            "schema": QUALIFICATION_SCHEMA,
-            "status": "qualified",
-            "source_parent": identity.source_parent.as_str(),
-            "swarm_parent": identity.swarm_parent.as_str(),
-            "join_tree": identity.join_tree.as_str(),
-            "preflight_sha256": identity.preflight_sha256.as_str(),
-            "resolution_manifest_sha256": identity.resolution_sha256.as_str(),
-            "admission_packet_index_sha256": packet.index_sha256.as_str(),
-            "admission_receipt_sha256": admission_receipt_sha256,
-            "resolved_tree_validation_receipt_sha256":
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            "network_policy_receipt_sha256":
-                "9999999999999999999999999999999999999999999999999999999999999999",
-            "promotion_ref_mutation_attempted": false,
-            "lanes": REQUIRED_QUALIFICATION_LANES.iter().map(|name| serde_json::json!({
-                "name": name,
-                "state": "passed",
-                "evidence_sha256":
-                    "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-            })).collect::<Vec<_>>(),
-            "failure_reasons": [],
-        });
+        let network_policy_receipt_sha256 = integration
+            .receipt_digests
+            .get("network_policy_integration")
+            .ok_or_else(|| "integration fixture is missing network-policy digest".to_string())?;
+        let base = valid_qualification_receipt_for(
+            &identity,
+            &admission,
+            &packet,
+            admission_receipt_sha256,
+            network_policy_receipt_sha256,
+        )?;
         require(
             validate_qualification_receipt(
                 &base,
@@ -1021,6 +1208,7 @@ mod source_promotion_control_tests {
                 &admission,
                 &packet,
                 admission_receipt_sha256,
+                &integration,
                 qualification_sha256,
             )
             .is_ok(),
@@ -1041,6 +1229,7 @@ mod source_promotion_control_tests {
                 &admission,
                 &packet,
                 admission_receipt_sha256,
+                &integration,
                 qualification_sha256,
             )
             .is_err(),
@@ -1068,6 +1257,7 @@ mod source_promotion_control_tests {
                 &admission,
                 &packet,
                 admission_receipt_sha256,
+                &integration,
                 qualification_sha256,
             )
             .is_err(),
@@ -1122,12 +1312,111 @@ mod source_promotion_control_tests {
                 &admission,
                 &packet,
                 admission_receipt_sha256,
+                &integration,
                 qualification_sha256,
             )
             .is_err(),
             "qualification receipt with reordered lanes should reject",
         )?;
         Ok(())
+    }
+
+    #[test]
+    fn construction_rejects_forged_admission_integration_digest_before_commit_tree()
+    -> Result<(), String> {
+        let fixture = admission_snapshot_fixture("construction-forged-integration")?;
+        let identity = fixture.options.identity.clone();
+        let root = fixture.repo.join(".git/forged-construction-evidence");
+        let admission_root = root.join("admission-packet");
+        let mut admission = admission_success_report(&fixture.evidence);
+        let forged_network_digest =
+            "0000000000000000000000000000000000000000000000000000000000000000";
+        let actual_network_digest = fixture
+            .integration
+            .receipt_digests
+            .get("network_policy_integration")
+            .ok_or_else(|| "validated integration evidence is missing network policy".to_string())?;
+        require(
+            actual_network_digest != forged_network_digest,
+            "forged network-policy digest must differ from validated integration evidence",
+        )?;
+        let admission_receipts = admission
+            .get_mut("integration_receipts")
+            .ok_or_else(|| "admission success fixture is missing integration receipts".to_string())?;
+        replace_object_field(
+            admission_receipts,
+            "network_policy_integration",
+            Value::String(forged_network_digest.to_string()),
+            "forged admission integration receipts",
+        )?;
+        let admission_packet = write_test_packet(
+            &admission_root,
+            CONTROL_PACKET_SCHEMA,
+            "resolved_tree_admission",
+            "admitted",
+            ADMISSION_REPORT,
+            &admission,
+        )?;
+        let admission_receipt_sha256 =
+            packet_file_sha256(&admission_packet, ADMISSION_REPORT)?;
+        let qualification = valid_qualification_receipt_for(
+            &identity,
+            &admission,
+            &admission_packet,
+            &admission_receipt_sha256,
+            forged_network_digest,
+        )?;
+        let qualification_path = root.join("tree-qualification.json");
+        let qualification_bytes = write_test_json(
+            &qualification_path,
+            &qualification,
+            "forged-integration qualification receipt",
+        )?;
+        let qualification_sha256 = digest_bytes(&qualification_bytes);
+        let options = ConstructionOptions {
+            repo: fixture.repo.to_path_buf(),
+            admission_packet: admission_root,
+            validation_packet: fixture.options.validation_packet.clone(),
+            integration_index: fixture.options.integration_index.clone(),
+            integration_index_sha256: fixture.options.integration_index_sha256.clone(),
+            preflight: fixture.options.preflight.clone(),
+            resolution_manifest: fixture.options.resolution_manifest.clone(),
+            qualification_receipt: qualification_path,
+            qualification_receipt_sha256: qualification_sha256,
+            source_main_ref: SOURCE_MAIN_REF.to_string(),
+            swarm_ref: fixture.swarm_ref.clone(),
+            candidate_ref: "refs/heads/promote/0.11.0-forged-integration".to_string(),
+            out: root.join("unused-output"),
+        };
+        let refs_before = refs_digest(&fixture.repo)?;
+        let failure = construct_exact_join_inner(&options, None)
+            .err()
+            .ok_or_else(|| "forged admission integration digest unexpectedly constructed".to_string())?;
+        require(
+            failure.0.contains("integration") && failure.0.contains("receipt"),
+            "construction must reject at the actual integration-receipt binding",
+        )?;
+        require(
+            !failure.2,
+            "forged integration receipt must reject before commit-tree",
+        )?;
+        require_equal(
+            refs_digest(&fixture.repo)?,
+            refs_before,
+            "forged integration rejection must preserve refs",
+        )?;
+        let report = construction_rejection_report(
+            failure.1.as_deref(),
+            Some(&options.candidate_ref),
+            &failure.0,
+            failure.2,
+        );
+        require_equal(
+            report.get("commit_tree_attempts").and_then(Value::as_u64),
+            Some(0),
+            "forged integration rejection commit-tree attempts",
+        )?;
+        fixture.repo.cleanup()
     }
 
     #[test]
@@ -2183,6 +2472,98 @@ mod source_promotion_control_tests {
             Some(join.clone()),
             "up-to-date race leaves the coincidental remote join untouched",
         )?;
+        git_test(
+            &repo,
+            &["push", "origin", &format!(":{}", evidence.candidate_ref)],
+        )?;
+        let divergent_repo = repo.to_path_buf();
+        let divergent_remote = options.remote.clone();
+        let divergent_target = evidence.candidate_ref.clone();
+        let divergent_commit = identity.source_parent.clone();
+        let attributed_then_moved = publish_candidate_ref_inner_with_publication_runners(
+            &options,
+            Some(&context),
+            move |runner_options, lease, refspec| {
+                let attributed = run_guarded_candidate_push(runner_options, lease, refspec)?;
+                require_equal(
+                    (attributed.0, attributed.1),
+                    (true, true),
+                    "guarded push must attribute the target update before the injected race",
+                )?;
+                git_test(
+                    &divergent_repo,
+                    &[
+                        "push",
+                        "--force",
+                        divergent_remote.as_str(),
+                        &format!("{divergent_commit}:{divergent_target}"),
+                    ],
+                )?;
+                Ok(attributed)
+            },
+            read_remote_ref,
+            read_optional_local_ref,
+        )
+        .err()
+        .ok_or_else(|| "attributed update followed by remote movement unexpectedly published".to_string())?;
+        require_equal(
+            attributed_then_moved.2.push_process_succeeded,
+            Some(true),
+            "remote-movement race push process outcome",
+        )?;
+        require_equal(
+            attributed_then_moved.2.target_ref_updated,
+            Some(true),
+            "remote-movement race update attribution",
+        )?;
+        require_equal(
+            attributed_then_moved.2.observed_final_ref.as_deref(),
+            Some(identity.source_parent.as_str()),
+            "remote-movement race final remote observation",
+        )?;
+        require_equal(
+            attributed_then_moved.2.local_ref_attempts,
+            2,
+            "remote-movement race local update plus rollback attempts",
+        )?;
+        require_equal(
+            attributed_then_moved.2.local_ref_rollback_succeeded,
+            Some(true),
+            "remote-movement race rollback disposition",
+        )?;
+        require_equal(
+            read_optional_local_ref(&repo, &evidence.candidate_ref)?,
+            None,
+            "remote-movement race restores the absent local candidate ref",
+        )?;
+        require_equal(
+            read_remote_ref(&repo, "origin", &evidence.candidate_ref)?,
+            Some(identity.source_parent.clone()),
+            "remote-movement race leaves the divergent remote value untouched",
+        )?;
+        let attributed_then_moved_report = publication_rejection_report(
+            attributed_then_moved.1.as_deref(),
+            Some(&evidence.candidate_ref),
+            &attributed_then_moved.0,
+            &attributed_then_moved.2,
+        );
+        require_equal(
+            json_string(&attributed_then_moved_report, "status"),
+            Some("rejected"),
+            "remote-movement race publication status",
+        )?;
+        for field in [
+            "push_process_succeeded",
+            "target_ref_updated",
+            "atomic_push",
+            "expected_state_guard_passed",
+        ] {
+            require_equal(
+                json_bool(&attributed_then_moved_report, field),
+                Some(true),
+                "remote-movement race operation fact",
+            )?;
+        }
         git_test(
             &repo,
             &["push", "origin", &format!(":{}", evidence.candidate_ref)],

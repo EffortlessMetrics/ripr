@@ -876,20 +876,11 @@ fn publication_rejection_report(
     } else {
         "rejected"
     };
-    let atomic_push = if published_but_invalidated {
+    let attributed_update = state.push_process_succeeded == Some(true)
+        && state.target_ref_updated == Some(true);
+    let operation_fact = if attributed_update {
         Some(true)
-    } else if observed_join_without_attributed_update
-        || (state.remote_push_attempts > 0 && !state.remote_state_observed)
-    {
-        None
-    } else {
-        Some(false)
-    };
-    let expected_state_guard_passed = if published_but_invalidated {
-        Some(true)
-    } else if observed_join_without_attributed_update
-        || (state.remote_push_attempts > 0 && !state.remote_state_observed)
-    {
+    } else if state.remote_push_attempts > 0 {
         None
     } else {
         Some(false)
@@ -904,10 +895,10 @@ fn publication_rejection_report(
         "candidate_ref": target_ref,
         "observed_final_ref": state.observed_final_ref,
         "remote_state_observed": state.remote_state_observed,
-        "atomic_push": atomic_push,
+        "atomic_push": operation_fact,
         "push_process_succeeded": state.push_process_succeeded,
         "target_ref_updated": state.target_ref_updated,
-        "expected_state_guard_passed": expected_state_guard_passed,
+        "expected_state_guard_passed": operation_fact,
         "source_main_unchanged": state.source_main_unchanged,
         "swarm_parent_unchanged": state.swarm_parent_unchanged,
         "construction_packet_unchanged": state.construction_packet_unchanged,

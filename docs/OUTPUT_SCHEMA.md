@@ -13844,7 +13844,12 @@ Neither status grants merge or release authority.
 
 Publication receipts report `push_process_succeeded` independently from
 `target_ref_updated`; an exit-zero up-to-date/no-op push records true and false
-respectively and cannot produce `published`.
+respectively and cannot produce `published`. `atomic_push` and
+`expected_state_guard_passed` report the guarded operation independently from
+the final status: both are true for an attributed target update, null after an
+attempt without attribution, and false when no push was attempted. A later
+divergent remote observation may therefore produce `rejected` while retaining
+true values for those operation facts.
 
 Every receipt exposes numeric `commit_tree_attempts`, `local_ref_attempts`,
 `remote_push_attempts`, and `merge_command_attempts`. Admission and all

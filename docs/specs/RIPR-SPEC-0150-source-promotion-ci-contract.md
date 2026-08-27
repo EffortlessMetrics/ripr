@@ -206,7 +206,12 @@ Publication status follows observed state rather than process exit alone:
 
 Publication receipts expose `push_process_succeeded` and
 `target_ref_updated` separately: an exit-zero no-op sets the former true and
-the latter false.
+the latter false. `atomic_push` and `expected_state_guard_passed` record the
+guarded push operation independently from the later status classification:
+both are true when that operation is attributed as an actual target update,
+null after an attempted push without such attribution, and false when no push
+was attempted. A later divergent remote observation can therefore make the
+status `rejected` without rewriting an already attributed operation to false.
 
 - `published` means the guarded push's machine-readable status reported an
   actual update of the exact target ref, the remote target was reread at the

@@ -80,6 +80,7 @@ fn write_trusted_builder_receipt(args: &[String]) -> Result<(), String> {
                 "local_ref_attempts": 0,
                 "remote_push_attempts": 0,
                 "merge_command_attempts": 0,
+                "merge_command": null,
                 "ref_mutation_attempted": false,
                 "push_attempted": false,
             });
@@ -125,6 +126,7 @@ fn write_trusted_builder_receipt(args: &[String]) -> Result<(), String> {
         "local_ref_attempts": 0,
         "remote_push_attempts": 0,
         "merge_command_attempts": 0,
+        "merge_command": null,
         "ref_mutation_attempted": false,
         "push_attempted": false,
         "non_claims": [
@@ -533,6 +535,9 @@ fn validate_builder_receipt(
         if builder.get(key).and_then(Value::as_u64) != Some(0) {
             return Err(format!("trusted builder receipt reports forbidden {key}"));
         }
+    }
+    if !builder.get("merge_command").is_some_and(Value::is_null) {
+        return Err("trusted builder receipt must not contain a merge command".to_string());
     }
 
     let expected_lock = file_sha256(&options.repo.join("Cargo.lock"), "Cargo.lock")?;

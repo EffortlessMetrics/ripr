@@ -440,6 +440,12 @@ Publication receipts state what was observed:
 
 The receipt keeps `push_process_succeeded` separate from
 `target_ref_updated`; an exit-zero no-op records true and false respectively.
+The `atomic_push` and `expected_state_guard_passed` fields describe that
+guarded operation, not the later publication status: both are true for an
+attributed target update, null after an attempted push without attribution,
+and false when no push was attempted. If another actor moves the remote before
+the final reread, the receipt can consequently be `rejected` while retaining
+true operation facts for the controller's attributed update.
 
 - `published` means the guarded push's machine-readable status reported an
   actual update of the exact target ref, the remote candidate ref was observed
