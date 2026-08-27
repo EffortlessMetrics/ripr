@@ -71,6 +71,32 @@ mod source_promotion_control_tests {
         }
     }
 
+    fn replace_object_field(
+        value: &mut Value,
+        key: &str,
+        replacement: Value,
+        context: &str,
+    ) -> Result<(), String> {
+        let field = value
+            .as_object_mut()
+            .and_then(|object| object.get_mut(key))
+            .ok_or_else(|| format!("{context} is missing object field {key}"))?;
+        *field = replacement;
+        Ok(())
+    }
+
+    fn required_array_field_mut<'a>(
+        value: &'a mut Value,
+        key: &str,
+        context: &str,
+    ) -> Result<&'a mut Vec<Value>, String> {
+        value
+            .as_object_mut()
+            .and_then(|object| object.get_mut(key))
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| format!("{context} is missing array field {key}"))
+    }
+
     fn test_identity() -> PromotionIdentity {
         PromotionIdentity {
             source_parent: "1111111111111111111111111111111111111111".to_string(),
@@ -332,13 +358,19 @@ mod source_promotion_control_tests {
         )?;
         for state in ["failed", "unavailable", "not_run"] {
             let mut candidate = valid.clone();
-            if let Some(command) = candidate
-                .get_mut("commands")
-                .and_then(Value::as_array_mut)
-                .and_then(|commands| commands.first_mut())
-            {
-                command["state"] = Value::String(state.to_string());
-            }
+            let command = required_array_field_mut(
+                &mut candidate,
+                "commands",
+                "resolved-tree receipt fixture",
+            )?
+                .first_mut()
+                .ok_or_else(|| "resolved-tree commands fixture is empty".to_string())?;
+            replace_object_field(
+                command,
+                "state",
+                Value::String(state.to_string()),
+                "resolved-tree command fixture",
+            )?;
             require(
                 !resolved_tree_receipt_is_admissible(&candidate),
                 format!("resolved-tree receipt with {state} command should reject"),
@@ -346,20 +378,32 @@ mod source_promotion_control_tests {
         }
 
         let mut reordered = valid.clone();
-        if let Some(commands) = reordered.get_mut("commands").and_then(Value::as_array_mut) {
-            commands.swap(0, 1);
-        }
+        let commands = required_array_field_mut(
+            &mut reordered,
+            "commands",
+            "resolved-tree receipt fixture",
+        )?;
+        require(
+            commands.len() >= 2,
+            "resolved-tree commands fixture requires two entries for reorder",
+        )?;
+        commands.swap(0, 1);
         require(
             !resolved_tree_receipt_is_admissible(&reordered),
             "resolved-tree receipt with reordered commands should reject",
         )?;
 
         let mut duplicate = valid;
-        if let Some(commands) = duplicate.get_mut("commands").and_then(Value::as_array_mut)
-            && let Some(first) = commands.first().cloned()
-        {
-            commands.push(first);
-        }
+        let commands = required_array_field_mut(
+            &mut duplicate,
+            "commands",
+            "resolved-tree receipt fixture",
+        )?;
+        let first = commands
+            .first()
+            .cloned()
+            .ok_or_else(|| "resolved-tree commands fixture is empty".to_string())?;
+        commands.push(first);
         require(
             !resolved_tree_receipt_is_admissible(&duplicate),
             "resolved-tree receipt with duplicate commands should reject",
@@ -382,7 +426,12 @@ mod source_promotion_control_tests {
             "constructor_eligible_after_tree_qualification",
         ] {
             let mut candidate = valid.clone();
-            candidate[key] = Value::Bool(false);
+            replace_object_field(
+                &mut candidate,
+                key,
+                Value::Bool(false),
+                "admission receipt fixture",
+            )?;
             require(
                 validate_admission_receipt(&candidate, &identity).is_err(),
                 format!("admission receipt should reject false {key}"),
@@ -390,7 +439,12 @@ mod source_promotion_control_tests {
         }
 
         let mut attempted = valid.clone();
-        attempted["ref_mutation_attempted"] = Value::Bool(true);
+        replace_object_field(
+            &mut attempted,
+            "ref_mutation_attempted",
+            Value::Bool(true),
+            "admission receipt fixture",
+        )?;
         require(
             validate_admission_receipt(&attempted, &identity).is_err(),
             "admission receipt should reject a ref mutation attempt",
@@ -517,7 +571,12 @@ mod source_promotion_control_tests {
         )?;
 
         let mut zero = base.clone();
-        zero["lanes"] = Value::Array(Vec::new());
+        replace_object_field(
+            &mut zero,
+            "lanes",
+            Value::Array(Vec::new()),
+            "qualification receipt fixture",
+        )?;
         require(
             validate_qualification_receipt(
                 &zero,
@@ -532,13 +591,19 @@ mod source_promotion_control_tests {
         )?;
 
         let mut failed = base.clone();
-        if let Some(lane) = failed
-            .get_mut("lanes")
-            .and_then(Value::as_array_mut)
-            .and_then(|lanes| lanes.first_mut())
-        {
-            lane["state"] = Value::String("failed".to_string());
-        }
+        let lane = required_array_field_mut(
+            &mut failed,
+            "lanes",
+            "qualification receipt fixture",
+        )?
+            .first_mut()
+            .ok_or_else(|| "qualification lanes fixture is empty".to_string())?;
+        replace_object_field(
+            lane,
+            "state",
+            Value::String("failed".to_string()),
+            "qualification lane fixture",
+        )?;
         require(
             validate_qualification_receipt(
                 &failed,
@@ -583,9 +648,16 @@ mod source_promotion_control_tests {
         root.cleanup()?;
 
         let mut reordered = base;
-        if let Some(lanes) = reordered.get_mut("lanes").and_then(Value::as_array_mut) {
-            lanes.swap(0, 1);
-        }
+        let lanes = required_array_field_mut(
+            &mut reordered,
+            "lanes",
+            "qualification receipt fixture",
+        )?;
+        require(
+            lanes.len() >= 2,
+            "qualification lanes fixture requires two entries for reorder",
+        )?;
+        lanes.swap(0, 1);
         require(
             validate_qualification_receipt(
                 &reordered,
@@ -749,7 +821,96 @@ mod source_promotion_control_tests {
             .is_err(),
             "remote row naming a different ref should reject",
         )?;
+        require_equal(
+            parse_guarded_push_porcelain(
+                "=\t1111111111111111111111111111111111111111:refs/heads/promote/0.11.0-w7\t[up to date]\n",
+                "refs/heads/promote/0.11.0-w7",
+            )?,
+            false,
+            "up-to-date guarded push is not an attributable update",
+        )?;
+        require_equal(
+            parse_guarded_push_porcelain(
+                "*\t1111111111111111111111111111111111111111:refs/heads/promote/0.11.0-w7\t[new reference]\n",
+                "refs/heads/promote/0.11.0-w7",
+            )?,
+            true,
+            "new-reference guarded push is an attributable update",
+        )?;
+        require(
+            parse_guarded_push_porcelain(
+                "*\t1111111111111111111111111111111111111111:refs/heads/promote/0.11.0-other\t[new reference]\n",
+                "refs/heads/promote/0.11.0-w7",
+            )
+            .is_err(),
+            "guarded push naming another target should reject",
+        )?;
+        require(
+            parse_guarded_push_porcelain(
+                "* malformed status\n",
+                "refs/heads/promote/0.11.0-w7",
+            )
+            .is_err(),
+            "malformed guarded-push porcelain should reject",
+        )?;
+        require(
+            parse_guarded_push_porcelain(
+                "unexpected output\n*\t1111111111111111111111111111111111111111:refs/heads/promote/0.11.0-w7\t[new reference]\n",
+                "refs/heads/promote/0.11.0-w7",
+            )
+            .is_err(),
+            "unknown guarded-push output must not be ignored beside a valid row",
+        )?;
         Ok(())
+    }
+
+    #[test]
+    fn local_candidate_ref_io_rejects_symbolic_and_broken_refs() -> Result<(), String> {
+        let (repo, identity) = init_synthetic_repo("candidate-ref-kind")?;
+        let candidate_ref = "refs/heads/promote/0.11.0-ref-kind";
+        let source_before = current_head(&repo)?;
+        git_test(&repo, &["symbolic-ref", candidate_ref, SOURCE_MAIN_REF])?;
+        require(
+            read_optional_local_ref(&repo, candidate_ref).is_err(),
+            "symbolic candidate ref should reject",
+        )?;
+        update_local_ref(
+            &repo,
+            candidate_ref,
+            Some(identity.swarm_parent.as_str()),
+            Some(source_before.as_str()),
+        )?;
+        require_equal(
+            current_head(&repo)?,
+            source_before,
+            "no-deref candidate update preserves the symbolic referent",
+        )?;
+        require_equal(
+            read_optional_local_ref(&repo, candidate_ref)?,
+            Some(identity.swarm_parent.clone()),
+            "no-deref update replaces only the candidate ref itself",
+        )?;
+        update_local_ref(
+            &repo,
+            candidate_ref,
+            None,
+            Some(identity.swarm_parent.as_str()),
+        )?;
+
+        let broken_ref = "refs/heads/promote/0.11.0-broken";
+        let broken_path = repo.join(".git").join(broken_ref.replace('/', "\\"));
+        let broken_parent = broken_path
+            .parent()
+            .ok_or_else(|| "broken-ref fixture has no parent".to_string())?;
+        fs::create_dir_all(broken_parent)
+            .map_err(|error| format!("failed to create broken-ref fixture parent: {error}"))?;
+        fs::write(&broken_path, "not-an-object-id\n")
+            .map_err(|error| format!("failed to write broken-ref fixture: {error}"))?;
+        require(
+            read_optional_local_ref(&repo, broken_ref).is_err(),
+            "broken direct candidate ref should reject instead of reading as absent",
+        )?;
+        repo.cleanup()
     }
 
     #[test]
@@ -1086,6 +1247,70 @@ mod source_promotion_control_tests {
             None,
             "failed push with observed join restores the absent local ref",
         )?;
+        let raced_repo = repo.to_path_buf();
+        let raced_remote = options.remote.clone();
+        let raced_join = join.clone();
+        let raced_target = evidence.candidate_ref.clone();
+        let no_op_race = publish_candidate_ref_inner_with_publication_runners(
+            &options,
+            Some(&context),
+            move |runner_options, lease, refspec| {
+                git_test(
+                    &raced_repo,
+                    &[
+                        "push",
+                        raced_remote.as_str(),
+                        &format!("{raced_join}:{raced_target}"),
+                    ],
+                )?;
+                run_guarded_candidate_push(runner_options, lease, refspec)
+            },
+            read_remote_ref,
+            read_optional_local_ref,
+        )
+        .err()
+        .ok_or_else(|| "up-to-date race unexpectedly received publication attribution".to_string())?;
+        require(
+            no_op_race
+                .0
+                .contains("guarded push process did not report success"),
+            "up-to-date race must remain explicitly unattributed",
+        )?;
+        require_equal(
+            no_op_race.2.push_process_succeeded,
+            Some(false),
+            "up-to-date race guarded-push attribution",
+        )?;
+        require_equal(
+            no_op_race.2.local_ref_rollback_succeeded,
+            Some(true),
+            "up-to-date race local rollback disposition",
+        )?;
+        let no_op_report = publication_rejection_report(
+            no_op_race.1.as_deref(),
+            Some(&evidence.candidate_ref),
+            &no_op_race.0,
+            &no_op_race.2,
+        );
+        require_equal(
+            json_string(&no_op_report, "status"),
+            Some("publication_state_unknown"),
+            "up-to-date race publication status",
+        )?;
+        require_equal(
+            read_optional_local_ref(&repo, &evidence.candidate_ref)?,
+            None,
+            "up-to-date race restores the absent local candidate ref",
+        )?;
+        require_equal(
+            read_remote_ref(&repo, "origin", &evidence.candidate_ref)?,
+            Some(join.clone()),
+            "up-to-date race leaves the coincidental remote join untouched",
+        )?;
+        git_test(
+            &repo,
+            &["push", "origin", &format!(":{}", evidence.candidate_ref)],
+        )?;
         let unavailable_local = publish_candidate_ref_inner_with_publication_runners(
             &options,
             Some(&context),
@@ -1138,7 +1363,7 @@ mod source_promotion_control_tests {
                 "docs/OUTPUT_SCHEMA.md",
                 "`published_but_invalidated` when",
                 "Neither status",
-                "`published_but_invalidated` when the exact remote candidate ref moved but a bound input invalidated afterward or the post-push local candidate-ref observation was unavailable, and `publication_state_unknown` when a push was attempted but its final remote state could not be observed.",
+                "`published_but_invalidated` when the exact remote candidate ref moved but a bound input invalidated afterward or the post-push local candidate-ref observation was unavailable, and `publication_state_unknown` when a push was attempted but its final remote state could not be observed or the exact join was observed without a machine-readable actual target-update attribution. An exit-zero up-to-date/no-op push is not publication attribution.",
             ),
             (
                 "policy/output_contracts.txt",
@@ -1417,18 +1642,27 @@ mod source_promotion_control_tests {
         )?;
 
         let mut reversed = valid.clone();
-        reversed["ordered_parents"] = serde_json::json!([
-            identity.swarm_parent.as_str(),
-            identity.source_parent.as_str()
-        ]);
+        replace_object_field(
+            &mut reversed,
+            "ordered_parents",
+            serde_json::json!([
+                identity.swarm_parent.as_str(),
+                identity.source_parent.as_str()
+            ]),
+            "construction receipt fixture",
+        )?;
         require(
             validate_construction_receipt(&reversed, &evidence).is_err(),
             "construction receipt with reversed parents should reject",
         )?;
 
         let mut premature_merge = valid;
-        premature_merge["merge_command"] =
-            Value::String("git merge --no-ff refs/heads/promote/0.11.0-test".to_string());
+        replace_object_field(
+            &mut premature_merge,
+            "merge_command",
+            Value::String("git merge --no-ff refs/heads/promote/0.11.0-test".to_string()),
+            "construction receipt fixture",
+        )?;
         require(
             validate_construction_receipt(&premature_merge, &evidence).is_err(),
             "construction receipt with a premature merge command should reject",

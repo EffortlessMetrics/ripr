@@ -275,6 +275,7 @@ fn run_guarded_candidate_push(
         .env("GIT_NO_REPLACE_OBJECTS", "1")
         .args([
             "push",
+            "--porcelain",
             "--atomic",
             "--no-verify",
             lease,
@@ -282,13 +283,64 @@ fn run_guarded_candidate_push(
             refspec,
         ])
         .output()
-        .map(|output| {
-            (
-                output.status.success(),
-                String::from_utf8_lossy(&output.stderr).trim().to_string(),
-            )
-        })
         .map_err(|error| format!("failed to start guarded candidate-ref push: {error}"))
+        .and_then(|output| {
+            let stdout = String::from_utf8(output.stdout)
+                .map_err(|error| format!("guarded push output was not UTF-8: {error}"))?;
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let detail = [stdout.trim(), stderr.as_str()]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(" | ");
+            if !output.status.success() {
+                return Ok((false, detail));
+            }
+            parse_guarded_push_porcelain(&stdout, &options.target_ref)
+                .map(|target_updated| (target_updated, detail))
+        })
+}
+
+fn parse_guarded_push_porcelain(output: &str, target_ref: &str) -> Result<bool, String> {
+    let mut rows = Vec::new();
+    for line in output.lines() {
+        if line.is_empty() || line.starts_with("To ") || line == "Done" {
+            continue;
+        }
+        let mut columns = line.splitn(3, '\t');
+        let flag = columns
+            .next()
+            .ok_or_else(|| "guarded push porcelain status flag is missing".to_string())?;
+        let refs = columns
+            .next()
+            .ok_or_else(|| "guarded push porcelain ref-status row is malformed".to_string())?;
+        let summary = columns
+            .next()
+            .ok_or_else(|| "guarded push porcelain summary is missing".to_string())?;
+        rows.push((flag, refs, summary));
+    }
+    if rows.len() != 1 {
+        return Err(format!(
+            "guarded push porcelain returned {} ref-status rows for one target",
+            rows.len()
+        ));
+    }
+    let (flag, refs, _) = rows
+        .first()
+        .ok_or_else(|| "guarded push porcelain status row disappeared".to_string())?;
+    let (_, destination) = refs
+        .rsplit_once(':')
+        .ok_or_else(|| "guarded push porcelain ref-status row is malformed".to_string())?;
+    if destination != target_ref {
+        return Err("guarded push porcelain named a different target ref".to_string());
+    }
+    match *flag {
+        " " | "+" | "*" => Ok(true),
+        "=" => Ok(false),
+        other => Err(format!(
+            "guarded push porcelain returned non-publishing status flag {other:?}"
+        )),
+    }
 }
 
 fn publish_candidate_ref_inner_with_publication_runners<P, F, L>(

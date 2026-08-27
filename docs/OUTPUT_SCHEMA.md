@@ -13830,8 +13830,10 @@ Controller status values are `built`, `admitted`, `constructed`, `published`,
 `published_but_invalidated` when the exact remote candidate ref moved but a
 bound input invalidated afterward or the post-push local candidate-ref
 observation was unavailable, and `publication_state_unknown` when a push was
-attempted but its final remote state could not be observed. Neither status
-grants merge or release authority.
+attempted but its final remote state could not be observed or the exact join
+was observed without a machine-readable actual target-update attribution. An
+exit-zero up-to-date/no-op push is not publication attribution.
+Neither status grants merge or release authority.
 
 Every receipt exposes numeric `commit_tree_attempts`, `local_ref_attempts`,
 `remote_push_attempts`, and `merge_command_attempts`. Admission and all
@@ -13865,10 +13867,12 @@ Construction and publication accept only `refs/heads/main` as source-main
 authority. Candidate-ref publication binds both source remote URLs to the exact
 source repository, rereads local and remote source/W7 refs and the full indexed
 construction packet before and after mutation, uses an exact expected-state
-lease, requires a successful push process plus every post-push authority bit
-for `published`, and reconciles the remote after every push attempt. A rejected
+lease, requires machine-readable proof that the push actually updated the
+exact target plus every post-push authority bit for `published`, and reconciles
+the remote after every push attempt. A rejected
 remote push, including one whose final remote observation already equals the
 constructed join, attempts to restore only the local candidate ref behind an
 exact-state guard; the controller never rolls a remote ref back. An observed
-join without a successful guarded-push process remains unattributed and
-produces `publication_state_unknown`.
+join without an actual target-update status remains unattributed and produces
+`publication_state_unknown`, including after an exit-zero up-to-date/no-op
+push.

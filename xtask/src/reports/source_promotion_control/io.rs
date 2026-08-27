@@ -688,6 +688,25 @@ fn read_remote_ref(repo: &Path, remote: &str, target_ref: &str) -> Result<Option
 
 fn read_optional_local_ref(repo: &Path, target_ref: &str) -> Result<Option<String>, String> {
     validate_full_ref(target_ref, "local candidate ref")?;
+    let symbolic = Command::new("git")
+        .current_dir(repo)
+        .env("GIT_NO_REPLACE_OBJECTS", "1")
+        .args(["symbolic-ref", "--quiet", target_ref])
+        .output()
+        .map_err(|error| format!("failed to inspect local candidate ref kind: {error}"))?;
+    if symbolic.status.success() {
+        return Err("local candidate ref must not be symbolic".to_string());
+    }
+    if symbolic.status.code() != Some(1)
+        || !symbolic.stdout.is_empty()
+        || !symbolic.stderr.is_empty()
+    {
+        return Err(format!(
+            "failed to inspect local candidate ref kind: {}",
+            String::from_utf8_lossy(&symbolic.stderr).trim()
+        ));
+    }
+
     let output = Command::new("git")
         .current_dir(repo)
         .env("GIT_NO_REPLACE_OBJECTS", "1")
@@ -707,7 +726,10 @@ fn read_optional_local_ref(repo: &Path, target_ref: &str) -> Result<Option<Strin
         validate_exact_hex("local candidate ref object", &value, 40)?;
         return Ok(Some(value));
     }
-    if output.status.code() == Some(1) && output.stdout.is_empty() {
+    if output.status.code() == Some(1)
+        && output.stdout.is_empty()
+        && output.stderr.is_empty()
+    {
         return Ok(None);
     }
     Err(format!(
@@ -742,9 +764,9 @@ fn update_local_ref(
     let args = match new_value {
         Some(value) => {
             validate_exact_hex("new local candidate ref", value, 40)?;
-            vec!["update-ref", target_ref, value, old]
+            vec!["update-ref", "--no-deref", target_ref, value, old]
         }
-        None => vec!["update-ref", "-d", target_ref, old],
+        None => vec!["update-ref", "--no-deref", "-d", target_ref, old],
     };
     git(repo, &args).map(|_| ())
 }

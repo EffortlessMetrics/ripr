@@ -436,16 +436,16 @@ unattributed, and the receipt records `publication_state_unknown`.
 
 Publication receipts state what was observed:
 
-- `published` means the guarded push process succeeded, the remote candidate
-  ref was observed at the exact join, and every post-push authority reread
-  remained valid;
+- `published` means the guarded push's machine-readable status reported an
+  actual update of the exact target ref, the remote candidate ref was observed
+  at the exact join, and every post-push authority reread remained valid;
 - `published_but_invalidated` means the exact join reached the remote candidate
   ref but a bound source, W7, packet, object, or URL identity invalidated during
   publication, or the post-push local candidate-ref observation was
   unavailable;
 - `publication_state_unknown` means the final remote state could not be read,
-  or it equals the join without a successful guarded-push process attribution;
-  and
+  or it equals the join without an actual target-update attribution; an
+  exit-zero up-to-date/no-op push is not publication attribution; and
 - `rejected` means the controller observed no authoritative publication.
 
 Only `published` is a successful candidate-ref transport result, and even it is

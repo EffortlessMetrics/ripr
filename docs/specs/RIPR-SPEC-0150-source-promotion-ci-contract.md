@@ -201,15 +201,16 @@ whether the rollback succeeded.
 
 Publication status follows observed state rather than process exit alone:
 
-- `published` means the guarded push process succeeded, the remote target was
-  reread at the exact constructed join, and all post-push authority rereads
-  remained valid;
+- `published` means the guarded push's machine-readable status reported an
+  actual update of the exact target ref, the remote target was reread at the
+  exact constructed join, and all post-push authority rereads remained valid;
 - `published_but_invalidated` means the remote target was observed at the exact
   join but a bound source, W7, packet, object, or URL authority invalidated
   during publication, or the post-push local candidate-ref observation was
   unavailable; and
 - `publication_state_unknown` means the final remote state could not be
-  observed, or it equals the join without successful guarded-push attribution.
+  observed, or it equals the join without an actual target-update attribution;
+  an exit-zero up-to-date/no-op push is not publication attribution.
 
 `rejected`, `published_but_invalidated`, and `publication_state_unknown` grant
 no integration or release authority. No #1609 controller packet emits a merge
