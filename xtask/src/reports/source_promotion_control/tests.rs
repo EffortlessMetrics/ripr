@@ -2588,6 +2588,21 @@ mod source_promotion_control_tests {
             None,
             "unavailable post-push local state must not masquerade as an observation",
         )?;
+        require_equal(
+            unavailable_local.2.local_ref_attempts,
+            1,
+            "attributed invalidated publication retains the single local update attempt",
+        )?;
+        require_equal(
+            unavailable_local.2.local_ref_rollback_succeeded,
+            None,
+            "attributed invalidated publication does not claim local rollback",
+        )?;
+        require_equal(
+            read_optional_local_ref(&repo, &evidence.candidate_ref)?,
+            Some(join.clone()),
+            "attributed invalidated publication retains the local candidate for reconciliation",
+        )?;
         let unavailable_local_report = publication_rejection_report(
             unavailable_local.1.as_deref(),
             Some(&evidence.candidate_ref),
@@ -2598,6 +2613,23 @@ mod source_promotion_control_tests {
             json_string(&unavailable_local_report, "status"),
             Some("published_but_invalidated"),
             "unavailable post-push local state publication status",
+        )?;
+        require_equal(
+            unavailable_local_report
+                .get("local_ref_attempts")
+                .and_then(Value::as_u64),
+            Some(1),
+            "unavailable post-push local state receipt attempt count",
+        )?;
+        require_equal(
+            json_bool(&unavailable_local_report, "local_ref_rollback_succeeded"),
+            None,
+            "unavailable post-push local state receipt rollback disposition",
+        )?;
+        require_equal(
+            json_bool(&unavailable_local_report, "ref_mutation_attempted"),
+            Some(true),
+            "unavailable post-push local state receipt mutation fact",
         )?;
         require_equal(
             read_remote_ref(&repo, "origin", &evidence.candidate_ref)?,
