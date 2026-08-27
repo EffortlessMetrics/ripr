@@ -602,6 +602,26 @@ mod source_promotion_control_tests {
     }
 
     #[test]
+    fn qualification_lane_documentation_matches_production_order() -> Result<(), String> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
+        let schema = fs::read_to_string(root.join("docs/OUTPUT_SCHEMA.md"))
+            .map_err(|error| format!("read docs/OUTPUT_SCHEMA.md: {error}"))?;
+        let mut remaining = schema.as_str();
+
+        for lane in REQUIRED_QUALIFICATION_LANES {
+            let position = remaining.find(lane).ok_or_else(|| {
+                format!("output schema does not document qualification lane {lane}")
+            })?;
+            remaining = &remaining[position + lane.len()..];
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn control_packet_rejects_partial_digest_mismatch_and_unindexed_files() -> Result<(), String> {
         let temp = test_temp_dir("packet")?;
         let root = temp.join("packet");

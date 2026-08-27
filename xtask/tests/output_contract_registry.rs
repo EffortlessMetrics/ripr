@@ -63,14 +63,6 @@ fn source_promotion_output_contract_vocabulary_is_registered_and_checked() -> Re
         "local_ref_attempts",
         "remote_push_attempts",
         "merge_command_attempts",
-        "editor_package_linux",
-        "editor_package_windows",
-        "rust_product",
-        "source_governance",
-        "source_survivors",
-        "trusted_product_journeys",
-        "untrusted_workspace_contract",
-        "w7_product",
     ] {
         if !schema.contains(value) {
             return Err(format!(
