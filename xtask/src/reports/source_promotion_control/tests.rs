@@ -1121,22 +1121,48 @@ mod source_promotion_control_tests {
             .parent()
             .map(Path::to_path_buf)
             .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
-        let status_contract_phrase =
-            "post-push local candidate-ref observation was unavailable";
-        for contract_path in [
-            "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
-            "docs/SOURCE_PROMOTION.md",
-            "docs/OUTPUT_SCHEMA.md",
-            "policy/output_contracts.txt",
+        for (contract_path, start, end, expected_definition) in [
+            (
+                "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+                "- `published_but_invalidated` means",
+                "- `publication_state_unknown`",
+                "- `published_but_invalidated` means the remote target was observed at the exact join but a bound source, W7, packet, object, or URL authority invalidated during publication, or the post-push local candidate-ref observation was unavailable; and",
+            ),
+            (
+                "docs/SOURCE_PROMOTION.md",
+                "- `published_but_invalidated` means",
+                "- `publication_state_unknown`",
+                "- `published_but_invalidated` means the exact join reached the remote candidate ref but a bound source, W7, packet, object, or URL identity invalidated during publication, or the post-push local candidate-ref observation was unavailable;",
+            ),
+            (
+                "docs/OUTPUT_SCHEMA.md",
+                "`published_but_invalidated` when",
+                "Neither status",
+                "`published_but_invalidated` when the exact remote candidate ref moved but a bound input invalidated afterward or the post-push local candidate-ref observation was unavailable, and `publication_state_unknown` when a push was attempted but its final remote state could not be observed.",
+            ),
+            (
+                "policy/output_contracts.txt",
+                "source_promotion_control_status|published_but_invalidated|",
+                "\n",
+                "source_promotion_control_status|published_but_invalidated|The remote candidate ref reached the constructed join but a bound input invalidated during publication or the post-push local candidate-ref observation was unavailable.",
+            ),
         ] {
             let contract = fs::read_to_string(root.join(contract_path))
-                .map_err(|error| format!("read {contract_path}: {error}"))?;
-            let normalized_contract = contract.split_whitespace().collect::<Vec<_>>().join(" ");
-            require(
-                normalized_contract.contains(status_contract_phrase),
-                format!(
-                    "{contract_path} must define published_but_invalidated for an unavailable post-push local observation"
-                ),
+                .map_err(|error| format!("read {contract_path}: {error}"))?
+                .replace("\r\n", "\n");
+            let definition = contract
+                .split_once(start)
+                .map(|(_, remainder)| remainder)
+                .and_then(|remainder| remainder.split_once(end).map(|(body, _)| body))
+                .ok_or_else(|| format!("{contract_path} status definition is missing"))?;
+            let normalized_definition = format!("{start}{definition}")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            require_equal(
+                normalized_definition.as_str(),
+                expected_definition,
+                &format!("{contract_path} published_but_invalidated definition"),
             )?;
         }
         require_equal(
