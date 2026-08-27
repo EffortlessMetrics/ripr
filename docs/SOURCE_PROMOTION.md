@@ -441,7 +441,8 @@ Publication receipts state what was observed:
   remained valid;
 - `published_but_invalidated` means the exact join reached the remote candidate
   ref but a bound source, W7, packet, object, or URL identity invalidated during
-  publication;
+  publication, or the post-push local candidate-ref observation was
+  unavailable;
 - `publication_state_unknown` means the final remote state could not be read,
   or it equals the join without a successful guarded-push process attribution;
   and

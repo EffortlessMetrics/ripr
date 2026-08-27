@@ -110,7 +110,7 @@ source_promotion_control_status|admitted|Exact resolved-tree evidence is eligibl
 source_promotion_control_status|built|Trusted builder evidence binds the source-built controller executable.
 source_promotion_control_status|constructed|One exact unreferenced two-parent join object was constructed.
 source_promotion_control_status|published|The guarded push process succeeded, the exact candidate ref was observed at the constructed join, and all bound post-push authorities remained current.
-source_promotion_control_status|published_but_invalidated|The remote candidate ref reached the constructed join but a bound input invalidated during publication.
+source_promotion_control_status|published_but_invalidated|The remote candidate ref reached the constructed join but a bound input invalidated during publication or the post-push local candidate-ref observation was unavailable.
 source_promotion_control_status|publication_state_unknown|Final remote state was unavailable or equaled the join without successful guarded-push attribution.
 source_promotion_control_status|reserved_before_side_effects|The exclusive output journal exists, but a missing packet index requires Git and remote reconciliation before retry.
 source_promotion_control_status|rejected|The controller denied authority; counters and observations describe any operation already attempted.

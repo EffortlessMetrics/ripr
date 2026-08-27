@@ -1117,6 +1117,28 @@ mod source_promotion_control_tests {
             Some("published_but_invalidated"),
             "unavailable post-push local state publication status",
         )?;
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
+        let status_contract_phrase =
+            "post-push local candidate-ref observation was unavailable";
+        for contract_path in [
+            "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+            "docs/SOURCE_PROMOTION.md",
+            "docs/OUTPUT_SCHEMA.md",
+            "policy/output_contracts.txt",
+        ] {
+            let contract = fs::read_to_string(root.join(contract_path))
+                .map_err(|error| format!("read {contract_path}: {error}"))?;
+            let normalized_contract = contract.split_whitespace().collect::<Vec<_>>().join(" ");
+            require(
+                normalized_contract.contains(status_contract_phrase),
+                format!(
+                    "{contract_path} must define published_but_invalidated for an unavailable post-push local observation"
+                ),
+            )?;
+        }
         require_equal(
             read_remote_ref(&repo, "origin", &evidence.candidate_ref)?,
             Some(join.clone()),

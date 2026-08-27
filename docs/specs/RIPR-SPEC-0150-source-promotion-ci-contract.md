@@ -206,7 +206,8 @@ Publication status follows observed state rather than process exit alone:
   remained valid;
 - `published_but_invalidated` means the remote target was observed at the exact
   join but a bound source, W7, packet, object, or URL authority invalidated
-  during publication; and
+  during publication, or the post-push local candidate-ref observation was
+  unavailable; and
 - `publication_state_unknown` means the final remote state could not be
   observed, or it equals the join without successful guarded-push attribution.
 
