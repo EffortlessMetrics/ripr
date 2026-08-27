@@ -154,7 +154,7 @@ The #1609 local controller establishes exact content consistency, not producer
 provenance or reviewer acceptance. Producer identity fields and digests are not
 signatures. #1610 must transport those exact bytes from fixed producer
 repository, immutable commit/ref, regular-file path, and digest authority;
-#1478 owns reviewer acceptance of integration evidence and #1507 owns the
+Issue #1478 owns reviewer acceptance of integration evidence and #1507 owns the
 qualification producer. No locally accepted receipt grants merge, publication,
 or release authority. Construction compares the qualification receipt against
 the caller-bound digest before parsing and again on its final input reread; a

@@ -608,15 +608,32 @@ mod source_promotion_control_tests {
             .map(Path::to_path_buf)
             .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
         let schema = fs::read_to_string(root.join("docs/OUTPUT_SCHEMA.md"))
-            .map_err(|error| format!("read docs/OUTPUT_SCHEMA.md: {error}"))?;
-        let mut remaining = schema.as_str();
-
-        for lane in REQUIRED_QUALIFICATION_LANES {
-            let position = remaining.find(lane).ok_or_else(|| {
-                format!("output schema does not document qualification lane {lane}")
-            })?;
-            remaining = &remaining[position + lane.len()..];
-        }
+            .map_err(|error| format!("read docs/OUTPUT_SCHEMA.md: {error}"))?
+            .replace("\r\n", "\n");
+        let marker = "Qualification requires exactly these ordered lane names:\n\n";
+        let lane_block = schema
+            .split_once(marker)
+            .map(|(_, remainder)| remainder)
+            .and_then(|remainder| remainder.split_once("\n\n").map(|(block, _)| block))
+            .ok_or_else(|| "output schema qualification-lane block is missing".to_string())?;
+        let expected_block = REQUIRED_QUALIFICATION_LANES
+            .iter()
+            .enumerate()
+            .map(|(index, lane)| {
+                let punctuation = if index + 1 == REQUIRED_QUALIFICATION_LANES.len() {
+                    '.'
+                } else {
+                    ';'
+                };
+                format!("- `{lane}`{punctuation}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        require_equal(
+            lane_block,
+            expected_block.as_str(),
+            "output schema qualification-lane block",
+        )?;
 
         Ok(())
     }
