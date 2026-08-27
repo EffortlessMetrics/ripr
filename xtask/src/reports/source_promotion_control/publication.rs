@@ -238,19 +238,65 @@ fn publish_candidate_ref_inner(
     options: &PublicationOptions,
     expected_reconciliation_context: Option<&Value>,
 ) -> Result<(ConstructionEvidence, PublicationState), PublicationFailure> {
-    publish_candidate_ref_inner_with_final_remote_reader(
+    publish_candidate_ref_inner_with_publication_runners(
         options,
         expected_reconciliation_context,
+        run_guarded_candidate_push,
         read_remote_ref,
     )
 }
 
+#[cfg(test)]
 fn publish_candidate_ref_inner_with_final_remote_reader<F>(
     options: &PublicationOptions,
     expected_reconciliation_context: Option<&Value>,
     final_remote_reader: F,
 ) -> Result<(ConstructionEvidence, PublicationState), PublicationFailure>
 where
+    F: Fn(&Path, &str, &str) -> Result<Option<String>, String>,
+{
+    publish_candidate_ref_inner_with_publication_runners(
+        options,
+        expected_reconciliation_context,
+        run_guarded_candidate_push,
+        final_remote_reader,
+    )
+}
+
+fn run_guarded_candidate_push(
+    options: &PublicationOptions,
+    lease: &str,
+    refspec: &str,
+) -> Result<(bool, String), String> {
+    Command::new("git")
+        .current_dir(&options.repo)
+        .env("GIT_NO_REPLACE_OBJECTS", "1")
+        .args([
+            "push",
+            "--atomic",
+            "--no-verify",
+            lease,
+            options.source_remote_url.as_str(),
+            refspec,
+        ])
+        .output()
+        .map(|output| {
+            (
+                output.status.success(),
+                String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            )
+        })
+        .map_err(|error| format!("failed to start guarded candidate-ref push: {error}"))
+}
+
+fn publish_candidate_ref_inner_with_publication_runners<P, F>(
+    options: &PublicationOptions,
+    expected_reconciliation_context: Option<&Value>,
+    push_runner: P,
+    final_remote_reader: F,
+) -> Result<(ConstructionEvidence, PublicationState), PublicationFailure>
+where
+    P: Fn(&PublicationOptions, &str, &str) -> Result<(bool, String), String>,
     F: Fn(&Path, &str, &str) -> Result<Option<String>, String>,
 {
     let mut state = Box::<PublicationState>::default();
@@ -359,20 +405,8 @@ where
 
     let refspec = format!("{}:{}", options.target_ref, options.target_ref);
     state.remote_push_attempts = 1;
-    let push = Command::new("git")
-        .current_dir(&options.repo)
-        .env("GIT_NO_REPLACE_OBJECTS", "1")
-        .args([
-            "push",
-            "--atomic",
-            "--no-verify",
-            lease.as_str(),
-            options.source_remote_url.as_str(),
-            refspec.as_str(),
-        ])
-        .output()
-        .map_err(|error| format!("failed to start guarded candidate-ref push: {error}"));
-    state.push_process_succeeded = push.as_ref().ok().map(|output| output.status.success());
+    let push = push_runner(options, lease.as_str(), refspec.as_str());
+    state.push_process_succeeded = push.as_ref().ok().map(|output| output.0);
 
     let final_remote = final_remote_reader(
         &options.repo,
@@ -429,6 +463,7 @@ where
 
     if state.observed_final_ref.as_deref() == Some(evidence.join_commit.as_str()) {
         if state.push_process_succeeded != Some(true) {
+            rollback_local_candidate(options, &evidence, &expected, &mut state);
             return Err((
                 "remote candidate ref equals the join, but the guarded push process did not report success"
                     .to_string(),
@@ -460,7 +495,7 @@ where
     let push_reason = match push {
         Ok(output) => format!(
             "guarded candidate-ref push did not publish the exact join: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
+            output.1
         ),
         Err(reason) => reason,
     };

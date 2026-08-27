@@ -1022,6 +1022,35 @@ mod source_promotion_control_tests {
             &repo,
             &["push", "origin", &format!(":{}", evidence.candidate_ref)],
         )?;
+        let failed_push_observed_join = publish_candidate_ref_inner_with_publication_runners(
+            &options,
+            Some(&context),
+            |_options, _lease, _refspec| Ok((false, "injected push failure".to_string())),
+            |_repo, _remote, _reference| Ok(Some(join.clone())),
+        )
+        .err()
+        .ok_or_else(|| "failed push with observed join unexpectedly published".to_string())?;
+        require(
+            failed_push_observed_join
+                .0
+                .contains("guarded push process did not report success"),
+            "failed push with observed join should remain explicitly unattributed",
+        )?;
+        require_equal(
+            failed_push_observed_join.2.local_ref_attempts,
+            2,
+            "failed push with observed join local update plus rollback attempts",
+        )?;
+        require_equal(
+            failed_push_observed_join.2.local_ref_rollback_succeeded,
+            Some(true),
+            "failed push with observed join local rollback disposition",
+        )?;
+        require_equal(
+            read_optional_local_ref(&repo, &evidence.candidate_ref)?,
+            None,
+            "failed push with observed join restores the absent local ref",
+        )?;
         let (published, publication_state) =
             publish_candidate_ref_inner(&options, Some(&context)).map_err(|failure| failure.0)?;
         require_equal(
