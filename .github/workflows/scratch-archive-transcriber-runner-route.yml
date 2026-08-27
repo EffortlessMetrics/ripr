@@ -1,4 +1,4 @@
-name: Scratch archive-transcriber runner route
+name: Scratch archive-transcriber proof tool ferry
 
 on:
   push:
@@ -10,63 +10,40 @@ permissions:
   contents: read
 
 jobs:
-  route:
+  tools:
     runs-on: ubuntu-latest
     steps:
-      - name: Query aggregate organization runner capacity
-        id: route
-        env:
-          GH_TOKEN: ${{ secrets.EM_RUNNER_READ_TOKEN || github.token }}
+      - name: Download and verify exact public proof tools
         shell: bash
         run: |
           set -euo pipefail
-          gh api --paginate 'orgs/EffortlessMetrics/actions/runners?per_page=100' > runners-pages.json
-          jq -s '
-            [.[].runners[]?] as $runners
-            | def has($runner; $label):
-                [$runner.labels[].name | ascii_downcase] | index($label) != null;
-              def count($predicate): [$runners[] | select($predicate)] | length;
-              def row($label): {
-                label: $label,
-                total: count(has(.; $label)),
-                online: count(.status == "online" and has(.; $label)),
-                idle: count(.status == "online" and (.busy | not) and has(.; $label))
-              };
-              {
-                schema: "em-ci-runner-capacity.v1",
-                observed_at: (now | todateiso8601),
-                total: ($runners | length),
-                online: count(.status == "online"),
-                idle: count(.status == "online" and (.busy | not)),
-                capabilities: [
-                  row("ci-control"),
-                  row("python-light"),
-                  row("python-standard"),
-                  row("python-heavy"),
-                  row("python-large"),
-                  row("cx43"),
-                  row("cpx42"),
-                  row("cx53"),
-                  row("linux"),
-                  row("macos"),
-                  row("windows")
-                ]
-              }
-          ' runners-pages.json > runner-summary.json
-          cat runner-summary.json
-          {
-            echo '## Aggregate EM CI runner capacity'
-            echo
-            echo '| capability | total | online | idle |'
-            echo '|---|---:|---:|---:|'
-            jq -r '.capabilities[] | "| `\(.label)` | \(.total) | \(.online) | \(.idle) |"' runner-summary.json
-            echo
-            jq -r '"- fleet: `\(.total)` total / `\(.online)` online / `\(.idle)` idle"' runner-summary.json
-          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p proof-tools/downloads proof-tools/bin
+          cd proof-tools/downloads
+          curl --proto '=https' --tlsv1.2 -LsSfO \
+            https://releases.astral.sh/github/ruff/releases/download/0.16.4/ruff-x86_64-unknown-linux-gnu.tar.gz
+          curl --proto '=https' --tlsv1.2 -LsSfO \
+            https://releases.astral.sh/github/ruff/releases/download/0.16.4/ruff-x86_64-unknown-linux-gnu.tar.gz.sha256
+          curl --proto '=https' --tlsv1.2 -LsSfO \
+            https://releases.astral.sh/github/ty/releases/download/0.0.74/ty-x86_64-unknown-linux-gnu.tar.gz
+          curl --proto '=https' --tlsv1.2 -LsSfO \
+            https://releases.astral.sh/github/ty/releases/download/0.0.74/ty-x86_64-unknown-linux-gnu.tar.gz.sha256
+          sha256sum --check ruff-x86_64-unknown-linux-gnu.tar.gz.sha256
+          sha256sum --check ty-x86_64-unknown-linux-gnu.tar.gz.sha256
+          tar -xzf ruff-x86_64-unknown-linux-gnu.tar.gz
+          tar -xzf ty-x86_64-unknown-linux-gnu.tar.gz
+          install -m 0755 ruff-x86_64-unknown-linux-gnu/ruff ../bin/ruff
+          install -m 0755 ty-x86_64-unknown-linux-gnu/ty ../bin/ty
+          ../bin/ruff --version
+          ../bin/ty --version
+          cd ../..
+          sha256sum proof-tools/bin/ruff proof-tools/bin/ty > proof-tools/binaries.sha256
 
-      - name: Upload aggregate route receipt
+      - name: Upload exact proof tools
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: archive-transcriber-runner-route
-          path: runner-summary.json
+          name: archive-transcriber-proof-tools
+          path: |
+            proof-tools/bin/
+            proof-tools/binaries.sha256
+            proof-tools/downloads/*.sha256
           retention-days: 1
