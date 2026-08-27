@@ -351,6 +351,443 @@ mod source_promotion_control_tests {
         ))
     }
 
+    struct ConstructionSnapshotFixture {
+        repo: TestDir,
+        identity: PromotionIdentity,
+        options: ConstructionOptions,
+        admission_packet: IndexedPacket,
+        validation_packet: IndexedPacket,
+        integration: IntegrationEvidence,
+        qualification_sha256: String,
+    }
+
+    struct AdmissionSnapshotFixture {
+        repo: TestDir,
+        options: AdmissionOptions,
+        swarm_ref: String,
+        validation_packet: IndexedPacket,
+        builder_packet: IndexedPacket,
+        integration: IntegrationEvidence,
+        executable_sha256: String,
+    }
+
+    fn write_test_json(path: &Path, value: &Value, label: &str) -> Result<Vec<u8>, String> {
+        let mut bytes = serde_json::to_vec_pretty(value)
+            .map_err(|error| format!("failed to encode {label}: {error}"))?;
+        bytes.push(b'\n');
+        fs::write(path, &bytes).map_err(|error| format!("failed to write {label}: {error}"))?;
+        Ok(bytes)
+    }
+
+    fn write_test_packet(
+        root: &Path,
+        schema: &str,
+        kind: &str,
+        status: &str,
+        report_name: &str,
+        report: &Value,
+    ) -> Result<IndexedPacket, String> {
+        fs::create_dir_all(root)
+            .map_err(|error| format!("failed to create test packet directory: {error}"))?;
+        let report_bytes = write_test_json(&root.join(report_name), report, "test packet report")?;
+        let index = serde_json::json!({
+            "schema": schema,
+            "kind": kind,
+            "status": status,
+            "complete": true,
+            "files": [{
+                "path": report_name,
+                "bytes": report_bytes.len(),
+                "sha256": digest_bytes(&report_bytes),
+            }],
+        });
+        write_test_json(&root.join(PACKET_INDEX), &index, "test packet index")?;
+        read_indexed_packet(root, schema, Some(kind), Some(status), report_name)
+    }
+
+    fn write_test_integration_index(
+        root: &Path,
+        identity: &PromotionIdentity,
+        executable_sha256: &str,
+    ) -> Result<(PathBuf, IntegrationEvidence), String> {
+        fs::create_dir_all(root)
+            .map_err(|error| format!("failed to create integration fixture directory: {error}"))?;
+        let mut rows = Vec::new();
+        for (kind, path) in [
+            ("command_catalog_integration", "command-catalog.json"),
+            ("network_policy_integration", "network-policy.json"),
+        ] {
+            let schema = integration_schema(kind)
+                .ok_or_else(|| format!("test integration kind is unsupported: {kind}"))?;
+            let receipt = serde_json::json!({
+                "schema": schema,
+                "status": "integrated",
+                "source_parent": identity.source_parent.as_str(),
+                "swarm_parent": identity.swarm_parent.as_str(),
+                "join_tree": identity.join_tree.as_str(),
+                "preflight_sha256": identity.preflight_sha256.as_str(),
+                "resolution_manifest_sha256": identity.resolution_sha256.as_str(),
+                "producer_source_sha": identity.source_parent.as_str(),
+                "producer_executable_sha256": executable_sha256,
+                "ref_mutation_attempted": false,
+                "failure_reasons": [],
+            });
+            let bytes = write_test_json(&root.join(path), &receipt, "typed integration receipt")?;
+            rows.push(serde_json::json!({
+                "kind": kind,
+                "path": path,
+                "sha256": digest_bytes(&bytes),
+            }));
+        }
+        let index = serde_json::json!({
+            "schema": INTEGRATION_INDEX_SCHEMA,
+            "status": "complete",
+            "source_parent": identity.source_parent.as_str(),
+            "swarm_parent": identity.swarm_parent.as_str(),
+            "join_tree": identity.join_tree.as_str(),
+            "preflight_sha256": identity.preflight_sha256.as_str(),
+            "resolution_manifest_sha256": identity.resolution_sha256.as_str(),
+            "required_kinds": REQUIRED_INTEGRATION_KINDS,
+            "receipts": rows,
+            "failure_reasons": [],
+        });
+        let index_path = root.join("integration-index.json");
+        let index_bytes = write_test_json(&index_path, &index, "integration receipt index")?;
+        let index_sha256 = digest_bytes(&index_bytes);
+        let evidence = validate_integration_index(
+            &index_path,
+            &index_sha256,
+            identity,
+            executable_sha256,
+        )?;
+        Ok((index_path, evidence))
+    }
+
+    fn admission_snapshot_fixture(label: &str) -> Result<AdmissionSnapshotFixture, String> {
+        let (repo, mut identity) = init_synthetic_repo(label)?;
+        fs::write(repo.join("Cargo.lock"), b"# synthetic lockfile\n")
+            .map_err(|error| format!("failed to write synthetic Cargo.lock: {error}"))?;
+        git_test(&repo, &["add", "Cargo.lock"])?;
+        git_test(&repo, &["commit", "-m", "add synthetic lockfile"])?;
+        identity.source_parent = current_head(&repo)?;
+        identity.join_tree = commit_tree(&repo, &identity.source_parent)?;
+        let evidence_root = repo.join(".git/source-promotion-control-test");
+        fs::create_dir_all(&evidence_root)
+            .map_err(|error| format!("failed to create admission evidence directory: {error}"))?;
+        let executable_sha256 = current_executable_sha256()?;
+        let swarm_ref = format!(
+            "refs/tags/ripr-release-0.11.0-{}",
+            identity.swarm_parent.as_str()
+        );
+        let preflight = serde_json::json!({
+            "schema": "ripr.source_promotion_preflight.v1",
+            "mode": "two_parent_join",
+            "source_parent": identity.source_parent.as_str(),
+            "source_main": identity.source_parent.as_str(),
+            "swarm_parent": identity.swarm_parent.as_str(),
+            "swarm_ref": swarm_ref.as_str(),
+            "swarm_ref_sha": identity.swarm_parent.as_str(),
+            "merge_base": identity.source_parent.as_str(),
+            "source_repository": {
+                "common_dir_verified": true,
+                "root_verified": true,
+                "remote_verified": true,
+            },
+            "swarm_repository": {
+                "common_dir_verified": true,
+                "root_verified": true,
+                "remote_verified": true,
+            },
+            "dry_merge": {
+                "reviewed_resolved_tree": identity.join_tree.as_str(),
+                "reviewed_resolved_tree_verified": true,
+                "conflicts": [],
+            },
+            "source_range": {},
+            "swarm_range": {},
+            "version_state": { "requested_version": "0.11.0" },
+            "invalidation_rules": {},
+            "source_survivor_candidates": [],
+            "swarm_authority_resolution_candidates": [],
+        });
+        let preflight_path = evidence_root.join("preflight.json");
+        let preflight_bytes = write_test_json(&preflight_path, &preflight, "admission preflight")?;
+        identity.preflight_sha256 = digest_bytes(&preflight_bytes);
+        let manifest = serde_json::json!({
+            "schema": "ripr.source_promotion_resolution.v1",
+            "preflight_sha256": identity.preflight_sha256.as_str(),
+            "source_parent": identity.source_parent.as_str(),
+            "swarm_parent": identity.swarm_parent.as_str(),
+            "merge_base": identity.source_parent.as_str(),
+            "reviewed_join_tree": identity.join_tree.as_str(),
+            "dispositions": [],
+        });
+        let resolution_path = evidence_root.join("resolution.json");
+        let resolution_bytes =
+            write_test_json(&resolution_path, &manifest, "admission resolution manifest")?;
+        identity.resolution_sha256 = digest_bytes(&resolution_bytes);
+
+        let mut validation = valid_resolved_tree_receipt();
+        for (key, value) in [
+            ("source_parent", identity.source_parent.as_str()),
+            ("swarm_parent", identity.swarm_parent.as_str()),
+            ("reviewed_tree", identity.join_tree.as_str()),
+        ] {
+            replace_object_field(
+                &mut validation,
+                key,
+                Value::String(value.to_string()),
+                "admission validation identity",
+            )?;
+        }
+        let validation_preflight = validation
+            .get_mut("preflight")
+            .ok_or_else(|| "admission validation fixture is missing preflight".to_string())?;
+        replace_object_field(
+            validation_preflight,
+            "sha256",
+            Value::String(identity.preflight_sha256.clone()),
+            "admission validation preflight digest",
+        )?;
+        let validation_resolution = validation
+            .get_mut("resolution_manifest")
+            .ok_or_else(|| "admission validation fixture is missing resolution manifest".to_string())?;
+        replace_object_field(
+            validation_resolution,
+            "sha256",
+            Value::String(identity.resolution_sha256.clone()),
+            "admission validation resolution digest",
+        )?;
+        let trusted_checker = validation
+            .get_mut("trusted_checker")
+            .ok_or_else(|| "admission validation fixture is missing trusted checker".to_string())?;
+        replace_object_field(
+            trusted_checker,
+            "source_sha",
+            Value::String(identity.source_parent.clone()),
+            "admission validation checker source",
+        )?;
+        replace_object_field(
+            trusted_checker,
+            "executable_sha256",
+            Value::String(executable_sha256.clone()),
+            "admission validation checker executable",
+        )?;
+        let materialization = validation
+            .get_mut("materialization")
+            .ok_or_else(|| "admission validation fixture is missing materialization".to_string())?;
+        replace_object_field(
+            materialization,
+            "reviewed_tree",
+            Value::String(identity.join_tree.clone()),
+            "admission validation materialized tree",
+        )?;
+        let validation_packet = write_test_packet(
+            &evidence_root.join("validation-packet"),
+            RESOLVED_TREE_PACKET_SCHEMA,
+            "resolved_tree_validation",
+            "validated",
+            VALIDATION_REPORT,
+            &validation,
+        )?;
+
+        let cargo_lock_sha256 = file_sha256(&repo.join("Cargo.lock"), "test Cargo.lock")?;
+        let builder = serde_json::json!({
+            "schema": BUILDER_SCHEMA,
+            "status": "built",
+            "source_parent": identity.source_parent.as_str(),
+            "workflow_source_sha": identity.source_parent.as_str(),
+            "clean_checkout": true,
+            "rust_toolchain": format!("rustc {RUST_TOOLCHAIN} test"),
+            "locked_build": true,
+            "isolated_cargo_target_dir": true,
+            "cargo_lock_sha256": cargo_lock_sha256,
+            "executable_sha256": executable_sha256.as_str(),
+            "authoritative_commit_attempted": false,
+            "commit_tree_attempts": 0,
+            "local_ref_attempts": 0,
+            "remote_push_attempts": 0,
+            "merge_command_attempts": 0,
+            "ref_mutation_attempted": false,
+            "push_attempted": false,
+            "failure_reasons": [],
+        });
+        let builder_packet = write_test_packet(
+            &evidence_root.join("builder-packet"),
+            CONTROL_PACKET_SCHEMA,
+            "trusted_builder",
+            "built",
+            BUILDER_REPORT,
+            &builder,
+        )?;
+        let (integration_index, integration) = write_test_integration_index(
+            &evidence_root.join("integration"),
+            &identity,
+            &executable_sha256,
+        )?;
+        let options = AdmissionOptions {
+            repo: repo.to_path_buf(),
+            identity,
+            validation_packet: evidence_root.join("validation-packet"),
+            builder_packet: evidence_root.join("builder-packet"),
+            integration_index,
+            integration_index_sha256: integration.index_sha256.clone(),
+            preflight: preflight_path,
+            resolution_manifest: resolution_path,
+            out: evidence_root.join("unused-output"),
+        };
+        validate_admission(&options)?;
+        Ok(AdmissionSnapshotFixture {
+            repo,
+            options,
+            swarm_ref,
+            validation_packet,
+            builder_packet,
+            integration,
+            executable_sha256,
+        })
+    }
+
+    fn construction_snapshot_fixture(label: &str) -> Result<ConstructionSnapshotFixture, String> {
+        let (repo, identity) = init_synthetic_repo(label)?;
+        let admission_root = repo.join("admission-packet");
+        let validation_root = repo.join("validation-packet");
+        let admission = valid_admission_receipt(&identity);
+        let admission_packet = write_test_packet(
+            &admission_root,
+            CONTROL_PACKET_SCHEMA,
+            "resolved_tree_admission",
+            "admitted",
+            ADMISSION_REPORT,
+            &admission,
+        )?;
+        let validation_packet = write_test_packet(
+            &validation_root,
+            RESOLVED_TREE_PACKET_SCHEMA,
+            "resolved_tree_validation",
+            "validated",
+            VALIDATION_REPORT,
+            &valid_resolved_tree_receipt(),
+        )?;
+        let executable_sha256 = admission
+            .get("checker_executable_sha256")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "test admission receipt is missing executable identity".to_string())?;
+        let (integration_index, integration) =
+            write_test_integration_index(&repo.join("integration"), &identity, executable_sha256)?;
+        let preflight = repo.join("preflight.json");
+        let resolution_manifest = repo.join("resolution.json");
+        let qualification_receipt = repo.join("qualification.json");
+        fs::write(&preflight, b"preflight\n")
+            .map_err(|error| format!("failed to write snapshot preflight: {error}"))?;
+        fs::write(&resolution_manifest, b"resolution\n")
+            .map_err(|error| format!("failed to write snapshot resolution: {error}"))?;
+        fs::write(&qualification_receipt, b"qualification\n")
+            .map_err(|error| format!("failed to write snapshot qualification: {error}"))?;
+        let qualification_sha256 = file_sha256(
+            &qualification_receipt,
+            "snapshot qualification receipt",
+        )?;
+        let options = ConstructionOptions {
+            repo: repo.to_path_buf(),
+            admission_packet: admission_root,
+            validation_packet: validation_root,
+            integration_index,
+            integration_index_sha256: integration.index_sha256.clone(),
+            preflight,
+            resolution_manifest,
+            qualification_receipt,
+            qualification_receipt_sha256: qualification_sha256.clone(),
+            source_main_ref: SOURCE_MAIN_REF.to_string(),
+            swarm_ref: format!(
+                "refs/tags/ripr-release-0.11.0-{}",
+                identity.swarm_parent.as_str()
+            ),
+            candidate_ref: "refs/heads/promote/0.11.0-test".to_string(),
+            out: repo.join("unused-output"),
+        };
+        construction_snapshot(
+            &options,
+            &identity,
+            &admission_packet,
+            &validation_packet,
+            &integration,
+            &qualification_sha256,
+        )?;
+        Ok(ConstructionSnapshotFixture {
+            repo,
+            identity,
+            options,
+            admission_packet,
+            validation_packet,
+            integration,
+            qualification_sha256,
+        })
+    }
+
+    fn require_snapshot_rejection_without_authority(
+        fixture: &ConstructionSnapshotFixture,
+        reason: &str,
+        refs_before: &str,
+    ) -> Result<(), String> {
+        require_equal(
+            refs_digest(&fixture.repo)?,
+            refs_before.to_string(),
+            "snapshot rejection must preserve every ref",
+        )?;
+        let report = construction_rejection_report(
+            Some(&fixture.identity),
+            Some(&fixture.options.candidate_ref),
+            reason,
+            false,
+        );
+        for counter in [
+            "commit_tree_attempts",
+            "local_ref_attempts",
+            "remote_push_attempts",
+            "merge_command_attempts",
+        ] {
+            require_equal(
+                report.get(counter).and_then(Value::as_u64),
+                Some(0),
+                "snapshot rejection attempt counter",
+            )?;
+        }
+        require(
+            report.get("merge_command").is_some_and(Value::is_null),
+            "snapshot rejection must not emit merge authority",
+        )
+    }
+
+    fn require_admission_rejection_without_authority(
+        fixture: &AdmissionSnapshotFixture,
+        reason: &str,
+        refs_before: &str,
+    ) -> Result<(), String> {
+        require_equal(
+            refs_digest(&fixture.repo)?,
+            refs_before.to_string(),
+            "admission rejection must preserve every ref",
+        )?;
+        let report = admission_rejection_report(Some(&fixture.options.identity), reason);
+        for counter in [
+            "commit_tree_attempts",
+            "local_ref_attempts",
+            "remote_push_attempts",
+            "merge_command_attempts",
+        ] {
+            require_equal(
+                report.get(counter).and_then(Value::as_u64),
+                Some(0),
+                "admission rejection attempt counter",
+            )?;
+        }
+        require(
+            report.get("merge_command").is_some_and(Value::is_null),
+            "admission rejection must not emit merge authority",
+        )
+    }
+
     #[test]
     fn impossible_validated_fixture_is_explicitly_rejected() -> Result<(), String> {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -748,6 +1185,29 @@ mod source_promotion_control_tests {
     }
 
     #[test]
+    fn output_schema_assigns_evidence_to_the_correct_control_stage() -> Result<(), String> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
+        let schema = fs::read_to_string(root.join("docs/OUTPUT_SCHEMA.md"))
+            .map_err(|error| format!("read docs/OUTPUT_SCHEMA.md: {error}"))?
+            .replace("\r\n", "\n");
+        const ADMISSION_OWNERSHIP: &str =
+            "Admission consumes the\nproducer-bound `ripr.source_promotion_integration_index.v1` schema";
+        const CONSTRUCTION_OWNERSHIP: &str =
+            "construction\nconsumes the terminal `ripr.source_promotion_tree_qualification.v1` schema";
+        require(
+            schema.contains(ADMISSION_OWNERSHIP),
+            "OUTPUT_SCHEMA must assign the producer-bound integration index to admission",
+        )?;
+        require(
+            schema.contains(CONSTRUCTION_OWNERSHIP),
+            "OUTPUT_SCHEMA must assign terminal qualification to construction",
+        )
+    }
+
+    #[test]
     fn control_packet_rejects_partial_digest_mismatch_and_unindexed_files() -> Result<(), String> {
         let temp = test_temp_dir("packet")?;
         let root = temp.join("packet");
@@ -818,6 +1278,201 @@ mod source_promotion_control_tests {
     }
 
     #[test]
+    fn construction_snapshot_rejects_changed_packet_member_behind_unchanged_index()
+    -> Result<(), String> {
+        let fixture = construction_snapshot_fixture("snapshot-packet-member-race")?;
+        let refs_before = refs_digest(&fixture.repo)?;
+        let index_before = fs::read(fixture.options.validation_packet.join(PACKET_INDEX))
+            .map_err(|error| format!("failed to read validation packet index: {error}"))?;
+        let report_path = fixture.options.validation_packet.join(VALIDATION_REPORT);
+        let mut changed_report = fs::read(&report_path)
+            .map_err(|error| format!("failed to read validation packet member: {error}"))?;
+        let final_byte = changed_report
+            .last_mut()
+            .ok_or_else(|| "validation packet member is unexpectedly empty".to_string())?;
+        *final_byte = b' ';
+        fs::write(&report_path, changed_report)
+            .map_err(|error| format!("failed to mutate validation packet member: {error}"))?;
+        require_equal(
+            fs::read(fixture.options.validation_packet.join(PACKET_INDEX))
+                .map_err(|error| format!("failed to reread validation packet index: {error}"))?,
+            index_before,
+            "validation packet index bytes remain unchanged",
+        )?;
+
+        let reason = construction_snapshot(
+            &fixture.options,
+            &fixture.identity,
+            &fixture.admission_packet,
+            &fixture.validation_packet,
+            &fixture.integration,
+            &fixture.qualification_sha256,
+        )
+        .err()
+        .ok_or_else(|| "changed validation packet member unexpectedly passed snapshot".to_string())?;
+        require(
+            reason.contains("packet digest mismatch"),
+            "production snapshot must reject the changed indexed member",
+        )?;
+        require_snapshot_rejection_without_authority(&fixture, &reason, &refs_before)?;
+        fixture.repo.cleanup()
+    }
+
+    #[test]
+    fn admission_snapshot_rejects_changed_packet_member_behind_unchanged_index()
+    -> Result<(), String> {
+        let fixture = admission_snapshot_fixture("admission-snapshot-packet-member-race")?;
+        let refs_before = refs_digest(&fixture.repo)?;
+        let index_before = fs::read(fixture.options.validation_packet.join(PACKET_INDEX))
+            .map_err(|error| format!("failed to read admission validation index: {error}"))?;
+        let report_path = fixture.options.validation_packet.join(VALIDATION_REPORT);
+        let mut changed_report = fs::read(&report_path)
+            .map_err(|error| format!("failed to read admission validation member: {error}"))?;
+        let final_byte = changed_report
+            .last_mut()
+            .ok_or_else(|| "admission validation member is unexpectedly empty".to_string())?;
+        *final_byte = b' ';
+        fs::write(&report_path, changed_report)
+            .map_err(|error| format!("failed to mutate admission validation member: {error}"))?;
+        require_equal(
+            fs::read(fixture.options.validation_packet.join(PACKET_INDEX)).map_err(|error| {
+                format!("failed to reread admission validation index: {error}")
+            })?,
+            index_before,
+            "admission validation index bytes remain unchanged",
+        )?;
+
+        let reason = admission_snapshot(
+            &fixture.options,
+            &fixture.swarm_ref,
+            &fixture.validation_packet,
+            &fixture.builder_packet,
+            &fixture.integration,
+            &fixture.executable_sha256,
+        )
+        .err()
+        .ok_or_else(|| "changed admission packet member unexpectedly passed snapshot".to_string())?;
+        require(
+            reason.contains("packet digest mismatch"),
+            "admission snapshot must reject the changed indexed member",
+        )?;
+        require_admission_rejection_without_authority(&fixture, &reason, &refs_before)?;
+        fixture.repo.cleanup()
+    }
+
+    #[test]
+    fn admission_snapshot_rejects_changed_typed_receipt_behind_unchanged_index()
+    -> Result<(), String> {
+        let fixture = admission_snapshot_fixture("admission-snapshot-integration-race")?;
+        let refs_before = refs_digest(&fixture.repo)?;
+        let index_before = fs::read(&fixture.options.integration_index)
+            .map_err(|error| format!("failed to read admission integration index: {error}"))?;
+        let integration_root = fixture
+            .options
+            .integration_index
+            .parent()
+            .ok_or_else(|| "admission integration index has no parent".to_string())?;
+        let receipt_path = integration_root.join("command-catalog.json");
+        let mut changed_receipt = fs::read(&receipt_path)
+            .map_err(|error| format!("failed to read admission integration receipt: {error}"))?;
+        changed_receipt.push(b' ');
+        fs::write(&receipt_path, changed_receipt)
+            .map_err(|error| format!("failed to mutate admission integration receipt: {error}"))?;
+        require_equal(
+            fs::read(&fixture.options.integration_index).map_err(|error| {
+                format!("failed to reread admission integration index: {error}")
+            })?,
+            index_before,
+            "admission integration index bytes remain unchanged",
+        )?;
+
+        let reason = admission_snapshot(
+            &fixture.options,
+            &fixture.swarm_ref,
+            &fixture.validation_packet,
+            &fixture.builder_packet,
+            &fixture.integration,
+            &fixture.executable_sha256,
+        )
+        .err()
+        .ok_or_else(|| {
+            "changed admission typed integration receipt unexpectedly passed snapshot".to_string()
+        })?;
+        require(
+            reason.contains("integration receipt digest mismatch"),
+            "admission snapshot must reject the changed typed integration receipt",
+        )?;
+        require_admission_rejection_without_authority(&fixture, &reason, &refs_before)?;
+        fixture.repo.cleanup()
+    }
+
+    #[test]
+    fn admission_rejects_stable_wrong_protected_w7_before_attempts() -> Result<(), String> {
+        let fixture = admission_snapshot_fixture("admission-stable-wrong-w7")?;
+        git_test(
+            &fixture.repo,
+            &[
+                "update-ref",
+                &fixture.swarm_ref,
+                fixture.options.identity.source_parent.as_str(),
+            ],
+        )?;
+        let refs_before = refs_digest(&fixture.repo)?;
+        let reason = validate_admission(&fixture.options)
+            .err()
+            .ok_or_else(|| "stable wrong protected W7 unexpectedly earned admission".to_string())?;
+        require(
+            reason.contains("protected W7 ref does not equal admitted SWARM_PARENT"),
+            "admission must compare the protected W7 value with the requested identity",
+        )?;
+        require_admission_rejection_without_authority(&fixture, &reason, &refs_before)?;
+        fixture.repo.cleanup()
+    }
+
+    #[test]
+    fn construction_snapshot_rejects_changed_typed_receipt_behind_unchanged_index()
+    -> Result<(), String> {
+        let fixture = construction_snapshot_fixture("snapshot-integration-receipt-race")?;
+        let refs_before = refs_digest(&fixture.repo)?;
+        let index_before = fs::read(&fixture.options.integration_index)
+            .map_err(|error| format!("failed to read integration index: {error}"))?;
+        let integration_root = fixture
+            .options
+            .integration_index
+            .parent()
+            .ok_or_else(|| "integration index fixture has no parent".to_string())?;
+        let receipt_path = integration_root.join("command-catalog.json");
+        let mut changed_receipt = fs::read(&receipt_path)
+            .map_err(|error| format!("failed to read typed integration receipt: {error}"))?;
+        changed_receipt.push(b' ');
+        fs::write(&receipt_path, changed_receipt)
+            .map_err(|error| format!("failed to mutate typed integration receipt: {error}"))?;
+        require_equal(
+            fs::read(&fixture.options.integration_index)
+                .map_err(|error| format!("failed to reread integration index: {error}"))?,
+            index_before,
+            "integration index bytes remain unchanged",
+        )?;
+
+        let reason = construction_snapshot(
+            &fixture.options,
+            &fixture.identity,
+            &fixture.admission_packet,
+            &fixture.validation_packet,
+            &fixture.integration,
+            &fixture.qualification_sha256,
+        )
+        .err()
+        .ok_or_else(|| "changed typed integration receipt unexpectedly passed snapshot".to_string())?;
+        require(
+            reason.contains("integration receipt digest mismatch"),
+            "production snapshot must reject the changed typed integration receipt",
+        )?;
+        require_snapshot_rejection_without_authority(&fixture, &reason, &refs_before)?;
+        fixture.repo.cleanup()
+    }
+
+    #[test]
     fn candidate_ref_and_remote_row_validation_fail_closed() -> Result<(), String> {
         require(
             validate_candidate_ref("refs/heads/promote/0.11.0-w7").is_ok(),
@@ -828,6 +1483,12 @@ mod source_promotion_control_tests {
             "refs/heads/main",
             "refs/heads/promote/0.12.0-w7",
             "refs/heads/promote/0.11.0-../escape",
+            "refs/heads/promote/0.11.0-w7 bad",
+            "refs/heads/promote/0.11.0-w7\u{0007}",
+            "refs/heads/promote/0.11.0-w7@{1}",
+            "refs/heads/promote/0.11.0-w7/.hidden",
+            "refs/heads/promote/0.11.0-w7.",
+            "refs/heads/promote/0.11.0-w7.lock",
         ] {
             require(
                 validate_candidate_ref(reference).is_err(),

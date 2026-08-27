@@ -586,6 +586,7 @@ fn read_tree_identity(repo: &Path, tree: &str) -> Result<String, String> {
 fn validate_full_ref(reference: &str, label: &str) -> Result<(), String> {
     if !reference.starts_with("refs/")
         || reference.contains("..")
+        || reference.contains("@{")
         || reference.contains('~')
         || reference.contains('^')
         || reference.contains(':')
@@ -594,10 +595,17 @@ fn validate_full_ref(reference: &str, label: &str) -> Result<(), String> {
         || reference.contains('[')
         || reference.contains('\\')
         || reference.ends_with('/')
-        || reference.ends_with(".lock")
+        || reference
+            .chars()
+            .any(|character| character.is_ascii_control() || character == ' ')
         || reference
             .split('/')
-            .any(|part| part.is_empty() || part == ".")
+            .any(|part| {
+                part.is_empty()
+                    || part.starts_with('.')
+                    || part.ends_with('.')
+                    || part.ends_with(".lock")
+            })
     {
         return Err(format!("{label} is not a safe fully-qualified Git ref"));
     }

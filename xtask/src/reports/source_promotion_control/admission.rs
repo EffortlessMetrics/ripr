@@ -397,6 +397,9 @@ fn validate_admission(options: &AdmissionOptions) -> Result<AdmissionEvidence, S
     if before.source_head != options.identity.source_parent.as_str() {
         return Err("source checkout HEAD moved from admitted SOURCE_PARENT".to_string());
     }
+    if before.swarm_head != options.identity.swarm_parent.as_str() {
+        return Err("protected W7 ref does not equal admitted SWARM_PARENT".to_string());
+    }
     if !clean_checkout(&options.repo)? {
         return Err("source checkout is not clean at admission".to_string());
     }

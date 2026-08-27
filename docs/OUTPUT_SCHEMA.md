@@ -13821,9 +13821,9 @@ The source-owned controller writes indexed JSON/Markdown packets using
 `ripr.source_promotion_trusted_builder.v1`,
 `ripr.source_promotion_resolved_tree_admission.v1`,
 `ripr.source_promotion_exact_join_construction.v1`, and
-`ripr.source_promotion_candidate_ref_publication.v1`. Admission also consumes
-the producer-bound `ripr.source_promotion_integration_index.v1` and terminal
-`ripr.source_promotion_tree_qualification.v1` schemas.
+`ripr.source_promotion_candidate_ref_publication.v1`. Admission consumes the
+producer-bound `ripr.source_promotion_integration_index.v1` schema; construction
+consumes the terminal `ripr.source_promotion_tree_qualification.v1` schema.
 
 Admission and construction final snapshots reread every indexed packet member
 and typed integration receipt. Matching index-file digests alone do not make
