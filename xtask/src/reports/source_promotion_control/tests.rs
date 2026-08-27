@@ -1061,6 +1061,7 @@ mod source_promotion_control_tests {
             Some(&context),
             |_options, _lease, _refspec| Ok((false, "injected push failure".to_string())),
             |_repo, _remote, _reference| Ok(Some(join.clone())),
+            read_optional_local_ref,
         )
         .err()
         .ok_or_else(|| "failed push with observed join unexpectedly published".to_string())?;
@@ -1085,6 +1086,52 @@ mod source_promotion_control_tests {
             None,
             "failed push with observed join restores the absent local ref",
         )?;
+        let unavailable_local = publish_candidate_ref_inner_with_publication_runners(
+            &options,
+            Some(&context),
+            run_guarded_candidate_push,
+            read_remote_ref,
+            |_repo, _reference| Err("injected post-push local observation failure".to_string()),
+        )
+        .err()
+        .ok_or_else(|| "unavailable local observation unexpectedly published".to_string())?;
+        require(
+            unavailable_local
+                .0
+                .contains("post-push local candidate state was unavailable"),
+            "post-push local observation failure should remain explicit",
+        )?;
+        require_equal(
+            unavailable_local.2.local_ref_after.as_deref(),
+            None,
+            "unavailable post-push local state must not masquerade as an observation",
+        )?;
+        let unavailable_local_report = publication_rejection_report(
+            unavailable_local.1.as_deref(),
+            Some(&evidence.candidate_ref),
+            &unavailable_local.0,
+            &unavailable_local.2,
+        );
+        require_equal(
+            json_string(&unavailable_local_report, "status"),
+            Some("published_but_invalidated"),
+            "unavailable post-push local state publication status",
+        )?;
+        require_equal(
+            read_remote_ref(&repo, "origin", &evidence.candidate_ref)?,
+            Some(join.clone()),
+            "unavailable local observation still reconciles the exact remote join",
+        )?;
+        update_local_ref(
+            &repo,
+            &evidence.candidate_ref,
+            None,
+            Some(join.as_str()),
+        )?;
+        git_test(
+            &repo,
+            &["push", "origin", &format!(":{}", evidence.candidate_ref)],
+        )?;
         let raced_commit = identity.source_parent.clone();
         let raced_join = join.clone();
         let raced_target = evidence.candidate_ref.clone();
@@ -1107,6 +1154,7 @@ mod source_promotion_control_tests {
                 run_guarded_candidate_push(runner_options, lease, refspec)
             },
             read_remote_ref,
+            read_optional_local_ref,
         )
         .map_err(|failure| failure.0)?;
         require_equal(

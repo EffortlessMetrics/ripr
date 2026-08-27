@@ -243,6 +243,7 @@ fn publish_candidate_ref_inner(
         expected_reconciliation_context,
         run_guarded_candidate_push,
         read_remote_ref,
+        read_optional_local_ref,
     )
 }
 
@@ -260,6 +261,7 @@ where
         expected_reconciliation_context,
         run_guarded_candidate_push,
         final_remote_reader,
+        read_optional_local_ref,
     )
 }
 
@@ -289,15 +291,17 @@ fn run_guarded_candidate_push(
         .map_err(|error| format!("failed to start guarded candidate-ref push: {error}"))
 }
 
-fn publish_candidate_ref_inner_with_publication_runners<P, F>(
+fn publish_candidate_ref_inner_with_publication_runners<P, F, L>(
     options: &PublicationOptions,
     expected_reconciliation_context: Option<&Value>,
     push_runner: P,
     final_remote_reader: F,
+    post_push_local_reader: L,
 ) -> Result<(ConstructionEvidence, PublicationState), PublicationFailure>
 where
     P: Fn(&PublicationOptions, &str, &str) -> Result<(bool, String), String>,
     F: Fn(&Path, &str, &str) -> Result<Option<String>, String>,
+    L: Fn(&Path, &str) -> Result<Option<String>, String>,
 {
     let mut state = Box::<PublicationState>::default();
     let packet = read_indexed_packet(
@@ -407,9 +411,8 @@ where
     state.remote_push_attempts = 1;
     let push = push_runner(options, lease.as_str(), refspec.as_str());
     state.push_process_succeeded = push.as_ref().ok().map(|output| output.0);
-    state.local_ref_after = read_optional_local_ref(&options.repo, &options.target_ref)
-        .ok()
-        .flatten();
+    let post_push_local = post_push_local_reader(&options.repo, &options.target_ref);
+    state.local_ref_after = post_push_local.as_ref().ok().cloned().flatten();
 
     let final_remote = final_remote_reader(
         &options.repo,
@@ -470,6 +473,15 @@ where
             return Err((
                 "remote candidate ref equals the join, but the guarded push process did not report success"
                     .to_string(),
+                Some(evidence),
+                state,
+            ));
+        }
+        if let Err(reason) = post_push_local {
+            return Err((
+                format!(
+                    "candidate ref published but post-push local candidate state was unavailable: {reason}"
+                ),
                 Some(evidence),
                 state,
             ));
