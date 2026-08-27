@@ -403,10 +403,13 @@ where
         return Err((reason, Some(evidence), state));
     }
 
-    let refspec = format!("{}:{}", options.target_ref, options.target_ref);
+    let refspec = format!("{}:{}", evidence.join_commit, options.target_ref);
     state.remote_push_attempts = 1;
     let push = push_runner(options, lease.as_str(), refspec.as_str());
     state.push_process_succeeded = push.as_ref().ok().map(|output| output.0);
+    state.local_ref_after = read_optional_local_ref(&options.repo, &options.target_ref)
+        .ok()
+        .flatten();
 
     let final_remote = final_remote_reader(
         &options.repo,

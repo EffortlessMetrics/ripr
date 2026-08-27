@@ -603,6 +603,23 @@ mod source_promotion_control_tests {
 
     #[test]
     fn qualification_lane_documentation_matches_production_order() -> Result<(), String> {
+        // Intentional independent mirror of the normative denominator in
+        // RIPR-SPEC-0150; do not derive this oracle from the production constant.
+        const NORMATIVE_QUALIFICATION_LANES: &[&str] = &[
+            "editor_package_linux",
+            "editor_package_windows",
+            "rust_product",
+            "source_governance",
+            "source_survivors",
+            "trusted_product_journeys",
+            "untrusted_workspace_contract",
+            "w7_product",
+        ];
+        require_equal(
+            REQUIRED_QUALIFICATION_LANES,
+            NORMATIVE_QUALIFICATION_LANES,
+            "production qualification-lane denominator",
+        )?;
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .map(Path::to_path_buf)
@@ -616,11 +633,11 @@ mod source_promotion_control_tests {
             .map(|(_, remainder)| remainder)
             .and_then(|remainder| remainder.split_once("\n\n").map(|(block, _)| block))
             .ok_or_else(|| "output schema qualification-lane block is missing".to_string())?;
-        let expected_block = REQUIRED_QUALIFICATION_LANES
+        let expected_block = NORMATIVE_QUALIFICATION_LANES
             .iter()
             .enumerate()
             .map(|(index, lane)| {
-                let punctuation = if index + 1 == REQUIRED_QUALIFICATION_LANES.len() {
+                let punctuation = if index + 1 == NORMATIVE_QUALIFICATION_LANES.len() {
                     '.'
                 } else {
                     ';'
@@ -1067,6 +1084,55 @@ mod source_promotion_control_tests {
             read_optional_local_ref(&repo, &evidence.candidate_ref)?,
             None,
             "failed push with observed join restores the absent local ref",
+        )?;
+        let raced_commit = identity.source_parent.clone();
+        let raced_join = join.clone();
+        let raced_target = evidence.candidate_ref.clone();
+        let immutable_push = publish_candidate_ref_inner_with_publication_runners(
+            &options,
+            Some(&context),
+            |runner_options, lease, refspec| {
+                let expected_refspec = format!("{raced_join}:{raced_target}");
+                require_equal(
+                    refspec,
+                    expected_refspec.as_str(),
+                    "guarded push immutable join refspec",
+                )?;
+                update_local_ref(
+                    &runner_options.repo,
+                    &raced_target,
+                    Some(&raced_commit),
+                    Some(&raced_join),
+                )?;
+                run_guarded_candidate_push(runner_options, lease, refspec)
+            },
+            read_remote_ref,
+        )
+        .map_err(|failure| failure.0)?;
+        require_equal(
+            read_remote_ref(&repo, "origin", &evidence.candidate_ref)?,
+            Some(join.clone()),
+            "immutable push publishes the constructed join despite a raced local ref",
+        )?;
+        require_equal(
+            read_optional_local_ref(&repo, &evidence.candidate_ref)?,
+            Some(identity.source_parent.clone()),
+            "immutable push does not overwrite the raced local ref",
+        )?;
+        require_equal(
+            immutable_push.1.local_ref_after,
+            Some(identity.source_parent.clone()),
+            "immutable push receipt reports the raced local ref",
+        )?;
+        update_local_ref(
+            &repo,
+            &evidence.candidate_ref,
+            None,
+            Some(identity.source_parent.as_str()),
+        )?;
+        git_test(
+            &repo,
+            &["push", "origin", &format!(":{}", evidence.candidate_ref)],
         )?;
         let (published, publication_state) =
             publish_candidate_ref_inner(&options, Some(&context)).map_err(|failure| failure.0)?;
