@@ -13864,6 +13864,9 @@ authority. Candidate-ref publication binds both source remote URLs to the exact
 source repository, rereads local and remote source/W7 refs and the full indexed
 construction packet before and after mutation, uses an exact expected-state
 lease, requires a successful push process plus every post-push authority bit
-for `published`, and reconciles the remote after every push attempt. A rejected remote
-push restores only the local candidate ref when the final remote state is
-observed and differs from the constructed join.
+for `published`, and reconciles the remote after every push attempt. A rejected
+remote push, including one whose final remote observation already equals the
+constructed join, attempts to restore only the local candidate ref behind an
+exact-state guard; the controller never rolls a remote ref back. An observed
+join without a successful guarded-push process remains unattributed and
+produces `publication_state_unknown`.

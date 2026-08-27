@@ -427,9 +427,12 @@ and after the push attempt, the controller rereads local and remote source,
 local and remote W7, the complete indexed construction packet, the exact join
 object, and source fetch/push URLs. A stale pre-push reread attempts to roll the
 local ref back to its exact expected old-or-absent state without pushing. If
-the remote is observed not to have published the exact join, the controller
-likewise attempts to restore only the local candidate ref behind an exact-state
-guard and records whether that rollback succeeded.
+the guarded push process fails, or the remote is observed not to have published
+the exact join, the controller likewise attempts to restore only the local
+candidate ref behind an exact-state guard and records whether that rollback
+succeeded. This local-only rollback also applies when a failed push is followed
+by an observed join: the remote ref is never rolled back, the join remains
+unattributed, and the receipt records `publication_state_unknown`.
 
 Publication receipts state what was observed:
 
