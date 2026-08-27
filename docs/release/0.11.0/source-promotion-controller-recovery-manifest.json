@@ -1,0 +1,300 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_source_promotion_controller_recovery_manifest",
+  "status": "recovered_originals_imported_repairs_finalized",
+  "owner_issue": "EffortlessMetrics/ripr#1609",
+  "failed_transport_pr": "EffortlessMetrics/ripr#1608",
+  "identity_basis": {
+    "repository": "EffortlessMetrics/ripr",
+    "failed_transport_base": {
+      "commit": "2e8e1d5a790ff21dca82f8104a00e703ea6179c5",
+      "tree": "29b019cf8736071d5ecf8903043b4a41b29ceccd"
+    },
+    "failed_transport_head": {
+      "commit": "7e90002d041b219ddc53e01f280ff8a7080010a5",
+      "tree": "ee4f425ed79a75263021417dcafc003f97e1d7b7"
+    },
+    "replacement_checkout": {
+      "branch": "feat/recover-source-promotion-control-1609",
+      "starting_commit": "2e8e1d5a790ff21dca82f8104a00e703ea6179c5",
+      "starting_tree": "29b019cf8736071d5ecf8903043b4a41b29ceccd",
+      "matches_failed_transport_base": true
+    }
+  },
+  "carrier_commits": [
+    {
+      "role": "stage_carrier",
+      "commit": "22c1a8032e11622e2e0fec0d957c2644c06fba7e",
+      "tree": "631da5d33d3e4e2c8b57ffb2200ddede2b587f13",
+      "path": ".github/workflows/one-use-stage-1575-complete2.yml",
+      "git_blob": "2cfe187460f9a92ab06fbf5801d51c5009814413",
+      "bytes": 11036,
+      "sha256": "fd610cb032a4d994155b389fae069bcafc6df467ff2d9478d8400cd8840cfa27"
+    },
+    {
+      "role": "candidate_ref_binding_amendment",
+      "commit": "269300fded25f32b7b15f0168380eff24258606e",
+      "tree": "8247283ab88c68158060dce86a8d9a239eecf3c3",
+      "path": ".github/workflows/one-use-repair-1575-ref-binding.yml",
+      "git_blob": "2b60cab569d9e124e8e3388b3a986913ba10d442",
+      "bytes": 6149,
+      "sha256": "cd7de2d8a3761c3f5b9cdaa629a166ebc9414addd1396475c797953c430eca6d"
+    },
+    {
+      "role": "exact_remote_lease_amendment",
+      "commit": "7e90002d041b219ddc53e01f280ff8a7080010a5",
+      "tree": "ee4f425ed79a75263021417dcafc003f97e1d7b7",
+      "path": ".github/workflows/one-use-repair-1575-remote-lease.yml",
+      "git_blob": "6efa7bc8ecdab263c194377b312957580277487a",
+      "bytes": 6685,
+      "sha256": "d1a86a35640fe1351c297f12d40e5f946b56f12e6665f9184c5bbd7f9a36ef75"
+    }
+  ],
+  "payload_reconstruction": {
+    "algorithm": "concatenate each Git blob's exact consumed prefix in listed order, then decode the complete concatenation as base64",
+    "chunks": [
+      {
+        "sequence": 1,
+        "git_blob": "d1fa6e9db717492e869448ec75f0a8f56c4bcc90",
+        "raw_blob_bytes": 9092,
+        "raw_blob_sha256": "40fe26417c9c56a47278390145feba1e547a7598ed7370b9781b8eb7d60c0ef7",
+        "consumed_prefix_bytes": 8800,
+        "unused_suffix_bytes": 292
+      },
+      {
+        "sequence": 2,
+        "git_blob": "81289ee90ae939469a2e7e54c51414ce989360e1",
+        "raw_blob_bytes": 8800,
+        "raw_blob_sha256": "0d28aa5286244ef4250ca91eb244a6a5646d295f122d2220cc71828c6f4591d3",
+        "consumed_prefix_bytes": 8800,
+        "unused_suffix_bytes": 0
+      },
+      {
+        "sequence": 3,
+        "git_blob": "d48d8b3aba0577f531d3b13dda0894af31b13e89",
+        "raw_blob_bytes": 8800,
+        "raw_blob_sha256": "30351a97c7dad685cba7372b14e512c7c4d5aa929f81a58a7c564d5933fafa16",
+        "consumed_prefix_bytes": 8800,
+        "unused_suffix_bytes": 0
+      },
+      {
+        "sequence": 4,
+        "git_blob": "adc008d5a65f373d8f9b200b41ca60b6ee3e6815",
+        "raw_blob_bytes": 8800,
+        "raw_blob_sha256": "19e33da6a4cb17fa5ef10a75a8befdcb1f1de765de355a5da6133c3f7de1ca6f",
+        "consumed_prefix_bytes": 8800,
+        "unused_suffix_bytes": 0
+      },
+      {
+        "sequence": 5,
+        "git_blob": "2bcd0c601266ccb5fc6b2b9463cb9887f4cd8911",
+        "raw_blob_bytes": 128,
+        "raw_blob_sha256": "3622720a5ca350ffe696d7c7ad909795b85197ada455f791900fe63f687dae68",
+        "consumed_prefix_bytes": 128,
+        "unused_suffix_bytes": 0
+      }
+    ],
+    "encoded_stream": {
+      "encoding": "base64",
+      "bytes": 35328,
+      "sha256": "d5b862c84aef1b3a7a669cf0a50d3726efba5e963d6ac9ed2989732a5a230a36"
+    },
+    "decoded_archive": {
+      "format": "tar.gz",
+      "bytes": 26496,
+      "declared_sha256": "6321329573ad03bea0cadc918791952a6c70e30456a9e5b3fe971385487aa4d1",
+      "observed_sha256": "6321329573ad03bea0cadc918791952a6c70e30456a9e5b3fe971385487aa4d1",
+      "digest_matches": true
+    }
+  },
+  "archive_members": [
+    {
+      "archive_path": "apply_patch.py",
+      "bytes": 1681,
+      "sha256": "cda0a990de90e355bfc9a15696ff01174c255de4be4728f266ba06a193b6c017",
+      "git_blob": "f4c19bd093c6cb14de6ca1e65362795a41b7bb88",
+      "disposition": "excluded_transport_helper",
+      "repository_path": null,
+      "reason": "The replacement is durable Rust source only. This non-Rust carrier helper was not imported or executed; its two integration edits were reproduced as ordinary reviewed source changes against the exact integration preimages below."
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control.rs",
+      "bytes": 607,
+      "imported_original_sha256": "fb20bf0a6bd8d76f32e4a896151e8bef1f77ee53c113896de4659517cc7d5631",
+      "imported_original_git_blob": "60ec195837d42c1764cc5be03790ac6feec8a14d",
+      "disposition": "imported_original_retained_byte_identical",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 607,
+        "sha256": "fb20bf0a6bd8d76f32e4a896151e8bef1f77ee53c113896de4659517cc7d5631",
+        "git_blob": "60ec195837d42c1764cc5be03790ac6feec8a14d",
+        "classification": "byte_identical_to_imported_original",
+        "difference_from_imported_original": "none"
+      }
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control/admission.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control/admission.rs",
+      "bytes": 30081,
+      "imported_original_sha256": "291b7d2049558d7b2ed3121ce799091ddb0e26cbd4190266d8dc2086d36fa498",
+      "imported_original_git_blob": "64fc954c5970e1864bc1075cd8c707a40aa945fa",
+      "disposition": "imported_original_repaired",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 31327,
+        "sha256": "daa1d7425cc8a9416b8e3fc043912c3d4d2d0817b9d999df0f9af5e0e333ffe8",
+        "git_blob": "37613448bb248a0202a4e686f2e8785589a9db93",
+        "classification": "intentional_repair_differs_from_imported_original",
+        "difference_from_imported_original": "Adds explicit zero attempt counters to builder and admission receipts and binds each typed integration receipt to the admitted SOURCE_PARENT and trusted builder executable identity; remaining differences are formatting and fallible value-flow cleanup."
+      }
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control/construction.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control/construction.rs",
+      "bytes": 28265,
+      "imported_original_sha256": "267e78fd400970ae2dd3c8ab221a1e24a497830a02e298dc9189a8f129529212",
+      "imported_original_git_blob": "98c40e05a55d951053d68480c66af2e232338d8c",
+      "disposition": "imported_original_repaired",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 29416,
+        "sha256": "969f5ee8455f729877603a19542b66e907e985e090921d0a3e72c6c29f75c334",
+        "git_blob": "ef3a4830c34d8c52c441b4c31c8e86c670b59385",
+        "classification": "intentional_repair_differs_from_imported_original",
+        "difference_from_imported_original": "Preflights the output packet path before commit-tree construction, propagates the trusted executable identity into integration-receipt validation, requires the exact ordered eight-lane qualification denominator, records exact attempt counters, and boxes the large failure payload; remaining differences are formatting cleanup."
+      }
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control/core.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control/core.rs",
+      "bytes": 10516,
+      "imported_original_sha256": "b9a7cdba54f42f227ab2dd834fb77b310515e9456fedd4427cd1a47150542c86",
+      "imported_original_git_blob": "4184f0184a6ae3a60c5a1e6e8cfe9cdedc28ec85",
+      "disposition": "imported_original_repaired",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 11542,
+        "sha256": "f75747d706773a028eb05c0bd4ce2baec2463a4b4ef4dc9003ec6332d0fafad2",
+        "git_blob": "edd62f867a025c570e900974ff0f7d451f0ccc10",
+        "classification": "intentional_repair_differs_from_imported_original",
+        "difference_from_imported_original": "Adds the bound source and swarm repository URLs, exact ordered qualification-lane denominator, publication attempt/reread/rollback state, equality for indexed packet rereads, and boxed construction/publication failure payloads; remaining differences are formatting cleanup."
+      }
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control/io.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control/io.rs",
+      "bytes": 23754,
+      "imported_original_sha256": "62fd9a21c45ad4482dee44d757575907873f896d1a91748d51ef154f52cf9b87",
+      "imported_original_git_blob": "0bb662519b03518854048b3cb2c91e878e052a6f",
+      "disposition": "imported_original_repaired",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 26601,
+        "sha256": "30ff48e92306aa7c02846dc25af942f09ac0f9409e100f3ee8172b68d83af9c2",
+        "git_blob": "51391482b5c7da65cf4beeb0fcd9258bbac3a2a6",
+        "classification": "intentional_repair_differs_from_imported_original",
+        "difference_from_imported_original": "Adds fail-closed output packet collision preflight, checked staging-token slicing, exact optional local-ref reads, bound remote URL reads, and expected-old guarded local-ref update/delete support used for publication rollback; remaining differences are formatting cleanup."
+      }
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control/publication.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control/publication.rs",
+      "bytes": 18054,
+      "imported_original_sha256": "dd6beceaa4ed261d048161e89044ed79b29e4cd8de23070e3be9e57c0aa91439",
+      "imported_original_git_blob": "807ccdddf2c1880222b97fe1beba8dc2bc2f95cd",
+      "disposition": "imported_original_repaired",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 24546,
+        "sha256": "4f04cd93ff67d81a18a0a5d0cbbfcaa081183842fdfbfbbdf9f353d506bd41b0",
+        "git_blob": "eab196d181aa69fa5f430c50db6b1b1a8ab44c77",
+        "classification": "intentional_repair_differs_from_imported_original",
+        "difference_from_imported_original": "Binds source and swarm remote authorities, preflights output collision, performs guarded local candidate-ref mutation with rollback, rereads local/remote source, W7, construction packet, exact join, URL, and candidate-ref state around publication, records exact attempt counters and rollback outcome, reports published_but_invalidated or publication_state_unknown truthfully, and never emits a merge command."
+      }
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control/tests.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control/tests.rs",
+      "bytes": 26119,
+      "imported_original_sha256": "8d485ffb1704a15015efffc193141e55f96d805f3ebd15c576edb8a8ea7bc0bd",
+      "imported_original_git_blob": "1347e20e9375896d97791c23508ea600a735239b",
+      "disposition": "imported_original_repaired",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 36302,
+        "sha256": "597c353c960d19f3a7e6e6caee6fd409db4e74437de3795ebc870b6c121f0f96",
+        "git_blob": "44fc07ea66f5270734eef56096c24f1fc71a75eb",
+        "classification": "intentional_repair_differs_from_imported_original",
+        "difference_from_imported_original": "Converts temporary repository cleanup and assertion plumbing to fallible test support, updates fixtures and assertions for producer binding, exact lane denominator, attempt counters, output preflight, no merge-command authority, guarded local-ref publication and rollback, and adds rejection, rollback, stale-input, and remote-state regression coverage."
+      }
+    },
+    {
+      "archive_path": "xtask/tests/fixtures/source_promotion_control/impossible-validated.json",
+      "repository_path": "xtask/tests/fixtures/source_promotion_control/impossible-validated.json",
+      "bytes": 1472,
+      "imported_original_sha256": "9dbc7b962a438d8e70c0b4a89959f8fa1cd04cda542d18d08682691bd091babd",
+      "imported_original_git_blob": "0972b7e103cf602bb6c356f1fc055c4245aec022",
+      "disposition": "imported_original_retained_byte_identical",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 1472,
+        "sha256": "9dbc7b962a438d8e70c0b4a89959f8fa1cd04cda542d18d08682691bd091babd",
+        "git_blob": "0972b7e103cf602bb6c356f1fc055c4245aec022",
+        "classification": "byte_identical_to_imported_original",
+        "difference_from_imported_original": "none"
+      }
+    }
+  ],
+  "integration_preimages": [
+    {
+      "path": "xtask/src/reports/mod.rs",
+      "base_commit": "2e8e1d5a790ff21dca82f8104a00e703ea6179c5",
+      "preimage_git_blob": "79367e4751d2f1da291e3c9dbce2adbbbb27f3be",
+      "preimage_bytes": 3138,
+      "preimage_sha256": "c9c3e68a8ba88af2dc0f82311b1d3f31551e9d7226035d8c2fcef0181cbd7a0f",
+      "integration": "Declare source_promotion_control immediately before source_promotion_validate_resolved_tree and export source_promotion_control plus source_promotion_control_handles immediately before the existing resolved-tree validator export.",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 3278,
+        "sha256": "e26d7a36fc46f03d738308d032cc3284557a35ffa66a90da50be2657f89e8164",
+        "git_blob": "f93639fa0eb20401a4d621c53c7a692c03744f70",
+        "classification": "intentional_integration_differs_from_base_preimage",
+        "difference_from_preimage": "Declares the recovered source_promotion_control module and exports source_promotion_control plus source_promotion_control_handles immediately before the existing resolved-tree validator integration."
+      }
+    },
+    {
+      "path": "xtask/src/dispatch.rs",
+      "base_commit": "2e8e1d5a790ff21dca82f8104a00e703ea6179c5",
+      "preimage_git_blob": "fa94bc791e3a70ddb62f0b53cb738abef78bc2db",
+      "preimage_bytes": 10111,
+      "preimage_sha256": "bfad795557e40cab46ecf2c3bc11fdd1f0aec69a0a1469395bd86728027a2200",
+      "integration": "Route source-promotion arguments accepted by source_promotion_control_handles to source_promotion_control immediately before the existing validate-resolved-tree dispatch arm.",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 10309,
+        "sha256": "c93b4263cb3ee4d1497852b58ccb029567ba4cc3b7cee2259e0a71201829b939",
+        "git_blob": "3dc9b3fe8ddc44b170bf449989daac5fa8f10f08",
+        "classification": "intentional_integration_differs_from_base_preimage",
+        "difference_from_preimage": "Adds one guarded SourcePromotion dispatch arm that routes the four controller subcommands through source_promotion_control before the existing validate-resolved-tree dispatch arm."
+      }
+    }
+  ],
+  "verification": {
+    "archive_digest": "passed",
+    "payload_git_blob_identities": "passed",
+    "archive_member_inventory": "passed",
+    "archive_member_types": "nine_regular_files_only",
+    "integration_preimage_identities": "passed",
+    "final_post_repair_identities": "passed",
+    "imported_original_comparisons": "passed",
+    "unsafe_archive_paths": 0,
+    "recovered_scripts_executed": false,
+    "carrier_workflows_executed": false,
+    "mismatches": []
+  },
+  "remaining_issue_work_not_claimed_by_manifest": [
+    "Run the focused, policy, traceability, full-repository, and hosted exact-head proof required by issue #1609."
+  ],
+  "authority_boundary": "This manifest proves deterministic recovery of the declared archive and identifies its imported originals and integration preimages. It does not approve the recovered implementation, claim semantic equivalence after repair, execute a carrier or recovered script, create an exact-J object, mutate any ref, authorize source integration, or authorize release publication."
+}

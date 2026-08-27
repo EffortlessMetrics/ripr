@@ -13813,3 +13813,43 @@ Receipt paths carry an explicit role rather than ambient authority:
 This receipt proves only the named source-governed repository contracts for one
 exact reviewed tree. It does not construct J, qualify later product or editor
 surfaces, move source or swarm authority, or authorize release publication.
+
+## Source-promotion control packets
+
+The source-owned controller writes indexed JSON/Markdown packets using
+`ripr.source_promotion_control_packet.v1`. Its typed receipts are
+`ripr.source_promotion_trusted_builder.v1`,
+`ripr.source_promotion_resolved_tree_admission.v1`,
+`ripr.source_promotion_exact_join_construction.v1`, and
+`ripr.source_promotion_candidate_ref_publication.v1`. Admission also consumes
+the producer-bound `ripr.source_promotion_integration_index.v1` and terminal
+`ripr.source_promotion_tree_qualification.v1` schemas.
+
+Controller status values are `built`, `admitted`, `constructed`, `published`,
+and `rejected`. Publication additionally uses `published_but_invalidated` when
+the exact remote candidate ref moved but a bound input invalidated afterward,
+and `publication_state_unknown` when a push was attempted but its final remote
+state could not be observed. Neither status grants merge or release authority.
+
+Every receipt exposes numeric `commit_tree_attempts`, `local_ref_attempts`,
+`remote_push_attempts`, and `merge_command_attempts`. Admission and all
+pre-mutation rejection paths require zero forbidden attempts. This controller
+never emits a merge command, so `merge_command_attempts` remains zero.
+
+Qualification requires exactly these ordered lane names:
+
+- `editor_package_linux`;
+- `editor_package_windows`;
+- `rust_product`;
+- `source_governance`;
+- `source_survivors`;
+- `trusted_product_journeys`;
+- `untrusted_workspace_contract`;
+- `w7_product`.
+
+Candidate-ref publication binds both source remote URLs to the exact source
+repository, rereads local and remote source/W7 refs and the full indexed
+construction packet before and after mutation, uses an exact expected-state
+lease, and reconciles the remote after every push attempt. A rejected remote
+push restores only the local candidate ref when the final remote state is
+observed and differs from the constructed join.

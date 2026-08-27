@@ -6104,11 +6104,17 @@ tests = [
   "xtask/src/reports/source_promotion_validate_resolved_tree.rs::tests::command_catalog_requires_exact_order_and_terminal_passes",
   "xtask/src/reports/source_promotion_validate_resolved_tree.rs::tests::git_object_view_ignores_replacement_refs",
   "xtask/src/reports/source_promotion_validate_resolved_tree.rs::tests::repository_observation_detects_ref_mutation",
+  "xtask/src/reports/source_promotion_control/tests.rs::source_promotion_control_tests::resolved_tree_admission_rejects_failed_unavailable_not_run_and_reordered_commands",
+  "xtask/src/reports/source_promotion_control/tests.rs::source_promotion_control_tests::qualification_rejects_zero_step_failed_and_reordered_lanes",
+  "xtask/src/reports/source_promotion_control/tests.rs::source_promotion_control_tests::source_promotion_constructor_preserves_parent_order_tree_and_refs",
+  "xtask/src/reports/source_promotion_control/tests.rs::source_promotion_control_tests::source_promotion_publication_uses_expected_absent_guard_without_merge_authority",
+  "xtask/src/reports/source_promotion_control/tests.rs::source_promotion_control_tests::source_promotion_publication_rolls_back_local_ref_on_remote_rejection",
   "xtask/tests/source_promotion_resolved_tree.rs::j5_source_ledger_rejects_and_semantic_reconciliation_passes",
 ]
 fixtures = [
   "fixtures/source_promotion_verification",
   "fixtures/source_promotion_resolved_tree",
+  "xtask/tests/fixtures/source_promotion_control/impossible-validated.json",
 ]
 code = [
   ".github/workflows/source-promotion-contract.yml",
@@ -6116,9 +6122,18 @@ code = [
   "xtask/src/dispatch.rs",
   "xtask/src/reports/source_promotion_verify.rs",
   "xtask/src/reports/source_promotion_validate_resolved_tree.rs",
+  "xtask/src/reports/source_promotion_control.rs",
+  "xtask/src/reports/source_promotion_control/admission.rs",
+  "xtask/src/reports/source_promotion_control/construction.rs",
+  "xtask/src/reports/source_promotion_control/core.rs",
+  "xtask/src/reports/source_promotion_control/io.rs",
+  "xtask/src/reports/source_promotion_control/publication.rs",
+  "xtask/src/reports/source_promotion_control/tests.rs",
 ]
 outputs = [
   "docs/SOURCE_PROMOTION.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/release/0.11.0/source-promotion-controller-recovery-manifest.json",
   ".github/workflows/source-promotion-contract.yml",
   "fixtures/source_promotion_resolved_tree/expected/rejected.json",
   "fixtures/source_promotion_resolved_tree/expected/rejected.md",

@@ -353,6 +353,10 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "release-upload-assets --version <version>",
         "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
         "source-promotion validate-resolved-tree --source-parent <sha> --swarm-parent <sha> --reviewed-tree <tree> --preflight <receipt.json> --preflight-sha256 <digest> --resolution-manifest <manifest.json> --resolution-sha256 <digest> [--out <dir>]",
+        "source-promotion write-trusted-builder-receipt --source-parent <sha> --workflow-source-sha <sha> --executable <path> --cargo-target-dir <path> --locked-build --isolated-target-dir [--out <dir>]",
+        "source-promotion admit-resolved-tree --source-parent <sha> --swarm-parent <sha> --join-tree <tree> --preflight <path> --preflight-sha256 <digest> --resolution-manifest <path> --resolution-sha256 <digest> --validation-packet <dir> --builder-packet <dir> --integration-index <path> [--out <dir>]",
+        "source-promotion construct-exact-join --admission-packet <dir> --validation-packet <dir> --integration-index <path> --preflight <path> --resolution-manifest <path> --qualification-receipt <path> --source-main-ref <ref> --swarm-ref <ref> --candidate-ref <ref> [--out <dir>]",
+        "source-promotion publish-candidate-ref --construction-packet <dir> --source-main-ref <ref> --remote origin --target-ref <refs/heads/promote/0.11.0-...> (--expected-absent | --expected-old <sha>) [--out <dir>]",
         "targeted-test-outcome --before <path> --after <path>",
         "mutation-calibration [root] --mutants-json <path>",
         "bun-ub-calibration [--corpus <path>] [--out <path>] [--out-md <path>]",
@@ -836,6 +840,34 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/source-promotion/resolved-tree/{resolved-tree-validation.json,resolved-tree-validation.md,commands/**} or explicit --out <dir>; transient unreferenced Git object and worktree-registry entries in the caller repository are removed before return",
             false,
             "Validates one exact reviewed tree with the source-parent governance catalog and retained bounded evidence before direct-J construction; retained worktree state or authoritative ref movement rejects validation.",
+        ),
+        command_entry(
+            "source-promotion write-trusted-builder-receipt --source-parent <sha> --workflow-source-sha <sha> --executable <path> --cargo-target-dir <path> --locked-build --isolated-target-dir [--out <dir>]",
+            "report_only",
+            "target/ripr/source-promotion/trusted-builder/{trusted-builder.json,packet-index.json} or explicit --out <dir>",
+            false,
+            "Writes a source-bound trusted-builder receipt without constructing a join or mutating Git refs.",
+        ),
+        command_entry(
+            "source-promotion admit-resolved-tree --source-parent <sha> --swarm-parent <sha> --join-tree <tree> --preflight <path> --preflight-sha256 <digest> --resolution-manifest <path> --resolution-sha256 <digest> --validation-packet <dir> --builder-packet <dir> --integration-index <path> [--out <dir>]",
+            "report_only",
+            "target/ripr/source-promotion/resolved-tree-admission/{resolved-tree-admission.json,packet-index.json} or explicit --out <dir>",
+            false,
+            "Admits one exact resolved tree only after every bound source-owned validation, builder, and integration receipt passes; it does not construct a join or mutate Git refs.",
+        ),
+        command_entry(
+            "source-promotion construct-exact-join --admission-packet <dir> --validation-packet <dir> --integration-index <path> --preflight <path> --resolution-manifest <path> --qualification-receipt <path> --source-main-ref <ref> --swarm-ref <ref> --candidate-ref <ref> [--out <dir>]",
+            "mutating",
+            "Git object database plus target/ripr/source-promotion/exact-join-construction/{exact-join-construction.json,packet-index.json} or explicit --out <dir>; no Git ref",
+            false,
+            "Constructs one deterministic unreferenced exact-J commit object only after admission and terminal qualification; it does not publish or mutate a Git ref.",
+        ),
+        command_entry(
+            "source-promotion publish-candidate-ref --construction-packet <dir> --source-main-ref <ref> --remote origin --target-ref <refs/heads/promote/0.11.0-...> (--expected-absent | --expected-old <sha>) [--out <dir>]",
+            "external_state_mutating",
+            "local and remote candidate refs plus target/ripr/source-promotion/candidate-ref-publication/{candidate-ref-publication.json,packet-index.json} or explicit --out <dir>",
+            true,
+            "Publishes only the construction-bound candidate ref with an exact expected-state lease; this capability is judgment-required and does not authorize a real promotion.",
         ),
         command_entry(
             "targeted-test-outcome --before <path> --after <path>",
@@ -1464,7 +1496,7 @@ fn levenshtein(lhs: &str, rhs: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{XtaskCommand, command_catalog, help_message, levenshtein};
+    use super::{XtaskCommand, command_catalog, help_message, known_commands, levenshtein};
 
     #[test]
     fn top_level_help_pins_start_here_front_door_language() -> Result<(), String> {
@@ -1536,6 +1568,54 @@ mod tests {
                 }
             }
             other => return Err(format!("source-promotion did not dispatch: {other:?}")),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_controller_commands_are_cataloged() -> Result<(), String> {
+        let known = known_commands();
+        let catalog = command_catalog();
+        for (command, expected_mutability, expected_judgment) in [
+            (
+                "source-promotion write-trusted-builder-receipt --source-parent <sha> --workflow-source-sha <sha> --executable <path> --cargo-target-dir <path> --locked-build --isolated-target-dir [--out <dir>]",
+                "report_only",
+                false,
+            ),
+            (
+                "source-promotion admit-resolved-tree --source-parent <sha> --swarm-parent <sha> --join-tree <tree> --preflight <path> --preflight-sha256 <digest> --resolution-manifest <path> --resolution-sha256 <digest> --validation-packet <dir> --builder-packet <dir> --integration-index <path> [--out <dir>]",
+                "report_only",
+                false,
+            ),
+            (
+                "source-promotion construct-exact-join --admission-packet <dir> --validation-packet <dir> --integration-index <path> --preflight <path> --resolution-manifest <path> --qualification-receipt <path> --source-main-ref <ref> --swarm-ref <ref> --candidate-ref <ref> [--out <dir>]",
+                "mutating",
+                false,
+            ),
+            (
+                "source-promotion publish-candidate-ref --construction-packet <dir> --source-main-ref <ref> --remote origin --target-ref <refs/heads/promote/0.11.0-...> (--expected-absent | --expected-old <sha>) [--out <dir>]",
+                "external_state_mutating",
+                true,
+            ),
+        ] {
+            if !known.contains(&command) {
+                return Err(format!(
+                    "source-promotion controller command is missing from help: {command}"
+                ));
+            }
+            let entry = catalog
+                .iter()
+                .find(|entry| entry.command == command)
+                .ok_or_else(|| {
+                    format!("source-promotion controller command is not cataloged: {command}")
+                })?;
+            if entry.mutability != expected_mutability
+                || entry.judgment_required != expected_judgment
+            {
+                return Err(format!(
+                    "source-promotion controller command has incorrect safety metadata: {command}"
+                ));
+            }
         }
         Ok(())
     }

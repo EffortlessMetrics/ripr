@@ -114,6 +114,85 @@ invent parent-comparative semantic resolutions: the reviewed manifest must bind
 the separately reviewed #1557/#1572 integrated-policy receipts, and #1478 owns
 the complete disposition set and reviewed tree.
 
+### Source-owned admission, construction, and candidate-ref controller
+
+The recovered #1609 controller extends `cargo xtask source-promotion` with four
+typed subcommands:
+
+- `write-trusted-builder-receipt` binds the exact source/workflow SHA, clean
+  checkout, pinned Rust toolchain, `Cargo.lock`, isolated locked build, and the
+  executable that is currently running;
+- `admit-resolved-tree` requires the exact validated-tree packet, trusted
+  builder packet, preflight and resolution bytes, and typed command-catalog and
+  network-policy integration receipts;
+- `construct-exact-join` consumes one admitted packet and one terminal tree
+  qualification before the single allowed unreferenced `git commit-tree`
+  attempt; and
+- `publish-candidate-ref` requires the construction-bound target ref, exact
+  old-or-absent local and remote state, and an exact expected-state
+  `--force-with-lease` before publishing the candidate ref.
+
+Integration receipts are not accepted as schema-only self-assertions. Each is
+bound to `producer_source_sha == SOURCE_PARENT` and to the executable digest in
+the trusted-builder packet. The tree-qualification denominator is exactly this
+ordered set, with every lane terminal `passed` and carrying a lowercase
+64-character evidence SHA-256:
+
+1. `editor_package_linux`;
+2. `editor_package_windows`;
+3. `rust_product`;
+4. `source_governance`;
+5. `source_survivors`;
+6. `trusted_product_journeys`;
+7. `untrusted_workspace_contract`; and
+8. `w7_product`.
+
+Missing, extra, reordered, renamed, non-passed, or evidence-free lanes reject
+construction eligibility. Qualification also binds the exact admission packet
+and receipt, resolved-tree validation receipt, and admitted network-policy
+receipt.
+
+Every controller receipt reports numeric `commit_tree_attempts`,
+`local_ref_attempts`, `remote_push_attempts`, and `merge_command_attempts`.
+Rejected admission and every preconstruction rejection report zero forbidden
+attempts. A constructed receipt reports exactly one commit-tree attempt and
+zero ref, push, and merge-command attempts. Publication never constructs a
+commit and always reports `merge_command_attempts: 0`.
+
+The requested control-packet output must be available before `commit-tree`,
+local-ref, or remote-push work becomes reachable. A pre-existing output path or
+an unsafe/non-directory output parent fails closed before those attempts; the
+controller never overwrites an earlier receipt to make a later mutation look
+successful.
+
+Candidate-ref publication binds both fetch and push authority to
+`https://github.com/EffortlessMetrics/ripr.git`. Before local mutation, again
+after creating the local candidate ref, and after the push attempt, it rereads
+the local and remote source parent, local and remote protected W7 ref, complete
+indexed construction-packet bytes and inventory, exact join object, and source
+remote fetch/push URLs. A stale or mismatched pre-push reread attempts to roll
+the local candidate ref back to its exact old-or-absent state without pushing.
+A failed or non-publishing remote attempt also attempts to roll back only that
+local candidate ref behind an exact-state guard, and the receipt records
+whether the rollback succeeded.
+
+Publication status follows observed state rather than process exit alone:
+
+- `published` means the remote target was reread at the exact constructed join
+  and all post-push authority rereads remained valid;
+- `published_but_invalidated` means the remote target was observed at the exact
+  join but a bound source, W7, packet, object, or URL authority invalidated
+  during publication; and
+- `publication_state_unknown` means a push was attempted but the final remote
+  state could not be observed.
+
+`rejected`, `published_but_invalidated`, and `publication_state_unknown` grant
+no integration or release authority. No #1609 controller packet emits a merge
+command: `merge_command` remains null and `merge_command_attempts` remains zero
+for every outcome. Issue #1508 owns the later authoritative promotion candidate
+and merge-command decision after accepted-tree and qualification evidence
+exist.
+
 ## Required Evidence
 
 - unrelated PRs skip without a success claim;
@@ -156,6 +235,23 @@ the complete disposition set and reviewed tree.
   canonical bytes;
 - replacement refs, source-checker mismatch, wrong object kinds, ref movement,
   and worktree-residue path aliases are exercised by production-helper tests.
+- all four controller subcommands reject malformed, missing, stale, moved, or
+  producer-mismatched evidence before the forbidden attempt counter advances;
+- the exact eight-lane qualification denominator accepts only the ordered
+  complete set and rejects missing, extra, renamed, reordered, failed, or
+  evidence-free lanes;
+- output-path collisions reject before commit-tree, local-ref, or remote-push
+  attempts;
+- target-ref mismatch and wrong expected local or remote state reject before
+  publication, while a remote non-publication restores the exact prior local
+  candidate-ref state;
+- before/after controls cover local and remote source, local and remote W7,
+  complete indexed construction-packet bytes, the exact join object, and source
+  fetch/push URLs;
+- publication receipts distinguish `published`,
+  `published_but_invalidated`, `publication_state_unknown`, and `rejected` from
+  observed remote state, and every controller outcome retains a null merge
+  command with zero merge-command attempts.
 
 ## Non-Goals
 
@@ -200,6 +296,11 @@ mapped in `.ripr/traceability.toml`.
 - Operator contract: `docs/SOURCE_PROMOTION.md`
 - Exact verifier: `xtask/src/reports/source_promotion_verify.rs`
 - Resolved-tree validator: `xtask/src/reports/source_promotion_validate_resolved_tree.rs`
+- Admission/construction/publication controller:
+  `xtask/src/reports/source_promotion_control.rs`
+- Controller hostile and isolated Git fixtures:
+  `xtask/src/reports/source_promotion_control/tests.rs` and
+  `xtask/tests/fixtures/source_promotion_control/`
 - J5 final-tree corpus: `xtask/tests/source_promotion_resolved_tree.rs`
 - Byte-stable receipts: `fixtures/source_promotion_resolved_tree/expected/`
 - External control sidecar: the fixed source-repository commit named by the
