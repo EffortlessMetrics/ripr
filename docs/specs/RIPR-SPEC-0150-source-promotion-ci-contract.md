@@ -164,11 +164,14 @@ The requested control-packet output must be exclusively reserved before
 syncs a deterministic `control-attempt.json` before side effects; completed
 packets retain it and publish `packet-index.json` last. Its reconciliation
 context binds the protected refs, expected ref state, and maximum operation
-counters. A reserved directory
+counters together with the admitted or constructed identity and input packet
+digests. A reserved directory
 without the index is an incomplete attempt whose Git and remote state must be
 reconciled before retry. A pre-existing output path or an unsafe/non-directory
 output parent fails closed before those attempts; the controller never
-overwrites an earlier receipt to make a later mutation look successful.
+overwrites an earlier receipt to make a later mutation look successful. The
+contract covers process-visible interruption and synced file contents; it does
+not claim portable power-loss durability for directory entries.
 
 Construction and publication require the exact protected source ref
 `refs/heads/main`; a caller-selected alias cannot satisfy source-main

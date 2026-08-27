@@ -1,7 +1,10 @@
 fn construction_out_from_args(args: &[String]) -> PathBuf {
     args.windows(2)
-        .find(|pair| pair[0] == "--out" && !pair[1].trim().is_empty())
-        .map(|pair| PathBuf::from(&pair[1]))
+        .find(|pair| {
+            pair.first().is_some_and(|value| value == "--out")
+                && pair.get(1).is_some_and(|value| !value.trim().is_empty())
+        })
+        .and_then(|pair| pair.get(1).map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from(DEFAULT_CONSTRUCTION_OUT))
 }
 
@@ -78,21 +81,47 @@ fn construct_exact_join(args: &[String]) -> Result<(), String> {
         }
     };
 
+    let reconciliation_context = match construction_reconciliation_context(&options) {
+        Ok(context) => context,
+        Err(reason) => {
+            let report =
+                construction_rejection_report(None, Some(&options.candidate_ref), &reason, false);
+            return write_rejection_or_combine(
+                &options.out,
+                "exact_join_construction",
+                CONSTRUCTION_REPORT,
+                &report,
+                "Exact-join construction",
+                "A rejected construction packet grants no ref, merge, release, or publication authority.",
+                reason,
+            );
+        }
+    };
+
     let reservation = reserve_control_packet_output(
         &options.out,
         "exact_join_construction",
-        &serde_json::json!({
-            "source_main_ref": options.source_main_ref.as_str(),
-            "swarm_ref": options.swarm_ref.as_str(),
-            "candidate_ref": options.candidate_ref.as_str(),
-            "maximum_commit_tree_attempts": 1,
-            "maximum_local_ref_attempts": 0,
-            "maximum_remote_push_attempts": 0,
-            "maximum_merge_command_attempts": 0,
-        }),
+        &reconciliation_context,
     )?;
+    if let Err(reason) = require_reconciliation_context_unchanged(
+        &reconciliation_context,
+        construction_reconciliation_context(&options),
+        "construction",
+    ) {
+        let report =
+            construction_rejection_report(None, Some(&options.candidate_ref), &reason, false);
+        return write_reserved_rejection_or_combine(
+            &reservation,
+            "exact_join_construction",
+            CONSTRUCTION_REPORT,
+            &report,
+            "Exact-join construction",
+            "A rejected construction packet grants no ref, merge, release, or publication authority.",
+            reason,
+        );
+    }
 
-    match construct_exact_join_inner(&options) {
+    match construct_exact_join_inner(&options, Some(&reconciliation_context)) {
         Ok(evidence) => {
             let report = construction_success_report(&evidence);
             write_reserved_control_packet(
@@ -125,8 +154,88 @@ fn construct_exact_join(args: &[String]) -> Result<(), String> {
     }
 }
 
+fn construction_reconciliation_context(options: &ConstructionOptions) -> Result<Value, String> {
+    let admission_packet = read_indexed_packet(
+        &options.admission_packet,
+        CONTROL_PACKET_SCHEMA,
+        Some("resolved_tree_admission"),
+        Some("admitted"),
+        ADMISSION_REPORT,
+    )?;
+    let admission = packet_json(
+        &admission_packet,
+        ADMISSION_REPORT,
+        "resolved-tree admission receipt",
+    )?;
+    let identity = identity_from_admission(&admission)?;
+    validate_admission_receipt(&admission, &identity)?;
+    if json_string(&admission, "swarm_ref") != Some(options.swarm_ref.as_str()) {
+        return Err("constructor W7 ref differs from admitted protected ref".to_string());
+    }
+    let validation_packet = read_indexed_packet(
+        &options.validation_packet,
+        RESOLVED_TREE_PACKET_SCHEMA,
+        None,
+        Some("validated"),
+        VALIDATION_REPORT,
+    )?;
+    let source_head = read_commit_ref(&options.repo, &options.source_main_ref, "source main ref")?;
+    let swarm_head = read_commit_ref(&options.repo, &options.swarm_ref, "protected W7 ref")?;
+    if source_head != identity.source_parent || swarm_head != identity.swarm_parent {
+        return Err("source or W7 ref differs from the admitted construction identity".to_string());
+    }
+    let commit_timestamp = canonical_join_timestamp(&options.repo, &identity)?;
+    construction_reconciliation_value(
+        options,
+        &identity,
+        &admission_packet,
+        &validation_packet,
+        &file_sha256(&options.integration_index, "integration index")?,
+        &file_sha256(
+            &options.qualification_receipt,
+            "tree qualification receipt",
+        )?,
+        &commit_timestamp,
+    )
+}
+
+fn construction_reconciliation_value(
+    options: &ConstructionOptions,
+    identity: &PromotionIdentity,
+    admission_packet: &IndexedPacket,
+    validation_packet: &IndexedPacket,
+    integration_index_sha256: &str,
+    qualification_sha256: &str,
+    commit_timestamp: &str,
+) -> Result<Value, String> {
+    Ok(serde_json::json!({
+        "source_parent": identity.source_parent,
+        "swarm_parent": identity.swarm_parent,
+        "join_tree": identity.join_tree,
+        "preflight_sha256": identity.preflight_sha256,
+        "resolution_manifest_sha256": identity.resolution_sha256,
+        "source_main_ref": options.source_main_ref,
+        "swarm_ref": options.swarm_ref,
+        "candidate_ref": options.candidate_ref,
+        "admission_packet_index_sha256": admission_packet.index_sha256,
+        "admission_receipt_sha256": packet_file_sha256(admission_packet, ADMISSION_REPORT)?,
+        "resolved_tree_packet_index_sha256": validation_packet.index_sha256,
+        "integration_index_sha256": integration_index_sha256,
+        "tree_qualification_receipt_sha256": qualification_sha256,
+        "commit_author_name": JOIN_AUTHOR_NAME,
+        "commit_author_email": JOIN_AUTHOR_EMAIL,
+        "commit_timestamp": commit_timestamp,
+        "commit_message_sha256": digest_bytes(JOIN_MESSAGE.as_bytes()),
+        "maximum_commit_tree_attempts": 1,
+        "maximum_local_ref_attempts": 0,
+        "maximum_remote_push_attempts": 0,
+        "maximum_merge_command_attempts": 0,
+    }))
+}
+
 fn construct_exact_join_inner(
     options: &ConstructionOptions,
+    expected_reconciliation_context: Option<&Value>,
 ) -> Result<ConstructionEvidence, ConstructionFailure> {
     let admission_packet = read_indexed_packet(
         &options.admission_packet,
@@ -278,6 +387,60 @@ fn construct_exact_join_inner(
             false,
         ));
     }
+    construct_validated_join(
+        options,
+        ValidatedConstructionInputs {
+            identity,
+            admission_packet,
+            admission_receipt_sha256,
+            validation_packet,
+            integration_index_sha256: integration.index_sha256,
+            qualification_sha256,
+        },
+        expected_reconciliation_context,
+    )
+}
+
+struct ValidatedConstructionInputs {
+    identity: Box<PromotionIdentity>,
+    admission_packet: IndexedPacket,
+    admission_receipt_sha256: String,
+    validation_packet: IndexedPacket,
+    integration_index_sha256: String,
+    qualification_sha256: String,
+}
+
+fn construct_validated_join(
+    options: &ConstructionOptions,
+    inputs: ValidatedConstructionInputs,
+    expected_reconciliation_context: Option<&Value>,
+) -> Result<ConstructionEvidence, ConstructionFailure> {
+    let ValidatedConstructionInputs {
+        identity,
+        admission_packet,
+        admission_receipt_sha256,
+        validation_packet,
+        integration_index_sha256,
+        qualification_sha256,
+    } = inputs;
+    let commit_timestamp = canonical_join_timestamp(&options.repo, &identity)
+        .map_err(|reason| (reason, Some(identity.clone()), false))?;
+    if let Some(expected_context) = expected_reconciliation_context {
+        require_reconciliation_context_unchanged(
+            expected_context,
+            construction_reconciliation_value(
+                options,
+                &identity,
+                &admission_packet,
+                &validation_packet,
+                &integration_index_sha256,
+                &qualification_sha256,
+                &commit_timestamp,
+            ),
+            "construction",
+        )
+        .map_err(|reason| (reason, Some(identity.clone()), false))?;
+    }
 
     let refs_before =
         refs_digest(&options.repo).map_err(|reason| (reason, Some(identity.clone()), false))?;
@@ -308,8 +471,6 @@ fn construct_exact_join_inner(
         ));
     }
 
-    let commit_timestamp = canonical_join_timestamp(&options.repo, &identity)
-        .map_err(|reason| (reason, Some(identity.clone()), true))?;
     Ok(ConstructionEvidence {
         identity: *identity,
         swarm_ref: options.swarm_ref.clone(),
@@ -317,7 +478,7 @@ fn construct_exact_join_inner(
         admission_index_sha256: admission_packet.index_sha256,
         admission_receipt_sha256,
         validation_index_sha256: validation_packet.index_sha256,
-        integration_index_sha256: integration.index_sha256,
+        integration_index_sha256,
         qualification_sha256,
         join_commit,
         commit_timestamp,
@@ -608,8 +769,11 @@ fn create_exact_join_object(repo: &Path, identity: &PromotionIdentity) -> Result
     if lines.len() != 1 {
         return Err("git commit-tree did not return exactly one object identity".to_string());
     }
-    validate_exact_hex("constructed join commit", lines[0], 40)?;
-    Ok(lines[0].to_string())
+    let join_commit = lines
+        .first()
+        .ok_or_else(|| "commit-tree identity disappeared after cardinality validation".to_string())?;
+    validate_exact_hex("constructed join commit", join_commit, 40)?;
+    Ok((*join_commit).to_string())
 }
 
 fn verify_join_metadata(

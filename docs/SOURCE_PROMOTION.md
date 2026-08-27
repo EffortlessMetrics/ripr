@@ -385,14 +385,17 @@ Publication never constructs a commit or attempts a merge command; a local-ref
 rollback is a second local-ref attempt and remains visible in the receipt.
 
 The `--out` packet destination is exclusively reserved before any commit-tree,
-local-ref, or remote-push operation. The reservation durably writes
-`control-attempt.json`; a missing `packet-index.json` means final state is
+local-ref, or remote-push operation. The reservation creates and syncs the
+contents of `control-attempt.json`; a missing `packet-index.json` means final state is
 unknown and must be reconciled before retry. The journal binds the protected
-refs, expected state, and maximum operation counters needed for that
+commit/tree and packet identities, refs, fixed remotes, expected state, and
+maximum operation counters needed for that
 reconciliation. Completed packets retain the
 attempt journal and publish the complete index last. An existing output path or
 unsafe/non-directory parent fails closed without overwriting the earlier packet
-and without advancing a Git-mutation attempt counter.
+and without advancing a Git-mutation attempt counter. This ordering detects
+process-visible interruption; it does not claim power-loss durability for
+directory entries on every supported filesystem.
 
 Construction and publication require `--source-main-ref refs/heads/main`;
 caller-selected aliases never stand in for source authority. Publication

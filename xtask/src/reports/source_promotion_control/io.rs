@@ -13,7 +13,10 @@ fn parse_command_args(
     let mut flags = BTreeSet::new();
     let mut index = 1;
     while index < args.len() {
-        let key = args[index].as_str();
+        let key = args
+            .get(index)
+            .map(String::as_str)
+            .ok_or_else(|| "argument cursor moved past the command line".to_string())?;
         if allowed_flags.contains(key) {
             if !flags.insert(key.to_string()) {
                 return Err(format!("duplicate flag {key}"));
@@ -349,6 +352,20 @@ fn reserve_control_packet_output(
     })
 }
 
+fn require_reconciliation_context_unchanged(
+    expected: &Value,
+    current: Result<Value, String>,
+    label: &str,
+) -> Result<(), String> {
+    let current = current.map_err(|reason| {
+        format!("{label} inputs became unreadable after journal reservation: {reason}")
+    })?;
+    if current != *expected {
+        return Err(format!("{label} inputs moved after journal reservation"));
+    }
+    Ok(())
+}
+
 fn write_control_packet(
     out: &Path,
     kind: &str,
@@ -642,7 +659,10 @@ fn parse_remote_ref(output: &str, target_ref: &str) -> Result<Option<String>, St
             "remote returned multiple rows for exact ref {target_ref}"
         ));
     }
-    let mut parts = lines[0].split_whitespace();
+    let row = lines
+        .first()
+        .ok_or_else(|| "remote ref row disappeared after cardinality validation".to_string())?;
+    let mut parts = row.split_whitespace();
     let sha = parts
         .next()
         .ok_or_else(|| "remote ref row is missing object identity".to_string())?;

@@ -661,6 +661,97 @@ mod source_promotion_control_tests {
     }
 
     #[test]
+    fn source_promotion_constructor_rejects_mismatched_journal_before_commit_tree()
+    -> Result<(), String> {
+        let (repo, identity) = init_synthetic_repo("construct-journal")?;
+        let refs_before = refs_digest(&repo)?;
+        let admission_bytes = b"test admission receipt".to_vec();
+        let admission_receipt_sha256 = digest_bytes(&admission_bytes);
+        let mut admission_files = BTreeMap::new();
+        admission_files.insert(
+            ADMISSION_REPORT.to_string(),
+            IndexedFile {
+                sha256: admission_receipt_sha256.clone(),
+                contents: admission_bytes,
+            },
+        );
+        let admission_packet = IndexedPacket {
+            index_sha256:
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    .to_string(),
+            files: admission_files,
+        };
+        let validation_packet = IndexedPacket {
+            index_sha256:
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                    .to_string(),
+            files: BTreeMap::new(),
+        };
+        let integration_index_sha256 =
+            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                .to_string();
+        let qualification_sha256 =
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                .to_string();
+        let options = ConstructionOptions {
+            repo: repo.to_path_buf(),
+            admission_packet: repo.join("unused-admission"),
+            validation_packet: repo.join("unused-validation"),
+            integration_index: repo.join("unused-integration"),
+            preflight: repo.join("unused-preflight"),
+            resolution_manifest: repo.join("unused-resolution"),
+            qualification_receipt: repo.join("unused-qualification"),
+            source_main_ref: SOURCE_MAIN_REF.to_string(),
+            swarm_ref: format!(
+                "refs/tags/ripr-release-0.11.0-{}",
+                identity.swarm_parent.as_str()
+            ),
+            candidate_ref: "refs/heads/promote/0.11.0-test".to_string(),
+            out: repo.join("unused-output"),
+        };
+        let commit_timestamp = canonical_join_timestamp(&repo, &identity)?;
+        let mut mismatched_context = construction_reconciliation_value(
+            &options,
+            &identity,
+            &admission_packet,
+            &validation_packet,
+            &integration_index_sha256,
+            &qualification_sha256,
+            &commit_timestamp,
+        )?;
+        let join_tree = mismatched_context
+            .as_object_mut()
+            .and_then(|object| object.get_mut("join_tree"))
+            .ok_or_else(|| "construction context is missing join_tree".to_string())?;
+        *join_tree = Value::String(identity.source_parent.clone());
+
+        let failure = construct_validated_join(
+            &options,
+            ValidatedConstructionInputs {
+                identity: Box::new(identity),
+                admission_packet,
+                admission_receipt_sha256,
+                validation_packet,
+                integration_index_sha256,
+                qualification_sha256,
+            },
+            Some(&mismatched_context),
+        )
+        .err()
+        .ok_or_else(|| "mismatched construction journal unexpectedly constructed".to_string())?;
+        require(
+            !failure.2,
+            "mismatched construction journal must report zero commit-tree attempts",
+        )?;
+        require_equal(
+            refs_digest(&repo)?,
+            refs_before,
+            "mismatched construction journal must preserve every ref",
+        )?;
+        repo.cleanup()
+    }
+
+    #[test]
     fn source_promotion_publication_uses_expected_absent_guard_without_merge_authority()
     -> Result<(), String> {
         let (repo, identity) = init_synthetic_repo("publish")?;
@@ -717,7 +808,7 @@ mod source_promotion_control_tests {
             Some(identity.source_parent.as_str()),
             None,
         )?;
-        let mismatched_local = publish_candidate_ref_inner(&options);
+        let mismatched_local = publish_candidate_ref_inner(&options, None);
         require(
             mismatched_local.as_ref().is_err_and(|failure| {
                 failure.2.local_ref_attempts == 0 && failure.2.remote_push_attempts == 0
@@ -730,8 +821,52 @@ mod source_promotion_control_tests {
             None,
             Some(identity.source_parent.as_str()),
         )?;
+        let context = publication_reconciliation_context(&options)?;
+        let indexed_construction = read_indexed_packet(
+            &options.construction_packet,
+            CONTROL_PACKET_SCHEMA,
+            Some("exact_join_construction"),
+            Some("constructed"),
+            CONSTRUCTION_REPORT,
+        )?;
+        require_equal(
+            json_string(&context, "join_commit"),
+            Some(join.as_str()),
+            "publication reconciliation intended join",
+        )?;
+        require_equal(
+            json_string(&context, "construction_packet_index_sha256"),
+            Some(indexed_construction.index_sha256.as_str()),
+            "publication reconciliation construction packet identity",
+        )?;
+        require(
+            json_string(&context, "join_commit") != Some(identity.source_parent.as_str()),
+            "publication reconciliation must distinguish the intended join from an unrelated ref state",
+        )?;
+        let mut unrelated_context = context.clone();
+        let unrelated_join = unrelated_context
+            .as_object_mut()
+            .and_then(|object| object.get_mut("join_commit"))
+            .ok_or_else(|| "publication context is missing join_commit".to_string())?;
+        *unrelated_join = Value::String(identity.source_parent.clone());
+        require(
+            require_reconciliation_context_unchanged(
+                &context,
+                Ok(unrelated_context.clone()),
+                "publication",
+            )
+            .is_err(),
+            "reconciliation must reject an unrelated observed join identity",
+        )?;
+        let mismatched_journal = publish_candidate_ref_inner(&options, Some(&unrelated_context));
+        require(
+            mismatched_journal.as_ref().is_err_and(|failure| {
+                failure.2.local_ref_attempts == 0 && failure.2.remote_push_attempts == 0
+            }),
+            "mismatched journal identity must reject before ref or push mutation",
+        )?;
         let (published, publication_state) =
-            publish_candidate_ref_inner(&options).map_err(|failure| failure.0)?;
+            publish_candidate_ref_inner(&options, Some(&context)).map_err(|failure| failure.0)?;
         require_equal(
             published.join_commit.as_str(),
             join.as_str(),
@@ -765,7 +900,7 @@ mod source_promotion_control_tests {
             expected_absent: false,
             ..options.clone()
         };
-        let moved_main = publish_candidate_ref_inner(&moved_main_options);
+        let moved_main = publish_candidate_ref_inner(&moved_main_options, None);
         require(
             moved_main.as_ref().is_err_and(|failure| {
                 failure.0.contains("source main moved")
@@ -775,7 +910,7 @@ mod source_promotion_control_tests {
             "actual refs/heads/main movement must reject before publication mutation",
         )?;
 
-        let second = publish_candidate_ref_inner(&options);
+        let second = publish_candidate_ref_inner(&options, None);
         require(
             second
                 .as_ref()
@@ -855,7 +990,7 @@ mod source_promotion_control_tests {
             expected_absent: false,
             out: repo.join("publication-output"),
         };
-        let failure = publish_candidate_ref_inner(&options)
+        let failure = publish_candidate_ref_inner(&options, None)
             .err()
             .ok_or_else(|| "non-fast-forward fixture unexpectedly published".to_string())?;
         let (reason, rejected_evidence, state) = failure;
@@ -1053,7 +1188,18 @@ mod source_promotion_control_tests {
         let reservation = reserve_control_packet_output(&out, "test_control", &context)?;
         require(
             out.join("control-attempt.json").is_file(),
-            "reservation should durably write the attempt journal",
+            "reservation should synchronously write the attempt journal",
+        )?;
+        let journal_bytes = read_regular_file(
+            &out.join("control-attempt.json"),
+            "reserved control attempt journal",
+        )?;
+        let journal: Value = serde_json::from_slice(&journal_bytes)
+            .map_err(|error| format!("malformed reserved attempt journal: {error}"))?;
+        require_equal(
+            journal.get("reconciliation_context"),
+            Some(&context),
+            "reserved journal must preserve the exact reconciliation context",
         )?;
         require(
             reserve_control_packet_output(&out, "test_control", &context).is_err(),
@@ -1106,7 +1252,7 @@ mod source_promotion_control_tests {
         )?;
         require(
             out.join("control-attempt.json").is_file(),
-            "failed finalization should retain the durable pre-side-effect journal",
+            "failed finalization should retain the pre-side-effect journal",
         )?;
         require(
             !out.join(PACKET_INDEX).exists(),

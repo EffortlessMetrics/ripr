@@ -1,14 +1,20 @@
 fn builder_out_from_args(args: &[String]) -> PathBuf {
     args.windows(2)
-        .find(|pair| pair[0] == "--out" && !pair[1].trim().is_empty())
-        .map(|pair| PathBuf::from(&pair[1]))
+        .find(|pair| {
+            pair.first().is_some_and(|value| value == "--out")
+                && pair.get(1).is_some_and(|value| !value.trim().is_empty())
+        })
+        .and_then(|pair| pair.get(1).map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from(DEFAULT_BUILDER_OUT))
 }
 
 fn admission_out_from_args(args: &[String]) -> PathBuf {
     args.windows(2)
-        .find(|pair| pair[0] == "--out" && !pair[1].trim().is_empty())
-        .map(|pair| PathBuf::from(&pair[1]))
+        .find(|pair| {
+            pair.first().is_some_and(|value| value == "--out")
+                && pair.get(1).is_some_and(|value| !value.trim().is_empty())
+        })
+        .and_then(|pair| pair.get(1).map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from(DEFAULT_ADMISSION_OUT))
 }
 

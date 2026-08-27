@@ -1,7 +1,10 @@
 fn publication_out_from_args(args: &[String]) -> PathBuf {
     args.windows(2)
-        .find(|pair| pair[0] == "--out" && !pair[1].trim().is_empty())
-        .map(|pair| PathBuf::from(&pair[1]))
+        .find(|pair| {
+            pair.first().is_some_and(|value| value == "--out")
+                && pair.get(1).is_some_and(|value| !value.trim().is_empty())
+        })
+        .and_then(|pair| pair.get(1).map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from(DEFAULT_PUBLICATION_OUT))
 }
 
@@ -75,26 +78,55 @@ fn publish_candidate_ref(args: &[String]) -> Result<(), String> {
         }
     };
 
+    let reconciliation_context = match publication_reconciliation_context(&options) {
+        Ok(context) => context,
+        Err(reason) => {
+            let report = publication_rejection_report(
+                None,
+                Some(&options.target_ref),
+                &reason,
+                &PublicationState::default(),
+            );
+            return write_rejection_or_combine(
+                &options.out,
+                "candidate_ref_publication",
+                PUBLICATION_REPORT,
+                &report,
+                "Candidate-ref publication",
+                "A rejected publication packet emits no merge command and grants no source, release, or publication authority.",
+                reason,
+            );
+        }
+    };
+
     let reservation = reserve_control_packet_output(
         &options.out,
         "candidate_ref_publication",
-        &serde_json::json!({
-            "source_main_ref": options.source_main_ref.as_str(),
-            "remote": options.remote.as_str(),
-            "target_ref": options.target_ref.as_str(),
-            "expected_state": if options.expected_absent {
-                Value::String("absent".to_string())
-            } else {
-                options.expected_old.clone().map(Value::String).unwrap_or(Value::Null)
-            },
-            "maximum_commit_tree_attempts": 0,
-            "maximum_local_ref_attempts": 2,
-            "maximum_remote_push_attempts": 1,
-            "maximum_merge_command_attempts": 0,
-        }),
+        &reconciliation_context,
     )?;
+    if let Err(reason) = require_reconciliation_context_unchanged(
+        &reconciliation_context,
+        publication_reconciliation_context(&options),
+        "publication",
+    ) {
+        let report = publication_rejection_report(
+            None,
+            Some(&options.target_ref),
+            &reason,
+            &PublicationState::default(),
+        );
+        return write_reserved_rejection_or_combine(
+            &reservation,
+            "candidate_ref_publication",
+            PUBLICATION_REPORT,
+            &report,
+            "Candidate-ref publication",
+            "A rejected publication packet emits no merge command and grants no source, release, or publication authority.",
+            reason,
+        );
+    }
 
-    match publish_candidate_ref_inner(&options) {
+    match publish_candidate_ref_inner(&options, Some(&reconciliation_context)) {
         Ok((evidence, state)) => {
             let report = publication_success_report(&evidence, &options, &state);
             write_reserved_control_packet(
@@ -127,8 +159,84 @@ fn publish_candidate_ref(args: &[String]) -> Result<(), String> {
     }
 }
 
+fn publication_reconciliation_context(options: &PublicationOptions) -> Result<Value, String> {
+    let packet = read_indexed_packet(
+        &options.construction_packet,
+        CONTROL_PACKET_SCHEMA,
+        Some("exact_join_construction"),
+        Some("constructed"),
+        CONSTRUCTION_REPORT,
+    )?;
+    let receipt = packet_json(
+        &packet,
+        CONSTRUCTION_REPORT,
+        "exact-join construction receipt",
+    )?;
+    let evidence = construction_evidence_from_receipt(&receipt)?;
+    validate_construction_receipt(&receipt, &evidence)?;
+    if evidence.candidate_ref != options.target_ref {
+        return Err(
+            "publisher target ref differs from construction-bound candidate ref".to_string(),
+        );
+    }
+    verify_constructed_join(&options.repo, &evidence.join_commit, &evidence.identity)?;
+    validate_publication_inputs(options, &evidence, &packet)?;
+    let urls = read_remote_urls(&options.repo, &options.remote)?;
+    if urls
+        != (
+            options.source_remote_url.clone(),
+            options.source_remote_url.clone(),
+        )
+    {
+        return Err("source remote authority moved before publication".to_string());
+    }
+    let expected = if options.expected_absent {
+        None
+    } else {
+        options.expected_old.clone()
+    };
+    if read_remote_ref(
+        &options.repo,
+        &options.source_remote_url,
+        &options.target_ref,
+    )? != expected
+        || read_optional_local_ref(&options.repo, &options.target_ref)? != expected
+    {
+        return Err("candidate ref expected-state guard failed before reservation".to_string());
+    }
+    publication_reconciliation_value(options, &evidence, &packet, &expected)
+}
+
+fn publication_reconciliation_value(
+    options: &PublicationOptions,
+    evidence: &ConstructionEvidence,
+    packet: &IndexedPacket,
+    expected: &Option<String>,
+) -> Result<Value, String> {
+    Ok(serde_json::json!({
+        "source_parent": evidence.identity.source_parent,
+        "swarm_parent": evidence.identity.swarm_parent,
+        "join_tree": evidence.identity.join_tree,
+        "join_commit": evidence.join_commit,
+        "swarm_ref": evidence.swarm_ref,
+        "source_main_ref": options.source_main_ref,
+        "remote": options.remote,
+        "source_repository_url": options.source_remote_url,
+        "swarm_repository_url": options.swarm_remote_url,
+        "target_ref": options.target_ref,
+        "construction_packet_index_sha256": packet.index_sha256,
+        "construction_receipt_sha256": packet_file_sha256(packet, CONSTRUCTION_REPORT)?,
+        "expected_state": expected.clone().map(Value::String).unwrap_or_else(|| Value::String("absent".to_string())),
+        "maximum_commit_tree_attempts": 0,
+        "maximum_local_ref_attempts": 2,
+        "maximum_remote_push_attempts": 1,
+        "maximum_merge_command_attempts": 0,
+    }))
+}
+
 fn publish_candidate_ref_inner(
     options: &PublicationOptions,
+    expected_reconciliation_context: Option<&Value>,
 ) -> Result<(ConstructionEvidence, PublicationState), PublicationFailure> {
     let mut state = Box::<PublicationState>::default();
     let packet = read_indexed_packet(
@@ -206,6 +314,14 @@ fn publish_candidate_ref_inner(
 
     validate_publication_inputs(options, &evidence, &packet)
         .map_err(|reason| (reason, Some(evidence.clone()), state.clone()))?;
+    if let Some(expected_context) = expected_reconciliation_context {
+        require_reconciliation_context_unchanged(
+            expected_context,
+            publication_reconciliation_value(options, &evidence, &packet, &expected),
+            "publication",
+        )
+        .map_err(|reason| (reason, Some(evidence.clone()), state.clone()))?;
+    }
 
     let lease = match &expected {
         Some(old) => format!("--force-with-lease={}:{}", options.target_ref, old),

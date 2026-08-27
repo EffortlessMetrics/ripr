@@ -13841,9 +13841,12 @@ creates the requested packet directory and syncs `control-attempt.json` with
 status `reserved_before_side_effects`. A complete packet indexes that journal
 and writes `packet-index.json` last. The journal's deterministic
 `reconciliation_context` binds the protected refs, expected ref state, and
-maximum per-operation attempt counters. A reserved directory without the index is
+maximum per-operation attempt counters plus the admitted or constructed
+commit/tree and packet identities. A reserved directory without the index is
 an incomplete attempt with unknown final Git/remote state, not a rejection or
-success receipt, and must be reconciled before retry.
+success receipt, and must be reconciled before retry. This is a
+process-interruption ordering contract, not a portable power-loss durability
+claim for directory entries.
 
 Qualification requires exactly these ordered lane names:
 
