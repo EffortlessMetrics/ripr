@@ -1208,6 +1208,117 @@ mod source_promotion_control_tests {
     }
 
     #[test]
+    fn publication_status_definitions_match_every_contract() -> Result<(), String> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
+        for (contract_path, start, end, expected_definition) in [
+            (
+                "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+                "- `published` means",
+                "- `published_but_invalidated`",
+                "- `published` means the guarded push's machine-readable status reported an actual update of the exact target ref, the remote target was reread at the exact constructed join, and all post-push authority rereads remained valid;",
+            ),
+            (
+                "docs/SOURCE_PROMOTION.md",
+                "- `published` means",
+                "- `published_but_invalidated`",
+                "- `published` means the guarded push's machine-readable status reported an actual update of the exact target ref, the remote candidate ref was observed at the exact join, and every post-push authority reread remained valid;",
+            ),
+            (
+                "docs/OUTPUT_SCHEMA.md",
+                "`published` means",
+                "Publication additionally uses",
+                "`published` means machine-readable guarded-push status reported an actual update of the exact target ref, the exact join was observed there, and every bound post-push authority remained current.",
+            ),
+            (
+                "policy/output_contracts.txt",
+                "source_promotion_control_status|published|",
+                "\n",
+                "source_promotion_control_status|published|Machine-readable guarded-push status reported an actual update of the exact target ref, the exact candidate ref was observed at the constructed join, and all bound post-push authorities remained current.",
+            ),
+        ] {
+            let normalized_definition =
+                normalized_contract_definition(&root, contract_path, start, end)?;
+            require_equal(
+                normalized_definition.as_str(),
+                expected_definition,
+                &format!("{contract_path} published definition"),
+            )?;
+        }
+        for (contract_path, start, end, expected_definition) in [
+            (
+                "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+                "- `published_but_invalidated` means",
+                "- `publication_state_unknown`",
+                "- `published_but_invalidated` means the remote target was observed at the exact join but a bound source, W7, packet, object, or URL authority invalidated during publication, or the post-push local candidate-ref observation was unavailable; and",
+            ),
+            (
+                "docs/SOURCE_PROMOTION.md",
+                "- `published_but_invalidated` means",
+                "- `publication_state_unknown`",
+                "- `published_but_invalidated` means the exact join reached the remote candidate ref but a bound source, W7, packet, object, or URL identity invalidated during publication, or the post-push local candidate-ref observation was unavailable;",
+            ),
+            (
+                "docs/OUTPUT_SCHEMA.md",
+                "`published_but_invalidated` when",
+                "Neither status",
+                "`published_but_invalidated` when the exact remote candidate ref moved but a bound input invalidated afterward or the post-push local candidate-ref observation was unavailable, and `publication_state_unknown` when a push was attempted but its final remote state could not be observed or the exact join was observed without a machine-readable actual target-update attribution. An exit-zero up-to-date/no-op push is not publication attribution.",
+            ),
+            (
+                "policy/output_contracts.txt",
+                "source_promotion_control_status|published_but_invalidated|",
+                "\n",
+                "source_promotion_control_status|published_but_invalidated|The remote candidate ref reached the constructed join but a bound input invalidated during publication or the post-push local candidate-ref observation was unavailable.",
+            ),
+        ] {
+            let normalized_definition =
+                normalized_contract_definition(&root, contract_path, start, end)?;
+            require_equal(
+                normalized_definition.as_str(),
+                expected_definition,
+                &format!("{contract_path} published_but_invalidated definition"),
+            )?;
+        }
+        for (contract_path, start, end, expected_definition) in [
+            (
+                "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+                "- `publication_state_unknown` means",
+                "\n\n`rejected`",
+                "- `publication_state_unknown` means the final remote state could not be observed, or it equals the join without an actual target-update attribution; an exit-zero up-to-date/no-op push is not publication attribution.",
+            ),
+            (
+                "docs/SOURCE_PROMOTION.md",
+                "- `publication_state_unknown` means",
+                "- `rejected`",
+                "- `publication_state_unknown` means the final remote state could not be read, or it equals the join without an actual target-update attribution; an exit-zero up-to-date/no-op push is not publication attribution; and",
+            ),
+            (
+                "docs/OUTPUT_SCHEMA.md",
+                "`publication_state_unknown` when",
+                "Neither status",
+                "`publication_state_unknown` when a push was attempted but its final remote state could not be observed or the exact join was observed without a machine-readable actual target-update attribution. An exit-zero up-to-date/no-op push is not publication attribution.",
+            ),
+            (
+                "policy/output_contracts.txt",
+                "source_promotion_control_status|publication_state_unknown|",
+                "\n",
+                "source_promotion_control_status|publication_state_unknown|Final remote state was unavailable or equaled the join without machine-readable actual target-update attribution; an exit-zero up-to-date/no-op push is not publication attribution.",
+            ),
+        ] {
+            let normalized_definition =
+                normalized_contract_definition(&root, contract_path, start, end)?;
+            require_equal(
+                normalized_definition.as_str(),
+                expected_definition,
+                &format!("{contract_path} publication_state_unknown definition"),
+            )?;
+        }
+        Ok(())
+    }
+
+    #[test]
     fn control_packet_rejects_partial_digest_mismatch_and_unindexed_files() -> Result<(), String> {
         let temp = test_temp_dir("packet")?;
         let root = temp.join("packet");
@@ -1489,6 +1600,7 @@ mod source_promotion_control_tests {
             "refs/heads/promote/0.11.0-w7/.hidden",
             "refs/heads/promote/0.11.0-w7.",
             "refs/heads/promote/0.11.0-w7.lock",
+            "refs/heads/promote/0.11.0-w7.lock/child",
         ] {
             require(
                 validate_candidate_ref(reference).is_err(),
@@ -2106,112 +2218,6 @@ mod source_promotion_control_tests {
             Some("published_but_invalidated"),
             "unavailable post-push local state publication status",
         )?;
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .map(Path::to_path_buf)
-            .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
-        for (contract_path, start, end, expected_definition) in [
-            (
-                "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
-                "- `published` means",
-                "- `published_but_invalidated`",
-                "- `published` means the guarded push's machine-readable status reported an actual update of the exact target ref, the remote target was reread at the exact constructed join, and all post-push authority rereads remained valid;",
-            ),
-            (
-                "docs/SOURCE_PROMOTION.md",
-                "- `published` means",
-                "- `published_but_invalidated`",
-                "- `published` means the guarded push's machine-readable status reported an actual update of the exact target ref, the remote candidate ref was observed at the exact join, and every post-push authority reread remained valid;",
-            ),
-            (
-                "docs/OUTPUT_SCHEMA.md",
-                "`published` means",
-                "Publication additionally uses",
-                "`published` means machine-readable guarded-push status reported an actual update of the exact target ref, the exact join was observed there, and every bound post-push authority remained current.",
-            ),
-            (
-                "policy/output_contracts.txt",
-                "source_promotion_control_status|published|",
-                "\n",
-                "source_promotion_control_status|published|Machine-readable guarded-push status reported an actual update of the exact target ref, the exact candidate ref was observed at the constructed join, and all bound post-push authorities remained current.",
-            ),
-        ] {
-            let normalized_definition =
-                normalized_contract_definition(&root, contract_path, start, end)?;
-            require_equal(
-                normalized_definition.as_str(),
-                expected_definition,
-                &format!("{contract_path} published definition"),
-            )?;
-        }
-        for (contract_path, start, end, expected_definition) in [
-            (
-                "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
-                "- `published_but_invalidated` means",
-                "- `publication_state_unknown`",
-                "- `published_but_invalidated` means the remote target was observed at the exact join but a bound source, W7, packet, object, or URL authority invalidated during publication, or the post-push local candidate-ref observation was unavailable; and",
-            ),
-            (
-                "docs/SOURCE_PROMOTION.md",
-                "- `published_but_invalidated` means",
-                "- `publication_state_unknown`",
-                "- `published_but_invalidated` means the exact join reached the remote candidate ref but a bound source, W7, packet, object, or URL identity invalidated during publication, or the post-push local candidate-ref observation was unavailable;",
-            ),
-            (
-                "docs/OUTPUT_SCHEMA.md",
-                "`published_but_invalidated` when",
-                "Neither status",
-                "`published_but_invalidated` when the exact remote candidate ref moved but a bound input invalidated afterward or the post-push local candidate-ref observation was unavailable, and `publication_state_unknown` when a push was attempted but its final remote state could not be observed or the exact join was observed without a machine-readable actual target-update attribution. An exit-zero up-to-date/no-op push is not publication attribution.",
-            ),
-            (
-                "policy/output_contracts.txt",
-                "source_promotion_control_status|published_but_invalidated|",
-                "\n",
-                "source_promotion_control_status|published_but_invalidated|The remote candidate ref reached the constructed join but a bound input invalidated during publication or the post-push local candidate-ref observation was unavailable.",
-            ),
-        ] {
-            let normalized_definition =
-                normalized_contract_definition(&root, contract_path, start, end)?;
-            require_equal(
-                normalized_definition.as_str(),
-                expected_definition,
-                &format!("{contract_path} published_but_invalidated definition"),
-            )?;
-        }
-        for (contract_path, start, end, expected_definition) in [
-            (
-                "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
-                "- `publication_state_unknown` means",
-                "\n\n`rejected`",
-                "- `publication_state_unknown` means the final remote state could not be observed, or it equals the join without an actual target-update attribution; an exit-zero up-to-date/no-op push is not publication attribution.",
-            ),
-            (
-                "docs/SOURCE_PROMOTION.md",
-                "- `publication_state_unknown` means",
-                "- `rejected`",
-                "- `publication_state_unknown` means the final remote state could not be read, or it equals the join without an actual target-update attribution; an exit-zero up-to-date/no-op push is not publication attribution; and",
-            ),
-            (
-                "docs/OUTPUT_SCHEMA.md",
-                "`publication_state_unknown` when",
-                "Neither status",
-                "`publication_state_unknown` when a push was attempted but its final remote state could not be observed or the exact join was observed without a machine-readable actual target-update attribution. An exit-zero up-to-date/no-op push is not publication attribution.",
-            ),
-            (
-                "policy/output_contracts.txt",
-                "source_promotion_control_status|publication_state_unknown|",
-                "\n",
-                "source_promotion_control_status|publication_state_unknown|Final remote state was unavailable or equaled the join without machine-readable actual target-update attribution; an exit-zero up-to-date/no-op push is not publication attribution.",
-            ),
-        ] {
-            let normalized_definition =
-                normalized_contract_definition(&root, contract_path, start, end)?;
-            require_equal(
-                normalized_definition.as_str(),
-                expected_definition,
-                &format!("{contract_path} publication_state_unknown definition"),
-            )?;
-        }
         require_equal(
             read_remote_ref(&repo, "origin", &evidence.candidate_ref)?,
             Some(join.clone()),
