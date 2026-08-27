@@ -346,10 +346,14 @@ Issue #1609 adds four typed control-plane subcommands under
    executable digest.
 2. `admit-resolved-tree` binds that producer to the exact validated-tree
    packet, preflight and resolution bytes, and command-catalog and
-   network-policy integration receipts.
-3. `construct-exact-join` consumes the admitted packet and terminal
-   qualification receipt to create one deterministic, unreferenced, direct
-   two-parent commit object without moving a ref.
+   network-policy integration receipts. The integration-index bytes must match
+   the caller-bound lowercase `--integration-index-sha256` before JSON parsing
+   and again during the final identity snapshot.
+3. `construct-exact-join` consumes the admitted packet and a terminal
+   qualification receipt, rechecks the same caller-bound integration-index
+   digest, and requires the qualification bytes to match the caller-bound
+   `--qualification-receipt-sha256` to create one deterministic, unreferenced,
+   direct two-parent commit object without moving a ref.
 4. `publish-candidate-ref` creates the construction-bound local candidate ref
    and publishes it only to the bound source repository behind an exact
    old-or-absent lease.
@@ -358,6 +362,14 @@ The typed integration receipts must identify the admitted `SOURCE_PARENT` as
 `producer_source_sha` and the trusted-builder executable as
 `producer_executable_sha256`; matching schemas and status strings alone are not
 producer authority.
+
+The local #1609 controller validates exact content identity and internal
+consistency only. Its producer fields and digests do not independently prove
+producer provenance or reviewer acceptance. #1610 owns trusted transport from
+fixed producer repository, commit/ref, path, and digest authority; #1478 owns
+reviewer acceptance of integration evidence, and #1507 owns qualification-lane
+execution and evidence. No local receipt grants merge, publication, or release
+authority.
 
 The tree-qualification receipt has this exact ordered denominator:
 
@@ -376,6 +388,9 @@ Every lane must be terminal `passed` with a lowercase 64-character evidence
 SHA-256. Missing, extra, reordered, renamed, failed, or evidence-free lanes
 reject. The qualification also binds the admission packet and receipt,
 resolved-tree validation receipt, and admitted network-policy receipt.
+Construction compares the complete qualification receipt bytes with the
+caller-bound digest before parsing and again during the final preconstruction
+reread; a substituted receipt rejects with zero commit-tree attempts.
 
 Controller receipts use numeric `commit_tree_attempts`, `local_ref_attempts`,
 `remote_push_attempts`, and `merge_command_attempts`. Admission performs none

@@ -238,6 +238,21 @@ fn publish_candidate_ref_inner(
     options: &PublicationOptions,
     expected_reconciliation_context: Option<&Value>,
 ) -> Result<(ConstructionEvidence, PublicationState), PublicationFailure> {
+    publish_candidate_ref_inner_with_final_remote_reader(
+        options,
+        expected_reconciliation_context,
+        read_remote_ref,
+    )
+}
+
+fn publish_candidate_ref_inner_with_final_remote_reader<F>(
+    options: &PublicationOptions,
+    expected_reconciliation_context: Option<&Value>,
+    final_remote_reader: F,
+) -> Result<(ConstructionEvidence, PublicationState), PublicationFailure>
+where
+    F: Fn(&Path, &str, &str) -> Result<Option<String>, String>,
+{
     let mut state = Box::<PublicationState>::default();
     let packet = read_indexed_packet(
         &options.construction_packet,
@@ -359,7 +374,7 @@ fn publish_candidate_ref_inner(
         .map_err(|error| format!("failed to start guarded candidate-ref push: {error}"));
     state.push_process_succeeded = push.as_ref().ok().map(|output| output.status.success());
 
-    let final_remote = read_remote_ref(
+    let final_remote = final_remote_reader(
         &options.repo,
         &options.source_remote_url,
         &options.target_ref,
@@ -370,6 +385,7 @@ fn publish_candidate_ref_inner(
             state.observed_final_ref = value;
         }
         Err(reason) => {
+            rollback_local_candidate(options, &evidence, &expected, &mut state);
             return Err((
                 format!("remote candidate-ref state unavailable after push attempt: {reason}"),
                 Some(evidence),

@@ -94,9 +94,12 @@ fn read_regular_file(path: &Path, label: &str) -> Result<Vec<u8>, String> {
 fn read_json(path: &Path, label: &str) -> Result<(Value, Vec<u8>, String), String> {
     let bytes = read_regular_file(path, label)?;
     let digest = digest_bytes(&bytes);
-    let value = serde_json::from_slice(&bytes)
-        .map_err(|error| format!("malformed {label} JSON: {error}"))?;
+    let value = parse_json_bytes(&bytes, label)?;
     Ok((value, bytes, digest))
+}
+
+fn parse_json_bytes(bytes: &[u8], label: &str) -> Result<Value, String> {
+    serde_json::from_slice(bytes).map_err(|error| format!("malformed {label} JSON: {error}"))
 }
 
 fn read_bound_json(
@@ -104,12 +107,14 @@ fn read_bound_json(
     expected_digest: &str,
     label: &str,
 ) -> Result<(Value, Vec<u8>), String> {
-    let (value, bytes, actual) = read_json(path, label)?;
+    let bytes = read_regular_file(path, label)?;
+    let actual = digest_bytes(&bytes);
     if actual != expected_digest {
         return Err(format!(
             "{label} SHA-256 mismatch: expected {expected_digest}, observed {actual}"
         ));
     }
+    let value = parse_json_bytes(&bytes, label)?;
     Ok((value, bytes))
 }
 

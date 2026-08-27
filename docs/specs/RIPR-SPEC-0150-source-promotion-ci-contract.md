@@ -124,10 +124,13 @@ typed subcommands:
   executable that is currently running;
 - `admit-resolved-tree` requires the exact validated-tree packet, trusted
   builder packet, preflight and resolution bytes, and typed command-catalog and
-  network-policy integration receipts;
+  network-policy integration receipts; the integration-index bytes must match
+  the caller-bound lowercase `--integration-index-sha256` before parsing and
+  during the final identity snapshot;
 - `construct-exact-join` consumes one admitted packet and one terminal tree
-  qualification before the single allowed unreferenced `git commit-tree`
-  attempt; and
+  qualification, rechecks the same caller-bound integration-index digest, and
+  requires the qualification's exact bytes to match a caller-bound lowercase
+  SHA-256 before the single allowed unreferenced `git commit-tree` attempt; and
 - `publish-candidate-ref` requires the construction-bound target ref, exact
   old-or-absent local and remote state, and an exact expected-state
   `--force-with-lease` before publishing the candidate ref.
@@ -146,6 +149,16 @@ ordered set, with every lane terminal `passed` and carrying a lowercase
 6. `trusted_product_journeys`;
 7. `untrusted_workspace_contract`; and
 8. `w7_product`.
+
+The #1609 local controller establishes exact content consistency, not producer
+provenance or reviewer acceptance. Producer identity fields and digests are not
+signatures. #1610 must transport those exact bytes from fixed producer
+repository, immutable commit/ref, regular-file path, and digest authority;
+#1478 owns reviewer acceptance of integration evidence and #1507 owns the
+qualification producer. No locally accepted receipt grants merge, publication,
+or release authority. Construction compares the qualification receipt against
+the caller-bound digest before parsing and again on its final input reread; a
+digest mismatch rejects before `commit-tree`.
 
 Missing, extra, reordered, renamed, non-passed, or evidence-free lanes reject
 construction eligibility. Qualification also binds the exact admission packet

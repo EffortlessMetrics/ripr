@@ -157,6 +157,7 @@ struct AdmissionOptions {
     validation_packet: PathBuf,
     builder_packet: PathBuf,
     integration_index: PathBuf,
+    integration_index_sha256: String,
     preflight: PathBuf,
     resolution_manifest: PathBuf,
     out: PathBuf,
@@ -168,9 +169,11 @@ struct ConstructionOptions {
     admission_packet: PathBuf,
     validation_packet: PathBuf,
     integration_index: PathBuf,
+    integration_index_sha256: String,
     preflight: PathBuf,
     resolution_manifest: PathBuf,
     qualification_receipt: PathBuf,
+    qualification_receipt_sha256: String,
     source_main_ref: String,
     swarm_ref: String,
     candidate_ref: String,
@@ -309,8 +312,8 @@ fn control_usage() -> String {
     [
         "usage:",
         "  cargo xtask source-promotion write-trusted-builder-receipt --source-parent <sha> --workflow-source-sha <sha> --executable <path> --cargo-target-dir <path> --locked-build --isolated-target-dir [--out <dir>]",
-        "  cargo xtask source-promotion admit-resolved-tree --source-parent <sha> --swarm-parent <sha> --join-tree <tree> --preflight <path> --preflight-sha256 <digest> --resolution-manifest <path> --resolution-sha256 <digest> --validation-packet <dir> --builder-packet <dir> --integration-index <path> [--out <dir>]",
-        "  cargo xtask source-promotion construct-exact-join --admission-packet <dir> --validation-packet <dir> --integration-index <path> --preflight <path> --resolution-manifest <path> --qualification-receipt <path> --source-main-ref <ref> --swarm-ref <ref> --candidate-ref <ref> [--out <dir>]",
+        "  cargo xtask source-promotion admit-resolved-tree --source-parent <sha> --swarm-parent <sha> --join-tree <tree> --preflight <path> --preflight-sha256 <digest> --resolution-manifest <path> --resolution-sha256 <digest> --validation-packet <dir> --builder-packet <dir> --integration-index <path> --integration-index-sha256 <digest> [--out <dir>]",
+        "  cargo xtask source-promotion construct-exact-join --admission-packet <dir> --validation-packet <dir> --integration-index <path> --integration-index-sha256 <digest> --preflight <path> --resolution-manifest <path> --qualification-receipt <path> --qualification-receipt-sha256 <digest> --source-main-ref <ref> --swarm-ref <ref> --candidate-ref <ref> [--out <dir>]",
         "  cargo xtask source-promotion publish-candidate-ref --construction-packet <dir> --source-main-ref <ref> --remote origin --target-ref <refs/heads/promote/0.11.0-...> (--expected-absent | --expected-old <sha>) [--out <dir>]",
     ]
     .join("\n")

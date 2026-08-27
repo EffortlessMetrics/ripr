@@ -13826,7 +13826,7 @@ the producer-bound `ripr.source_promotion_integration_index.v1` and terminal
 `ripr.source_promotion_tree_qualification.v1` schemas.
 
 Controller status values are `built`, `admitted`, `constructed`, `published`,
-and `rejected`. Publication additionally uses `published_but_invalidated` when
+`reserved_before_side_effects`, and `rejected`. Publication additionally uses `published_but_invalidated` when
 the exact remote candidate ref moved but a bound input invalidated afterward,
 and `publication_state_unknown` when a push was attempted but its final remote
 state could not be observed. Neither status grants merge or release authority.

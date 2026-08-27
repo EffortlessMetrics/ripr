@@ -68585,7 +68585,7 @@ fn network_policy_patterns() -> Vec<String> {
         concat!("Tcp", "Stream"),
         concat!("cu", "rl"),
         concat!("w", "get"),
-        concat!("\"pu", "sh\","),
+        concat!("\"pu", "sh\""),
     ]
     .iter()
     .map(|value| value.to_string())
@@ -71392,6 +71392,7 @@ mod tests {
     use super::XtaskCommand;
     use super::dispatch;
     use super::lane1_runtime_status_full;
+    use super::network_policy_patterns;
     use super::ripr_swarm_attempt_ledger_latest_attempts;
     use super::ripr_swarm_attempt_ledger_repair_route_quality;
     use super::ripr_swarm_repair_route_quality_attempt_is_failure;
@@ -76541,6 +76542,27 @@ fn has_unwrap_in_name() -> bool {
         let spec_commands: Vec<&str> = specs.iter().map(|s| s.command).collect();
         assert!(spec_commands.contains(&"cargo xtask shape"));
         assert!(spec_commands.contains(&"cargo xtask check-pr"));
+    }
+
+    #[test]
+    fn network_policy_push_pattern_covers_rust_argument_forms() -> Result<(), String> {
+        let patterns = network_policy_patterns();
+        let push = patterns
+            .iter()
+            .find(|pattern| pattern.as_str() == "\"push\"")
+            .ok_or_else(|| "network policy is missing the exact push token".to_string())?;
+        for source in [
+            concat!("Command", "::new(\"git\").arg(\"push\")"),
+            "[\"fetch\", \"push\"]",
+            "[\"fetch\",\n    \"push\"\n]",
+        ] {
+            if !source.contains(push) {
+                return Err(format!(
+                    "push pattern should match candidate source: {source}"
+                ));
+            }
+        }
+        Ok(())
     }
 
     #[test]

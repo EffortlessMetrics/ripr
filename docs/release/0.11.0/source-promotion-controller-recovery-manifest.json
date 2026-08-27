@@ -142,11 +142,11 @@
       "disposition": "imported_original_repaired",
       "final_post_repair_identity": {
         "status": "final",
-        "bytes": 31557,
-        "sha256": "02def14d7a916a4dc56d4a6515ed99de9443adb67f3f48f1e08e9fbcacaabe1c",
-        "git_blob": "c92ae6c925b73baef93263b30c68aebad14bdfab",
+        "bytes": 32062,
+        "sha256": "afe8df75656cc8fe140a6dfc0eecef3efe59f5e2960192772e3f9686f326709f",
+        "git_blob": "6458e493216ae36056c7cd761fb5e31246e49e95",
         "classification": "intentional_repair_differs_from_imported_original",
-        "difference_from_imported_original": "Adds explicit zero attempt counters to builder and admission receipts, binds each typed integration receipt to the admitted SOURCE_PARENT and trusted builder executable identity, and replaces unchecked builder/admission --out option-pair indexing with fallible access; remaining differences are formatting and fallible value-flow cleanup."
+        "difference_from_imported_original": "Adds explicit zero attempt counters to builder and admission receipts, binds each typed integration receipt to the admitted SOURCE_PARENT and trusted builder executable identity, requires the integration-index bytes to match a caller-bound lowercase SHA-256 before parsing and during the final snapshot, and replaces unchecked builder/admission --out option-pair indexing with fallible access; remaining differences are formatting and fallible value-flow cleanup."
       }
     },
     {
@@ -158,11 +158,11 @@
       "disposition": "imported_original_repaired",
       "final_post_repair_identity": {
         "status": "final",
-        "bytes": 36058,
-        "sha256": "8e277f6758033cecd062947260710616223a530c96412452f58e3bdd0157483d",
-        "git_blob": "f551ff8c2a53ff132f3227822bd910d4e7618baa",
+        "bytes": 37935,
+        "sha256": "f4381bd3cc37b4be2dd06b2b5f4fe5ada9198074c543283263502693aa65f86b",
+        "git_blob": "b166d322120a2e5bb42212e31bc442817a8210cf",
         "classification": "intentional_repair_differs_from_imported_original",
-        "difference_from_imported_original": "Requires the protected source main input to be exactly refs/heads/main and validates the admitted transaction before reserving the output or reaching commit-tree. The journal reconciliation_context binds the exact source/W7 parents, reviewed tree, preflight and resolution digests, source/W7/candidate refs, admission and validation packet/receipt digests, integration and qualification digests, canonical commit author/timestamp/message identity, and maximum commit-tree/local-ref/push/merge-command attempt counts. Construction compares that complete context immediately after journal reservation and again immediately before commit-tree, so an observed mismatch or unreadable current context rejects without a construction attempt; the production construction helper accepts the expected context and a bounded ValidatedConstructionInputs value explicitly so this boundary is exercised without substituting a test-only guard. It propagates the trusted executable identity into integration-receipt validation, requires the exact ordered eight-lane qualification denominator, records exact attempt counters, boxes the large failure payload, and replaces unchecked --out option-pair and commit-tree output-row indexing with fallible access; remaining differences are formatting cleanup."
+        "difference_from_imported_original": "Requires the protected source main input to be exactly refs/heads/main and validates the admitted transaction before reserving the output or reaching commit-tree. The journal reconciliation_context binds the exact source/W7 parents, reviewed tree, preflight and resolution digests, source/W7/candidate refs, admission and validation packet/receipt digests, caller-bound integration-index and qualification-receipt digests, canonical commit author/timestamp/message identity, and maximum commit-tree/local-ref/push/merge-command attempt counts. Construction compares that complete context immediately after journal reservation and again immediately before commit-tree, so an observed mismatch or unreadable current context rejects without a construction attempt; the production construction helper accepts the expected context and a bounded ValidatedConstructionInputs value explicitly so this boundary is exercised without substituting a test-only guard. It requires both integration-index and qualification-receipt bytes to match their caller-bound lowercase SHA-256 values before parsing and during final snapshots, propagates the trusted executable identity into integration-receipt validation, requires the exact ordered eight-lane qualification denominator, records exact attempt counters, boxes the large failure payload, and replaces unchecked --out option-pair and commit-tree output-row indexing with fallible access; remaining differences are formatting cleanup."
       }
     },
     {
@@ -174,11 +174,11 @@
       "disposition": "imported_original_repaired",
       "final_post_repair_identity": {
         "status": "final",
-        "bytes": 11851,
-        "sha256": "df69905e481322bf3d45d5f592aebc1be94f6b96c92cd34af147d0fb24e2d880",
-        "git_blob": "3f354c49f1989247c8ae4660922a2c8c7c167257",
+        "bytes": 12081,
+        "sha256": "e8333ed5248effcc5fe130ad33af8289cdd42c27fc2871497f9b9ab5b9a778ed",
+        "git_blob": "2ec18fc90fa1e756302ffe7e245efe29b10e591d",
         "classification": "intentional_repair_differs_from_imported_original",
-        "difference_from_imported_original": "Adds the bound source and swarm repository URLs, enforces the source main authority as exactly refs/heads/main rather than a caller-selected head alias, defines the exact ordered qualification-lane denominator, records publication attempt/reread/rollback state, supports equality for indexed packet rereads, and boxes construction/publication failure payloads; remaining differences are formatting cleanup."
+        "difference_from_imported_original": "Adds the bound source and swarm repository URLs, enforces the source main authority as exactly refs/heads/main rather than a caller-selected head alias, carries required caller-bound integration-index and qualification-receipt SHA-256 inputs, defines the exact ordered qualification-lane denominator, records publication attempt/reread/rollback state, supports equality for indexed packet rereads, and boxes construction/publication failure payloads; remaining differences are formatting cleanup."
       }
     },
     {
@@ -190,11 +190,11 @@
       "disposition": "imported_original_repaired",
       "final_post_repair_identity": {
         "status": "final",
-        "bytes": 28012,
-        "sha256": "3222180eb0d2d9a5cd95d49bbea4c9129f0bd036a9d0e48f626b1a39c4b8a8eb",
-        "git_blob": "ee8b0ee9b97dd2fb0747cfbe2c87bd244fceb89c",
+        "bytes": 28195,
+        "sha256": "7f79ae6704751e3a098ec5db9e932c9082848cbdc7fdd98977dc419a02afc11a",
+        "git_blob": "26ce5ec7e009de4123f10e723db3928e9aa91bcd",
         "classification": "intentional_repair_differs_from_imported_original",
-        "difference_from_imported_original": "Adds exclusive output-directory reservation before any controlled side effect, immediately and synchronously writes and syncs control-attempt.json with a caller-supplied deterministic reconciliation_context, retains that incomplete journal when finalization fails, and writes packet-index.json last as the completion boundary so a process-interrupted attempt must be reconciled rather than retried blindly; this does not claim portable directory-entry durability across power loss. The construction and publication callers bind protected refs, expected state where applicable, and maximum commit-tree/local-ref/push/merge-command attempt counts into that journal. A shared guard requires the complete current reconciliation context to equal the journaled value and rejects an observed mismatch or unreadable current context after reservation. It also adds exact optional local-ref reads, bound remote URL reads, expected-old guarded local-ref update/delete support used for publication rollback, and fallible argument-cursor and remote-ref-row access; remaining differences are formatting cleanup."
+        "difference_from_imported_original": "Adds exclusive output-directory reservation before any controlled side effect, immediately and synchronously writes and syncs control-attempt.json with a caller-supplied deterministic reconciliation_context, retains that incomplete journal when finalization fails, and writes packet-index.json last as the completion boundary so a process-interrupted attempt must be reconciled rather than retried blindly; this does not claim portable directory-entry durability across power loss. The construction and publication callers bind protected refs, expected state where applicable, and maximum commit-tree/local-ref/push/merge-command attempt counts into that journal. A shared guard requires the complete current reconciliation context to equal the journaled value and rejects an observed mismatch or unreadable current context after reservation. Bound JSON reads now compare the exact byte digest before parsing. It also adds exact optional local-ref reads, bound remote URL reads, expected-old guarded local-ref update/delete support used for publication rollback, and fallible argument-cursor and remote-ref-row access; remaining differences are formatting cleanup."
       }
     },
     {
@@ -206,11 +206,11 @@
       "disposition": "imported_original_repaired",
       "final_post_repair_identity": {
         "status": "final",
-        "bytes": 31329,
-        "sha256": "463801daabc8ed4ba452071ae1029cf1d4aa5af2a20140004e29366c6377b910",
-        "git_blob": "afa4518e1d589fd0b0ae0c56d4aa292c8a67f404",
+        "bytes": 31885,
+        "sha256": "3acdd2ab9be01a1135ea508a70bc8533dd27fb6bc33636a1f7619ebe2e67683e",
+        "git_blob": "d6976a894647d200c789685fdfd795f4bcb39062",
         "classification": "intentional_repair_differs_from_imported_original",
-        "difference_from_imported_original": "Binds source and swarm remote authorities, requires the source main ref to be exactly refs/heads/main, and validates the exact constructed transaction and expected local/remote ref state before reserving the output or reaching ref/push side effects. The deterministic publication reconciliation_context binds the exact source/W7 parents, reviewed tree, intended join commit, protected W7 and source-main refs, source/swarm repository URLs, remote and target ref, construction packet/receipt digests, exact expected old-or-absent state, and maximum commit-tree/local-ref/push/merge-command attempt counts. Publication compares that complete context immediately after journal reservation and again immediately before local-ref mutation; full-value equality, including the intended join identity, rejects an observed mismatch, unrelated observed ref state, or unreadable current context without a local-ref or push attempt. It performs guarded local candidate-ref mutation with rollback and rereads local/remote source, W7, construction packet, exact join, URL, and candidate-ref state around publication. A successful publication requires both a successful guarded push process and every post-push authority reread to be true; a coincidental remote join after an unsuccessful push is publication_state_unknown, while a successful push followed by invalidated authority is published_but_invalidated. It records exact attempt counters and rollback outcome, replaces unchecked --out option-pair indexing with fallible access, and never emits a merge command."
+        "difference_from_imported_original": "Binds source and swarm remote authorities, requires the source main ref to be exactly refs/heads/main, and validates the exact constructed transaction and expected local/remote ref state before reserving the output or reaching ref/push side effects. The deterministic publication reconciliation_context binds the exact source/W7 parents, reviewed tree, intended join commit, protected W7 and source-main refs, source/swarm repository URLs, remote and target ref, construction packet/receipt digests, exact expected old-or-absent state, and maximum commit-tree/local-ref/push/merge-command attempt counts. Publication compares that complete context immediately after journal reservation and again immediately before local-ref mutation; full-value equality, including the intended join identity, rejects an observed mismatch, unrelated observed ref state, or unreadable current context without a local-ref or push attempt. It performs guarded local candidate-ref mutation with rollback and rereads local/remote source, W7, construction packet, exact join, URL, and candidate-ref state around publication; an unavailable post-push remote observation also triggers guarded local rollback. A successful publication requires both a successful guarded push process and every post-push authority reread to be true; a coincidental remote join after an unsuccessful push is publication_state_unknown, while a successful push followed by invalidated authority is published_but_invalidated. It records exact attempt counters and rollback outcome, replaces unchecked --out option-pair indexing with fallible access, and never emits a merge command."
       }
     },
     {
@@ -222,11 +222,11 @@
       "disposition": "imported_original_repaired",
       "final_post_repair_identity": {
         "status": "final",
-        "bytes": 48798,
-        "sha256": "c39f1a6188afbb6ec7c38e9903c9e71f71781074574713dab355a25783ecedfe",
-        "git_blob": "9f9e0cb5d30b436b317b474550970e7f91a1d59a",
+        "bytes": 55882,
+        "sha256": "ab0b2063f872038096186efe70c54465725219eef822bc3beb6e9e345329565a",
+        "git_blob": "29fb602c0933940eb4c4c1f44fdff5eefdbbd11c",
         "classification": "intentional_repair_differs_from_imported_original",
-        "difference_from_imported_original": "Converts temporary repository cleanup and assertion plumbing to fallible test support and updates fixtures and assertions for producer binding, exact lane denominator, attempt counters, no merge-command authority, guarded local-ref publication, and rollback. It adds discriminating coverage that rejects caller-selected source aliases in favor of exact refs/heads/main, rejects actual main movement before publication mutation, requires guarded-push success plus every post-push authority reread, classifies coincidental remote state after push failure as unknown, proves exclusive pre-side-effect output reservation and deterministic reconciliation_context journaling, preserves and compares the full reserved context through the production side-effect path, invokes the production construction helper with mismatched journal context and bundled ValidatedConstructionInputs and proves zero commit-tree attempts plus unchanged refs, rejects an unrelated intended-join publication context with zero local-ref and push attempts, verifies that the publication journal binds the intended join and construction-packet identity rather than unrelated ref state, and proves failed finalization retains control-attempt.json without publishing packet-index.json."
+        "difference_from_imported_original": "Converts temporary repository cleanup and assertion plumbing to fallible test support, disables ambient commit/tag signing in synthetic repositories, and updates fixtures and assertions for producer binding, exact lane denominator, attempt counters, no merge-command authority, guarded local-ref publication, and rollback. It adds discriminating coverage that rejects caller-selected source aliases in favor of exact refs/heads/main, rejects actual main movement before publication mutation, rejects well-shaped integration-index and qualification-receipt substitutions against caller-bound digests with zero forbidden attempts, requires guarded-push success plus every post-push authority reread, proves local rollback when the post-push remote observation is unavailable, classifies coincidental remote state after push failure as unknown, rejects missing or conflicting publication expected-state options, proves exclusive pre-side-effect output reservation and deterministic reconciliation_context journaling, preserves and compares the full reserved context through the production side-effect path, invokes the production construction helper with mismatched journal context and bundled ValidatedConstructionInputs and proves zero commit-tree attempts plus unchanged refs, rejects an unrelated intended-join publication context with zero local-ref and push attempts, verifies that the publication journal binds the intended join and construction-packet identity rather than unrelated ref state, and proves failed finalization retains control-attempt.json without publishing packet-index.json."
       }
     },
     {

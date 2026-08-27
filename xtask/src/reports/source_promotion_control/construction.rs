@@ -16,9 +16,11 @@ fn parse_construction_options(args: &[String]) -> Result<ConstructionOptions, St
             "--admission-packet",
             "--validation-packet",
             "--integration-index",
+            "--integration-index-sha256",
             "--preflight",
             "--resolution-manifest",
             "--qualification-receipt",
+            "--qualification-receipt-sha256",
             "--source-main-ref",
             "--swarm-ref",
             "--candidate-ref",
@@ -42,17 +44,31 @@ fn parse_construction_options(args: &[String]) -> Result<ConstructionOptions, St
     let admission_packet = resolve("--admission-packet")?;
     let validation_packet = resolve("--validation-packet")?;
     let integration_index = resolve("--integration-index")?;
+    let integration_index_sha256 = parsed.required("--integration-index-sha256")?;
+    validate_exact_hex(
+        "--integration-index-sha256",
+        &integration_index_sha256,
+        64,
+    )?;
     let preflight = resolve("--preflight")?;
     let resolution_manifest = resolve("--resolution-manifest")?;
     let qualification_receipt = resolve("--qualification-receipt")?;
+    let qualification_receipt_sha256 = parsed.required("--qualification-receipt-sha256")?;
+    validate_exact_hex(
+        "tree qualification receipt SHA-256",
+        &qualification_receipt_sha256,
+        64,
+    )?;
     Ok(ConstructionOptions {
         repo,
         admission_packet,
         validation_packet,
         integration_index,
+        integration_index_sha256,
         preflight,
         resolution_manifest,
         qualification_receipt,
+        qualification_receipt_sha256,
         source_main_ref,
         swarm_ref,
         candidate_ref,
@@ -185,18 +201,43 @@ fn construction_reconciliation_context(options: &ConstructionOptions) -> Result<
         return Err("source or W7 ref differs from the admitted construction identity".to_string());
     }
     let commit_timestamp = canonical_join_timestamp(&options.repo, &identity)?;
+    let qualification_sha256 = file_sha256(
+        &options.qualification_receipt,
+        "tree qualification receipt",
+    )?;
+    require_expected_qualification_sha256(
+        &options.qualification_receipt_sha256,
+        &qualification_sha256,
+    )?;
+    let integration_index_sha256 = file_sha256(&options.integration_index, "integration index")?;
+    if integration_index_sha256 != options.integration_index_sha256 {
+        return Err(format!(
+            "integration index SHA-256 mismatch: expected {}, observed {integration_index_sha256}",
+            options.integration_index_sha256
+        ));
+    }
     construction_reconciliation_value(
         options,
         &identity,
         &admission_packet,
         &validation_packet,
-        &file_sha256(&options.integration_index, "integration index")?,
-        &file_sha256(
-            &options.qualification_receipt,
-            "tree qualification receipt",
-        )?,
+        &integration_index_sha256,
+        &qualification_sha256,
         &commit_timestamp,
     )
+}
+
+fn require_expected_qualification_sha256(
+    expected_sha256: &str,
+    actual_sha256: &str,
+) -> Result<(), String> {
+    if actual_sha256 != expected_sha256 {
+        return Err(format!(
+            "tree qualification receipt SHA-256 differs from caller-bound digest: expected {}, observed {actual_sha256}",
+            expected_sha256
+        ));
+    }
+    Ok(())
 }
 
 fn construction_reconciliation_value(
@@ -330,12 +371,14 @@ fn construct_exact_join_inner(
         })?;
     let integration = validate_integration_index(
         &options.integration_index,
+        &options.integration_index_sha256,
         &identity,
         trusted_executable_sha256,
     )
     .map_err(|reason| (reason, Some(identity.clone()), false))?;
     if Some(integration.index_sha256.as_str())
         != json_string(&admission, "integration_index_sha256")
+        || integration.index_sha256 != options.integration_index_sha256
     {
         return Err((
             "integration index moved after admission".to_string(),
@@ -344,9 +387,13 @@ fn construct_exact_join_inner(
         ));
     }
 
-    let (qualification, _, qualification_sha256) =
-        read_json(&options.qualification_receipt, "tree qualification receipt")
-            .map_err(|reason| (reason, Some(identity.clone()), false))?;
+    let (qualification, _) = read_bound_json(
+        &options.qualification_receipt,
+        &options.qualification_receipt_sha256,
+        "tree qualification receipt",
+    )
+    .map_err(|reason| (reason, Some(identity.clone()), false))?;
+    let qualification_sha256 = options.qualification_receipt_sha256.clone();
     let admission_receipt_sha256 = packet_file_sha256(&admission_packet, ADMISSION_REPORT)
         .map_err(|reason| (reason, Some(identity.clone()), false))?;
     validate_qualification_receipt(
@@ -641,8 +688,13 @@ fn construction_snapshot(
     let integration_index_sha256 = file_sha256(&options.integration_index, "integration index")?;
     let observed_qualification =
         file_sha256(&options.qualification_receipt, "tree qualification receipt")?;
+    require_expected_qualification_sha256(
+        &options.qualification_receipt_sha256,
+        &observed_qualification,
+    )?;
     if admission_index_sha256 != admission_packet.index_sha256
         || validation_index_sha256 != validation_packet.index_sha256
+        || integration_index_sha256 != options.integration_index_sha256
         || integration_index_sha256 != integration.index_sha256
         || observed_qualification != qualification_sha256
     {

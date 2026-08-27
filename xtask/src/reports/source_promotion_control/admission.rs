@@ -249,6 +249,7 @@ fn parse_admission_options(args: &[String]) -> Result<AdmissionOptions, String> 
             "--validation-packet",
             "--builder-packet",
             "--integration-index",
+            "--integration-index-sha256",
             "--out",
         ],
         &[],
@@ -264,6 +265,12 @@ fn parse_admission_options(args: &[String]) -> Result<AdmissionOptions, String> 
     let validation_packet = resolve("--validation-packet")?;
     let builder_packet = resolve("--builder-packet")?;
     let integration_index = resolve("--integration-index")?;
+    let integration_index_sha256 = parsed.required("--integration-index-sha256")?;
+    validate_exact_hex(
+        "--integration-index-sha256",
+        &integration_index_sha256,
+        64,
+    )?;
     let preflight = resolve("--preflight")?;
     let resolution_manifest = resolve("--resolution-manifest")?;
     Ok(AdmissionOptions {
@@ -272,6 +279,7 @@ fn parse_admission_options(args: &[String]) -> Result<AdmissionOptions, String> 
         validation_packet,
         builder_packet,
         integration_index,
+        integration_index_sha256,
         preflight,
         resolution_manifest,
         out: parsed
@@ -369,6 +377,7 @@ fn validate_admission(options: &AdmissionOptions) -> Result<AdmissionEvidence, S
 
     let integration = validate_integration_index(
         &options.integration_index,
+        &options.integration_index_sha256,
         &options.identity,
         &executable_sha256,
     )?;
@@ -563,10 +572,15 @@ fn integration_schema(kind: &str) -> Option<&'static str> {
 
 fn validate_integration_index(
     index_path: &Path,
+    expected_index_sha256: &str,
     identity: &PromotionIdentity,
     trusted_executable_sha256: &str,
 ) -> Result<IntegrationEvidence, String> {
-    let (index, _, index_sha256) = read_json(index_path, "integration receipt index")?;
+    let (index, _) = read_bound_json(
+        index_path,
+        expected_index_sha256,
+        "integration receipt index",
+    )?;
     if json_string(&index, "schema") != Some(INTEGRATION_INDEX_SCHEMA)
         || json_string(&index, "status") != Some("complete")
         || !identity.matches_json(&index)
@@ -657,7 +671,7 @@ fn validate_integration_index(
         return Err("integration index omitted a required typed receipt".to_string());
     }
     Ok(IntegrationEvidence {
-        index_sha256,
+        index_sha256: expected_index_sha256.to_string(),
         receipt_digests,
     })
 }
@@ -687,6 +701,7 @@ fn admission_snapshot(
     let integration_index_sha256 = file_sha256(&options.integration_index, "integration index")?;
     if validation_index_sha256 != validation_packet.index_sha256
         || builder_index_sha256 != builder_packet.index_sha256
+        || integration_index_sha256 != options.integration_index_sha256
         || integration_index_sha256 != integration.index_sha256
     {
         return Err("indexed admission evidence moved after validation".to_string());

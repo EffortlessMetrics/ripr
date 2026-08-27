@@ -264,6 +264,8 @@ mod source_promotion_control_tests {
         git_test(&repo, &["init", "--initial-branch=main"])?;
         git_test(&repo, &["config", "user.name", "RIPR Test"])?;
         git_test(&repo, &["config", "user.email", "ripr-test@invalid"])?;
+        git_test(&repo, &["config", "commit.gpgsign", "false"])?;
+        git_test(&repo, &["config", "tag.gpgSign", "false"])?;
         fs::write(repo.join("base.txt"), "base\n")
             .map_err(|error| format!("failed to write base fixture: {error}"))?;
         git_test(&repo, &["add", "base.txt"])?;
@@ -397,6 +399,75 @@ mod source_promotion_control_tests {
     }
 
     #[test]
+    fn integration_index_rejects_well_shaped_unbound_bytes_before_attempts()
+    -> Result<(), String> {
+        let directory = test_temp_dir("integration-index-bound-digest")?;
+        let identity = test_identity();
+        let index_path = directory.join("integration-index.json");
+        let hand_authored = serde_json::json!({
+            "schema": INTEGRATION_INDEX_SCHEMA,
+            "status": "complete",
+            "source_parent": identity.source_parent.as_str(),
+            "swarm_parent": identity.swarm_parent.as_str(),
+            "join_tree": identity.join_tree.as_str(),
+            "preflight_sha256": identity.preflight_sha256.as_str(),
+            "resolution_manifest_sha256": identity.resolution_sha256.as_str(),
+            "required_kinds": REQUIRED_INTEGRATION_KINDS,
+            "receipts": [
+                {
+                    "kind": "command_catalog_integration",
+                    "path": "command-catalog.json",
+                    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                },
+                {
+                    "kind": "network_policy_integration",
+                    "path": "network-policy.json",
+                    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                },
+            ],
+            "failure_reasons": [],
+        });
+        let bytes = serde_json::to_vec_pretty(&hand_authored)
+            .map_err(|error| format!("failed to encode integration index fixture: {error}"))?;
+        fs::write(&index_path, &bytes)
+            .map_err(|error| format!("failed to write integration index fixture: {error}"))?;
+        let actual_digest = digest_bytes(&bytes);
+        let bound_digest =
+            "0000000000000000000000000000000000000000000000000000000000000000";
+        require(
+            actual_digest != bound_digest,
+            "hand-authored integration index must differ from its caller-bound digest",
+        )?;
+
+        let reason = validate_integration_index(
+            &index_path,
+            bound_digest,
+            &identity,
+            "8888888888888888888888888888888888888888888888888888888888888888",
+        )
+        .err()
+        .ok_or_else(|| "non-bound integration index unexpectedly admitted".to_string())?;
+        require(
+            reason.contains("integration receipt index SHA-256 mismatch"),
+            "non-bound integration index must reject at the caller-bound digest check",
+        )?;
+        let report = admission_rejection_report(Some(&identity), &reason);
+        for counter in [
+            "commit_tree_attempts",
+            "local_ref_attempts",
+            "remote_push_attempts",
+            "merge_command_attempts",
+        ] {
+            require_equal(
+                report.get(counter).and_then(Value::as_u64),
+                Some(0),
+                "digest mismatch rejection attempt counter",
+            )?;
+        }
+        directory.cleanup()
+    }
+
+    #[test]
     fn qualification_rejects_zero_step_failed_and_reordered_lanes() -> Result<(), String> {
         let identity = test_identity();
         let admission = valid_admission_receipt(&identity);
@@ -480,6 +551,36 @@ mod source_promotion_control_tests {
             .is_err(),
             "qualification receipt with a failed lane should reject",
         )?;
+
+        let root = test_temp_dir("qualification-substitution")?;
+        let qualification_path = root.join("tree-qualification.json");
+        let qualification_bytes = serde_json::to_vec_pretty(&base)
+            .map_err(|error| format!("failed to serialize qualification fixture: {error}"))?;
+        fs::write(&qualification_path, qualification_bytes)
+            .map_err(|error| format!("failed to write qualification fixture: {error}"))?;
+        let wrong_expected_sha256 = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        let digest_failure = read_bound_json(
+            &qualification_path,
+            wrong_expected_sha256,
+            "substituted tree qualification receipt",
+        )
+        .err()
+        .ok_or_else(|| {
+            "well-shaped substituted qualification receipt unexpectedly matched caller-bound digest"
+                .to_string()
+        })?;
+        let rejection = construction_rejection_report(
+            Some(&identity),
+            Some("refs/heads/promote/0.11.0-test"),
+            &digest_failure,
+            false,
+        );
+        require_equal(
+            rejection.get("commit_tree_attempts").and_then(Value::as_u64),
+            Some(0),
+            "substituted qualification receipt commit-tree attempts",
+        )?;
+        root.cleanup()?;
 
         let mut reordered = base;
         if let Some(lanes) = reordered.get_mut("lanes").and_then(Value::as_array_mut) {
@@ -698,9 +799,11 @@ mod source_promotion_control_tests {
             admission_packet: repo.join("unused-admission"),
             validation_packet: repo.join("unused-validation"),
             integration_index: repo.join("unused-integration"),
+            integration_index_sha256: integration_index_sha256.clone(),
             preflight: repo.join("unused-preflight"),
             resolution_manifest: repo.join("unused-resolution"),
             qualification_receipt: repo.join("unused-qualification"),
+            qualification_receipt_sha256: qualification_sha256.clone(),
             source_main_ref: SOURCE_MAIN_REF.to_string(),
             swarm_ref: format!(
                 "refs/tags/ripr-release-0.11.0-{}",
@@ -864,6 +967,40 @@ mod source_promotion_control_tests {
                 failure.2.local_ref_attempts == 0 && failure.2.remote_push_attempts == 0
             }),
             "mismatched journal identity must reject before ref or push mutation",
+        )?;
+        let unavailable_observation = publish_candidate_ref_inner_with_final_remote_reader(
+            &options,
+            Some(&context),
+            |_repo, _remote, _reference| {
+                Err("injected post-push remote observation failure".to_string())
+            },
+        )
+        .err()
+        .ok_or_else(|| "unavailable remote observation unexpectedly published".to_string())?;
+        require(
+            unavailable_observation
+                .0
+                .contains("remote candidate-ref state unavailable after push attempt"),
+            "post-push observation failure should remain explicit",
+        )?;
+        require_equal(
+            unavailable_observation.2.local_ref_attempts,
+            2,
+            "post-push observation local update plus rollback attempts",
+        )?;
+        require_equal(
+            unavailable_observation.2.local_ref_rollback_succeeded,
+            Some(true),
+            "post-push observation local rollback disposition",
+        )?;
+        require_equal(
+            read_optional_local_ref(&repo, &evidence.candidate_ref)?,
+            None,
+            "post-push observation failure restores the absent local ref",
+        )?;
+        git_test(
+            &repo,
+            &["push", "origin", &format!(":{}", evidence.candidate_ref)],
         )?;
         let (published, publication_state) =
             publish_candidate_ref_inner(&options, Some(&context)).map_err(|failure| failure.0)?;
@@ -1106,6 +1243,35 @@ mod source_promotion_control_tests {
             )
             .is_err(),
             "unknown command option should reject",
+        )?;
+
+        let publication_args = |expected_state: &[&str]| {
+            let mut args = vec![
+                SOURCE_PROMOTION_PUBLISH_CANDIDATE_REF_SUBCOMMAND.to_string(),
+                "--construction-packet".to_string(),
+                "target/packet".to_string(),
+                "--source-main-ref".to_string(),
+                SOURCE_MAIN_REF.to_string(),
+                "--remote".to_string(),
+                "origin".to_string(),
+                "--target-ref".to_string(),
+                "refs/heads/promote/0.11.0-test".to_string(),
+            ];
+            args.extend(expected_state.iter().map(|value| (*value).to_string()));
+            args
+        };
+        require(
+            parse_publication_options(&publication_args(&[
+                "--expected-absent",
+                "--expected-old",
+                "1111111111111111111111111111111111111111",
+            ]))
+            .is_err(),
+            "both expected-state options should reject",
+        )?;
+        require(
+            parse_publication_options(&publication_args(&[])).is_err(),
+            "missing expected-state option should reject",
         )?;
         Ok(())
     }
