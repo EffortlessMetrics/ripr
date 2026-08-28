@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod source_promotion_control_tests {
     use super::*;
+    use std::cell::Cell;
     use std::fmt::Debug;
     use std::ops::Deref;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -2669,6 +2670,56 @@ mod source_promotion_control_tests {
             read_optional_local_ref(&repo, &evidence.candidate_ref)?,
             None,
             "failed push with observed join restores the absent local ref",
+        )?;
+        let rollback_read_count = Cell::new(0_u8);
+        let unavailable_rollback_observation =
+            publish_candidate_ref_inner_with_publication_runners(
+                &options,
+                Some(&context),
+                |_options, _lease, _refspec| {
+                    Ok((false, Some(false), "injected push failure".to_string()))
+                },
+                |_repo, _remote, _reference| Ok(Some(join.clone())),
+                |repo, reference| {
+                    let call = rollback_read_count.get();
+                    rollback_read_count.set(call.saturating_add(1));
+                    if call == 0 {
+                        read_optional_local_ref(repo, reference)
+                    } else {
+                        Err("injected post-rollback local observation failure".to_string())
+                    }
+                },
+            )
+            .err()
+            .ok_or_else(|| {
+                "failed push with unavailable rollback observation unexpectedly published"
+                    .to_string()
+            })?;
+        require(
+            unavailable_rollback_observation
+                .0
+                .contains("local candidate-ref state unavailable after rollback"),
+            "rollback observation failure must remain explicit in the rejection reason",
+        )?;
+        require_equal(
+            unavailable_rollback_observation.2.local_ref_rollback_succeeded,
+            Some(true),
+            "rollback update success remains distinct from observation availability",
+        )?;
+        require_equal(
+            unavailable_rollback_observation.2.local_ref_after,
+            None,
+            "unavailable rollback observation must not masquerade as an absent ref",
+        )?;
+        require_equal(
+            rollback_read_count.get(),
+            2,
+            "publication reads local state once after the push and once after rollback",
+        )?;
+        require_equal(
+            read_optional_local_ref(&repo, &evidence.candidate_ref)?,
+            None,
+            "rollback observation failure does not undo the guarded rollback",
         )?;
         let raced_repo = repo.to_path_buf();
         let raced_remote = options.remote.clone();

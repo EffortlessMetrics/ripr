@@ -505,8 +505,18 @@ where
     state.local_ref_after = Some(evidence.join_commit.clone());
 
     if let Err(reason) = validate_publication_inputs(options, &evidence, &packet) {
-        rollback_local_candidate(options, &evidence, &expected, &mut state);
-        return Err((reason, Some(evidence), state));
+        let rollback_failure = rollback_local_candidate(
+            options,
+            &evidence,
+            &expected,
+            &mut state,
+            &post_push_local_reader,
+        );
+        return Err((
+            include_rollback_observation_failure(reason, rollback_failure),
+            Some(evidence),
+            state,
+        ));
     }
 
     let refspec = format!("{}:{}", evidence.join_commit, options.target_ref);
@@ -529,8 +539,17 @@ where
             None
         }
         Err(reason) => {
-            rollback_local_candidate(options, &evidence, &expected, &mut state);
-            Some(reason)
+            let rollback_failure = rollback_local_candidate(
+                options,
+                &evidence,
+                &expected,
+                &mut state,
+                &post_push_local_reader,
+            );
+            Some(include_rollback_observation_failure(
+                reason,
+                rollback_failure,
+            ))
         }
     };
     let source_main_result = validate_source_main_authority(options, &evidence);
@@ -562,16 +581,31 @@ where
 
     if state.observed_final_ref.as_deref() == Some(evidence.join_commit.as_str()) {
         if state.push_process_succeeded != Some(true) {
-            rollback_local_candidate(options, &evidence, &expected, &mut state);
+            let rollback_failure = rollback_local_candidate(
+                options,
+                &evidence,
+                &expected,
+                &mut state,
+                &post_push_local_reader,
+            );
             return Err((
-                "remote candidate ref equals the join, but the guarded push process did not report success"
-                    .to_string(),
+                include_rollback_observation_failure(
+                    "remote candidate ref equals the join, but the guarded push process did not report success"
+                        .to_string(),
+                    rollback_failure,
+                ),
                 Some(evidence),
                 state,
             ));
         }
         if state.target_ref_updated != Some(true) {
-            rollback_local_candidate(options, &evidence, &expected, &mut state);
+            let rollback_failure = rollback_local_candidate(
+                options,
+                &evidence,
+                &expected,
+                &mut state,
+                &post_push_local_reader,
+            );
             let reason = if state.target_ref_updated == Some(false) {
                 "remote candidate ref equals the join, but the guarded push reported no actual target update"
                     .to_string()
@@ -587,7 +621,7 @@ where
                 )
             };
             return Err((
-                reason,
+                include_rollback_observation_failure(reason, rollback_failure),
                 Some(evidence),
                 state,
             ));
@@ -621,7 +655,13 @@ where
         return Ok((*evidence, *state));
     }
 
-    rollback_local_candidate(options, &evidence, &expected, &mut state);
+    let rollback_failure = rollback_local_candidate(
+        options,
+        &evidence,
+        &expected,
+        &mut state,
+        &post_push_local_reader,
+    );
     let push_reason = match push {
         Ok(output) => format!(
             "guarded candidate-ref push did not publish the exact join: {}",
@@ -629,7 +669,11 @@ where
         ),
         Err(reason) => reason,
     };
-    Err((push_reason, Some(evidence), state))
+    Err((
+        include_rollback_observation_failure(push_reason, rollback_failure),
+        Some(evidence),
+        state,
+    ))
 }
 
 fn authoritative_publication_observed(
@@ -730,12 +774,16 @@ fn validate_remote_authority(options: &PublicationOptions) -> Result<(), String>
     Ok(())
 }
 
-fn rollback_local_candidate(
+fn rollback_local_candidate<L>(
     options: &PublicationOptions,
     evidence: &ConstructionEvidence,
     expected: &Option<String>,
     state: &mut PublicationState,
-) {
+    local_reader: &L,
+) -> Option<String>
+where
+    L: Fn(&Path, &str) -> Result<Option<String>, String>,
+{
     state.local_ref_attempts += 1;
     let result = update_local_ref(
         &options.repo,
@@ -744,9 +792,27 @@ fn rollback_local_candidate(
         Some(&evidence.join_commit),
     );
     state.local_ref_rollback_succeeded = Some(result.is_ok());
-    state.local_ref_after = read_optional_local_ref(&options.repo, &options.target_ref)
-        .ok()
-        .flatten();
+    match local_reader(&options.repo, &options.target_ref) {
+        Ok(observed) => {
+            state.local_ref_after = observed;
+            None
+        }
+        Err(reason) => {
+            state.local_ref_after = None;
+            Some(format!(
+                "local candidate-ref state unavailable after rollback: {reason}"
+            ))
+        }
+    }
+}
+
+fn include_rollback_observation_failure(
+    reason: String,
+    rollback_failure: Option<String>,
+) -> String {
+    rollback_failure
+        .map(|failure| format!("{reason}; {failure}"))
+        .unwrap_or(reason)
 }
 
 fn construction_evidence_from_receipt(receipt: &Value) -> Result<ConstructionEvidence, String> {
