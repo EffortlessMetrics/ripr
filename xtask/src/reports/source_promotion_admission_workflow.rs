@@ -462,17 +462,12 @@ fn finalize(args: &[String]) -> Result<(), String> {
         source: evidence,
         destination: PathBuf::new(),
     }];
-    match fs::symlink_metadata(&construction_out) {
-        Ok(_) => closure.push(ClosureSource {
-            source: construction_out,
-            destination: PathBuf::from("exact-join-construction"),
-        }),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(format!(
-                "failed to inspect construction evidence for final closure: {error}"
-            ));
-        }
+    if let Some(source) = optional_closure_source(
+        &construction_out,
+        "exact-join-construction",
+        "construction evidence for final closure",
+    )? {
+        closure.push(source);
     }
     write_packet(&out, &report, &closure)?;
     verify_packet(&out)?;
@@ -1576,6 +1571,21 @@ fn admission_closure_sources(
     Ok(sources)
 }
 
+fn optional_closure_source(
+    source: &Path,
+    destination: &str,
+    label: &str,
+) -> Result<Option<ClosureSource>, String> {
+    match fs::symlink_metadata(source) {
+        Ok(_) => Ok(Some(ClosureSource {
+            source: source.to_path_buf(),
+            destination: PathBuf::from(destination),
+        })),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("failed to inspect {label}: {error}")),
+    }
+}
+
 fn closure_index_path(root: &Path, locator: &Value) -> Result<PathBuf, String> {
     let path = required_json_string(locator, "path")?;
     safe_relative(path)?;
@@ -2461,6 +2471,16 @@ mod tests {
         {
             return Err("absent constructor output created synthetic evidence".to_string());
         }
+        let enforce_args = strings(&[
+            ENFORCE,
+            "--packet",
+            &path_text(&absent_packet)?,
+            "--expected-status",
+            "admitted",
+        ]);
+        if enforce_command(&enforce_args).is_ok() {
+            return Err("absent-output rejection escaped terminal enforcement".to_string());
+        }
         fs::remove_dir_all(&absent_root)
             .map_err(|error| format!("failed to clean absent constructor fixture: {error}"))?;
         Ok(())
@@ -2603,11 +2623,14 @@ mod tests {
             destination: PathBuf::from(to),
         })
         .collect::<Vec<_>>();
-        if partial_construction {
-            closure.push(ClosureSource {
-                source: source.join("exact-join-construction"),
-                destination: PathBuf::from("exact-join-construction"),
-            });
+        if let Some(construction) = optional_closure_source(
+            &source.join("exact-join-construction"),
+            "exact-join-construction",
+            "test construction evidence",
+        )? {
+            closure.push(construction);
+        } else if partial_construction {
+            return Err("partial construction fixture was not selected for closure".to_string());
         }
         let packet = root.join("packet");
         write_packet(&packet, &report, &closure)?;
