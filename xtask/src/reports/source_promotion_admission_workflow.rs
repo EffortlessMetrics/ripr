@@ -758,30 +758,16 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, Str
             "admitted",
         ),
     ] {
-        let packet = &report["controller_packets"][key];
         let expected_path = format!("evidence/{directory}");
-        if json_string(packet, "path") != Some(expected_path.as_str()) {
-            return Err(format!("{key} closure path moved"));
+        let expected_packet = packet_state(&evidence.join(directory), report_name, &expected_path);
+        if report["controller_packets"][key] != expected_packet {
+            return Err(format!("{key} summary differs from closure evidence"));
         }
-        let available = packet
-            .get("available")
-            .and_then(Value::as_bool)
-            .ok_or_else(|| format!("{key} closure availability is missing"))?;
-        if json_string(report, "status") == Some("admitted") && !available {
-            return Err(format!(
-                "admitted workflow packet is missing {key} evidence"
-            ));
-        }
-        if available {
+        if expected_packet["available"].as_bool() == Some(true) {
             let receipt = read_json(
                 &evidence.join(directory).join(report_name),
                 &format!("{key} closure receipt"),
             )?;
-            if json_string(packet, "schema") != json_string(&receipt, "schema")
-                || json_string(packet, "status") != json_string(&receipt, "status")
-            {
-                return Err(format!("{key} summary differs from closure receipt"));
-            }
             if json_string(report, "status") == Some("admitted")
                 && (json_string(&receipt, "schema") != Some(expected_schema)
                     || json_string(&receipt, "status") != Some(expected_status))
@@ -790,6 +776,10 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, Str
                     "admitted workflow packet has invalid {key} evidence"
                 ));
             }
+        } else if json_string(report, "status") == Some("admitted") {
+            return Err(format!(
+                "admitted workflow packet is missing {key} evidence"
+            ));
         }
     }
     let construction = &report["controller_packets"]["exact_join_construction"];
@@ -799,13 +789,17 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, Str
     let construction_required = json_string(report, "phase") == Some("final")
         && json_string(report, "operation_mode") == Some("constructor_dry_run");
     if construction_required {
-        if json_string(construction, "path") != Some("evidence/exact-join-construction") {
-            return Err("exact_join_construction closure path moved".to_string());
+        let expected_construction = packet_state(
+            &evidence.join("exact-join-construction"),
+            "exact-join-construction.json",
+            "evidence/exact-join-construction",
+        );
+        if construction != &expected_construction {
+            return Err(
+                "exact_join_construction summary differs from closure evidence".to_string(),
+            );
         }
-        let available = construction
-            .get("available")
-            .and_then(Value::as_bool)
-            .ok_or_else(|| "exact_join_construction closure availability is missing".to_string())?;
+        let available = expected_construction["available"].as_bool() == Some(true);
         if json_string(report, "status") == Some("admitted") && !available {
             return Err(
                 "admitted constructor workflow packet is missing construction evidence".to_string(),
@@ -834,6 +828,24 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, Str
                     "admitted workflow packet has invalid construction evidence".to_string()
                 );
             }
+        }
+    } else {
+        let expected = serde_json::json!({
+            "path": null,
+            "available": false,
+            "status": "not_run",
+            "schema": null,
+        });
+        if construction != &expected {
+            return Err(
+                "workflow packet outside final constructor has a construction summary".to_string(),
+            );
+        }
+        if fs::symlink_metadata(evidence.join("exact-join-construction")).is_ok() {
+            return Err(
+                "workflow packet outside final constructor contains construction evidence"
+                    .to_string(),
+            );
         }
     }
     if json_string(report, "status") == Some("admitted") {
@@ -886,6 +898,94 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, Str
         }
     }
     Ok(requested_identity.bytes)
+}
+
+fn validate_disposition_semantics(
+    report: &Value,
+    status: &str,
+    phase: &str,
+    mode: OperationMode,
+) -> Result<(), String> {
+    let controller_packets = report
+        .get("controller_packets")
+        .ok_or_else(|| "workflow disposition is missing controller packets".to_string())?;
+    exact_object_fields(
+        controller_packets,
+        "workflow controller packets",
+        &[
+            "trusted_builder",
+            "resolved_tree_admission",
+            "exact_join_construction",
+        ],
+    )?;
+    for key in [
+        "trusted_builder",
+        "resolved_tree_admission",
+        "exact_join_construction",
+    ] {
+        exact_object_fields(
+            &controller_packets[key],
+            &format!("{key} controller summary"),
+            &["path", "available", "status", "schema"],
+        )?;
+    }
+
+    let packet_passed = |key: &str, expected_status: &str| {
+        controller_packets[key]["available"].as_bool() == Some(true)
+            && json_string(&controller_packets[key], "status") == Some(expected_status)
+    };
+    let constructor_state = match (phase, mode, status) {
+        ("admission", _, _) => "not_run_before_upload_and_enforcement",
+        ("final", OperationMode::AdmitOnly, _) => "not_requested",
+        ("final", OperationMode::ConstructorDryRun, "admitted") => "passed",
+        ("final", OperationMode::ConstructorDryRun, "rejected") => "rejected",
+        _ => return Err("workflow disposition has unsupported phase semantics".to_string()),
+    };
+    let expected_producer = serde_json::json!({
+        "normalized_exit_code": if status == "admitted" { 0 } else { 1 },
+        "trusted_builder_state": if packet_passed("trusted_builder", "built") { "passed" } else { "rejected" },
+        "admission_state": if packet_passed("resolved_tree_admission", "admitted") { "passed" } else { "rejected" },
+        "constructor_state": constructor_state,
+    });
+    if report.get("producer") != Some(&expected_producer) {
+        return Err(
+            "workflow disposition producer state differs from controller evidence".to_string(),
+        );
+    }
+    if status == "admitted"
+        && (!packet_passed("trusted_builder", "built")
+            || !packet_passed("resolved_tree_admission", "admitted")
+            || (phase == "final"
+                && mode == OperationMode::ConstructorDryRun
+                && !packet_passed("exact_join_construction", "constructed")))
+    {
+        return Err("admitted workflow disposition has non-terminal controller state".to_string());
+    }
+
+    let failure_reasons = report
+        .get("failure_reasons")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "workflow disposition is missing failure_reasons".to_string())?;
+    if status == "admitted" && !failure_reasons.is_empty() {
+        return Err("admitted workflow disposition has failure reasons".to_string());
+    }
+    if status == "rejected" && failure_reasons.is_empty() {
+        return Err("rejected workflow disposition has no failure reason".to_string());
+    }
+    let mut prior: Option<&str> = None;
+    for reason in failure_reasons {
+        let reason = reason
+            .as_str()
+            .filter(|reason| !reason.trim().is_empty() && !reason.contains(['\n', '\r', '\0']))
+            .ok_or_else(|| "workflow disposition has malformed failure reason".to_string())?;
+        if prior.is_some_and(|value| value >= reason) {
+            return Err(
+                "workflow disposition failure reasons must be sorted and unique".to_string(),
+            );
+        }
+        prior = Some(reason);
+    }
+    Ok(())
 }
 
 fn validate_report(report: &Value) -> Result<(), String> {
@@ -1073,22 +1173,7 @@ fn validate_report(report: &Value) -> Result<(), String> {
     if json_string(report, "receipt_schema") != Some(SUPPORTED_RECEIPT_SCHEMA) {
         return Err("workflow disposition receipt schema is unsupported".to_string());
     }
-    let producer = report
-        .get("producer")
-        .ok_or_else(|| "workflow disposition is missing producer state".to_string())?;
-    if producer.get("normalized_exit_code").and_then(Value::as_u64)
-        != Some(if status == "admitted" { 0 } else { 1 })
-        || !matches!(
-            json_string(producer, "trusted_builder_state"),
-            Some("passed" | "rejected")
-        )
-        || !matches!(
-            json_string(producer, "admission_state"),
-            Some("passed" | "rejected")
-        )
-    {
-        return Err("workflow disposition producer state is unavailable or malformed".to_string());
-    }
+    validate_disposition_semantics(report, status, phase, mode)?;
     Ok(())
 }
 
@@ -2745,6 +2830,69 @@ mod tests {
     }
 
     #[test]
+    fn verifier_rejects_digest_rebound_construction_summary_outside_final_constructor()
+    -> Result<(), String> {
+        let (root, packet) = write_test_closure("construction-summary-rebound")?;
+        let baseline = verify_packet(&packet)?;
+        let mut moved = baseline.clone();
+        moved["controller_packets"]["exact_join_construction"]["path"] =
+            Value::String("evidence/exact-join-construction".to_string());
+        rewrite_test_packet_reports_and_index(&packet, &moved)?;
+        if verify_packet(&packet).is_ok() {
+            return Err(
+                "digest-rebound construction summary escaped phase and mode authority".to_string(),
+            );
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean construction summary fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_rejects_digest_rebound_producer_state_families() -> Result<(), String> {
+        let (root, packet) = write_test_closure("producer-state-rebound")?;
+        let baseline = verify_packet(&packet)?;
+        for (field, replacement) in [
+            ("normalized_exit_code", Value::from(1)),
+            (
+                "trusted_builder_state",
+                Value::String("rejected".to_string()),
+            ),
+            ("admission_state", Value::String("rejected".to_string())),
+            ("constructor_state", Value::String("passed".to_string())),
+        ] {
+            let mut moved = baseline.clone();
+            moved["producer"][field] = replacement;
+            rewrite_test_packet_reports_and_index(&packet, &moved)?;
+            if verify_packet(&packet).is_ok() {
+                return Err(format!(
+                    "digest-rebound producer state escaped semantic parity at {field}"
+                ));
+            }
+            rewrite_test_packet_reports_and_index(&packet, &baseline)?;
+            verify_packet(&packet)?;
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean producer state fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_rejects_digest_rebound_failure_reasons_on_admitted_packet() -> Result<(), String> {
+        let (root, packet) = write_test_closure("failure-reasons-rebound")?;
+        let baseline = verify_packet(&packet)?;
+        let mut moved = baseline;
+        moved["failure_reasons"] = serde_json::json!(["fabricated admitted failure"]);
+        rewrite_test_packet_reports_and_index(&packet, &moved)?;
+        if verify_packet(&packet).is_ok() {
+            return Err("digest-rebound admitted failure reasons escaped verifier".to_string());
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean failure reason fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn verifier_rejects_digest_rebound_markdown_and_packet_status() -> Result<(), String> {
         let (markdown_root, markdown_packet) = write_test_closure("markdown-moved")?;
         fs::write(
@@ -3612,6 +3760,8 @@ mod tests {
         let request_path = root.join("requested-identity.json");
         let mut report = test_report("admitted", mode, "positive_synthetic", 0)?;
         report["phase"] = Value::String("admission".to_string());
+        report["producer"]["constructor_state"] =
+            Value::String("not_run_before_upload_and_enforcement".to_string());
         report["source_parent_sha"] = Value::String(fixture.source_parent.clone());
         report["workflow_source_sha"] = Value::String(fixture.source_parent.clone());
         report["trusted_checker_identity"] =
@@ -3794,11 +3944,40 @@ mod tests {
                 "integration_packet": locator("integration packet", "integration/index.json", "1".repeat(64)),
                 "qualification_receipt": qualification,
             },
+            "controller_packets": {
+                "trusted_builder": {
+                    "path": "evidence/trusted-builder",
+                    "available": true,
+                    "status": "built",
+                    "schema": "ripr.source_promotion_trusted_builder.v1",
+                },
+                "resolved_tree_admission": {
+                    "path": "evidence/resolved-tree-admission",
+                    "available": true,
+                    "status": "admitted",
+                    "schema": "ripr.source_promotion_resolved_tree_admission.v1",
+                },
+                "exact_join_construction": if mode == "constructor_dry_run" && status == "admitted" {
+                    serde_json::json!({
+                        "path": "evidence/exact-join-construction",
+                        "available": true,
+                        "status": "constructed",
+                        "schema": "ripr.source_promotion_exact_join_construction.v1",
+                    })
+                } else {
+                    serde_json::json!({
+                        "path": null,
+                        "available": false,
+                        "status": "not_run",
+                        "schema": null,
+                    })
+                },
+            },
             "producer": {
                 "normalized_exit_code": if status == "admitted" { 0 } else { 1 },
                 "trusted_builder_state": "passed",
-                "admission_state": if status == "admitted" { "passed" } else { "rejected" },
-                "constructor_state": "not_run_before_upload_and_enforcement",
+                "admission_state": "passed",
+                "constructor_state": if mode == "admit_only" { "not_requested" } else if status == "admitted" { "passed" } else { "rejected" },
             },
             "attempts": {
                 "admission_receipt_available": true,
@@ -3814,6 +3993,7 @@ mod tests {
                 "release_or_publication_command_reachable": false,
                 "release_or_publication_proof": "closed workflow harness dispatch contains no publication subcommand",
             },
+            "failure_reasons": if status == "admitted" { Vec::<String>::new() } else { vec!["synthetic rejection".to_string()] },
         });
         report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
         Ok(report)
