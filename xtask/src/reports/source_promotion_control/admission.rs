@@ -635,6 +635,18 @@ fn validate_builder_receipt_contract(
     validation: &Value,
     identity: &PromotionIdentity,
 ) -> Result<String, String> {
+    validate_exact_json_fields(
+        builder,
+        "trusted builder receipt",
+        &[
+            "schema", "status", "source_parent", "workflow_source_sha", "clean_checkout",
+            "rust_toolchain", "cargo_lock_sha256", "locked_build", "isolated_cargo_target_dir",
+            "executable_sha256", "failure_reasons", "authoritative_commit_attempted",
+            "commit_tree_attempts", "local_ref_attempts", "remote_push_attempts",
+            "merge_command_attempts", "merge_command", "ref_mutation_attempted", "push_attempted",
+        ],
+        &["non_claims"],
+    )?;
     if json_string(builder, "schema") != Some(BUILDER_SCHEMA)
         || json_string(builder, "status") != Some("built")
         || json_string(builder, "source_parent") != Some(identity.source_parent.as_str())

@@ -638,6 +638,31 @@ fn validate_admission_receipt(
     admission: &Value,
     identity: &PromotionIdentity,
 ) -> Result<(), String> {
+    validate_exact_json_fields(
+        admission,
+        "admission receipt",
+        &[
+            "schema", "status", "source_parent", "swarm_parent", "join_tree",
+            "preflight_sha256", "resolution_manifest_sha256", "swarm_ref",
+            "resolved_tree_packet_index_sha256", "resolved_tree_validation_receipt_sha256",
+            "trusted_builder_packet_index_sha256", "trusted_builder_receipt_sha256",
+            "integration_index_sha256", "integration_receipts", "checker_executable_sha256",
+            "all_required_typed_integration_receipts_present", "final_identity_reread_passed",
+            "constructor_eligible_after_tree_qualification", "authoritative_commit_attempted",
+            "commit_tree_attempts", "local_ref_attempts", "remote_push_attempts",
+            "merge_command_attempts", "ref_mutation_attempted", "push_attempted", "merge_command",
+            "failure_reasons", "invalidation_rules",
+        ],
+        &["non_claims"],
+    )?;
+    validate_exact_json_fields(
+        admission
+            .get("integration_receipts")
+            .ok_or_else(|| "admission receipt is missing integration_receipts".to_string())?,
+        "admission integration receipts",
+        REQUIRED_INTEGRATION_KINDS,
+        &[],
+    )?;
     if json_string(admission, "schema") != Some(ADMISSION_SCHEMA)
         || json_string(admission, "status") != Some("admitted")
         || !identity.matches_json(admission)

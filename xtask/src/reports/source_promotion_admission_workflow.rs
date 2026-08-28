@@ -874,6 +874,14 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, Str
             );
         }
     }
+    if !builder_passed && !builder_available {
+        let expected_attempts = normalized_attempts(&None, &None, false);
+        if report.get("attempts") != Some(&expected_attempts) {
+            return Err(
+                "workflow attempt summary differs from unavailable builder evidence".to_string(),
+            );
+        }
+    }
     let needs_rejected_admission_replay =
         builder_passed && !admission_passed && admission_available;
     if needs_rejected_admission_replay || controller_prefix_passed {
@@ -956,6 +964,14 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, Str
                         .to_string(),
                 );
             }
+        }
+    }
+    if builder_passed && !admission_passed && !admission_available {
+        let expected_attempts = normalized_attempts(&None, &None, false);
+        if report.get("attempts") != Some(&expected_attempts) {
+            return Err(
+                "workflow attempt summary differs from unavailable admission evidence".to_string(),
+            );
         }
     }
     Ok(requested_identity.bytes)
@@ -1068,6 +1084,38 @@ fn validate_disposition_semantics(
 }
 
 fn validate_report(report: &Value) -> Result<(), String> {
+    exact_object_fields_with_optional(
+        report,
+        "workflow disposition",
+        &[
+            "schema",
+            "phase",
+            "status",
+            "operation_mode",
+            "execution_profile",
+            "fixture_identity",
+            "workflow_identity_sha256",
+            "requested_identity_sha256",
+            "controller_repository",
+            "source_repository",
+            "source_parent_sha",
+            "workflow_source_sha",
+            "trusted_checker_identity",
+            "swarm_repository",
+            "protected_w7_ref",
+            "w7_peeled_sha",
+            "reviewed_tree_sha",
+            "reviewed_tree_carrier_sha",
+            "receipt_schema",
+            "locators",
+            "controller_packets",
+            "producer",
+            "attempts",
+            "failure_reasons",
+            "complete",
+        ],
+        &["non_claims"],
+    )?;
     if json_string(report, "schema") != Some(SCHEMA)
         || report.get("complete").and_then(Value::as_bool) != Some(true)
     {
@@ -1140,6 +1188,24 @@ fn validate_report(report: &Value) -> Result<(), String> {
     let attempts = report
         .get("attempts")
         .ok_or_else(|| "workflow disposition is missing attempts".to_string())?;
+    exact_object_fields(
+        attempts,
+        "workflow attempts",
+        &[
+            "admission_receipt_available",
+            "construction_receipt_available",
+            "constructor_refs_unchanged",
+            "constructor_object_unreferenced",
+            "constructor_final_identity_reread_passed",
+            "constructor_commit_tree_attempts",
+            "local_ref_attempts",
+            "remote_push_attempts",
+            "merge_command_attempts",
+            "release_or_publication_attempts",
+            "release_or_publication_command_reachable",
+            "release_or_publication_proof",
+        ],
+    )?;
     if attempts
         .get("release_or_publication_command_reachable")
         .and_then(Value::as_bool)
@@ -2495,12 +2561,36 @@ fn safe_relative(value: &str) -> Result<(), String> {
 fn exact_object_fields(value: &Value, label: &str, expected: &[&str]) -> Result<(), String> {
     let object = value
         .as_object()
-        .ok_or_else(|| format!("{label} locator must be an object"))?;
+        .ok_or_else(|| format!("{label} must be an object"))?;
     let observed = object.keys().map(String::as_str).collect::<BTreeSet<_>>();
     let expected = expected.iter().copied().collect::<BTreeSet<_>>();
     if observed != expected {
         return Err(format!(
-            "{label} locator fields differ from exact contract: {observed:?}"
+            "{label} fields differ from exact contract: {observed:?}"
+        ));
+    }
+    Ok(())
+}
+
+fn exact_object_fields_with_optional(
+    value: &Value,
+    label: &str,
+    required: &[&str],
+    optional: &[&str],
+) -> Result<(), String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("{label} must be an object"))?;
+    let observed = object.keys().map(String::as_str).collect::<BTreeSet<_>>();
+    let required = required.iter().copied().collect::<BTreeSet<_>>();
+    let allowed = required
+        .iter()
+        .copied()
+        .chain(optional.iter().copied())
+        .collect::<BTreeSet<_>>();
+    if !required.is_subset(&observed) || !observed.is_subset(&allowed) {
+        return Err(format!(
+            "{label} fields differ from exact contract: {observed:?}"
         ));
     }
     Ok(())
@@ -2929,6 +3019,52 @@ mod tests {
     }
 
     #[test]
+    fn malformed_controller_receipts_keep_attempts_exactly_unavailable() -> Result<(), String> {
+        for (label, builder) in [
+            ("malformed-builder-attempts", true),
+            ("malformed-admission-attempts", false),
+        ] {
+            let (root, packet) = if builder {
+                write_builder_rejected_test_closure(label)?
+            } else {
+                write_j5_rejected_test_closure(label)?
+            };
+            let (directory, report_name, summary_key) = if builder {
+                ("trusted-builder", "trusted-builder.json", "trusted_builder")
+            } else {
+                (
+                    "resolved-tree-admission",
+                    "resolved-tree-admission.json",
+                    "resolved_tree_admission",
+                )
+            };
+            let control = packet.join("evidence").join(directory);
+            fs::write(control.join(report_name), b"{malformed")
+                .map_err(|error| format!("failed to corrupt {label} receipt: {error}"))?;
+            reindex_packet_inventory(&control)?;
+            let mut report = read_json(&packet.join(REPORT_JSON), label)?;
+            report["controller_packets"][summary_key] =
+                packet_state(&control, report_name, &format!("evidence/{directory}"));
+            report["attempts"] = normalized_attempts(&None, &None, false);
+            report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+            rewrite_test_packet_reports_and_index(&packet, &report)?;
+            verify_packet(&packet)?;
+
+            report["attempts"]["construction_receipt_available"] = Value::Bool(true);
+            report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+            rewrite_test_packet_reports_and_index(&packet, &report)?;
+            if verify_packet(&packet).is_ok() {
+                return Err(format!(
+                    "digest-rebound attempts escaped malformed {summary_key} evidence"
+                ));
+            }
+            fs::remove_dir_all(&root)
+                .map_err(|error| format!("failed to clean {label} fixture: {error}"))?;
+        }
+        Ok(())
+    }
+
+    #[test]
     fn final_dispositions_require_an_admitted_prefix_and_reachable_terminal_status()
     -> Result<(), String> {
         let mut failed_prefix = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
@@ -3080,6 +3216,97 @@ mod tests {
         }
         fs::remove_dir_all(&root)
             .map_err(|error| format!("failed to clean controller repository fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_rejects_digest_rebound_unknown_public_fields() -> Result<(), String> {
+        for (label, pointer) in [
+            ("unknown-workflow-field", ""),
+            ("unknown-attempt-field", "/attempts"),
+        ] {
+            let (root, packet) = write_test_closure(label)?;
+            verify_packet(&packet)?;
+            let mut report = read_json(&packet.join(REPORT_JSON), label)?;
+            report
+                .pointer_mut(pointer)
+                .and_then(Value::as_object_mut)
+                .ok_or_else(|| format!("{label} target is not an object"))?
+                .insert("merge_authorized".to_string(), Value::Bool(false));
+            report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+            rewrite_test_packet_reports_and_index(&packet, &report)?;
+            if verify_packet(&packet).is_ok() {
+                return Err(format!("digest-rebound {label} escaped exact schema"));
+            }
+            fs::remove_dir_all(&root)
+                .map_err(|error| format!("failed to clean {label}: {error}"))?;
+        }
+
+        for (label, directory, report_name) in [
+            (
+                "unknown-admitted-builder-field",
+                "trusted-builder",
+                "trusted-builder.json",
+            ),
+            (
+                "unknown-admitted-admission-field",
+                "resolved-tree-admission",
+                "resolved-tree-admission.json",
+            ),
+        ] {
+            let (root, packet) = write_test_closure(label)?;
+            verify_packet(&packet)?;
+            let control = packet.join("evidence").join(directory);
+            let receipt_path = control.join(report_name);
+            let mut receipt = read_json(&receipt_path, label)?;
+            if label == "unknown-admitted-admission-field" {
+                receipt["integration_receipts"]["merge_authorized"] = Value::Bool(false);
+            } else {
+                receipt["merge_authorized"] = Value::Bool(false);
+            }
+            write_pretty_json(&receipt_path, &receipt, label)?;
+            reindex_control_packet(&control)?;
+            reindex_workflow_packet(&packet)?;
+            if verify_packet(&packet).is_ok() {
+                return Err(format!("digest-rebound {label} escaped exact schema"));
+            }
+            fs::remove_dir_all(&root)
+                .map_err(|error| format!("failed to clean {label}: {error}"))?;
+        }
+
+        for (label, constructor) in [
+            ("unknown-rejected-builder-field", "builder"),
+            ("unknown-rejected-admission-field", "admission"),
+            ("unknown-rejected-construction-field", "construction"),
+        ] {
+            let (root, packet) = match constructor {
+                "builder" => write_builder_rejected_test_closure(label)?,
+                "admission" => write_j5_rejected_test_closure(label)?,
+                _ => write_parseable_rejected_constructor_test_closure(label, false)?,
+            };
+            verify_packet(&packet)?;
+            let (directory, report_name) = match constructor {
+                "builder" => ("trusted-builder", "trusted-builder.json"),
+                "admission" => ("resolved-tree-admission", "resolved-tree-admission.json"),
+                _ => ("exact-join-construction", "exact-join-construction.json"),
+            };
+            let control = packet.join("evidence").join(directory);
+            let receipt_path = control.join(report_name);
+            let mut receipt = read_json(&receipt_path, label)?;
+            if constructor == "admission" {
+                receipt["identity"]["merge_authorized"] = Value::Bool(false);
+            } else {
+                receipt["merge_authorized"] = Value::Bool(false);
+            }
+            write_pretty_json(&receipt_path, &receipt, label)?;
+            reindex_control_packet(&control)?;
+            reindex_workflow_packet(&packet)?;
+            if verify_packet(&packet).is_ok() {
+                return Err(format!("digest-rebound {label} escaped exact schema"));
+            }
+            fs::remove_dir_all(&root)
+                .map_err(|error| format!("failed to clean {label}: {error}"))?;
+        }
         Ok(())
     }
 
@@ -3392,6 +3619,34 @@ mod tests {
         rewrite_test_packet_reports_and_index(&construction_packet, &report)?;
         verify_packet(&construction_packet)?;
 
+        let construction_receipt_path = nested_construction.join("exact-join-construction.json");
+        let construction_receipt = read_json(
+            &construction_receipt_path,
+            "exact admitted construction schema fixture",
+        )?;
+        let mut receipt_with_extra = construction_receipt.clone();
+        receipt_with_extra["merge_authorized"] = Value::Bool(false);
+        write_pretty_json(
+            &construction_receipt_path,
+            &receipt_with_extra,
+            "digest-rebound admitted construction schema fixture",
+        )?;
+        reindex_control_packet(&nested_construction)?;
+        reindex_workflow_packet(&construction_packet)?;
+        if verify_packet(&construction_packet).is_ok() {
+            return Err(
+                "digest-rebound admitted construction field escaped exact schema".to_string(),
+            );
+        }
+        write_pretty_json(
+            &construction_receipt_path,
+            &construction_receipt,
+            "restored admitted construction schema fixture",
+        )?;
+        reindex_control_packet(&nested_construction)?;
+        reindex_workflow_packet(&construction_packet)?;
+        verify_packet(&construction_packet)?;
+
         fs::write(
             nested_construction.join("undeclared.log"),
             b"undeclared construction evidence\n",
@@ -3602,6 +3857,43 @@ mod tests {
         }
         fs::remove_dir_all(&root)
             .map_err(|error| format!("failed to clean rejected authority fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn attempted_rejected_constructor_requires_complete_identity() -> Result<(), String> {
+        for key in [
+            "source_parent",
+            "swarm_parent",
+            "join_tree",
+            "preflight_sha256",
+            "resolution_manifest_sha256",
+        ] {
+            let (root, packet) = write_parseable_rejected_constructor_test_closure(
+                &format!("attempted-construction-null-{key}"),
+                true,
+            )?;
+            verify_packet(&packet)?;
+            let construction = packet.join("evidence/exact-join-construction");
+            let receipt_path = construction.join("exact-join-construction.json");
+            let mut receipt = read_json(&receipt_path, "attempted construction identity fixture")?;
+            receipt[key] = Value::Null;
+            write_pretty_json(
+                &receipt_path,
+                &receipt,
+                "digest-rebound attempted construction identity fixture",
+            )?;
+            reindex_control_packet(&construction)?;
+            reindex_workflow_packet(&packet)?;
+            if verify_packet(&packet).is_ok() {
+                return Err(format!(
+                    "attempted rejected construction accepted null {key}"
+                ));
+            }
+            fs::remove_dir_all(&root).map_err(|error| {
+                format!("failed to clean attempted construction {key} fixture: {error}")
+            })?;
+        }
         Ok(())
     }
 

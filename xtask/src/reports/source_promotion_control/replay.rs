@@ -30,6 +30,18 @@ pub(super) fn replay_rejected_builder_packet(
     workflow_source_sha: &str,
 ) -> Result<Value, String> {
     let receipt = read_rejected_control_packet(root, "trusted_builder", BUILDER_REPORT)?;
+    validate_exact_json_fields(
+        &receipt,
+        "rejected builder receipt",
+        &[
+            "schema", "status", "source_parent", "workflow_source_sha", "clean_checkout",
+            "rust_toolchain", "cargo_lock_sha256", "locked_build", "isolated_cargo_target_dir",
+            "executable_sha256", "failure_reasons", "authoritative_commit_attempted",
+            "commit_tree_attempts", "local_ref_attempts", "remote_push_attempts",
+            "merge_command_attempts", "merge_command", "ref_mutation_attempted", "push_attempted",
+        ],
+        &["non_claims"],
+    )?;
     if json_string(&receipt, "schema") != Some(BUILDER_SCHEMA)
         || optional_exact_string(&receipt, "source_parent", source_parent).is_err()
         || optional_exact_string(&receipt, "workflow_source_sha", workflow_source_sha).is_err()
@@ -57,6 +69,20 @@ pub(super) fn replay_rejected_admission_closure(
         "resolved_tree_admission",
         ADMISSION_REPORT,
     )?;
+    validate_exact_json_fields(
+        &receipt,
+        "rejected admission receipt",
+        &[
+            "schema", "status", "identity", "source_parent", "swarm_parent", "join_tree",
+            "preflight_sha256", "resolution_manifest_sha256",
+            "all_required_typed_integration_receipts_present", "final_identity_reread_passed",
+            "constructor_eligible_after_tree_qualification", "authoritative_commit_attempted",
+            "commit_tree_attempts", "local_ref_attempts", "remote_push_attempts",
+            "merge_command_attempts", "ref_mutation_attempted", "push_attempted", "merge_command",
+            "failure_reasons",
+        ],
+        &["non_claims"],
+    )?;
     if json_string(&receipt, "schema") != Some(ADMISSION_SCHEMA) {
         return Err("rejected admission receipt uses an unsupported schema".to_string());
     }
@@ -75,11 +101,27 @@ pub(super) fn replay_rejected_admission_closure(
     if receipt
         .get("identity")
         .is_some_and(|value| !value.is_null())
-        && receipt.get("identity") != Some(&identity.as_json())
     {
-        return Err(
-            "rejected admission embedded identity differs from workflow identity".to_string(),
-        );
+        let embedded = receipt
+            .get("identity")
+            .ok_or_else(|| "rejected admission receipt is missing identity".to_string())?;
+        validate_exact_json_fields(
+            embedded,
+            "rejected admission embedded identity",
+            &[
+                "source_parent",
+                "swarm_parent",
+                "join_tree",
+                "preflight_sha256",
+                "resolution_manifest_sha256",
+            ],
+            &[],
+        )?;
+        if embedded != &identity.as_json() {
+            return Err(
+                "rejected admission embedded identity differs from workflow identity".to_string(),
+            );
+        }
     }
     for key in [
         "all_required_typed_integration_receipts_present",
@@ -102,9 +144,23 @@ pub(super) fn replay_rejected_construction_packet(
 ) -> Result<Value, String> {
     let receipt =
         read_rejected_control_packet(root, "exact_join_construction", CONSTRUCTION_REPORT)?;
+    validate_exact_json_fields(
+        &receipt,
+        "rejected construction receipt",
+        &[
+            "schema", "status", "source_parent", "swarm_parent", "join_tree",
+            "preflight_sha256", "resolution_manifest_sha256", "candidate_ref", "join_commit",
+            "ordered_parents", "final_identity_reread_passed", "refs_unchanged",
+            "authoritative_commit_attempted", "commit_tree_attempts", "local_ref_attempts",
+            "remote_push_attempts", "merge_command_attempts", "unreferenced_exact_join_constructed",
+            "ref_mutation_attempted", "push_attempted", "merge_command", "failure_reasons",
+        ],
+        &["non_claims"],
+    )?;
     if json_string(&receipt, "schema") != Some(CONSTRUCTION_SCHEMA) {
         return Err("rejected construction receipt uses an unsupported schema".to_string());
     }
+    let attempted = json_bool(&receipt, "authoritative_commit_attempted") == Some(true);
     for (key, expected) in [
         ("source_parent", input.source_parent),
         ("swarm_parent", input.swarm_parent),
@@ -112,7 +168,15 @@ pub(super) fn replay_rejected_construction_packet(
         ("preflight_sha256", input.preflight_sha256),
         ("resolution_manifest_sha256", input.resolution_sha256),
     ] {
-        optional_exact_string(&receipt, key, expected)?;
+        if attempted {
+            if json_string(&receipt, key) != Some(expected) {
+                return Err(format!(
+                    "attempted rejected construction receipt has missing or mismatched {key}"
+                ));
+            }
+        } else {
+            optional_exact_string(&receipt, key, expected)?;
+        }
     }
     if !receipt["join_commit"].is_null()
         || !receipt["refs_unchanged"].is_null()

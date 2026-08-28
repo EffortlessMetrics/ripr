@@ -62,6 +62,30 @@ const REQUIRED_QUALIFICATION_LANES: &[&str] = &[
     "w7_product",
 ];
 
+fn validate_exact_json_fields(
+    value: &Value,
+    label: &str,
+    required: &[&str],
+    optional: &[&str],
+) -> Result<(), String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("{label} must be an object"))?;
+    let observed = object.keys().map(String::as_str).collect::<BTreeSet<_>>();
+    let required = required.iter().copied().collect::<BTreeSet<_>>();
+    let allowed = required
+        .iter()
+        .copied()
+        .chain(optional.iter().copied())
+        .collect::<BTreeSet<_>>();
+    if !required.is_subset(&observed) || !observed.is_subset(&allowed) {
+        return Err(format!(
+            "{label} fields differ from exact contract: {observed:?}"
+        ));
+    }
+    Ok(())
+}
+
 fn validate_source_main_ref(reference: &str) -> Result<(), String> {
     validate_full_ref(reference, "source main ref")?;
     if reference != SOURCE_MAIN_REF {

@@ -257,6 +257,7 @@ pub(crate) mod source_promotion_control_tests {
             "push_attempted": false,
             "merge_command": null,
             "failure_reasons": [],
+            "invalidation_rules": [],
         })
     }
 

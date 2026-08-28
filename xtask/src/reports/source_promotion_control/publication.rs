@@ -892,6 +892,24 @@ fn validate_construction_receipt(
     receipt: &Value,
     evidence: &ConstructionEvidence,
 ) -> Result<(), String> {
+    validate_exact_json_fields(
+        receipt,
+        "construction receipt",
+        &[
+            "schema", "status", "source_parent", "swarm_parent", "join_tree",
+            "preflight_sha256", "resolution_manifest_sha256", "swarm_ref", "candidate_ref",
+            "join_commit", "ordered_parents", "commit_author_name", "commit_author_email",
+            "commit_timestamp", "commit_message_sha256", "admission_packet_index_sha256",
+            "admission_receipt_sha256", "resolved_tree_packet_index_sha256",
+            "integration_index_sha256", "tree_qualification_receipt_sha256",
+            "final_identity_reread_passed", "refs_unchanged", "authoritative_commit_attempted",
+            "commit_tree_attempts", "local_ref_attempts", "remote_push_attempts",
+            "merge_command_attempts", "unreferenced_exact_join_constructed",
+            "ref_mutation_attempted", "push_attempted", "merge_command", "failure_reasons",
+            "invalidation_rules",
+        ],
+        &["non_claims"],
+    )?;
     let expected_message_sha256 = digest_bytes(JOIN_MESSAGE.as_bytes());
     if json_string(receipt, "schema") != Some(CONSTRUCTION_SCHEMA)
         || json_string(receipt, "status") != Some("constructed")
