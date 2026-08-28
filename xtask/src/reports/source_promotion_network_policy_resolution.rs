@@ -138,6 +138,8 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
     validate_hex_identity("swarm", &inputs.swarm, 40)?;
     validate_hex_identity("merge base", &inputs.merge_base, 40)?;
     validate_hex_identity("preview tree", &inputs.preview_tree, 40)?;
+    validate_hex_identity("rejected J5", &inputs.rejected_j5, 40)?;
+    validate_hex_identity("rejected J5 tree", &inputs.rejected_j5_tree, 40)?;
     validate_hex_identity("preflight SHA-256", &inputs.preflight_sha256, 64)?;
     validate_hex_identity("P0 artifact SHA-256", &inputs.p0_artifact_sha256, 64)?;
 
@@ -160,6 +162,15 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
     validate_git_identity("source", &inputs.source, "commit")?;
     validate_git_identity("swarm", &inputs.swarm, "commit")?;
     validate_git_identity("preview tree", &inputs.preview_tree, "tree")?;
+    validate_git_identity("rejected J5", &inputs.rejected_j5, "commit")?;
+    validate_git_identity("rejected J5 tree", &inputs.rejected_j5_tree, "tree")?;
+    let actual_j5_tree = git_output(&["rev-parse", &format!("{}^{{tree}}", inputs.rejected_j5)])?;
+    if actual_j5_tree != inputs.rejected_j5_tree {
+        return Err(format!(
+            "rejected J5 tree mismatch: expected {}, found {actual_j5_tree}",
+            inputs.rejected_j5_tree
+        ));
+    }
 
     let reproduced_preview = git_merge_tree(&inputs.source, &inputs.swarm)?;
     let reproduced_preview = reproduced_preview
@@ -180,8 +191,13 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
     let swarm_policy_blob = git_output(&["rev-parse", &format!("{}:{POLICY_PATH}", inputs.swarm)])?;
     let source_rows = parse_policy("source", &source_policy_bytes)?;
     let swarm_rows = parse_policy("swarm", &swarm_policy_bytes)?;
-    let decisions = parse_decisions(&inputs.decisions, &inputs.preflight_sha256)?;
-    let inventory = inventory_tree(&inputs.preview_tree)?;
+    let decisions = parse_decisions(&inputs.decisions, inputs)?;
+    let mut inventory = inventory_tree(&inputs.preview_tree)?;
+    complete_parent_inventory(
+        &inputs.preview_tree,
+        source_rows.iter().chain(swarm_rows.iter()),
+        &mut inventory,
+    )?;
     let resolutions = reconcile(&source_rows, &swarm_rows, &decisions, &inventory)?;
 
     let ledger = render_ledger(&resolutions);
@@ -201,17 +217,23 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
 
     let checkout = scratch.join("checkout");
     materialize_tree(&after_tree, &index, &checkout)?;
+    let source_tree = git_output(&["rev-parse", &format!("{}^{{tree}}", inputs.source)])?;
+    let source_checkout = scratch.join("source-checker-checkout");
+    materialize_tree(
+        &source_tree,
+        &scratch.join("source-checker.index"),
+        &source_checkout,
+    )?;
     let checker_source_blob = git_output(&[
         "rev-parse",
         &format!("{}:xtask/src/policy/network.rs", inputs.source),
     ])?;
-    let executable = std::env::current_exe()
-        .map_err(|error| format!("failed to identify current xtask executable: {error}"))?;
-    let executable_sha256 = sha256(
-        &fs::read(&executable)
-            .map_err(|error| format!("failed to read {}: {error}", executable.display()))?,
-    );
-    run_production_checker(&checkout).map_err(|error| {
+    let checker_execution = run_production_checker(
+        &source_checkout,
+        &checkout,
+        &scratch.with_file_name("source-promotion-network-policy-checker-target"),
+    )
+    .map_err(|error| {
         format!("reconciled policy failed production check-network-policy: {error}")
     })?;
 
@@ -228,6 +250,10 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
         &swarm_control,
         &union_control,
         &resolutions,
+        inputs,
+        &preflight,
+        &ledger_blob,
+        &scratch,
     )?;
 
     let resolution_rows = resolutions.iter().map(resolution_json).collect::<Vec<_>>();
@@ -260,7 +286,6 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
             "source_sha256": sha256(&source_policy_bytes),
             "swarm_blob": swarm_policy_blob,
             "swarm_sha256": sha256(&swarm_policy_bytes),
-            "reviewer_decisions_path": inputs.decisions.display().to_string(),
             "reviewer_decisions_sha256": sha256(&fs::read(&inputs.decisions).map_err(|error| format!("failed to read {}: {error}", inputs.decisions.display()))?),
         },
         "rows": resolution_rows,
@@ -278,9 +303,18 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
         "production_checker": {
             "command": "cargo xtask check-network-policy",
             "source_parent": inputs.source,
+            "source_tree": source_tree,
+            "subject_tree": after_tree,
             "source_blob": checker_source_blob,
-            "executable": executable.file_name().and_then(|name| name.to_str()).unwrap_or("xtask"),
-            "executable_sha256": executable_sha256,
+            "locked": true,
+            "offline": true,
+            "isolated_target_dir": true,
+            "build_exit_code": checker_execution.build_exit_code,
+            "build_stdout_sha256": checker_execution.build_stdout_sha256,
+            "build_stderr_sha256": checker_execution.build_stderr_sha256,
+            "checker_exit_code": checker_execution.checker_exit_code,
+            "checker_stdout_sha256": checker_execution.checker_stdout_sha256,
+            "checker_stderr_sha256": checker_execution.checker_stderr_sha256,
             "result": "pass",
         },
         "negative_controls": controls,
@@ -407,7 +441,7 @@ fn parse_policy(label: &str, bytes: &[u8]) -> Result<Vec<PolicyRow>, String> {
 
 fn parse_decisions(
     path: &Path,
-    expected_preflight_sha256: &str,
+    inputs: &Inputs,
 ) -> Result<BTreeMap<(String, String), (PolicyRow, String)>, String> {
     let bytes = fs::read(path)
         .map_err(|error| format!("failed to read decisions {}: {error}", path.display()))?;
@@ -418,7 +452,7 @@ fn parse_decisions(
         "schema",
         "ripr.source_promotion_network_policy_decisions.v1",
     )?;
-    expect_json_string(&document, "p0_receipt_sha256", expected_preflight_sha256)?;
+    validate_decision_authority(&document, inputs)?;
     let entries = document
         .get("decisions")
         .and_then(Value::as_array)
@@ -459,6 +493,13 @@ fn parse_decisions(
     Ok(decisions)
 }
 
+fn validate_decision_authority(document: &Value, inputs: &Inputs) -> Result<(), String> {
+    expect_json_string(document, "p0_receipt_sha256", &inputs.preflight_sha256)?;
+    expect_json_string(document, "p0_artifact_sha256", &inputs.p0_artifact_sha256)?;
+    expect_json_string(document, "rejected_j5", &inputs.rejected_j5)?;
+    expect_json_string(document, "rejected_j5_tree", &inputs.rejected_j5_tree)
+}
+
 fn reconcile(
     source_rows: &[PolicyRow],
     swarm_rows: &[PolicyRow],
@@ -483,6 +524,12 @@ fn reconcile(
     for key in keys {
         let source_row = source.get(&key).cloned();
         let swarm_row = swarm.get(&key).cloned();
+        if (source_row.is_some() || swarm_row.is_some()) && !inventory.contains_key(&key) {
+            return Err(format!(
+                "parent policy key {}|{} has no exact preview path/count evidence",
+                key.0, key.1
+            ));
+        }
         let (actual_count, evidence_blob) = inventory
             .get(&key)
             .map(|(count, blob)| (*count, Some(blob.clone())))
@@ -656,6 +703,45 @@ fn inventory_tree(tree: &str) -> Result<BTreeMap<(String, String), (usize, Strin
     Ok(inventory)
 }
 
+fn complete_parent_inventory<'a>(
+    tree: &str,
+    rows: impl Iterator<Item = &'a PolicyRow>,
+    inventory: &mut BTreeMap<(String, String), (usize, String)>,
+) -> Result<(), String> {
+    let mut blobs = BTreeMap::<String, (Vec<u8>, String)>::new();
+    for row in rows {
+        let key = row.key();
+        if inventory.contains_key(&key) {
+            continue;
+        }
+        let (bytes, blob) = if let Some(value) = blobs.get(&row.path) {
+            value.clone()
+        } else {
+            let spec = format!("{tree}:{}", row.path);
+            let bytes = git_bytes(&spec).map_err(|error| {
+                format!(
+                    "parent policy path {} is absent from exact preview tree {tree}: {error}",
+                    row.path
+                )
+            })?;
+            let blob = git_output(&["rev-parse", &spec])?;
+            blobs.insert(row.path.clone(), (bytes.clone(), blob.clone()));
+            (bytes, blob)
+        };
+        let pattern = row.pattern.as_bytes();
+        let count = if pattern.is_empty() {
+            0
+        } else {
+            bytes
+                .windows(pattern.len())
+                .filter(|window| *window == pattern)
+                .count()
+        };
+        inventory.insert(key, (count, blob));
+    }
+    Ok(())
+}
+
 fn render_ledger(resolutions: &[Resolution]) -> String {
     let mut ledger = HEADER.to_string();
     for row in resolutions
@@ -669,12 +755,20 @@ fn render_ledger(resolutions: &[Resolution]) -> String {
 }
 
 fn evaluate_ledger(rows: &[PolicyRow], resolutions: &[Resolution]) -> Result<Value, String> {
-    let keyed = keyed_rows("control", rows);
-    let duplicate_error = keyed.as_ref().err().cloned();
-    let keyed = keyed.unwrap_or_default();
+    let mut keyed = BTreeMap::new();
+    let mut duplicate_keys = BTreeSet::new();
+    for row in rows {
+        if keyed.insert(row.key(), row.clone()).is_some() {
+            duplicate_keys.insert(row.key());
+        }
+    }
     let mut violations = Vec::new();
-    if let Some(error) = duplicate_error {
-        violations.push(json!({"kind": "duplicate_semantic_key", "detail": error}));
+    for (path, pattern) in duplicate_keys {
+        violations.push(json!({
+            "kind": "duplicate_semantic_key",
+            "path": path,
+            "pattern": pattern,
+        }));
     }
     let resolution_keys = resolutions
         .iter()
@@ -752,6 +846,10 @@ fn build_controls(
     swarm: &Value,
     union: &Value,
     resolutions: &[Resolution],
+    inputs: &Inputs,
+    preflight: &Value,
+    ledger_blob: &str,
+    scratch: &Path,
 ) -> Result<Value, String> {
     let source_violations = source["violations"]
         .as_array()
@@ -770,6 +868,7 @@ fn build_controls(
             source_violations.len()
         ));
     }
+    require_exact_raw_source_violations(source_violations)?;
     let first = resolutions
         .iter()
         .find_map(|resolution| resolution.selected.clone())
@@ -822,6 +921,68 @@ fn build_controls(
         .ok_or_else(|| "metadata control has no candidate row".to_string())?;
     metadata_row.owner = "conflicting-owner".to_string();
     let metadata = evaluate_ledger(&metadata_rows, resolutions)?;
+    require_rejected_control(
+        "raw source",
+        source,
+        "missing_or_under_counted_live_row",
+        None,
+    )?;
+    require_rejected_control("raw W7", swarm, "missing_or_under_counted_live_row", None)?;
+    require_rejected_control("raw-line union", union, "duplicate_semantic_key", None)?;
+    require_rejected_control(
+        "duplicate semantic key",
+        &duplicate,
+        "duplicate_semantic_key",
+        Some(&first.key()),
+    )?;
+    require_rejected_control(
+        "live count above maximum",
+        &under_count,
+        "missing_or_under_counted_live_row",
+        Some(&first.key()),
+    )?;
+    require_rejected_control(
+        "zero-count row",
+        &zero_count,
+        "orphaned_zero_count_row",
+        Some(&(first.path.clone(), "ureq".to_string())),
+    )?;
+    require_rejected_control(
+        "implicit maximum widening",
+        &widening,
+        "implicit_maximum_widening",
+        Some(&first.key()),
+    )?;
+    require_rejected_control(
+        "metadata conflict",
+        &metadata,
+        "owner_or_reason_substitution",
+        Some(&first.key()),
+    )?;
+    let mut moved_inputs = inputs.clone();
+    let replacement = if moved_inputs.source.starts_with('0') {
+        '1'
+    } else {
+        '0'
+    };
+    moved_inputs
+        .source
+        .replace_range(..1, &replacement.to_string());
+    let identity_error = validate_preflight(&moved_inputs, preflight)
+        .err()
+        .ok_or_else(|| {
+            "changed source identity negative control unexpectedly passed".to_string()
+        })?;
+    let identity_movement = json!({
+        "status": "rejected",
+        "changed_field": "source_parent",
+        "error": identity_error,
+    });
+    let outside_policy_path = outside_path_control(
+        &inputs.preview_tree,
+        ledger_blob,
+        &scratch.join("outside-path.index"),
+    )?;
     Ok(json!({
         "raw_source": source,
         "raw_source_current_input_correction": "fresh ad291d source has exactly six missing live rows and no stale http orphan; three quoted-push surfaces emerge only under the source checker over the W7 preview, while rejected J5 had the orphan",
@@ -832,8 +993,108 @@ fn build_controls(
         "zero_count_row": zero_count,
         "implicit_maximum_widening": widening,
         "metadata_conflict_without_decision": metadata,
-        "identity_movement": {"status": "rejected", "enforced_by": "preflight exact identity validation"},
-        "outside_policy_path": {"status": "rejected", "enforced_by": "exact one-path tree delta"},
+        "identity_movement": identity_movement,
+        "outside_policy_path": outside_policy_path,
+    }))
+}
+
+fn require_exact_raw_source_violations(violations: &[Value]) -> Result<(), String> {
+    let expected = BTreeSet::from([
+        (
+            ".github/workflows/server-archive-qualification.yml",
+            "curl",
+            1_u64,
+        ),
+        ("crates/ripr/src/lsp/backend.rs", "\"push\"", 1),
+        ("crates/ripr/src/lsp/tests.rs", "\"push\"", 1),
+        (
+            "crates/ripr/src/output/perl_gap_record_projection.rs",
+            "curl",
+            5,
+        ),
+        ("xtask/src/branch_inventory.rs", "\"push\"", 2),
+        ("xtask/src/tests.rs", "curl", 2),
+    ]);
+    let actual = violations
+        .iter()
+        .filter_map(|violation| {
+            Some((
+                violation.get("path")?.as_str()?,
+                violation.get("pattern")?.as_str()?,
+                violation.get("actual_count")?.as_u64()?,
+            ))
+        })
+        .collect::<BTreeSet<_>>();
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "fresh raw-source violations changed: expected {expected:?}, found {actual:?}"
+        ))
+    }
+}
+
+fn require_rejected_control(
+    label: &str,
+    control: &Value,
+    expected_kind: &str,
+    expected_key: Option<&(String, String)>,
+) -> Result<(), String> {
+    if control.get("status").and_then(Value::as_str) != Some("rejected") {
+        return Err(format!("{label} negative control unexpectedly accepted"));
+    }
+    let violations = control
+        .get("violations")
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("{label} negative control has no violations"))?;
+    let matched = violations.iter().any(|violation| {
+        violation.get("kind").and_then(Value::as_str) == Some(expected_kind)
+            && expected_key.is_none_or(|key| {
+                violation.get("path").and_then(Value::as_str) == Some(key.0.as_str())
+                    && violation.get("pattern").and_then(Value::as_str) == Some(key.1.as_str())
+            })
+    });
+    if matched {
+        Ok(())
+    } else {
+        Err(format!(
+            "{label} negative control did not report {expected_kind} for the expected subject"
+        ))
+    }
+}
+
+fn outside_path_control(preview: &str, ledger_blob: &str, index: &Path) -> Result<Value, String> {
+    let index_text = path_text(index)?;
+    git_output_env(&["read-tree", preview], &[("GIT_INDEX_FILE", &index_text)])?;
+    for path in [POLICY_PATH, "outside-policy-control.txt"] {
+        git_output_env(
+            &[
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                &format!("100644,{ledger_blob},{path}"),
+            ],
+            &[("GIT_INDEX_FILE", &index_text)],
+        )?;
+    }
+    let control_tree = git_output_env(&["write-tree"], &[("GIT_INDEX_FILE", &index_text)])?;
+    let paths = changed_paths(preview, &control_tree)?;
+    if paths
+        != vec![
+            "outside-policy-control.txt".to_string(),
+            POLICY_PATH.to_string(),
+        ]
+    {
+        return Err(format!(
+            "outside-path negative control produced unexpected paths: {}",
+            paths.join(", ")
+        ));
+    }
+    Ok(json!({
+        "status": "rejected",
+        "control_tree": control_tree,
+        "changed_paths": paths,
+        "violation": "changed path outside policy/network_allowlist.txt",
     }))
 }
 
@@ -932,19 +1193,67 @@ fn materialize_tree(tree: &str, index: &Path, checkout: &Path) -> Result<(), Str
     Ok(())
 }
 
-fn run_production_checker(checkout: &Path) -> Result<(), String> {
-    let original = std::env::current_dir()
-        .map_err(|error| format!("failed to read current directory: {error}"))?;
-    std::env::set_current_dir(checkout)
-        .map_err(|error| format!("failed to enter {}: {error}", checkout.display()))?;
-    let result = crate::check_network_policy();
-    let restore = std::env::set_current_dir(&original)
-        .map_err(|error| format!("failed to restore {}: {error}", original.display()));
-    match (result, restore) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) => Err(error),
-        (_, Err(error)) => Err(error),
+struct CheckerExecution {
+    build_exit_code: i32,
+    build_stdout_sha256: String,
+    build_stderr_sha256: String,
+    checker_exit_code: i32,
+    checker_stdout_sha256: String,
+    checker_stderr_sha256: String,
+}
+
+fn run_production_checker(
+    source_checkout: &Path,
+    subject_checkout: &Path,
+    target_dir: &Path,
+) -> Result<CheckerExecution, String> {
+    fs::create_dir_all(source_checkout.join("target")).map_err(|error| {
+        format!(
+            "failed to create source-checkout temporary directory {}: {error}",
+            source_checkout.join("target").display()
+        )
+    })?;
+    fs::create_dir_all(target_dir)
+        .map_err(|error| format!("failed to create {}: {error}", target_dir.display()))?;
+    let build = Command::new("cargo")
+        .current_dir(source_checkout)
+        .args(["build", "--quiet", "--locked", "--offline", "-p", "xtask"])
+        .env("CARGO_TARGET_DIR", target_dir)
+        .output()
+        .map_err(|error| format!("failed to build exact-source xtask checker: {error}"))?;
+    if !build.status.success() {
+        return Err(format!(
+            "exact-source cargo build exited with {}: stdout={} stderr={}",
+            build.status,
+            String::from_utf8_lossy(&build.stdout).trim(),
+            String::from_utf8_lossy(&build.stderr).trim()
+        ));
     }
+    let executable =
+        target_dir
+            .join("debug")
+            .join(if cfg!(windows) { "xtask.exe" } else { "xtask" });
+    let checker = Command::new(&executable)
+        .current_dir(subject_checkout)
+        .arg("check-network-policy")
+        .output()
+        .map_err(|error| format!("failed to start exact-source xtask checker: {error}"))?;
+    if !checker.status.success() {
+        return Err(format!(
+            "exact-source xtask checker exited with {}: stdout={} stderr={}",
+            checker.status,
+            String::from_utf8_lossy(&checker.stdout).trim(),
+            String::from_utf8_lossy(&checker.stderr).trim()
+        ));
+    }
+    Ok(CheckerExecution {
+        build_exit_code: build.status.code().unwrap_or(-1),
+        build_stdout_sha256: sha256(&build.stdout),
+        build_stderr_sha256: sha256(&build.stderr),
+        checker_exit_code: checker.status.code().unwrap_or(-1),
+        checker_stdout_sha256: sha256(&checker.stdout),
+        checker_stderr_sha256: sha256(&checker.stderr),
+    })
 }
 
 fn scratch_root() -> Result<PathBuf, String> {
@@ -1152,8 +1461,13 @@ fn render_markdown(
 
 #[cfg(test)]
 mod tests {
-    use super::{PolicyRow, evaluate_ledger, parse_policy, reconcile, select_row};
+    use super::{
+        Inputs, PolicyRow, evaluate_ledger, parse_policy, reconcile, require_rejected_control,
+        select_row, validate_decision_authority,
+    };
+    use serde_json::json;
     use std::collections::BTreeMap;
+    use std::path::PathBuf;
 
     fn row(path: &str, pattern: &str, maximum: usize, owner: &str) -> PolicyRow {
         PolicyRow {
@@ -1189,6 +1503,10 @@ mod tests {
             (
                 ("swarm.rs".to_string(), "curl".to_string()),
                 (2, "blob".to_string()),
+            ),
+            (
+                ("orphan.rs".to_string(), "curl".to_string()),
+                (0, "orphan-blob".to_string()),
             ),
         ]);
         let resolved = reconcile(&source, &swarm, &BTreeMap::new(), &inventory)?;
@@ -1304,6 +1622,72 @@ mod tests {
         let resolved = reconcile(&[], &[], &exact, &inventory)?;
         if resolved.len() != 1 || resolved.first().map(|item| item.disposition) != Some("added") {
             return Err("exact reviewer decision was not selected as added".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parent_rows_require_exact_path_and_count_evidence() -> Result<(), String> {
+        let parent = row("missing.rs", "curl", 1, "owner");
+        let error = reconcile(&[parent], &[], &BTreeMap::new(), &BTreeMap::new())
+            .err()
+            .ok_or_else(|| "parent row without preview evidence unexpectedly passed".to_string())?;
+        if !error.contains("no exact preview path/count evidence") {
+            return Err(format!("unexpected error: {error}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn reviewer_authority_binds_artifact_and_rejected_precedent() -> Result<(), String> {
+        let inputs = Inputs {
+            preflight: PathBuf::from("preflight.json"),
+            decisions: PathBuf::from("decisions.json"),
+            preflight_sha256: "a".repeat(64),
+            p0_artifact_sha256: "b".repeat(64),
+            source: "c".repeat(40),
+            swarm: "d".repeat(40),
+            merge_base: "e".repeat(40),
+            preview_tree: "f".repeat(40),
+            rejected_j5: "1".repeat(40),
+            rejected_j5_tree: "2".repeat(40),
+            output_dir: PathBuf::from("out"),
+        };
+        let document = json!({
+            "p0_receipt_sha256": inputs.preflight_sha256,
+            "p0_artifact_sha256": inputs.p0_artifact_sha256,
+            "rejected_j5": inputs.rejected_j5,
+            "rejected_j5_tree": inputs.rejected_j5_tree,
+        });
+        validate_decision_authority(&document, &inputs)?;
+        for field in [
+            "p0_receipt_sha256",
+            "p0_artifact_sha256",
+            "rejected_j5",
+            "rejected_j5_tree",
+        ] {
+            let mut changed = document.clone();
+            changed[field] = json!("0");
+            if validate_decision_authority(&changed, &inputs).is_ok() {
+                return Err(format!("changed {field} unexpectedly passed"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn negative_controls_must_reject_the_expected_subject() -> Result<(), String> {
+        let key = ("a.rs".to_string(), "curl".to_string());
+        let rejected = json!({
+            "status": "rejected",
+            "violations": [{"kind": "orphaned_zero_count_row", "path": "a.rs", "pattern": "curl"}],
+        });
+        require_rejected_control("fixture", &rejected, "orphaned_zero_count_row", Some(&key))?;
+        let accepted = json!({"status": "accepted", "violations": []});
+        if require_rejected_control("fixture", &accepted, "orphaned_zero_count_row", Some(&key))
+            .is_ok()
+        {
+            return Err("accepted negative control unexpectedly passed".to_string());
         }
         Ok(())
     }

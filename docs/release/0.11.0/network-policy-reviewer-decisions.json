@@ -1,6 +1,9 @@
 {
   "schema": "ripr.source_promotion_network_policy_decisions.v1",
   "p0_receipt_sha256": "db9121c2857caa0a9b1a70d88c2ba9f037fb63f5ca66b56cdd187c9b2c85f4b1",
+  "p0_artifact_sha256": "74456bddf8649c391a2b2bc19841d48c809146f1b946eba81d1ccd0a2f7849ee",
+  "rejected_j5": "7fcb62a3433424dddadd1afb47025ee284c5755e",
+  "rejected_j5_tree": "7a915ae9827358aab88eca6ddad746720cbe92a4",
   "decisions": [
     {
       "path": "crates/ripr/src/lsp/backend.rs",

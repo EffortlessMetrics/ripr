@@ -10,7 +10,7 @@
 - Final ledger SHA-256: `db317972d01d94b5964d4fb7de2c4a3b99066888117c9148ec1d8598ec43a680`
 - Production checker: **pass**
 - Changed path: `policy/network_allowlist.txt` only
-- Receipt SHA-256: `f44ba4b01060381991d55eeeefb24326431eca2648201f9db39aa104e8c5d986`
+- Receipt SHA-256: `8f9ae16cea8d6710a4c9437f49fc1aa8a5d7ad7a42a19d0b46ddb9d6a756bca9`
 
 Machine-readable receipt: `docs/release/0.11.0/network-policy-resolution/network-policy-resolution.json`
 Ledger bytes: `docs/release/0.11.0/network-policy-resolution/network-policy-ledger.txt`
