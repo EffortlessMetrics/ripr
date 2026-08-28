@@ -13899,3 +13899,7 @@ exact-state guard; the controller never rolls a remote ref back. An observed
 join without an actual target-update status remains unattributed and produces
 `publication_state_unknown`, including after an exit-zero up-to-date/no-op
 push.
+An unavailable final remote observation immediately rolls back only the local
+candidate ref behind an exact-state guard, then records every mandatory
+post-push authority reread before returning `publication_state_unknown`;
+remote state remains unknown and is never rolled back.

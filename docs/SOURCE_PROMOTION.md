@@ -444,6 +444,10 @@ candidate ref behind an exact-state guard and records whether that rollback
 succeeded. This local-only rollback also applies when a failed push is followed
 by an observed join: the remote ref is never rolled back, the join remains
 unattributed, and the receipt records `publication_state_unknown`.
+An unavailable final remote observation immediately rolls back only the local
+candidate ref behind an exact-state guard, then records every mandatory
+post-push authority reread before returning `publication_state_unknown`;
+remote state remains unknown and is never rolled back.
 
 Publication receipts state what was observed:
 

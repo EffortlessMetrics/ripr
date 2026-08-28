@@ -212,6 +212,10 @@ the local candidate ref back to its exact old-or-absent state without pushing.
 A failed or non-publishing remote attempt also attempts to roll back only that
 local candidate ref behind an exact-state guard, and the receipt records
 whether the rollback succeeded.
+An unavailable final remote observation immediately rolls back only the local
+candidate ref behind an exact-state guard, then records every mandatory
+post-push authority reread before returning `publication_state_unknown`;
+remote state remains unknown and is never rolled back.
 
 Publication status follows observed state rather than process exit alone:
 
@@ -296,8 +300,8 @@ exist.
   attempts, while injected finalization failures retain a deterministic
   incomplete attempt journal and no complete packet index;
 - target-ref mismatch and wrong expected local or remote state reject before
-  publication, while a remote non-publication restores the exact prior local
-  candidate-ref state;
+  publication, while a remote non-publication or unavailable final target
+  observation restores the exact prior local candidate-ref state;
 - before/after controls cover local and remote source, local and remote W7,
   complete indexed construction-packet bytes, the exact join object, and source
   fetch/push URLs;

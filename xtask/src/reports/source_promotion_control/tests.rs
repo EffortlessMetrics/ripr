@@ -1608,6 +1608,42 @@ mod source_promotion_control_tests {
     }
 
     #[test]
+    fn unavailable_final_remote_observation_rollback_contract_matches_every_doc()
+    -> Result<(), String> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
+        let expected = "An unavailable final remote observation immediately rolls back only the local candidate ref behind an exact-state guard, then records every mandatory post-push authority reread before returning `publication_state_unknown`; remote state remains unknown and is never rolled back.";
+        for path in [
+            "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+            "docs/SOURCE_PROMOTION.md",
+            "docs/OUTPUT_SCHEMA.md",
+        ] {
+            let contract = fs::read_to_string(root.join(path))
+                .map_err(|error| format!("failed to read {path}: {error}"))?
+                .replace("\r\n", "\n");
+            let start = "An unavailable final remote observation immediately";
+            let end = "never rolled back.";
+            let observed = contract
+                .split_once(start)
+                .map(|(_, remainder)| remainder)
+                .and_then(|remainder| remainder.split_once(end).map(|(body, _)| body))
+                .map(|body| format!("{start}{body}{end}"))
+                .ok_or_else(|| format!("{path} rollback contract is missing"))?
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            require_equal(
+                observed.as_str(),
+                expected,
+                &format!("{path} unavailable-observation rollback contract"),
+            )?;
+        }
+        Ok(())
+    }
+
+    #[test]
     fn control_packet_rejects_partial_digest_mismatch_and_unindexed_files() -> Result<(), String> {
         let temp = test_temp_dir("packet")?;
         let root = temp.join("packet");
@@ -1804,6 +1840,74 @@ mod source_promotion_control_tests {
         )?;
         require_admission_rejection_without_authority(&fixture, &reason, &refs_before)?;
         fixture.repo.cleanup()
+    }
+
+    #[test]
+    fn admission_rejects_stable_bound_sidecar_replacements_before_second_snapshot()
+    -> Result<(), String> {
+        for (label, replace_preflight, expected_reason) in [
+            (
+                "admission-stable-preflight-replacement",
+                true,
+                "finalized P1 preflight digest moved from exact admission input",
+            ),
+            (
+                "admission-stable-resolution-replacement",
+                false,
+                "complete resolution manifest digest moved from exact admission input",
+            ),
+        ] {
+            let fixture = admission_snapshot_fixture(label)?;
+            let refs_before = refs_digest(&fixture.repo)?;
+            let replaced_path = if replace_preflight {
+                fixture.options.preflight.clone()
+            } else {
+                fixture.options.resolution_manifest.clone()
+            };
+            let mut snapshot_calls = 0_u64;
+            let failure = validate_admission_with_snapshot_reader(
+                &fixture.options,
+                |options,
+                 swarm_ref,
+                 validation_packet,
+                 builder_packet,
+                 integration,
+                 executable_sha256| {
+                    snapshot_calls = snapshot_calls.saturating_add(1);
+                    if snapshot_calls == 1 {
+                        let mut replacement = fs::read(&replaced_path).map_err(|error| {
+                            format!("failed to read stable sidecar replacement fixture: {error}")
+                        })?;
+                        replacement.push(b' ');
+                        fs::write(&replaced_path, replacement).map_err(|error| {
+                            format!("failed to write stable sidecar replacement fixture: {error}")
+                        })?;
+                    }
+                    admission_snapshot(
+                        options,
+                        swarm_ref,
+                        validation_packet,
+                        builder_packet,
+                        integration,
+                        executable_sha256,
+                    )
+                },
+            )
+            .err()
+            .ok_or_else(|| "stable bound sidecar replacement unexpectedly admitted".to_string())?;
+            require(
+                failure.contains(expected_reason),
+                format!("stable sidecar replacement rejection mismatch: {failure}"),
+            )?;
+            require_equal(
+                snapshot_calls,
+                1,
+                "bound sidecar replacement must reject on the first final snapshot",
+            )?;
+            require_admission_rejection_without_authority(&fixture, &failure, &refs_before)?;
+            fixture.repo.cleanup()?;
+        }
+        Ok(())
     }
 
     #[test]

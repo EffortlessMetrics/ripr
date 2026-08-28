@@ -399,6 +399,23 @@ fn admit_resolved_tree(args: &[String]) -> Result<(), String> {
 }
 
 fn validate_admission(options: &AdmissionOptions) -> Result<AdmissionEvidence, String> {
+    validate_admission_with_snapshot_reader(options, admission_snapshot)
+}
+
+fn validate_admission_with_snapshot_reader<F>(
+    options: &AdmissionOptions,
+    mut snapshot_reader: F,
+) -> Result<AdmissionEvidence, String>
+where
+    F: FnMut(
+        &AdmissionOptions,
+        &str,
+        &IndexedPacket,
+        &IndexedPacket,
+        &IntegrationEvidence,
+        &str,
+    ) -> Result<AdmissionSnapshot, String>,
+{
     let validation_packet = read_indexed_packet(
         &options.validation_packet,
         RESOLVED_TREE_PACKET_SCHEMA,
@@ -450,7 +467,7 @@ fn validate_admission(options: &AdmissionOptions) -> Result<AdmissionEvidence, S
         .to_string();
     validate_full_ref(&swarm_ref, "protected W7 ref")?;
 
-    let before = admission_snapshot(
+    let before = snapshot_reader(
         options,
         &swarm_ref,
         &validation_packet,
@@ -458,16 +475,11 @@ fn validate_admission(options: &AdmissionOptions) -> Result<AdmissionEvidence, S
         &integration,
         &executable_sha256,
     )?;
-    if before.source_head != options.identity.source_parent.as_str() {
-        return Err("source checkout HEAD moved from admitted SOURCE_PARENT".to_string());
-    }
-    if before.swarm_head != options.identity.swarm_parent.as_str() {
-        return Err("protected W7 ref does not equal admitted SWARM_PARENT".to_string());
-    }
+    validate_admission_snapshot_identity(&before, &options.identity)?;
     if !clean_checkout(&options.repo)? {
         return Err("source checkout is not clean at admission".to_string());
     }
-    let after = admission_snapshot(
+    let after = snapshot_reader(
         options,
         &swarm_ref,
         &validation_packet,
@@ -475,6 +487,7 @@ fn validate_admission(options: &AdmissionOptions) -> Result<AdmissionEvidence, S
         &integration,
         &executable_sha256,
     )?;
+    validate_admission_snapshot_identity(&after, &options.identity)?;
     if before != after {
         return Err("admission inputs moved during final identity reread".to_string());
     }
@@ -491,6 +504,44 @@ fn validate_admission(options: &AdmissionOptions) -> Result<AdmissionEvidence, S
         integration,
         executable_sha256,
     })
+}
+
+fn validate_admission_snapshot_identity(
+    snapshot: &AdmissionSnapshot,
+    identity: &PromotionIdentity,
+) -> Result<(), String> {
+    for (actual, expected, reason) in [
+        (
+            snapshot.source_head.as_str(),
+            identity.source_parent.as_str(),
+            "source checkout HEAD moved from admitted SOURCE_PARENT",
+        ),
+        (
+            snapshot.swarm_head.as_str(),
+            identity.swarm_parent.as_str(),
+            "protected W7 ref does not equal admitted SWARM_PARENT",
+        ),
+        (
+            snapshot.join_tree.as_str(),
+            identity.join_tree.as_str(),
+            "reviewed join tree moved from admitted JOIN_TREE",
+        ),
+        (
+            snapshot.preflight_sha256.as_str(),
+            identity.preflight_sha256.as_str(),
+            "finalized P1 preflight digest moved from exact admission input",
+        ),
+        (
+            snapshot.resolution_sha256.as_str(),
+            identity.resolution_sha256.as_str(),
+            "complete resolution manifest digest moved from exact admission input",
+        ),
+    ] {
+        if actual != expected {
+            return Err(reason.to_string());
+        }
+    }
+    Ok(())
 }
 
 fn validate_resolved_tree_binding(
