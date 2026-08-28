@@ -507,6 +507,10 @@ the full source repository/parent/controller identity, the closed
 repository, protected W7 ref and peeled commit, reviewed tree, and every
 sidecar by producer repository, immutable commit/ref, mode-100644 path, and
 lowercase SHA-256.
+The live reviewed tree is transported by an exact source-repository carrier
+commit. The harness fetches that commit into a runner-owned clone and requires
+its tree and ordered parents to equal the requested reviewed tree, source
+parent, and W7 parent before admission begins.
 Artifact names, floating branches, abbreviated SHAs, candidate-checkout paths,
 and caller-supplied success booleans are not authority. Synthetic profiles use
 source-owned fixture identities; they are not general path or command inputs.

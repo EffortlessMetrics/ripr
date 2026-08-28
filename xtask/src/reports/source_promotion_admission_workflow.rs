@@ -7,7 +7,7 @@
 
 use super::source_promotion_admission_fixture::{
     LocatorMaterial, SyntheticFixture, SyntheticProfile, prepare_source_owned_fixture,
-    write_bound_qualification,
+    verify_reviewed_tree_carrier, write_bound_qualification,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -40,6 +40,7 @@ const RUN_KEYS: &[&str] = &[
     "--protected-w7-ref",
     "--w7-peeled-sha",
     "--reviewed-tree-sha",
+    "--reviewed-tree-carrier-sha",
     "--preflight-locator",
     "--resolution-manifest-locator",
     "--validation-packet-locator",
@@ -121,6 +122,7 @@ struct RunOptions {
     swarm_ref: String,
     swarm_parent: String,
     reviewed_tree: String,
+    reviewed_tree_carrier: String,
     preflight: Locator,
     resolution: Locator,
     validation: Locator,
@@ -282,6 +284,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "protected_w7_ref": options.swarm_ref,
         "w7_peeled_sha": options.swarm_parent,
         "reviewed_tree_sha": options.reviewed_tree,
+        "reviewed_tree_carrier_sha": options.reviewed_tree_carrier,
         "receipt_schema": options.receipt_schema,
         "locators": {
             "preflight": options.preflight.value,
@@ -362,17 +365,14 @@ fn finalize(args: &[String]) -> Result<(), String> {
                 .get(key)
                 .and_then(|value| json_string(value, "local_path"))
             {
-                let path = PathBuf::from(path);
-                return Ok(if path.is_absolute() {
-                    path
-                } else {
-                    workspace.join(path)
-                });
+                safe_relative(path)?;
+                return Ok(workspace.join(path));
             }
             let path = locators
                 .get(key)
                 .and_then(|value| json_string(value, "path"))
                 .ok_or_else(|| format!("admission packet locator is missing {key}"))?;
+            safe_relative(path)?;
             Ok(workspace
                 .join("locators")
                 .join(slot)
@@ -640,11 +640,17 @@ fn validate_report(report: &Value) -> Result<(), String> {
         json_string(report, "execution_profile")
             .ok_or_else(|| "workflow disposition is missing execution_profile".to_string())?,
     )?;
+    if required_json_string(report, "source_repository")? != SOURCE_REPOSITORY
+        || required_json_string(report, "swarm_repository")? != SWARM_REPOSITORY
+    {
+        return Err("workflow disposition repository authority moved".to_string());
+    }
     for key in [
         "source_parent_sha",
         "workflow_source_sha",
         "w7_peeled_sha",
         "reviewed_tree_sha",
+        "reviewed_tree_carrier_sha",
     ] {
         validate_hex(
             json_string(report, key)
@@ -665,6 +671,7 @@ fn validate_report(report: &Value) -> Result<(), String> {
         64,
         "fixture_identity",
     )?;
+    validate_locator_provenance(report, profile, mode, status)?;
     let expected_workflow_identity = workflow_identity(report)?;
     if json_string(report, "workflow_identity_sha256") != Some(expected_workflow_identity.as_str())
     {
@@ -797,6 +804,7 @@ fn parse_run_options(args: &[String]) -> Result<RunOptions, String> {
     }
     let swarm_parent = required_hex(&values, "--w7-peeled-sha", 40)?;
     let reviewed_tree = required_hex(&values, "--reviewed-tree-sha", 40)?;
+    let reviewed_tree_carrier = required_hex(&values, "--reviewed-tree-carrier-sha", 40)?;
     let swarm_ref = required(&values, "--protected-w7-ref")?.to_string();
     validate_ref(&swarm_ref)?;
     let receipt_schema = required(&values, "--receipt-schema")?.to_string();
@@ -834,6 +842,11 @@ fn parse_run_options(args: &[String]) -> Result<RunOptions, String> {
             (&fixture.source_parent, &source_parent, "source parent"),
             (&fixture.swarm_parent, &swarm_parent, "W7 parent"),
             (&fixture.reviewed_tree, &reviewed_tree, "reviewed tree"),
+            (
+                &fixture.reviewed_tree_carrier,
+                &reviewed_tree_carrier,
+                "reviewed tree carrier",
+            ),
             (&fixture.protected_w7_ref, &swarm_ref, "protected W7 ref"),
         ]
         .into_iter()
@@ -856,6 +869,7 @@ fn parse_run_options(args: &[String]) -> Result<RunOptions, String> {
             swarm_ref,
             swarm_parent,
             reviewed_tree,
+            reviewed_tree_carrier,
             preflight: synthetic_material(&fixture.preflight, "preflight"),
             resolution: synthetic_material(&fixture.resolution, "resolution manifest"),
             validation: synthetic_material(&fixture.validation_packet_index, "validation packet"),
@@ -897,6 +911,7 @@ fn parse_run_options(args: &[String]) -> Result<RunOptions, String> {
             &swarm_ref,
             &swarm_parent,
             &reviewed_tree,
+            &reviewed_tree_carrier,
         )?,
         source_repository,
         source_parent,
@@ -906,6 +921,7 @@ fn parse_run_options(args: &[String]) -> Result<RunOptions, String> {
         swarm_ref,
         swarm_parent,
         reviewed_tree,
+        reviewed_tree_carrier,
         preflight: locate("--preflight-locator", "preflight", "preflight")?,
         resolution: locate(
             "--resolution-manifest-locator",
@@ -1152,6 +1168,7 @@ fn prepare_live_controller_repo(
     swarm_ref: &str,
     swarm_parent: &str,
     reviewed_tree: &str,
+    reviewed_tree_carrier: &str,
 ) -> Result<PathBuf, String> {
     let runtime = workspace.join("live-controller-repository");
     reject_existing_output(&runtime)?;
@@ -1199,6 +1216,19 @@ fn prepare_live_controller_repo(
     if String::from_utf8_lossy(&peeled).trim() != swarm_parent {
         return Err("protected W7 ref peeled SHA differs from requested identity".to_string());
     }
+    let source_url = format!("https://github.com/{SOURCE_REPOSITORY}.git");
+    run_git(
+        &runtime,
+        &["fetch", "--no-tags", &source_url, reviewed_tree_carrier],
+        "reviewed tree carrier materialization",
+    )?;
+    verify_reviewed_tree_carrier(
+        &runtime,
+        reviewed_tree_carrier,
+        source_parent,
+        swarm_parent,
+        reviewed_tree,
+    )?;
     run_git(
         &runtime,
         &["cat-file", "-e", &format!("{reviewed_tree}^{{tree}}")],
@@ -1391,13 +1421,14 @@ fn write_packet(out: &Path, report: &Value) -> Result<(), String> {
 
 fn render_markdown(report: &Value) -> Result<String, String> {
     Ok(format!(
-        "# Source Promotion Admission Workflow\n\n- Status: `{}`\n- Operation mode: `{}`\n- Execution profile: `{}`\n- Source parent: `{}`\n- W7 parent: `{}`\n- Reviewed tree: `{}`\n\nThis disposition grants no ref, merge, release, or publication authority.\n",
+        "# Source Promotion Admission Workflow\n\n- Status: `{}`\n- Operation mode: `{}`\n- Execution profile: `{}`\n- Source parent: `{}`\n- W7 parent: `{}`\n- Reviewed tree: `{}`\n- Reviewed tree carrier: `{}`\n\nThis disposition grants no ref, merge, release, or publication authority.\n",
         required_json_string(report, "status")?,
         required_json_string(report, "operation_mode")?,
         required_json_string(report, "execution_profile")?,
         required_json_string(report, "source_parent_sha")?,
         required_json_string(report, "w7_peeled_sha")?,
         required_json_string(report, "reviewed_tree_sha")?,
+        required_json_string(report, "reviewed_tree_carrier_sha")?,
     ))
 }
 
@@ -1547,6 +1578,177 @@ fn safe_relative(value: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn exact_object_fields(value: &Value, label: &str, expected: &[&str]) -> Result<(), String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("{label} locator must be an object"))?;
+    let observed = object.keys().map(String::as_str).collect::<BTreeSet<_>>();
+    let expected = expected.iter().copied().collect::<BTreeSet<_>>();
+    if observed != expected {
+        return Err(format!(
+            "{label} locator fields differ from exact contract: {observed:?}"
+        ));
+    }
+    Ok(())
+}
+
+fn canonical_locator_identity(
+    value: &Value,
+    label: &str,
+    profile: ExecutionProfile,
+    allow_not_required: bool,
+) -> Result<String, String> {
+    if json_string(value, "status") == Some("not_required") {
+        if !allow_not_required {
+            return Err(format!("{label} locator may not be not_required"));
+        }
+        exact_object_fields(value, label, &["label", "schema", "status"])?;
+        if json_string(value, "schema") != Some(LOCATOR_SCHEMA)
+            || json_string(value, "label") != Some(label)
+        {
+            return Err(format!("{label} not-required locator identity moved"));
+        }
+        return serde_json::to_string(&serde_json::json!({
+            "schema": LOCATOR_SCHEMA,
+            "status": "not_required",
+            "label": label,
+        }))
+        .map_err(|error| format!("failed to canonicalize {label} locator: {error}"));
+    }
+
+    match profile {
+        ExecutionProfile::Live => {
+            exact_object_fields(
+                value,
+                label,
+                &[
+                    "locator",
+                    "mode",
+                    "path",
+                    "repository",
+                    "revision",
+                    "schema",
+                    "sha256",
+                ],
+            )?;
+            if json_string(value, "schema") != Some(LOCATOR_SCHEMA)
+                || json_string(value, "mode") != Some("100644")
+            {
+                return Err(format!("{label} live locator schema or mode moved"));
+            }
+            let repository = required_json_string(value, "repository")?;
+            if repository != SOURCE_REPOSITORY && repository != SWARM_REPOSITORY {
+                return Err(format!("{label} live locator repository is unsupported"));
+            }
+            let revision = required_json_string(value, "revision")?;
+            validate_hex(revision, 40, &format!("{label} locator revision"))?;
+            let path = required_json_string(value, "path")?;
+            safe_relative(path)?;
+            let sha256 = required_json_string(value, "sha256")?;
+            validate_hex(sha256, 64, &format!("{label} locator sha256"))?;
+            let expected_locator = format!("{repository}@{revision}:{path}#sha256:{sha256}");
+            if json_string(value, "locator") != Some(expected_locator.as_str()) {
+                return Err(format!("{label} canonical locator reconstruction moved"));
+            }
+            serde_json::to_string(&serde_json::json!({
+                "schema": LOCATOR_SCHEMA,
+                "repository": repository,
+                "revision": revision,
+                "path": path,
+                "mode": "100644",
+                "sha256": sha256,
+                "locator": expected_locator,
+            }))
+            .map_err(|error| format!("failed to canonicalize {label} locator: {error}"))
+        }
+        ExecutionProfile::PositiveSynthetic | ExecutionProfile::J5Negative => {
+            exact_object_fields(
+                value,
+                label,
+                &[
+                    "label",
+                    "local_path",
+                    "mode",
+                    "path",
+                    "schema",
+                    "sha256",
+                    "status",
+                ],
+            )?;
+            if json_string(value, "schema") != Some(LOCATOR_SCHEMA)
+                || json_string(value, "status") != Some("source_owned_synthetic")
+                || json_string(value, "label") != Some(label)
+                || json_string(value, "mode") != Some("100644")
+            {
+                return Err(format!("{label} synthetic locator identity moved"));
+            }
+            let path = required_json_string(value, "path")?;
+            let local_path = required_json_string(value, "local_path")?;
+            safe_relative(path)?;
+            safe_relative(local_path)?;
+            if path != local_path || !path.starts_with("synthetic-fixture/") {
+                return Err(format!(
+                    "{label} synthetic local_path escapes its admitted workspace"
+                ));
+            }
+            let sha256 = required_json_string(value, "sha256")?;
+            validate_hex(sha256, 64, &format!("{label} locator sha256"))?;
+            serde_json::to_string(&serde_json::json!({
+                "schema": LOCATOR_SCHEMA,
+                "status": "source_owned_synthetic",
+                "label": label,
+                "mode": "100644",
+                "sha256": sha256,
+                "path": path,
+                "local_path": local_path,
+            }))
+            .map_err(|error| format!("failed to canonicalize {label} locator: {error}"))
+        }
+    }
+}
+
+fn validate_locator_provenance(
+    report: &Value,
+    profile: ExecutionProfile,
+    mode: OperationMode,
+    status: &str,
+) -> Result<(), String> {
+    let locators = report
+        .get("locators")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "workflow disposition is missing locators".to_string())?;
+    let expected = [
+        "integration_packet",
+        "preflight",
+        "qualification_receipt",
+        "resolution_manifest",
+        "validation_packet",
+    ]
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+    let observed = locators.keys().map(String::as_str).collect::<BTreeSet<_>>();
+    if observed != expected {
+        return Err(format!(
+            "workflow disposition locator inventory moved: {observed:?}"
+        ));
+    }
+    for (key, label) in [
+        ("preflight", "preflight"),
+        ("resolution_manifest", "resolution manifest"),
+        ("validation_packet", "validation packet"),
+        ("integration_packet", "integration packet"),
+    ] {
+        canonical_locator_identity(&locators[key], label, profile, false)?;
+    }
+    canonical_locator_identity(
+        &locators["qualification_receipt"],
+        "qualification receipt",
+        profile,
+        mode == OperationMode::AdmitOnly || status == "rejected",
+    )?;
+    Ok(())
+}
+
 fn reject_existing_output(path: &Path) -> Result<(), String> {
     if fs::symlink_metadata(path).is_ok() {
         return Err(format!("output already exists: {}", path.display()));
@@ -1582,33 +1784,47 @@ fn workflow_identity(report: &Value) -> Result<String, String> {
     let locators = report
         .get("locators")
         .ok_or_else(|| "workflow disposition is missing locators".to_string())?;
-    let locator_digest = |key: &str| {
-        locators
-            .get(key)
-            .and_then(|value| json_string(value, "sha256"))
-            .unwrap_or("not_required")
+    let profile = ExecutionProfile::parse(required_json_string(report, "execution_profile")?)?;
+    let mode = OperationMode::parse(required_json_string(report, "operation_mode")?)?;
+    let status = required_json_string(report, "status")?;
+    let locator_identity = |key: &str, label: &str, allow_not_required: bool| {
+        canonical_locator_identity(
+            locators
+                .get(key)
+                .ok_or_else(|| format!("workflow disposition is missing {key} locator"))?,
+            label,
+            profile,
+            allow_not_required,
+        )
     };
-    let fields = [
-        required_json_string(report, "execution_profile")?,
-        required_json_string(report, "operation_mode")?,
-        required_json_string(report, "source_repository")?,
-        required_json_string(report, "source_parent_sha")?,
-        required_json_string(report, "workflow_source_sha")?,
-        required_json_string(report, "trusted_checker_identity")?,
-        required_json_string(report, "swarm_repository")?,
-        required_json_string(report, "protected_w7_ref")?,
-        required_json_string(report, "w7_peeled_sha")?,
-        required_json_string(report, "reviewed_tree_sha")?,
-        required_json_string(report, "receipt_schema")?,
-        required_json_string(report, "fixture_identity")?,
-        required_json_string(report, "controller_repository")?,
-        locator_digest("preflight"),
-        locator_digest("resolution_manifest"),
-        locator_digest("validation_packet"),
-        locator_digest("integration_packet"),
-        locator_digest("qualification_receipt"),
+    let fields = vec![
+        required_json_string(report, "execution_profile")?.to_string(),
+        required_json_string(report, "operation_mode")?.to_string(),
+        required_json_string(report, "source_repository")?.to_string(),
+        required_json_string(report, "source_parent_sha")?.to_string(),
+        required_json_string(report, "workflow_source_sha")?.to_string(),
+        required_json_string(report, "trusted_checker_identity")?.to_string(),
+        required_json_string(report, "swarm_repository")?.to_string(),
+        required_json_string(report, "protected_w7_ref")?.to_string(),
+        required_json_string(report, "w7_peeled_sha")?.to_string(),
+        required_json_string(report, "reviewed_tree_sha")?.to_string(),
+        required_json_string(report, "reviewed_tree_carrier_sha")?.to_string(),
+        required_json_string(report, "receipt_schema")?.to_string(),
+        required_json_string(report, "fixture_identity")?.to_string(),
+        required_json_string(report, "controller_repository")?.to_string(),
+        locator_identity("preflight", "preflight", false)?,
+        locator_identity("resolution_manifest", "resolution manifest", false)?,
+        locator_identity("validation_packet", "validation packet", false)?,
+        locator_identity("integration_packet", "integration packet", false)?,
+        locator_identity(
+            "qualification_receipt",
+            "qualification receipt",
+            mode == OperationMode::AdmitOnly || status == "rejected",
+        )?,
     ];
-    Ok(digest_bytes(fields.join(":").as_bytes()))
+    let canonical = serde_json::to_vec(&fields)
+        .map_err(|error| format!("failed to canonicalize workflow identity: {error}"))?;
+    Ok(digest_bytes(&canonical))
 }
 
 fn read_json(path: &Path, label: &str) -> Result<Value, String> {
@@ -1729,9 +1945,66 @@ mod tests {
     }
 
     #[test]
+    fn live_locator_provenance_rejects_same_byte_movement() -> Result<(), String> {
+        let report = test_report("admitted", "admit_only", "live", 0)?;
+        for (pointer, replacement) in [
+            (
+                "/locators/preflight/repository",
+                Value::String(SWARM_REPOSITORY.to_string()),
+            ),
+            (
+                "/locators/preflight/revision",
+                Value::String("9".repeat(40)),
+            ),
+            (
+                "/locators/preflight/path",
+                Value::String("moved/preflight.json".to_string()),
+            ),
+            (
+                "/locators/preflight/mode",
+                Value::String("100755".to_string()),
+            ),
+            (
+                "/locators/preflight/locator",
+                Value::String("EffortlessMetrics/ripr@moved".to_string()),
+            ),
+        ] {
+            let mut moved = report.clone();
+            let slot = moved
+                .pointer_mut(pointer)
+                .ok_or_else(|| format!("test report is missing {pointer}"))?;
+            *slot = replacement;
+            if validate_report(&moved).is_ok() {
+                return Err(format!("same-byte locator movement escaped at {pointer}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn synthetic_locator_rejects_absolute_or_out_of_workspace_local_path() -> Result<(), String> {
+        let report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
+        for local_path in [
+            "/tmp/escaped/preflight.json",
+            "../escaped/preflight.json",
+            "other-root/preflight.json",
+        ] {
+            let mut moved = report.clone();
+            moved["locators"]["preflight"]["local_path"] = Value::String(local_path.to_string());
+            if validate_report(&moved).is_ok() {
+                return Err(format!(
+                    "synthetic locator local_path escaped workspace: {local_path}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn synthetic_paths_are_root_independent() -> Result<(), String> {
         let left = Path::new("one/root/synthetic-fixture/fixture-repository/.git/evidence.json");
-        let right = Path::new("another/root/synthetic-fixture/fixture-repository/.git/evidence.json");
+        let right =
+            Path::new("another/root/synthetic-fixture/fixture-repository/.git/evidence.json");
         if stable_synthetic_path(left) != stable_synthetic_path(right) {
             return Err("synthetic locator retained its absolute root".to_string());
         }
@@ -1744,6 +2017,45 @@ mod tests {
         profile: &str,
         commit_tree: u64,
     ) -> Result<Value, String> {
+        let synthetic = profile != "live";
+        let locator = |label: &str, path: &str, sha256: String| {
+            if synthetic {
+                serde_json::json!({
+                    "schema": LOCATOR_SCHEMA,
+                    "status": "source_owned_synthetic",
+                    "label": label,
+                    "mode": "100644",
+                    "sha256": sha256,
+                    "path": format!("synthetic-fixture/{path}"),
+                    "local_path": format!("synthetic-fixture/{path}"),
+                })
+            } else {
+                let revision = "5".repeat(40);
+                let locator = format!("{SOURCE_REPOSITORY}@{revision}:{path}#sha256:{sha256}");
+                serde_json::json!({
+                    "schema": LOCATOR_SCHEMA,
+                    "repository": SOURCE_REPOSITORY,
+                    "revision": revision,
+                    "path": path,
+                    "mode": "100644",
+                    "sha256": sha256,
+                    "locator": locator,
+                })
+            }
+        };
+        let qualification = if mode == "constructor_dry_run" && status == "admitted" {
+            locator(
+                "qualification receipt",
+                "qualification/receipt.json",
+                "2".repeat(64),
+            )
+        } else {
+            serde_json::json!({
+                "schema": LOCATOR_SCHEMA,
+                "status": "not_required",
+                "label": "qualification receipt",
+            })
+        };
         let mut report = serde_json::json!({
             "schema": SCHEMA,
             "phase": "final",
@@ -1762,13 +2074,14 @@ mod tests {
             "protected_w7_ref": "refs/tags/ripr-release-fixture-w7",
             "w7_peeled_sha": "b".repeat(40),
             "reviewed_tree_sha": "c".repeat(40),
+            "reviewed_tree_carrier_sha": "4".repeat(40),
             "receipt_schema": SUPPORTED_RECEIPT_SCHEMA,
             "locators": {
-                "preflight": {"sha256": "d".repeat(64)},
-                "resolution_manifest": {"sha256": "e".repeat(64)},
-                "validation_packet": {"sha256": "f".repeat(64)},
-                "integration_packet": {"sha256": "1".repeat(64)},
-                "qualification_receipt": {"status": "not_required"},
+                "preflight": locator("preflight", "preflight/preflight.json", "d".repeat(64)),
+                "resolution_manifest": locator("resolution manifest", "resolution/manifest.json", "e".repeat(64)),
+                "validation_packet": locator("validation packet", "validation/packet-index.json", "f".repeat(64)),
+                "integration_packet": locator("integration packet", "integration/index.json", "1".repeat(64)),
+                "qualification_receipt": qualification,
             },
             "producer": {
                 "normalized_exit_code": if status == "admitted" { 0 } else { 1 },

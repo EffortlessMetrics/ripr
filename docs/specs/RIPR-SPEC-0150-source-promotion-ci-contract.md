@@ -265,7 +265,8 @@ Every live input names a full identity rather than a success assertion:
   `trusted_checker_identity` in the closed form
   `source-owned-xtask@<workflow/controller commit>`;
 - swarm repository, protected W7 ref, and peeled W7 commit;
-- reviewed tree;
+- reviewed tree and an exact source-repository carrier commit whose tree and
+  ordered parents are the reviewed tree, source parent, and W7 parent;
 - producer repository, immutable commit/ref, mode-100644 path, and lowercase
   SHA-256 for the preflight, resolution manifest, resolved-tree validation
   packet, integration index, and any qualification receipt consumed by
@@ -278,6 +279,11 @@ authority. The live profile rejects synthetic fixture selection. The bounded
 `positive_synthetic` and `j5_negative` profiles select source-owned fixtures;
 their `fixture_identity` is emitted by the production harness and cannot be
 chosen as an arbitrary command or path.
+
+The live harness fetches the exact carrier commit into its runner-owned clone
+and validates the commit header before invoking the controller. Possession of
+either parent alone is insufficient to materialize or admit a combined
+reviewed tree.
 
 The checker identity must name the same full commit as `workflow_source_sha`.
 It identifies committed source ownership; it is not a substitute for the

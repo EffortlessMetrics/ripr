@@ -57,6 +57,7 @@ pub(crate) struct SyntheticFixture {
     pub(crate) source_parent: String,
     pub(crate) swarm_parent: String,
     pub(crate) reviewed_tree: String,
+    pub(crate) reviewed_tree_carrier: String,
     pub(crate) protected_w7_ref: String,
     pub(crate) preflight: LocatorMaterial,
     pub(crate) resolution: LocatorMaterial,
@@ -129,6 +130,10 @@ pub(crate) fn prepare_source_owned_fixture(
         SyntheticProfile::Positive => source_tree,
         SyntheticProfile::J5Negative => j5_tree,
     };
+    let reviewed_tree_carrier = match profile {
+        SyntheticProfile::Positive => source_parent.clone(),
+        SyntheticProfile::J5Negative => swarm_parent.clone(),
+    };
     let evidence = repository.join(".git/source-promotion-admission-fixture");
     fs::create_dir_all(&evidence)
         .map_err(|error| format!("failed to create fixture evidence root: {error}"))?;
@@ -195,6 +200,7 @@ pub(crate) fn prepare_source_owned_fixture(
         source_parent,
         swarm_parent,
         reviewed_tree,
+        reviewed_tree_carrier,
         protected_w7_ref,
         preflight,
         resolution,
@@ -373,6 +379,40 @@ fn deterministic_w7_commit(repo: &Path, source_parent: &str, tree: &str) -> Resu
     )?;
     validate_hex(&commit, 40, "synthetic W7 commit")?;
     Ok(commit)
+}
+
+/// Verify that an immutable commit carries the reviewed tree with the exact
+/// ordered source and W7 ancestry required by source promotion.
+pub(crate) fn verify_reviewed_tree_carrier(
+    repo: &Path,
+    carrier: &str,
+    source_parent: &str,
+    swarm_parent: &str,
+    reviewed_tree: &str,
+) -> Result<(), String> {
+    validate_hex(carrier, 40, "reviewed-tree carrier")?;
+    validate_hex(source_parent, 40, "reviewed-tree source parent")?;
+    validate_hex(swarm_parent, 40, "reviewed-tree W7 parent")?;
+    validate_hex(reviewed_tree, 40, "reviewed tree")?;
+
+    let resolved_carrier = git_output(repo, &["rev-parse", &format!("{carrier}^{{commit}}")])?;
+    if resolved_carrier != carrier {
+        return Err("reviewed-tree carrier did not resolve to the exact commit".to_string());
+    }
+    let ancestry = git_output(repo, &["rev-list", "--parents", "-n", "1", carrier])?;
+    let expected_ancestry = format!("{carrier} {source_parent} {swarm_parent}");
+    if ancestry != expected_ancestry {
+        return Err(format!(
+            "reviewed-tree carrier ancestry mismatch: expected {expected_ancestry}, observed {ancestry}"
+        ));
+    }
+    let observed_tree = git_output(repo, &["rev-parse", &format!("{carrier}^{{tree}}")])?;
+    if observed_tree != reviewed_tree {
+        return Err(format!(
+            "reviewed-tree carrier tree mismatch: expected {reviewed_tree}, observed {observed_tree}"
+        ));
+    }
+    Ok(())
 }
 
 fn write_preflight(
@@ -813,7 +853,25 @@ fn combined_output(output: &Output) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{QUALIFICATION_LANES, SyntheticProfile, repeated_literal, validate_hex};
+    use super::{
+        QUALIFICATION_LANES, SyntheticProfile, hash_blob, repeated_literal, run_output_with_input,
+        validate_hex, verify_reviewed_tree_carrier,
+    };
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_TEST_ROOT: AtomicU64 = AtomicU64::new(0);
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct CarrierGraph {
+        source_parent: String,
+        swarm_parent: String,
+        source_tree: String,
+        swarm_tree: String,
+        reviewed_tree: String,
+        carrier: String,
+    }
 
     #[test]
     fn profile_names_are_closed_and_stable() -> Result<(), String> {
@@ -851,5 +909,165 @@ mod tests {
             return Err("qualification lane denominator moved".to_string());
         }
         validate_hex(&"a".repeat(40), 40, "test identity")
+    }
+
+    #[test]
+    fn reviewed_tree_carrier_binds_exact_ordered_parents_and_third_tree() -> Result<(), String> {
+        let first_root = unique_test_root("first");
+        let second_root = unique_test_root("second");
+        let result = (|| {
+            let first = build_carrier_graph(&first_root)?;
+            let second = build_carrier_graph(&second_root)?;
+            if first != second {
+                return Err("reviewed-tree carrier graph is not deterministic".to_string());
+            }
+            if first.source_tree == first.swarm_tree
+                || first.reviewed_tree == first.source_tree
+                || first.reviewed_tree == first.swarm_tree
+            {
+                return Err(
+                    "reviewed tree must be distinct from both distinct parent trees".to_string(),
+                );
+            }
+            verify_reviewed_tree_carrier(
+                &first_root,
+                &first.carrier,
+                &first.source_parent,
+                &first.swarm_parent,
+                &first.reviewed_tree,
+            )?;
+            if verify_reviewed_tree_carrier(
+                &first_root,
+                &first.carrier,
+                &first.swarm_parent,
+                &first.source_parent,
+                &first.reviewed_tree,
+            )
+            .is_ok()
+            {
+                return Err("reversed reviewed-tree carrier parents were accepted".to_string());
+            }
+            if verify_reviewed_tree_carrier(
+                &first_root,
+                &first.carrier,
+                &first.source_parent,
+                &first.swarm_parent,
+                &first.source_tree,
+            )
+            .is_ok()
+            {
+                return Err("parent tree was accepted as the reviewed carrier tree".to_string());
+            }
+            Ok(())
+        })();
+        let cleanup = remove_test_roots(&[&first_root, &second_root]);
+        result.and(cleanup)
+    }
+
+    fn unique_test_root(label: &str) -> PathBuf {
+        let sequence = NEXT_TEST_ROOT.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "ripr-reviewed-tree-carrier-{}-{sequence}-{label}",
+            std::process::id()
+        ))
+    }
+
+    fn remove_test_roots(roots: &[&Path]) -> Result<(), String> {
+        for root in roots {
+            match fs::remove_dir_all(root) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(format!(
+                        "failed to remove reviewed-tree carrier test root {}: {error}",
+                        root.display()
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn build_carrier_graph(root: &Path) -> Result<CarrierGraph, String> {
+        fs::create_dir_all(root).map_err(|error| {
+            format!(
+                "failed to create reviewed-tree carrier test root {}: {error}",
+                root.display()
+            )
+        })?;
+        super::run_git(root, &["init", "--quiet"])?;
+        let source_blob = hash_blob(root, b"source-owned\n")?;
+        let swarm_blob = hash_blob(root, b"w7-owned\n")?;
+        let source_tree = make_tree(root, &[("source.txt", &source_blob)])?;
+        let swarm_tree = make_tree(root, &[("w7.txt", &swarm_blob)])?;
+        let reviewed_tree = make_tree(
+            root,
+            &[("source.txt", &source_blob), ("w7.txt", &swarm_blob)],
+        )?;
+        let empty_tree = make_tree(root, &[])?;
+        let base = make_commit(root, &empty_tree, &[], b"base\n")?;
+        let source_parent = make_commit(root, &source_tree, &[&base], b"source parent\n")?;
+        let swarm_parent = make_commit(root, &swarm_tree, &[&base], b"W7 parent\n")?;
+        let carrier = make_commit(
+            root,
+            &reviewed_tree,
+            &[&source_parent, &swarm_parent],
+            b"reviewed-tree carrier\n",
+        )?;
+        Ok(CarrierGraph {
+            source_parent,
+            swarm_parent,
+            source_tree,
+            swarm_tree,
+            reviewed_tree,
+            carrier,
+        })
+    }
+
+    fn make_tree(root: &Path, entries: &[(&str, &str)]) -> Result<String, String> {
+        let mut input = Vec::new();
+        for (path, blob) in entries {
+            input.extend_from_slice(format!("100644 blob {blob}\t{path}\n").as_bytes());
+        }
+        let tree = run_output_with_input(
+            root,
+            Path::new("git"),
+            &["mktree"],
+            &[],
+            &input,
+            "create reviewed-tree carrier test tree",
+        )?;
+        validate_hex(&tree, 40, "reviewed-tree carrier test tree")?;
+        Ok(tree)
+    }
+
+    fn make_commit(
+        root: &Path,
+        tree: &str,
+        parents: &[&str],
+        message: &[u8],
+    ) -> Result<String, String> {
+        let fixed = [
+            ("GIT_AUTHOR_NAME", "RIPR Reviewed Tree Fixture"),
+            ("GIT_AUTHOR_EMAIL", "reviewed-tree-fixture@invalid"),
+            ("GIT_AUTHOR_DATE", "2000-01-01T00:00:00+00:00"),
+            ("GIT_COMMITTER_NAME", "RIPR Reviewed Tree Fixture"),
+            ("GIT_COMMITTER_EMAIL", "reviewed-tree-fixture@invalid"),
+            ("GIT_COMMITTER_DATE", "2000-01-01T00:00:00+00:00"),
+        ];
+        let mut args = vec!["commit-tree", tree];
+        for parent in parents {
+            args.extend(["-p", parent]);
+        }
+        let commit = run_output_with_input(
+            root,
+            Path::new("git"),
+            &args,
+            &fixed,
+            message,
+            "create reviewed-tree carrier test commit",
+        )?;
+        validate_hex(&commit, 40, "reviewed-tree carrier test commit")?;
+        Ok(commit)
     }
 }

@@ -13925,6 +13925,9 @@ The closed `execution_profile` values are `live`, `positive_synthetic`, and
 live packets bind every external sidecar to its producer repository, immutable
 commit/ref, regular-file path/mode, and SHA-256. The closed operation modes are
 `admit_only` and `constructor_dry_run`.
+`reviewed_tree_carrier_sha` names the exact source-repository commit that
+materializes `reviewed_tree_sha`; live execution requires its ordered parents
+to equal `source_parent_sha` and `w7_peeled_sha`.
 
 `trusted_checker_identity` has the closed form
 `source-owned-xtask@<40-character-workflow-source-SHA>` and must name the same
