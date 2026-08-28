@@ -33,6 +33,8 @@ const REPORT_MD: &str = "workflow-disposition.md";
 const PACKET_INDEX: &str = "packet-index.json";
 const MAX_CLOSURE_FILES: usize = 512;
 const MAX_CLOSURE_BYTES: u64 = 32 * 1024 * 1024;
+const LIVE_CONTROLLER_REPOSITORY: &str = "live-controller-repository";
+const SYNTHETIC_CONTROLLER_REPOSITORY: &str = "synthetic-fixture/fixture-repository";
 
 const RUN_KEYS: &[&str] = &[
     "--source-repository",
@@ -301,7 +303,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "fixture_identity": fixture_identity,
         "workflow_identity_sha256": null,
         "requested_identity_sha256": options.requested_identity_sha256,
-        "controller_repository": stable_controller_repository(&options),
+        "controller_repository": stable_controller_repository(&options)?,
         "source_repository": options.source_repository,
         "source_parent_sha": options.source_parent,
         "workflow_source_sha": options.workflow_source_sha,
@@ -439,18 +441,10 @@ fn finalize(args: &[String]) -> Result<(), String> {
             "--out",
             &path_text(&construction_out)?,
         ]);
-        let controller_repo =
-            PathBuf::from(required_json_string(&report, "controller_repository")?);
-        let controller_repo = if controller_repo == Path::new("source-checkout") {
-            current_dir.clone()
-        } else if controller_repo.is_absolute() {
-            controller_repo
-        } else {
-            workspace.join(controller_repo)
+        construction_error = match controller_repository_path(&workspace, &report) {
+            Ok(controller_repo) => invoke_controller(&controller_repo, &command).err(),
+            Err(error) => Some(error),
         };
-        if let Err(error) = invoke_controller(&controller_repo, &command) {
-            construction_error = Some(error);
-        }
         construction_report =
             read_optional_json(&construction_out.join("exact-join-construction.json"));
     }
@@ -903,6 +897,11 @@ fn validate_report(report: &Value) -> Result<(), String> {
         json_string(report, "execution_profile")
             .ok_or_else(|| "workflow disposition is missing execution_profile".to_string())?,
     )?;
+    if required_json_string(report, "controller_repository")?
+        != expected_controller_repository(profile)
+    {
+        return Err("workflow disposition controller repository moved".to_string());
+    }
     if required_json_string(report, "source_repository")? != SOURCE_REPOSITORY
         || required_json_string(report, "swarm_repository")? != SWARM_REPOSITORY
     {
@@ -1379,13 +1378,52 @@ fn stable_synthetic_path(path: &Path) -> String {
         .join("/")
 }
 
-fn stable_controller_repository(options: &RunOptions) -> String {
-    options
+fn expected_controller_repository(profile: ExecutionProfile) -> &'static str {
+    match profile {
+        ExecutionProfile::Live => LIVE_CONTROLLER_REPOSITORY,
+        ExecutionProfile::PositiveSynthetic | ExecutionProfile::J5Negative => {
+            SYNTHETIC_CONTROLLER_REPOSITORY
+        }
+    }
+}
+
+fn stable_controller_repository(options: &RunOptions) -> Result<String, String> {
+    let relative = options
         .controller_repo
         .strip_prefix(&options.workspace_root)
-        .ok()
-        .map(|path| path.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|| "source-checkout".to_string())
+        .map_err(|error| {
+            format!("controller repository escaped the runner-owned workspace: {error}")
+        })?;
+    let relative = relative.to_string_lossy().replace('\\', "/");
+    safe_relative(&relative).map_err(|error| {
+        format!("controller repository path is not a safe relative path: {error}")
+    })?;
+    if relative != expected_controller_repository(options.profile) {
+        return Err("controller repository differs from the closed execution profile".to_string());
+    }
+    Ok(relative)
+}
+
+fn controller_repository_path(workspace: &Path, report: &Value) -> Result<PathBuf, String> {
+    let profile = ExecutionProfile::parse(required_json_string(report, "execution_profile")?)?;
+    let relative = required_json_string(report, "controller_repository")?;
+    if relative != expected_controller_repository(profile) {
+        return Err("workflow disposition controller repository moved".to_string());
+    }
+    safe_relative(relative).map_err(|error| {
+        format!("controller repository path is not a safe relative path: {error}")
+    })?;
+    let workspace = workspace
+        .canonicalize()
+        .map_err(|error| format!("failed to canonicalize controller workspace: {error}"))?;
+    let repository = workspace.join(relative).canonicalize().map_err(|error| {
+        format!("failed to canonicalize isolated controller repository: {error}")
+    })?;
+    if !repository.starts_with(&workspace) {
+        return Err("controller repository escaped the runner-owned workspace".to_string());
+    }
+    validate_directory(&repository, "isolated controller repository")?;
+    Ok(repository)
 }
 
 fn synthetic_locator(
@@ -2679,6 +2717,23 @@ mod tests {
     }
 
     #[test]
+    fn verifier_rejects_digest_rebound_controller_repository() -> Result<(), String> {
+        let (root, packet) = write_test_closure("controller-repository-moved")?;
+        let mut report = read_json(&packet.join(REPORT_JSON), "test workflow disposition")?;
+        report["controller_repository"] = Value::String("source-checkout".to_string());
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        rewrite_test_packet_reports_and_index(&packet, &report)?;
+        if verify_packet(&packet).is_ok() {
+            return Err(
+                "digest-rebound controller repository escaped profile authority".to_string(),
+            );
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean controller repository fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn verifier_replays_nested_builder_semantics_after_digest_rebinding() -> Result<(), String> {
         let (root, packet) = write_test_closure("nested-builder-replay")?;
         let builder_root = packet.join("evidence/trusted-builder");
@@ -2867,6 +2922,36 @@ mod tests {
         }
         fs::remove_dir_all(&root)
             .map_err(|error| format!("failed to clean finalizer fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn finalizer_rejects_controller_repository_escape_before_invocation() -> Result<(), String> {
+        let (root, packet) =
+            write_admitted_test_closure_for("finalizer-controller-escape", "constructor_dry_run")?;
+        let mut report = read_json(&packet.join(REPORT_JSON), "controller escape disposition")?;
+        report["controller_repository"] = Value::String("../source-checkout".to_string());
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        rewrite_test_packet_reports_and_index(&packet, &report)?;
+
+        let workspace = root.join("workspace");
+        fs::create_dir(&workspace)
+            .map_err(|error| format!("failed to create escape workspace: {error}"))?;
+        let final_packet = workspace.join("final-packet");
+        let args = strings(&[
+            FINALIZE,
+            "--admission-packet",
+            &path_text(&packet)?,
+            "--workspace-root",
+            &path_text(&workspace)?,
+            "--out",
+            &path_text(&final_packet)?,
+        ]);
+        if finalize(&args).is_ok() || final_packet.exists() {
+            return Err("controller repository escape reached finalizer invocation".to_string());
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean finalizer escape fixture: {error}"))?;
         Ok(())
     }
 
@@ -3409,7 +3494,7 @@ mod tests {
             "operation_mode": mode,
             "execution_profile": profile,
             "fixture_identity": "a".repeat(64),
-            "controller_repository": "synthetic-fixture/fixture-repository",
+            "controller_repository": if synthetic { SYNTHETIC_CONTROLLER_REPOSITORY } else { LIVE_CONTROLLER_REPOSITORY },
             "workflow_identity_sha256": null,
             "requested_identity_sha256": "9".repeat(64),
             "source_repository": SOURCE_REPOSITORY,
