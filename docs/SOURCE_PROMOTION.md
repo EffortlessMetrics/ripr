@@ -542,6 +542,16 @@ constructor dry-run and produce the final normalized
 missing, malformed, unsupported, rejected, `not_run`, `unavailable`, non-zero,
 stale, or contradictory evidence terminal red.
 
+The runner captures the exact `ripr.source_promotion_admission_request.v1`
+bytes and digest before the producer runs. The producer checks that request
+against every command input before materialization, and both downloaded and
+final verification compare the embedded request to that original authority.
+For an admitted result, verification also replays each indexed controller
+receipt and reconstructs the normalized attempt counts; outer digest
+rebinding alone cannot bless altered nested semantics. A rejected constructor
+without a parseable receipt reports the affected attempt counters as unknown,
+never as observed zero.
+
 The normalized schema is
 `ripr.source_promotion_admission_workflow.v1`; its only statuses are `admitted`
 and `rejected`. The indexed packet schema is

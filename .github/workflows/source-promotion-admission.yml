@@ -76,6 +76,7 @@ jobs:
             >> "$GITHUB_ENV"
           mkdir -p "$admission_out" "$admission_workspace"
           jq -n \
+            --arg schema "ripr.source_promotion_admission_request.v1" \
             --arg source_repository "$SOURCE_REPOSITORY" \
             --arg source_parent_sha "$SOURCE_PARENT_SHA" \
             --arg workflow_source_sha "$WORKFLOW_SOURCE_SHA" \
@@ -93,12 +94,13 @@ jobs:
             --arg operation_mode "$OPERATION_MODE" \
             --arg execution_profile "$EXECUTION_PROFILE" \
             --arg trusted_checker_identity "$TRUSTED_CHECKER_IDENTITY" \
-            '{source_repository:$source_repository,source_parent_sha:$source_parent_sha,workflow_source_sha:$workflow_source_sha,swarm_repository:$swarm_repository,protected_w7_ref:$protected_w7_ref,w7_peeled_sha:$w7_peeled_sha,reviewed_tree_sha:$reviewed_tree_sha,reviewed_tree_carrier_sha:$reviewed_tree_carrier_sha,preflight_locator:$preflight_locator,resolution_manifest_locator:$resolution_manifest_locator,validation_packet_locator:$validation_packet_locator,integration_packet_locator:$integration_packet_locator,qualification_receipt_locator:$qualification_receipt_locator,receipt_schema:$receipt_schema,operation_mode:$operation_mode,execution_profile:$execution_profile,trusted_checker_identity:$trusted_checker_identity}' \
+            '{schema:$schema,source_repository:$source_repository,source_parent_sha:$source_parent_sha,workflow_source_sha:$workflow_source_sha,swarm_repository:$swarm_repository,protected_w7_ref:$protected_w7_ref,w7_peeled_sha:$w7_peeled_sha,reviewed_tree_sha:$reviewed_tree_sha,reviewed_tree_carrier_sha:$reviewed_tree_carrier_sha,preflight_locator:$preflight_locator,resolution_manifest_locator:$resolution_manifest_locator,validation_packet_locator:$validation_packet_locator,integration_packet_locator:$integration_packet_locator,qualification_receipt_locator:$qualification_receipt_locator,receipt_schema:$receipt_schema,operation_mode:$operation_mode,execution_profile:$execution_profile,trusted_checker_identity:$trusted_checker_identity}' \
             > "$admission_out/requested-identity.json"
           identity_digest=$(sha256sum "$admission_out/requested-identity.json" | awk '{print $1}')
           printf '%s\n' \
             "artifact_name=source-promotion-admission-v1-$identity_digest-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
             "final_artifact_name=source-promotion-admission-final-v1-$identity_digest-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            "identity_digest=$identity_digest" \
             >> "$GITHUB_OUTPUT"
 
       - name: Check out exact trusted workflow and controller source
@@ -197,6 +199,8 @@ jobs:
             --operation-mode "$OPERATION_MODE" \
             --execution-profile "$EXECUTION_PROFILE" \
             --trusted-checker-identity "$TRUSTED_CHECKER_IDENTITY" \
+            --requested-identity "$ADMISSION_OUT/requested-identity.json" \
+            --requested-identity-sha256 "${{ steps.initialize.outputs.identity_digest }}" \
             --workspace-root "$ADMISSION_ROOT" \
             --out "$ADMISSION_EVIDENCE" \
             > "$ADMISSION_OUT/producer.stdout.log" \
@@ -270,7 +274,9 @@ jobs:
           (cd "$downloaded" && sha256sum --check transport-index.sha256)
           diff --recursive --no-dereference "$ADMISSION_OUT" "$downloaded"
           "${{ steps.build.outputs.controller }}" source-promotion verify-admission-workflow \
-            --packet "$downloaded/workflow-packet"
+            --packet "$downloaded/workflow-packet" \
+            --requested-identity "$downloaded/requested-identity.json" \
+            --requested-identity-sha256 "${{ steps.initialize.outputs.identity_digest }}"
 
       - name: Enforce terminal admission before constructor
         id: enforce
@@ -343,7 +349,9 @@ jobs:
           set -euo pipefail
           test -d "$ADMISSION_FINAL_EVIDENCE"
           "${{ steps.build.outputs.controller }}" source-promotion verify-admission-workflow \
-            --packet "$ADMISSION_FINAL_EVIDENCE"
+            --packet "$ADMISSION_FINAL_EVIDENCE" \
+            --requested-identity "$ADMISSION_OUT/requested-identity.json" \
+            --requested-identity-sha256 "${{ steps.initialize.outputs.identity_digest }}"
 
       - name: Upload final normalized workflow disposition
         if: always()

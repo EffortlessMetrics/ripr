@@ -312,6 +312,13 @@ enforces terminal admission before constructor dry-run becomes reachable.
 Missing or malformed packet files are terminal red, not an excuse to omit
 available evidence.
 
+Before any producer invocation, the runner MUST serialize the exact
+`ripr.source_promotion_admission_request.v1` input set and capture its byte
+digest. The producer MUST compare that request and digest against every CLI
+identity and locator before materialization. The packet MUST embed the request
+and bind its digest; downloaded and final verification MUST compare the
+embedded bytes to the original pre-producer request and digest.
+
 After admission enforcement, `source-promotion finalize-admission-workflow`
 performs admit-only normalization or the optional guarded constructor phase and
 produces the final normalized `workflow-disposition.json`,
@@ -326,6 +333,13 @@ is the sole terminal green predicate. The normalized disposition schema is
 profile, non-zero producer exit, missing/malformed evidence, stale identity,
 failed final reread, or disagreement between the packet and workflow conclusion
 is terminal red.
+
+For an admitted packet, verification MUST replay the indexed resolved-tree,
+trusted-builder, typed integration, admission, qualification, and construction
+contracts and MUST derive the normalized attempt summary from those receipts.
+Recomputed outer indexes do not cure invalid nested semantics. When a rejected
+constructor invocation has no parseable receipt, mutation attempt counts whose
+values cannot be proven MUST be `null` rather than zero.
 
 The `admit_only` mode requires zero constructor, local-ref, remote-push,
 merge-command, and release/publication attempts. `constructor_dry_run` is

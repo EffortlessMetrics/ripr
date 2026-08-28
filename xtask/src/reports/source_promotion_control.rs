@@ -9,4 +9,5 @@ include!("source_promotion_control/io.rs");
 include!("source_promotion_control/admission.rs");
 include!("source_promotion_control/construction.rs");
 include!("source_promotion_control/publication.rs");
+include!("source_promotion_control/replay.rs");
 include!("source_promotion_control/tests.rs");

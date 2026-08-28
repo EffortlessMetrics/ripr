@@ -614,11 +614,32 @@ fn validate_builder_receipt(
     validation: &Value,
     options: &AdmissionOptions,
 ) -> Result<String, String> {
+    let executable =
+        validate_builder_receipt_contract(builder, validation, &options.identity)?;
+    let expected_lock = file_sha256(&options.repo.join("Cargo.lock"), "Cargo.lock")?;
+    if json_string(builder, "cargo_lock_sha256") != Some(expected_lock.as_str()) {
+        return Err(
+            "trusted builder Cargo.lock digest differs from live source checkout".to_string(),
+        );
+    }
+    if current_executable_sha256()? != executable {
+        return Err(
+            "running admission executable differs from trusted builder receipt".to_string(),
+        );
+    }
+    Ok(executable)
+}
+
+fn validate_builder_receipt_contract(
+    builder: &Value,
+    validation: &Value,
+    identity: &PromotionIdentity,
+) -> Result<String, String> {
     if json_string(builder, "schema") != Some(BUILDER_SCHEMA)
         || json_string(builder, "status") != Some("built")
-        || json_string(builder, "source_parent") != Some(options.identity.source_parent.as_str())
+        || json_string(builder, "source_parent") != Some(identity.source_parent.as_str())
         || json_string(builder, "workflow_source_sha")
-            != Some(options.identity.source_parent.as_str())
+            != Some(identity.source_parent.as_str())
         || json_bool(builder, "clean_checkout") != Some(true)
         || json_string(builder, "rust_toolchain")
             .is_none_or(|value| !value.starts_with(&format!("rustc {RUST_TOOLCHAIN} ")))
@@ -653,12 +674,9 @@ fn validate_builder_receipt(
         return Err("trusted builder receipt must not contain a merge command".to_string());
     }
 
-    let expected_lock = file_sha256(&options.repo.join("Cargo.lock"), "Cargo.lock")?;
-    if json_string(builder, "cargo_lock_sha256") != Some(expected_lock.as_str()) {
-        return Err(
-            "trusted builder Cargo.lock digest differs from live source checkout".to_string(),
-        );
-    }
+    json_string(builder, "cargo_lock_sha256")
+        .filter(|value| is_exact_lower_hex(value, 64))
+        .ok_or_else(|| "trusted builder receipt has invalid Cargo.lock digest".to_string())?;
     let executable = json_string(builder, "executable_sha256")
         .filter(|value| is_exact_lower_hex(value, 64))
         .ok_or_else(|| "trusted builder receipt has invalid executable digest".to_string())?
@@ -671,11 +689,6 @@ fn validate_builder_receipt(
         return Err(
             "trusted builder executable digest differs from resolved-tree validator receipt"
                 .to_string(),
-        );
-    }
-    if current_executable_sha256()? != executable {
-        return Err(
-            "running admission executable differs from trusted builder receipt".to_string(),
         );
     }
     Ok(executable)

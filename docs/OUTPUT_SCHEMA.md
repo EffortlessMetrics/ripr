@@ -13913,6 +13913,14 @@ indexed by `packet-index.json` using packet schema
 `ripr.source_promotion_admission_workflow_packet.v1`; the human projection is
 `workflow-disposition.md`.
 
+Before producer execution, the workflow writes one exact
+`ripr.source_promotion_admission_request.v1` request and captures the SHA-256
+of those bytes. The producer compares every requested identity and locator to
+its CLI inputs before materialization, embeds the request at
+`evidence/requested-identity.json`, and binds its digest into the disposition.
+Downloaded and final verification require the original request bytes and
+pre-producer digest; a packet cannot replace its request and authorize itself.
+
 The disposition status is one of:
 
 - `admitted` — every exact input, source-trusted producer, required command,
@@ -13934,6 +13942,11 @@ and make no live carrier-materialization claim.
 packet, and `packet-index.json` recursively binds the controller receipts and
 all materialized locator evidence beneath `evidence/`. Final verification
 rejects missing, extra, corrupt, symlinked, or summary-inconsistent members.
+For admitted packets it also replays the indexed validation, trusted-builder,
+integration, admission, qualification, and construction receipt contracts and
+derives the normalized attempt summary from those receipt bytes. Rebinding
+outer indexes or summary digests cannot make semantically invalid nested
+evidence admissible.
 An admitted constructor final packet requires a valid indexed construction
 receipt. A rejected final packet may report that receipt unavailable while
 still indexing all partial construction bytes; an absent output directory does
@@ -13958,13 +13971,19 @@ at most one constructor commit-tree attempt after terminal admission, in an
 isolated synthetic repository, and requires the other four values to remain
 zero. Neither mode grants ref, publication, merge, qualification, or release
 authority.
+If a rejected constructor invocation produced no parseable construction
+receipt, its constructor, local-ref, remote-push, and merge-command attempt
+counts are `null` (unknown), not zero. Publication reachability remains a
+separately proven zero because the closed harness has no publication command.
 
 After the immutable admission packet is independently enforced,
 `cargo xtask source-promotion finalize-admission-workflow` writes the separate
 final packet for admit-only normalization or the guarded constructor dry-run.
 
-`cargo xtask source-promotion verify-admission-workflow --packet <dir>` rereads
-the index and packet bytes independently. `cargo xtask source-promotion
+`cargo xtask source-promotion verify-admission-workflow --packet <dir>
+--requested-identity <file> --requested-identity-sha256 <digest>` rereads the
+index, nested receipt semantics, packet bytes, and original request authority
+independently. `cargo xtask source-promotion
 enforce-admission-workflow --packet <dir> --expected-status admitted` fails for
 `rejected`, missing, malformed, unsupported, `not_run`, `unavailable`, non-zero
 producer exit, stale identity, failed reread, or packet/conclusion

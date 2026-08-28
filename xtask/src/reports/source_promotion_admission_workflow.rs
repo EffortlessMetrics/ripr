@@ -23,6 +23,7 @@ const ENFORCE: &str = "enforce-admission-workflow";
 
 const SCHEMA: &str = "ripr.source_promotion_admission_workflow.v1";
 const PACKET_SCHEMA: &str = "ripr.source_promotion_admission_workflow_packet.v1";
+const REQUEST_SCHEMA: &str = "ripr.source_promotion_admission_request.v1";
 const LOCATOR_SCHEMA: &str = "ripr.source_promotion_artifact_locator.v1";
 const SUPPORTED_RECEIPT_SCHEMA: &str = SCHEMA;
 const SOURCE_REPOSITORY: &str = "EffortlessMetrics/ripr";
@@ -30,6 +31,8 @@ const SWARM_REPOSITORY: &str = "EffortlessMetrics/ripr-swarm";
 const REPORT_JSON: &str = "workflow-disposition.json";
 const REPORT_MD: &str = "workflow-disposition.md";
 const PACKET_INDEX: &str = "packet-index.json";
+const MAX_CLOSURE_FILES: usize = 512;
+const MAX_CLOSURE_BYTES: u64 = 32 * 1024 * 1024;
 
 const RUN_KEYS: &[&str] = &[
     "--source-repository",
@@ -49,6 +52,8 @@ const RUN_KEYS: &[&str] = &[
     "--receipt-schema",
     "--operation-mode",
     "--execution-profile",
+    "--requested-identity",
+    "--requested-identity-sha256",
     "--workspace-root",
     "--out",
 ];
@@ -117,6 +122,18 @@ struct ClosureSource {
     destination: PathBuf,
 }
 
+#[derive(Clone, Debug)]
+struct InlineClosureSource {
+    bytes: Vec<u8>,
+    destination: PathBuf,
+}
+
+#[derive(Debug)]
+struct RequestedIdentity {
+    value: Value,
+    bytes: Vec<u8>,
+}
+
 #[derive(Debug)]
 struct RunOptions {
     controller_repo: PathBuf,
@@ -137,6 +154,8 @@ struct RunOptions {
     receipt_schema: String,
     mode: OperationMode,
     profile: ExecutionProfile,
+    requested_identity_bytes: Vec<u8>,
+    requested_identity_sha256: String,
     workspace_root: PathBuf,
     out: PathBuf,
     fixture_identity: Option<String>,
@@ -257,7 +276,7 @@ fn run(args: &[String]) -> Result<(), String> {
         &admission_report,
         &construction_report,
     );
-    let attempts = normalized_attempts(&admission_report, &construction_report);
+    let attempts = normalized_attempts(&admission_report, &construction_report, false);
     let fixture_identity = options.fixture_identity.clone().unwrap_or_else(|| {
         digest_bytes(
             format!(
@@ -281,6 +300,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "execution_profile": options.profile.as_str(),
         "fixture_identity": fixture_identity,
         "workflow_identity_sha256": null,
+        "requested_identity_sha256": options.requested_identity_sha256,
         "controller_repository": stable_controller_repository(&options),
         "source_repository": options.source_repository,
         "source_parent_sha": options.source_parent,
@@ -326,7 +346,15 @@ fn run(args: &[String]) -> Result<(), String> {
     report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
     let closure =
         admission_closure_sources(&options, &builder_out, &admission_out, &qualification)?;
-    write_packet(&options.out, &report, &closure)?;
+    write_packet(
+        &options.out,
+        &report,
+        &closure,
+        &[InlineClosureSource {
+            bytes: options.requested_identity_bytes.clone(),
+            destination: PathBuf::from("requested-identity.json"),
+        }],
+    )?;
     verify_packet(&options.out)?;
     if status == "admitted" {
         Ok(())
@@ -426,7 +454,11 @@ fn finalize(args: &[String]) -> Result<(), String> {
         construction_report =
             read_optional_json(&construction_out.join("exact-join-construction.json"));
     }
-    let mut attempts = normalized_attempts(&None, &construction_report);
+    let mut attempts = normalized_attempts(
+        &None,
+        &construction_report,
+        mode == OperationMode::ConstructorDryRun,
+    );
     attempts["admission_receipt_available"] = Value::Bool(true);
     let constructor_ok = mode == OperationMode::AdmitOnly
         || (construction_error.is_none()
@@ -439,6 +471,7 @@ fn finalize(args: &[String]) -> Result<(), String> {
     } else {
         "rejected".to_string()
     });
+    report["producer"]["normalized_exit_code"] = Value::from(if constructor_ok { 0 } else { 1 });
     report["attempts"] = attempts;
     report["producer"]["constructor_state"] = Value::String(if mode == OperationMode::AdmitOnly {
         "not_requested".to_string()
@@ -469,7 +502,7 @@ fn finalize(args: &[String]) -> Result<(), String> {
     )? {
         closure.push(source);
     }
-    write_packet(&out, &report, &closure)?;
+    write_packet(&out, &report, &closure, &[])?;
     verify_packet(&out)?;
     if constructor_ok {
         Ok(())
@@ -478,7 +511,11 @@ fn finalize(args: &[String]) -> Result<(), String> {
     }
 }
 
-fn normalized_attempts(admission: &Option<Value>, construction: &Option<Value>) -> Value {
+fn normalized_attempts(
+    admission: &Option<Value>,
+    construction: &Option<Value>,
+    construction_was_invoked: bool,
+) -> Value {
     let required_counters = [
         "local_ref_attempts",
         "remote_push_attempts",
@@ -495,21 +532,34 @@ fn normalized_attempts(admission: &Option<Value>, construction: &Option<Value>) 
             .chain(std::iter::once(&"commit_tree_attempts"))
             .all(|key| json_u64(value, key).is_some())
     });
-    let commit_tree = construction
-        .as_ref()
-        .and_then(|value| json_u64(value, "commit_tree_attempts"))
-        .unwrap_or(0);
+    let construction_unknown = construction_was_invoked && !construction_available;
+    let commit_tree = if construction_unknown {
+        Value::Null
+    } else {
+        Value::from(
+            construction
+                .as_ref()
+                .and_then(|value| json_u64(value, "commit_tree_attempts"))
+                .unwrap_or(0),
+        )
+    };
     let field = |name: &str| {
-        admission
-            .as_ref()
-            .and_then(|value| json_u64(value, name))
-            .unwrap_or(0)
-            .saturating_add(
-                construction
+        if construction_unknown {
+            Value::Null
+        } else {
+            Value::from(
+                admission
                     .as_ref()
                     .and_then(|value| json_u64(value, name))
-                    .unwrap_or(0),
+                    .unwrap_or(0)
+                    .saturating_add(
+                        construction
+                            .as_ref()
+                            .and_then(|value| json_u64(value, name))
+                            .unwrap_or(0),
+                    ),
             )
+        }
     };
     serde_json::json!({
         "admission_receipt_available": admission_available,
@@ -550,8 +600,29 @@ fn collect_failures(
 }
 
 fn verify_command(args: &[String]) -> Result<(), String> {
-    let values = parse_args(args, VERIFY, &["--packet"])?;
-    verify_packet(Path::new(required(&values, "--packet")?)).map(|_| ())
+    let values = parse_args(
+        args,
+        VERIFY,
+        &[
+            "--packet",
+            "--requested-identity",
+            "--requested-identity-sha256",
+        ],
+    )?;
+    let packet = Path::new(required(&values, "--packet")?);
+    let (report, embedded_request_bytes) = verify_packet_with_request(packet)?;
+    let expected_sha256 = required_hex(&values, "--requested-identity-sha256", 64)?;
+    let external = Path::new(required(&values, "--requested-identity")?);
+    let external_request = read_requested_identity(external, &expected_sha256)?;
+    if required_json_string(&report, "requested_identity_sha256")? != expected_sha256 {
+        return Err(
+            "workflow packet requested identity differs from verifier authority".to_string(),
+        );
+    }
+    if external_request.bytes != embedded_request_bytes {
+        return Err("embedded requested identity differs from verifier authority".to_string());
+    }
+    Ok(())
 }
 
 fn enforce_command(args: &[String]) -> Result<(), String> {
@@ -571,6 +642,10 @@ fn enforce_command(args: &[String]) -> Result<(), String> {
 }
 
 fn verify_packet(root: &Path) -> Result<Value, String> {
+    verify_packet_with_request(root).map(|(report, _)| report)
+}
+
+fn verify_packet_with_request(root: &Path) -> Result<(Value, Vec<u8>), String> {
     validate_directory(root, "workflow packet")?;
     let index = read_json(&root.join(PACKET_INDEX), "workflow packet index")?;
     if json_string(&index, "schema") != Some(PACKET_SCHEMA)
@@ -609,13 +684,19 @@ fn verify_packet(root: &Path) -> Result<Value, String> {
     }
     let report = read_json(&root.join(REPORT_JSON), "workflow disposition")?;
     validate_report(&report)?;
-    validate_closure_bindings(root, &report)?;
-    Ok(report)
+    let requested_identity_bytes = validate_closure_bindings(root, &report)?;
+    Ok((report, requested_identity_bytes))
 }
 
-fn validate_closure_bindings(root: &Path, report: &Value) -> Result<(), String> {
+fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, String> {
     let evidence = root.join("evidence");
     validate_directory(&evidence, "workflow evidence closure")?;
+    let requested_identity_sha256 = required_json_string(report, "requested_identity_sha256")?;
+    let requested_identity = read_requested_identity(
+        &evidence.join("requested-identity.json"),
+        requested_identity_sha256,
+    )?;
+    validate_request_against_report(&requested_identity.value, report)?;
     let locators = report
         .get("locators")
         .ok_or_else(|| "workflow disposition is missing locators".to_string())?;
@@ -707,6 +788,9 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<(), String> 
         }
     }
     let construction = &report["controller_packets"]["exact_join_construction"];
+    let qualification_required = json_string(report, "operation_mode")
+        == Some("constructor_dry_run")
+        && json_string(report, "status") == Some("admitted");
     let construction_required = json_string(report, "phase") == Some("final")
         && json_string(report, "operation_mode") == Some("constructor_dry_run");
     if construction_required {
@@ -747,7 +831,56 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<(), String> 
             }
         }
     }
-    Ok(())
+    if json_string(report, "status") == Some("admitted") {
+        let integration_index = closure_index_path(
+            &evidence.join("locators/integration_packet"),
+            &locators["integration_packet"],
+        )?;
+        let qualification =
+            qualification_required.then(|| evidence.join("locators/qualification_receipt/input"));
+        let construction_packet =
+            construction_required.then(|| evidence.join("exact-join-construction"));
+        let replay = super::source_promotion_control::replay_admitted_closure(
+            &super::source_promotion_control::AdmissionClosureReplayInput {
+                validation_packet: &evidence.join("locators/validation_packet"),
+                builder_packet: &evidence.join("trusted-builder"),
+                admission_packet: &evidence.join("resolved-tree-admission"),
+                integration_index: &integration_index,
+                preflight: &evidence.join("locators/preflight/input"),
+                resolution_manifest: &evidence.join("locators/resolution_manifest/input"),
+                qualification_receipt: qualification.as_deref(),
+                construction_packet: construction_packet.as_deref(),
+                source_parent: required_json_string(report, "source_parent_sha")?,
+                swarm_parent: required_json_string(report, "w7_peeled_sha")?,
+                join_tree: required_json_string(report, "reviewed_tree_sha")?,
+                protected_w7_ref: required_json_string(report, "protected_w7_ref")?,
+                preflight_sha256: required_json_string(&locators["preflight"], "sha256")?,
+                resolution_sha256: required_json_string(
+                    &locators["resolution_manifest"],
+                    "sha256",
+                )?,
+                integration_index_sha256: required_json_string(
+                    &locators["integration_packet"],
+                    "sha256",
+                )?,
+                qualification_sha256: qualification
+                    .as_ref()
+                    .map(|_| required_json_string(&locators["qualification_receipt"], "sha256"))
+                    .transpose()?,
+            },
+        )?;
+        let replayed_attempts = normalized_attempts(
+            &Some(replay.admission),
+            &replay.construction,
+            construction_required,
+        );
+        if report.get("attempts") != Some(&replayed_attempts) {
+            return Err(
+                "workflow attempt summary differs from replayed controller receipts".to_string(),
+            );
+        }
+    }
+    Ok(requested_identity.bytes)
 }
 
 fn validate_report(report: &Value) -> Result<(), String> {
@@ -804,6 +937,11 @@ fn validate_report(report: &Value) -> Result<(), String> {
         64,
         "fixture_identity",
     )?;
+    validate_hex(
+        required_json_string(report, "requested_identity_sha256")?,
+        64,
+        "requested_identity_sha256",
+    )?;
     validate_locator_provenance(report, profile, mode, status)?;
     let expected_workflow_identity = workflow_identity(report)?;
     if json_string(report, "workflow_identity_sha256") != Some(expected_workflow_identity.as_str())
@@ -829,39 +967,67 @@ fn validate_report(report: &Value) -> Result<(), String> {
     {
         return Err("workflow disposition has unavailable admission attempt evidence".to_string());
     }
+    let construction_receipt_available = attempts
+        .get("construction_receipt_available")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| {
+            "workflow disposition is missing construction receipt availability".to_string()
+        })?;
     if status == "admitted"
         && phase == "final"
         && mode == OperationMode::ConstructorDryRun
-        && attempts
-            .get("construction_receipt_available")
-            .and_then(Value::as_bool)
-            != Some(true)
+        && !construction_receipt_available
     {
         return Err(
             "workflow disposition has unavailable construction attempt evidence".to_string(),
         );
     }
-    let commit_tree = required_u64(attempts, "constructor_commit_tree_attempts")?;
+    let construction_attempts_unknown = status == "rejected"
+        && phase == "final"
+        && mode == OperationMode::ConstructorDryRun
+        && !construction_receipt_available
+        && profile != ExecutionProfile::J5Negative;
+    let commit_tree = if construction_attempts_unknown {
+        if !attempts["constructor_commit_tree_attempts"].is_null() {
+            return Err(
+                "rejected constructor without a receipt must report commit-tree attempts as unknown"
+                    .to_string(),
+            );
+        }
+        None
+    } else {
+        Some(required_u64(attempts, "constructor_commit_tree_attempts")?)
+    };
     for key in [
         "local_ref_attempts",
         "remote_push_attempts",
         "merge_command_attempts",
-        "release_or_publication_attempts",
     ] {
-        if required_u64(attempts, key)? != 0 {
+        if construction_attempts_unknown {
+            if !attempts[key].is_null() {
+                return Err(format!(
+                    "rejected constructor without a receipt must report {key} as unknown"
+                ));
+            }
+        } else if required_u64(attempts, key)? != 0 {
             return Err(format!("workflow disposition records forbidden {key}"));
         }
     }
-    if mode == OperationMode::AdmitOnly && commit_tree != 0 {
+    if required_u64(attempts, "release_or_publication_attempts")? != 0 {
+        return Err(
+            "workflow disposition records forbidden release_or_publication_attempts".to_string(),
+        );
+    }
+    if mode == OperationMode::AdmitOnly && commit_tree != Some(0) {
         return Err("admit_only disposition records a constructor attempt".to_string());
     }
-    if commit_tree > 1 {
+    if commit_tree.is_some_and(|attempts| attempts > 1) {
         return Err("constructor dry-run attempted more than one commit-tree".to_string());
     }
     if status == "admitted"
         && phase == "final"
         && mode == OperationMode::ConstructorDryRun
-        && commit_tree != 1
+        && commit_tree != Some(1)
     {
         return Err("admitted constructor dry-run must record exactly one commit-tree".to_string());
     }
@@ -886,7 +1052,7 @@ fn validate_report(report: &Value) -> Result<(), String> {
                 .to_string(),
         );
     }
-    if profile == ExecutionProfile::J5Negative && (status != "rejected" || commit_tree != 0) {
+    if profile == ExecutionProfile::J5Negative && (status != "rejected" || commit_tree != Some(0)) {
         return Err("j5_negative must be rejected before constructor execution".to_string());
     }
     if json_string(report, "source_repository") != Some(SOURCE_REPOSITORY)
@@ -950,6 +1116,11 @@ fn parse_run_options(args: &[String]) -> Result<RunOptions, String> {
     validate_reviewed_tree_carrier_identity(profile, &reviewed_tree_carrier)?;
     let source_checkout = std::env::current_dir()
         .map_err(|error| format!("failed to locate source checkout: {error}"))?;
+    let requested_identity =
+        absolute_from(&source_checkout, required(&values, "--requested-identity")?);
+    let requested_identity_sha256 = required_hex(&values, "--requested-identity-sha256", 64)?;
+    let request = read_requested_identity(&requested_identity, &requested_identity_sha256)?;
+    validate_request_against_inputs(&request.value, &values)?;
     let requested_workspace = PathBuf::from(required(&values, "--workspace-root")?);
     let workspace_root = if requested_workspace.is_absolute() {
         requested_workspace
@@ -1008,6 +1179,8 @@ fn parse_run_options(args: &[String]) -> Result<RunOptions, String> {
             receipt_schema,
             mode,
             profile,
+            requested_identity_bytes: request.bytes,
+            requested_identity_sha256,
             workspace_root,
             out,
             fixture_identity: Some(fixture.fixture_identity.clone()),
@@ -1072,6 +1245,8 @@ fn parse_run_options(args: &[String]) -> Result<RunOptions, String> {
         receipt_schema,
         mode,
         profile,
+        requested_identity_bytes: request.bytes,
+        requested_identity_sha256,
         workspace_root,
         out,
         fixture_identity: None,
@@ -1596,9 +1771,6 @@ fn closure_index_path(root: &Path, locator: &Value) -> Result<PathBuf, String> {
 }
 
 fn copy_closure_source(source: &Path, destination: &Path) -> Result<(), String> {
-    const MAX_CLOSURE_FILES: usize = 512;
-    const MAX_CLOSURE_BYTES: u64 = 32 * 1024 * 1024;
-
     let metadata = fs::symlink_metadata(source).map_err(|error| {
         format!(
             "failed to inspect evidence closure source {}: {error}",
@@ -1711,7 +1883,12 @@ fn collect_packet_files(root: &Path) -> Result<BTreeMap<String, String>, String>
     Ok(files)
 }
 
-fn write_packet(out: &Path, report: &Value, closure: &[ClosureSource]) -> Result<(), String> {
+fn write_packet(
+    out: &Path,
+    report: &Value,
+    closure: &[ClosureSource],
+    inline_closure: &[InlineClosureSource],
+) -> Result<(), String> {
     reject_existing_output(out)?;
     fs::create_dir(out).map_err(|error| {
         format!(
@@ -1724,6 +1901,24 @@ fn write_packet(out: &Path, report: &Value, closure: &[ClosureSource]) -> Result
         .map_err(|error| format!("failed to create workflow evidence closure: {error}"))?;
     for source in closure {
         copy_closure_source(&source.source, &evidence.join(&source.destination))?;
+    }
+    for source in inline_closure {
+        let destination = source.destination.to_string_lossy().replace('\\', "/");
+        safe_relative(&destination)?;
+        if source.bytes.len() as u64 > MAX_CLOSURE_BYTES {
+            return Err("inline evidence closure member exceeds byte budget".to_string());
+        }
+        let destination = evidence.join(&source.destination);
+        if fs::symlink_metadata(&destination).is_ok() {
+            return Err("inline evidence closure destination already exists".to_string());
+        }
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!("failed to create inline evidence closure parent: {error}")
+            })?;
+        }
+        fs::write(&destination, &source.bytes)
+            .map_err(|error| format!("failed to write inline evidence closure: {error}"))?;
     }
     let json = serde_json::to_string_pretty(report)
         .map_err(|error| format!("failed to serialize workflow disposition: {error}"))?;
@@ -1849,7 +2044,7 @@ fn parse_args(
 }
 
 fn usage() -> String {
-    "usage: cargo xtask source-promotion (run-admission-workflow <exact inputs> | verify-admission-workflow --packet <dir> | enforce-admission-workflow --packet <dir> --expected-status admitted)".to_string()
+    "usage: cargo xtask source-promotion (run-admission-workflow <exact inputs and requested identity> | verify-admission-workflow --packet <dir> --requested-identity <file> --requested-identity-sha256 <digest> | enforce-admission-workflow --packet <dir> --expected-status admitted)".to_string()
 }
 
 fn required<'a>(values: &'a BTreeMap<String, String>, key: &str) -> Result<&'a str, String> {
@@ -1867,6 +2062,174 @@ fn required_hex(
     let value = required(values, key)?;
     validate_hex(value, width, key)?;
     Ok(value.to_string())
+}
+
+fn absolute_from(root: &Path, value: &str) -> PathBuf {
+    let path = PathBuf::from(value);
+    if path.is_absolute() {
+        path
+    } else {
+        root.join(path)
+    }
+}
+
+fn read_requested_identity(
+    path: &Path,
+    expected_sha256: &str,
+) -> Result<RequestedIdentity, String> {
+    validate_hex(expected_sha256, 64, "requested identity SHA-256")?;
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        format!(
+            "failed to inspect requested identity {}: {error}",
+            path.display()
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("requested identity must be a non-symlink regular file".to_string());
+    }
+    let bytes = fs::read(path).map_err(|error| {
+        format!(
+            "failed to read requested identity {}: {error}",
+            path.display()
+        )
+    })?;
+    if digest_bytes(&bytes) != expected_sha256 {
+        return Err("requested identity digest differs from pre-producer authority".to_string());
+    }
+    let request: Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("malformed requested identity JSON: {error}"))?;
+    exact_object_fields(
+        &request,
+        "requested identity",
+        &[
+            "schema",
+            "source_repository",
+            "source_parent_sha",
+            "workflow_source_sha",
+            "trusted_checker_identity",
+            "swarm_repository",
+            "protected_w7_ref",
+            "w7_peeled_sha",
+            "reviewed_tree_sha",
+            "reviewed_tree_carrier_sha",
+            "preflight_locator",
+            "resolution_manifest_locator",
+            "validation_packet_locator",
+            "integration_packet_locator",
+            "qualification_receipt_locator",
+            "receipt_schema",
+            "operation_mode",
+            "execution_profile",
+        ],
+    )?;
+    if json_string(&request, "schema") != Some(REQUEST_SCHEMA) {
+        return Err("requested identity schema is unsupported".to_string());
+    }
+    Ok(RequestedIdentity {
+        value: request,
+        bytes,
+    })
+}
+
+fn validate_request_against_inputs(
+    request: &Value,
+    values: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    for (field, option) in [
+        ("source_repository", "--source-repository"),
+        ("source_parent_sha", "--source-parent-sha"),
+        ("workflow_source_sha", "--workflow-source-sha"),
+        ("trusted_checker_identity", "--trusted-checker-identity"),
+        ("swarm_repository", "--swarm-repository"),
+        ("protected_w7_ref", "--protected-w7-ref"),
+        ("w7_peeled_sha", "--w7-peeled-sha"),
+        ("reviewed_tree_sha", "--reviewed-tree-sha"),
+        ("reviewed_tree_carrier_sha", "--reviewed-tree-carrier-sha"),
+        ("preflight_locator", "--preflight-locator"),
+        (
+            "resolution_manifest_locator",
+            "--resolution-manifest-locator",
+        ),
+        ("validation_packet_locator", "--validation-packet-locator"),
+        ("integration_packet_locator", "--integration-packet-locator"),
+        (
+            "qualification_receipt_locator",
+            "--qualification-receipt-locator",
+        ),
+        ("receipt_schema", "--receipt-schema"),
+        ("operation_mode", "--operation-mode"),
+        ("execution_profile", "--execution-profile"),
+    ] {
+        if json_string(request, field) != Some(required(values, option)?) {
+            return Err(format!(
+                "requested identity {field} differs from producer input {option}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_request_against_report(request: &Value, report: &Value) -> Result<(), String> {
+    for field in [
+        "source_repository",
+        "source_parent_sha",
+        "workflow_source_sha",
+        "trusted_checker_identity",
+        "swarm_repository",
+        "protected_w7_ref",
+        "w7_peeled_sha",
+        "reviewed_tree_sha",
+        "reviewed_tree_carrier_sha",
+        "receipt_schema",
+        "operation_mode",
+        "execution_profile",
+    ] {
+        if json_string(request, field) != json_string(report, field) {
+            return Err(format!(
+                "workflow disposition {field} differs from requested identity"
+            ));
+        }
+    }
+    let locators = report
+        .get("locators")
+        .ok_or_else(|| "workflow disposition is missing locators".to_string())?;
+    for (request_field, report_field) in [
+        ("preflight_locator", "preflight"),
+        ("resolution_manifest_locator", "resolution_manifest"),
+        ("validation_packet_locator", "validation_packet"),
+        ("integration_packet_locator", "integration_packet"),
+        ("qualification_receipt_locator", "qualification_receipt"),
+    ] {
+        let requested = required_json_string(request, request_field)?;
+        let locator = locators
+            .get(report_field)
+            .ok_or_else(|| format!("workflow disposition is missing {report_field} locator"))?;
+        let profile = required_json_string(report, "execution_profile")?;
+        if profile == "live" {
+            if requested.is_empty() {
+                if json_string(locator, "status") != Some("not_required") {
+                    return Err(format!(
+                        "workflow disposition {report_field} locator differs from requested identity"
+                    ));
+                }
+            } else if json_string(locator, "locator") != Some(requested) {
+                return Err(format!(
+                    "workflow disposition {report_field} locator differs from requested identity"
+                ));
+            }
+        } else {
+            let locator_status = json_string(locator, "status");
+            let status_allowed = locator_status == Some("source_owned_synthetic")
+                || (report_field == "qualification_receipt"
+                    && locator_status == Some("not_required"));
+            if !requested.is_empty() || !status_allowed {
+                return Err(format!(
+                    "synthetic workflow {report_field} locator differs from requested identity contract"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_hex(value: &str, width: usize, label: &str) -> Result<(), String> {
@@ -2143,6 +2506,7 @@ fn workflow_identity(report: &Value) -> Result<String, String> {
         required_json_string(report, "receipt_schema")?.to_string(),
         required_json_string(report, "fixture_identity")?.to_string(),
         required_json_string(report, "controller_repository")?.to_string(),
+        required_json_string(report, "requested_identity_sha256")?.to_string(),
         locator_identity("preflight", "preflight", false)?,
         locator_identity("resolution_manifest", "resolution manifest", false)?,
         locator_identity("validation_packet", "validation packet", false)?,
@@ -2296,6 +2660,217 @@ mod tests {
     }
 
     #[test]
+    fn verifier_rejects_self_consistent_report_that_moves_requested_identity() -> Result<(), String>
+    {
+        let (root, packet) = write_test_closure("requested-identity-moved")?;
+        let mut report = read_json(&packet.join(REPORT_JSON), "test workflow disposition")?;
+        report["protected_w7_ref"] =
+            Value::String("refs/tags/ripr-release-fixture-moved".to_string());
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        rewrite_test_packet_reports_and_index(&packet, &report)?;
+        if verify_packet(&packet).is_ok() {
+            return Err(
+                "self-consistent report escaped the pre-producer requested identity".to_string(),
+            );
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean requested identity fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_replays_nested_builder_semantics_after_digest_rebinding() -> Result<(), String> {
+        let (root, packet) = write_test_closure("nested-builder-replay")?;
+        let builder_root = packet.join("evidence/trusted-builder");
+        let builder_report = builder_root.join("trusted-builder.json");
+        let mut builder = read_json(&builder_report, "nested builder fixture")?;
+        builder["commit_tree_attempts"] = Value::from(1);
+        write_pretty_json(&builder_report, &builder, "mutated nested builder fixture")?;
+        let builder_index_sha256 = reindex_control_packet(&builder_root)?;
+        let builder_receipt_sha256 = digest_file(&builder_report, "nested builder receipt")?;
+
+        let admission_root = packet.join("evidence/resolved-tree-admission");
+        let admission_report = admission_root.join("resolved-tree-admission.json");
+        let mut admission = read_json(&admission_report, "nested admission fixture")?;
+        admission["trusted_builder_packet_index_sha256"] = Value::String(builder_index_sha256);
+        admission["trusted_builder_receipt_sha256"] = Value::String(builder_receipt_sha256);
+        write_pretty_json(
+            &admission_report,
+            &admission,
+            "rebound nested admission fixture",
+        )?;
+        reindex_control_packet(&admission_root)?;
+        reindex_workflow_packet(&packet)?;
+        if verify_packet(&packet).is_ok() {
+            return Err(
+                "digest-rebound forbidden builder attempt escaped semantic replay".to_string(),
+            );
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean nested replay fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_binds_validation_receipt_to_indexed_command_logs() -> Result<(), String> {
+        let (root, packet) = write_test_closure("nested-command-log-replay")?;
+        let validation_root = packet.join("evidence/locators/validation_packet");
+        fs::write(
+            validation_root.join("commands/01-check-network-policy.stdout.log"),
+            b"forged command output\n",
+        )
+        .map_err(|error| format!("failed to mutate indexed command log: {error}"))?;
+        let validation_index_sha256 = reindex_control_packet(&validation_root)?;
+        let validation_receipt_sha256 = digest_file(
+            &validation_root.join("resolved-tree-validation.json"),
+            "rebound validation receipt",
+        )?;
+        let admission_root = packet.join("evidence/resolved-tree-admission");
+        let admission_report = admission_root.join("resolved-tree-admission.json");
+        let mut admission = read_json(&admission_report, "nested admission fixture")?;
+        admission["resolved_tree_packet_index_sha256"] = Value::String(validation_index_sha256);
+        admission["resolved_tree_validation_receipt_sha256"] =
+            Value::String(validation_receipt_sha256);
+        write_pretty_json(
+            &admission_report,
+            &admission,
+            "rebound command-log admission fixture",
+        )?;
+        reindex_control_packet(&admission_root)?;
+        reindex_workflow_packet(&packet)?;
+        if verify_packet(&packet).is_ok() {
+            return Err("digest-rebound command log escaped validation receipt replay".to_string());
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean command-log replay fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_requires_original_external_request_and_digest() -> Result<(), String> {
+        let (root, packet) = write_test_closure("external-request-authority")?;
+        let external = root.join("original-request.json");
+        fs::copy(packet.join("evidence/requested-identity.json"), &external)
+            .map_err(|error| format!("failed to copy external request fixture: {error}"))?;
+        let original_digest = digest_file(&external, "original external request")?;
+        let valid_args = strings(&[
+            VERIFY,
+            "--packet",
+            &path_text(&packet)?,
+            "--requested-identity",
+            &path_text(&external)?,
+            "--requested-identity-sha256",
+            &original_digest,
+        ]);
+        verify_command(&valid_args)?;
+        let mut moved = read_json(&external, "external request fixture")?;
+        moved["protected_w7_ref"] =
+            Value::String("refs/tags/ripr-release-external-moved".to_string());
+        write_pretty_json(&external, &moved, "moved external request fixture")?;
+        let moved_digest = digest_file(&external, "moved external request")?;
+        let moved_args = strings(&[
+            VERIFY,
+            "--packet",
+            &path_text(&packet)?,
+            "--requested-identity",
+            &path_text(&external)?,
+            "--requested-identity-sha256",
+            &moved_digest,
+        ]);
+        if verify_command(&moved_args).is_ok() {
+            return Err("packet accepted a different external request authority".to_string());
+        }
+        let stale_digest_args = strings(&[
+            VERIFY,
+            "--packet",
+            &path_text(&packet)?,
+            "--requested-identity",
+            &path_text(&external)?,
+            "--requested-identity-sha256",
+            &original_digest,
+        ]);
+        if verify_command(&stale_digest_args).is_ok() {
+            return Err(
+                "packet accepted request bytes behind a stale authority digest".to_string(),
+            );
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean external request fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn admitted_constructor_packet_replays_qualification_before_enforcement() -> Result<(), String>
+    {
+        let (root, packet) =
+            write_admitted_test_closure_for("qualification-replay", "constructor_dry_run")?;
+        verify_packet(&packet)?;
+        let qualification_path = packet.join("evidence/locators/qualification_receipt/input");
+        let mut qualification = read_json(&qualification_path, "qualification fixture")?;
+        qualification["lanes"][0]["state"] = Value::String("failed".to_string());
+        write_pretty_json(
+            &qualification_path,
+            &qualification,
+            "mutated qualification fixture",
+        )?;
+        let mut report = read_json(&packet.join(REPORT_JSON), "qualification workflow report")?;
+        report["locators"]["qualification_receipt"]["sha256"] =
+            Value::String(digest_file(&qualification_path, "mutated qualification")?);
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        rewrite_test_packet_reports_and_index(&packet, &report)?;
+        if verify_packet(&packet).is_ok() {
+            return Err("pre-enforcement qualification mutation escaped replay".to_string());
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean qualification fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn finalizer_records_rejected_exit_and_unknown_attempts_without_constructor_receipt()
+    -> Result<(), String> {
+        let (root, packet) =
+            write_admitted_test_closure_for("finalizer-rejection", "constructor_dry_run")?;
+        let workspace = root.join("workspace");
+        fs::create_dir(&workspace)
+            .map_err(|error| format!("failed to create finalizer workspace: {error}"))?;
+        let final_packet = workspace.join("final-packet");
+        let args = strings(&[
+            FINALIZE,
+            "--admission-packet",
+            &path_text(&packet)?,
+            "--workspace-root",
+            &path_text(&workspace)?,
+            "--out",
+            &path_text(&final_packet)?,
+        ]);
+        if finalize(&args).is_ok() {
+            return Err("fixture finalizer unexpectedly constructed an exact join".to_string());
+        }
+        let report = verify_packet(&final_packet)?;
+        if json_string(&report, "status") != Some("rejected")
+            || report["producer"]["normalized_exit_code"].as_u64() != Some(1)
+        {
+            return Err("finalizer rejection did not preserve its normalized exit".to_string());
+        }
+        for key in [
+            "constructor_commit_tree_attempts",
+            "local_ref_attempts",
+            "remote_push_attempts",
+            "merge_command_attempts",
+        ] {
+            if !report["attempts"][key].is_null() {
+                return Err(format!(
+                    "finalizer invented observed zero for unknown {key}"
+                ));
+            }
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean finalizer fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn live_locator_provenance_rejects_same_byte_movement() -> Result<(), String> {
         let report = test_report("admitted", "admit_only", "live", 0)?;
         for (pointer, replacement) in [
@@ -2365,8 +2940,8 @@ mod tests {
             "evidence/locators/preflight/input",
             "evidence/locators/resolution_manifest/input",
             "evidence/locators/validation_packet/packet-index.json",
-            "evidence/locators/validation_packet/validation.json",
-            "evidence/locators/integration_packet/index.json",
+            "evidence/locators/validation_packet/resolved-tree-validation.json",
+            "evidence/locators/integration_packet/integration-index.json",
             REPORT_JSON,
             REPORT_MD,
         ] {
@@ -2403,8 +2978,11 @@ mod tests {
     #[test]
     fn packet_verifier_rejects_removed_or_corrupted_closure_member() -> Result<(), String> {
         let (removed_root, removed_packet) = write_test_closure("removed")?;
-        fs::remove_file(removed_packet.join("evidence/locators/validation_packet/validation.json"))
-            .map_err(|error| format!("failed to remove closure member: {error}"))?;
+        fs::remove_file(
+            removed_packet
+                .join("evidence/locators/validation_packet/resolved-tree-validation.json"),
+        )
+        .map_err(|error| format!("failed to remove closure member: {error}"))?;
         if verify_packet(&removed_packet).is_ok() {
             return Err("packet verifier accepted removed closure member".to_string());
         }
@@ -2507,6 +3085,9 @@ mod tests {
         mode: &str,
         partial_construction: bool,
     ) -> Result<(PathBuf, PathBuf), String> {
+        if status == "admitted" && mode == "admit_only" {
+            return write_admitted_test_closure(label);
+        }
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|error| format!("test clock precedes epoch: {error}"))?
@@ -2608,8 +3189,15 @@ mod tests {
                 })
             },
         });
+        let request = requested_identity_for_report(&report)?;
+        let request_bytes = serde_json::to_vec_pretty(&request)
+            .map_err(|error| format!("failed to serialize requested identity fixture: {error}"))?;
+        fs::write(source.join("requested-identity.json"), &request_bytes)
+            .map_err(|error| format!("failed to write requested identity fixture: {error}"))?;
+        report["requested_identity_sha256"] = Value::String(digest_bytes(&request_bytes));
         report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
         let mut closure = [
+            ("requested-identity.json", "requested-identity.json"),
             ("trusted-builder", "trusted-builder"),
             ("resolved-tree-admission", "resolved-tree-admission"),
             ("preflight", "locators/preflight"),
@@ -2633,7 +3221,136 @@ mod tests {
             return Err("partial construction fixture was not selected for closure".to_string());
         }
         let packet = root.join("packet");
-        write_packet(&packet, &report, &closure)?;
+        write_packet(&packet, &report, &closure, &[])?;
+        Ok((root, packet))
+    }
+
+    fn write_admitted_test_closure(label: &str) -> Result<(PathBuf, PathBuf), String> {
+        write_admitted_test_closure_for(label, "admit_only")
+    }
+
+    fn write_admitted_test_closure_for(
+        label: &str,
+        mode: &str,
+    ) -> Result<(PathBuf, PathBuf), String> {
+        let fixture = super::super::source_promotion_control::source_promotion_control_tests::admission_replay_fixture(label)?;
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("test clock precedes epoch: {error}"))?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-admission-replay-{label}-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir(&root)
+            .map_err(|error| format!("failed to create replay closure root: {error}"))?;
+        let request_path = root.join("requested-identity.json");
+        let mut report = test_report("admitted", mode, "positive_synthetic", 0)?;
+        report["phase"] = Value::String("admission".to_string());
+        report["source_parent_sha"] = Value::String(fixture.source_parent.clone());
+        report["workflow_source_sha"] = Value::String(fixture.source_parent.clone());
+        report["trusted_checker_identity"] =
+            Value::String(format!("source-owned-xtask@{}", fixture.source_parent));
+        report["w7_peeled_sha"] = Value::String(fixture.swarm_parent.clone());
+        report["reviewed_tree_sha"] = Value::String(fixture.join_tree.clone());
+        report["protected_w7_ref"] = Value::String(fixture.swarm_ref.clone());
+        report["locators"]["integration_packet"]["path"] =
+            Value::String("synthetic-fixture/integration/integration-index.json".to_string());
+        report["locators"]["integration_packet"]["local_path"] =
+            Value::String("synthetic-fixture/integration/integration-index.json".to_string());
+        let validation_index = fixture.validation_packet.join(PACKET_INDEX);
+        for (key, path) in [
+            ("preflight", fixture.preflight.as_path()),
+            ("resolution_manifest", fixture.resolution.as_path()),
+            ("validation_packet", validation_index.as_path()),
+            ("integration_packet", fixture.integration_index.as_path()),
+        ] {
+            report["locators"][key]["sha256"] =
+                Value::String(digest_file(path, "replay fixture locator")?);
+        }
+        if mode == "constructor_dry_run" {
+            report["locators"]["qualification_receipt"]["sha256"] = Value::String(digest_file(
+                &fixture.qualification,
+                "replay qualification locator",
+            )?);
+        }
+        report["controller_packets"] = serde_json::json!({
+            "trusted_builder": {
+                "path": "evidence/trusted-builder",
+                "available": true,
+                "status": "built",
+                "schema": "ripr.source_promotion_trusted_builder.v1",
+            },
+            "resolved_tree_admission": {
+                "path": "evidence/resolved-tree-admission",
+                "available": true,
+                "status": "admitted",
+                "schema": "ripr.source_promotion_resolved_tree_admission.v1",
+            },
+            "exact_join_construction": {
+                "path": null,
+                "available": false,
+                "status": "not_run",
+                "schema": null,
+            },
+        });
+        let admission_receipt = read_json(
+            &fixture
+                .admission_packet
+                .join("resolved-tree-admission.json"),
+            "replay admission receipt",
+        )?;
+        report["attempts"] = normalized_attempts(&Some(admission_receipt), &None, false);
+        let request = requested_identity_for_report(&report)?;
+        let request_bytes = serde_json::to_vec_pretty(&request)
+            .map_err(|error| format!("failed to serialize replay requested identity: {error}"))?;
+        fs::write(&request_path, &request_bytes)
+            .map_err(|error| format!("failed to write replay requested identity: {error}"))?;
+        report["requested_identity_sha256"] = Value::String(digest_bytes(&request_bytes));
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        let integration_root = fixture
+            .integration_index
+            .parent()
+            .ok_or_else(|| "replay integration index has no parent".to_string())?
+            .to_path_buf();
+        let mut closure = vec![
+            ClosureSource {
+                source: request_path,
+                destination: PathBuf::from("requested-identity.json"),
+            },
+            ClosureSource {
+                source: fixture.builder_packet,
+                destination: PathBuf::from("trusted-builder"),
+            },
+            ClosureSource {
+                source: fixture.admission_packet,
+                destination: PathBuf::from("resolved-tree-admission"),
+            },
+            ClosureSource {
+                source: fixture.preflight,
+                destination: PathBuf::from("locators/preflight/input"),
+            },
+            ClosureSource {
+                source: fixture.resolution,
+                destination: PathBuf::from("locators/resolution_manifest/input"),
+            },
+            ClosureSource {
+                source: fixture.validation_packet,
+                destination: PathBuf::from("locators/validation_packet"),
+            },
+            ClosureSource {
+                source: integration_root,
+                destination: PathBuf::from("locators/integration_packet"),
+            },
+        ];
+        if mode == "constructor_dry_run" {
+            closure.push(ClosureSource {
+                source: fixture.qualification,
+                destination: PathBuf::from("locators/qualification_receipt/input"),
+            });
+        }
+        let packet = root.join("packet");
+        write_packet(&packet, &report, &closure, &[])?;
         Ok((root, packet))
     }
 
@@ -2644,6 +3361,8 @@ mod tests {
         commit_tree: u64,
     ) -> Result<Value, String> {
         let synthetic = profile != "live";
+        let construction_attempts_unknown =
+            mode == "constructor_dry_run" && status == "rejected" && profile != "j5_negative";
         let locator = |label: &str, path: &str, sha256: String| {
             if synthetic {
                 serde_json::json!({
@@ -2692,6 +3411,7 @@ mod tests {
             "fixture_identity": "a".repeat(64),
             "controller_repository": "synthetic-fixture/fixture-repository",
             "workflow_identity_sha256": null,
+            "requested_identity_sha256": "9".repeat(64),
             "source_repository": SOURCE_REPOSITORY,
             "source_parent_sha": "a".repeat(40),
             "workflow_source_sha": "a".repeat(40),
@@ -2721,10 +3441,10 @@ mod tests {
                 "constructor_refs_unchanged": commit_tree == 1,
                 "constructor_object_unreferenced": commit_tree == 1,
                 "constructor_final_identity_reread_passed": commit_tree == 1,
-                "constructor_commit_tree_attempts": commit_tree,
-                "local_ref_attempts": 0,
-                "remote_push_attempts": 0,
-                "merge_command_attempts": 0,
+                "constructor_commit_tree_attempts": if construction_attempts_unknown { Value::Null } else { Value::from(commit_tree) },
+                "local_ref_attempts": if construction_attempts_unknown { Value::Null } else { Value::from(0) },
+                "remote_push_attempts": if construction_attempts_unknown { Value::Null } else { Value::from(0) },
+                "merge_command_attempts": if construction_attempts_unknown { Value::Null } else { Value::from(0) },
                 "release_or_publication_attempts": 0,
                 "release_or_publication_command_reachable": false,
                 "release_or_publication_proof": "closed workflow harness dispatch contains no publication subcommand",
@@ -2732,5 +3452,102 @@ mod tests {
         });
         report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
         Ok(report)
+    }
+
+    fn requested_identity_for_report(report: &Value) -> Result<Value, String> {
+        let synthetic = required_json_string(report, "execution_profile")? != "live";
+        let locators = report
+            .get("locators")
+            .ok_or_else(|| "test report is missing locators".to_string())?;
+        let requested_locator = |key: &str| -> Result<String, String> {
+            if synthetic {
+                Ok(String::new())
+            } else {
+                Ok(json_string(&locators[key], "locator")
+                    .unwrap_or_default()
+                    .to_string())
+            }
+        };
+        Ok(serde_json::json!({
+            "schema": REQUEST_SCHEMA,
+            "source_repository": required_json_string(report, "source_repository")?,
+            "source_parent_sha": required_json_string(report, "source_parent_sha")?,
+            "workflow_source_sha": required_json_string(report, "workflow_source_sha")?,
+            "trusted_checker_identity": required_json_string(report, "trusted_checker_identity")?,
+            "swarm_repository": required_json_string(report, "swarm_repository")?,
+            "protected_w7_ref": required_json_string(report, "protected_w7_ref")?,
+            "w7_peeled_sha": required_json_string(report, "w7_peeled_sha")?,
+            "reviewed_tree_sha": required_json_string(report, "reviewed_tree_sha")?,
+            "reviewed_tree_carrier_sha": required_json_string(report, "reviewed_tree_carrier_sha")?,
+            "preflight_locator": requested_locator("preflight")?,
+            "resolution_manifest_locator": requested_locator("resolution_manifest")?,
+            "validation_packet_locator": requested_locator("validation_packet")?,
+            "integration_packet_locator": requested_locator("integration_packet")?,
+            "qualification_receipt_locator": requested_locator("qualification_receipt")?,
+            "receipt_schema": required_json_string(report, "receipt_schema")?,
+            "operation_mode": required_json_string(report, "operation_mode")?,
+            "execution_profile": required_json_string(report, "execution_profile")?,
+        }))
+    }
+
+    fn rewrite_test_packet_reports_and_index(root: &Path, report: &Value) -> Result<(), String> {
+        let json = serde_json::to_string_pretty(report)
+            .map_err(|error| format!("failed to serialize mutated test report: {error}"))?;
+        fs::write(root.join(REPORT_JSON), format!("{json}\n"))
+            .map_err(|error| format!("failed to write mutated test report: {error}"))?;
+        fs::write(root.join(REPORT_MD), render_markdown(report)?)
+            .map_err(|error| format!("failed to write mutated test markdown: {error}"))?;
+        let files = collect_packet_files(root)?;
+        let index = serde_json::json!({
+            "schema": PACKET_SCHEMA,
+            "status": json_string(report, "status"),
+            "complete": true,
+            "files": files,
+        });
+        let index = serde_json::to_string_pretty(&index)
+            .map_err(|error| format!("failed to serialize mutated packet index: {error}"))?;
+        fs::write(root.join(PACKET_INDEX), format!("{index}\n"))
+            .map_err(|error| format!("failed to write mutated packet index: {error}"))
+    }
+
+    fn write_pretty_json(path: &Path, value: &Value, label: &str) -> Result<(), String> {
+        let json = serde_json::to_string_pretty(value)
+            .map_err(|error| format!("failed to serialize {label}: {error}"))?;
+        fs::write(path, format!("{json}\n"))
+            .map_err(|error| format!("failed to write {label}: {error}"))
+    }
+
+    fn reindex_control_packet(root: &Path) -> Result<String, String> {
+        let index_path = root.join(PACKET_INDEX);
+        let mut index = read_json(&index_path, "test controller packet index")?;
+        let entries = index
+            .get_mut("files")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "test controller packet index is missing files".to_string())?;
+        for entry in entries {
+            let path = required_json_string(entry, "path")?.to_string();
+            let bytes = fs::read(root.join(&path))
+                .map_err(|error| format!("failed to read rebound controller member: {error}"))?;
+            entry["bytes"] = Value::from(bytes.len() as u64);
+            entry["sha256"] = Value::String(digest_bytes(&bytes));
+        }
+        write_pretty_json(&index_path, &index, "rebound controller packet index")?;
+        digest_file(&index_path, "rebound controller packet index")
+    }
+
+    fn reindex_workflow_packet(root: &Path) -> Result<(), String> {
+        let report = read_json(&root.join(REPORT_JSON), "rebound workflow report")?;
+        let files = collect_packet_files(root)?;
+        let index = serde_json::json!({
+            "schema": PACKET_SCHEMA,
+            "status": json_string(&report, "status"),
+            "complete": true,
+            "files": files,
+        });
+        write_pretty_json(
+            &root.join(PACKET_INDEX),
+            &index,
+            "rebound workflow packet index",
+        )
     }
 }
