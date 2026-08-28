@@ -1,0 +1,103 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/assertion_shaped_oracle_cfg_test/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:60918865b3eaea95a5233a98e14a10fe209fa661945ad5a52fe4c80a3c3b16d7","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:98a298f5",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:98a298f5",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/assertion_shaped_oracle_cfg_test/input/src/lib.rs",
+        "line": 12,
+        "expression": "normalized.len() > path.len()"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach assert_normalized_paths_have_no_separators: normalized_paths_have_native_separators"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: !normalized.contains('//')"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach assert_normalized_paths_have_no_separators: normalized_paths_have_native_separators", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: !normalized.contains('//')", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches returned value: !normalized.contains('//') (line 15)", "related test src/lib.rs:23 normalized_paths_have_native_separators uses unknown unknown oracle: assert_normalized_paths_have_no_separators(&[\"a//b\", \"c/d\"]);", "observed function argument value paths = \"a//b\" at line 24", "observed function argument value paths = \"c/d\" at line 24", "missing discriminator normalized.len() == path.len(): No related test call uses normalized.len() equal to path.len(); observed normalized.len() values: unknown"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"!normalized.contains('//')","line":15}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed behavior appears to influence returned value: !normalized.contains('//')", "Related tests appear to reach assert_normalized_paths_have_no_separators: normalized_paths_have_native_separators", "Related tests contain input values, but the equality-boundary discriminator is missing", "owner_shape: assertion_shaped (its body is dominated by assert*/expect calls and nothing outside tests calls it)"],
+      "missing": ["Missing discriminator value: normalized.len() == path.len()", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "24": "assert_normalized_paths_have_no_separators(&[\"a//b\", \"c/d\"]);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 24,
+            "value": "paths = \"a//b\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 24,
+            "value": "paths = \"c/d\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "normalized.len() == path.len()",
+            "reason": "No related test call uses normalized.len() equal to path.len(); observed normalized.len() values: unknown",
+            "flow_sink": {"kind":"return_value","text":"!normalized.contains('//')","line":15}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 24,
+          "value": "paths = \"a//b\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 24,
+          "value": "paths = \"c/d\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "normalized.len() == path.len()",
+          "reason": "No related test call uses normalized.len() equal to path.len(); observed normalized.len() values: unknown",
+          "flow_sink": {"kind":"return_value","text":"!normalized.contains('//')","line":15}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "normalized_paths_have_native_separators",
+          "file": "src/lib.rs",
+          "line": 23,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": "assert_normalized_paths_have_no_separators(&[\"a//b\", \"c/d\"]);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "The changed owner is an assertion helper (its body is dominated by assert*/expect calls and nothing outside tests calls it), so exact-equality advice for code under test may not apply — boolean invariants have no exact equality. Tighten the loosest assertion in this helper: a sharper predicate, an exact expected value where one exists, or a case the current assertions would not flag.",
+      "suggested_next_action": "The changed owner is an assertion helper (its body is dominated by assert*/expect calls and nothing outside tests calls it), so exact-equality advice for code under test may not apply — boolean invariants have no exact equality. Tighten the loosest assertion in this helper: a sharper predicate, an exact expected value where one exists, or a case the current assertions would not flag.",
+      "language": "rust"
+    }
+  ]
+}

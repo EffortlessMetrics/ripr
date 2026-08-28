@@ -49,6 +49,35 @@ proposal/spec/ADR/campaign/active goal/support tier/policy/evidence/closeout
 -> linked and checked PR by PR
 ```
 
+The CLI discoverability slice for that target is now closed: the default human
+`check` output routes findings to executable `explain` and `context` commands
+while preserving the analyzed scope. See the
+[CLI finding navigation closeout](handoffs/2026-07-28-cli-finding-navigation-discoverability-closeout.md).
+
+The next analyzer-honesty slice is also closed: policy scans include the
+editor's actual source languages, and repo/seam analysis discloses parser
+fallback through warm caches. See the [analyzer honesty and policy visibility
+closeout](handoffs/2026-07-29-analyzer-honesty-and-policy-visibility-closeout.md).
+
+The operator-signal slice is now closed: submodule changes, gate reasons, and
+GitHub annotation levels have explicit integrity proof, including the
+source-of-truth all-warning repair. See the [Campaign 35 closeout](handoffs/2026-07-29-operator-signal-integrity-closeout.md).
+
+Preview Projection Honesty is now closed: #2743 documents JSON ordering, and
+#2753 carries every configured TypeScript/Bun bridge profile through human,
+JSON, SARIF, and GitHub projections while preserving the documented
+first-profile compatibility alias without turning preview evidence into
+runtime or repair-packet authority. Follow-up #2764 records the remaining
+producer-through-renderer placement regression. See the [Campaign 36 closeout](handoffs/2026-07-29-preview-projection-honesty-closeout.md).
+
+The historical release-control campaign is tracked by #2766 and its
+dependent #2767/#2768/#2769 slices. Those slices are historical audit evidence;
+the active 0.11.0 authority now selects the exact live swarm head at the
+transaction boundary, with captured-input
+reports that fail closed on stale authority. It does not restore singleton
+active-goal authority or perform candidate qualification or publication. See
+the [Campaign 37 plan](../plans/release-control-0-11/implementation-plan.md).
+
 A PR is aligned when it moves one bounded capability, proves the movement,
 states the claim boundary, and leaves the next slice discoverable from the
 repo. The near-term product target is that a Rust PR author can use RIPR from
@@ -481,12 +510,34 @@ editor changes, no generated tests, no mutation execution, no default CI
 blocking, no automatic config or baseline mutation, and no preview evidence
 promotion.
 
-## Current Operating Sequence: 0.9.0 Release and Evidence-To-Repair Routing
+## Release Position
 
-This section is the bridge between the closed campaign history above and the
-next product era. It records where the repo is, the end state the next era
-targets, and the only sanctioned path between them, so a maintainer or agent
-can resume this work from repository artifacts instead of chat history.
+The current source package is `ripr` 0.10.0 (`crates/ripr/Cargo.toml`). Its
+release notes are staged as unreleased in [CHANGELOG.md](../CHANGELOG.md); the
+swarm repository therefore uses 0.10.0 as the current release frame without
+claiming a published crates.io release. The 0.9.0 language-adapter frame below
+is historical, and the 0.11.0 replacement freeze is a staged next-release
+candidate, not current release authority. The active 0.11.0 selection rule is
+the exact transaction-boundary live swarm head in
+`release-candidates/0.11.0-live-head-selection.json`.
+
+### `0.11.0` - Replacement freeze (historical, superseded)
+
+The [historical 0.11.0 replacement freeze](release-candidates/0.11.0-replacement-freeze.json)
+and its [handoff](handoffs/2026-07-23-0.11.0-replacement-freeze.md) are the
+next-release planning frame. They preserve the separation between static
+movement and externally run verification, and explicitly defer convenience,
+observability, historical-document, and optional-presentation changes. Do not
+read this candidate as a publication or as permission to bypass current source
+or release metadata.
+
+## Historical Operating Sequence: 0.9.0 Release and Evidence-To-Repair Routing
+
+This section records the release-era bridge that preceded the current product
+campaign. Rust 0.10.0 is now current, so its post-0.9.0 activation condition is
+historical rather than execution authority. Current Rust work is selected by
+`.ripr/goals/active.toml` and
+[RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md).
 
 ### Where the repo is
 
@@ -496,9 +547,10 @@ can resume this work from repository artifacts instead of chat history.
   RIPR-SPEC-0073 pin repo badge, PR gate, PR review cards, LSP/agent
   feedback, downstream review consumers, TypeScript/Bun evidence, large-repo
   diff-first operation, and receipts/outcomes/route quality.
-- [RIPR-PLAN-0061](../plans/use-case-specs/implementation-plan.md) sequences
-  the implementation work items for that spine. Active goals route through
-  that plan; this roadmap section does not create ready work items.
+- [RIPR-PLAN-0061](../plans/use-case-specs/implementation-plan.md) was the
+  release-era implementation sequence for that spine. It is historical;
+  [RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md) and the active
+  goal select current Rust work.
 - The post-freeze merge wave has been drained: the valid PRs deferred at
   freeze time were merged or closed with exact supersession citations.
 - The [0.9.0 swarm freeze note](handoffs/2026-06-05-0.9.0-swarm-freeze.md)
@@ -559,10 +611,10 @@ not fail.
 | R4 | Back-sync source `main` into swarm `main` with a merge commit. | Version and changelog parity restored (swarm `crates/ripr/Cargo.toml` still carries `0.7.0`; the `0.8.0` bump was source-side only); ahead/behind accounting works for future releases. This step is mandatory, not optional cleanup. |
 | R5 | Post-release cleanup sweep. | Stale worktrees, branches, stashes, `target/ripr` cache growth, generated reports, temp files, orphaned local processes, and rescue leftovers are removed; trunk is ready for implementation work. |
 
-### Phase I: implement from RIPR-PLAN-0061
+### Historical Phase I: implement from RIPR-PLAN-0061
 
-After R5, implementation resumes only through the active goal manifest
-routed at [RIPR-PLAN-0061](../plans/use-case-specs/implementation-plan.md),
+At release-planning time, implementation was to resume only through the active
+goal manifest routed at [RIPR-PLAN-0061](../plans/use-case-specs/implementation-plan.md),
 in the plan's own sequence: review file-and-line navigation, badge
 projection of canonical actionability and runtime status, advisory PR gate
 evidence delta, the first useful LSP action, downstream consumer export,
@@ -876,7 +928,16 @@ Success condition:
 ripr can compare static exposure classes with real mutation results when explicit mutation data is present.
 ```
 
-### `0.9.0` - Language Adapter Preview
+### `0.10.0` - Honest-by-construction evidence and downstream gate adoption
+
+The current 0.10.0 frame is staged and unreleased. It hardens seam identity
+and sink-observation honesty across Rust, TypeScript, and Python, adds the
+consumer-verifiable `new_unsuppressed` gate receipt, cross-checks receipt
+ledger identity, and carries the evidence-promotion meta-gate. See the
+[0.10.0 changelog entry](../CHANGELOG.md#0100---honest-by-construction-evidence-and-downstream-gate-adoption)
+for the complete change and non-claim boundary.
+
+### `0.9.0` - Language Adapter Preview (released 2026-06-10)
 
 The shipped 0.9.0 content is recorded in the
 [0.9.0 swarm freeze note](handoffs/2026-06-05-0.9.0-swarm-freeze.md); the

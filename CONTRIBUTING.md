@@ -4,6 +4,45 @@
 complete evidence package, so reviewers can evaluate behavior, risk, and
 traceability without reconstructing intent from chat history.
 
+## Local Setup
+
+1. Install [`rustup`](https://rustup.rs/) if you don't already have it.
+   `rust-toolchain.toml` pins the exact toolchain version and its
+   `rustfmt` and `clippy` components; `rustup` picks it up automatically
+   the first time you run a `cargo` command in this repo.
+2. Clone the repo and build the workspace:
+
+   ```bash
+   git clone <repo-url>
+   cd ripr-swarm
+   cargo build --workspace
+   ```
+
+3. Run a cheap sanity check before paying for the full test suite:
+
+   ```bash
+   cargo check --workspace --all-targets
+   ```
+
+   Once that passes, run the full test suite — it is slower and compiles
+   more of the workspace, including test-only code:
+
+   ```bash
+   cargo test --workspace
+   ```
+
+4. Try the binary against the in-repo sample:
+
+   ```bash
+   cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff
+   ```
+
+The first `cargo xtask ...` invocation compiles the `xtask` crate itself, so
+it is slower than later runs. Once the workspace builds, `cargo xtask
+worktree doctor` checks your working tree for common local hygiene issues
+(dirty `main`, stale branches, generated-artifact residue) before you start
+shaping a PR.
+
 ## Product Contract
 
 Before changing code, check the product question:
@@ -151,6 +190,16 @@ and the [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md).
 
 ## Required Rust Gates
 
+For one complete local review and package pass, run `cargo xtask ci-full`. It
+runs the review-ready `check-pr` lane, the evidence gates (`fixtures`,
+`goldens check`, `test-oracle-report`, `dogfood`, and `metrics`), then the
+package listing and publish dry-run. The explicit commands below remain the
+inventory for targeted reruns.
+
+The following report commands are advisory and do not independently block a
+merge: `cargo xtask pr-triage-report`, `cargo xtask metrics`,
+`cargo xtask check-pr-shape`, and `cargo xtask module-health`.
+
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
@@ -161,7 +210,7 @@ cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask dogfood
-cargo xtask metrics
+cargo xtask metrics # advisory
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace
@@ -183,7 +232,7 @@ cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
 cargo xtask check-doc-index
-cargo xtask check-pr-shape
+cargo xtask check-pr-shape # advisory
 cargo xtask check-generated
 cargo xtask check-dependencies
 cargo xtask check-process-policy
@@ -219,3 +268,8 @@ For behavior changes, update:
 For decisions, add or update an ADR.
 
 For repo knowledge, update [Learnings](docs/LEARNINGS.md).
+## Optional Linux LLD builds
+
+The normal workspace build uses the platform default linker and does not
+require LLVM. In a controlled Linux environment with `clang` and `ld.lld`
+installed, use `cargo build-lld --release` to opt into the faster linker path.

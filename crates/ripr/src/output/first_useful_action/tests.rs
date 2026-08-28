@@ -644,8 +644,9 @@ fn suppressed_guidance_routes_suppressed() -> Result<(), String> {
 #[test]
 fn suppressed_guidance_via_warning_text() -> Result<(), String> {
     // has_suppressed_guidance also checks warnings array containing "configured off"
+    // (warnings are schema objects { kind, message }).
     let pr_guidance_json = r#"{
-            "warnings": ["seam configured off by policy"]
+            "warnings": [{"kind": "other", "message": "seam configured off by policy"}]
         }"#;
     let mut input = bare_input();
     input.pr_guidance_path = Some("guidance.json".to_string());
@@ -662,7 +663,7 @@ fn suppressed_guidance_via_warning_text() -> Result<(), String> {
 #[test]
 fn suppressed_guidance_via_warning_text_suppressed_keyword() -> Result<(), String> {
     let pr_guidance_json = r#"{
-            "warnings": ["seam is suppressed by ripr policy"]
+            "warnings": [{"kind": "other", "message": "seam is suppressed by ripr policy"}]
         }"#;
     let mut input = bare_input();
     input.pr_guidance_path = Some("guidance.json".to_string());
@@ -1917,7 +1918,7 @@ fn selected_from_guidance_uses_summary_only_item() -> Result<(), String> {
     // forces suppressed route → guidance selected from summary_only fallback
     let pr_guidance_json = r#"{
             "summary_only": [{"seam_id": "so-seam", "kind": "predicate_boundary"}],
-            "warnings": ["seam configured off by policy"]
+            "warnings": [{"kind": "other", "message": "seam configured off by policy"}]
         }"#;
     let mut input = bare_input();
     input.pr_guidance_path = Some("g.json".to_string());

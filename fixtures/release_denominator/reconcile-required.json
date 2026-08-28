@@ -1,0 +1,46 @@
+{
+  "schema_version": "0.1",
+  "kind": "release_denominator_snapshot",
+  "captured_at": "2026-07-30T12:00:00Z",
+  "source": {
+    "mode": "captured",
+    "stage": "final",
+    "freshness": "stale",
+    "historical_base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "candidate_ref": "candidate-fixture",
+    "candidate_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "range_commits": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "cccccccccccccccccccccccccccccccccccccccc", "dddddddddddddddddddddddddddddddddddddddd", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"],
+    "candidate_tree_commits": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "cccccccccccccccccccccccccccccccccccccccc", "dddddddddddddddddddddddddddddddddddddddd", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"]
+  },
+  "records": [
+    {
+      "commit_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "first_parent_position": 1,
+      "subject": "release: unresolved final decision", "pr_refs": [], "issue_refs": [2768],
+      "theme_or_surface": "operator_decision", "release_disposition": "operator_decision_required",
+      "acceptance_owner": "release maintainer", "candidate_tree_state": "present_in_candidate",
+      "review_refs": [], "proof_refs": [], "source_survivor_or_swarm_exclusion_effect": "requires explicit disposition",
+      "limitation_or_operator_decision": "operator decision remains open"
+    },
+    {
+      "commit_sha": "cccccccccccccccccccccccccccccccccccccccc", "first_parent_position": 2,
+      "subject": "release: duplicate observation", "pr_refs": [], "issue_refs": [],
+      "theme_or_surface": "duplicate", "release_disposition": "include_product", "acceptance_owner": "release maintainer",
+      "candidate_tree_state": "present_in_candidate", "review_refs": [], "proof_refs": [],
+      "source_survivor_or_swarm_exclusion_effect": "duplicate record", "limitation_or_operator_decision": "reconciliation required"
+    },
+    {
+      "commit_sha": "cccccccccccccccccccccccccccccccccccccccc", "first_parent_position": 3,
+      "subject": "release: duplicate observation", "pr_refs": [], "issue_refs": [],
+      "theme_or_surface": "duplicate", "release_disposition": "include_product", "acceptance_owner": "release maintainer",
+      "candidate_tree_state": "present_in_candidate", "review_refs": [], "proof_refs": [],
+      "source_survivor_or_swarm_exclusion_effect": "duplicate record", "limitation_or_operator_decision": "reconciliation required"
+    },
+    {
+      "commit_sha": "dddddddddddddddddddddddddddddddddddddddd", "first_parent_position": 4,
+      "subject": "release: missing candidate commit", "pr_refs": [], "issue_refs": [],
+      "theme_or_surface": "candidate_tree_mismatch", "release_disposition": "source_only_followup",
+      "acceptance_owner": "release maintainer", "candidate_tree_state": "source_only_not_in_swarm_candidate", "review_refs": [], "proof_refs": [],
+      "source_survivor_or_swarm_exclusion_effect": "candidate tree mismatch", "limitation_or_operator_decision": "reconciliation required"
+    }
+  ]
+}

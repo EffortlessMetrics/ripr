@@ -1,0 +1,65 @@
+schema_version = "2.0"
+id = "ripr.slice.code-action-context-only.v1"
+generation = 1
+
+source_issue = "issue:1750"
+design_reference = "RIPR-SPEC-0129"
+change_class = "behavior_change"
+
+claim_boundary = """
+Honors CodeActionContext.only in the LSP code-action path with LSP 3.17
+hierarchical kind semantics (a requested kind keeps an action when it equals
+or dot-segment-prefixes the action's kind; absent only leaves the response
+unfiltered; a kind-less action fails closed), reclassifies the Refresh
+Analysis action from the bare "source" kind to the advertised
+"source.ripr.refresh" kind so emitted kinds stay within the advertised set,
+and pins the emitted-subset-of-advertised parity invariant against a shared
+ADVERTISED_CODE_ACTION_KINDS constant. It does not change the advertised
+kind set, the command-negotiation filter (#1776), diagnostics, hover,
+codeLens, or the riprAgent protocol. The refresh-kind reclassification is
+the one client-visible contract delta; it restores emitted ⊆ advertised.
+"""
+
+non_goals = [
+  "advertised code_action_kinds set changes (source.ripr.verify stays advertised-but-unemitted)",
+  "client-command negotiation filter changes (#1776)",
+  "quickfix repair actions (quickfix.ripr stays advertised-but-unemitted)",
+  "diagnostic, hover, or codeLens surface changes",
+  "riprAgent protocol handling",
+]
+
+return_conditions = [
+  "Return to root if an absent only filter changes the unfiltered response.",
+  "Return to root if the kind filter does not compound with the client-command filter.",
+  "Return to root if any emitted kind falls outside ADVERTISED_CODE_ACTION_KINDS.",
+  "Return to root if `check --json` or LSP goldens drift.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:code-action-context-only-filter",
+  "seam:ripr:lsp:code-action-kind-parity",
+]
+
+shared_seams = [
+  "seam:ripr:contract:editor-integration-contract-v1",
+  "seam:ripr:lsp:code-action-client-command-filter",
+]
+
+forbidden_seams = [
+  "seam:ripr:lsp:ripr-agent-protocol",
+  "seam:ripr:lsp:diagnostic-pipeline",
+  "seam:ripr:fixtures:goldens",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0129"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

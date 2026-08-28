@@ -691,6 +691,9 @@ fn find_guidance_item<'a>(
 }
 
 fn warning_matches(value: &Value, case: &ExpectedCase) -> bool {
+    // review-comments warnings are objects `{ kind, message }` (schema-conformant),
+    // so match against the `message` field rather than treating the entry as a
+    // bare string.
     value
         .get("warnings")
         .and_then(Value::as_array)
@@ -1324,6 +1327,7 @@ mod tests {
 
     #[test]
     fn recommendation_calibration_report_counts_fixture_expectations() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_write_guard();
         let args = RecommendationCalibrationArgs {
             root: PathBuf::from("."),
             pr_guidance: Vec::new(),
@@ -1421,6 +1425,7 @@ mod tests {
 
     #[test]
     fn recommendation_calibration_json_and_markdown_are_structured() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_write_guard();
         let args = RecommendationCalibrationArgs {
             root: PathBuf::from("."),
             pr_guidance: vec![PathBuf::from(
@@ -1484,6 +1489,7 @@ mod tests {
 
     #[test]
     fn recommendation_calibration_fixture_matches_checked_reports() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_write_guard();
         let args = RecommendationCalibrationArgs {
             root: PathBuf::from("."),
             pr_guidance: Vec::new(),

@@ -1,0 +1,9 @@
+{
+  "protocol_version": "0.1",
+  "schema_version": "0.1",
+  "request": "ripr/refreshAnalysis",
+  "status": "error",
+  "error": { "kind": "superseded", "retryable": false, "recovery_route": "discard_stale_request", "snapshot_id": null },
+  "allowed_edit_surface": "read_only",
+  "must_not_change": ["source_edits", "workspace_edit", "autonomous_repair"]
+}

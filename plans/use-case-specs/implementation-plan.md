@@ -1,7 +1,9 @@
 # Use-Case Spec Layer Implementation Plan
 
-Status: proposed; implementation starts only after the spec set (RIPR-SPEC-0065
-through RIPR-SPEC-0073) lands and is registered
+Status: superseded for active execution on 2026-07-09 by
+[`RIPR-PLAN-0062`](../rust-one-shot-evidence-to-repair.md). This remains the
+historical implementation mapping for RIPR-SPEC-0065 through RIPR-SPEC-0073;
+its pending statuses and maintainer-fixed sequence are not the current queue.
 Owner: product-swarm
 Plan artifact: RIPR-PLAN-0061
 Linked proposal: n/a
@@ -10,8 +12,8 @@ RIPR-SPEC-0069, RIPR-SPEC-0070, RIPR-SPEC-0071, RIPR-SPEC-0072, RIPR-SPEC-0073
 Linked ADRs: n/a
 Linked issues: #1031 (large-repo diff-first), #1040 (spec lifecycle dashboard),
 #1041 (unsafe-review contract alignment)
-Active goal: none yet; `.ripr/goals/active.toml` routes through this plan in a
-separate PR after the plan lands (per RIPR-SPEC-0065 Implementation Mapping)
+Historical active goal: `use-case-spec-spine`. The active manifest now routes
+through `.ripr/goals/active.toml` and RIPR-PLAN-0062.
 
 ## Current State
 
@@ -119,14 +121,15 @@ Close the working-set selection/suppression vocabulary by replacing today's
 free-text `summary_reason` strings with the six RIPR-SPEC-0068 machine
 tokens, delivering the planned tokens string-for-string:
 
-- `inline_comment_cap_reached` (planned — tokenizes the free-text "inline
-  comment cap reached"; the publish-plan skip reason `cap_reached` in
-  `pr_inline_comment_publish_plan.rs` and the RIPR-SPEC-0025 metric name
-  `pr_inline_comment_cap_reached` name the same condition, and this slice
-  collapses all three names into this one token);
-- `no_safe_changed_line_placement` (planned — tokenizes today's free text);
-- `navigation_only_cross_language_target` (planned — tokenizes today's free
-  text);
+- `inline_comment_cap_reached` (implemented for review guidance and the
+  publish-plan cap skip path; tokenizes the former free-text "inline comment
+  cap reached" and replaces the historical publish-plan skip reason
+  `cap_reached`; the RIPR-SPEC-0025 metric name
+  `pr_inline_comment_cap_reached` names the same condition);
+- `no_safe_changed_line_placement` (implemented for review guidance; tokenizes
+  the former free text);
+- `navigation_only_cross_language_target` (implemented for review guidance;
+  tokenizes the former free text);
 - `nearby_test_changed` (existing);
 - `summary_cap` (existing);
 - `missing_verification_command` (existing on the gap-ledger path; the
@@ -144,9 +147,10 @@ on every card (today only gap-ledger and cross-language limitation cards
 carry it; working-set actionable cards carry `grip_class` only), the
 structured related-test object `{name, file, line}` (today
 `GapRepairRoute.related_test` is a single string), card-level `oracle_kind` /
-`oracle_strength` (today carried by agent briefs and seam packets), and an
-`analysis_scope` on the gap-ledger guidance artifact
-(`render_gap_record_review_comments_json` carries none today). Add the
+`oracle_strength` (today carried by agent briefs and seam packets). Gap-ledger
+review guidance now carries `analysis_scope.run_status = "artifact_scope"` and
+`basis = "supplied_gap_decision_ledger"` from
+`render_gap_record_review_comments_json`. Add the
 RIPR-SPEC-0068 reject-list checks to output-contract tests.
 
 ### Evidence Package

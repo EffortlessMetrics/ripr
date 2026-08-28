@@ -7,6 +7,12 @@ trusted same-repo `ripr` pull requests. The release-facing repository remains
 Use this repository to prove routed CI and high-throughput agent development
 before promoting batches back to the source repository.
 
+For the complete release-boundary lifecycle, use the [live-history release
+transaction runbook](RELEASE_TRANSACTION.md). This page retains the swarm
+operator loop and repository-side promotion/back-sync details; the runbook is
+the canonical place for transaction pins, receipts, expected-head guards, and
+publication boundaries.
+
 ## Boundaries
 
 - New ordinary development PRs target `ripr-swarm`.
@@ -24,27 +30,30 @@ before promoting batches back to the source repository.
 Use current repo state as the source of truth before starting or reviewing work:
 
 ```bash
-rtk git fetch origin --prune
-rtk git status --short --branch
-rtk gh pr list --repo EffortlessMetrics/ripr-swarm --state open
-rtk gh pr list --repo EffortlessMetrics/ripr --state open
-rtk cargo xtask goals next
+git fetch origin --prune
+git status --short --branch
+gh pr list --repo EffortlessMetrics/ripr-swarm --state open
+gh pr list --repo EffortlessMetrics/ripr --state open
+gh issue list --repo EffortlessMetrics/ripr-swarm --state open --limit 100
 ```
 
 Treat ordinary development PRs in `EffortlessMetrics/ripr` as source/swarm
 drift. Port, redirect, or close them unless they are release, security, or
 explicit promotion work.
 
-When `cargo xtask goals next` reports `no_current_goal = true`, do not continue
-the closed campaign and do not infer a successor from chat history. Select work
-from repo-owned state in this order:
+The retired `.ripr/goals` scheduler is not live execution authority. Do not
+continue a closed campaign or infer a successor from chat history. Select work from
+repo-owned evidence in this order:
 
-1. open `ripr-swarm` PRs and required checks;
+1. open `ripr-swarm` PRs, reviews, and required checks;
 2. ordinary source-repo PRs that should be ported or redirected;
-3. `docs/IMPLEMENTATION_CAMPAIGNS.md`;
-4. `docs/IMPLEMENTATION_PLAN.md`;
-5. accepted proposals, specs, ADRs, and campaign plans;
-6. open issues that cite those repo artifacts.
+3. open issues with explicit ownership and current acceptance criteria;
+4. accepted RIPR-SPEC requirements and linked proposals, ADRs, or plans;
+5. historical campaign documents only as context, never as current authorization.
+
+After a PR has been selected, consult its PR-local `ImplementationSliceV1`
+under `.allow/spec-system/slices/` to bound that PR's change. Slices are scope
+evidence, not a task database or live work pointer.
 
 If no aligned work is available, leave the trunk clean. Record new routed-runner
 proof on #24 or #34 only when there is fresh evidence; otherwise do not create a
@@ -64,7 +73,7 @@ The first routed lane should be Rust-only:
 
 ```text
 Ripr Rust Small Result:
-  CX53 -> CX43 -> GitHub-hosted
+  CX43 -> CPX42 -> CX53 -> GitHub-hosted
 ```
 
 Self-hosted jobs are only for trusted same-repo PRs and pushes. Fork or
@@ -82,8 +91,9 @@ Implementation jobs are conditional:
 
 ```text
 Route Ripr Rust Small
-Ripr Rust Small on CX53
 Ripr Rust Small on CX43
+Ripr Rust Small on CPX42
+Ripr Rust Small on CX53
 Ripr Rust Small on GitHub Hosted
 ```
 
@@ -124,38 +134,41 @@ Before running proof:
 - confirm `ripr-swarm` has access to runner group `em-ci-small`;
 - confirm `EM_RUNNER_READ_TOKEN` is available to this repository or the
   workflow can otherwise read org runner state;
-- confirm one idle, online runner has labels `CX53` and `em-ci-rust-1.95`;
 - confirm one idle, online runner has labels `CX43` and `em-ci-rust-1.95`;
+- confirm one idle, online runner has labels `CPX42` and `em-ci-rust-1.95`;
+- confirm one idle, online runner has labels `CX53` and `em-ci-rust-1.95`;
 - keep source/release/publish/signing secrets out of `ripr-swarm`.
 
-Prove CX53 primary:
+Prove CX43 primary:
 
 ```bash
-rtk gh workflow run routed-rust.yml --repo EffortlessMetrics/ripr-swarm --ref main
-rtk gh run list --repo EffortlessMetrics/ripr-swarm --workflow routed-rust.yml --limit 1
+gh workflow run routed-rust.yml --repo EffortlessMetrics/ripr-swarm --ref main
+gh run list --repo EffortlessMetrics/ripr-swarm --workflow routed-rust.yml --limit 1
 ```
 
 The run must finish with:
 
 ```text
 Ripr Rust Small Result: success
-target: cx53
-reason: cx53_idle
-cx53: success
-cx43: skipped
+target: cx43
+reason: cx43_idle
+cx43: success
+cpx42: skipped
+cx53: skipped
 github: skipped
 ```
 
-Prove CX43 fallback by making CX53 unavailable or busy while CX43 is online,
-idle, and image-ready, then rerun the same workflow command. The run must
-finish with:
+Prove CPX42 or CX53 fallback by making CX43 unavailable or busy while CPX42
+or CX53 is online, idle, and image-ready, then rerun the same workflow
+command. The run must finish with:
 
 ```text
 Ripr Rust Small Result: success
-target: cx43
-reason: cx43_idle
+target: cpx42
+reason: cpx42_idle
+cx43: skipped
+cpx42: success
 cx53: skipped
-cx43: success
 github: skipped
 ```
 
@@ -187,7 +200,7 @@ Development machines and orchestrators should clone this repository
 side-by-side with any existing `EffortlessMetrics/ripr` checkout:
 
 ```bash
-rtk git clone git@github.com:EffortlessMetrics/ripr-swarm.git ripr-swarm
+git clone git@github.com:EffortlessMetrics/ripr-swarm.git ripr-swarm
 ```
 
 Do not retarget a dirty source-repo clone in place. Preserve or discard any

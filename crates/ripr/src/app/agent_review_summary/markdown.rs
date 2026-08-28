@@ -9,6 +9,18 @@ pub(crate) fn render_agent_review_summary_markdown(report: &AgentReviewSummaryRe
         None => rendered.push_str("Target seam: unknown\n"),
     }
     rendered.push_str(&format!("Movement: {}\n", report.static_movement.state));
+    match &report.analysis_outcome {
+        Some(outcome) => rendered.push_str(&format!(
+            "Analysis outcome: {} ({})\n",
+            outcome.kind.as_str(),
+            if outcome.kind.is_complete() {
+                "complete"
+            } else {
+                "incomplete"
+            }
+        )),
+        None => rendered.push_str("Analysis outcome: unavailable (incomplete)\n"),
+    }
     if let Some(before) = &report.static_movement.before_class {
         let after = report
             .static_movement

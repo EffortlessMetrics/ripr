@@ -2,24 +2,32 @@ use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_BRIEF_ARTIFACT,
     WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_verify_command, display_path,
 };
+use crate::analysis::canonical_gap::canonical_gap_identity;
+use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::Mode;
 use crate::app::agent_brief::{
     AgentBriefResolvedWorkingSet, AgentBriefSelectedSeam, AgentBriefSelection,
     AgentBriefWhyNowReason,
 };
+use crate::app::causal_projection::CausalDeltaArtifact;
 use crate::config::RiprConfig;
 use crate::output::agent_seam_packets;
 use crate::output::agent_seam_packets::missing_discriminator_records_for as missing_records_for;
 use crate::output::evidence_record::{
     CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY, CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE,
-    actionability_for, canonical_receipt_command_for, cross_language_test_target_unresolved,
-    gap_state_for, static_limitations_for,
+    EvidenceRecordStaticLimitation, actionability_for, canonical_receipt_command_for,
+    cross_language_test_target_unresolved, gap_state_for, static_limitations_for,
 };
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
 use serde_json::{Value, json};
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::path::Path;
+
+mod scope;
+
+pub(crate) use scope::ReviewCommentsAnalysisScope;
+use scope::ReviewPlacement;
 
 pub(crate) const REVIEW_COMMENTS_SCHEMA_VERSION: &str = "0.1";
 pub(crate) const DEFAULT_REVIEW_MAX_INLINE_COMMENTS: usize = 3;
@@ -38,84 +46,6 @@ pub(crate) struct ReviewCommentsRenderContext<'a> {
     pub(crate) head: &'a str,
     pub(crate) mode: &'a Mode,
     pub(crate) config: &'a RiprConfig,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct ReviewPlacement {
-    path: String,
-    line: usize,
-    mode: &'static str,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ReviewCommentsAnalysisScope {
-    pub(crate) scope: &'static str,
-    pub(crate) run_status: &'static str,
-    pub(crate) basis: &'static str,
-    pub(crate) changed_files: Vec<String>,
-    pub(crate) changed_lines: usize,
-    pub(crate) changed_owner_functions: usize,
-    pub(crate) changed_production_files: Vec<String>,
-    pub(crate) immediate_caller_files: Vec<String>,
-    pub(crate) scoped_production_files: Vec<String>,
-    pub(crate) total_rust_files: Option<usize>,
-    pub(crate) total_production_files: Option<usize>,
-    pub(crate) production_files_considered: usize,
-    pub(crate) classified_seams_considered: usize,
-    pub(crate) downstream_consumable: bool,
-    pub(crate) limitation: &'static str,
-    pub(crate) repair_route: &'static str,
-}
-
-impl ReviewCommentsAnalysisScope {
-    pub(crate) fn limited_diff_scope(
-        working_set: &AgentBriefResolvedWorkingSet,
-        inventory: &crate::analysis::ScopedClassifiedSeamInventory,
-    ) -> Self {
-        Self {
-            scope: "diff_scoped_changed_files",
-            run_status: "limited_diff_scope",
-            basis: "changed_production_files_plus_immediate_callers",
-            changed_files: display_paths(&working_set.files),
-            changed_lines: working_set.changed_lines.len(),
-            changed_owner_functions: working_set.changed_owners.len(),
-            changed_production_files: display_paths(&inventory.changed_production_files),
-            immediate_caller_files: display_paths(&inventory.immediate_caller_files),
-            scoped_production_files: display_paths(&inventory.scoped_production_files),
-            total_rust_files: Some(inventory.total_rust_files),
-            total_production_files: Some(inventory.total_production_files),
-            production_files_considered: inventory.scoped_production_files.len(),
-            classified_seams_considered: inventory.classified.len(),
-            downstream_consumable: true,
-            limitation: "review_comments_diff_scope_only",
-            repair_route: "analysis/diff-scoped-large-repo-review-fast-path",
-        }
-    }
-
-    #[cfg(test)]
-    fn from_working_set(
-        working_set: &AgentBriefResolvedWorkingSet,
-        classified_seams_considered: usize,
-    ) -> Self {
-        Self {
-            scope: "working_set",
-            run_status: "scoped",
-            basis: working_set.source.as_str(),
-            changed_files: display_paths(&working_set.files),
-            changed_lines: working_set.changed_lines.len(),
-            changed_owner_functions: working_set.changed_owners.len(),
-            changed_production_files: Vec::new(),
-            immediate_caller_files: Vec::new(),
-            scoped_production_files: display_paths(&working_set.files),
-            total_rust_files: None,
-            total_production_files: None,
-            production_files_considered: working_set.files.len(),
-            classified_seams_considered,
-            downstream_consumable: true,
-            limitation: "review_comments_working_set_scope_only",
-            repair_route: "analysis/review-comments-working-set",
-        }
-    }
 }
 
 #[cfg(test)]
@@ -137,7 +67,7 @@ pub(crate) fn render_review_comments_json(
         mode,
         config,
     };
-    render_review_comments_json_with_scope(&context, working_set, selection, &analysis_scope)
+    render_review_comments_json_with_scope(&context, working_set, selection, &analysis_scope, None)
 }
 
 pub(crate) fn render_review_comments_json_with_scope(
@@ -145,7 +75,10 @@ pub(crate) fn render_review_comments_json_with_scope(
     working_set: &AgentBriefResolvedWorkingSet,
     selection: &AgentBriefSelection<'_>,
     analysis_scope: &ReviewCommentsAnalysisScope,
+    analysis_outcome: Option<&AnalysisOutcome>,
 ) -> Result<String, String> {
+    let (causal_projection, causal_projection_warning) =
+        load_causal_projection_for_review(context.root);
     let mut comments = Vec::new();
     let mut summary_only = Vec::new();
     let mut suppressed = Vec::new();
@@ -174,14 +107,19 @@ pub(crate) fn render_review_comments_json_with_scope(
                 .to_string(),
         );
     }
-    let warnings = warning_messages
-        .iter()
-        .map(|message| warning_json(message))
-        .collect::<Vec<_>>();
+    if let Some(warning) = causal_projection_warning {
+        warning_messages.push(warning);
+    }
+    let warnings = warning_messages;
 
     for selected in actionable.iter().take(DEFAULT_REVIEW_MAX_SUMMARY_ITEMS) {
-        let recommendation =
-            review_recommendation_json(context.root, context.mode, context.config, selected);
+        let recommendation = review_recommendation_json(
+            context.root,
+            context.mode,
+            context.config,
+            selected,
+            causal_projection.as_ref(),
+        );
         if cross_language_test_target_unresolved(selected.seam) {
             let mut item = recommendation;
             item["placement"] = Value::Null;
@@ -236,7 +174,11 @@ pub(crate) fn render_review_comments_json_with_scope(
     let value = json!({
         "schema_version": REVIEW_COMMENTS_SCHEMA_VERSION,
         "tool": "ripr",
-        "status": "advisory",
+        "status": if analysis_outcome.is_some_and(|outcome| !outcome.kind.is_complete()) {
+            "incomplete"
+        } else {
+            "advisory"
+        },
         "root": display_path(context.root),
         "base": context.base,
         "head": context.head,
@@ -255,19 +197,46 @@ pub(crate) fn render_review_comments_json_with_scope(
         "comments": comments,
         "summary_only": summary_only,
         "suppressed": suppressed,
-        "warnings": warnings,
+        "warnings": review_warnings_json(&warnings),
         "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
     });
+    let mut value = value;
+    if let Some(outcome) = analysis_outcome
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(
+            "analysis_outcome".to_string(),
+            json!({
+                "analysis_complete": outcome.kind.is_complete(),
+                "outcome": outcome,
+            }),
+        );
+    }
+    if let Some(projection) = &causal_projection
+        && let Some(object) = value.as_object_mut()
+    {
+        projection.insert_comparison_fields(object);
+    }
 
     super::json::render_pretty(&value, "review comments")
 }
 
-fn warning_json(message: &str) -> Value {
-    json!({
-        "kind": "other",
-        "message": message,
-        "path": null,
-    })
+/// Render free-text selection warnings as schema-conformant warning objects.
+///
+/// The review-comments schema (`schemas/ripr/review-comments.schema.json`)
+/// requires each `warnings` entry to be an object `{ kind, message }` with `kind`
+/// drawn from a fixed enum. The selection layer carries warnings as plain strings
+/// (latency/cap notes), so we wrap each as `kind: "other"` — the schema's
+/// catch-all for general analysis notes. Empty strings are dropped (the schema
+/// requires a non-empty `message`). This keeps the emitted JSON valid even when a
+/// warning fires (e.g. a bounded-latency note on a slow runner), instead of
+/// emitting a bare string that fails the `--check` contract.
+fn review_warnings_json(warnings: &[String]) -> Vec<Value> {
+    warnings
+        .iter()
+        .filter(|warning| !warning.trim().is_empty())
+        .map(|warning| json!({ "kind": "other", "message": warning }))
+        .collect()
 }
 
 pub(crate) fn render_gap_record_review_comments_json(
@@ -278,14 +247,21 @@ pub(crate) fn render_gap_record_review_comments_json(
     gap_ledger_path: &str,
     records: &[GapRecord],
 ) -> Result<String, String> {
+    let (causal_projection, causal_projection_warning) = load_causal_projection_for_review(root);
     let mut comments = Vec::new();
     let mut summary_only = Vec::new();
     let mut suppressed = Vec::new();
     let mut seen_dedupe = BTreeSet::new();
+    let analysis_scope = ReviewCommentsAnalysisScope::gap_ledger_artifact(records);
 
     for record in records {
-        let comment = match gap_record_comment_json(root, gap_ledger_path, record, &mut seen_dedupe)
-        {
+        let comment = match gap_record_comment_json(
+            root,
+            gap_ledger_path,
+            record,
+            &mut seen_dedupe,
+            causal_projection.as_ref(),
+        ) {
             Ok(comment) => comment,
             Err(suppressed_item) => {
                 suppressed.push(suppressed_item);
@@ -314,6 +290,7 @@ pub(crate) fn render_gap_record_review_comments_json(
         "inputs": {
             "gap_ledger": gap_ledger_path
         },
+        "analysis_scope": analysis_scope_json(&analysis_scope),
         "rendering_limits": {
             "max_inline_comments": DEFAULT_REVIEW_MAX_INLINE_COMMENTS,
             "max_summary_items": DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
@@ -327,11 +304,24 @@ pub(crate) fn render_gap_record_review_comments_json(
         "comments": comments,
         "summary_only": summary_only,
         "suppressed": suppressed,
-        "warnings": [],
+        "warnings": causal_projection_warning
+            .iter()
+            .map(|warning| json!({"kind": "other", "message": warning}))
+            .collect::<Vec<_>>(),
         "limits_note": "Advisory static evidence only; gap-ledger repair cards do not edit source, generate tests, run mutation testing, or change CI/gate authority.",
     });
+    let mut value = value;
+    if let Some(projection) = &causal_projection
+        && let Some(object) = value.as_object_mut()
+    {
+        projection.insert_comparison_fields(object);
+    }
 
     super::json::render_pretty(&value, "gap-ledger review comments")
+}
+
+fn load_causal_projection_for_review(root: &Path) -> (Option<CausalDeltaArtifact>, Option<String>) {
+    CausalDeltaArtifact::load_optional(root)
 }
 
 #[cfg(test)]
@@ -353,7 +343,13 @@ pub(crate) fn render_review_comments_markdown(
         mode,
         config,
     };
-    render_review_comments_markdown_with_scope(&context, working_set, selection, &analysis_scope)
+    render_review_comments_markdown_with_scope(
+        &context,
+        working_set,
+        selection,
+        &analysis_scope,
+        None,
+    )
 }
 
 pub(crate) fn render_review_comments_markdown_with_scope(
@@ -361,10 +357,15 @@ pub(crate) fn render_review_comments_markdown_with_scope(
     working_set: &AgentBriefResolvedWorkingSet,
     selection: &AgentBriefSelection<'_>,
     analysis_scope: &ReviewCommentsAnalysisScope,
+    analysis_outcome: Option<&AnalysisOutcome>,
 ) -> String {
-    let Ok(rendered) =
-        render_review_comments_json_with_scope(context, working_set, selection, analysis_scope)
-    else {
+    let Ok(rendered) = render_review_comments_json_with_scope(
+        context,
+        working_set,
+        selection,
+        analysis_scope,
+        analysis_outcome,
+    ) else {
         return "# RIPR PR Guidance\n\nUnable to render PR guidance.\n".to_string();
     };
     let Ok(value) = serde_json::from_str::<Value>(&rendered) else {
@@ -433,8 +434,18 @@ fn render_review_comments_markdown_value(
         format!("- suppressed recommendations: {suppressed}"),
     ];
     push_analysis_scope_summary(&mut lines, value.get("analysis_scope"));
+    push_analysis_outcome_summary(&mut lines, value.get("analysis_outcome"));
     lines.push(String::new());
-    lines.push("Advisory static evidence only. RIPR does not edit source, generate tests, run mutation testing, or make CI blocking by default.".to_string());
+    lines.push(
+        "Advisory static evidence only. RIPR does not edit source, generate tests, run mutation testing, or make CI blocking by default."
+            .to_string(),
+    );
+    if value.get("status").and_then(Value::as_str) == Some("incomplete") {
+        lines.push(
+            "Incomplete producer input is not a clean or zero-finding result; follow the recovery route before relying on this guidance."
+                .to_string(),
+        );
+    }
     lines.push(String::new());
 
     push_markdown_items(&mut lines, "Line Annotations", value.get("comments"));
@@ -448,11 +459,49 @@ fn render_review_comments_markdown_value(
     lines.join("\n")
 }
 
+fn push_analysis_outcome_summary(lines: &mut Vec<String>, outcome: Option<&Value>) {
+    let Some(outcome) = outcome else {
+        return;
+    };
+    let analysis_complete = outcome
+        .get("analysis_complete")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let kind = outcome
+        .get("outcome")
+        .and_then(|value| value.get("kind"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    lines.push(format!("- producer analysis outcome: {kind}"));
+    lines.push(format!("- producer analysis complete: {analysis_complete}"));
+    if let Some(limitations) = outcome
+        .get("outcome")
+        .and_then(|value| value.get("limitations"))
+        .and_then(Value::as_array)
+    {
+        for limitation in limitations {
+            let limitation_kind = limitation
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let recovery = limitation
+                .get("recovery")
+                .and_then(|value| value.get("kind"))
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            lines.push(format!(
+                "- producer limitation: {limitation_kind}; recovery: {recovery}"
+            ));
+        }
+    }
+}
+
 fn gap_record_comment_json(
     root: &Path,
     gap_ledger_path: &str,
     record: &GapRecord,
     seen_dedupe: &mut BTreeSet<String>,
+    causal_projection: Option<&CausalDeltaArtifact>,
 ) -> Result<Value, Value> {
     let Some(projection) = record.projection_eligibility.get("pr_comment") else {
         return Err(gap_record_suppressed_json(
@@ -530,6 +579,13 @@ fn gap_record_comment_json(
             "PR comments require a non-empty anchor and dedupe fingerprint.",
         ));
     }
+    let Some(seam_id) = record.seam_id.as_deref().and_then(non_empty) else {
+        return Err(gap_record_suppressed_json(
+            record,
+            "missing_seam_identity",
+            "PR comments require producer-owned seam identity.",
+        ));
+    };
     if !seen_dedupe.insert(dedupe.to_string()) {
         return Err(gap_record_suppressed_json(
             record,
@@ -558,7 +614,7 @@ fn gap_record_comment_json(
     let verify_command = record.verification_commands[0].clone();
     let source_location = source_location_json(file, Some(line as usize));
 
-    Ok(json!({
+    let mut value = json!({
         "id": format!("ripr-review-{gap_id}"),
         "source": "gap_decision_ledger",
         "gap_id": gap_id.as_str(),
@@ -569,7 +625,7 @@ fn gap_record_comment_json(
         "gap_state": record.gap_state.as_str(),
         "policy_state": record.policy_state.as_str(),
         "repairability": record.repairability.as_str(),
-        "seam_id": gap_id.as_str(),
+        "seam_id": seam_id,
         "dedupe_key": dedupe,
         "source_location": source_location,
         "placement": {
@@ -591,6 +647,7 @@ fn gap_record_comment_json(
             "recommended_file": repair_route.target_file.as_deref().or(repair_route.related_test.as_deref()),
             "recommended_name": repair_route.related_test.as_deref(),
             "near_test": repair_route.related_test.as_deref(),
+            "related_test": gap_record_related_test(repair_route),
         },
         "repair_card": {
             "gap_kind": record.kind.as_str(),
@@ -609,7 +666,13 @@ fn gap_record_comment_json(
             "command": format!("ripr first-action --root {} --gap-ledger {}", display_path(root), gap_ledger_path),
             "verify_command": verify_command,
         },
-    }))
+    });
+    if let Some(projection) = causal_projection
+        && let Some(object) = value.as_object_mut()
+    {
+        projection.insert_delta_fields(object, non_empty(&record.canonical_gap_id).as_deref());
+    }
+    Ok(value)
 }
 
 fn gap_record_suppressed_json(record: &GapRecord, reason: &str, message: &str) -> Value {
@@ -640,6 +703,23 @@ fn gap_record_id(record: &GapRecord) -> String {
 
 fn non_empty(value: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_string())
+}
+
+/// Project the structured related-test object `{name, file, line}` from a
+/// gap-ledger repair route per RIPR-SPEC-0068. The gap-ledger artifact carries
+/// the related test as a single `related_test` string plus optional
+/// `target_file` / `target_line`; this projects them into the structured
+/// object, or `null` when no related test name resolves. The gap-ledger path
+/// may carry a name-only object when the source route has no resolved location.
+fn gap_record_related_test(route: &GapRepairRoute) -> Value {
+    match route.related_test.as_deref() {
+        Some(name) => json!({
+            "name": name,
+            "file": route.target_file.as_deref(),
+            "line": route.target_line,
+        }),
+        None => Value::Null,
+    }
 }
 
 fn repair_text(route: &GapRepairRoute) -> String {
@@ -692,6 +772,7 @@ fn review_recommendation_json(
     _mode: &Mode,
     config: &RiprConfig,
     selected: &AgentBriefSelectedSeam<'_>,
+    causal_projection: Option<&CausalDeltaArtifact>,
 ) -> Value {
     let entry = selected.seam;
     let seam = &entry.seam;
@@ -699,8 +780,7 @@ fn review_recommendation_json(
     let recommended = agent_seam_packets::recommended_test_for(entry);
     let nearest = agent_seam_packets::nearest_strong_test_to_imitate(seam.kind(), &entry.evidence);
     let candidate_values = agent_seam_packets::candidate_values_for(entry, &missing);
-    let assertion_shape =
-        agent_seam_packets::assertion_shape_for(seam.kind(), seam.owner(), &entry.evidence);
+    let assertion_shape = agent_seam_packets::assertion_shape_for_entry(entry);
     let seam_id = seam.id().as_str();
     let root_display = display_path(root);
     let missing_value = missing.first().map(|record| record.value.clone());
@@ -749,12 +829,25 @@ fn review_recommendation_json(
         Value::Null
     };
 
+    // Structured related-test object {name, file, line} per RIPR-SPEC-0068:
+    // the navigational location of the nearest strong related test, or null
+    // when no strong related test resolves.
+    let related_test = nearest
+        .map(|test| {
+            json!({
+                "name": test.test_name,
+                "file": display_path(&test.file),
+                "line": test.line,
+            })
+        })
+        .unwrap_or(Value::Null);
+
     let llm_guidance = if target_unresolved {
         json!({
             "prompt": limitation_prompt(navigation_target.as_ref()),
             "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
         })
-    } else {
+    } else if gap_state == "actionable" {
         json!({
             "prompt": llm_prompt(&recommended.file, nearest.map(|test| test.test_name.as_str()), missing_value.as_deref()),
             "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
@@ -765,15 +858,70 @@ fn review_recommendation_json(
                 None,
             ),
         })
+    } else if gap_state == "static_limitation" {
+        json!({
+            "prompt": limitation_prompt_for(static_limitations.first()),
+            "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
+        })
+    } else {
+        json!({
+            "prompt": "No repair packet is available for this finding. Inspect the producer-owned evidence and policy state before taking action.",
+            "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
+        })
     };
+
+    let suggested_test = if gap_state == "actionable" {
+        json!({
+            "intent": suggested_test_intent(&assertion_shape),
+            "candidate_values": candidate_values.iter().map(|record| record.value.clone()).collect::<Vec<_>>(),
+            "assertion_shape": assertion_shape.example(),
+            "assertion_kind": assertion_shape.kind().map(|kind| kind.as_str()),
+            "assertion_guidance": agent_seam_packets::assertion_guidance_json(&assertion_shape),
+            "recommended_file": recommended.file.as_str(),
+            "recommended_name": recommended.name.as_str(),
+            "near_test": nearest.map(|test| test.test_name.clone()),
+            "related_test": related_test,
+        })
+    } else {
+        json!({
+            "intent": "Inspect the named static limitation.",
+            "candidate_values": [],
+            "assertion_shape": null,
+            "assertion_kind": null,
+            "assertion_guidance": null,
+            "recommended_file": "not_applicable",
+            "recommended_name": "not_applicable",
+            "near_test": null,
+            "related_test": null,
+        })
+    };
+
+    // Card-level oracle (RIPR-SPEC-0068): the representative oracle for this
+    // seam — the nearest strong related test if one resolves, else the
+    // top-ranked related test, else no oracle observed (`unknown` / `none`).
+    // This projects the same oracle facts agent briefs and seam packets carry;
+    // the review card does not compute an oracle of its own.
+    let representative_oracle = nearest.or_else(|| entry.evidence.related_tests.first());
+    let oracle_kind = representative_oracle
+        .map(|test| test.oracle_kind.as_str())
+        .unwrap_or_else(|| crate::domain::OracleKind::Unknown.as_str());
+    let oracle_strength = representative_oracle
+        .map(|test| test.oracle_strength.as_str())
+        .unwrap_or_else(|| crate::domain::OracleStrength::None.as_str());
 
     let mut recommendation = json!({
         "id": format!("ripr-review-{seam_id}"),
         "seam_id": seam_id,
+        // Canonical gap identity is owned by the analysis domain. The review
+        // renderer only projects it; it must not derive an ID from a locator
+        // or other presentation fields.
+        "canonical_gap_id": canonical_gap_identity(entry).map(|identity| identity.id),
         "dedupe_key": format!("ripr:{seam_id}:{seam_file}:{seam_line}"),
         "kind": seam.kind().as_str(),
         "grip_class": entry.class.as_str(),
         "gap_state": gap_state,
+        "oracle_kind": oracle_kind,
+        "oracle_strength": oracle_strength,
         "severity": config.severity().for_seam(entry.class).as_str(),
         "owner": seam.owner(),
         "seam": {
@@ -784,15 +932,7 @@ fn review_recommendation_json(
         "source_location": source_location_json(&seam_file, Some(seam_line)),
         "reason": reason_for(selected, missing_value.as_deref()),
         "missing_discriminator": missing_value,
-        "suggested_test": {
-            "intent": suggested_test_intent(assertion_shape.kind),
-            "candidate_values": candidate_values.iter().map(|record| record.value.clone()).collect::<Vec<_>>(),
-            "assertion_shape": assertion_shape.example,
-            "assertion_kind": assertion_shape.kind,
-            "recommended_file": recommended.file.as_str(),
-            "recommended_name": recommended.name.as_str(),
-            "near_test": nearest.map(|test| test.test_name.clone()),
-        },
+        "suggested_test": suggested_test,
         "llm_guidance": llm_guidance,
     });
 
@@ -827,6 +967,14 @@ fn review_recommendation_json(
         if let Some(target) = navigation_target_json {
             object.insert("navigation_only_target".to_string(), target);
         }
+    }
+    if let Some(projection) = causal_projection
+        && let Some(object) = recommendation.as_object_mut()
+    {
+        projection.insert_delta_fields(
+            object,
+            canonical_gap_identity(entry).map(|id| id.id).as_deref(),
+        );
     }
     recommendation
 }
@@ -993,8 +1141,30 @@ fn reason_for(selected: &AgentBriefSelectedSeam<'_>, missing: Option<&str>) -> S
     )
 }
 
-fn suggested_test_intent(assertion_kind: &str) -> &'static str {
-    match assertion_kind {
+fn suggested_test_intent(shape: &agent_seam_packets::AssertionShape) -> &'static str {
+    if !shape.is_concrete() {
+        return match shape.state() {
+            crate::repair_guidance::AssertionState::RequiresObserverSetup => {
+                "Establish the named observer before adding an assertion."
+            }
+            crate::repair_guidance::AssertionState::FixSiteOnly => {
+                "Inspect the named fix site; no assertion example is available."
+            }
+            crate::repair_guidance::AssertionState::VerificationOnly => {
+                "Use the verification route; no assertion example is available."
+            }
+            crate::repair_guidance::AssertionState::Stale => {
+                "Refresh the analysis before using assertion guidance."
+            }
+            crate::repair_guidance::AssertionState::Unresolved => {
+                "Inspect the producer-owned seam evidence before designing an assertion."
+            }
+            crate::repair_guidance::AssertionState::Concrete => {
+                "Add one focused discriminator test."
+            }
+        };
+    }
+    match shape.kind().map(|kind| kind.as_str()).unwrap_or_default() {
         "exact_error_variant" => "Add an exact error-variant test.",
         "side_effect_observer" => "Add a side-effect observer test.",
         "call_expectation" => "Add a call-observation test.",
@@ -1028,6 +1198,16 @@ fn limitation_prompt(
     )
 }
 
+fn limitation_prompt_for(limitation: Option<&EvidenceRecordStaticLimitation>) -> String {
+    match limitation {
+        Some(limitation) => format!(
+            "Do not write a repair test or infer an edit surface from this finding. Inspect static limitation `{}`: {}. Route investigation through `{}`.",
+            limitation.category, limitation.reason, limitation.repair_route
+        ),
+        None => "Do not write a repair test or infer an edit surface from this finding. The producer-owned repair route is incomplete; inspect the evidence before taking action.".to_string(),
+    }
+}
+
 fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Value>) {
     lines.push(format!("## {heading}"));
     lines.push(String::new());
@@ -1050,10 +1230,12 @@ fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Va
             .and_then(|guidance| string_field(guidance, "command"))
             .unwrap_or("ripr agent brief --root . --seam-id <id> --json");
         lines.push(format!("- `{seam_id}` @ `{source_location}`: {reason}"));
-        if let Some(canonical_gap_id) =
-            string_field(item, "canonical_gap_id").filter(|value| !value.trim().is_empty())
-        {
-            lines.push(format!("  - canonical_gap_id: `{canonical_gap_id}`"));
+        let canonical_gap_id = string_field(item, "canonical_gap_id")
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("null");
+        lines.push(format!("  - canonical_gap_id: `{canonical_gap_id}`"));
+        if let Some(attribution) = string_field(item, "delta_attribution") {
+            lines.push(format!("  - delta_attribution: `{attribution}`"));
         }
         lines.push(format!("  - state: `{state}`"));
         if let Some(route) = repair_route_kind(item) {
@@ -1197,18 +1379,29 @@ fn string_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
 mod tests {
     use super::*;
     use crate::analysis::ClassifiedSeam;
+    use crate::analysis::canonical_gap::canonical_gap_identity;
     use crate::analysis::seams::{
         ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
     };
     use crate::analysis::test_grip_evidence::{
         RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence,
     };
+    use crate::analysis_outcome::{
+        AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcomeCounts, AnalysisOutcomeKind,
+        AnalysisRecovery, AnalysisRecoveryKind, AnalysisStage,
+    };
     use crate::app::agent_brief::{
         AgentBriefChangedOwner, AgentBriefLine, AgentBriefResolvedWorkingSet,
         AgentBriefSelectedSeam, AgentBriefSelection, AgentBriefWhyNow, AgentBriefWhyNowConfidence,
         AgentBriefWhyNowReason,
     };
-    use crate::domain::{Confidence, OracleKind, OracleStrength, StageEvidence, StageState};
+    use crate::domain::{
+        Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence, StageState,
+    };
+    use crate::repair_guidance::{
+        AssertionBasis, AssertionGuidance, AssertionKind, GuidanceReason, GuidanceRecovery,
+        ObserverKind,
+    };
     use serde_json::Value;
     use std::fs;
     use std::path::PathBuf;
@@ -1240,6 +1433,13 @@ mod tests {
                     test_name: "above_threshold_gets_discount".to_string(),
                     file: PathBuf::from("tests/pricing.rs"),
                     line: 12,
+                    test_target: Some(
+                        crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                            "above_threshold_gets_discount",
+                            std::path::Path::new("tests/pricing.rs"),
+                            12,
+                        ),
+                    ),
                     oracle_kind: OracleKind::ExactValue,
                     oracle_strength: OracleStrength::Strong,
                     evidence_summary: "exact returned value assertion".to_string(),
@@ -1252,9 +1452,33 @@ mod tests {
                 observe: stage(StageState::Yes),
                 discriminate: stage(StageState::Weak),
                 observed_values: Vec::new(),
-                missing_discriminators: Vec::new(),
+                missing_discriminators: vec![MissingDiscriminatorFact {
+                    value: "amount == discount_threshold".to_string(),
+                    reason: "producer identified the equality boundary as missing".to_string(),
+                    flow_sink: None,
+                }],
             },
         }
+    }
+
+    fn field_classified_without_discriminator() -> ClassifiedSeam {
+        let mut entry = classified(88);
+        let seam = RepoSeam::new(
+            "src/config.rs",
+            "config::build_options",
+            SeamKind::FieldConstruction,
+            42,
+            88,
+            "options.provider = provider",
+            RequiredDiscriminator::FieldValue {
+                field: "provider".to_string(),
+            },
+            ExpectedSink::OutputField,
+        );
+        entry.evidence.seam_id = seam.id().clone();
+        entry.evidence.missing_discriminators.clear();
+        entry.seam = seam;
+        entry
     }
 
     fn cross_language_classified_with_external_observer() -> ClassifiedSeam {
@@ -1280,6 +1504,7 @@ mod tests {
                     test_name: "blob copies resizable buffers".to_string(),
                     file: PathBuf::from("test/js/web/fetch/blob.test.ts"),
                     line: 41,
+                    test_target: None,
                     oracle_kind: OracleKind::ExactValue,
                     oracle_strength: OracleStrength::Strong,
                     evidence_summary: "configured TypeScript bridge exact value observer"
@@ -1321,6 +1546,7 @@ mod tests {
                     test_name: "markdown snapshots resizable ArrayBuffer input".to_string(),
                     file: PathBuf::from("test/js/bun/md/md-edge-cases.test.ts"),
                     line: 42,
+                    test_target: None,
                     oracle_kind: OracleKind::ExactValue,
                     oracle_strength: OracleStrength::Strong,
                     evidence_summary: "configured TypeScript bridge exact markdown output observer"
@@ -1392,6 +1618,65 @@ mod tests {
         serde_json::from_str(&rendered).map_err(|err| format!("parse review comments JSON: {err}"))
     }
 
+    fn render_value_with_outcome(
+        working_set: &AgentBriefResolvedWorkingSet,
+        seams: &[ClassifiedSeam],
+        outcome: &AnalysisOutcome,
+    ) -> Result<Value, String> {
+        let selection = selection(seams);
+        let analysis_scope =
+            ReviewCommentsAnalysisScope::from_working_set(working_set, selection.returned);
+        let config = RiprConfig::default();
+        let context = ReviewCommentsRenderContext {
+            root: Path::new("."),
+            base: "main",
+            head: "HEAD",
+            mode: &Mode::Draft,
+            config: &config,
+        };
+        let rendered = render_review_comments_json_with_scope(
+            &context,
+            working_set,
+            &selection,
+            &analysis_scope,
+            Some(outcome),
+        )?;
+        serde_json::from_str(&rendered).map_err(|err| format!("parse review comments JSON: {err}"))
+    }
+
+    fn partial_outcome() -> Result<AnalysisOutcome, String> {
+        let recovery = AnalysisRecovery::new(AnalysisRecoveryKind::Retry, "rerun the producer")?;
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::ProducerTimeout,
+            AnalysisStage::AnalysisPipeline,
+            recovery,
+        );
+        AnalysisOutcome::new(
+            AnalysisOutcomeKind::PartialWithLimitations,
+            Default::default(),
+            Default::default(),
+            vec![limitation],
+        )
+    }
+
+    fn unsupported_outcome() -> Result<AnalysisOutcome, String> {
+        let recovery = AnalysisRecovery::new(
+            AnalysisRecoveryKind::EnableLanguage,
+            "enable the required language adapter",
+        )?;
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::LanguageAdapterUnavailable,
+            AnalysisStage::LanguageAdapter,
+            recovery,
+        );
+        AnalysisOutcome::new(
+            AnalysisOutcomeKind::UnsupportedInput,
+            Default::default(),
+            Default::default(),
+            vec![limitation],
+        )
+    }
+
     fn render_markdown(
         working_set: &AgentBriefResolvedWorkingSet,
         seams: &[ClassifiedSeam],
@@ -1429,6 +1714,7 @@ mod tests {
     {
       "gap_id": "gap:pr:pricing:threshold-boundary",
       "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "seam_id": "seam:pricing:threshold-boundary",
       "kind": "MissingBoundaryAssertion",
       "language": "rust",
       "language_status": "stable",
@@ -1520,6 +1806,7 @@ mod tests {
     fn eligible_gap_record_json(gap_id: &str, dedupe: &str) -> Value {
         serde_json::json!({
             "gap_id": gap_id,
+            "seam_id": gap_id,
             "kind": "MissingBoundaryAssertion",
             "language": "rust",
             "language_status": "stable",
@@ -1739,15 +2026,37 @@ mod tests {
             serde_json::from_str(&rendered).map_err(|err| format!("parse JSON: {err}"))?;
         assert_eq!(value["summary"]["comments"], 0);
         assert_eq!(value["summary"]["summary_only"], 0);
+        // RIPR-SPEC schema: warnings are objects { kind, message }, not bare strings.
+        assert_eq!(value["warnings"][0]["kind"], "other");
         assert!(
-            value["warnings"][0]
-                .get("message")
-                .and_then(Value::as_str)
+            value["warnings"][0]["message"]
+                .as_str()
                 .is_some_and(|warning| warning.contains("fallback seams were suppressed"))
         );
         assert_eq!(value["warnings"][0]["kind"], "other");
         assert!(value["warnings"][0]["path"].is_null());
         Ok(())
+    }
+
+    #[test]
+    fn review_warnings_json_wraps_strings_as_schema_objects_and_drops_empties() {
+        let objects = review_warnings_json(&[
+            "bounded by latency budget".to_string(),
+            "   ".to_string(),
+            "another note".to_string(),
+        ]);
+        // Empty/whitespace-only warnings are dropped (schema requires non-empty message).
+        assert_eq!(objects.len(), 2);
+        for object in &objects {
+            assert_eq!(object["kind"], "other");
+            assert!(
+                object["message"]
+                    .as_str()
+                    .is_some_and(|message| !message.is_empty())
+            );
+        }
+        assert_eq!(objects[0]["message"], "bounded by latency budget");
+        assert_eq!(objects[1]["message"], "another note");
     }
 
     #[test]
@@ -1804,6 +2113,82 @@ mod tests {
     }
 
     #[test]
+    fn review_comments_projects_typed_outcome_without_strengthening_incomplete_input()
+    -> Result<(), String> {
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        for outcome in [partial_outcome()?, unsupported_outcome()?] {
+            let value = render_value_with_outcome(&working_set, &seams, &outcome)?;
+            assert_eq!(value["status"], "incomplete");
+            assert_eq!(value["analysis_outcome"]["analysis_complete"], false);
+            assert_eq!(
+                value["analysis_outcome"]["outcome"]["kind"],
+                outcome.kind.as_str()
+            );
+            assert_eq!(
+                value["analysis_outcome"]["outcome"]["limitations"][0]["recovery"]["kind"],
+                outcome.limitations[0].recovery.kind.as_str()
+            );
+            assert_ne!(value["summary"]["comments"], Value::Null);
+
+            let selection = selection(&seams);
+            let analysis_scope =
+                ReviewCommentsAnalysisScope::from_working_set(&working_set, selection.returned);
+            let config = RiprConfig::default();
+            let context = ReviewCommentsRenderContext {
+                root: Path::new("."),
+                base: "main",
+                head: "HEAD",
+                mode: &Mode::Draft,
+                config: &config,
+            };
+            let markdown = render_review_comments_markdown_with_scope(
+                &context,
+                &working_set,
+                &selection,
+                &analysis_scope,
+                Some(&outcome),
+            );
+            assert!(markdown.contains("producer analysis complete: false"));
+            assert!(markdown.contains("Incomplete producer input is not a clean"));
+            assert!(markdown.contains(outcome.kind.as_str()));
+            assert!(markdown.contains(outcome.limitations[0].recovery.kind.as_str()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_projects_complete_zero_outcome_as_advisory() -> Result<(), String> {
+        let outcome = AnalysisOutcome::new(
+            AnalysisOutcomeKind::CompleteNoFindings,
+            Default::default(),
+            AnalysisOutcomeCounts {
+                changed_file_count: 1,
+                changed_line_count: 1,
+                candidate_line_count: 1,
+                probe_count: 1,
+                finding_count: 0,
+            },
+            Vec::new(),
+        )?;
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value_with_outcome(&working_set, &[classified(88)], &outcome)?;
+        assert_eq!(value["status"], "advisory");
+        assert_eq!(value["analysis_outcome"]["analysis_complete"], true);
+        assert_eq!(
+            value["analysis_outcome"]["outcome"]["kind"],
+            "complete_no_findings"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn review_comments_surface_external_observer_as_navigation_only_limitation()
     -> Result<(), String> {
         let seams = [cross_language_classified_with_external_observer()];
@@ -1854,6 +2239,89 @@ mod tests {
             markdown.contains("limitation_route: `analysis/cross-language-test-target-inference`")
         );
         assert!(!markdown.contains("ripr agent verify"));
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_do_not_project_static_limitation_as_repair_guidance() -> Result<(), String> {
+        let seams = [field_classified_without_discriminator()];
+        let selected = selection(&seams);
+        let item = review_recommendation_json(
+            Path::new("."),
+            &Mode::Draft,
+            &RiprConfig::default(),
+            &selected.top_seams[0],
+            None,
+        );
+
+        assert_eq!(item["gap_state"], "static_limitation");
+        assert_eq!(item["suggested_test"]["recommended_file"], "not_applicable");
+        assert!(item["suggested_test"]["assertion_guidance"].is_null());
+        assert!(item["receipt_command"].is_null());
+        assert!(item["llm_guidance"].get("verify_command").is_none());
+        assert!(
+            item["llm_guidance"]["prompt"]
+                .as_str()
+                .is_some_and(|prompt| prompt.contains("missing_discriminator_evidence"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn suggested_test_intent_covers_every_typed_assertion_state() -> Result<(), String> {
+        let cases = [
+            (
+                AssertionGuidance::Concrete {
+                    kind: AssertionKind::ExactErrorVariant,
+                    example: "assert_eq!(error, expected)".to_string(),
+                    basis: AssertionBasis::ObservedValueFact,
+                },
+                "Add an exact error-variant test.",
+            ),
+            (
+                AssertionGuidance::RequiresObserverSetup {
+                    observer_kind: ObserverKind::CallSite,
+                    reason: GuidanceReason::ObserverNotStaticallyVisible,
+                },
+                "Establish the named observer before adding an assertion.",
+            ),
+            (
+                AssertionGuidance::FixSiteOnly {
+                    reason: GuidanceReason::RouteIsInspectionOnly,
+                },
+                "Inspect the named fix site; no assertion example is available.",
+            ),
+            (
+                AssertionGuidance::VerificationOnly {
+                    reason: GuidanceReason::RouteIsVerificationOnly,
+                },
+                "Use the verification route; no assertion example is available.",
+            ),
+            (
+                AssertionGuidance::Unresolved {
+                    reason: GuidanceReason::ProducerFactAbsent,
+                    recovery: GuidanceRecovery::InspectFixSite,
+                },
+                "Inspect the producer-owned seam evidence before designing an assertion.",
+            ),
+            (
+                AssertionGuidance::Stale {
+                    reason: GuidanceReason::SnapshotStale,
+                    refresh: GuidanceRecovery::RefreshAnalysis,
+                },
+                "Refresh the analysis before using assertion guidance.",
+            ),
+        ];
+
+        for (guidance, expected) in cases {
+            let shape = agent_seam_packets::AssertionShape::from_guidance(guidance);
+            let actual = suggested_test_intent(&shape);
+            if actual != expected {
+                return Err(format!(
+                    "typed intent drifted: expected {expected:?}, got {actual:?}"
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -1964,7 +2432,31 @@ mod tests {
 
         assert_eq!(value["summary"]["comments"], 1);
         assert_eq!(value["summary"]["suppressed"], 2);
+        assert_eq!(value["analysis_scope"]["scope"], "gap_ledger_artifact");
+        assert_eq!(value["analysis_scope"]["run_status"], "artifact_scope");
+        assert_eq!(
+            value["analysis_scope"]["basis"],
+            "supplied_gap_decision_ledger"
+        );
+        assert_eq!(
+            value["analysis_scope"]["limitation"],
+            "review_comments_gap_ledger_artifact_scope_only"
+        );
+        assert_eq!(
+            value["analysis_scope"]["repair_route"],
+            "reports/gap-decision-ledger"
+        );
+        assert_eq!(
+            value["analysis_scope"]["changed_files"],
+            serde_json::json!(["src/pricing.rs"])
+        );
+        assert_eq!(value["analysis_scope"]["changed_lines"], 2);
+        assert_eq!(value["analysis_scope"]["classified_seams_considered"], 3);
         assert_eq!(value["comments"][0]["source"], "gap_decision_ledger");
+        assert_eq!(
+            value["comments"][0]["seam_id"],
+            "seam:pricing:threshold-boundary"
+        );
         assert_eq!(
             value["comments"][0]["source_location"]["file"],
             "src/pricing.rs"
@@ -1987,10 +2479,7 @@ mod tests {
             value["comments"][0].get("confidence").is_none(),
             "repair cards should not expose generic confidence optics"
         );
-        assert_eq!(
-            value["suppressed"][0]["reason"],
-            "duplicate_dedupe_fingerprint"
-        );
+        assert_eq!(value["suppressed"][0]["reason"], "missing_seam_identity");
         assert_eq!(value["suppressed"][1]["reason"], "not_pr_comment_eligible");
 
         let markdown = render_gap_record_review_comments_markdown(
@@ -2001,13 +2490,68 @@ mod tests {
             "target/ripr/reports/gap-decision-ledger.json",
             &records,
         );
-        assert!(markdown.contains("gap:pr:pricing:threshold-boundary"));
-        assert!(markdown.contains("`gap:pr:pricing:threshold-boundary` @ `src/pricing.rs:42`"));
+        assert!(markdown.contains("seam:pricing:threshold-boundary"));
+        assert!(markdown.contains("analysis scope: `gap_ledger_artifact`"));
+        assert!(markdown.contains("run status: `artifact_scope`"));
+        assert!(markdown.contains("review_comments_gap_ledger_artifact_scope_only"));
+        assert!(markdown.contains("`seam:pricing:threshold-boundary` @ `src/pricing.rs:42`"));
         assert!(
             markdown.contains("canonical_gap_id: `gap:rust:pricing:discount:threshold-boundary`")
         );
         assert!(markdown.contains("repair_route: `AddBoundaryAssertion`"));
         assert!(markdown.contains("command: `ripr first-action"));
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_gap_ledger_without_seam_identity_is_suppressed() -> Result<(), String> {
+        let mut record = eligible_gap_record_json("gap:missing-seam", "dedupe:missing-seam");
+        record
+            .as_object_mut()
+            .ok_or("missing-seam fixture should be an object")?
+            .remove("seam_id");
+        let records_json = serde_json::json!({ "records": [record] }).to_string();
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(&records_json)?;
+        let rendered = render_gap_record_review_comments_json(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            "target/ripr/reports/gap-decision-ledger.json",
+            &records,
+        )?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse suppressed JSON: {err}"))?;
+        assert_eq!(value["summary"]["comments"], 0);
+        assert_eq!(value["summary"]["suppressed"], 1);
+        assert_eq!(value["suppressed"][0]["reason"], "missing_seam_identity");
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_missing_seam_does_not_consume_duplicate_slot() -> Result<(), String> {
+        let mut legacy = eligible_gap_record_json("gap:legacy", "dedupe:shared");
+        legacy
+            .as_object_mut()
+            .ok_or("legacy fixture should be an object")?
+            .remove("seam_id");
+        let valid = eligible_gap_record_json("gap:valid", "dedupe:shared");
+        let records_json = serde_json::json!({ "records": [legacy, valid] }).to_string();
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(&records_json)?;
+        let rendered = render_gap_record_review_comments_json(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            "target/ripr/reports/gap-decision-ledger.json",
+            &records,
+        )?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse mixed migration JSON: {err}"))?;
+        assert_eq!(value["summary"]["comments"], 1);
+        assert_eq!(value["summary"]["suppressed"], 1);
+        assert_eq!(value["comments"][0]["gap_id"], "gap:valid");
+        assert_eq!(value["suppressed"][0]["reason"], "missing_seam_identity");
         Ok(())
     }
 
@@ -2127,6 +2671,7 @@ mod tests {
             assertion_shape: None,
             missing_discriminator: None,
             changed_behavior: None,
+            inspection_command: None,
             stop_conditions: Vec::new(),
         };
         assert_eq!(
@@ -2160,8 +2705,81 @@ mod tests {
     }
 
     #[test]
+    fn gap_record_related_test_projects_object_or_null() {
+        // Some related test with a resolved file/line -> full navigational object.
+        let full = crate::output::gap_decision_ledger::GapRepairRoute {
+            route_kind: "AddValueAssertion".to_string(),
+            target_file: Some("tests/pricing.rs".to_string()),
+            target_line: Some(18),
+            related_test: Some("tests/pricing.rs::discount_boundary".to_string()),
+            assertion_shape: None,
+            missing_discriminator: None,
+            changed_behavior: None,
+            inspection_command: None,
+            stop_conditions: Vec::new(),
+        };
+        let value = gap_record_related_test(&full);
+        assert_eq!(value["name"], "tests/pricing.rs::discount_boundary");
+        assert_eq!(value["file"], "tests/pricing.rs");
+        assert_eq!(value["line"], 18);
+
+        // Some related test without a resolved file/line -> null file/line, not omitted.
+        let name_only = crate::output::gap_decision_ledger::GapRepairRoute {
+            target_file: None,
+            target_line: None,
+            related_test: Some("discount_boundary".to_string()),
+            ..full.clone()
+        };
+        let value = gap_record_related_test(&name_only);
+        assert_eq!(value["name"], "discount_boundary");
+        assert!(value["file"].is_null());
+        assert!(value["line"].is_null());
+
+        // No related test -> explicit null, never a partial object.
+        let none = crate::output::gap_decision_ledger::GapRepairRoute {
+            related_test: None,
+            ..full
+        };
+        assert!(gap_record_related_test(&none).is_null());
+    }
+
+    #[test]
+    fn working_set_card_emits_null_related_test_without_strong_test() -> Result<(), String> {
+        // When no strong related test resolves, the structured related_test
+        // object is an explicit null rather than an object with no test name.
+        let mut seam = classified(88);
+        seam.evidence.related_tests.clear();
+        let seams = [seam];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        let mut saw_card = false;
+        for card in all_cards(&value) {
+            let Some(suggested_test) = card.get("suggested_test") else {
+                continue;
+            };
+            let related_test = suggested_test
+                .get("related_test")
+                .ok_or_else(|| format!("card suggested_test missing related_test key: {card:?}"))?;
+            assert!(
+                related_test.is_null(),
+                "card without a strong related test must carry null related_test: {related_test:?}"
+            );
+            saw_card = true;
+        }
+        assert!(saw_card, "expected at least one rendered card");
+        Ok(())
+    }
+
+    #[test]
     fn review_comments_pr_guidance_fixtures_pin_required_cases() -> Result<(), String> {
         let exact_seams = [classified(88)];
+        assert_eq!(
+            missing_records_for(&exact_seams[0])[0].value,
+            "amount == discount_threshold"
+        );
         let exact = AgentBriefResolvedWorkingSet::base(
             "main",
             vec![AgentBriefLine::new("src/pricing.rs", 88)],
@@ -2699,6 +3317,249 @@ mod tests {
                 );
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn spec0068_card_carries_structured_related_test() -> Result<(), String> {
+        // RIPR-SPEC-0068: every review card projects a structured related-test
+        // object {name, file, line} on suggested_test. When a strong related
+        // test resolves the object is navigational (non-empty string name,
+        // non-empty string file, integer line); otherwise it is an explicit
+        // null.
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        let mut saw_navigational = false;
+        for card in all_cards(&value) {
+            let Some(suggested_test) = card.get("suggested_test") else {
+                continue;
+            };
+            let related_test = suggested_test
+                .get("related_test")
+                .ok_or_else(|| format!("card suggested_test missing related_test key: {card:?}"))?;
+            if related_test.is_null() {
+                continue;
+            }
+            let name = related_test.get("name").and_then(Value::as_str);
+            let file = related_test.get("file").and_then(Value::as_str);
+            let line = related_test.get("line").and_then(Value::as_u64);
+            assert!(
+                name.is_some_and(|name| !name.is_empty()),
+                "related_test must carry a non-empty string name: {related_test:?}"
+            );
+            assert!(
+                file.is_some_and(|file| !file.is_empty()),
+                "related_test must carry a non-empty string file: {related_test:?}"
+            );
+            assert!(
+                line.is_some(),
+                "related_test must carry an integer line: {related_test:?}"
+            );
+            saw_navigational = true;
+        }
+        assert!(
+            saw_navigational,
+            "classified(88) carries a strong related test; at least one card must \
+             project a navigational related_test object"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn spec0068_card_carries_oracle_kind_and_strength() -> Result<(), String> {
+        // RIPR-SPEC-0068: every working-set card carries card-level oracle_kind
+        // and oracle_strength from the closed domain vocabulary, projecting the
+        // representative related test's oracle. classified(88) carries a strong
+        // exact-value related test, so its card reports exact_value / strong.
+        const ORACLE_KINDS: &[&str] = &[
+            "exact_value",
+            "exact_error_variant",
+            "whole_object_equality",
+            "snapshot",
+            "relational_check",
+            "broad_error",
+            "smoke_only",
+            "mock_expectation",
+            "unknown",
+        ];
+        const ORACLE_STRENGTHS: &[&str] = &["strong", "medium", "weak", "smoke", "none", "unknown"];
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        let mut saw_card = false;
+        for card in all_cards(&value) {
+            // Only working-set cards carry card-level oracle fields.
+            if card.get("seam").is_none() {
+                continue;
+            }
+            let oracle_kind = card
+                .get("oracle_kind")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("card missing oracle_kind: {card:?}"))?;
+            let oracle_strength = card
+                .get("oracle_strength")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("card missing oracle_strength: {card:?}"))?;
+            assert!(
+                ORACLE_KINDS.contains(&oracle_kind),
+                "oracle_kind '{oracle_kind}' is outside the closed vocabulary"
+            );
+            assert!(
+                ORACLE_STRENGTHS.contains(&oracle_strength),
+                "oracle_strength '{oracle_strength}' is outside the closed vocabulary"
+            );
+            assert_eq!(oracle_kind, "exact_value");
+            assert_eq!(oracle_strength, "strong");
+            saw_card = true;
+        }
+        assert!(saw_card, "expected at least one working-set card");
+        Ok(())
+    }
+
+    #[test]
+    fn spec0068_working_set_card_projects_domain_canonical_gap_id() -> Result<(), String> {
+        // RIPR-SPEC-0068: working-set cards project the canonical domain
+        // identity unchanged. The renderer must not manufacture an identity
+        // from the seam locator, test name, or other presentation data.
+        let seam = classified(88);
+        let expected = canonical_gap_identity(&seam)
+            .ok_or_else(|| "classified seam should have a canonical gap identity".to_string())?
+            .id;
+        let seams = [seam];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        let cards = all_cards(&value);
+        let card = cards
+            .iter()
+            .find(|card| card.get("seam").is_some())
+            .ok_or_else(|| "expected a working-set card".to_string())?;
+        assert_eq!(
+            card.get("canonical_gap_id").and_then(Value::as_str),
+            Some(expected.as_str())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn working_set_card_names_missing_domain_canonical_gap_id_as_null() -> Result<(), String> {
+        // A non-headline seam has no canonical behavioral-debt identity. The
+        // card makes that absence explicit instead of falling back to its
+        // source line, expression, or related test name.
+        let mut seam = classified(88);
+        seam.class = SeamGripClass::StronglyGripped;
+        assert!(canonical_gap_identity(&seam).is_none());
+        let seams = [seam];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        let card = all_cards(&value)
+            .into_iter()
+            .find(|card| card.get("seam").is_some())
+            .ok_or_else(|| "expected a working-set card".to_string())?;
+        assert!(
+            card.get("canonical_gap_id").is_some_and(Value::is_null),
+            "card must name missing domain identity as null: {card:?}"
+        );
+        let markdown = render_markdown(&working_set, &seams);
+        assert!(
+            markdown.contains("canonical_gap_id: `null`"),
+            "Markdown must name the missing domain identity explicitly: {markdown}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn working_set_card_reports_no_oracle_without_related_tests() -> Result<(), String> {
+        // With no related tests, the card-level oracle degrades honestly to
+        // unknown / none rather than claiming an observer that does not exist.
+        let mut seam = classified(88);
+        seam.evidence.related_tests.clear();
+        let seams = [seam];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        let mut saw_card = false;
+        for card in all_cards(&value) {
+            if card.get("seam").is_none() {
+                continue;
+            }
+            assert_eq!(
+                card.get("oracle_kind").and_then(Value::as_str),
+                Some("unknown")
+            );
+            assert_eq!(
+                card.get("oracle_strength").and_then(Value::as_str),
+                Some("none")
+            );
+            saw_card = true;
+        }
+        assert!(saw_card, "expected at least one working-set card");
+        Ok(())
+    }
+
+    #[test]
+    fn working_set_card_projects_first_related_test_oracle_when_no_strong() -> Result<(), String> {
+        // Middle fallback: nearest_strong_test_to_imitate returns None (no
+        // strong related test), but related_tests is non-empty — the card
+        // projects the top-ranked related test's oracle, not unknown/none.
+        let mut seam = classified(88);
+        // Downgrade the sole related test below Strong so no strong match
+        // exists; it remains the top-ranked related test.
+        for test in &mut seam.evidence.related_tests {
+            test.oracle_strength = crate::domain::OracleStrength::Weak;
+        }
+        let expected_canonical_gap_id = canonical_gap_identity(&seam)
+            .ok_or_else(|| "weakly gripped seam should have a canonical gap identity".to_string())?
+            .id;
+        let seams = [seam];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let value = render_value(&working_set, &seams)?;
+        let mut saw_card = false;
+        for card in all_cards(&value) {
+            if card.get("seam").is_none() {
+                continue;
+            }
+            // No strong nearest test, so the structured related_test is null,
+            // but the card-level oracle comes from the first related test.
+            assert!(
+                card.get("suggested_test")
+                    .and_then(|suggested| suggested.get("related_test"))
+                    .is_some_and(Value::is_null),
+                "related_test should be null when no strong test resolves: {card:?}"
+            );
+            assert_eq!(
+                card.get("oracle_kind").and_then(Value::as_str),
+                Some("exact_value")
+            );
+            assert_eq!(
+                card.get("oracle_strength").and_then(Value::as_str),
+                Some("weak")
+            );
+            assert_eq!(
+                card.get("canonical_gap_id").and_then(Value::as_str),
+                Some(expected_canonical_gap_id.as_str()),
+                "canonical identity must not depend on related-test navigation"
+            );
+            saw_card = true;
+        }
+        assert!(saw_card, "expected at least one working-set card");
         Ok(())
     }
 }

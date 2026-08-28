@@ -1,0 +1,115 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "gap_decision_ledger",
+  "status": "advisory",
+  "root": "fixtures/first_successful_pr/typescript-preview-gap",
+  "generated_at": "unix_ms:1783555421569",
+  "inputs": {
+    "source_kind": "check_output",
+    "records": "fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json"
+  },
+  "summary": {
+    "records_total": 1,
+    "repairable_total": 1,
+    "static_limitation_total": 0,
+    "no_action_total": 0,
+    "missing_artifact_total": 0,
+    "projection_pr_comment_eligible": 1,
+    "projection_gate_candidate": 0,
+    "projection_agent_packet_eligible": 1,
+    "ripr_zero_target_count": 0,
+    "ripr_plus_target_count": 0,
+    "preview_ineligible_total": 1,
+    "receipt_improved_total": 0,
+    "receipt_unchanged_after_attempt_total": 0,
+    "missing_output_contract_total": 0
+  },
+  "records": [
+    {
+      "gap_id": "gap:pr:gap:typescript:typescript_preview:2396aec1",
+      "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+      "kind": "MissingBoundaryAssertion",
+      "language": "typescript",
+      "language_status": "preview",
+      "scope": "pr_local",
+      "evidence_class": "predicate_boundary",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "repair_route": {
+        "route_kind": "AddBoundaryAssertion",
+        "target_file": "tests/discount.test.ts",
+        "target_line": 3,
+        "related_test": "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold",
+        "missing_discriminator": "amount == threshold",
+        "changed_behavior": "amount >= threshold",
+        "stop_conditions": [
+          "Stop if the TypeScript preview packet loses repair_packet_ready=true.",
+          "Stop if the verification command cannot run from this workspace.",
+          "Stop if the repair appears to require a production-code edit."
+        ]
+      },
+      "static_limit_kind": "typescript_preview",
+      "static_limit_detail": "TypeScript repair packets are preview advisory evidence.",
+      "anchor": {
+        "file": "src/discount.ts",
+        "line": 2,
+        "owner": "applyDiscount",
+        "dedupe_fingerprint": "gap:typescript:typescript_preview:2396aec1"
+      },
+      "evidence_ids": [
+        "probe:src_discount.ts:typescript_preview:2396aec1",
+        "gap:typescript:typescript_preview:2396aec1"
+      ],
+      "projection_eligibility": {
+        "agent_packet": {
+          "eligible": true,
+          "reason": "bounded_repair_route"
+        },
+        "ci_summary": {
+          "eligible": true,
+          "reason": "pr_local_gap_record"
+        },
+        "gate_candidate": {
+          "eligible": false,
+          "reason": "policy_target_not_supplied"
+        },
+        "lsp_diagnostic": {
+          "eligible": true,
+          "reason": "local_file_scope"
+        },
+        "pr_comment": {
+          "eligible": true,
+          "reason": "stable_anchor_and_repair_route"
+        },
+        "report_packet": {
+          "eligible": true,
+          "reason": "all_gap_records_are_reportable"
+        },
+        "ripr_plus_count": {
+          "eligible": false,
+          "reason": "pr_local_not_repo_scoped"
+        },
+        "ripr_zero_count": {
+          "eligible": false,
+          "reason": "pr_local_not_repo_scoped"
+        }
+      },
+      "verification_commands": [
+        "jest tests/discount.test.ts"
+      ],
+      "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command \"jest tests/discount.test.ts\" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json",
+      "regeneration_commands": [
+        "ripr check --root fixtures/first_successful_pr/typescript-preview-gap --json > target/ripr/reports/after-check.json"
+      ],
+      "authority_boundary": "preview_advisory_only"
+    }
+  ],
+  "warnings": [],
+  "limits": [
+    "Advisory static gap decisions only.",
+    "Gate-decision artifacts remain the only configured pass/fail authority.",
+    "This report does not rerun analysis, execute mutation tests, edit source, generate tests, call providers, publish comments, or change default CI blocking."
+  ]
+}

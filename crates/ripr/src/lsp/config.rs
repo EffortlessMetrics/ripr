@@ -1,9 +1,30 @@
 use crate::app::{CheckInput, Mode, OutputFormat};
 use crate::config::{
-    CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, RiprConfig, apply_to_check_input,
+    CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, LspDiagnosticProfile, RiprConfig,
+    apply_to_check_input,
 };
+use serde_json::Value;
 use std::path::Path;
-use tower_lsp_server::ls_types::InitializeParams;
+use std::time::Duration;
+use tower_lsp_server::ls_types::{InitializeParams, PositionEncodingKind};
+
+use super::client_features::ClientFeatureProfile;
+
+/// Default cooperative deadline for each git invocation in the LSP refresh
+/// path (#2303), in milliseconds. Mirrors the `[perl] timeout_ms` 30s
+/// precedent (`config.rs`): generous enough for cold caches on large
+/// repositories, bounded enough that a hung git cannot pin a refresh worker
+/// forever. Overridable per session via the `gitTimeoutMs` option.
+pub(super) const DEFAULT_LSP_GIT_TIMEOUT_MS: u64 = 30_000;
+
+/// Default physical deadline for one LSP refresh analysis run (#1972), in
+/// milliseconds. The git timeout bounds one invocation; this bounds the whole
+/// analysis attempt so a pathological diff load or classify loop cannot pin a
+/// refresh worker past the point where a dropped result is still actionable.
+/// An exceeded deadline is a fail-closed drop with the named
+/// `DeadlineExceeded` outcome, never a committed limited snapshot.
+/// Overridable per session via the `refreshDeadlineMs` option.
+pub(super) const DEFAULT_LSP_REFRESH_DEADLINE_MS: u64 = 600_000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct LspAnalysisConfig {
@@ -11,10 +32,43 @@ pub(super) struct LspAnalysisConfig {
     pub(super) mode: Mode,
     pub(super) include_unchanged_tests: bool,
     pub(super) repo_config: RiprConfig,
+    /// Session overrides are retained so a repository configuration reload
+    /// preserves the initialization precedence contract. This is a bounded
+    /// projection of the four supported LSP options, not an authority for
+    /// arbitrary client settings.
+    pub(super) session_options: Option<Value>,
+    /// Validated settings pulled from the client via `workspace/configuration`
+    /// (#2031, RIPR-SPEC-0136). Retained as a distinct layer — like
+    /// `session_options` — so a repository configuration reload re-applies the
+    /// pull precedence contract: pulled values win over initialization options
+    /// for the keys the pull returned; initialization options remain the
+    /// compatibility fallback for keys the pull did not return.
+    pub(super) pulled_options: Option<Value>,
     /// Enable repo seam evidence diagnostics. The default is bounded to
     /// saved-workspace, draft-mode analysis so the installed editor surface is
     /// useful with no `ripr.toml` and without running `ripr init`.
     pub(super) enable_seam_diagnostics: bool,
+    /// Defaults to `actionable`; valid initialization options override the
+    /// repository setting, while unknown options retain that resolved value.
+    pub(super) diagnostic_profile: LspDiagnosticProfile,
+    /// Cooperative per-invocation git deadline for the refresh path (#2303):
+    /// the scheduler's Git-input probe and the diff load inside analysis
+    /// both run under this bound, and an exceeded deadline produces the
+    /// named `git_invocation_timeout` error / a fail-closed probe record.
+    /// Defaults to [`DEFAULT_LSP_GIT_TIMEOUT_MS`]; the `gitTimeoutMs`
+    /// session option overrides it.
+    pub(super) git_timeout: Duration,
+    /// Physical deadline for one refresh analysis attempt (#1972). The
+    /// scheduler arms a timer when an attempt starts; on expiry the attempt's
+    /// cancellation token is cancelled with `DeadlineExceeded` and the
+    /// refresh is dropped fail-closed (no committed limited snapshot).
+    /// Defaults to [`DEFAULT_LSP_REFRESH_DEADLINE_MS`]; the
+    /// `refreshDeadlineMs` session option overrides it.
+    pub(super) refresh_deadline: Duration,
+    /// The position encoding negotiated at `initialize` from the client's
+    /// `general.positionEncodings` (#1626 PR B / #1749). Defaults to UTF-16 and
+    /// is preserved across repository-config and session-option reloads.
+    pub(super) position_encoding: PositionEncodingKind,
 }
 
 impl Default for LspAnalysisConfig {
@@ -25,56 +79,199 @@ impl Default for LspAnalysisConfig {
             mode: defaults.mode,
             include_unchanged_tests: defaults.include_unchanged_tests,
             repo_config: RiprConfig::default(),
+            session_options: None,
+            pulled_options: None,
             enable_seam_diagnostics: DEFAULT_LSP_SEAM_DIAGNOSTICS,
+            diagnostic_profile: LspDiagnosticProfile::default(),
+            git_timeout: Duration::from_millis(DEFAULT_LSP_GIT_TIMEOUT_MS),
+            refresh_deadline: Duration::from_millis(DEFAULT_LSP_REFRESH_DEADLINE_MS),
+            position_encoding: PositionEncodingKind::UTF16,
         }
     }
 }
 
 impl LspAnalysisConfig {
+    /// Build the session config from initialization options plus the typed
+    /// client-feature profile (#1987, RIPR-SPEC-0143). The profile is parsed
+    /// once at `initialize`; the position encoding is read from it rather
+    /// than re-negotiated here.
     pub(super) fn from_initialize_params(
         params: &InitializeParams,
         repo_config: RiprConfig,
+        profile: &ClientFeatureProfile,
+    ) -> Self {
+        let mut config =
+            Self::from_repo_config_and_options(repo_config, params.initialization_options.as_ref());
+        config.position_encoding = profile.selected_position_encoding.clone();
+        config
+    }
+
+    pub(super) fn from_repo_config_and_options(
+        repo_config: RiprConfig,
+        options: Option<&Value>,
+    ) -> Self {
+        Self::from_repo_config_and_layers(repo_config, options, None)
+    }
+
+    /// Resolve the effective config from the three retained layers
+    /// (RIPR-SPEC-0136): repository config defaults, then initialization
+    /// options for the keys the pull did not return, then validated pulled
+    /// settings for the keys the pull returned.
+    fn from_repo_config_and_layers(
+        repo_config: RiprConfig,
+        options: Option<&Value>,
+        pulled: Option<&Value>,
     ) -> Self {
         let mut config = Self::from_repo_config(repo_config);
-        let Some(options) = params.initialization_options.as_ref() else {
+        let session = options
+            .and_then(session_options_object)
+            .map(supported_session_options)
+            .filter(|options| !options.is_empty());
+        let pulled = pulled
+            .and_then(Value::as_object)
+            .map(supported_session_options)
+            .filter(|options| !options.is_empty());
+        if session.is_none() && pulled.is_none() {
             return config;
-        };
-
-        if let Some(base_ref) = options
-            .get("baseRef")
-            .and_then(|value| value.as_str())
-            .map(str::trim)
-        {
-            config.base_ref = if base_ref.is_empty() {
-                None
-            } else {
-                Some(base_ref.to_string())
-            };
         }
-
-        if let Some(mode) = options
-            .get("checkMode")
-            .and_then(|value| value.as_str())
-            .and_then(parse_mode)
-        {
-            config.mode = mode;
+        let mut effective_session = session.clone().unwrap_or_default();
+        if let Some(pulled) = &pulled {
+            for key in pulled.keys() {
+                effective_session.remove(key);
+            }
         }
-
-        if let Some(include_unchanged_tests) = options
-            .get("includeUnchangedTests")
-            .and_then(|value| value.as_bool())
-        {
-            config.include_unchanged_tests = include_unchanged_tests;
+        config.session_options = session.map(Value::Object);
+        config.pulled_options = pulled.clone().map(Value::Object);
+        apply_session_options(&mut config, &effective_session);
+        if let Some(pulled) = &pulled {
+            apply_session_options(&mut config, pulled);
         }
-
-        if let Some(enable_seam_diagnostics) = options
-            .get("seamDiagnostics")
-            .and_then(|value| value.as_bool())
-        {
-            config.enable_seam_diagnostics = enable_seam_diagnostics;
-        }
-
         config
+    }
+
+    /// Rebuild with a new validated pulled layer (#2031). The pulled layer
+    /// replaces the retained one wholesale: a key absent from the latest pull
+    /// falls back to initialization options or repository defaults.
+    pub(super) fn with_pulled_options(&self, pulled: Option<&Value>) -> Self {
+        let mut next = Self::from_repo_config_and_layers(
+            self.repo_config.clone(),
+            self.session_options.as_ref(),
+            pulled,
+        );
+        next.position_encoding = self.position_encoding.clone();
+        next
+    }
+
+    /// Whether two configs agree on the effective analysis settings. Used by
+    /// the pull-apply no-op guard so a re-pull whose validated values do not
+    /// change the effective settings does not reschedule analysis (#2031).
+    pub(super) fn effective_settings_eq(&self, other: &Self) -> bool {
+        self.base_ref == other.base_ref
+            && self.mode == other.mode
+            && self.include_unchanged_tests == other.include_unchanged_tests
+            && self.enable_seam_diagnostics == other.enable_seam_diagnostics
+            && self.diagnostic_profile == other.diagnostic_profile
+            && self.git_timeout == other.git_timeout
+            && self.refresh_deadline == other.refresh_deadline
+    }
+
+    /// Per-field source disclosure for the seven governed session keys
+    /// (`pulled` | `initialization` | `repo` | `default`), surfaced in the
+    /// analysis status payload so defaults never masquerade as accepted
+    /// requested settings (#2031).
+    ///
+    /// Known limitation: `seam_diagnostics` is attributed `repo` whenever a
+    /// `ripr.toml` was loaded, because the repository default and the
+    /// built-in default coincide and cannot be distinguished after parsing.
+    /// `git_timeout_ms` and `refresh_deadline_ms` have no `ripr.toml` slot
+    /// (#2303, #1972), so they can only be `pulled`, `initialization`, or
+    /// `default`.
+    pub(super) fn session_value_sources(&self) -> serde_json::Map<String, Value> {
+        let session = self.session_options.as_ref().and_then(Value::as_object);
+        let pulled = self.pulled_options.as_ref().and_then(Value::as_object);
+        let repo_config = self.repo_config();
+        let entries: [(&str, &str, bool); 7] = [
+            ("base_ref", "baseRef", false),
+            (
+                "check_mode",
+                "checkMode",
+                repo_config.analysis().mode().is_some(),
+            ),
+            (
+                "include_unchanged_tests",
+                "includeUnchangedTests",
+                repo_config.analysis().include_unchanged_tests().is_some(),
+            ),
+            (
+                "seam_diagnostics",
+                "seamDiagnostics",
+                repo_config.source_path().is_some()
+                    && repo_config.lsp().seam_diagnostics().is_some(),
+            ),
+            (
+                "diagnostic_profile",
+                "diagnosticProfile",
+                repo_config.lsp().diagnostic_profile().is_some(),
+            ),
+            ("git_timeout_ms", "gitTimeoutMs", false),
+            ("refresh_deadline_ms", "refreshDeadlineMs", false),
+        ];
+        let mut sources = serde_json::Map::new();
+        for (payload_key, option_key, repo_explicit) in entries {
+            let source = if pulled.is_some_and(|options| options.contains_key(option_key)) {
+                "pulled"
+            } else if session.is_some_and(|options| options.contains_key(option_key)) {
+                "initialization"
+            } else if repo_explicit {
+                "repo"
+            } else {
+                "default"
+            };
+            sources.insert(payload_key.to_string(), Value::String(source.to_string()));
+        }
+        sources
+    }
+
+    pub(super) fn with_changed_session_options(&self, settings: &Value) -> Option<Self> {
+        let changed = session_options_object(settings)?;
+        let mut merged = self
+            .session_options
+            .as_ref()
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        for (key, value) in changed {
+            if !is_supported_session_option(key) {
+                continue;
+            }
+            if value.is_null() {
+                merged.remove(key);
+            } else {
+                merged.insert(key.clone(), value.clone());
+            }
+        }
+        let mut next = Self::from_repo_config_and_layers(
+            self.repo_config.clone(),
+            Some(&Value::Object(merged)),
+            self.pulled_options.as_ref(),
+        );
+        next.position_encoding = self.position_encoding.clone();
+        Some(next)
+    }
+
+    pub(super) fn reload_repo_config(&self, repo_config: RiprConfig) -> Self {
+        let mut next = Self::from_repo_config_and_layers(
+            repo_config,
+            self.session_options.as_ref(),
+            self.pulled_options.as_ref(),
+        );
+        next.position_encoding = self.position_encoding.clone();
+        next
+    }
+
+    pub(super) fn has_session_option_changes(settings: &Value) -> bool {
+        session_options_object(settings)
+            .is_some_and(|options| options.keys().any(|key| is_supported_session_option(key)))
     }
 
     fn from_repo_config(repo_config: RiprConfig) -> Self {
@@ -88,7 +285,13 @@ impl LspAnalysisConfig {
                 .lsp()
                 .seam_diagnostics()
                 .unwrap_or(DEFAULT_LSP_SEAM_DIAGNOSTICS),
+            diagnostic_profile: repo_config.lsp().diagnostic_profile().unwrap_or_default(),
+            git_timeout: Duration::from_millis(DEFAULT_LSP_GIT_TIMEOUT_MS),
+            refresh_deadline: Duration::from_millis(DEFAULT_LSP_REFRESH_DEADLINE_MS),
             repo_config,
+            session_options: None,
+            pulled_options: None,
+            position_encoding: PositionEncodingKind::UTF16,
         }
     }
 
@@ -99,6 +302,7 @@ impl LspAnalysisConfig {
             mode: self.mode.clone(),
             format: OutputFormat::Json,
             include_unchanged_tests: self.include_unchanged_tests,
+            git_timeout: Some(self.git_timeout),
             ..CheckInput::default()
         }
     }
@@ -106,6 +310,167 @@ impl LspAnalysisConfig {
     pub(super) fn repo_config(&self) -> &RiprConfig {
         &self.repo_config
     }
+}
+
+fn session_options_object(value: &Value) -> Option<&serde_json::Map<String, Value>> {
+    let object = value.as_object()?;
+    object
+        .get("ripr")
+        .and_then(Value::as_object)
+        .or(Some(object))
+}
+
+fn apply_session_options(config: &mut LspAnalysisConfig, options: &serde_json::Map<String, Value>) {
+    if let Some(base_ref) = options
+        .get("baseRef")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+    {
+        config.base_ref = if base_ref.is_empty() {
+            None
+        } else {
+            Some(base_ref.to_string())
+        };
+    }
+
+    if let Some(mode) = options
+        .get("checkMode")
+        .and_then(|value| value.as_str())
+        .and_then(parse_mode)
+    {
+        config.mode = mode;
+    }
+
+    if let Some(include_unchanged_tests) = options
+        .get("includeUnchangedTests")
+        .and_then(|value| value.as_bool())
+    {
+        config.include_unchanged_tests = include_unchanged_tests;
+    }
+
+    if let Some(enable_seam_diagnostics) = options
+        .get("seamDiagnostics")
+        .and_then(|value| value.as_bool())
+    {
+        config.enable_seam_diagnostics = enable_seam_diagnostics;
+    }
+
+    if let Some(profile) = options
+        .get("diagnosticProfile")
+        .and_then(|value| value.as_str())
+        .and_then(|value| LspDiagnosticProfile::parse(value).ok())
+    {
+        config.diagnostic_profile = profile;
+    }
+
+    // Lenient (#2303): a malformed initialization/pushed value is ignored and
+    // the current deadline (30s default) stays in effect; the pull path
+    // validates the same key fail-closed in `validate_pulled_value`.
+    if let Some(git_timeout_ms) = options.get("gitTimeoutMs").and_then(Value::as_u64) {
+        config.git_timeout = Duration::from_millis(git_timeout_ms);
+    }
+
+    // Lenient (#1972): a malformed initialization/pushed value is ignored and
+    // the current physical deadline (600s default) stays in effect; the pull
+    // path validates the same key fail-closed in `validate_pulled_value`.
+    if let Some(refresh_deadline_ms) = options.get("refreshDeadlineMs").and_then(Value::as_u64) {
+        config.refresh_deadline = Duration::from_millis(refresh_deadline_ms);
+    }
+}
+
+fn supported_session_options(
+    options: &serde_json::Map<String, Value>,
+) -> serde_json::Map<String, Value> {
+    options
+        .iter()
+        .filter(|(key, _)| is_supported_session_option(key))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+fn is_supported_session_option(key: &str) -> bool {
+    matches!(
+        key,
+        "baseRef"
+            | "checkMode"
+            | "includeUnchangedTests"
+            | "seamDiagnostics"
+            | "diagnosticProfile"
+            | "gitTimeoutMs"
+            | "refreshDeadlineMs"
+    )
+}
+
+/// Validate one `workspace/configuration` response for the bounded `ripr`
+/// section before anything is applied (#2031, RIPR-SPEC-0136).
+///
+/// The response must be an array of exactly one item matching the single
+/// requested `ConfigurationItem`. A `null` item means the client holds no
+/// `ripr` settings and yields no pulled layer. An object item is checked
+/// key by key: supported keys with the wrong JSON type or an unknown enum
+/// literal fail the whole pull (fail-closed — a silently ignored requested
+/// setting would masquerade as accepted), while unsupported keys are outside
+/// the governed section and ignored.
+pub(super) fn validated_pulled_options(values: &[Value]) -> Result<Option<Value>, String> {
+    if values.len() != 1 {
+        return Err(format!(
+            "workspace/configuration returned {} items for one requested `ripr` section",
+            values.len()
+        ));
+    }
+    let Some(item) = values.first() else {
+        return Err("workspace/configuration returned no items".to_string());
+    };
+    if item.is_null() {
+        return Ok(None);
+    }
+    let Some(object) = item.as_object() else {
+        return Err(format!(
+            "workspace/configuration item for the `ripr` section must be an object or null, got {item}"
+        ));
+    };
+    for (key, value) in object {
+        if !is_supported_session_option(key) {
+            continue;
+        }
+        validate_pulled_value(key, value)?;
+    }
+    Ok(Some(Value::Object(supported_session_options(object))))
+}
+
+/// Pulled settings arrive outside the initialization-options ingress bound
+/// (#2034), so each value is bounded here: a transport-sized string must
+/// fail validation instead of being stored and re-rendered (#2211 review).
+const MAX_PULLED_VALUE_BYTES: usize = 4096;
+
+fn validate_pulled_value(key: &str, value: &Value) -> Result<(), String> {
+    if value
+        .as_str()
+        .is_some_and(|text| text.len() > MAX_PULLED_VALUE_BYTES)
+    {
+        return Err(format!(
+            "workspace/configuration value for `{key}` exceeds the {MAX_PULLED_VALUE_BYTES}-byte pulled-value bound"
+        ));
+    }
+    let valid = match key {
+        "baseRef" => value.as_str().is_some(),
+        "checkMode" => value
+            .as_str()
+            .is_some_and(|literal| parse_mode(literal).is_some()),
+        "includeUnchangedTests" | "seamDiagnostics" => value.as_bool().is_some(),
+        "diagnosticProfile" => value
+            .as_str()
+            .is_some_and(|literal| LspDiagnosticProfile::parse(literal).is_ok()),
+        "gitTimeoutMs" => value.as_u64().is_some(),
+        "refreshDeadlineMs" => value.as_u64().is_some(),
+        _ => true,
+    };
+    if valid {
+        return Ok(());
+    }
+    Err(format!(
+        "workspace/configuration value for `{key}` has an invalid type or literal: {value}"
+    ))
 }
 
 fn parse_mode(value: &str) -> Option<Mode> {
@@ -133,31 +498,93 @@ mod tests {
         }
     }
 
+    /// Test helper mirroring the production flow: the profile is parsed once
+    /// from the params and passed into the config build.
+    fn config_from_params(params: &InitializeParams, repo_config: RiprConfig) -> LspAnalysisConfig {
+        LspAnalysisConfig::from_initialize_params(
+            params,
+            repo_config,
+            &ClientFeatureProfile::from_initialize_params(params),
+        )
+    }
+
     #[test]
     fn seam_diagnostics_defaults_to_true_when_option_is_missing() {
         let params = params_with(json!({}));
-        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        let config = config_from_params(&params, RiprConfig::default());
         assert!(config.enable_seam_diagnostics);
+        assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Actionable);
+    }
+
+    #[test]
+    fn diagnostic_profile_init_option_selects_full_visibility() {
+        let params = params_with(json!({"diagnosticProfile": "full"}));
+        let config = config_from_params(&params, RiprConfig::default());
+        assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Full);
+    }
+
+    #[test]
+    fn position_encoding_survives_repo_reload_and_session_option_changes() -> Result<(), String> {
+        let config = LspAnalysisConfig {
+            position_encoding: PositionEncodingKind::UTF8,
+            ..LspAnalysisConfig::default()
+        };
+
+        let reloaded = config.reload_repo_config(RiprConfig::default());
+        if reloaded.position_encoding != PositionEncodingKind::UTF8 {
+            return Err("reload_repo_config dropped the negotiated position encoding".to_string());
+        }
+
+        let with_options = config
+            .with_changed_session_options(&json!({ "diagnosticProfile": "full" }))
+            .ok_or_else(|| "session option change should rebuild the config".to_string())?;
+        if with_options.position_encoding != PositionEncodingKind::UTF8 {
+            return Err(
+                "with_changed_session_options dropped the negotiated position encoding".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_diagnostic_profile_init_option_keeps_the_default() {
+        let params = params_with(json!({"diagnosticProfile": "unknown"}));
+        let config = config_from_params(&params, RiprConfig::default());
+        assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Actionable);
+    }
+
+    #[test]
+    fn invalid_repo_diagnostic_profile_is_rejected() {
+        let error = match crate::config::tests_only_parse(
+            r#"
+[lsp]
+diagnostic_profile = "quiet"
+"#,
+        ) {
+            Ok(_) => "invalid diagnostic profile was accepted".to_owned(),
+            Err(error) => error,
+        };
+        assert!(error.contains("diagnostic_profile"));
     }
 
     #[test]
     fn seam_diagnostics_true_in_init_options_enables_flag() {
         let params = params_with(json!({"seamDiagnostics": true}));
-        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        let config = config_from_params(&params, RiprConfig::default());
         assert!(config.enable_seam_diagnostics);
     }
 
     #[test]
     fn seam_diagnostics_false_in_init_options_disables_default() {
         let params = params_with(json!({"seamDiagnostics": false}));
-        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        let config = config_from_params(&params, RiprConfig::default());
         assert!(!config.enable_seam_diagnostics);
     }
 
     #[test]
     fn non_boolean_seam_diagnostics_value_is_ignored() {
         let params = params_with(json!({"seamDiagnostics": "yes"}));
-        let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+        let config = config_from_params(&params, RiprConfig::default());
         // Falls back to the default rather than misinterpreting a
         // string as truthy.
         assert!(config.enable_seam_diagnostics);
@@ -203,8 +630,7 @@ mod tests {
                     "includeUnchangedTests": include_unchanged_tests,
                     "seamDiagnostics": seam_diagnostics,
                 }));
-                let config =
-                    LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
+                let config = config_from_params(&params, RiprConfig::default());
                 assert_eq!(config.include_unchanged_tests, include_unchanged_tests);
                 assert_eq!(config.enable_seam_diagnostics, seam_diagnostics);
             }
@@ -221,14 +647,16 @@ include_unchanged_tests = false
 
 [lsp]
 seam_diagnostics = true
+diagnostic_profile = "full"
 "#,
         )?;
         let params = params_with(json!({}));
-        let config = LspAnalysisConfig::from_initialize_params(&params, repo_config);
+        let config = config_from_params(&params, repo_config);
 
         assert_eq!(config.mode, Mode::Deep);
         assert!(!config.include_unchanged_tests);
         assert!(config.enable_seam_diagnostics);
+        assert_eq!(config.diagnostic_profile, LspDiagnosticProfile::Full);
         Ok(())
     }
 
@@ -249,11 +677,538 @@ seam_diagnostics = true
             "includeUnchangedTests": true,
             "seamDiagnostics": false
         }));
-        let config = LspAnalysisConfig::from_initialize_params(&params, repo_config);
+        let config = config_from_params(&params, repo_config);
 
         assert_eq!(config.mode, Mode::Instant);
         assert!(config.include_unchanged_tests);
         assert!(!config.enable_seam_diagnostics);
+        Ok(())
+    }
+
+    #[test]
+    fn repository_reload_preserves_initialization_overrides() -> Result<(), String> {
+        let initial_repo = crate::config::tests_only_parse(
+            r#"
+[analysis]
+mode = "deep"
+include_unchanged_tests = false
+"#,
+        )?;
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            initial_repo,
+            Some(&json!({
+                "baseRef": "origin/release",
+                "checkMode": "fast",
+                "includeUnchangedTests": true,
+            })),
+        );
+
+        let reloaded_repo = crate::config::tests_only_parse(
+            r#"
+[analysis]
+mode = "ready"
+include_unchanged_tests = false
+"#,
+        )?;
+        let reloaded = config.reload_repo_config(reloaded_repo);
+
+        assert_eq!(reloaded.base_ref.as_deref(), Some("origin/release"));
+        assert_eq!(reloaded.mode, Mode::Fast);
+        assert!(reloaded.include_unchanged_tests);
+        Ok(())
+    }
+
+    #[test]
+    fn configuration_settings_merge_with_existing_session_options() -> Result<(), String> {
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"baseRef": "origin/main", "checkMode": "deep"})),
+        );
+        let Some(changed) =
+            config.with_changed_session_options(&json!({"ripr": {"checkMode": "fast"}}))
+        else {
+            return Err("object settings should produce a config".to_string());
+        };
+
+        assert_eq!(changed.base_ref.as_deref(), Some("origin/main"));
+        assert_eq!(changed.mode, Mode::Fast);
+        Ok(())
+    }
+
+    #[test]
+    fn unrelated_configuration_settings_do_not_trigger_session_reload() {
+        assert!(!LspAnalysisConfig::has_session_option_changes(
+            &json!({"editor": {"formatOnSave": true}})
+        ));
+    }
+
+    #[test]
+    fn validated_pulled_options_rejects_wrong_item_count() -> Result<(), String> {
+        for values in [vec![], vec![json!({}), json!({})]] {
+            if validated_pulled_options(&values).is_ok() {
+                return Err(format!("wrong item count must fail closed: {values:?}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn validated_pulled_options_rejects_oversized_string_value() -> Result<(), String> {
+        let oversized = "x".repeat(MAX_PULLED_VALUE_BYTES + 1);
+        let values = vec![json!({ "baseRef": oversized })];
+        if validated_pulled_options(&values).is_ok() {
+            return Err("an oversized pulled string must fail closed".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn validated_pulled_options_accepts_null_item_as_no_settings() -> Result<(), String> {
+        if validated_pulled_options(&[Value::Null])?.is_some() {
+            return Err("a null item must yield no pulled layer".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn validated_pulled_options_rejects_non_object_item_and_bad_values() -> Result<(), String> {
+        for values in [
+            vec![json!("ripr")],
+            vec![json!({"checkMode": "turbo"})],
+            vec![json!({"checkMode": 42})],
+            vec![json!({"seamDiagnostics": "yes"})],
+            vec![json!({"includeUnchangedTests": 1})],
+            vec![json!({"baseRef": null})],
+            vec![json!({"diagnosticProfile": "quiet"})],
+        ] {
+            if validated_pulled_options(&values).is_ok() {
+                return Err(format!("malformed pull must fail closed: {values:?}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn validated_pulled_options_keeps_supported_keys_and_ignores_extras() -> Result<(), String> {
+        let pulled = validated_pulled_options(&[json!({
+            "checkMode": "fast",
+            "seamDiagnostics": false,
+            "editor": {"formatOnSave": true}
+        })])?
+        .ok_or_else(|| "expected a pulled layer".to_string())?;
+        assert_eq!(
+            pulled,
+            json!({"checkMode": "fast", "seamDiagnostics": false})
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn pulled_settings_override_initialization_options_for_returned_keys() -> Result<(), String> {
+        let repo_config = crate::config::tests_only_parse(
+            r#"
+[analysis]
+mode = "deep"
+include_unchanged_tests = false
+"#,
+        )?;
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            repo_config,
+            Some(&json!({"checkMode": "instant", "baseRef": "origin/init"})),
+        )
+        .with_pulled_options(Some(&json!({"checkMode": "ready"})));
+
+        // The pulled key wins over the initialization option...
+        assert_eq!(config.mode, Mode::Ready);
+        // ...while keys the pull did not return fall back to initialization
+        // options, then repository defaults.
+        assert_eq!(config.base_ref.as_deref(), Some("origin/init"));
+        assert!(!config.include_unchanged_tests);
+        assert!(config.enable_seam_diagnostics);
+        Ok(())
+    }
+
+    #[test]
+    fn empty_pull_layer_restores_initialization_and_repo_precedence() -> Result<(), String> {
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"checkMode": "fast"})),
+        )
+        .with_pulled_options(Some(&json!({"checkMode": "deep"})));
+        assert_eq!(config.mode, Mode::Deep);
+
+        let cleared = config.with_pulled_options(None);
+        assert_eq!(cleared.mode, Mode::Fast);
+        if cleared.pulled_options.is_some() {
+            return Err("an empty pull must clear the retained pulled layer".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repository_reload_preserves_pulled_overrides() -> Result<(), String> {
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"checkMode": "instant", "baseRef": "origin/init"})),
+        )
+        .with_pulled_options(Some(&json!({"checkMode": "ready"})));
+
+        let reloaded_repo = crate::config::tests_only_parse(
+            r#"
+[analysis]
+mode = "draft"
+include_unchanged_tests = false
+"#,
+        )?;
+        let reloaded = config.reload_repo_config(reloaded_repo);
+
+        assert_eq!(reloaded.mode, Mode::Ready);
+        assert_eq!(reloaded.base_ref.as_deref(), Some("origin/init"));
+        assert!(!reloaded.include_unchanged_tests);
+        Ok(())
+    }
+
+    #[test]
+    fn session_option_change_preserves_pulled_layer() -> Result<(), String> {
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"checkMode": "instant"})),
+        )
+        .with_pulled_options(Some(&json!({"checkMode": "deep"})));
+        let Some(changed) = config.with_changed_session_options(&json!({"checkMode": "fast"}))
+        else {
+            return Err("session option change should rebuild the config".to_string());
+        };
+        // The pulled layer still wins for checkMode even though the pushed
+        // session option changed.
+        assert_eq!(changed.mode, Mode::Deep);
+        Ok(())
+    }
+
+    #[test]
+    fn effective_settings_eq_ignores_layer_representation() -> Result<(), String> {
+        let from_repo = LspAnalysisConfig::from_repo_config_and_options(
+            crate::config::tests_only_parse("[analysis]\nmode = \"fast\"\n")?,
+            None,
+        );
+        let from_pull =
+            LspAnalysisConfig::from_repo_config_and_options(RiprConfig::default(), None)
+                .with_pulled_options(Some(&json!({"checkMode": "fast"})));
+        if from_repo == from_pull {
+            return Err("distinct retained layers must remain distinguishable".to_string());
+        }
+        if !from_repo.effective_settings_eq(&from_pull) {
+            return Err("same effective settings must compare equal".to_string());
+        }
+        let different = from_pull.with_pulled_options(Some(&json!({"checkMode": "deep"})));
+        if from_pull.effective_settings_eq(&different) {
+            return Err("different effective settings must compare unequal".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn session_value_sources_disclose_per_field_origin() -> Result<(), String> {
+        let repo_config = crate::config::tests_only_parse(
+            r#"
+[analysis]
+mode = "deep"
+
+[lsp]
+diagnostic_profile = "full"
+"#,
+        )?;
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            repo_config,
+            Some(&json!({"baseRef": "origin/init"})),
+        )
+        .with_pulled_options(Some(&json!({"seamDiagnostics": false})));
+        let sources = config.session_value_sources();
+        assert_eq!(
+            sources.get("base_ref").and_then(Value::as_str),
+            Some("initialization")
+        );
+        assert_eq!(
+            sources.get("check_mode").and_then(Value::as_str),
+            Some("repo")
+        );
+        assert_eq!(
+            sources.get("seam_diagnostics").and_then(Value::as_str),
+            Some("pulled")
+        );
+        assert_eq!(
+            sources.get("diagnostic_profile").and_then(Value::as_str),
+            Some("repo")
+        );
+        assert_eq!(
+            sources
+                .get("include_unchanged_tests")
+                .and_then(Value::as_str),
+            Some("default")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn git_timeout_ms_applies_from_initialization_options() -> Result<(), String> {
+        // #2303: a valid `gitTimeoutMs` session value sets the cooperative
+        // per-invocation git deadline, and `check_input` is the one place
+        // that threads it into the analysis input.
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"gitTimeoutMs": 45_000})),
+        );
+        if config.git_timeout != Duration::from_secs(45) {
+            return Err(format!(
+                "expected a 45s deadline, got {:?}",
+                config.git_timeout
+            ));
+        }
+        let input = config.check_input(Path::new("/workspace"));
+        if input.git_timeout != Some(Duration::from_secs(45)) {
+            return Err(format!(
+                "check_input must carry the configured deadline, got {:?}",
+                input.git_timeout
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn git_timeout_ms_defaults_to_thirty_seconds() -> Result<(), String> {
+        let config = LspAnalysisConfig::default();
+        if config.git_timeout != Duration::from_millis(DEFAULT_LSP_GIT_TIMEOUT_MS) {
+            return Err(format!(
+                "expected the 30s default, got {:?}",
+                config.git_timeout
+            ));
+        }
+        let input = config.check_input(Path::new("/workspace"));
+        if input.git_timeout != Some(Duration::from_secs(30)) {
+            return Err(format!(
+                "default check_input must carry the 30s deadline, got {:?}",
+                input.git_timeout
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn git_timeout_ms_malformed_initialization_value_keeps_default() -> Result<(), String> {
+        // #2303: the initialization/push path is lenient — a malformed value
+        // is ignored and the 30s default stays in effect.
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"gitTimeoutMs": "fast"})),
+        );
+        if config.git_timeout != Duration::from_millis(DEFAULT_LSP_GIT_TIMEOUT_MS) {
+            return Err(format!(
+                "a malformed value must keep the 30s default, got {:?}",
+                config.git_timeout
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn validated_pulled_options_rejects_wrong_typed_git_timeout_ms() -> Result<(), String> {
+        // #2303: the pull path is fail-closed — a supported key with the
+        // wrong JSON type fails the whole pull instead of being silently
+        // ignored.
+        let ok = validated_pulled_options(&[json!({"gitTimeoutMs": 45_000})])?;
+        if ok.is_none() {
+            return Err("a numeric gitTimeoutMs pull must validate".to_string());
+        }
+        let err = match validated_pulled_options(&[json!({"gitTimeoutMs": "45000"})]) {
+            Err(err) => err,
+            Ok(_) => return Err("a string gitTimeoutMs must fail the pull".to_string()),
+        };
+        if !err.contains("gitTimeoutMs") {
+            return Err(format!("the failure must name the key, got: {err}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn session_value_sources_disclose_git_timeout_ms_origin() -> Result<(), String> {
+        // #2303: the default, initialization, and pulled origins are all
+        // distinguishable for the new key; there is no `ripr.toml` slot.
+        let default_sources = LspAnalysisConfig::default().session_value_sources();
+        if default_sources
+            .get("git_timeout_ms")
+            .and_then(Value::as_str)
+            != Some("default")
+        {
+            return Err("unset gitTimeoutMs must disclose as default".to_string());
+        }
+        let init_sources = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"gitTimeoutMs": 45_000})),
+        )
+        .session_value_sources();
+        if init_sources.get("git_timeout_ms").and_then(Value::as_str) != Some("initialization") {
+            return Err("initialization gitTimeoutMs must disclose as initialization".to_string());
+        }
+        let pulled_sources = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"gitTimeoutMs": 45_000})),
+        )
+        .with_pulled_options(Some(&json!({"gitTimeoutMs": 60_000})))
+        .session_value_sources();
+        if pulled_sources.get("git_timeout_ms").and_then(Value::as_str) != Some("pulled") {
+            return Err("pulled gitTimeoutMs must disclose as pulled".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn effective_settings_eq_compares_git_timeout() -> Result<(), String> {
+        // #2303: a re-pull that changes only the deadline is NOT a no-op —
+        // it must reschedule analysis like any other effective change.
+        let base = LspAnalysisConfig::default();
+        let changed = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"gitTimeoutMs": 45_000})),
+        );
+        if base.effective_settings_eq(&changed) {
+            return Err("a changed deadline must not compare equal".to_string());
+        }
+        let same = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"gitTimeoutMs": 30_000})),
+        );
+        if !base.effective_settings_eq(&same) {
+            return Err("an explicit 30s must equal the default".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn refresh_deadline_ms_applies_from_initialization_options() -> Result<(), String> {
+        // #1972: a valid `refreshDeadlineMs` session value sets the physical
+        // deadline for one refresh analysis attempt.
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"refreshDeadlineMs": 120_000})),
+        );
+        if config.refresh_deadline != Duration::from_mins(2) {
+            return Err(format!(
+                "expected a 120s deadline, got {:?}",
+                config.refresh_deadline
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn refresh_deadline_ms_defaults_to_ten_minutes() -> Result<(), String> {
+        let config = LspAnalysisConfig::default();
+        if config.refresh_deadline != Duration::from_millis(DEFAULT_LSP_REFRESH_DEADLINE_MS) {
+            return Err(format!(
+                "expected the 600s default, got {:?}",
+                config.refresh_deadline
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn refresh_deadline_ms_malformed_initialization_value_keeps_default() -> Result<(), String> {
+        // #1972: the initialization/push path is lenient — a malformed value
+        // is ignored and the 600s default stays in effect.
+        let config = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"refreshDeadlineMs": "soon"})),
+        );
+        if config.refresh_deadline != Duration::from_millis(DEFAULT_LSP_REFRESH_DEADLINE_MS) {
+            return Err(format!(
+                "a malformed value must keep the 600s default, got {:?}",
+                config.refresh_deadline
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn validated_pulled_options_rejects_wrong_typed_refresh_deadline_ms() -> Result<(), String> {
+        // #1972: the pull path is fail-closed — a supported key with the
+        // wrong JSON type fails the whole pull instead of being silently
+        // ignored.
+        let ok = validated_pulled_options(&[json!({"refreshDeadlineMs": 120_000})])?;
+        if ok.is_none() {
+            return Err("a numeric refreshDeadlineMs pull must validate".to_string());
+        }
+        let err = match validated_pulled_options(&[json!({"refreshDeadlineMs": "120000"})]) {
+            Err(err) => err,
+            Ok(_) => return Err("a string refreshDeadlineMs must fail the pull".to_string()),
+        };
+        if !err.contains("refreshDeadlineMs") {
+            return Err(format!("the failure must name the key, got: {err}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn session_value_sources_disclose_refresh_deadline_ms_origin() -> Result<(), String> {
+        // #1972: the default, initialization, and pulled origins are all
+        // distinguishable for the new key; there is no `ripr.toml` slot.
+        let default_sources = LspAnalysisConfig::default().session_value_sources();
+        if default_sources
+            .get("refresh_deadline_ms")
+            .and_then(Value::as_str)
+            != Some("default")
+        {
+            return Err("unset refreshDeadlineMs must disclose as default".to_string());
+        }
+        let init_sources = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"refreshDeadlineMs": 120_000})),
+        )
+        .session_value_sources();
+        if init_sources
+            .get("refresh_deadline_ms")
+            .and_then(Value::as_str)
+            != Some("initialization")
+        {
+            return Err(
+                "initialization refreshDeadlineMs must disclose as initialization".to_string(),
+            );
+        }
+        let pulled_sources = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"refreshDeadlineMs": 120_000})),
+        )
+        .with_pulled_options(Some(&json!({"refreshDeadlineMs": 180_000})))
+        .session_value_sources();
+        if pulled_sources
+            .get("refresh_deadline_ms")
+            .and_then(Value::as_str)
+            != Some("pulled")
+        {
+            return Err("pulled refreshDeadlineMs must disclose as pulled".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn effective_settings_eq_compares_refresh_deadline() -> Result<(), String> {
+        // #1972: a re-pull that changes only the physical deadline is NOT a
+        // no-op — it must reschedule analysis like any other effective change.
+        let base = LspAnalysisConfig::default();
+        let changed = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"refreshDeadlineMs": 120_000})),
+        );
+        if base.effective_settings_eq(&changed) {
+            return Err("a changed deadline must not compare equal".to_string());
+        }
+        let same = LspAnalysisConfig::from_repo_config_and_options(
+            RiprConfig::default(),
+            Some(&json!({"refreshDeadlineMs": 600_000})),
+        );
+        if !base.effective_settings_eq(&same) {
+            return Err("an explicit 600s must equal the default".to_string());
+        }
         Ok(())
     }
 }

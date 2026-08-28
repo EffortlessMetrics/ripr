@@ -4,7 +4,11 @@
   "mode": "fast",
   "root": "fixtures/typescript_disabled/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":0,"probes":0,"findings":0,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":0,"probes":0,"findings":0,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0}]},
+  "analysis_outcome": {
+    "analysis_complete": false,
+    "outcome": {"schema_version":"0.1","kind":"partial_with_limitations","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:e1b2d6adcd50c8cb6c6829806b896726bf1ae4f46e83e3db4f620f0fda4fa198","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":0,"probe_count":0,"finding_count":0},"limitations":[{"kind":"language_adapter_unavailable","producer_stage":"language_adapter","path":null,"affected_items":1,"bounded_detail":"typescript changed 1 file(s), but the preview adapter was not enabled or available","recovery":{"kind":"enable_language","detail":"Enable the typescript preview adapter and re-run the analysis."}}],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
   ],
   "preview_languages": [

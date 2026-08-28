@@ -1,6 +1,6 @@
 use crate::analysis::classify::{
     ProbeContext, activation_evidence, classify, confidence_score, infection_evidence,
-    local_flow_sinks, propagation_evidence, reach_evidence, reveal_evidence,
+    local_flow_sinks, propagation_evidence, reach_evidence, reveal_evidence_with_expression,
 };
 use crate::domain::*;
 
@@ -18,7 +18,7 @@ pub(in crate::analysis) struct ClassifiedProbeEvidence {
 }
 
 impl ClassifiedProbeEvidence {
-    pub(in crate::analysis) fn gather(context: &ProbeContext<'_>) -> Self {
+    pub(in crate::analysis) fn gather(context: &ProbeContext<'_>, reveal_expression: &str) -> Self {
         let test_summaries = context.related_test_summaries();
         let reach = reach_evidence(&test_summaries, context.owner_fn);
         let flow_sinks = local_flow_sinks(context.probe, context.owner_fn);
@@ -30,8 +30,11 @@ impl ClassifiedProbeEvidence {
         );
         let infect = infection_evidence(context.probe, &test_summaries, &activation);
         let propagate = propagation_evidence(context.probe, &flow_sinks);
-        let (observe, discriminate, related_tests) =
-            reveal_evidence(context.probe, &context.related_tests);
+        let (observe, discriminate, related_tests) = reveal_evidence_with_expression(
+            context.probe,
+            reveal_expression,
+            &context.related_tests,
+        );
 
         let ripr = RiprEvidence {
             reach: reach.clone(),

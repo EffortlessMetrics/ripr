@@ -32,30 +32,76 @@
 
 <!-- VS Marketplace install count is manually maintained. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
 
+**ripr shows your agents where tests are needed and which tests are too weak to trust — without running mutation testing.**
+
+## Prerequisites
+
+- **Rust ≥ 1.95** (2024 edition). Check with `rustc --version`; update with `rustup update stable`.
+- **Git** on your `PATH`.
+- Run inside a **Git repository**. By default, ripr looks for `origin/main`, `origin/master`, `main`, or `master` as the diff base; pass `--base <ref>` when you need a different base.
+
+## The first useful run
+
+The agent loop is a simple three-step flow:
+
+```text
+gap → fix → verify
+   ripr names a gap (changed behavior lacks a focused assertion or discriminator)
+   the agent adds one focused test
+   ripr records whether the gap improved, closed, or still needs attention
+```
+
+You work in five key terms. Everything else in this README and the reference
+docs expands on them:
+
+| Term | One-line meaning |
+| --- | --- |
+| **gap** | a place the code needs a test (or an existing test is too weak) |
+| **card** | the per-gap unit an agent acts on — what to assert, where, and why the current proof is weak |
+| **packet** | the bundle of evidence and guidance for one change (a bounded, test-only work order) |
+| **verify** | re-check that a fix actually closed the gap |
+| **receipt** | the durable before/after proof of what was checked |
+
+```bash
+cargo install ripr
+ripr check --base origin/main
+```
+
+`ripr check` is the ordinary first-value command: it analyzes the current
+change and returns one bounded `Start here:` route — a named state, one selected
+gap or safe next action, the omitted-finding count, and explicit pointers to
+`--format human-full` for exhaustive evidence and `--format json` for machine
+data. `ripr.toml` is optional; the zero-config run is the intended first
+interface.
+
+When the selected gap is repair-ready, use the dedicated two-phase transaction:
+
+```bash
+ripr agent repair --root . --seam-id <id> --phase before
+# edit one focused test outside ripr
+ripr agent repair --root . --seam-id <id> --phase after
+```
+
+RIPR owns the before/after evidence plumbing. The human or external coding agent
+owns the focused test edit. `ripr pilot --root .` remains the guided
+repository-adoption workflow. `ripr first-pr --root . --base origin/main --head
+HEAD` composes existing artifacts into PR-facing evidence; it is not the
+analyzer or repair driver.
+
+See the [public command hierarchy](docs/COMMAND_HIERARCHY.md) for the stable
+task boundaries.
+
+## How ripr works (reference)
+
+> Internal vocabulary and capability detail live here and below. The first
+> screen above is all a new user or agent needs to start.
+
 `ripr` reads a PR diff and tells your reviewers and coding agents which changed
 behavior the current tests *reach* but don't actually *check* — the question
 mutation testing answers, asked at draft time without running a single mutant.
 Where a test would not catch the change breaking, it routes one focused,
 test-only repair: what to assert, where, the command that verifies it, and a
 before/after receipt.
-
-## The first useful run
-
-```text
-one PR
--> one gap
--> one focused test
--> one before/after receipt
-```
-
-```bash
-cargo install ripr
-ripr first-pr --root . --base origin/main --head HEAD
-```
-
-That's the whole loop: ripr names the top repairable gap, you add one focused
-test outside ripr, and the receipt records whether the gap closed. `ripr.toml`
-is optional; the zero-config run is the intended first interface.
 
 ## Where it fits
 
@@ -84,26 +130,40 @@ draft-time question between them.
 
 ## Example output
 
+Illustrative bounded `ripr check --format human` output (paths shortened):
+
 ```text
-WARNING src/pricing.rs:88
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: src/lib.rs:2
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: the evidence path is partially complete — see full form for details
+  Changed behavior: if amount >= discount_threshold {
+  Missing discriminator: amount == discount_threshold
+  Related test: tests/pricing.rs:4 below_threshold_has_no_discount
+  Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
+  Evidence:
+    - reach yes: Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts
+    - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+    - 12 more evidence line(s) hidden
 
-Static exposure: weakly_exposed
-Probe: predicate
+Next: drill into the top finding:
+  ripr explain --root . --diff diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
+  ripr context --root . --diff diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
 
-Changed behavior:
-  if amount >= discount_threshold {
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+```
 
-Evidence:
-  Reachability:     related tests found
-  Infection:        changed predicate can alter branch behavior
-  Propagation:      branch appears to influence returned total
-  Revealability:    tests assert returned values, but no equality-boundary case was found
+When lower-priority findings were omitted, that last block instead reads:
 
-Gap:
-  No detected test input for amount == discount_threshold.
-
-Recommended next step:
-  Add below, equal, and above-threshold tests with exact assertions.
+```text
+Hidden:
+  12 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 ```
 
 The wording is intentionally conservative: static analysis identifies evidence
@@ -115,8 +175,8 @@ and gaps; it does not claim runtime mutation outcomes.
 | --- | --- | --- |
 | VS Code user | Install `EffortlessMetrics.ripr`, open a Rust workspace, use the status bar, Problems, and hover evidence. | [Quickstart](docs/QUICKSTART.md#vs-code-first-hour) |
 | CI owner | `ripr init --ci github` for an advisory PR summary and artifact packet. | [Quickstart](docs/QUICKSTART.md#ci-first-hour) |
-| CLI user | `ripr pilot --root .`, then add one focused test for the top gap. | [Quickstart](docs/QUICKSTART.md#cli-first-hour) |
-| Agent operator | `ripr agent status --root .` or a bounded, source-edit-free seam packet. | [LLM operator guide](docs/LLM_OPERATOR_GUIDE.md) |
+| CLI user | `ripr check --base origin/main`, then repair the selected named gap. | [Quickstart](docs/QUICKSTART.md#cli-first-hour) |
+| Agent operator | `ripr agent repair --seam-id <id> --phase before`, then finish after the focused test edit. | [LLM operator guide](docs/LLM_OPERATOR_GUIDE.md) |
 
 ## Status
 
@@ -124,7 +184,9 @@ The mature loop is Rust/Cargo. Python repair-routing is `usable alpha` for
 selected pytest/unittest workflows (repair cards, verify commands, bounded
 agent packets, before/after receipts); TypeScript is an opt-in `preview`. `ripr`
 is advisory static analysis — not a merge gate and not a mutation runner. This
-README is a front door, not the metric source of truth: see
+Perl repair routing is still `planned`/advisory; its next checkpoint is
+`dogfood/perl-real-repo-evals-v1` before any usable-alpha claim. This README is
+a front door, not the metric source of truth: see
 [Support tiers](docs/status/SUPPORT_TIERS.md) for what is usable, preview, or
 advisory, and the [Capability matrix](docs/CAPABILITY_MATRIX.md) and
 [Metrics](docs/METRICS.md) for detailed state. `ripr-swarm` is the development trunk; source
@@ -136,6 +198,7 @@ release and distribution authority.
 | Need | Doc |
 | --- | --- |
 | Choose the first-hour path by surface | [Quickstart](docs/QUICKSTART.md) |
+| Understand the public command roles | [Command hierarchy](docs/COMMAND_HIERARCHY.md) |
 | Map plain language to the internal model | [Terminology](docs/TERMINOLOGY.md) |
 | Understand the model (discrimination vs coverage) | [Static exposure model](docs/STATIC_EXPOSURE_MODEL.md) |
 | Know what is usable / preview / advisory | [Support tiers](docs/status/SUPPORT_TIERS.md) |
@@ -146,7 +209,7 @@ release and distribution authority.
 | See behavior contracts and architecture | [Specs](docs/specs/README.md) · [Architecture](docs/ARCHITECTURE.md) · [ADRs](docs/adr/README.md) |
 | Follow direction and active work | [Roadmap](docs/ROADMAP.md) · [Plan](docs/IMPLEMENTATION_PLAN.md) · [Campaigns](docs/IMPLEMENTATION_CAMPAIGNS.md) · [Codex Goals](docs/CODEX_GOALS.md) |
 | Contribute a scoped PR | [Contributing](CONTRIBUTING.md) · [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md) · [PR automation](docs/PR_AUTOMATION.md) |
-| Everything else | [Documentation index](docs/DOCUMENTATION.md) |
+| Everything else | [Documentation index](docs/README.md) · [Documentation system](docs/DOCUMENTATION.md) |
 
 ## Contributing
 

@@ -21,7 +21,7 @@
         "static_movement": "improved",
         "seam_id": "8f7fa8644fd12280",
         "expected_test_file": "tests/pricing.rs",
-        "missing_discriminator": "input that hits the boundary: amount == discount_threshold"
+        "missing_discriminator": "amount == discount_threshold"
       },
       "reason": "The line-level boundary recommendation names the expected seam, discriminator, and test target."
     },
@@ -40,7 +40,7 @@
         "static_movement": "unchanged",
         "seam_id": "8f7fa8644fd12280",
         "expected_test_file": "tests/pricing.rs",
-        "missing_discriminator": "input that hits the boundary: amount == discount_threshold"
+        "missing_discriminator": "amount == discount_threshold"
       },
       "reason": "Owner-function placement is visible but lower-signal than the exact changed seam line for this fixture."
     },
@@ -59,7 +59,7 @@
         "static_movement": "unchanged",
         "seam_id": "8f7fa8644fd12280",
         "expected_test_file": "tests/pricing.rs",
-        "missing_discriminator": "input that hits the boundary: amount == discount_threshold"
+        "missing_discriminator": "amount == discount_threshold"
       },
       "reason": "The same-file fallback lands on a changed line that is not the seam line."
     },
@@ -97,7 +97,7 @@
         "static_movement": "unknown",
         "seam_id": "8f7fa8644fd12280",
         "expected_test_file": "tests/pricing.rs",
-        "missing_discriminator": "input that hits the boundary: amount == discount_threshold"
+        "missing_discriminator": "amount == discount_threshold"
       },
       "reason": "The recommendation correctly stays out of inline comments when no safe changed-line placement exists."
     },

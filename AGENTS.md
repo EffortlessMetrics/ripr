@@ -55,12 +55,20 @@ Do not split into `ripr-core`, `ripr-cli`, `ripr-lsp`, `ripr-engine`, or
 
 The current internal shape is:
 
-- `domain`: probe, RIPR evidence, oracle strength, exposure classification
+- `domain`: probe, RIPR evidence, oracle strength, exposure classification,
+  fix-instruction state, candidate relations, test-evidence summary
 - `app`: use-case orchestration and public library API
-- `analysis`: diff loading, syntax indexing, probe generation, classification
-- `output`: human, JSON, and GitHub annotation rendering
-- `cli`: command-line adapter
-- `lsp`: experimental sidecar adapter
+- `analysis`: diff loading, syntax indexing, probe generation, classification,
+  repair-route readiness, seam inventory, test-grip evidence
+- `output`: human, JSON, SARIF, GitHub annotation, gate decision, repair
+  packet, receipt, badge, and evidence-record rendering
+- `cli`: command-line adapter (dispatch, help, doctor, parse)
+- `lsp`: experimental sidecar adapter (backend, diagnostics, hover, actions,
+  capabilities, position encoding, diagnostic budget, refresh scheduler,
+  input identity, agent protocol, typed component-outcome degradation
+  authority)
+- `agent`: repair-loop commands (loop commands, provenance)
+- `config`: `ripr.toml` loading, typed model, language detection
 
 ## Rust Baseline
 
@@ -86,18 +94,28 @@ when covered by policy metadata.
 
 Run these before claiming the branch is ready:
 
+For one complete local review and package pass, run `cargo xtask ci-full`. It
+runs the review-ready `check-pr` lane, the evidence gates (`fixtures`,
+`goldens check`, `test-oracle-report`, `dogfood`, and `metrics`), then the
+package listing and publish dry-run. The explicit commands below remain the
+inventory for targeted reruns.
+
+The following report commands are advisory and do not independently block a
+merge: `cargo xtask pr-triage-report`, `cargo xtask metrics`,
+`cargo xtask check-pr-shape`, and `cargo xtask module-health`.
+
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
 cargo xtask pr-summary
-cargo xtask pr-triage-report
+cargo xtask pr-triage-report # advisory
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask dogfood
-cargo xtask metrics
+cargo xtask metrics # advisory
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace
@@ -107,6 +125,8 @@ cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 cargo xtask check-static-language
 cargo xtask check-no-panic-family
+cargo xtask check-allow-attributes
+cargo xtask check-local-context
 cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
@@ -114,6 +134,7 @@ cargo xtask check-droid-review-config
 cargo xtask check-spec-format
 cargo xtask check-spec-numbering
 cargo xtask check-fixture-contracts
+cargo xtask check-evidence-promotion-honesty
 cargo xtask check-traceability
 cargo xtask check-capabilities
 cargo xtask check-workspace-shape
@@ -121,7 +142,7 @@ cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
 cargo xtask check-doc-index
-cargo xtask check-pr-shape
+cargo xtask check-pr-shape # advisory
 cargo xtask check-generated
 cargo xtask check-badge-diff-policy
 cargo xtask check-generated-clean
@@ -129,6 +150,7 @@ cargo xtask check-proof-packs
 cargo xtask check-dependencies
 cargo xtask check-process-policy
 cargo xtask check-network-policy
+cargo xtask check-command-catalog
 ```
 
 `cargo xtask shape` is allowed to make safe local edits: run `cargo fmt`, sort
@@ -166,8 +188,8 @@ cargo run -p ripr -- --version
 cargo run -p ripr -- doctor
 cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff
 cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff --json
-cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff probe:crates_ripr_examples_sample_src_lib.rs:error_path:8ee9f771
-cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:error_path:8ee9f771 --json
+cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250
+cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:error_path:c1a03250 --json
 ```
 
 Editor extension checks:
@@ -177,14 +199,15 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.8.0.vsix --force
+code --install-extension dist/ripr-0.10.0.vsix --force
 ```
 
 The extension should resolve the server in this order:
 
 ```text
 ripr.server.path
-bundled server binary
+bundled server binary        (not yet shipped — no platform VSIX carries one
+                              today; planned under #1443 / #1624)
 downloaded cached server binary
 verified first-run download
 ripr on PATH
@@ -236,6 +259,17 @@ Prefer small, high-signal changes:
   so it catches a dishonest re-bless that `goldens check` would accept — goldens
   can encode dishonesty. Share the invariant + corpus across languages; do **not**
   unify the per-language matchers (different taxonomies, different edge policies).
+- **False-confidence gates and fields.** A gate, field, or command whose
+  stated contract is stronger than its enforcement is a false-confidence
+  surface — the policy-layer mirror of a wrong `repair_packet_ready: true`.
+  When you write or touch a gate, field, or command, bind the enforcement to
+  the claim: if the schema says "burn-down ready," the gate must compare
+  against the current date; if the field is named `analyzed`, it must reflect
+  actual analysis; if the manifest points at `path::tests::fn`, the gate must
+  resolve `fn`; if the gate claims to detect network calls, it must cover the
+  common networking crates. A gate whose stated contract is stronger than its
+  code misleads every future reader who trusts it — including agents resuming
+  campaigns from repository artifacts.
 - Performance is part of honesty: an interactive path that is too slow, or that
   defers expensive analysis off the keystroke path, must **disclose** its state
   (e.g. `run_status: "seams_deferred"`, RIPR-SPEC-0105) and never present a
@@ -287,6 +321,91 @@ features unless the basic CLI, schema, packaging, and tests remain green.
   terminate any `ripr lsp --stdio` you spawn for an LSP behavioral test; an
   orphaned server holds a Windows file lock and breaks the next build.
 
+### Status-comment verification contract
+
+When posting a status, triage, or "issue update" comment on a GitHub issue,
+bind every claim to verifiable evidence. The open-issue list is the durable
+campaign record; low-truth status comments bury substantive signal and
+mislead future agents who consume prior comments as context.
+
+Rules:
+
+- Every status claim must cite a **verifiable artifact**: a `file:line`
+  reference, a merged PR number, a `gh run` / `gh release` result, or a `git
+  log --grep` output. "Not started" is not a valid verdict without evidence.
+- "No PR references it" is **forbidden** without an **all-state PR search**
+  attached inline: `gh pr list --state all --search <issue-number>` (or the
+  MCP `search_pull_requests` equivalent). Many issues have merged PRs that
+  cite them only in the PR body, not the commit subject, so `git log --all
+  --grep <issue-number>` alone misses these — it is supplemental, not the
+  primary check.
+- Use the closed `status/*` label set as the primary status signal (labels
+  don't bury signal; a status comment is secondary):
+  - `status/done-open` — delivered; the issue is intentionally kept open.
+  - `status/blocked-upstream` / `status/blocked-repo` — waiting on an external
+    or in-repo dependency.
+  - `status/needs-work` — actionable and **not started**. Do **not** use it
+    for partially landed work; that understates delivery and invites
+    duplicate implementation.
+  - `status/partial` — a **bounded portion has merged** to `main` (or another
+    authoritative repository) and the residual acceptance plus next owner are
+    recorded. Apply it only when a merged deliverable exists — never merely
+    because a branch or PR is open.
+  - `status/mis-scoped` — the issue needs re-scoping before work proceeds.
+- A partially landed slice gets **one** evidence-bound reconciliation comment
+  (landed PR + exact merge SHA, acceptance covered, acceptance remaining, next
+  owner/dependency, claim boundary). Closing a child issue never closes its
+  parent capability. See #1863 for the canonical reconciliation format.
+- One status comment per issue per pass. A second pass must **edit** (or
+  minimize/hide) the prior comment, not append a near-duplicate. Re-posting
+  the same review minutes apart is noise that buries substantive comments.
+- Do not fabricate file paths or issue numbers. Verify paths exist (`ls`,
+  `find`) and issues exist (`gh issue view`) before citing them.
+- Do not post a status review on a **closed** issue without first checking
+  `gh issue view <N> --json state`. Describing the pre-fix state of an
+  already-closed issue is a credibility failure.
+
+### Finding verification contract
+
+The status-comment contract above covers updates on existing issues. The same
+evidence discipline applies **before filing or materially updating a code
+finding** (#2026): an inaccurate issue becomes durable context for future
+agents and invites duplicate implementation.
+
+A finding record must name:
+
+- repository, inspected branch/ref, and full source SHA;
+- file path and exact lines or symbol, and the observation timestamp;
+- the reproduction command, or the explicit reason no executable
+  reproduction exists (a design question does not need a failing command,
+  but still requires current source identity and accurate behavior
+  description);
+- actual result vs. expected result or invariant;
+- an all-state, finding-specific issue/PR search (`gh issue list
+  --state all --search <term>` and `gh pr list --state all --search
+  <term>` — both default to open-only, and a bare list is not evidence
+  bound to the finding);
+- known concurrent PRs touching the seam;
+- confidence, remaining uncertainty, and a classification:
+  `verified_current | historical | cannot_reproduce | superseded |
+  design_question`.
+
+Pre-filing rules:
+
+1. Re-read the exact current file/symbol after all scouts return — scout
+   output is a lead, never the finding.
+2. Run the smallest deterministic reproduction where practical.
+3. Treat line numbers from an earlier commit as stale until re-resolved.
+4. Do not promote a grep absence into an architectural fact without
+   checking the search command and relevant alternate paths.
+5. Check open PRs for a branch that already changes the seam.
+6. When the premise changed during the audit, narrow or close the draft
+   instead of preserving the original claim; corrections edit or
+   prominently amend the original record rather than burying it in a later
+   summary.
+7. Source SHA binds evidence, but a moved main requires a premise recheck
+   — not automatic abandonment of a valid finding.
+
 ## PR Scope Doctrine
 
 Do not optimize PRs for low line count. Optimize for narrow production risk and
@@ -314,12 +433,14 @@ PR.
 For scoped implementation, docs, tests, and refactors, use this default flow:
 
 ```text
-review -> improve -> validate -> commit -> push -> open/update PR -> merge when ready
+build -> improve -> validate -> commit exact candidate -> review-pr candidate pass -> push/open/update PR -> review-pr published-head pass -> finish-pr -> merge when ready
 ```
 
-A PR is ready when the branch is current, required checks pass, real review
-findings are addressed, the diff matches the stated scope, and repo policy does
-not require a different sequence.
+The candidate pass may remain `REVIEW_INCOMPLETE` while remote evidence does not
+exist. A PR is ready only when the exact published head has a current
+`REVIEW_READY` disposition, required checks pass, real review findings are
+addressed, the diff matches the stated scope, and repo policy does not require a
+different sequence.
 
 Merge-safety rules, learned the hard way:
 
@@ -355,6 +476,38 @@ Merge-safety rules, learned the hard way:
   *ran* and failed (e.g. `xtask: goldens check failed`, a `FAILED` test) is real
   — read the report and fix it. Re-running a real failure wastes a CI cycle;
   debugging your own diff for an infra flake wastes a turn.
+- **Resolve all review threads before merging.** The repo's branch ruleset
+  requires `required_review_thread_resolution: true` — any unresolved review
+  comment thread blocks `gh pr merge` with "Repository rule violations found."
+  Automated review bots (codex, gemini, droid, github-actions) leave threads on
+  nearly every PR. Before attempting to merge, address or reject each finding
+  (fix the code, push, or explain why the suggestion is wrong), then resolve the
+  thread via the GraphQL API:
+  ```bash
+  # list unresolved threads
+  gh api graphql -f query='query($o:String!,$r:String!,$p:Int!){repository(owner:$o,name:$r){pullRequest(number:$p){reviewThreads(first:50){nodes{id isResolved}}}}}' -F o=EffortlessMetrics -F r=ripr-swarm -F p=<PR_NUMBER> --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | .id'
+  # resolve each
+  gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}' -f id=<THREAD_ID>
+  ```
+  Do not resolve a thread without first addressing the finding. If the bot's
+  suggestion is correct, fix it and push. If it is wrong, leave a short reply
+  explaining why before resolving. Resolving without engagement defeats the
+  review-feedback loop.
+- **Verify `required_approving_review_count` matches repo reality.** This is a
+  single-maintainer repo; the count should be `0`. If it drifts back to `1`
+  (e.g. after a GitHub UI change or a ruleset re-apply), PRs silently BLOCK with
+  no actionable error. Check and fix:
+  ```bash
+  gh api repos/EffortlessMetrics/ripr-swarm/branches/main/protection/required_pull_request_reviews --jq '.required_approving_review_count'
+  # if it is not 0, fix it:
+  gh api -X PATCH repos/EffortlessMetrics/ripr-swarm/branches/main/protection/required_pull_request_reviews -F required_approving_review_count=0 -F dismiss_stale_reviews=false -F require_code_owner_reviews=false -F require_last_push_approval=false
+  ```
+  Also check the GitHub **ruleset** (not just branch protection), which is a
+  separate enforcement layer:
+  ```bash
+  gh api repos/EffortlessMetrics/ripr-swarm/rulesets --jq '.[].id'
+  gh api repos/EffortlessMetrics/ripr-swarm/rulesets/<ID> --jq '.rules[] | select(.type == "pull_request") | .parameters'
+  ```
 
 `stackable = false` means do not build the next dependent work item on top of
 the current branch. It does not create an approval gate.
@@ -384,6 +537,17 @@ findings, produce a short inspection record that names:
 - validation signals;
 - residual assumptions.
 
+Use `.agents/skills/review-pr/SKILL.md` for the substantive exact-head review
+before merge convergence. Reading automated comments, seeing an empty thread
+list, or seeing green CI is remote triage, not review completion. Follow changed
+behavior into its semantic owner and real consumers, challenge the test oracle,
+inspect rendered/public and runtime/schema/docs parity, check platform-relevant
+branches, and bind the review record to a committed head. A pre-publication pass
+may remain `REVIEW_INCOMPLETE`; re-run the review on the exact published PR head
+with current remote evidence before emitting `REVIEW_READY`. On the author's own
+PR, use a `COMMENT` review with an explicit blocking or review-ready disposition;
+GitHub's author-review limitation is not approval.
+
 When reviewing or repairing code, read these files first:
 
 - `.factory/skills/review-guidelines/SKILL.md`
@@ -394,105 +558,85 @@ When reviewing or repairing code, read these files first:
 - `docs/agent-context/review-invariants.md`
 - `docs/agent-context/validation.md`
 
-## Orchestration Operating Model
 
-Orchestrated work is a staged pipeline, not one monolithic session:
+## Goal delivery and candidate workflow
 
-```text
-cheap discovery
--> cheap independent verification
--> written issue/spec/plan
--> focused implementation
--> targeted proof
--> stronger review only where needed
--> cleanup
-```
+Preserve the user's original goal, constraints, non-goals, assumptions, and
+acceptance predicates. The durable issue, specification, plan, policy, receipt,
+and closeout graph is the repository's source of truth for long-running work.
 
-The main session does synthesis and judgment. File searches, CI logs, PR
-diffs, and failed hypotheses belong in subagents that return structured
-summaries, not in the main context.
+Use the seven operational procedures under `.agents/skills/**` as the
+entrypoints for any agent that reads this file (Codex, ZCode, and any future
+provider that consumes `AGENTS.md`). Select the narrowest procedure for the
+current claim, and keep one current branch/worktree/PR per coherent claim.
+Commit the coherent candidate, run the pre-publication `review-pr` pass, and
+let a `REVIEW_INCOMPLETE` candidate enter `finish-pr` only for publication.
+Re-run `review-pr` on the exact published head with current remote evidence;
+only `REVIEW_READY` may enter `finish-pr` merge convergence. A waiting PR is
+still in flight; advance a distinct claim when useful and revisit it after a
+material transition.
 
-Route work by cost:
+- `review_route:root_to_review_pr`
 
-- Use cheap read-only scout agents (Haiku-class, Explore-style) for repo
-  inventory, PR review sweeps, diffstat and changed-surface mapping,
-  spec/schema surface mapping, validation-log summaries, claim checks, and
-  cleanup audits. Scouts return structured tables (item, files touched,
-  claim made, evidence found, missing proof, risk, next action), not prose.
-- Before expensive or risky action (closing a PR, editing release claims,
-  re-pinning a freeze candidate), run a second cheap adversarial pass:
-  assume the first report is wrong, return only concrete discrepancies
-  with file or PR references.
-- Use implementation-grade agents (Sonnet-class) for code changes, test
-  and fixture updates, conflict resolution, schema/doc alignment, and
-  turning scout inventories into coherent PRs, with a bounded plan and a
-  small working set.
-- Escalate to top-tier judgment (Opus-class) only for high-risk release,
-  security, or architecture decisions, or after two failed correction
-  cycles. Using top-tier capacity to discover which files changed is an
-  orchestration failure.
-- Use broad parallel workflows (Ultracode-style fanouts) only for
-  queue-scale uncertainty: open-PR reconciliation audits, release-claim
-  audits across changelog/specs/schema, spec-surface inventories, CI
-  failure taxonomies, cross-repo contract reviews. Never for one narrow
-  edit.
+Use focused readers or reviewers only when they add a different source,
+oracle, context, threat model, platform reach, or verification method. Their
+findings are leads until checked against current repository and GitHub evidence.
+Reasonable, reversible engineering choices should proceed without an owner
+pause.
 
-Shift verification left so mistakes stay cheap:
+### ZCode routing
+
+ZCode continuously loads root `AGENTS.md` as its only project instruction file.
+Nested `AGENTS.md`, `@import`, `@include`, and `CLAUDE.md` are not continuously
+merged by ZCode, so all routing must live in this file. The seven procedures
+under `.agents/skills/**` are the source skill set; ZCode imports them as
+`$skills` rather than through a third prose tree.
 
 ```text
-before implementation: scout inventory + adversarial check + filed issue/plan
-before push:           focused proof + local preflight + cleanup audit
-before release:        release-claim audit + package dry-run + non-claim review
-before closing a PR:   supersession verified against the diff, not a summary
+For a high-level repository outcome:
+  use /goal for the runtime objective
+  invoke the $deliver-goal skill
+
+For one issue/PR claim:
+  invoke $deliver-pr or the earliest applicable atomic skill
+  ($prepare-issue, $prepare-proof, $build-candidate)
+
+Before merge convergence:
+  invoke $review-pr on the exact published head
+  repair or evidence-refute every finding on the same candidate
+  resolve review threads
+  then use $finish-pr to arm normal auto-merge
 ```
 
-File or update the ripr-swarm issue or repo spec before implementation.
-Repo specs are durable truth; issues track execution state; chat history is
-not the plan. Use worktrees for risky or parallel branches. Every pass ends
-with cleanup: worktrees, branches, stashes, `target/ripr` cache growth,
-temp files, generated artifacts, cargo/npm churn, rescue leftovers, and
-local-only files.
+ZCode constraints that follow from its native contract and the review boundary
+above:
 
-**Background workflow agents share the main working directory.** Even
-read-only-by-intent scout/Explore agents have shell access and can create or
-modify tracked files (`cat >`, `git apply`, `mkdir`) on whatever branch the main
-session occupies. A background planning fanout once authored a whole spec plus
-fixtures into the working tree, and a `git add -A` swept them into an unrelated
-PR. Therefore: run any workflow whose agents might write with **worktree
-isolation**, not the shared tree; word planning/research prompts to forbid file
-creation; never `git add -A` while a background workflow is live — stage
-explicit paths; and run `git status --short` before every commit, reverting
-anything the pass did not author.
+- `/goal` is session-level runtime state with independent completion
+  verification; it does not replace issue acceptance, exact-head review,
+  required GitHub checks, or release authority.
+- Full Access, Auto Edit, or Goal Mode does not authorize direct or admin
+  merge. The path through `$review-pr` → `$finish-pr` is mandatory.
+- Use native `Explore` for read-only source/authority mapping and
+  `general-purpose` for self-contained implementation or verification tasks.
+  Do not invent a checked-in ZCode role conveyor, fixed persona graph, or
+  candidate tournament.
+- A merged PR with an incomplete high-level goal must continue through
+  `$deliver-goal`.
+- `check-agent-skills` validates the source-side route and skill set; it does
+  not claim that a user's local ZCode import or settings are enabled.
 
-## Long-Context Agent Workflow
+Keep PR head, integration basis, squash result, proof, review, and release
+state as separate judgments. Refresh only the proof/review dimensions affected
+by a changed head, conflict, implementation, oracle, public claim, generated
+relationship, or integration basis. Unrelated movement on `main` does not
+invalidate proof or review by itself.
 
-This repo is intentionally organized so agents can resume long-running goals
-from repository artifacts instead of chat history.
+Before publication use `cargo xtask precommit`, then the required changed-
+surface and release gates. After merge, verify current `main`, reconcile the
+issue and campaign predicates, refresh generated evidence, capture genuine
+follow-ups, and remove only lane-created worktrees, branches, and residue.
 
-When picking up work:
-
-- start from `docs/ROADMAP.md` and `docs/IMPLEMENTATION_PLAN.md`
-- use `docs/IMPLEMENTATION_CAMPAIGNS.md` and `.ripr/goals/active.toml` when
-  working through a Codex Goals campaign
-- use `docs/CAPABILITY_MATRIX.md` to identify current capability status
-- use `docs/PR_AUTOMATION.md` to understand local shaping and PR reports
-- use `docs/CODEX_GOALS.md` for the multi-PR campaign model
-- use `docs/SCOPED_PR_CONTRACT.md` for one work item's PR-sized evidence bar
-- use `docs/specs/` and `.ripr/traceability.toml` to map spec -> tests -> code
-- choose the smallest vertical slice with one production delta and one evidence
-  package
-- update `docs/LEARNINGS.md` when repo knowledge or blockers should survive
-
-See `docs/AGENT_WORKFLOWS.md` for the detailed handoff model.
-
-See `docs/AGENT_OPERATING_MODEL.md` for the orchestration operating model:
-agent economics, verify-don't-trust discipline, CI hygiene, and the rationale
-for why constraints enable autonomy.
-
-See `docs/LSP_AGENT_REPAIR_WORKFLOW.md` for the end-to-end LSP-first
-repair/receipt loop: Show Status → Copy Top Repair Packet → edit in cage →
-verify → receipt → Show Receipt Status → Show Route Quality.
-
-See `docs/LIBRARY.md` for the curated knowledge library: agentic learnings,
-repo domain learnings, and a dated timeline of major learning milestones across
-all campaigns.
+Do not create fixed actor rosters, repository-global goal or writer state,
+reservation systems, candidate tournaments, provider-crossing skill wrappers,
+or Kiro lifecycle routes. GitHub and committed repository artifacts carry
+durable state; transient model context does not.

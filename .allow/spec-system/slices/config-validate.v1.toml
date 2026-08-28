@@ -1,0 +1,53 @@
+schema_version = "2.0"
+id = "ripr.slice.config-validate.v1"
+generation = 1
+
+source_issue = "issue:2634"
+design_reference = "RIPR-SPEC-0007#config-validate"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds the read-only `ripr config validate [--root PATH]` command, which invokes
+the existing root-scoped ripr.toml loader and reports valid or invalid config.
+It does not run doctor workspace probes, change config precedence, write files,
+or add a new configuration parser.
+"""
+
+non_goals = [
+  "doctor probe behavior",
+  "configuration precedence",
+  "config file generation",
+  "new TOML policy fields",
+]
+
+return_conditions = [
+  "Return to root if validation begins probing Git, Cargo, rustc, or analysis.",
+  "Return to root if the command duplicates config parsing instead of using load_for_root.",
+]
+
+owned_seams = [
+  "seam:ripr:cli:config-validate",
+  "seam:ripr:docs:configuration-validation",
+]
+
+shared_seams = [
+  "seam:ripr:config:root-scoped-loader",
+]
+
+forbidden_seams = [
+  "seam:ripr:doctor:workspace-probes",
+  "seam:ripr:config:parser",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0007#config-validate"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"
