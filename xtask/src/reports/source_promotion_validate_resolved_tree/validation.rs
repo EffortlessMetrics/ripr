@@ -31,7 +31,7 @@ fn validate(
         "resolution manifest",
     )?;
     state.inputs.resolution_path = Some(resolution_path);
-    validate_resolution_manifest_contract(&manifest, &preflight, &options.preflight_sha256)?;
+    validate_resolution_manifest_contract(&manifest, &preflight, options)?;
     state.resolution_verified = true;
 
     verify_exact_commit(&options.repo, &options.source_parent, "--source-parent")?;
@@ -128,9 +128,9 @@ fn validate(
 fn validate_resolution_manifest_contract(
     manifest: &Value,
     preflight: &Value,
-    preflight_sha256: &str,
+    options: &Options,
 ) -> Result<(), String> {
-    validate_manifest(manifest, preflight, preflight_sha256)?;
+    validate_manifest(manifest, preflight, &options.preflight_sha256)?;
     validate_resolution_manifest_dispositions(manifest)
 }
 
@@ -303,8 +303,9 @@ fn observe_repository_after(
 #[cfg(test)]
 mod manifest_disposition_tests {
     use super::{
-        validate_resolution_manifest_contract, validate_resolution_manifest_dispositions,
+        Options, validate_resolution_manifest_contract, validate_resolution_manifest_dispositions,
     };
+    use std::path::PathBuf;
 
     fn preflight() -> serde_json::Value {
         serde_json::json!({
@@ -340,15 +341,26 @@ mod manifest_disposition_tests {
         let digest = "a".repeat(64);
         let preflight = preflight();
         let manifest = bound_manifest(&digest);
+        let options = Options {
+            repo: PathBuf::new(),
+            source_parent: "0".repeat(40),
+            swarm_parent: "1".repeat(40),
+            reviewed_tree: "3".repeat(40),
+            preflight: PathBuf::new(),
+            preflight_sha256: digest.clone(),
+            resolution_manifest: PathBuf::new(),
+            resolution_sha256: "b".repeat(64),
+            out: PathBuf::new(),
+        };
 
-        validate_resolution_manifest_contract(&manifest, &preflight, &digest)?;
+        validate_resolution_manifest_contract(&manifest, &preflight, &options)?;
 
         for mismatched_digest in [format!("sha256:{digest}"), "b".repeat(64)] {
-            let Err(_) = validate_resolution_manifest_contract(
-                &manifest,
-                &preflight,
-                &mismatched_digest,
-            ) else {
+            let mut mismatched_options = options.clone();
+            mismatched_options.preflight_sha256 = mismatched_digest.clone();
+            let Err(_) =
+                validate_resolution_manifest_contract(&manifest, &preflight, &mismatched_options)
+            else {
                 return Err(format!(
                     "mismatched preflight digest {mismatched_digest:?} unexpectedly passed"
                 ));
