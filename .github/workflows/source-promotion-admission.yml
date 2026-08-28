@@ -10,7 +10,7 @@ on:
       protected_w7_ref: {description: Exact protected W7 ref, required: true, type: string}
       w7_peeled_sha: {description: Exact peeled W7 commit, required: true, type: string}
       reviewed_tree_sha: {description: Exact reviewed tree object, required: true, type: string}
-      reviewed_tree_carrier_sha: {description: Exact source commit carrying the reviewed tree with ordered source and W7 parents, required: true, type: string}
+      reviewed_tree_carrier_sha: {description: Exact source commit carrying the live reviewed tree with ordered source and W7 parents; not_required for synthetic profiles, required: true, type: string}
       preflight_locator: {description: Immutable preflight locator, required: false, default: '', type: string}
       resolution_manifest_locator: {description: Immutable resolution-manifest locator, required: false, default: '', type: string}
       validation_packet_locator: {description: Immutable validation-packet locator, required: false, default: '', type: string}
@@ -136,9 +136,13 @@ jobs:
           test "$(printf '%s' "$WORKFLOW_SOURCE_SHA" | grep -E '^[0-9a-f]{40}$')" = "$WORKFLOW_SOURCE_SHA"
           test "$(printf '%s' "$W7_PEELED_SHA" | grep -E '^[0-9a-f]{40}$')" = "$W7_PEELED_SHA"
           test "$(printf '%s' "$REVIEWED_TREE_SHA" | grep -E '^[0-9a-f]{40}$')" = "$REVIEWED_TREE_SHA"
-          test "$(printf '%s' "$REVIEWED_TREE_CARRIER_SHA" | grep -E '^[0-9a-f]{40}$')" = "$REVIEWED_TREE_CARRIER_SHA"
           test "$OPERATION_MODE" = admit_only || test "$OPERATION_MODE" = constructor_dry_run
           test "$EXECUTION_PROFILE" = live || test "$EXECUTION_PROFILE" = positive_synthetic || test "$EXECUTION_PROFILE" = j5_negative
+          if test "$EXECUTION_PROFILE" = live; then
+            test "$(printf '%s' "$REVIEWED_TREE_CARRIER_SHA" | grep -E '^[0-9a-f]{40}$')" = "$REVIEWED_TREE_CARRIER_SHA"
+          else
+            test "$REVIEWED_TREE_CARRIER_SHA" = not_required
+          fi
           test "$RECEIPT_SCHEMA" = ripr.source_promotion_admission_workflow.v1
           test "$TRUSTED_CHECKER_IDENTITY" = "source-owned-xtask@$WORKFLOW_SOURCE_SHA"
           test "$(printf '%s' "$PROTECTED_W7_REF" | grep -E '^refs/tags/ripr-release-[A-Za-z0-9._-]+-[0-9a-f]{40}$')" = "$PROTECTED_W7_REF"

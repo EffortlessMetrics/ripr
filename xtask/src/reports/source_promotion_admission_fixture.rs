@@ -57,7 +57,6 @@ pub(crate) struct SyntheticFixture {
     pub(crate) source_parent: String,
     pub(crate) swarm_parent: String,
     pub(crate) reviewed_tree: String,
-    pub(crate) reviewed_tree_carrier: String,
     pub(crate) protected_w7_ref: String,
     pub(crate) preflight: LocatorMaterial,
     pub(crate) resolution: LocatorMaterial,
@@ -130,10 +129,6 @@ pub(crate) fn prepare_source_owned_fixture(
         SyntheticProfile::Positive => source_tree,
         SyntheticProfile::J5Negative => j5_tree,
     };
-    let reviewed_tree_carrier = match profile {
-        SyntheticProfile::Positive => source_parent.clone(),
-        SyntheticProfile::J5Negative => swarm_parent.clone(),
-    };
     let evidence = repository.join(".git/source-promotion-admission-fixture");
     fs::create_dir_all(&evidence)
         .map_err(|error| format!("failed to create fixture evidence root: {error}"))?;
@@ -200,7 +195,6 @@ pub(crate) fn prepare_source_owned_fixture(
         source_parent,
         swarm_parent,
         reviewed_tree,
-        reviewed_tree_carrier,
         protected_w7_ref,
         preflight,
         resolution,

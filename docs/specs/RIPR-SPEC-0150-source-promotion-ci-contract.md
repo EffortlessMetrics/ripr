@@ -284,6 +284,13 @@ The live harness fetches the exact carrier commit into its runner-owned clone
 and validates the commit header before invoking the controller. Possession of
 either parent alone is insufficient to materialize or admit a combined
 reviewed tree.
+The exact-J-free synthetic profiles use the closed `not_required` carrier
+sentinel; they test admission and mutation guards without claiming that a live
+carrier was transported.
+The uploaded normalized packet MUST recursively index its controller receipts
+and complete materialized locator closure. The finalizer MUST verify and
+consume that downloaded closure, and MUST reject missing, extra, corrupt,
+symlinked, or controller-summary-inconsistent members before construction.
 
 The checker identity must name the same full commit as `workflow_source_sha`.
 It identifies committed source ownership; it is not a substitute for the

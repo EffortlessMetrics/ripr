@@ -511,6 +511,13 @@ The live reviewed tree is transported by an exact source-repository carrier
 commit. The harness fetches that commit into a runner-owned clone and requires
 its tree and ordered parents to equal the requested reviewed tree, source
 parent, and W7 parent before admission begins.
+Exact-J-free synthetic profiles instead require the closed
+`reviewed_tree_carrier_sha=not_required` sentinel and do not claim live carrier
+materialization.
+The normalized admission artifact recursively indexes the controller receipts
+and every materialized locator sibling under `evidence/`. Finalization verifies
+and consumes that downloaded closure; only the runner-owned Git controller
+checkout is read again for the construction command itself.
 Artifact names, floating branches, abbreviated SHAs, candidate-checkout paths,
 and caller-supplied success booleans are not authority. Synthetic profiles use
 source-owned fixture identities; they are not general path or command inputs.

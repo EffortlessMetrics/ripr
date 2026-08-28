@@ -13928,6 +13928,12 @@ commit/ref, regular-file path/mode, and SHA-256. The closed operation modes are
 `reviewed_tree_carrier_sha` names the exact source-repository commit that
 materializes `reviewed_tree_sha`; live execution requires its ordered parents
 to equal `source_parent_sha` and `w7_peeled_sha`.
+Synthetic profiles require `reviewed_tree_carrier_sha` to be `not_required`
+and make no live carrier-materialization claim.
+`controller_packets.*.path` names the stable location beneath the uploaded
+packet, and `packet-index.json` recursively binds the controller receipts and
+all materialized locator evidence beneath `evidence/`. Final verification
+rejects missing, extra, corrupt, symlinked, or summary-inconsistent members.
 
 `trusted_checker_identity` has the closed form
 `source-owned-xtask@<40-character-workflow-source-SHA>` and must name the same

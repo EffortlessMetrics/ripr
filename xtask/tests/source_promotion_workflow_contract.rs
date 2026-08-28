@@ -79,6 +79,7 @@ fn validate_admission_workflow_contract(workflow: &str) -> Result<(), String> {
         "WORKFLOW_FILE_SHA: ${{ job.workflow_sha }}",
         "WORKFLOW_FILE_REF: ${{ job.workflow_ref }}",
         "test \"$WORKFLOW_FILE_SHA\" = \"$WORKFLOW_SOURCE_SHA\"",
+        "test \"$REVIEWED_TREE_CARRIER_SHA\" = not_required",
         "\"$SOURCE_REPOSITORY/.github/workflows/source-promotion-admission.yml@\"*",
         "test \"$GITHUB_REF\" = refs/heads/main",
         "test \"$GITHUB_SHA\" = \"$SOURCE_PARENT_SHA\"",

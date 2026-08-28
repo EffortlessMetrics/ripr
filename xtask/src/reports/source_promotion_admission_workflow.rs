@@ -111,6 +111,12 @@ struct Locator {
     sha256: String,
 }
 
+#[derive(Clone, Debug)]
+struct ClosureSource {
+    source: PathBuf,
+    destination: PathBuf,
+}
+
 #[derive(Debug)]
 struct RunOptions {
     controller_repo: PathBuf,
@@ -294,8 +300,8 @@ fn run(args: &[String]) -> Result<(), String> {
             "qualification_receipt": qualification.value,
         },
         "controller_packets": {
-            "trusted_builder": relative_packet_state(&options.workspace_root, &builder_out, "trusted-builder.json"),
-            "resolved_tree_admission": relative_packet_state(&options.workspace_root, &admission_out, "resolved-tree-admission.json"),
+            "trusted_builder": packet_state(&builder_out, "trusted-builder.json", "evidence/trusted-builder"),
+            "resolved_tree_admission": packet_state(&admission_out, "resolved-tree-admission.json", "evidence/resolved-tree-admission"),
             "exact_join_construction": {
                 "path": null,
                 "available": false,
@@ -318,7 +324,9 @@ fn run(args: &[String]) -> Result<(), String> {
         ],
     });
     report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
-    write_packet(&options.out, &report)?;
+    let closure =
+        admission_closure_sources(&options, &builder_out, &admission_out, &qualification)?;
+    write_packet(&options.out, &report, &closure)?;
     verify_packet(&options.out)?;
     if status == "admitted" {
         Ok(())
@@ -354,37 +362,22 @@ fn finalize(args: &[String]) -> Result<(), String> {
     }
     validate_workspace(&workspace, &out)?;
     let mode = OperationMode::parse(required_json_string(&report, "operation_mode")?)?;
+    let evidence = admission_packet.join("evidence");
+    validate_directory(&evidence, "downloaded admission evidence closure")?;
     let mut construction_report = None;
     let mut construction_error = None;
     if mode == OperationMode::ConstructorDryRun {
-        let locators = report
-            .get("locators")
-            .ok_or_else(|| "admission packet is missing locators".to_string())?;
-        let locator_path = |key: &str, slot: &str| -> Result<PathBuf, String> {
-            if let Some(path) = locators
-                .get(key)
-                .and_then(|value| json_string(value, "local_path"))
-            {
-                safe_relative(path)?;
-                return Ok(workspace.join(path));
-            }
-            let path = locators
-                .get(key)
-                .and_then(|value| json_string(value, "path"))
-                .ok_or_else(|| format!("admission packet locator is missing {key}"))?;
-            safe_relative(path)?;
-            Ok(workspace
-                .join("locators")
-                .join(slot)
-                .join("files")
-                .join(path))
-        };
-        let admission_controller = workspace.join("resolved-tree-admission");
-        let validation_index = locator_path("validation_packet", "validation")?;
-        let integration_index = locator_path("integration_packet", "integration")?;
-        let preflight = locator_path("preflight", "preflight")?;
-        let resolution = locator_path("resolution_manifest", "resolution")?;
-        let qualification = locator_path("qualification_receipt", "qualification")?;
+        let admission_controller = evidence.join("resolved-tree-admission");
+        let validation_index = evidence
+            .join("locators/validation_packet")
+            .join(PACKET_INDEX);
+        let integration_index = closure_index_path(
+            &evidence.join("locators/integration_packet"),
+            &report["locators"]["integration_packet"],
+        )?;
+        let preflight = evidence.join("locators/preflight/input");
+        let resolution = evidence.join("locators/resolution_manifest/input");
+        let qualification = evidence.join("locators/qualification_receipt/input");
         let construction_out = workspace.join("exact-join-construction");
         reject_existing_output(&construction_out)?;
         let command = strings(&[
@@ -457,7 +450,26 @@ fn finalize(args: &[String]) -> Result<(), String> {
     if let Some(error) = construction_error {
         report["failure_reasons"] = serde_json::json!([error]);
     }
-    write_packet(&out, &report)?;
+    if mode == OperationMode::ConstructorDryRun {
+        report["controller_packets"]["exact_join_construction"] = packet_state(
+            &workspace.join("exact-join-construction"),
+            "exact-join-construction.json",
+            "evidence/exact-join-construction",
+        );
+    }
+    report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+    let mut closure = vec![ClosureSource {
+        source: evidence,
+        destination: PathBuf::new(),
+    }];
+    if let Some(construction) = construction_report.as_ref() {
+        let _ = construction;
+        closure.push(ClosureSource {
+            source: workspace.join("exact-join-construction"),
+            destination: PathBuf::from("exact-join-construction"),
+        });
+    }
+    write_packet(&out, &report, &closure)?;
     verify_packet(&out)?;
     if constructor_ok {
         Ok(())
@@ -560,35 +572,6 @@ fn enforce_command(args: &[String]) -> Result<(), String> {
 
 fn verify_packet(root: &Path) -> Result<Value, String> {
     validate_directory(root, "workflow packet")?;
-    let mut inventory = fs::read_dir(root)
-        .map_err(|error| format!("failed to enumerate workflow packet: {error}"))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| format!("failed to enumerate workflow packet entry: {error}"))?;
-    inventory.sort_by_key(|entry| entry.file_name());
-    let observed = inventory
-        .iter()
-        .map(|entry| {
-            let metadata = fs::symlink_metadata(entry.path())
-                .map_err(|error| format!("failed to inspect workflow packet entry: {error}"))?;
-            if metadata.file_type().is_symlink() || !metadata.is_file() {
-                return Err("workflow packet contains a non-regular entry".to_string());
-            }
-            entry
-                .file_name()
-                .into_string()
-                .map_err(|name| format!("workflow packet filename is not UTF-8: {name:?}"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let expected = vec![
-        PACKET_INDEX.to_string(),
-        REPORT_JSON.to_string(),
-        REPORT_MD.to_string(),
-    ];
-    if observed != expected {
-        return Err(format!(
-            "workflow packet inventory differs from exact contract: {observed:?}"
-        ));
-    }
     let index = read_json(&root.join(PACKET_INDEX), "workflow packet index")?;
     if json_string(&index, "schema") != Some(PACKET_SCHEMA)
         || index.get("complete").and_then(Value::as_bool) != Some(true)
@@ -599,10 +582,20 @@ fn verify_packet(root: &Path) -> Result<Value, String> {
         .get("files")
         .and_then(Value::as_object)
         .ok_or_else(|| "workflow packet index is missing files".to_string())?;
-    if files.len() != 2 || !files.contains_key(REPORT_JSON) || !files.contains_key(REPORT_MD) {
+    if !files.contains_key(REPORT_JSON)
+        || !files.contains_key(REPORT_MD)
+        || !files.keys().any(|name| name.starts_with("evidence/"))
+    {
         return Err(
-            "workflow packet index must bind exactly JSON and Markdown reports".to_string(),
+            "workflow packet index must bind reports and the uploaded evidence closure".to_string(),
         );
+    }
+    let observed = collect_packet_files(root)?;
+    if observed.len() != files.len()
+        || observed.keys().any(|name| !files.contains_key(name))
+        || files.keys().any(|name| !observed.contains_key(name))
+    {
+        return Err("workflow packet inventory differs from indexed closure".to_string());
     }
     for (name, expected) in files {
         safe_relative(name)?;
@@ -610,14 +603,151 @@ fn verify_packet(root: &Path) -> Result<Value, String> {
             .as_str()
             .ok_or_else(|| format!("workflow packet digest for {name} is not a string"))?;
         validate_hex(expected, 64, "workflow packet digest")?;
-        let actual = digest_file(&root.join(name), "workflow packet file")?;
-        if actual != expected {
+        if observed.get(name).map(String::as_str) != Some(expected) {
             return Err(format!("workflow packet digest mismatch for {name}"));
         }
     }
     let report = read_json(&root.join(REPORT_JSON), "workflow disposition")?;
     validate_report(&report)?;
+    validate_closure_bindings(root, &report)?;
     Ok(report)
+}
+
+fn validate_closure_bindings(root: &Path, report: &Value) -> Result<(), String> {
+    let evidence = root.join("evidence");
+    validate_directory(&evidence, "workflow evidence closure")?;
+    let locators = report
+        .get("locators")
+        .ok_or_else(|| "workflow disposition is missing locators".to_string())?;
+    for (key, fixed) in [
+        ("preflight", Some(PathBuf::from("preflight/input"))),
+        (
+            "resolution_manifest",
+            Some(PathBuf::from("resolution_manifest/input")),
+        ),
+        (
+            "validation_packet",
+            Some(PathBuf::from("validation_packet").join(PACKET_INDEX)),
+        ),
+        ("integration_packet", None),
+        (
+            "qualification_receipt",
+            Some(PathBuf::from("qualification_receipt/input")),
+        ),
+    ] {
+        let locator = &locators[key];
+        if json_string(locator, "status") == Some("not_required") {
+            continue;
+        }
+        let relative = if let Some(fixed) = fixed {
+            fixed
+        } else {
+            let path = required_json_string(locator, "path")?;
+            let name = Path::new(path)
+                .file_name()
+                .ok_or_else(|| format!("{key} locator path has no filename"))?;
+            PathBuf::from(key).join(name)
+        };
+        let path = evidence.join("locators").join(relative);
+        let observed = digest_file(&path, &format!("{key} closure member"))?;
+        if observed != required_json_string(locator, "sha256")? {
+            return Err(format!(
+                "{key} closure digest differs from locator authority"
+            ));
+        }
+    }
+    for (key, directory, report_name, expected_schema, expected_status) in [
+        (
+            "trusted_builder",
+            "trusted-builder",
+            "trusted-builder.json",
+            "ripr.source_promotion_trusted_builder.v1",
+            "built",
+        ),
+        (
+            "resolved_tree_admission",
+            "resolved-tree-admission",
+            "resolved-tree-admission.json",
+            "ripr.source_promotion_resolved_tree_admission.v1",
+            "admitted",
+        ),
+    ] {
+        let packet = &report["controller_packets"][key];
+        let expected_path = format!("evidence/{directory}");
+        if json_string(packet, "path") != Some(expected_path.as_str()) {
+            return Err(format!("{key} closure path moved"));
+        }
+        let available = packet
+            .get("available")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| format!("{key} closure availability is missing"))?;
+        if json_string(report, "status") == Some("admitted") && !available {
+            return Err(format!(
+                "admitted workflow packet is missing {key} evidence"
+            ));
+        }
+        if available {
+            let receipt = read_json(
+                &evidence.join(directory).join(report_name),
+                &format!("{key} closure receipt"),
+            )?;
+            if json_string(packet, "schema") != json_string(&receipt, "schema")
+                || json_string(packet, "status") != json_string(&receipt, "status")
+            {
+                return Err(format!("{key} summary differs from closure receipt"));
+            }
+            if json_string(report, "status") == Some("admitted")
+                && (json_string(&receipt, "schema") != Some(expected_schema)
+                    || json_string(&receipt, "status") != Some(expected_status))
+            {
+                return Err(format!(
+                    "admitted workflow packet has invalid {key} evidence"
+                ));
+            }
+        }
+    }
+    let construction = &report["controller_packets"]["exact_join_construction"];
+    let construction_required = json_string(report, "phase") == Some("final")
+        && json_string(report, "operation_mode") == Some("constructor_dry_run");
+    if construction_required {
+        if json_string(construction, "path") != Some("evidence/exact-join-construction") {
+            return Err("exact_join_construction closure path moved".to_string());
+        }
+        let available = construction
+            .get("available")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| "exact_join_construction closure availability is missing".to_string())?;
+        if json_string(report, "status") == Some("admitted") && !available {
+            return Err(
+                "admitted constructor workflow packet is missing construction evidence".to_string(),
+            );
+        }
+        if available {
+            let receipt = read_json(
+                &evidence
+                    .join("exact-join-construction")
+                    .join("exact-join-construction.json"),
+                "exact_join_construction closure receipt",
+            )?;
+            if json_string(construction, "schema") != json_string(&receipt, "schema")
+                || json_string(construction, "status") != json_string(&receipt, "status")
+            {
+                return Err(
+                    "exact_join_construction summary differs from closure receipt".to_string(),
+                );
+            }
+            if json_string(report, "status") == Some("admitted")
+                && (json_string(&receipt, "schema")
+                    != Some("ripr.source_promotion_exact_join_construction.v1")
+                    || json_string(&receipt, "status") != Some("constructed"))
+            {
+                return Err(
+                    "admitted workflow packet has invalid construction evidence".to_string()
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_report(report: &Value) -> Result<(), String> {
@@ -650,7 +780,6 @@ fn validate_report(report: &Value) -> Result<(), String> {
         "workflow_source_sha",
         "w7_peeled_sha",
         "reviewed_tree_sha",
-        "reviewed_tree_carrier_sha",
     ] {
         validate_hex(
             json_string(report, key)
@@ -659,6 +788,10 @@ fn validate_report(report: &Value) -> Result<(), String> {
             key,
         )?;
     }
+    validate_reviewed_tree_carrier_identity(
+        profile,
+        required_json_string(report, "reviewed_tree_carrier_sha")?,
+    )?;
     let workflow_source_sha = required_json_string(report, "workflow_source_sha")?;
     if required_json_string(report, "trusted_checker_identity")?
         != format!("source-owned-xtask@{workflow_source_sha}")
@@ -804,7 +937,7 @@ fn parse_run_options(args: &[String]) -> Result<RunOptions, String> {
     }
     let swarm_parent = required_hex(&values, "--w7-peeled-sha", 40)?;
     let reviewed_tree = required_hex(&values, "--reviewed-tree-sha", 40)?;
-    let reviewed_tree_carrier = required_hex(&values, "--reviewed-tree-carrier-sha", 40)?;
+    let reviewed_tree_carrier = required(&values, "--reviewed-tree-carrier-sha")?.to_string();
     let swarm_ref = required(&values, "--protected-w7-ref")?.to_string();
     validate_ref(&swarm_ref)?;
     let receipt_schema = required(&values, "--receipt-schema")?.to_string();
@@ -813,6 +946,7 @@ fn parse_run_options(args: &[String]) -> Result<RunOptions, String> {
     }
     let mode = OperationMode::parse(required(&values, "--operation-mode")?)?;
     let profile = ExecutionProfile::parse(required(&values, "--execution-profile")?)?;
+    validate_reviewed_tree_carrier_identity(profile, &reviewed_tree_carrier)?;
     let source_checkout = std::env::current_dir()
         .map_err(|error| format!("failed to locate source checkout: {error}"))?;
     let requested_workspace = PathBuf::from(required(&values, "--workspace-root")?);
@@ -842,11 +976,6 @@ fn parse_run_options(args: &[String]) -> Result<RunOptions, String> {
             (&fixture.source_parent, &source_parent, "source parent"),
             (&fixture.swarm_parent, &swarm_parent, "W7 parent"),
             (&fixture.reviewed_tree, &reviewed_tree, "reviewed tree"),
-            (
-                &fixture.reviewed_tree_carrier,
-                &reviewed_tree_carrier,
-                "reviewed tree carrier",
-            ),
             (&fixture.protected_w7_ref, &swarm_ref, "protected W7 ref"),
         ]
         .into_iter()
@@ -1237,6 +1366,24 @@ fn prepare_live_controller_repo(
     Ok(runtime)
 }
 
+fn validate_reviewed_tree_carrier_identity(
+    profile: ExecutionProfile,
+    carrier: &str,
+) -> Result<(), String> {
+    match profile {
+        ExecutionProfile::Live => validate_hex(carrier, 40, "reviewed tree carrier SHA"),
+        ExecutionProfile::PositiveSynthetic | ExecutionProfile::J5Negative
+            if carrier == "not_required" =>
+        {
+            Ok(())
+        }
+        ExecutionProfile::PositiveSynthetic | ExecutionProfile::J5Negative => Err(
+            "exact-J-free synthetic profiles require reviewed tree carrier not_required"
+                .to_string(),
+        ),
+    }
+}
+
 fn materialize_indexed_siblings(
     workspace: &Path,
     slot: &str,
@@ -1373,7 +1520,182 @@ fn invoke_controller(repo: &Path, args: &[String]) -> Result<(), String> {
     ))
 }
 
-fn write_packet(out: &Path, report: &Value) -> Result<(), String> {
+fn admission_closure_sources(
+    options: &RunOptions,
+    builder_out: &Path,
+    admission_out: &Path,
+    qualification: &Locator,
+) -> Result<Vec<ClosureSource>, String> {
+    let mut sources = Vec::new();
+    for (source, destination) in [
+        (builder_out, "trusted-builder"),
+        (admission_out, "resolved-tree-admission"),
+    ] {
+        if fs::symlink_metadata(source).is_ok() {
+            sources.push(ClosureSource {
+                source: source.to_path_buf(),
+                destination: PathBuf::from(destination),
+            });
+        }
+    }
+    for (key, locator, siblings) in [
+        ("preflight", &options.preflight, false),
+        ("resolution_manifest", &options.resolution, false),
+        ("validation_packet", &options.validation, true),
+        ("integration_packet", &options.integration, true),
+        ("qualification_receipt", qualification, false),
+    ] {
+        if locator.local_path.as_os_str().is_empty() {
+            continue;
+        }
+        let source = if siblings {
+            locator
+                .local_path
+                .parent()
+                .ok_or_else(|| format!("{key} locator has no sibling root"))?
+                .to_path_buf()
+        } else {
+            locator.local_path.clone()
+        };
+        let destination = if siblings {
+            PathBuf::from("locators").join(key)
+        } else {
+            PathBuf::from("locators").join(key).join("input")
+        };
+        sources.push(ClosureSource {
+            source,
+            destination,
+        });
+    }
+    Ok(sources)
+}
+
+fn closure_index_path(root: &Path, locator: &Value) -> Result<PathBuf, String> {
+    let path = required_json_string(locator, "path")?;
+    safe_relative(path)?;
+    let name = Path::new(path)
+        .file_name()
+        .ok_or_else(|| "integration locator path has no filename".to_string())?;
+    Ok(root.join(name))
+}
+
+fn copy_closure_source(source: &Path, destination: &Path) -> Result<(), String> {
+    const MAX_CLOSURE_FILES: usize = 512;
+    const MAX_CLOSURE_BYTES: u64 = 32 * 1024 * 1024;
+
+    let metadata = fs::symlink_metadata(source).map_err(|error| {
+        format!(
+            "failed to inspect evidence closure source {}: {error}",
+            source.display()
+        )
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err("evidence closure source may not be a symlink".to_string());
+    }
+    if metadata.is_file() {
+        if metadata.len() > MAX_CLOSURE_BYTES {
+            return Err("evidence closure exceeds byte budget".to_string());
+        }
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("failed to create evidence closure parent: {error}"))?;
+        }
+        fs::copy(source, destination)
+            .map_err(|error| format!("failed to copy evidence closure file: {error}"))?;
+        return Ok(());
+    }
+    if !metadata.is_dir() {
+        return Err("evidence closure source must be a regular file or directory".to_string());
+    }
+
+    let mut pending = vec![(source.to_path_buf(), PathBuf::new())];
+    let mut files = 0usize;
+    let mut bytes = 0u64;
+    while let Some((directory, relative)) = pending.pop() {
+        let mut entries = fs::read_dir(&directory)
+            .map_err(|error| format!("failed to enumerate evidence closure: {error}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("failed to read evidence closure entry: {error}"))?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let name = entry
+                .file_name()
+                .into_string()
+                .map_err(|name| format!("evidence closure filename is not UTF-8: {name:?}"))?;
+            safe_relative(&name)?;
+            let entry_relative = relative.join(name);
+            let entry_metadata = fs::symlink_metadata(entry.path())
+                .map_err(|error| format!("failed to inspect evidence closure entry: {error}"))?;
+            if entry_metadata.file_type().is_symlink() {
+                return Err("evidence closure contains a symlink".to_string());
+            }
+            if entry_metadata.is_dir() {
+                pending.push((entry.path(), entry_relative));
+                continue;
+            }
+            if !entry_metadata.is_file() {
+                return Err("evidence closure contains a non-regular entry".to_string());
+            }
+            files += 1;
+            bytes = bytes.saturating_add(entry_metadata.len());
+            if files > MAX_CLOSURE_FILES || bytes > MAX_CLOSURE_BYTES {
+                return Err("evidence closure exceeds bounded inventory".to_string());
+            }
+            let target = destination.join(entry_relative);
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    format!("failed to create evidence closure directory: {error}")
+                })?;
+            }
+            fs::copy(entry.path(), target)
+                .map_err(|error| format!("failed to copy evidence closure entry: {error}"))?;
+        }
+    }
+    Ok(())
+}
+
+fn collect_packet_files(root: &Path) -> Result<BTreeMap<String, String>, String> {
+    let mut files = BTreeMap::new();
+    let mut pending = vec![(root.to_path_buf(), PathBuf::new())];
+    while let Some((directory, relative)) = pending.pop() {
+        let mut entries = fs::read_dir(&directory)
+            .map_err(|error| format!("failed to enumerate workflow packet: {error}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("failed to read workflow packet entry: {error}"))?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let name = entry
+                .file_name()
+                .into_string()
+                .map_err(|name| format!("workflow packet filename is not UTF-8: {name:?}"))?;
+            let entry_relative = relative.join(name);
+            let entry_metadata = fs::symlink_metadata(entry.path())
+                .map_err(|error| format!("failed to inspect workflow packet entry: {error}"))?;
+            if entry_metadata.file_type().is_symlink() {
+                return Err("workflow packet contains a symlink".to_string());
+            }
+            if entry_metadata.is_dir() {
+                pending.push((entry.path(), entry_relative));
+                continue;
+            }
+            if !entry_metadata.is_file() {
+                return Err("workflow packet contains a non-regular entry".to_string());
+            }
+            let relative_text = entry_relative.to_string_lossy().replace('\\', "/");
+            safe_relative(&relative_text)?;
+            if relative_text == PACKET_INDEX {
+                continue;
+            }
+            let digest = digest_file(&entry.path(), "workflow packet file")?;
+            if files.insert(relative_text.clone(), digest).is_some() {
+                return Err(format!("duplicate workflow packet path: {relative_text}"));
+            }
+        }
+    }
+    Ok(files)
+}
+
+fn write_packet(out: &Path, report: &Value, closure: &[ClosureSource]) -> Result<(), String> {
     reject_existing_output(out)?;
     fs::create_dir(out).map_err(|error| {
         format!(
@@ -1381,6 +1703,12 @@ fn write_packet(out: &Path, report: &Value) -> Result<(), String> {
             out.display()
         )
     })?;
+    let evidence = out.join("evidence");
+    fs::create_dir(&evidence)
+        .map_err(|error| format!("failed to create workflow evidence closure: {error}"))?;
+    for source in closure {
+        copy_closure_source(&source.source, &evidence.join(&source.destination))?;
+    }
     let json = serde_json::to_string_pretty(report)
         .map_err(|error| format!("failed to serialize workflow disposition: {error}"))?;
     let markdown = render_markdown(report)?;
@@ -1388,16 +1716,7 @@ fn write_packet(out: &Path, report: &Value) -> Result<(), String> {
         .map_err(|error| format!("failed to write workflow disposition JSON: {error}"))?;
     fs::write(out.join(REPORT_MD), markdown)
         .map_err(|error| format!("failed to write workflow disposition Markdown: {error}"))?;
-    let files = BTreeMap::from([
-        (
-            REPORT_JSON,
-            digest_file(&out.join(REPORT_JSON), "workflow disposition JSON")?,
-        ),
-        (
-            REPORT_MD,
-            digest_file(&out.join(REPORT_MD), "workflow disposition Markdown")?,
-        ),
-    ]);
+    let files = collect_packet_files(out)?;
     let index = serde_json::json!({
         "schema": PACKET_SCHEMA,
         "status": json_string(report, "status"),
@@ -1432,14 +1751,10 @@ fn render_markdown(report: &Value) -> Result<String, String> {
     ))
 }
 
-fn relative_packet_state(workspace: &Path, root: &Path, report: &str) -> Value {
-    let relative = root
-        .strip_prefix(workspace)
-        .ok()
-        .map(|path| path.to_string_lossy().replace('\\', "/"));
+fn packet_state(root: &Path, report: &str, closure_path: &str) -> Value {
     let value = read_optional_json(&root.join(report));
     serde_json::json!({
-        "path": relative,
+        "path": closure_path,
         "available": value.is_some(),
         "status": value.as_ref().and_then(|report| json_string(report, "status")),
         "schema": value.as_ref().and_then(|report| json_string(report, "schema")),
@@ -1923,6 +2238,26 @@ mod tests {
     }
 
     #[test]
+    fn reviewed_tree_carrier_identity_is_live_only() -> Result<(), String> {
+        validate_reviewed_tree_carrier_identity(ExecutionProfile::Live, &"a".repeat(40))?;
+        validate_reviewed_tree_carrier_identity(
+            ExecutionProfile::PositiveSynthetic,
+            "not_required",
+        )?;
+        validate_reviewed_tree_carrier_identity(ExecutionProfile::J5Negative, "not_required")?;
+        if validate_reviewed_tree_carrier_identity(ExecutionProfile::Live, "not_required").is_ok()
+            || validate_reviewed_tree_carrier_identity(
+                ExecutionProfile::PositiveSynthetic,
+                &"a".repeat(40),
+            )
+            .is_ok()
+        {
+            return Err("reviewed tree carrier profile boundary was bypassed".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn exact_identity_binding_rejects_moved_ref_and_sidecar() -> Result<(), String> {
         let report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
         for (pointer, replacement) in [
@@ -2001,6 +2336,80 @@ mod tests {
     }
 
     #[test]
+    fn packet_index_binds_complete_evidence_closure() -> Result<(), String> {
+        let (root, packet) = write_test_closure("inventory")?;
+        let report = verify_packet(&packet)?;
+        let index = read_json(&packet.join(PACKET_INDEX), "test packet index")?;
+        let files = index["files"]
+            .as_object()
+            .ok_or_else(|| "test packet index has no files".to_string())?;
+        for required in [
+            "evidence/trusted-builder/trusted-builder.json",
+            "evidence/resolved-tree-admission/resolved-tree-admission.json",
+            "evidence/locators/preflight/input",
+            "evidence/locators/resolution_manifest/input",
+            "evidence/locators/validation_packet/packet-index.json",
+            "evidence/locators/validation_packet/validation.json",
+            "evidence/locators/integration_packet/index.json",
+            REPORT_JSON,
+            REPORT_MD,
+        ] {
+            if !files.contains_key(required) {
+                return Err(format!("closure index omitted {required}"));
+            }
+        }
+        for (pointer, replacement) in [
+            (
+                "/controller_packets/trusted_builder/available",
+                Value::Bool(false),
+            ),
+            (
+                "/controller_packets/resolved_tree_admission/status",
+                Value::String("rejected".to_string()),
+            ),
+        ] {
+            let mut inconsistent = report.clone();
+            let slot = inconsistent
+                .pointer_mut(pointer)
+                .ok_or_else(|| format!("test report is missing {pointer}"))?;
+            *slot = replacement;
+            if validate_closure_bindings(&packet, &inconsistent).is_ok() {
+                return Err(format!(
+                    "controller closure inconsistency escaped at {pointer}"
+                ));
+            }
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean closure inventory fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn packet_verifier_rejects_removed_or_corrupted_closure_member() -> Result<(), String> {
+        let (removed_root, removed_packet) = write_test_closure("removed")?;
+        fs::remove_file(removed_packet.join("evidence/locators/validation_packet/validation.json"))
+            .map_err(|error| format!("failed to remove closure member: {error}"))?;
+        if verify_packet(&removed_packet).is_ok() {
+            return Err("packet verifier accepted removed closure member".to_string());
+        }
+        fs::remove_dir_all(&removed_root)
+            .map_err(|error| format!("failed to clean removed closure fixture: {error}"))?;
+
+        let (corrupt_root, corrupt_packet) = write_test_closure("corrupt")?;
+        fs::write(
+            corrupt_packet.join("evidence/locators/preflight/input"),
+            b"corrupted",
+        )
+        .map_err(|error| format!("failed to corrupt closure member: {error}"))?;
+        if verify_packet(&corrupt_packet).is_ok() {
+            return Err("packet verifier accepted corrupted closure member".to_string());
+        }
+        fs::remove_dir_all(&corrupt_root)
+            .map_err(|error| format!("failed to clean corrupt closure fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn synthetic_paths_are_root_independent() -> Result<(), String> {
         let left = Path::new("one/root/synthetic-fixture/fixture-repository/.git/evidence.json");
         let right =
@@ -2009,6 +2418,100 @@ mod tests {
             return Err("synthetic locator retained its absolute root".to_string());
         }
         Ok(())
+    }
+
+    fn write_test_closure(label: &str) -> Result<(PathBuf, PathBuf), String> {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("test clock precedes epoch: {error}"))?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-admission-closure-{label}-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir(&root)
+            .map_err(|error| format!("failed to create closure test root: {error}"))?;
+        let source = root.join("source");
+        for directory in [
+            "trusted-builder",
+            "resolved-tree-admission",
+            "preflight",
+            "resolution_manifest",
+            "validation_packet",
+            "integration_packet",
+        ] {
+            fs::create_dir_all(source.join(directory))
+                .map_err(|error| format!("failed to create closure fixture directory: {error}"))?;
+        }
+        let files = [
+            (
+                "trusted-builder/trusted-builder.json",
+                br#"{"schema":"ripr.source_promotion_trusted_builder.v1","status":"built"}"#
+                    .as_slice(),
+            ),
+            (
+                "resolved-tree-admission/resolved-tree-admission.json",
+                br#"{"schema":"ripr.source_promotion_resolved_tree_admission.v1","status":"admitted"}"#
+                    .as_slice(),
+            ),
+            ("preflight/input", b"preflight".as_slice()),
+            ("resolution_manifest/input", b"resolution".as_slice()),
+            (
+                "validation_packet/packet-index.json",
+                b"validation-index".as_slice(),
+            ),
+            (
+                "validation_packet/validation.json",
+                b"validation-receipt".as_slice(),
+            ),
+            ("integration_packet/index.json", b"integration".as_slice()),
+        ];
+        for (path, bytes) in files {
+            fs::write(source.join(path), bytes)
+                .map_err(|error| format!("failed to write closure fixture: {error}"))?;
+        }
+        let mut report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
+        for (key, path) in [
+            ("preflight", "preflight/input"),
+            ("resolution_manifest", "resolution_manifest/input"),
+            ("validation_packet", "validation_packet/packet-index.json"),
+            ("integration_packet", "integration_packet/index.json"),
+        ] {
+            report["locators"][key]["sha256"] =
+                Value::String(digest_file(&source.join(path), "closure fixture")?);
+        }
+        report["controller_packets"] = serde_json::json!({
+            "trusted_builder": {
+                "path": "evidence/trusted-builder",
+                "available": true,
+                "status": "built",
+                "schema": "ripr.source_promotion_trusted_builder.v1",
+            },
+            "resolved_tree_admission": {
+                "path": "evidence/resolved-tree-admission",
+                "available": true,
+                "status": "admitted",
+                "schema": "ripr.source_promotion_resolved_tree_admission.v1",
+            },
+        });
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        let closure = [
+            ("trusted-builder", "trusted-builder"),
+            ("resolved-tree-admission", "resolved-tree-admission"),
+            ("preflight", "locators/preflight"),
+            ("resolution_manifest", "locators/resolution_manifest"),
+            ("validation_packet", "locators/validation_packet"),
+            ("integration_packet", "locators/integration_packet"),
+        ]
+        .into_iter()
+        .map(|(from, to)| ClosureSource {
+            source: source.join(from),
+            destination: PathBuf::from(to),
+        })
+        .collect::<Vec<_>>();
+        let packet = root.join("packet");
+        write_packet(&packet, &report, &closure)?;
+        Ok((root, packet))
     }
 
     fn test_report(
@@ -2074,7 +2577,7 @@ mod tests {
             "protected_w7_ref": "refs/tags/ripr-release-fixture-w7",
             "w7_peeled_sha": "b".repeat(40),
             "reviewed_tree_sha": "c".repeat(40),
-            "reviewed_tree_carrier_sha": "4".repeat(40),
+            "reviewed_tree_carrier_sha": if synthetic { "not_required".to_string() } else { "4".repeat(40) },
             "receipt_schema": SUPPORTED_RECEIPT_SCHEMA,
             "locators": {
                 "preflight": locator("preflight", "preflight/preflight.json", "d".repeat(64)),
