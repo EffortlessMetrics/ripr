@@ -10,9 +10,10 @@
 - Final ledger SHA-256: `db317972d01d94b5964d4fb7de2c4a3b99066888117c9148ec1d8598ec43a680`
 - Production checker: **pass**
 - Changed path: `policy/network_allowlist.txt` only
-- Receipt SHA-256: `8f9ae16cea8d6710a4c9437f49fc1aa8a5d7ad7a42a19d0b46ddb9d6a756bca9`
+- Receipt SHA-256: `9d069e8affcb82c0f4f55424d1ac229395828dfa468e1506805c027747bb9d19`
 
 Machine-readable receipt: `docs/release/0.11.0/network-policy-resolution/network-policy-resolution.json`
-Ledger bytes: `docs/release/0.11.0/network-policy-resolution/network-policy-ledger.txt`
+Ledger path: `docs/release/0.11.0/network-policy-resolution/network-policy-ledger.txt`
+Ledger bytes: `5447`
 
 This control does not create the complete manifest, JOIN_TREE, P1, or J6 and moves no ref.

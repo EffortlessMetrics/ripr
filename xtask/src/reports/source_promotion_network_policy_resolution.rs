@@ -10,8 +10,9 @@ const SUBCOMMAND: &str = "resolve-network-policy";
 const SCHEMA: &str = "ripr.source_promotion_network_policy_resolution.v1";
 const POLICY_PATH: &str = "policy/network_allowlist.txt";
 const MANIFEST_SCHEMA: &str = "ripr.source_promotion_resolution_manifest_fragment.v1";
-const HEADER: &str = "# Allowlisted network surfaces.\n#\n# Format:\n# path|pattern|max_count|owner|reason\n#\n# Network behavior must stay in explicit adapter or release surfaces. Unit tests\n# and domain logic should not acquire hidden network dependencies.\n\n";
-
+type SemanticKey = (String, String);
+type ReviewerDecisions = BTreeMap<SemanticKey, (PolicyRow, String)>;
+type TreeInventory = BTreeMap<SemanticKey, (usize, String)>;
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PolicyRow {
     path: String,
@@ -191,6 +192,13 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
     let swarm_policy_blob = git_output(&["rev-parse", &format!("{}:{POLICY_PATH}", inputs.swarm)])?;
     let source_rows = parse_policy("source", &source_policy_bytes)?;
     let swarm_rows = parse_policy("swarm", &swarm_policy_bytes)?;
+    let source_header = policy_header("source", &source_policy_bytes)?;
+    let swarm_header = policy_header("swarm", &swarm_policy_bytes)?;
+    if source_header != swarm_header {
+        return Err(
+            "source and W7 network-policy headers differ; reviewer resolution required".to_string(),
+        );
+    }
     let decisions = parse_decisions(&inputs.decisions, inputs)?;
     let mut inventory = inventory_tree(&inputs.preview_tree)?;
     complete_parent_inventory(
@@ -200,7 +208,7 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
     )?;
     let resolutions = reconcile(&source_rows, &swarm_rows, &decisions, &inventory)?;
 
-    let ledger = render_ledger(&resolutions);
+    let ledger = render_ledger(&source_header, &resolutions);
     let ledger_blob = git_hash_object(&ledger)?;
     let ledger_sha256 = sha256(ledger.as_bytes());
     let scratch = scratch_root()?;
@@ -208,12 +216,7 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
     let index = scratch.join("policy-only.index");
     let after_tree = policy_only_tree(&inputs.preview_tree, &ledger_blob, &index)?;
     let changed_paths = changed_paths(&inputs.preview_tree, &after_tree)?;
-    if changed_paths != vec![POLICY_PATH.to_string()] {
-        return Err(format!(
-            "policy-only tree changed unexpected paths: {}",
-            changed_paths.join(", ")
-        ));
-    }
+    require_only_policy_path(&changed_paths)?;
 
     let checkout = scratch.join("checkout");
     materialize_tree(&after_tree, &index, &checkout)?;
@@ -228,14 +231,11 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
         "rev-parse",
         &format!("{}:xtask/src/policy/network.rs", inputs.source),
     ])?;
-    let checker_execution = run_production_checker(
-        &source_checkout,
-        &checkout,
-        &scratch.with_file_name("source-promotion-network-policy-checker-target"),
-    )
-    .map_err(|error| {
-        format!("reconciled policy failed production check-network-policy: {error}")
-    })?;
+    let checker_execution =
+        run_production_checker(&source_checkout, &checkout, &scratch.join("checker-target"))
+            .map_err(|error| {
+                format!("reconciled policy failed production check-network-policy: {error}")
+            })?;
 
     let source_control = evaluate_ledger(&source_rows, &resolutions)?;
     let swarm_control = evaluate_ledger(&swarm_rows, &resolutions)?;
@@ -245,15 +245,18 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
         .cloned()
         .collect::<Vec<_>>();
     let union_control = evaluate_ledger(&union_rows, &resolutions)?;
+    let control_context = ControlContext {
+        inputs,
+        preflight: &preflight,
+        ledger_blob: &ledger_blob,
+        scratch: &scratch,
+    };
     let controls = build_controls(
         &source_control,
         &swarm_control,
         &union_control,
         &resolutions,
-        inputs,
-        &preflight,
-        &ledger_blob,
-        &scratch,
+        &control_context,
     )?;
 
     let resolution_rows = resolutions.iter().map(resolution_json).collect::<Vec<_>>();
@@ -315,6 +318,9 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
             "checker_exit_code": checker_execution.checker_exit_code,
             "checker_stdout_sha256": checker_execution.checker_stdout_sha256,
             "checker_stderr_sha256": checker_execution.checker_stderr_sha256,
+            "executable_sha256": checker_execution.executable_sha256,
+            "rustc_verbose_version": checker_execution.rustc_verbose_version,
+            "build_path_remapping": checker_execution.build_path_remapping,
             "result": "pass",
         },
         "negative_controls": controls,
@@ -439,10 +445,7 @@ fn parse_policy(label: &str, bytes: &[u8]) -> Result<Vec<PolicyRow>, String> {
     Ok(rows)
 }
 
-fn parse_decisions(
-    path: &Path,
-    inputs: &Inputs,
-) -> Result<BTreeMap<(String, String), (PolicyRow, String)>, String> {
+fn parse_decisions(path: &Path, inputs: &Inputs) -> Result<ReviewerDecisions, String> {
     let bytes = fs::read(path)
         .map_err(|error| format!("failed to read decisions {}: {error}", path.display()))?;
     let document: Value = serde_json::from_slice(&bytes)
@@ -503,8 +506,8 @@ fn validate_decision_authority(document: &Value, inputs: &Inputs) -> Result<(), 
 fn reconcile(
     source_rows: &[PolicyRow],
     swarm_rows: &[PolicyRow],
-    decisions: &BTreeMap<(String, String), (PolicyRow, String)>,
-    inventory: &BTreeMap<(String, String), (usize, String)>,
+    decisions: &ReviewerDecisions,
+    inventory: &TreeInventory,
 ) -> Result<Vec<Resolution>, String> {
     let source = keyed_rows("source", source_rows)?;
     let swarm = keyed_rows("swarm", swarm_rows)?;
@@ -514,7 +517,7 @@ fn reconcile(
         .chain(inventory.keys())
         .cloned()
         .collect::<BTreeSet<_>>();
-    for key in decisions.keys().filter(|key| !keys.contains(*key)) {
+    if let Some(key) = decisions.keys().find(|key| !keys.contains(*key)) {
         return Err(format!(
             "reviewer decision has no parent or live-preview semantic key: {}|{}",
             key.0, key.1
@@ -598,9 +601,10 @@ fn select_row(
     }
     if source.is_none() && swarm.is_none() {
         let Some((row, rationale)) = decision else {
-            return Err(format!(
+            return Err(
                 "live key has no parent authority and requires an explicit reviewer decision"
-            ));
+                    .to_string(),
+            );
         };
         if row.maximum != actual {
             return Err(format!(
@@ -664,7 +668,7 @@ fn select_row(
     ))
 }
 
-fn inventory_tree(tree: &str) -> Result<BTreeMap<(String, String), (usize, String)>, String> {
+fn inventory_tree(tree: &str) -> Result<TreeInventory, String> {
     let patterns = crate::network_policy_patterns();
     let mut counts = BTreeMap::<(String, String), usize>::new();
     for pattern in &patterns {
@@ -706,7 +710,7 @@ fn inventory_tree(tree: &str) -> Result<BTreeMap<(String, String), (usize, Strin
 fn complete_parent_inventory<'a>(
     tree: &str,
     rows: impl Iterator<Item = &'a PolicyRow>,
-    inventory: &mut BTreeMap<(String, String), (usize, String)>,
+    inventory: &mut TreeInventory,
 ) -> Result<(), String> {
     let mut blobs = BTreeMap::<String, (Vec<u8>, String)>::new();
     for row in rows {
@@ -742,8 +746,29 @@ fn complete_parent_inventory<'a>(
     Ok(())
 }
 
-fn render_ledger(resolutions: &[Resolution]) -> String {
-    let mut ledger = HEADER.to_string();
+fn policy_header(label: &str, bytes: &[u8]) -> Result<String, String> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|error| format!("{label} policy is not UTF-8: {error}"))?;
+    let mut header = String::new();
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with('#') {
+            break;
+        }
+        header.push_str(line);
+    }
+    if header.is_empty() {
+        Err(format!("{label} policy has no reviewable header"))
+    } else {
+        Ok(header)
+    }
+}
+
+fn render_ledger(header: &str, resolutions: &[Resolution]) -> String {
+    let mut ledger = header.to_string();
+    if !ledger.ends_with('\n') {
+        ledger.push('\n');
+    }
     for row in resolutions
         .iter()
         .filter_map(|resolution| resolution.selected.as_ref())
@@ -841,15 +866,19 @@ fn evaluate_ledger(rows: &[PolicyRow], resolutions: &[Resolution]) -> Result<Val
     }))
 }
 
+struct ControlContext<'a> {
+    inputs: &'a Inputs,
+    preflight: &'a Value,
+    ledger_blob: &'a str,
+    scratch: &'a Path,
+}
+
 fn build_controls(
     source: &Value,
     swarm: &Value,
     union: &Value,
     resolutions: &[Resolution],
-    inputs: &Inputs,
-    preflight: &Value,
-    ledger_blob: &str,
-    scratch: &Path,
+    context: &ControlContext<'_>,
 ) -> Result<Value, String> {
     let source_violations = source["violations"]
         .as_array()
@@ -959,7 +988,7 @@ fn build_controls(
         "owner_or_reason_substitution",
         Some(&first.key()),
     )?;
-    let mut moved_inputs = inputs.clone();
+    let mut moved_inputs = context.inputs.clone();
     let replacement = if moved_inputs.source.starts_with('0') {
         '1'
     } else {
@@ -968,7 +997,7 @@ fn build_controls(
     moved_inputs
         .source
         .replace_range(..1, &replacement.to_string());
-    let identity_error = validate_preflight(&moved_inputs, preflight)
+    let identity_error = validate_preflight(&moved_inputs, context.preflight)
         .err()
         .ok_or_else(|| {
             "changed source identity negative control unexpectedly passed".to_string()
@@ -979,9 +1008,9 @@ fn build_controls(
         "error": identity_error,
     });
     let outside_policy_path = outside_path_control(
-        &inputs.preview_tree,
-        ledger_blob,
-        &scratch.join("outside-path.index"),
+        &context.inputs.preview_tree,
+        context.ledger_blob,
+        &context.scratch.join("outside-path.index"),
     )?;
     Ok(json!({
         "raw_source": source,
@@ -1079,22 +1108,14 @@ fn outside_path_control(preview: &str, ledger_blob: &str, index: &Path) -> Resul
     }
     let control_tree = git_output_env(&["write-tree"], &[("GIT_INDEX_FILE", &index_text)])?;
     let paths = changed_paths(preview, &control_tree)?;
-    if paths
-        != vec![
-            "outside-policy-control.txt".to_string(),
-            POLICY_PATH.to_string(),
-        ]
-    {
-        return Err(format!(
-            "outside-path negative control produced unexpected paths: {}",
-            paths.join(", ")
-        ));
-    }
+    let error = require_only_policy_path(&paths)
+        .err()
+        .ok_or_else(|| "outside-path negative control unexpectedly passed".to_string())?;
     Ok(json!({
         "status": "rejected",
         "control_tree": control_tree,
         "changed_paths": paths,
-        "violation": "changed path outside policy/network_allowlist.txt",
+        "violation": error,
     }))
 }
 
@@ -1150,6 +1171,17 @@ fn changed_paths(before: &str, after: &str) -> Result<Vec<String>, String> {
         .collect())
 }
 
+fn require_only_policy_path(paths: &[String]) -> Result<(), String> {
+    if paths == [POLICY_PATH.to_string()] {
+        Ok(())
+    } else {
+        Err(format!(
+            "changed paths must contain only {POLICY_PATH}, found: {}",
+            paths.join(", ")
+        ))
+    }
+}
+
 fn materialize_tree(tree: &str, index: &Path, checkout: &Path) -> Result<(), String> {
     fs::create_dir_all(checkout)
         .map_err(|error| format!("failed to create {}: {error}", checkout.display()))?;
@@ -1200,6 +1232,9 @@ struct CheckerExecution {
     checker_exit_code: i32,
     checker_stdout_sha256: String,
     checker_stderr_sha256: String,
+    executable_sha256: String,
+    rustc_verbose_version: String,
+    build_path_remapping: String,
 }
 
 fn run_production_checker(
@@ -1215,10 +1250,42 @@ fn run_production_checker(
     })?;
     fs::create_dir_all(target_dir)
         .map_err(|error| format!("failed to create {}: {error}", target_dir.display()))?;
+    let rustc = Command::new("rustc")
+        .current_dir(source_checkout)
+        .arg("-vV")
+        .output()
+        .map_err(|error| format!("failed to identify exact-source Rust toolchain: {error}"))?;
+    if !rustc.status.success() {
+        return Err(format!(
+            "rustc -vV exited with {}: {}",
+            rustc.status,
+            String::from_utf8_lossy(&rustc.stderr).trim()
+        ));
+    }
+    let rustc_verbose_version = String::from_utf8(rustc.stdout)
+        .map_err(|error| format!("rustc -vV emitted non-UTF-8 output: {error}"))?
+        .trim()
+        .to_string();
+    let mut rustflags = vec![
+        format!(
+            "--remap-path-prefix={}=/ripr-source",
+            path_text(source_checkout)?
+        ),
+        format!(
+            "--remap-path-prefix={}=/ripr-target",
+            path_text(target_dir)?
+        ),
+        "-Cstrip=debuginfo".to_string(),
+    ];
+    if cfg!(windows) {
+        rustflags.push("-Clink-arg=/Brepro".to_string());
+    }
+    let encoded_rustflags = rustflags.join("\u{1f}");
     let build = Command::new("cargo")
         .current_dir(source_checkout)
         .args(["build", "--quiet", "--locked", "--offline", "-p", "xtask"])
         .env("CARGO_TARGET_DIR", target_dir)
+        .env("CARGO_ENCODED_RUSTFLAGS", &encoded_rustflags)
         .output()
         .map_err(|error| format!("failed to build exact-source xtask checker: {error}"))?;
     if !build.status.success() {
@@ -1233,6 +1300,12 @@ fn run_production_checker(
         target_dir
             .join("debug")
             .join(if cfg!(windows) { "xtask.exe" } else { "xtask" });
+    let executable_sha256 = sha256(&fs::read(&executable).map_err(|error| {
+        format!(
+            "failed to hash exact-source checker {}: {error}",
+            executable.display()
+        )
+    })?);
     let checker = Command::new(&executable)
         .current_dir(subject_checkout)
         .arg("check-network-policy")
@@ -1253,6 +1326,14 @@ fn run_production_checker(
         checker_exit_code: checker.status.code().unwrap_or(-1),
         checker_stdout_sha256: sha256(&checker.stdout),
         checker_stderr_sha256: sha256(&checker.stderr),
+        executable_sha256,
+        rustc_verbose_version,
+        build_path_remapping: if cfg!(windows) {
+            "--remap-path-prefix=<private-source>=/ripr-source --remap-path-prefix=<private-target>=/ripr-target -Cstrip=debuginfo -Clink-arg=/Brepro"
+        } else {
+            "--remap-path-prefix=<private-source>=/ripr-source --remap-path-prefix=<private-target>=/ripr-target -Cstrip=debuginfo"
+        }
+        .to_string(),
     })
 }
 
@@ -1435,7 +1516,7 @@ fn render_markdown(
     receipt_sha256: &str,
 ) -> String {
     format!(
-        "# Source/W7 semantic network-policy resolution\n\n- Schema: `{}`\n- Source parent: `{}`\n- W7: `{}`\n- P0 receipt SHA-256: `{}`\n- Preview tree before: `{}`\n- Policy-only tree after: `{}`\n- Final ledger blob: `{}`\n- Final ledger SHA-256: `{}`\n- Production checker: **pass**\n- Changed path: `{}` only\n- Receipt SHA-256: `{}`\n\nMachine-readable receipt: `{}`\nLedger bytes: `{}`\n\nThis control does not create the complete manifest, JOIN_TREE, P1, or J6 and moves no ref.\n",
+        "# Source/W7 semantic network-policy resolution\n\n- Schema: `{}`\n- Source parent: `{}`\n- W7: `{}`\n- P0 receipt SHA-256: `{}`\n- Preview tree before: `{}`\n- Policy-only tree after: `{}`\n- Final ledger blob: `{}`\n- Final ledger SHA-256: `{}`\n- Production checker: **pass**\n- Changed path: `{}` only\n- Receipt SHA-256: `{}`\n\nMachine-readable receipt: `{}`\nLedger path: `{}`\nLedger bytes: `{}`\n\nThis control does not create the complete manifest, JOIN_TREE, P1, or J6 and moves no ref.\n",
         SCHEMA,
         receipt["p0"]["source_parent"].as_str().unwrap_or("unknown"),
         receipt["p0"]["swarm_parent"].as_str().unwrap_or("unknown"),
@@ -1456,14 +1537,16 @@ fn render_markdown(
         receipt_sha256,
         portable_path(receipt_path),
         portable_path(ledger_path),
+        receipt["final_ledger"]["bytes"].as_u64().unwrap_or(0),
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        Inputs, PolicyRow, evaluate_ledger, parse_policy, reconcile, require_rejected_control,
-        select_row, validate_decision_authority,
+        Inputs, PolicyRow, evaluate_ledger, parse_policy, policy_header, reconcile, render_ledger,
+        require_only_policy_path, require_rejected_control, select_row,
+        validate_decision_authority,
     };
     use serde_json::json;
     use std::collections::BTreeMap;
@@ -1688,6 +1771,41 @@ mod tests {
             .is_ok()
         {
             return Err("accepted negative control unexpectedly passed".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn resolved_ledger_preserves_the_reviewed_parent_header() -> Result<(), String> {
+        let bytes = b"# Reviewed header\n# second line\n\na.rs|curl|1|owner|reason\n";
+        let header = policy_header("fixture", bytes)?;
+        let resolution = super::Resolution {
+            source: Some(row("a.rs", "curl", 1, "owner")),
+            swarm: None,
+            actual_count: 1,
+            evidence_blob: Some("blob".to_string()),
+            selected: Some(row("a.rs", "curl", 1, "owner")),
+            disposition: "retained_source",
+            rationale: "reviewed".to_string(),
+        };
+        let ledger = render_ledger(&header, &[resolution]);
+        if !ledger.starts_with("# Reviewed header\n# second line\n\n") {
+            return Err("resolved ledger did not preserve the parent header".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn changed_path_validator_rejects_an_outside_path() -> Result<(), String> {
+        require_only_policy_path(&[super::POLICY_PATH.to_string()])?;
+        let error = require_only_policy_path(&[
+            "outside-policy-control.txt".to_string(),
+            super::POLICY_PATH.to_string(),
+        ])
+        .err()
+        .ok_or_else(|| "outside path unexpectedly passed validation".to_string())?;
+        if !error.contains("outside-policy-control.txt") {
+            return Err("outside path rejection omitted the offending path".to_string());
         }
         Ok(())
     }
