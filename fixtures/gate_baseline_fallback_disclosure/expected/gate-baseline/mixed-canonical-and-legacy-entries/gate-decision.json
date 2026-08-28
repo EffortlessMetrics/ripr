@@ -1,0 +1,175 @@
+{
+  "config_errors": [],
+  "decisions": [
+    {
+      "baseline_match_kind": "legacy_path_line_class",
+      "canonical_gap_id": "gap:delta000000000008",
+      "decision": "advisory",
+      "evidence": {
+        "assertion_shape": "assert_eq!(apply_surcharge(/* boundary input for amount == surcharge_floor */), /* expected */)",
+        "candidate_values": [
+          "amount == surcharge_floor"
+        ],
+        "configured_off": false,
+        "missing_discriminator": "amount == surcharge_floor",
+        "mutation_calibration": {
+          "available": false,
+          "confidence_effect": "not_used",
+          "outcome": null
+        },
+        "nearby_test_changed": false,
+        "recommendation_calibration": {
+          "available": false,
+          "confidence_effect": "not_used",
+          "outcome": null
+        },
+        "recommended_test": "tests/pricing.rs::above_threshold_gets_discount",
+        "suppressed": false
+      },
+      "gap_state": "actionable",
+      "gate_reason": "candidate identity is already present in the explicit baseline",
+      "id": "ripr-gate-gap-delta000000000008",
+      "placement": {
+        "line": 144,
+        "path": "src/pricing.rs"
+      },
+      "policy": {
+        "acknowledgement_label": null,
+        "baseline_identity": "gap:delta000000000008",
+        "mode": "baseline-check",
+        "threshold": "high_confidence_new_gap"
+      },
+      "repair_route": {
+        "authority_boundary": "static_ripr_evidence_only",
+        "canonical_gap_id": "gap:delta000000000008",
+        "changed_behavior": "amount >= surcharge_floor",
+        "changed_owner": "pricing::apply_surcharge",
+        "classification": "ungripped",
+        "inspection_command": "ripr agent brief --root . --seam-id seamdelta00000008 --json > target/ripr/workflow/agent-brief.json",
+        "limitation": null,
+        "missing_discriminator": "amount == surcharge_floor",
+        "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seamdelta00000008 --json --out target/ripr/reports/agent-receipt.json",
+        "repair_target": {
+          "file": "tests/pricing.rs",
+          "kind": "related_test",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "seam_id": "seamdelta00000008",
+        "test_intent": "Write one focused Rust test for amount == surcharge_floor. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "seam_id": "seamdelta00000008",
+      "severity": "warning",
+      "source": "pr_guidance",
+      "source_id": "ripr-review-seamdelta08",
+      "static_class": "ungripped"
+    },
+    {
+      "canonical_gap_id": "gap:gamma000000000007",
+      "decision": "advisory",
+      "evidence": {
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input for amount == discount_threshold */), /* expected */)",
+        "candidate_values": [
+          "amount == discount_threshold"
+        ],
+        "configured_off": false,
+        "missing_discriminator": "amount == discount_threshold",
+        "mutation_calibration": {
+          "available": false,
+          "confidence_effect": "not_used",
+          "outcome": null
+        },
+        "nearby_test_changed": false,
+        "recommendation_calibration": {
+          "available": false,
+          "confidence_effect": "not_used",
+          "outcome": null
+        },
+        "recommended_test": "tests/pricing.rs::above_threshold_gets_discount",
+        "suppressed": false
+      },
+      "gap_state": "actionable",
+      "gate_reason": "candidate identity is already present in the explicit baseline",
+      "id": "ripr-gate-gap-gamma000000000007",
+      "placement": {
+        "line": 88,
+        "path": "src/pricing.rs"
+      },
+      "policy": {
+        "acknowledgement_label": null,
+        "baseline_identity": "gap:gamma000000000007",
+        "mode": "baseline-check",
+        "threshold": "high_confidence_new_gap"
+      },
+      "repair_route": {
+        "authority_boundary": "static_ripr_evidence_only",
+        "canonical_gap_id": "gap:gamma000000000007",
+        "changed_behavior": "amount >= discount_threshold",
+        "changed_owner": "pricing::discounted_total",
+        "classification": "weakly_gripped",
+        "inspection_command": "ripr agent brief --root . --seam-id seamgamma00000007 --json > target/ripr/workflow/agent-brief.json",
+        "limitation": null,
+        "missing_discriminator": "amount == discount_threshold",
+        "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seamgamma00000007 --json --out target/ripr/reports/agent-receipt.json",
+        "repair_target": {
+          "file": "tests/pricing.rs",
+          "kind": "related_test",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "seam_id": "seamgamma00000007",
+        "test_intent": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "seam_id": "seamgamma00000007",
+      "severity": "warning",
+      "source": "pr_guidance",
+      "source_id": "ripr-review-seamgamma07",
+      "static_class": "weakly_gripped"
+    }
+  ],
+  "inputs": {
+    "agent_receipt": null,
+    "agent_verify": null,
+    "baseline": "fixtures/gate_baseline_fallback_disclosure/expected/gate-baseline/mixed-canonical-and-legacy-entries/baseline.json",
+    "labels": [],
+    "labels_json": null,
+    "mutation_calibration": null,
+    "pr_guidance": "fixtures/gate_baseline_fallback_disclosure/expected/gate-baseline/mixed-canonical-and-legacy-entries/pr-guidance.json",
+    "recommendation_calibration": null,
+    "repo_exposure": null,
+    "sarif_policy": null
+  },
+  "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime mutation calibration is used only when supplied.",
+  "mode": "baseline-check",
+  "new_unsuppressed": {
+    "basis": "baseline",
+    "count": 0,
+    "reason": null
+  },
+  "policy": {
+    "acknowledgement_labels": [
+      "ripr-waive"
+    ],
+    "default_workflow_posture": "advisory",
+    "mode": "baseline-check",
+    "threshold": "high_confidence_new_gap"
+  },
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "acknowledged": 0,
+    "advisory": 2,
+    "blocking": 0,
+    "evaluated": 2,
+    "not_applicable": 0,
+    "suppressed": 0,
+    "unknown_confidence": 2
+  },
+  "tool": "ripr",
+  "warnings": [
+    "gate candidate ripr-review-seamdelta08 matched baseline evidence by fallback path/line/static_class identity `src/pricing.rs:144:ungripped`; disclosed as baseline_match_kind=legacy_path_line_class — a legacy compatibility match, not a canonical identity match"
+  ]
+}

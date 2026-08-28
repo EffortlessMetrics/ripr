@@ -4,7 +4,11 @@
   "mode": "fast",
   "root": "fixtures/source_promotion_verification/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":4,"findings":4,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":2,"infection_unknown":0,"propagation_unknown":0,"static_unknown":2},
+  "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":2,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:f0244413a785ed46552bb55d163b3d05f1e1ac019dcc20a512ac17085074b5c2","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":10,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
     {
       "id": "probe:xtask_src_reports_source_promotion_verify.rs:static_unknown:b54dc349",
@@ -55,54 +59,6 @@
       "language": "rust"
     },
     {
-      "id": "probe:xtask_src_reports_source_promotion_verify.rs:call_deletion:a3fecce9",
-      "classification": "no_static_path",
-      "severity": "warning",
-      "confidence": 0.48,
-      "probe": {
-        "id": "probe:xtask_src_reports_source_promotion_verify.rs:call_deletion:a3fecce9",
-        "family": "call_deletion",
-        "delta": "effect",
-        "file": "fixtures/source_promotion_verification/input/xtask/src/reports/source_promotion_verify.rs",
-        "line": 9,
-        "expression": "Ok(())"
-       },
-      "ripr": {
-        "reach": {"state":"no","confidence":"medium","summary":"No static test path found for the changed owner"},
-        "infect": {"state":"unknown","confidence":"low","summary":"No reachable tests were found, so infection cannot be established"},
-        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: Ok(())"},
-        "observe": {"state":"no","confidence":"medium","summary":"No reachable test oracle found"},
-        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion can discriminate the changed behavior without a reachable test"}
-       },
-      "evidence_path": ["reach no: No static test path found for the changed owner", "infection unknown: No reachable tests were found, so infection cannot be established", "propagation yes: Changed behavior appears to influence returned value: Ok(())", "observation no: No reachable test oracle found", "discriminator no: No assertion can discriminate the changed behavior without a reachable test", "local flow reaches returned value: Ok(()) (line 9)"],
-      "flow_sinks": [
-        {"kind":"return_value","text":"Ok(())","line":9}
-      ],
-      "evidence": ["Changed behavior appears to influence returned value: Ok(())", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No reachable tests were found, so infection cannot be established", "No static test path found for the changed owner"],
-      "missing": ["No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
-      "assertion_texts": {
-      },
-      "activation": {
-        "observed_values": [
-        ],
-        "missing_discriminators": [
-        ]
-      },
-      "observed_values": [
-      ],
-      "missing_discriminators": [
-      ],
-      "related_tests_total": 0,
-      "related_tests": [
-      ],
-      "stop_reasons": ["no_changed_rust_line"],
-      "oracle_kind": "unknown",
-      "oracle_strength": "none",
-      "recommended_next_step": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
-      "suggested_next_action": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
-      "language": "rust"
-    },
-    {
       "id": "probe:xtask_src_reports_source_promotion_verify.rs:return_value:a7cb4fce",
       "classification": "no_static_path",
       "severity": "warning",
@@ -146,8 +102,8 @@
       "stop_reasons": ["no_changed_rust_line"],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
-      "suggested_next_action": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust"
     },
     {

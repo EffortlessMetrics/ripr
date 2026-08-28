@@ -26,9 +26,6 @@ jobs:
       - name: Check document artifacts
         run: cargo xtask check-doc-artifacts
 
-      - name: Check campaign source of truth
-        run: cargo xtask check-campaign
-
       - name: Check support tiers
         run: cargo xtask check-support-tiers
 
@@ -39,7 +36,6 @@ jobs:
             echo "## Source of Truth (advisory)"
             echo ""
             echo "- document artifacts: \`cargo xtask check-doc-artifacts\`"
-            echo "- campaign source of truth: \`cargo xtask check-campaign\`"
             echo "- support tiers: \`cargo xtask check-support-tiers\`"
             echo ""
             echo "This workflow is advisory and is not a branch-protection gate."

@@ -888,7 +888,7 @@ fn classify_presentation_text(
 ) -> PresentationTextClassification {
     let source_file = raw_findings
         .first()
-        .map(|finding| finding.probe.location.file.display().to_string())
+        .map(|finding| crate::output::path::display_path(&finding.probe.location.file))
         .unwrap_or_default();
 
     if is_internal_only_text(constant_name, &source_file) {
@@ -1046,7 +1046,7 @@ fn classify_config_policy_constant(
 ) -> ConfigPolicyClassification {
     let source_file = raw_findings
         .first()
-        .map(|finding| finding.probe.location.file.display().to_string())
+        .map(|finding| crate::output::path::display_path(&finding.probe.location.file))
         .unwrap_or_default();
 
     if is_internal_only_config_policy(constant_name, &source_file) {
@@ -1543,7 +1543,7 @@ fn observer_for_related_test(test: &RelatedTest) -> Option<(u8, &'static str)> {
 fn related_test_for(test: &RelatedTest) -> FindingAlignmentRelatedTest {
     FindingAlignmentRelatedTest {
         name: test.name.clone(),
-        file: test.file.display().to_string(),
+        file: crate::output::path::display_path(&test.file),
         line: test.line,
     }
 }
@@ -1568,7 +1568,7 @@ fn normalize_token_text(text: &str) -> String {
 
 fn raw_finding_for(finding: &Finding) -> FindingAlignmentRawFinding {
     FindingAlignmentRawFinding {
-        file: finding.probe.location.file.display().to_string(),
+        file: crate::output::path::display_path(&finding.probe.location.file),
         line: finding.probe.location.line,
         kind: finding.class.as_str().to_string(),
         expression: finding.probe.expression.clone(),

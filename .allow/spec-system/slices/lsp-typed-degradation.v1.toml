@@ -1,0 +1,69 @@
+schema_version = "2.0"
+id = "ripr.slice.lsp-typed-degradation.v1"
+generation = 1
+
+source_issue = "issue:1997"
+design_reference = "RIPR-SPEC-0141"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Replaces hidden LSP stderr degradation reporting with typed bounded
+component-outcome records on the analysis snapshot: one shared run-status
+aggregation on the LSP path, a deduplicated window/logMessage warning with a
+concrete recovery route per distinct degradation, a components array on
+ripr/analysisStatus, and limited (never complete) progress ends for degraded
+runs. It does not change analyzer evidence, CLI stderr behavior, any output
+schema version, retry policy, the diagnostic budget, or the progress
+implementation, and it does not adopt window/showMessage for routine partial
+evidence.
+"""
+
+non_goals = [
+  "retry policy for degraded components",
+  "progress implementation changes (#1971 surface is only consumed)",
+  "diagnostic-budget algorithm changes",
+  "analyzer evidence changes of any kind",
+  "CLI/non-LSP stderr governance (independently governed)",
+  "window/showMessage for routine partial evidence",
+  "deduplicating run-status logic outside the LSP path",
+  "output schema version changes",
+]
+
+return_conditions = [
+  "Return to root if the additive components status field drifts any golden or output contract.",
+  "Return to root if making a degraded component limit the run breaks the existing limited-run severity policy tests.",
+  "Return to root if the framed duplex degradation test cannot drive a real refresh without hanging on an unanswered server request.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:component-outcome-model",
+  "seam:ripr:lsp:refresh-component-outcomes",
+  "seam:ripr:lsp:degradation-log-dedup",
+]
+
+shared_seams = [
+  "seam:ripr:lsp:run-status-aggregation",
+  "seam:ripr:lsp:analysis-status-payload",
+  "seam:ripr:lsp:analysis-snapshot",
+]
+
+forbidden_seams = [
+  "seam:ripr:editors:vscode-extension",
+  "seam:ripr:cli:stderr-behavior",
+  "seam:ripr:output:golden-fixtures",
+  "seam:ripr:analysis:evidence",
+  "seam:ripr:xtask:automation",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0141"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

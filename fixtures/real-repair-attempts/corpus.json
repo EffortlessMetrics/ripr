@@ -2133,6 +2133,47 @@
       "reason": "The improved outcome documents a more precise preview boundary for weak TypeScript oracle evidence."
     },
     {
+      "id": "typescript_preview_boundary_gap_test_only_closed",
+      "source_ref": "EffortlessMetrics/ripr-swarm#1490",
+      "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+      "packet_id": "typescript-repair-packet:gap:typescript:typescript_preview:2396aec1",
+      "language": "typescript",
+      "evidence_class": "predicate_boundary",
+      "source_file": "src/discount.ts",
+      "repair_kind": "AddBoundaryAssertion",
+      "target_test_or_observer_shape": "strengthen the existing Jest test with an exact amount == threshold boundary assertion",
+      "verify_command": "jest tests/discount.test.ts",
+      "verify_result": "pass",
+      "receipt_command": "ripr outcome --before fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json --after fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/after-check.json --format json",
+      "receipt_path": "fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.json",
+      "receipt_state": "receipt_movement_resolved",
+      "actor_kind": "external_agent",
+      "before_gap_state": "actionable",
+      "after_gap_state": "resolved",
+      "outcome": "resolved",
+      "attempted_repair": "A bounded TypeScript preview packet edited only tests/discount.test.ts, replaced weak relational evidence with an exact threshold assertion, and left src/discount.ts forbidden.",
+      "evidence_movement": "resolved: ripr outcome compared before/after TypeScript check-output snapshots and reported the canonical predicate-boundary gap closed.",
+      "operator_note": "This is static preview repair-routing dogfood: verify evidence and receipt movement are present, but the TypeScript packet remains advisory and does not claim runtime adequacy or support-tier promotion.",
+      "must_not_change": [
+        "src/discount.ts",
+        "production TypeScript files",
+        "preview support tier",
+        "CI gate defaults",
+        "badge, baseline, or RIPR Zero authority",
+        "provider integration",
+        "mutation execution"
+      ],
+      "raw_evidence_refs": [
+        "fixtures/ts_repair_packet_complete/expected/check.json",
+        "fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json",
+        "fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/after-check.json",
+        "fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.json",
+        "fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.md"
+      ],
+      "missing_receipt_reason": null,
+      "reason": "The TypeScript preview loop now has a checked repo-local dogfood receipt showing a safe packet, test-only edit, verify pass, and canonical gap closure while preserving preview-only authority."
+    },
+    {
       "id": "python_cli_output_repair_card_route_improved",
       "source_ref": "EffortlessMetrics/ripr-swarm#750",
       "canonical_gap_id": "gap:python:src/commands.py:ship:call_or_output_effect:side_effect:click.echo_shipment_queued",

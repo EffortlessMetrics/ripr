@@ -73,6 +73,25 @@ The current test suite covers:
 - JSON escaping
 - simple end-to-end diff analysis
 - CLI smoke behavior
+- property-based parser invariants (diff parser)
+
+## Property-Based Tests
+
+The diff parser (`crates/ripr/src/analysis/diff/parse.rs`) has property-based
+tests using [`proptest`](https://crates.io/crates/proptest) (a dev-dependency).
+These generalize the hand-rolled LCG fuzz tests with automatic shrinking and
+broader input coverage.
+
+Properties checked:
+
+1. **Totality**: `parse_unified_diff` never panics on arbitrary string input.
+2. **Structural invariants**: no empty paths, no newlines in line text, for
+   generated diff-like text.
+3. **Line number validity**: every added line's `new_side_line` is >= 1.
+
+Convention: property tests use `Result<(), String>` bodies, no `unwrap`/`expect`,
+per the workspace lint posture. See `docs/TEST_TAXONOMY.md` for the Property
+and Fuzz test type definitions.
 
 ## Error-Handling Bar
 
@@ -101,13 +120,19 @@ The test suite:
 
 - opens a fixture Rust workspace (`test-fixtures/workspace/Cargo.toml`)
 - activates the extension
-- asserts commands are registered (`ripr.restartServer`, `ripr.showOutput`,
+- asserts commands are registered (`ripr.restartServer`, `ripr.selectWorkspaceRoot`,
+  `ripr.showOutput`,
   `ripr.copyContext`, `ripr.copySuggestedAssertion`,
   `ripr.copyTargetedTestBrief`, `ripr.copyAgentPacketCommand`,
   `ripr.copyAgentBriefCommand`, `ripr.copyAfterSnapshotCommand`,
   `ripr.copyAgentVerifyCommand`, `ripr.copyAgentReceiptCommand`,
   `ripr.openRelatedTest`, `ripr.openSettings`)
 - verifies the defaults-first editor check mode is `draft`
+- pins the `contributes.menus` editor/context repair-loop entries (ripr
+  groups, `resourceLangId` gating) and the two default
+  `contributes.keybindings`, keeps the payload-bound targeted-test and
+  agent-loop commands code-action-only, and fails closed when a menu or
+  keybinding references an unregistered command
 - verifies `copyContext` completes without crash when no editor is active
 - verifies `copyContext` accepts a structured target with `finding_id` and
   `probe_id` without crashing

@@ -75,6 +75,7 @@
       "expected_gap_record": {
         "gap_id": "gap:pr:pricing:threshold-boundary",
         "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+        "seam_id": "seam:pricing:threshold-boundary",
         "kind": "MissingBoundaryAssertion",
         "language": "rust",
         "language_status": "stable",

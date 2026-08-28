@@ -20,8 +20,18 @@ pub(in crate::analysis) fn build_finding(
     let test_summaries = context.related_test_summaries();
     let mut stop_reasons = stop_reasons(context.probe, context.owner_fn, &test_summaries);
     ensure_unknown_stop_reason(&class, &mut stop_reasons);
-    let recommended_next_step = recommended_next_step(context.probe, &class);
+    let recommended_next_step =
+        recommended_next_step(context.probe, &class, context.owner_assertion_shaped);
     let confidence = evidence.confidence(&class);
+    let mut evidence_lines = evidence.evidence;
+    // RIPR-SPEC-0133: disclose the oracle reframe so JSON/human projections
+    // show why the guidance is phrased for an assertion helper.
+    if context.owner_assertion_shaped {
+        evidence_lines.push(format!(
+            "owner_shape: assertion_shaped ({})",
+            crate::domain::ASSERTION_SHAPED_OWNER_REASON
+        ));
+    }
 
     Finding {
         id: context.probe.id.0.clone(),
@@ -30,7 +40,7 @@ pub(in crate::analysis) fn build_finding(
         class,
         ripr: evidence.ripr,
         confidence,
-        evidence: evidence.evidence,
+        evidence: evidence_lines,
         missing,
         flow_sinks: evidence.flow_sinks,
         activation: evidence.activation,

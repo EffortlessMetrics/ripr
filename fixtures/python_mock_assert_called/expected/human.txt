@@ -4,66 +4,40 @@ root: fixtures/python_mock_assert_called/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-WARNING src/notify.py:2
+Changed file(s) by language: python: 1, rust: 0.
 
-Changed
-  after:      callback("receipt.sent", order_id)
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
-Probe
-  family: side_effect
-  delta:  effect
-  owner:  python:src/notify.py::send_receipt
-  canonical gap: gap:python:src/notify.py:send_receipt:call_or_output_effect:side_effect:callback_receipt.sent_order_id
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/notify.py:2
+  Language: python
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Canonical gap: gap:python:src/notify.py:send_receipt:call_or_output_effect:side_effect:callback_receipt.sent_order_id
+  Changed behavior: callback("receipt.sent", order_id)
+  Missing discriminator: Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect.
+  Related test: tests/test_notify.py:6 test_send_receipt_notifies_callback
+  Suggested test file: tests/test_notify.py
+  Suggested test: test_send_receipt_notifies_callback
+  Test node: tests/test_notify.py::test_send_receipt_notifies_callback
+  Verify command: pytest tests/test_notify.py::test_send_receipt_notifies_callback (high)
+  Next step: Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `send_receipt`
+    - infection yes: Changed Python call or output effect can alter observable side effects: `callback("receipt.sent", order_id)`
+    - 5 more evidence line(s) hidden
 
-Language
-  language: python
-  status: preview
-  owner kind: function
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_mock_assert_called/input --diff fixtures/python_mock_assert_called/diff.patch --mode fast probe:src_notify.py:python_preview:5f03d3bc
+  ripr context --root fixtures/python_mock_assert_called/input --diff fixtures/python_mock_assert_called/diff.patch --mode fast --at probe:src_notify.py:python_preview:5f03d3bc
 
-Static exposure
-  weakly_exposed (warning, confidence 0.40)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `send_receipt`
-  - infection yes: Changed Python call or output effect can alter observable side effects: `callback("receipt.sent", order_id)`
-  - propagation weak: Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred.
-  - observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)
-  - discriminator weak: Python preview adapter found no strong discriminator; missing proof: `call includes "receipt.sent"`.
-  - local flow reaches call effect: callback("receipt.sent", order_id) (line 2)
-  - related test tests/test_notify.py:6 test_send_receipt_notifies_callback uses medium mock expectation oracle: callback.assert_called_once_with("receipt.sent", "ord-123")
-
-Weakness
-  - Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect.
-  - missing discriminator call includes "receipt.sent": changed Python output/log/call effect at line 2 lacks a concrete repair discriminator
-
-Python repair card (preview/advisory)
-  card version: python_repair_card.v1
-  canonical gap: gap:python:src/notify.py:send_receipt:call_or_output_effect:side_effect:callback_receipt.sent_order_id
-  authority: preview_advisory_only (python/preview)
-  repair action: strengthen_existing_test
-  changed owner: send_receipt
-  changed behavior: call_or_output_effect changed at src/notify.py:2: `callback("receipt.sent", order_id)`
-  current test evidence: tests/test_notify.py:6 test_send_receipt_notifies_callback currently has oracle_strength=medium, oracle_kind=mock_expectation: callback.assert_called_once_with("receipt.sent", "ord-123")
-  missing discriminator: call includes "receipt.sent"
-  recommended test shape: Strengthen the existing pytest output/log/call-effect assertion for `call includes "receipt.sent"`.
-  suggested assertion: Assert the changed output, log text, or call effect for `call includes "receipt.sent"`.
-  suggested file: tests/test_notify.py
-  suggested test: test_send_receipt_notifies_callback
-  pytest node: tests/test_notify.py::test_send_receipt_notifies_callback
-  verify: pytest tests/test_notify.py::test_send_receipt_notifies_callback (high)
-  receipt: unavailable_until_python_gap_ledger
-  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
-  stop conditions:
-    - Stop if imports, fixtures, or test setup cannot call the changed owner.
-    - Stop if the expected value for the missing discriminator is ambiguous.
-    - Stop if adding the test appears to require a production-code edit.
-  limits:
-    - Syntax-first Python preview evidence only.
-    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
-    - Verify success alone is not a gap-closure receipt.
-
-Next step
-  Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

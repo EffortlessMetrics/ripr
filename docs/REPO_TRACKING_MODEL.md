@@ -27,8 +27,8 @@ Each doc has exactly one role. Avoid mixing roles in one file.
 | Campaign ledger | [`docs/IMPLEMENTATION_CAMPAIGNS.md`](IMPLEMENTATION_CAMPAIGNS.md) | Multi-PR campaign history, open campaigns, and closed-campaign audits. |
 | Work queue | [`docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | Current and upcoming implementation slices. |
 | Campaign-specific plan | [`plans/`](../plans/) | Extra sequencing, acceptance, proof commands, and rollback notes for a narrow campaign slice when the ledger would become too dense. |
-| Active execution manifest | `.ripr/goals/active.toml` | The current execution campaign; `status = "closed"` requires `successor = "<campaign-id>"` or `no_current_goal = true`. |
-| Campaign archive | [`.ripr/goals/archive/`](../.ripr/goals/archive/) | Frozen manifests of closed campaigns. |
+| Live execution state | GitHub issues, PRs, checks, reviews, and the local worktree | What is being worked on right now; no tracked file selects a repository-wide current issue, lane, branch, writer, or wave. |
+| Scoped PR slice | [`.allow/spec-system/slices/`](../.allow/spec-system/slices/) | One PR's scope, seams, claim boundary, and evidence obligations (`ImplementationSliceV1`; no live execution state). |
 | Scoped PR | The PR itself | Mergeable review units, governed by the [scoped PR contract](SCOPED_PR_CONTRACT.md). |
 | Closeout | [`docs/handoffs/`](handoffs/) | What happened, what passed, what remains. |
 | Generated evidence | `target/ripr/{reports,receipts,fixtures,dogfood}/` | Receipts, summaries, blocked reports, fixtures. |
@@ -46,7 +46,7 @@ namespace:
 | Spec | `docs/specs/RIPR-SPEC-*` |
 | ADR | `docs/adr/` |
 | Implementation plan | `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, and `plans/` |
-| Active goal manifest | `.ripr/goals/active.toml` |
+| Active goal manifest | Retired (`.ripr/goals/` deleted in #1701 PR 3); live work selection comes from GitHub and the local worktree. |
 | Support tiers | `docs/status/SUPPORT_TIERS.md` |
 | Policy ledgers | `policy/*.toml`, `.ripr/traceability.toml`, `docs/CAPABILITY_MATRIX.md`, and `metrics/capabilities.toml` |
 | Closeout | `docs/handoffs/` |
@@ -78,10 +78,10 @@ or campaign history.
      Reviewer automation treats `plans/` files as documentation evidence and
      campaign-planning input, not production behavior.
 
-6. Active manifest (.ripr/goals/active.toml)
-     The agent/operator executes work items one PR at a time while the
-     campaign is active. After closeout, the top-level status may be `closed`
-     until the next campaign manifest replaces it.
+6. Live execution (GitHub issues, PRs, checks, and the local worktree)
+     The agent/operator executes work items one PR at a time. The controlling
+     GitHub issue and the PR-local implementation slice bound the work; no
+     tracked manifest selects or authorizes it.
 
 7. Scoped PRs (governed by SCOPED_PR_CONTRACT.md)
      One production delta + the evidence package needed to review it.
@@ -89,8 +89,8 @@ or campaign history.
 8. Closeout (docs/handoffs/YYYY-MM-DD-<campaign>-closeout.md)
      What shipped, what was deferred, what the next campaign should be.
 
-9. Archive (.ripr/goals/archive/YYYY-MM-DD-<campaign>.toml)
-     Frozen manifest. Read-only history.
+9. Archive (docs/handoffs/ plus Git history)
+     Closed campaigns remain readable as closeout documents and history.
 ```
 
 A change does not need every layer. Most behavior PRs touch a spec, a
@@ -132,10 +132,11 @@ handoffs.
 
 Any agent or operator runner may consume these artifacts:
 
-- Codex `/goal` reads `.ripr/goals/active.toml` and writes blocked reports
-  under `target/ripr/reports/blocked.md`. See [Codex Goals](CODEX_GOALS.md).
+- Codex `/goal` and other runners select work from the live GitHub board
+  and the local worktree. See [Codex Goals](CODEX_GOALS.md) for the retired
+  goal-manifest model's history.
 - Kiro specs/tasks, Claude Code task tools, Cursor rules, and other agent
-  task systems may read the same manifest and the linked campaign
+  task systems may read the same specs, plans, slices, and campaign
   references.
 - A human operator can run the same `cargo xtask` commands the agents do.
 
@@ -153,17 +154,11 @@ Run:
 
 ```bash
 cargo xtask check-doc-index
-cargo xtask check-goals
 cargo xtask check-traceability
 cargo xtask check-capabilities
-cargo xtask goals next
 cargo xtask check-pr
 ```
 
-These checks keep the spec index, ADR index, campaign manifest, focused tracker
-manifests, traceability manifest, capability matrix, and PR-shape rails
-consistent across the layers above. `check-goals` also verifies that tracker
-manifest paths referenced from campaign docs exist, focused trackers remain
-separate from `.ripr/goals/active.toml`, done tracker work items carry proof
-commands, declared proposal/plan/spec/receipt/closeout paths exist, and closed
-tracker capability rows point at `maintenance`.
+These checks keep the spec index, ADR index, implementation slices,
+traceability manifest, capability matrix, and PR-shape rails consistent across
+the layers above.
