@@ -483,6 +483,68 @@ receipt keeps `merge_command: null` and `merge_command_attempts: 0`. Issue #1508
 owns the later authoritative promotion candidate and merge-command decision
 after accepted-tree and qualification evidence exist.
 
+## Source Promotion Admission workflow
+
+`.github/workflows/source-promotion-admission.yml` is the permanent,
+source-owned transport for resolved-tree admission. It supports
+`workflow_call` and `workflow_dispatch`, uses only `contents: read`, and keeps
+all mutable checkouts, isolated repositories, logs, and packets under the
+runner-owned temporary root. It does not use `pull_request_target`, a
+privileged environment, write permissions, identity tokens, release secrets,
+or caller-selected commands and runners.
+
+The workflow has three closed execution profiles:
+
+- `live` consumes exact externally produced source-promotion evidence;
+- `positive_synthetic` exercises terminal admission through a deterministic
+  source-owned fixture; and
+- `j5_negative` exercises the retained combined-tree network-policy
+  under-description and must finish with a complete rejected packet.
+
+The operation mode is `admit_only` or `constructor_dry_run`. Live inputs bind
+the full source repository/parent/controller identity, the closed
+`source-owned-xtask@<workflow-source-SHA>` trusted-checker identity, swarm
+repository, protected W7 ref and peeled commit, reviewed tree, and every
+sidecar by producer repository, immutable commit/ref, mode-100644 path, and
+lowercase SHA-256.
+Artifact names, floating branches, abbreviated SHAs, candidate-checkout paths,
+and caller-supplied success booleans are not authority. Synthetic profiles use
+source-owned fixture identities; they are not general path or command inputs.
+The checker identity must equal the workflow/controller SHA. The workflow
+produces the trusted-builder packet internally from that exact identity, the
+pinned toolchain, lockfile, isolated external target, and executable digest.
+
+The workflow runs the production `source-promotion run-admission-workflow`
+harness and preserves its exit status. It finalizes and uploads every available
+member of the immutable admission packet with `if: always()`, downloads that
+artifact into a fresh runner-owned path, and independently verifies the indexed
+bytes and exact requested identities before enforcing admission. Only then can
+`finalize-admission-workflow` perform admit-only normalization or the optional
+constructor dry-run and produce the final normalized
+`workflow-disposition.json`, `workflow-disposition.md`, and
+`packet-index.json`; the available final packet is uploaded separately with
+`if: always()`. `enforce-admission-workflow --expected-status admitted` makes
+missing, malformed, unsupported, rejected, `not_run`, `unavailable`, non-zero,
+stale, or contradictory evidence terminal red.
+
+The normalized schema is
+`ripr.source_promotion_admission_workflow.v1`; its only statuses are `admitted`
+and `rejected`. The indexed packet schema is
+`ripr.source_promotion_admission_workflow_packet.v1`. An `admit_only` result
+requires zero constructor, local-ref, remote-push, merge-command, and
+release/publication attempts. A `constructor_dry_run` result is reachable only
+after terminal admission and may create at most one unreferenced object in the
+isolated synthetic repository. It still cannot move a ref, push, emit a merge
+command, or invoke publication/release behavior.
+
+The PR that adds or changes this workflow can establish only exact-head static
+and contract proof. Trusted hosted behavior requires a later dispatch of the
+committed default-branch workflow using the exact merged source SHA, workflow
+blob SHA, controller/schema versions, fixture identities, and dispatch inputs.
+A terminal-green admission packet is necessary transport evidence, not
+product/editor qualification, J6 publication, merge authority, or release
+authority.
+
 ## Source Promotion Contract workflow
 
 Promotion PRs opt into the source-side contract check with this exact body

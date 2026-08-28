@@ -14,6 +14,271 @@ fn workflow_text() -> Result<String, String> {
         .map_err(|error| format!("read source-promotion contract workflow: {error}"))
 }
 
+fn admission_workflow_text() -> Result<String, String> {
+    let xtask = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let root = xtask
+        .parent()
+        .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
+    fs::read_to_string(root.join(".github/workflows/source-promotion-admission.yml"))
+        .map_err(|error| format!("read source-promotion admission workflow: {error}"))
+}
+
+fn require_fragment(text: &str, fragment: &str) -> Result<(), String> {
+    if text.contains(fragment) {
+        Ok(())
+    } else {
+        Err(format!("workflow contract missing fragment: {fragment}"))
+    }
+}
+
+fn require_absent(text: &str, fragment: &str) -> Result<(), String> {
+    if text.contains(fragment) {
+        Err(format!(
+            "workflow contract exposes forbidden fragment: {fragment}"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn require_order(text: &str, before: &str, after: &str) -> Result<(), String> {
+    let before_offset = text
+        .find(before)
+        .ok_or_else(|| format!("workflow contract missing ordered fragment: {before}"))?;
+    let after_offset = text
+        .find(after)
+        .ok_or_else(|| format!("workflow contract missing ordered fragment: {after}"))?;
+    if before_offset < after_offset {
+        Ok(())
+    } else {
+        Err(format!(
+            "workflow contract orders {after:?} before {before:?}"
+        ))
+    }
+}
+
+fn validate_admission_workflow_contract(workflow: &str) -> Result<(), String> {
+    for required in [
+        "name: Source Promotion Admission",
+        "  workflow_call:",
+        "  workflow_dispatch:",
+        "permissions:\n  contents: read",
+        "      contents: read",
+        "runs-on: ubuntu-latest",
+        "admission_root=\"$RUNNER_TEMP/ripr-source-promotion-admission\"",
+        "\"ADMISSION_OUT=$admission_out\"",
+        "\"ADMISSION_EVIDENCE=$admission_evidence\"",
+        "\"ADMISSION_FINAL_EVIDENCE=$admission_final_evidence\"",
+        "\"ADMISSION_WORKSPACE=$admission_workspace\"",
+        "persist-credentials: false",
+        "WORKFLOW_FILE_SHA: ${{ github.workflow_sha }}",
+        "WORKFLOW_FILE_REF: ${{ github.workflow_ref }}",
+        "test \"$WORKFLOW_FILE_SHA\" = \"$WORKFLOW_SOURCE_SHA\"",
+        "\"$SOURCE_REPOSITORY/.github/workflows/source-promotion-admission.yml@\"*",
+        "test \"$GITHUB_REF\" = refs/heads/main",
+        "test \"$GITHUB_SHA\" = \"$SOURCE_PARENT_SHA\"",
+        "test \"$WORKFLOW_SOURCE_SHA\" = \"$SOURCE_PARENT_SHA\"",
+        "test \"$(git rev-parse HEAD)\" = \"$WORKFLOW_SOURCE_SHA\"",
+        "ripr.source_promotion_admission_workflow.v1",
+        "@[0-9a-f]{40}:[A-Za-z0-9._/-]+#sha256:[0-9a-f]{64}",
+        "source-promotion run-admission-workflow",
+        "source-promotion verify-admission-workflow",
+        "source-promotion enforce-admission-workflow",
+        "source-promotion finalize-admission-workflow",
+        "if: always() && steps.enforce.outcome == 'success'",
+        "--admission-packet \"$ADMISSION_ROOT/downloaded/workflow-packet\"",
+        "--out \"$ADMISSION_FINAL_EVIDENCE\"",
+        "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8",
+        "sha256sum --check transport-index.sha256",
+        "diff --recursive --no-dereference \"$ADMISSION_OUT\" \"$downloaded\"",
+        "test \"$TRUSTED_CHECKER_IDENTITY\" = \"source-owned-xtask@$WORKFLOW_SOURCE_SHA\"",
+        "^refs/tags/ripr-release-",
+        "printf '%s\\n' \"$producer_exit\" > \"$ADMISSION_OUT/producer-exit-code.txt\"",
+        "tail -c 1048576 \"$log\"",
+        "\"truncated=$truncated\"",
+        "\"original_bytes=$original_bytes\"",
+        "identity_digest=$(sha256sum \"$admission_out/requested-identity.json\" | awk '{print $1}')",
+        "artifact_name=source-promotion-admission-v1-$identity_digest-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT",
+        "final_artifact_name=source-promotion-admission-final-v1-$identity_digest-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT",
+        "name: ${{ steps.initialize.outputs.artifact_name }}",
+        "name: ${{ steps.initialize.outputs.final_artifact_name }}",
+        "test \"${{ steps.producer.outcome }}\" = success",
+        "test \"${{ steps.finalize.outcome }}\" = success",
+        "test -d \"$downloaded/workflow-packet\"",
+        "test -d \"$ADMISSION_FINAL_EVIDENCE\"",
+        "--expected-status admitted",
+        "if-no-files-found: error",
+    ] {
+        require_fragment(workflow, required)?;
+    }
+
+    for input in [
+        "source_repository",
+        "source_parent_sha",
+        "workflow_source_sha",
+        "swarm_repository",
+        "protected_w7_ref",
+        "w7_peeled_sha",
+        "reviewed_tree_sha",
+        "preflight_locator",
+        "resolution_manifest_locator",
+        "validation_packet_locator",
+        "integration_packet_locator",
+        "qualification_receipt_locator",
+        "receipt_schema",
+        "operation_mode",
+        "execution_profile",
+        "trusted_checker_identity",
+    ] {
+        require_fragment(workflow, &format!("      {input}:"))?;
+        require_fragment(workflow, &format!("--{}", input.replace('_', "-")))?;
+    }
+    require_fragment(workflow, "inputs: &admission_inputs")?;
+    require_fragment(workflow, "inputs: *admission_inputs")?;
+    for required_input in [
+        "source_repository",
+        "source_parent_sha",
+        "workflow_source_sha",
+        "swarm_repository",
+        "protected_w7_ref",
+        "w7_peeled_sha",
+        "reviewed_tree_sha",
+        "receipt_schema",
+        "operation_mode",
+        "execution_profile",
+        "trusted_checker_identity",
+    ] {
+        let declaration = workflow
+            .lines()
+            .find(|line| line.trim_start().starts_with(&format!("{required_input}:")))
+            .ok_or_else(|| format!("missing input declaration: {required_input}"))?;
+        require_fragment(declaration, "required: true")?;
+    }
+    for optional_fixture_locator in [
+        "preflight_locator",
+        "resolution_manifest_locator",
+        "validation_packet_locator",
+        "integration_packet_locator",
+        "qualification_receipt_locator",
+    ] {
+        let declaration = workflow
+            .lines()
+            .find(|line| {
+                line.trim_start()
+                    .starts_with(&format!("{optional_fixture_locator}:"))
+            })
+            .ok_or_else(|| format!("missing locator declaration: {optional_fixture_locator}"))?;
+        require_fragment(declaration, "required: false")?;
+        require_fragment(declaration, "default: ''")?;
+    }
+
+    for closed_value in [
+        "admit_only",
+        "constructor_dry_run",
+        "positive_synthetic",
+        "j5_negative",
+    ] {
+        require_fragment(workflow, closed_value)?;
+    }
+
+    for forbidden in [
+        "pull_request_target:",
+        "pull_request:",
+        "contents: write",
+        "pull-requests: write",
+        "id-token: write",
+        "attestations: write",
+        "packages: write",
+        "environment:",
+        "self-hosted",
+        "target/ripr-source-promotion-admission",
+        "source-promotion publish-candidate-ref",
+        "gh release",
+        "git push",
+    ] {
+        require_absent(workflow, forbidden)?;
+    }
+
+    require_order(
+        workflow,
+        "- name: Run production admission controller and capture producer exit",
+        "- name: Upload complete pre-enforcement evidence",
+    )?;
+    require_order(
+        workflow,
+        "- name: Upload complete pre-enforcement evidence",
+        "- name: Download pre-enforcement evidence into a fresh runner-owned root",
+    )?;
+    require_order(
+        workflow,
+        "- name: Download pre-enforcement evidence into a fresh runner-owned root",
+        "- name: Independently verify downloaded and local evidence identity",
+    )?;
+    require_order(
+        workflow,
+        "- name: Independently verify downloaded and local evidence identity",
+        "- name: Enforce terminal admission before constructor",
+    )?;
+    require_order(
+        workflow,
+        "- name: Enforce terminal admission before constructor",
+        "- name: Finalize guarded constructor disposition after admission",
+    )?;
+    require_order(
+        workflow,
+        "- name: Finalize guarded constructor disposition after admission",
+        "- name: Upload final normalized workflow disposition",
+    )?;
+    require_order(
+        workflow,
+        "- name: Upload final normalized workflow disposition",
+        "- name: Enforce final normalized workflow disposition",
+    )?;
+
+    for upload_name in [
+        "- name: Upload complete pre-enforcement evidence",
+        "- name: Upload final normalized workflow disposition",
+    ] {
+        let upload = workflow
+            .split_once(upload_name)
+            .map(|(_, suffix)| suffix)
+            .ok_or_else(|| format!("missing upload step: {upload_name}"))?;
+        let step = upload.split("\n      - name:").next().unwrap_or(upload);
+        require_fragment(step, "if: always()")?;
+        for raw_input in [
+            "inputs.source_repository",
+            "inputs.source_parent_sha",
+            "inputs.workflow_source_sha",
+            "inputs.swarm_repository",
+            "inputs.protected_w7_ref",
+            "inputs.w7_peeled_sha",
+            "inputs.reviewed_tree_sha",
+            "inputs.receipt_schema",
+            "inputs.operation_mode",
+            "inputs.execution_profile",
+            "inputs.trusted_checker_identity",
+        ] {
+            require_absent(step, raw_input)?;
+        }
+    }
+
+    let producer_step = workflow
+        .split_once("- name: Run production admission controller and capture producer exit")
+        .map(|(_, suffix)| suffix.split("\n      - name:").next().unwrap_or(suffix))
+        .ok_or_else(|| "missing producer step".to_string())?;
+    for required in ["continue-on-error: true", "exit \"$producer_exit\""] {
+        require_fragment(producer_step, required)?;
+    }
+    let finalizer_step = workflow
+        .split_once("- name: Finalize guarded constructor disposition after admission")
+        .map(|(_, suffix)| suffix.split("\n      - name:").next().unwrap_or(suffix))
+        .ok_or_else(|| "missing finalizer step".to_string())?;
+    for required in ["continue-on-error: true", "exit \"$finalizer_exit\""] {
+        require_fragment(finalizer_step, required)?;
+    }
+    Ok(())
+}
+
 fn jq_filter_matches(filter: &str, value: &Value) -> Result<bool, String> {
     let mut child = Command::new("jq")
         .args(["-e", filter])
@@ -279,6 +544,90 @@ fn normalized_contract_is_runner_owned_uploaded_then_enforced() -> Result<(), St
             enforcement.contains(required),
             "terminal enforcement missing: {required}"
         );
+    }
+    Ok(())
+}
+
+#[test]
+fn admission_workflow_has_closed_exact_transport_and_terminal_order() -> Result<(), String> {
+    validate_admission_workflow_contract(&admission_workflow_text()?)
+}
+
+#[test]
+fn admission_workflow_contract_rejects_security_and_order_mutations() -> Result<(), String> {
+    let workflow = admission_workflow_text()?;
+    let mutations = [
+        (
+            "name: Source Promotion Admission",
+            "name: Candidate Selected Admission",
+        ),
+        ("contents: read", "contents: write"),
+        ("${{ runner.temp }}", "target"),
+        ("persist-credentials: false", "persist-credentials: true"),
+        (
+            "source-promotion verify-admission-workflow",
+            "source-promotion publish-candidate-ref",
+        ),
+        (
+            "- name: Upload complete pre-enforcement evidence\n        if: always()",
+            "- name: Upload complete pre-enforcement evidence\n        if: success()",
+        ),
+        (
+            "if: always() && steps.enforce.outcome == 'success'",
+            "if: always()",
+        ),
+        (
+            "identity_digest=$(sha256sum \"$admission_out/requested-identity.json\" | awk '{print $1}')",
+            "identity_digest=$WORKFLOW_SOURCE_SHA",
+        ),
+        (
+            "name: ${{ steps.initialize.outputs.artifact_name }}",
+            "name: ${{ inputs.workflow_source_sha }}",
+        ),
+        ("--expected-status admitted", "--expected-status rejected"),
+    ];
+    for (needle, replacement) in mutations {
+        let mutated = workflow.replace(needle, replacement);
+        if mutated == workflow {
+            return Err(format!("mutation fixture did not match workflow: {needle}"));
+        }
+        if validate_admission_workflow_contract(&mutated).is_ok() {
+            return Err(format!(
+                "admission workflow contract accepted mutation {needle:?} -> {replacement:?}"
+            ));
+        }
+    }
+
+    let upload = "- name: Upload complete pre-enforcement evidence";
+    let enforce = "- name: Enforce terminal admission before constructor";
+    require_fragment(&workflow, upload)?;
+    require_fragment(&workflow, enforce)?;
+    let reordered = workflow
+        .replacen(upload, "- name: TEMPORARY ADMISSION STEP", 1)
+        .replacen(enforce, upload, 1)
+        .replacen("- name: TEMPORARY ADMISSION STEP", enforce, 1);
+    if validate_admission_workflow_contract(&reordered).is_ok() {
+        return Err("admission workflow contract accepted enforcement-before-upload".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn admission_workflow_does_not_accept_caller_selected_authority() -> Result<(), String> {
+    let workflow = admission_workflow_text()?;
+    for forbidden_input in [
+        "runner:",
+        "command:",
+        "permissions:",
+        "success:",
+        "expected_status:",
+        "target_ref:",
+    ] {
+        if workflow.contains(&format!("      {forbidden_input}")) {
+            return Err(format!(
+                "candidate-controlled authority input is forbidden: {forbidden_input}"
+            ));
+        }
     }
     Ok(())
 }

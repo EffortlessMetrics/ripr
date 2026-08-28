@@ -31,11 +31,7 @@ fn validate(
         "resolution manifest",
     )?;
     state.inputs.resolution_path = Some(resolution_path);
-    validate_manifest(
-        &manifest,
-        &preflight,
-        &format!("sha256:{}", options.preflight_sha256),
-    )?;
+    validate_manifest(&manifest, &preflight, &options.preflight_sha256)?;
     validate_resolution_manifest_dispositions(&manifest)?;
     state.resolution_verified = true;
 

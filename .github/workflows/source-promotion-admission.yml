@@ -1,0 +1,353 @@
+name: Source Promotion Admission
+
+on:
+  workflow_call:
+    inputs: &admission_inputs
+      source_repository: {description: Exact owner/repository containing the trusted controller, required: true, type: string}
+      source_parent_sha: {description: Exact source parent commit, required: true, type: string}
+      workflow_source_sha: {description: Exact source commit containing this workflow and controller, required: true, type: string}
+      swarm_repository: {description: Exact owner/repository containing frozen W7, required: true, type: string}
+      protected_w7_ref: {description: Exact protected W7 ref, required: true, type: string}
+      w7_peeled_sha: {description: Exact peeled W7 commit, required: true, type: string}
+      reviewed_tree_sha: {description: Exact reviewed tree object, required: true, type: string}
+      preflight_locator: {description: Immutable preflight locator, required: false, default: '', type: string}
+      resolution_manifest_locator: {description: Immutable resolution-manifest locator, required: false, default: '', type: string}
+      validation_packet_locator: {description: Immutable validation-packet locator, required: false, default: '', type: string}
+      integration_packet_locator: {description: Immutable integration-packet locator, required: false, default: '', type: string}
+      qualification_receipt_locator: {description: Immutable qualification-receipt locator, required: false, default: '', type: string}
+      receipt_schema: {description: Supported normalized receipt schema, required: true, type: string}
+      operation_mode: {description: Closed operation mode admit_only or constructor_dry_run, required: true, type: string}
+      execution_profile: {description: Closed execution profile live positive_synthetic or j5_negative, required: true, type: string}
+      trusted_checker_identity: {description: Exact source-owned checker identity, required: true, type: string}
+  workflow_dispatch:
+    inputs: *admission_inputs
+
+permissions:
+  contents: read
+
+jobs:
+  admission:
+    name: Source Promotion Admission
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+      SOURCE_PARENT_SHA: ${{ inputs.source_parent_sha }}
+      WORKFLOW_SOURCE_SHA: ${{ inputs.workflow_source_sha }}
+      SWARM_REPOSITORY: ${{ inputs.swarm_repository }}
+      PROTECTED_W7_REF: ${{ inputs.protected_w7_ref }}
+      W7_PEELED_SHA: ${{ inputs.w7_peeled_sha }}
+      REVIEWED_TREE_SHA: ${{ inputs.reviewed_tree_sha }}
+      PREFLIGHT_LOCATOR: ${{ inputs.preflight_locator }}
+      RESOLUTION_MANIFEST_LOCATOR: ${{ inputs.resolution_manifest_locator }}
+      VALIDATION_PACKET_LOCATOR: ${{ inputs.validation_packet_locator }}
+      INTEGRATION_PACKET_LOCATOR: ${{ inputs.integration_packet_locator }}
+      QUALIFICATION_RECEIPT_LOCATOR: ${{ inputs.qualification_receipt_locator }}
+      RECEIPT_SCHEMA: ${{ inputs.receipt_schema }}
+      OPERATION_MODE: ${{ inputs.operation_mode }}
+      EXECUTION_PROFILE: ${{ inputs.execution_profile }}
+      TRUSTED_CHECKER_IDENTITY: ${{ inputs.trusted_checker_identity }}
+      WORKFLOW_FILE_SHA: ${{ github.workflow_sha }}
+      WORKFLOW_FILE_REF: ${{ github.workflow_ref }}
+
+    steps:
+      - name: Initialize runner-owned evidence
+        id: initialize
+        shell: bash
+        run: |
+          set -euo pipefail
+          admission_root="$RUNNER_TEMP/ripr-source-promotion-admission"
+          admission_out="$admission_root/evidence"
+          admission_evidence="$admission_out/workflow-packet"
+          admission_final_evidence="$admission_out/final-workflow-packet"
+          admission_workspace="$admission_root/workspace"
+          printf '%s\n' \
+            "ADMISSION_ROOT=$admission_root" \
+            "ADMISSION_OUT=$admission_out" \
+            "ADMISSION_EVIDENCE=$admission_evidence" \
+            "ADMISSION_FINAL_EVIDENCE=$admission_final_evidence" \
+            "ADMISSION_WORKSPACE=$admission_workspace" \
+            >> "$GITHUB_ENV"
+          mkdir -p "$admission_out" "$admission_workspace"
+          jq -n \
+            --arg source_repository "$SOURCE_REPOSITORY" \
+            --arg source_parent_sha "$SOURCE_PARENT_SHA" \
+            --arg workflow_source_sha "$WORKFLOW_SOURCE_SHA" \
+            --arg swarm_repository "$SWARM_REPOSITORY" \
+            --arg protected_w7_ref "$PROTECTED_W7_REF" \
+            --arg w7_peeled_sha "$W7_PEELED_SHA" \
+            --arg reviewed_tree_sha "$REVIEWED_TREE_SHA" \
+            --arg preflight_locator "$PREFLIGHT_LOCATOR" \
+            --arg resolution_manifest_locator "$RESOLUTION_MANIFEST_LOCATOR" \
+            --arg validation_packet_locator "$VALIDATION_PACKET_LOCATOR" \
+            --arg integration_packet_locator "$INTEGRATION_PACKET_LOCATOR" \
+            --arg qualification_receipt_locator "$QUALIFICATION_RECEIPT_LOCATOR" \
+            --arg receipt_schema "$RECEIPT_SCHEMA" \
+            --arg operation_mode "$OPERATION_MODE" \
+            --arg execution_profile "$EXECUTION_PROFILE" \
+            --arg trusted_checker_identity "$TRUSTED_CHECKER_IDENTITY" \
+            '{source_repository:$source_repository,source_parent_sha:$source_parent_sha,workflow_source_sha:$workflow_source_sha,swarm_repository:$swarm_repository,protected_w7_ref:$protected_w7_ref,w7_peeled_sha:$w7_peeled_sha,reviewed_tree_sha:$reviewed_tree_sha,preflight_locator:$preflight_locator,resolution_manifest_locator:$resolution_manifest_locator,validation_packet_locator:$validation_packet_locator,integration_packet_locator:$integration_packet_locator,qualification_receipt_locator:$qualification_receipt_locator,receipt_schema:$receipt_schema,operation_mode:$operation_mode,execution_profile:$execution_profile,trusted_checker_identity:$trusted_checker_identity}' \
+            > "$admission_out/requested-identity.json"
+          identity_digest=$(sha256sum "$admission_out/requested-identity.json" | awk '{print $1}')
+          printf '%s\n' \
+            "artifact_name=source-promotion-admission-v1-$identity_digest-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            "final_artifact_name=source-promotion-admission-final-v1-$identity_digest-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact trusted workflow and controller source
+        id: checkout
+        continue-on-error: true
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: ${{ inputs.source_repository }}
+          ref: ${{ inputs.workflow_source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact source identity
+        id: identity
+        if: steps.checkout.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$WORKFLOW_FILE_SHA" = "$WORKFLOW_SOURCE_SHA"
+          case "$WORKFLOW_FILE_REF" in
+            "$SOURCE_REPOSITORY/.github/workflows/source-promotion-admission.yml@"*) ;;
+            *) exit 1 ;;
+          esac
+          if test "$GITHUB_EVENT_NAME" = workflow_dispatch; then
+            test "$GITHUB_REF" = refs/heads/main
+            test "$GITHUB_SHA" = "$SOURCE_PARENT_SHA"
+            test "$WORKFLOW_SOURCE_SHA" = "$SOURCE_PARENT_SHA"
+          fi
+          test "$(git rev-parse HEAD)" = "$WORKFLOW_SOURCE_SHA"
+          test "$(printf '%s' "$SOURCE_PARENT_SHA" | grep -E '^[0-9a-f]{40}$')" = "$SOURCE_PARENT_SHA"
+          test "$(printf '%s' "$WORKFLOW_SOURCE_SHA" | grep -E '^[0-9a-f]{40}$')" = "$WORKFLOW_SOURCE_SHA"
+          test "$(printf '%s' "$W7_PEELED_SHA" | grep -E '^[0-9a-f]{40}$')" = "$W7_PEELED_SHA"
+          test "$(printf '%s' "$REVIEWED_TREE_SHA" | grep -E '^[0-9a-f]{40}$')" = "$REVIEWED_TREE_SHA"
+          test "$OPERATION_MODE" = admit_only || test "$OPERATION_MODE" = constructor_dry_run
+          test "$EXECUTION_PROFILE" = live || test "$EXECUTION_PROFILE" = positive_synthetic || test "$EXECUTION_PROFILE" = j5_negative
+          test "$RECEIPT_SCHEMA" = ripr.source_promotion_admission_workflow.v1
+          test "$TRUSTED_CHECKER_IDENTITY" = "source-owned-xtask@$WORKFLOW_SOURCE_SHA"
+          test "$(printf '%s' "$PROTECTED_W7_REF" | grep -E '^refs/tags/ripr-release-[A-Za-z0-9._-]+-[0-9a-f]{40}$')" = "$PROTECTED_W7_REF"
+          if test "$EXECUTION_PROFILE" = live; then
+            locator='^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}:[A-Za-z0-9._/-]+#sha256:[0-9a-f]{64}$'
+            for value in "$PREFLIGHT_LOCATOR" "$RESOLUTION_MANIFEST_LOCATOR" "$VALIDATION_PACKET_LOCATOR" "$INTEGRATION_PACKET_LOCATOR"; do
+              test "$(printf '%s' "$value" | grep -E "$locator")" = "$value"
+            done
+            if test "$OPERATION_MODE" = constructor_dry_run; then
+              test "$(printf '%s' "$QUALIFICATION_RECEIPT_LOCATOR" | grep -E "$locator")" = "$QUALIFICATION_RECEIPT_LOCATOR"
+            else
+              test -z "$QUALIFICATION_RECEIPT_LOCATOR"
+            fi
+          else
+            test -z "$PREFLIGHT_LOCATOR$RESOLUTION_MANIFEST_LOCATOR$VALIDATION_PACKET_LOCATOR$INTEGRATION_PACKET_LOCATOR$QUALIFICATION_RECEIPT_LOCATOR"
+          fi
+
+      - name: Build exact trusted controller
+        id: build
+        if: steps.identity.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$ADMISSION_ROOT/target"
+          cargo build --locked -p xtask --bin xtask
+          test -x "$CARGO_TARGET_DIR/debug/xtask"
+          printf '%s\n' "controller=$CARGO_TARGET_DIR/debug/xtask" >> "$GITHUB_OUTPUT"
+
+      - name: Run production admission controller and capture producer exit
+        id: producer
+        if: always() && steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          "${{ steps.build.outputs.controller }}" source-promotion run-admission-workflow \
+            --source-repository "$SOURCE_REPOSITORY" \
+            --source-parent-sha "$SOURCE_PARENT_SHA" \
+            --workflow-source-sha "$WORKFLOW_SOURCE_SHA" \
+            --swarm-repository "$SWARM_REPOSITORY" \
+            --protected-w7-ref "$PROTECTED_W7_REF" \
+            --w7-peeled-sha "$W7_PEELED_SHA" \
+            --reviewed-tree-sha "$REVIEWED_TREE_SHA" \
+            --preflight-locator "$PREFLIGHT_LOCATOR" \
+            --resolution-manifest-locator "$RESOLUTION_MANIFEST_LOCATOR" \
+            --validation-packet-locator "$VALIDATION_PACKET_LOCATOR" \
+            --integration-packet-locator "$INTEGRATION_PACKET_LOCATOR" \
+            --qualification-receipt-locator "$QUALIFICATION_RECEIPT_LOCATOR" \
+            --receipt-schema "$RECEIPT_SCHEMA" \
+            --operation-mode "$OPERATION_MODE" \
+            --execution-profile "$EXECUTION_PROFILE" \
+            --trusted-checker-identity "$TRUSTED_CHECKER_IDENTITY" \
+            --workspace-root "$ADMISSION_ROOT" \
+            --out "$ADMISSION_EVIDENCE" \
+            > "$ADMISSION_OUT/producer.stdout.log" \
+            2> "$ADMISSION_OUT/producer.stderr.log"
+          producer_exit=$?
+          set -e
+          for log in "$ADMISSION_OUT/producer.stdout.log" "$ADMISSION_OUT/producer.stderr.log"; do
+            original_bytes=$(wc -c < "$log")
+            truncated=false
+            if test "$original_bytes" -gt 1048576; then
+              tail -c 1048576 "$log" > "$log.bounded"
+              mv "$log.bounded" "$log"
+              truncated=true
+            fi
+            printf '%s\n' \
+              "truncated=$truncated" \
+              "original_bytes=$original_bytes" \
+              "retained_bytes=$(wc -c < "$log")" \
+              > "$log.truncation.txt"
+          done
+          printf '%s\n' "$producer_exit" > "$ADMISSION_OUT/producer-exit-code.txt"
+          printf '%s\n' "exit_code=$producer_exit" >> "$GITHUB_OUTPUT"
+          exit "$producer_exit"
+
+      - name: Finalize unavailable producer evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test ! -f "$ADMISSION_OUT/producer-exit-code.txt"; then
+            printf '%s\n' 'unavailable' > "$ADMISSION_OUT/producer-exit-code.txt"
+          fi
+          printf '%s\n' \
+            "checkout=${{ steps.checkout.outcome }}" \
+            "identity=${{ steps.identity.outcome }}" \
+            "build=${{ steps.build.outcome }}" \
+            "producer=${{ steps.producer.outcome }}" \
+            > "$ADMISSION_OUT/workflow-command-states.txt"
+          (
+            cd "$ADMISSION_OUT"
+            find . -type f ! -name transport-index.sha256 -print0 \
+              | sort -z \
+              | xargs -0 -r sha256sum \
+              > transport-index.sha256
+          )
+
+      - name: Upload complete pre-enforcement evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ steps.initialize.outputs.artifact_name }}
+          path: ${{ runner.temp }}/ripr-source-promotion-admission/evidence
+          if-no-files-found: error
+
+      - name: Download pre-enforcement evidence into a fresh runner-owned root
+        if: always()
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ steps.initialize.outputs.artifact_name }}
+          path: ${{ runner.temp }}/ripr-source-promotion-admission/downloaded
+
+      - name: Independently verify downloaded and local evidence identity
+        id: verify
+        if: always() && steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          downloaded="$ADMISSION_ROOT/downloaded"
+          test -d "$downloaded/workflow-packet"
+          (cd "$downloaded" && sha256sum --check transport-index.sha256)
+          diff --recursive --no-dereference "$ADMISSION_OUT" "$downloaded"
+          "${{ steps.build.outputs.controller }}" source-promotion verify-admission-workflow \
+            --packet "$downloaded/workflow-packet"
+
+      - name: Enforce terminal admission before constructor
+        id: enforce
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.checkout.outcome }}" = success
+          test "${{ steps.identity.outcome }}" = success
+          test "${{ steps.build.outcome }}" = success
+          test "${{ steps.producer.outcome }}" = success
+          test "${{ steps.producer.outputs.exit_code }}" = 0
+          test "${{ steps.verify.outcome }}" = success
+          "${{ steps.build.outputs.controller }}" source-promotion enforce-admission-workflow \
+            --packet "$ADMISSION_ROOT/downloaded/workflow-packet" \
+            --expected-status admitted
+
+      - name: Finalize guarded constructor disposition after admission
+        id: finalize
+        if: always() && steps.enforce.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          "${{ steps.build.outputs.controller }}" source-promotion finalize-admission-workflow \
+            --admission-packet "$ADMISSION_ROOT/downloaded/workflow-packet" \
+            --workspace-root "$ADMISSION_ROOT" \
+            --out "$ADMISSION_FINAL_EVIDENCE" \
+            > "$ADMISSION_OUT/finalizer.stdout.log" \
+            2> "$ADMISSION_OUT/finalizer.stderr.log"
+          finalizer_exit=$?
+          set -e
+          for log in "$ADMISSION_OUT/finalizer.stdout.log" "$ADMISSION_OUT/finalizer.stderr.log"; do
+            original_bytes=$(wc -c < "$log")
+            truncated=false
+            if test "$original_bytes" -gt 1048576; then
+              tail -c 1048576 "$log" > "$log.bounded"
+              mv "$log.bounded" "$log"
+              truncated=true
+            fi
+            printf '%s\n' \
+              "truncated=$truncated" \
+              "original_bytes=$original_bytes" \
+              "retained_bytes=$(wc -c < "$log")" \
+              > "$log.truncation.txt"
+          done
+          printf '%s\n' "$finalizer_exit" > "$ADMISSION_OUT/finalizer-exit-code.txt"
+          printf '%s\n' "exit_code=$finalizer_exit" >> "$GITHUB_OUTPUT"
+          exit "$finalizer_exit"
+
+      - name: Reindex all available final evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd "$ADMISSION_OUT"
+            find . -type f ! -name transport-index.sha256 -print0 \
+              | sort -z \
+              | xargs -0 -r sha256sum \
+              > transport-index.sha256
+          )
+
+      - name: Verify final normalized workflow disposition
+        id: final-verify
+        if: always() && steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$ADMISSION_FINAL_EVIDENCE"
+          "${{ steps.build.outputs.controller }}" source-promotion verify-admission-workflow \
+            --packet "$ADMISSION_FINAL_EVIDENCE"
+
+      - name: Upload final normalized workflow disposition
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ steps.initialize.outputs.final_artifact_name }}
+          path: ${{ runner.temp }}/ripr-source-promotion-admission/evidence
+          if-no-files-found: error
+
+      - name: Enforce final normalized workflow disposition
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.enforce.outcome }}" = success
+          test "${{ steps.finalize.outcome }}" = success
+          test "${{ steps.finalize.outputs.exit_code }}" = 0
+          test "${{ steps.final-verify.outcome }}" = success
+          "${{ steps.build.outputs.controller }}" source-promotion enforce-admission-workflow \
+            --packet "$ADMISSION_FINAL_EVIDENCE" \
+            --expected-status admitted

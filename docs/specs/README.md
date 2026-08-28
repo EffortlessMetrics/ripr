@@ -125,4 +125,4 @@ observable behavior.
 | [RIPR-SPEC-0112](RIPR-SPEC-0112-bounded-subprocess-adapter-boundary.md) | accepted | Bounded literal allowlisted subprocess adapters with argument, timeout, captured-output, and cleanup evidence use the existing side_effect probe family; dynamic, shell, and unbounded commands retain strict exposure behavior; closes #1454 |
 | [RIPR-SPEC-0148](RIPR-SPEC-0148-source-promotion-preflight.md) | accepted | Exact source-promotion preflight receipt |
 | [RIPR-SPEC-0149](RIPR-SPEC-0149-source-promotion-verifier.md) | proposed | Exact source-promotion graph and resolution verifier |
-| [RIPR-SPEC-0150](RIPR-SPEC-0150-source-promotion-ci-contract.md) | proposed | Exact PR-head source-promotion CI contract and post-merge reachability |
+| [RIPR-SPEC-0150](RIPR-SPEC-0150-source-promotion-ci-contract.md) | proposed | Exact PR-head verification plus read-only trusted admission workflow, normalized retained evidence, constructor dry-run guard, and post-merge reachability |

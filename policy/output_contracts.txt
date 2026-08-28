@@ -126,3 +126,17 @@ source_promotion_qualification_lane|source_survivors|Source-only survivor proof.
 source_promotion_qualification_lane|trusted_product_journeys|Trusted packaged product journey proof.
 source_promotion_qualification_lane|untrusted_workspace_contract|Production untrusted-workspace zero-work proof.
 source_promotion_qualification_lane|w7_product|Frozen-W7 analyzer, CLI, editor, schema, fixture, and product proof.
+source_promotion_admission_workflow_schema|ripr.source_promotion_admission_workflow.v1|Normalized trusted admission workflow disposition schema.
+source_promotion_admission_workflow_packet_schema|ripr.source_promotion_admission_workflow_packet.v1|Indexed admission workflow packet schema.
+source_promotion_admission_workflow_status|admitted|Every exact input, required command, final reread, packet member, and mode-specific attempt invariant passed.
+source_promotion_admission_workflow_status|rejected|Admission workflow evidence is terminal non-green and retains the available failure reason and attempt state.
+source_promotion_admission_workflow_profile|j5_negative|Deterministic source-owned J5-shaped network-policy under-description fixture.
+source_promotion_admission_workflow_profile|live|Exact external source-promotion evidence profile.
+source_promotion_admission_workflow_profile|positive_synthetic|Deterministic source-owned terminal-admission fixture.
+source_promotion_admission_workflow_mode|admit_only|Admission only; all mutation and publication attempt counters remain zero.
+source_promotion_admission_workflow_mode|constructor_dry_run|After terminal admission, permit at most one unreferenced commit-tree attempt in an isolated synthetic repository and no ref, push, merge, or publication attempt.
+source_promotion_admission_workflow_attempt_field|constructor_commit_tree_attempts|Count of constructor commit-tree starts in the isolated dry-run repository.
+source_promotion_admission_workflow_attempt_field|local_ref_attempts|Count of local ref mutation starts; this workflow requires zero.
+source_promotion_admission_workflow_attempt_field|merge_command_attempts|Count of merge-command emissions; this workflow requires zero.
+source_promotion_admission_workflow_attempt_field|release_or_publication_attempts|Count of release or publication operation starts; this workflow requires zero.
+source_promotion_admission_workflow_attempt_field|remote_push_attempts|Count of remote push starts; this workflow requires zero.

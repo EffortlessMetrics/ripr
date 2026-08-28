@@ -13903,3 +13903,59 @@ An unavailable final remote observation immediately rolls back only the local
 candidate ref behind an exact-state guard, then records every mandatory
 post-push authority reread before returning `publication_state_unknown`;
 remote state remains unknown and is never rolled back.
+
+## Source-promotion admission workflow packet
+
+`cargo xtask source-promotion run-admission-workflow` writes a normalized
+runner-owned disposition with schema
+`ripr.source_promotion_admission_workflow.v1`. The complete directory is
+indexed by `packet-index.json` using packet schema
+`ripr.source_promotion_admission_workflow_packet.v1`; the human projection is
+`workflow-disposition.md`.
+
+The disposition status is one of:
+
+- `admitted` — every exact input, source-trusted producer, required command,
+  final reread, packet member, and mode-specific attempt invariant passed; or
+- `rejected` — the packet records a terminal non-green disposition and the
+  available reason/evidence.
+
+The closed `execution_profile` values are `live`, `positive_synthetic`, and
+`j5_negative`. Synthetic packets include a deterministic `fixture_identity`;
+live packets bind every external sidecar to its producer repository, immutable
+commit/ref, regular-file path/mode, and SHA-256. The closed operation modes are
+`admit_only` and `constructor_dry_run`.
+
+`trusted_checker_identity` has the closed form
+`source-owned-xtask@<40-character-workflow-source-SHA>` and must name the same
+commit as `workflow_source_sha`. It binds source ownership while the workflow's
+internally produced trusted-builder evidence binds toolchain, lockfile,
+isolated external build, and executable digest.
+
+The normalized mutation-attempt fields are:
+
+- `constructor_commit_tree_attempts`;
+- `local_ref_attempts`;
+- `remote_push_attempts`;
+- `merge_command_attempts`; and
+- `release_or_publication_attempts`.
+
+`admit_only` requires all five values to be zero. `constructor_dry_run` permits
+at most one constructor commit-tree attempt after terminal admission, in an
+isolated synthetic repository, and requires the other four values to remain
+zero. Neither mode grants ref, publication, merge, qualification, or release
+authority.
+
+After the immutable admission packet is independently enforced,
+`cargo xtask source-promotion finalize-admission-workflow` writes the separate
+final packet for admit-only normalization or the guarded constructor dry-run.
+
+`cargo xtask source-promotion verify-admission-workflow --packet <dir>` rereads
+the index and packet bytes independently. `cargo xtask source-promotion
+enforce-admission-workflow --packet <dir> --expected-status admitted` fails for
+`rejected`, missing, malformed, unsupported, `not_run`, `unavailable`, non-zero
+producer exit, stale identity, failed reread, or packet/conclusion
+disagreement. The immutable admission packet uploads first, is downloaded to a
+fresh runner-owned path, verified, and enforced before constructor dry-run is
+reachable. The available final normalized packet uploads separately, so a
+terminal-red state still retains all evidence produced before the stop.
