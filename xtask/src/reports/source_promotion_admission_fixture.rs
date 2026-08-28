@@ -506,7 +506,8 @@ fn require_validation_disposition(
     let report = read_json(
         &packet.join(VALIDATION_REPORT),
         "resolved-tree validation receipt",
-    )?;
+    )
+    .map_err(|error| format!("{error}; {}", combined_output(output)))?;
     let observed = string(&report, "status").unwrap_or("missing");
     let expected = match profile {
         SyntheticProfile::Positive => "validated",
@@ -848,14 +849,28 @@ fn combined_output(output: &Output) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        QUALIFICATION_LANES, SyntheticProfile, hash_blob, repeated_literal, run_output_with_input,
-        validate_hex, verify_reviewed_tree_carrier,
+        QUALIFICATION_LANES, SyntheticProfile, hash_blob, repeated_literal,
+        require_validation_disposition, run_output_with_input, validate_hex,
+        verify_reviewed_tree_carrier,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::process::{ExitStatus, Output};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_TEST_ROOT: AtomicU64 = AtomicU64::new(0);
+
+    #[cfg(unix)]
+    fn successful_exit_status() -> ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        ExitStatus::from_raw(0)
+    }
+
+    #[cfg(windows)]
+    fn successful_exit_status() -> ExitStatus {
+        use std::os::windows::process::ExitStatusExt;
+        ExitStatus::from_raw(0)
+    }
 
     #[derive(Debug, Eq, PartialEq)]
     struct CarrierGraph {
@@ -903,6 +918,36 @@ mod tests {
             return Err("qualification lane denominator moved".to_string());
         }
         validate_hex(&"a".repeat(40), 40, "test identity")
+    }
+
+    #[test]
+    fn missing_validation_receipt_retains_captured_diagnostics() -> Result<(), String> {
+        let root = unique_test_root("missing-validation-receipt");
+        fs::create_dir(&root)
+            .map_err(|error| format!("failed to create missing-receipt root: {error}"))?;
+        let output = Output {
+            status: successful_exit_status(),
+            stdout: b"captured validator stdout\n".to_vec(),
+            stderr: b"captured validator stderr\n".to_vec(),
+        };
+
+        let result = require_validation_disposition(SyntheticProfile::Positive, &output, &root);
+        let result = match result {
+            Ok(()) => Err("missing validation receipt unexpectedly passed".to_string()),
+            Err(error) => {
+                if !error.contains("captured validator stdout")
+                    || !error.contains("captured validator stderr")
+                    || !error.contains("resolved-tree validation receipt")
+                {
+                    Err(format!(
+                        "missing validation receipt dropped captured diagnostics: {error}"
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+        };
+        result.and(remove_test_roots(&[&root]))
     }
 
     #[test]
