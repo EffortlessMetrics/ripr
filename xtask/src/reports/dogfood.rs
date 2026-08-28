@@ -1,1 +1,1 @@
-pub(crate) use crate::dogfood_impl as dogfood;
+pub(crate) use crate::dogfood::dogfood_impl as dogfood;

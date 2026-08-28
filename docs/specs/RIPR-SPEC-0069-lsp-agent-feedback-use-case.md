@@ -74,9 +74,11 @@ established.
 ### Surface
 
 `ripr lsp --stdio` serves a saved-workspace model over
-`tower-lsp-server`. Diagnostics come in three closed kinds:
+`tower-lsp-server`. Diagnostics come in three closed kinds, selected by the
+explicit LSP diagnostic profile:
 
-- finding-based diagnostics (always on);
+- finding-based diagnostics (`actionable` by default; `full` preserves the
+  audit/debug projection);
 - seam grip-class diagnostics (configurable via
   `enable_seam_diagnostics`, default on
   (`DEFAULT_LSP_SEAM_DIAGNOSTICS = true` in
@@ -98,6 +100,7 @@ The exposed command vocabulary is closed (`crates/ripr/src/lsp.rs`):
 - `ripr.copyTargetedTestBrief`
 - `ripr.collectContext`
 - `ripr.collectEvidenceContext`
+- `ripr.collectWorkspaceStatus`
 - `ripr.openRelatedTest`
 - `ripr.refresh`
 
@@ -144,6 +147,109 @@ For the agent-cockpit contract, the surface must expose:
   `ripr.copyAgentBriefCommand`) so the agent leaves the editor with
   the full bounded brief, not a paraphrase.
 
+Diff-scoped finding diagnostics additionally expose a producer-owned
+discriminator witness when one is available. The witness carries the exact
+changed expression and before/after facts, expected sink, named missing
+discriminators, producer-identified test fix site, current oracle, exact
+oracle source location when available, explain command, confidence basis, and
+named limitations. The same typed witness is projected into diagnostic data,
+hover, context packets, and copy-context actions without renderer-specific
+derivation.
+
+The server also emits the versioned `ripr/analysisStatus` notification and
+returns the same `analysis_status` object from `ripr.collectWorkspaceStatus`.
+Its stable fields are:
+
+```json
+{
+  "schema_version": "0.1",
+  "kind": "analysis_status",
+  "attempt_id": "7",
+  "state": "failed",
+  "reason": "did_save",
+  "requested_scope": "interactive",
+  "snapshot_id": "snapshot:6",
+  "last_success_snapshot_id": "snapshot:6",
+  "current_input_identity": "input:<current-input-fingerprint>",
+  "last_success_input_identity": "input:<snapshot-input-fingerprint>",
+  "last_success_age_ms": 1234,
+  "run_status": "stale",
+  "failure": { "kind": "analysis_error", "message": "bounded detail" },
+  "pending": false,
+  "retry_command": "ripr.refresh",
+  "repair_actions_available": false,
+  "root_state": "selected_single_root",
+  "effective_root": "<selected-workspace-root>",
+  "candidate_roots": [],
+  "root_input_identity": "root:<selected-workspace-root>",
+  "root_detail": null,
+  "root_recovery_route": "refresh",
+  "input_authority": {
+    "configuration_state": "valid",
+    "repository_config_source": "<root>/ripr.toml",
+    "session_options_present": true,
+    "current": {
+      "input_identity": "input:<current-input-fingerprint>",
+      "root_identity": "root:<root-fingerprint>",
+      "effective_root": "<selected-workspace-root>",
+      "requested_base": "origin/main",
+      "resolved_base": "<resolved-commit>",
+      "mode": "draft",
+      "profile": "actionable",
+      "enabled_languages": ["rust"],
+      "manifest_identity": "<manifest-fingerprint>",
+      "lockfile_identity": "<lockfile-fingerprint>",
+      "analyzer_version": "<ripr-version>",
+      "schema_version": "lsp-analysis-input-v1"
+    },
+    "last_success": {
+      "input_identity": "input:<snapshot-input-fingerprint>"
+    }
+  }
+}
+```
+
+`state` describes the current attempt, while `snapshot_id` identifies the
+last retained analysis. A failed, cancelled, or superseded attempt never
+replaces that snapshot and sets `run_status` to `stale` (or `no_snapshot` if
+there is no completed snapshot). The notification is the typed authority for
+attempt health and stale/failure state; `window/logMessage` remains
+human-readable diagnostic output. A successful typed status may still be
+followed by the completion log, which provides rich counts such as actionable
+gap artifacts and enabled languages for clients that project those details. A
+completion log must not override a typed failed, cancelled, or superseded
+state. Timing and queue fields belong only in this health surface, never in
+diagnostic or semantic gap identities.
+
+`current_input_identity` identifies the effective root, saved-workspace
+revision, repository and session configuration, requested/resolved base,
+language/profile selection, relevant Cargo manifest and lockfile content,
+analyzer version, and identity schema used by the current request. The value
+is an opaque stable fingerprint; it does not expose configuration contents or
+absolute paths. `last_success_input_identity` is the corresponding producer
+identity stored on the retained snapshot. They must differ visibly when a
+newer request has different inputs, even while the last-good snapshot remains
+available for stale inspection.
+
+`input_authority` is the bounded recovery view for the same producer-owned
+identity. It exposes configuration source presence and the non-secret input
+components needed to diagnose a stale or invalid session; it does not expose
+repository configuration text. `current` is null while configuration is
+invalid or no effective root is selected. `last_success` remains the retained
+snapshot's exact input view when one exists, and an invalid or changed current
+input must not make that retained view authorize current repair actions.
+
+The server owns one explicit workspace-root state for each session. A single
+valid `workspaceFolders` entry is selected; a valid `rootUri` is the
+compatibility fallback when workspace folders are absent. Multiple workspace
+folders, invalid or inaccessible roots, and removal of the selected root are
+typed states that publish no ordinary repair diagnostics and suppress repair
+actions. The server advertises `workspace/didChangeWorkspaceFolders` support,
+invalidates scheduler generations and retained snapshots when root authority
+changes, and verifies projected diagnostic and related-information URIs remain
+inside the selected root. Absolute checkout spelling participates in the
+session root input identity but never changes canonical semantic gap identity.
+
 "Repair packet" here is the canonical RIPR-SPEC-0061 contract, not
 a separate LSP shape. A complete packet carries the full
 RIPR-SPEC-0061 field list — `packet_id`, `canonical_gap_id`,
@@ -175,6 +281,12 @@ just artifact ingestion.
   without a current snapshot offers `ripr.refresh`, nothing else.
 - Invalid or unvalidated gap artifact -> rejected with the named
   validation failure; never projected as an actionable diagnostic.
+- Missing or ambiguous witness evidence -> retain the named limitation and
+  omit the unavailable field. A renderer must not infer an exact assertion,
+  target test, or source location from path, line, class, or prose proximity.
+- A witness is evidence context only. It never creates an edit action or
+  changes gate authority; suggested assertions remain absent until a producer
+  supplies a symbol-resolved template.
 
 ### Required and forbidden wording
 
@@ -216,9 +328,10 @@ is a scope statement, never an all-clear.
   snapshots; it adds no new analysis truth.
 - No new report generation from the first-useful-action
   integration; it remains a read-only projection.
-- No change to the existing default-on seam diagnostics posture in
-  this lane; `enable_seam_diagnostics` stays default on with
-  opt-out, owned by its existing config contract.
+- The `actionable` profile does not publish route-less findings or seam
+  diagnostics; `full` remains available for analyzer investigation and audit.
+  The separate `enable_seam_diagnostics` setting still controls whether seam
+  inventory is computed in the `full` profile.
 
 ## Required Evidence
 
@@ -263,6 +376,9 @@ these states as an actionable offer:
   command produces a repair instruction for it.
 - A diagnostic raised before the snapshot was refreshed offers only
   `ripr.refresh`; after refresh the full action set returns.
+- A successful snapshot followed by a failed refresh retains its diagnostics
+  and inspection context, reports `state: "failed"` with `run_status: "stale"`,
+  and suppresses repair actions until a later successful snapshot.
 - A human in VS Code sees the first-useful-action title in the
   status bar (rendered by the extension client, sourced read-only
   from `target/ripr/reports/first-useful-action.json`); opening it

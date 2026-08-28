@@ -363,6 +363,42 @@ fn find_workspace_root(pkg_root: &Path, stop_at: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Detect the TypeScript/JavaScript test framework for a workspace root,
+/// using the same signals the adapter's package discovery trusts (#2106):
+/// `package.json` dependency/script evidence first (via [`detect_framework`]),
+/// then config-file markers, then the bun lockfile. Fail-closed: `None` when
+/// no signal matches — callers must report "not detected", never guess.
+pub(crate) fn detect_framework_for_root(root: &Path) -> Option<TsFramework> {
+    if let Ok(pkg_json) = std::fs::read_to_string(root.join("package.json"))
+        && let Some(framework) = detect_framework(&pkg_json)
+    {
+        return Some(framework);
+    }
+    if [
+        "jest.config.js",
+        "jest.config.ts",
+        "jest.config.mjs",
+        "jest.config.cjs",
+    ]
+    .iter()
+    .any(|file| root.join(file).exists())
+    {
+        return Some(TsFramework::Jest);
+    }
+    if ["vitest.config.ts", "vitest.config.js", "vitest.config.mjs"]
+        .iter()
+        .any(|file| root.join(file).exists())
+    {
+        return Some(TsFramework::Vitest);
+    }
+    // Both bun lockfile names count, matching the adapter's runner
+    // detection: bun.lockb (binary) and bun.lock (text) (#2106 review).
+    if root.join("bun.lockb").exists() || root.join("bun.lock").exists() {
+        return Some(TsFramework::Bun);
+    }
+    None
+}
+
 /// Detect the test framework from `package.json` content.
 ///
 /// Priority (first match wins): jest > vitest > bun-types > ava > mocha > @types/node.
@@ -668,6 +704,72 @@ mod tests {
     "test": "jest"
   }
 }"#
+    }
+
+    fn unique_test_root(label: &str) -> PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("ripr-ts-fw-{label}-{}-{stamp}", std::process::id()))
+    }
+
+    #[test]
+    fn detect_framework_for_root_uses_package_json_signals() -> Result<(), String> {
+        // The #2106 case: ava only visible via package.json — previously
+        // doctor reported "not detected" for this working setup.
+        let root = unique_test_root("ava");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(
+            root.join("package.json"),
+            r#"{"name":"ky","scripts":{"test":"xo && npm run build && ava"}}"#,
+        )
+        .map_err(|err| format!("write package.json: {err}"))?;
+
+        assert_eq!(detect_framework_for_root(&root), Some(TsFramework::Ava));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn detect_framework_for_root_falls_back_to_config_markers() -> Result<(), String> {
+        let root = unique_test_root("jest-config");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(
+            root.join("jest.config.js"),
+            "module.exports = {};
+",
+        )
+        .map_err(|err| format!("write jest config: {err}"))?;
+
+        assert_eq!(detect_framework_for_root(&root), Some(TsFramework::Jest));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn detect_framework_for_root_accepts_both_bun_lockfile_names() -> Result<(), String> {
+        for lockfile in ["bun.lockb", "bun.lock"] {
+            let root = unique_test_root(lockfile);
+            std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+            std::fs::write(root.join(lockfile), "").map_err(|err| format!("write lock: {err}"))?;
+            assert_eq!(detect_framework_for_root(&root), Some(TsFramework::Bun));
+            std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn detect_framework_for_root_is_fail_closed_for_empty_root() -> Result<(), String> {
+        let root = unique_test_root("empty");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        assert_eq!(detect_framework_for_root(&root), None);
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
     }
 
     fn bun_pkg_json() -> &'static str {

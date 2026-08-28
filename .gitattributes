@@ -14,3 +14,11 @@
 *.vsix binary
 *.woff  binary
 *.woff2 binary
+
+# Diff fixtures are diff *data*: a trailing space on a context or added line is
+# part of the payload under test, not a lint violation. Markdown uses a trailing
+# double space as a hard line break. Whitespace linting does not apply to either,
+# and the source/W7 join surfaces the whole frozen W7 range to `git diff --check`.
+*.patch -whitespace
+*.diff  -whitespace
+*.md    -whitespace

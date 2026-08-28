@@ -1,5 +1,6 @@
 use crate::cli::commands_context::ensure_command_root;
 use crate::cli::parse::expect_value;
+use crate::cli::suggest::unknown_argument;
 use crate::output;
 use std::path::{Path, PathBuf};
 
@@ -42,7 +43,7 @@ pub(super) fn parse_options(args: &[String]) -> Result<Options, String> {
                 }
             }
             "--json" => {}
-            other => return Err(format!("unknown swarm ingest argument {other:?}")),
+            other => return Err(unknown_argument("swarm ingest", other)),
         }
         i += 1;
     }

@@ -1,0 +1,45 @@
+schema_version = "2.0"
+id = "ripr.slice.execute-command-rejection.v1"
+generation = 1
+
+source_issue = "issue:1628"
+design_reference = "RIPR-SPEC-0129#acceptance-examples"
+change_class = "behavior_change"
+
+claim_boundary = """
+Gives workspace/executeCommand a determinate protocol rejection for any
+command the server does not execute (unknown ids and client-registered
+commands alike): a stable InvalidParams error naming the command. Claims
+nothing about which commands the server executes; the server-executed set
+is unchanged.
+"""
+
+non_goals = [
+  "changes to the server-executed command set",
+  "codeAction/resolve (issue:1751)",
+  "client-side command registration changes",
+]
+
+return_conditions = [
+  "Return to root if any existing server-executed command changes behavior.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:execute-command-dispatch",
+]
+
+shared_seams = []
+forbidden_seams = []
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0129#acceptance-examples"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

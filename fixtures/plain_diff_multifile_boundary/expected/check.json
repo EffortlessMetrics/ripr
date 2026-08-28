@@ -4,7 +4,11 @@
   "mode": "fast",
   "root": "fixtures/plain_diff_multifile_boundary/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":2,"probes":4,"findings":4,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":4,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":2,"probes":4,"findings":4,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":4,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":2}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:36ef10e36ca33de68c5119ec7146c16252c8326475a1daf89ce2a4899c9955a9","snapshot_identity":null},"counts":{"changed_file_count":2,"changed_line_count":4,"candidate_line_count":2,"probe_count":4,"finding_count":4},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
   "findings": [
     {
       "id": "probe:src_a.rs:predicate:668eac8e",
@@ -49,8 +53,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
-      "suggested_next_action": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust"
     },
     {
@@ -96,8 +100,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
-      "suggested_next_action": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust"
     },
     {
@@ -143,8 +147,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
-      "suggested_next_action": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust"
     },
     {
@@ -190,8 +194,8 @@
       "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
-      "suggested_next_action": "Add a co-located test that reaches and observes the changed owner so a discriminator exists; ripr found no static test path for this change.",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust"
     }
   ]

@@ -172,9 +172,6 @@ for the selected sub-shape. The receipt records:
 Docs and planning slices should run:
 
 ```bash
-cargo xtask goals status
-cargo xtask goals next
-cargo xtask check-goals
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language

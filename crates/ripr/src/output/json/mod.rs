@@ -35,6 +35,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::{context_packet::render_context_packet, render, report::finding_json};
+    use crate::analysis_outcome::{
+        AnalysisIdentity, AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome,
+        AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
+        AnalysisStage,
+    };
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
@@ -43,7 +48,65 @@ mod tests {
         RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
         Summary, SymbolId, ValueContext, ValueFact,
     };
+    use proptest::prelude::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn typed_incomplete_outcome_matches_human_and_json_projection() -> Result<(), String> {
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::CombinedHunkUnsupported,
+            AnalysisStage::DiffParse,
+            AnalysisRecovery::new(
+                AnalysisRecoveryKind::UseTwoWayDiff,
+                "Re-run against a two-way diff of the merge result.",
+            )?,
+        )
+        .with_path("src/lib.rs")?
+        .with_affected_items(1)?;
+        let outcome = AnalysisOutcome::new(
+            AnalysisOutcomeKind::UnsupportedInput,
+            AnalysisIdentity {
+                input_identity: Some("sha256:fixture".to_string()),
+                ..AnalysisIdentity::default()
+            },
+            AnalysisOutcomeCounts {
+                changed_file_count: 1,
+                changed_line_count: 2,
+                ..AnalysisOutcomeCounts::default()
+            },
+            vec![limitation],
+        )?;
+        let output = CheckOutput {
+            analysis_outcome: Some(outcome),
+            ..sample_output(None)
+        };
+
+        let json = render(&output);
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|error| format!("parse JSON output: {error}"))?;
+        assert_eq!(value["analysis_outcome"]["analysis_complete"], false);
+        assert_eq!(
+            value["analysis_outcome"]["outcome"]["kind"],
+            "unsupported_input"
+        );
+        assert_eq!(
+            value["analysis_outcome"]["outcome"]["limitations"][0]["kind"],
+            "combined_hunk_unsupported"
+        );
+        assert_eq!(
+            value["analysis_outcome"]["outcome"]["limitations"][0]["recovery"]["kind"],
+            "use_two_way_diff"
+        );
+
+        let human = crate::output::human::render(&output);
+        assert!(human.contains("Analysis outcome: unsupported_input (analysis incomplete)."));
+        assert!(!human.contains("Analysis outcome: \"unsupported_input\""));
+        assert!(human.contains("analysis incomplete"));
+        assert!(human.contains("Zero findings is not a clean result"));
+        assert!(human.contains("combined_hunk_unsupported"));
+        assert!(human.contains("two-way diff"));
+        Ok(())
+    }
 
     #[test]
     fn finding_json_includes_effective_stop_reasons_for_unknowns() {
@@ -125,6 +188,201 @@ mod tests {
         assert!(rendered.contains("\"base\": \"origin/main\""));
     }
 
+    // --- Property-based tests (#2751) ---
+    //
+    // The JSON report is assembled by hand so that its field order stays
+    // stable for review and golden artifacts. Arbitrary text must therefore
+    // remain valid JSON after every manual escaping boundary.
+    proptest! {
+        #[test]
+        fn proptest_render_preserves_top_level_text_and_emits_valid_json(
+            schema_version in any::<String>(),
+            tool in any::<String>(),
+            base in prop::option::of(any::<String>()),
+            expression in any::<String>(),
+            recommended_next_step in prop::option::of(any::<String>()),
+            missing in proptest::collection::vec(any::<String>(), 0..8),
+        ) {
+            let mut output = sample_output(base);
+            output.schema_version = schema_version.clone();
+            output.tool = tool.clone();
+            let finding = match output.findings.first_mut() {
+                Some(finding) => finding,
+                None => {
+                    prop_assert!(false, "the sample output must contain a finding");
+                    return Ok(());
+                }
+            };
+            finding.probe.expression = expression;
+            finding.recommended_next_step = recommended_next_step;
+            finding.missing = missing;
+
+            let rendered = render(&output);
+            let value = match serde_json::from_str::<serde_json::Value>(&rendered) {
+                Ok(value) => value,
+                Err(error) => {
+                    prop_assert!(false, "rendered report must be valid JSON: {error}\n{rendered}");
+                    return Ok(());
+                }
+            };
+
+            prop_assert_eq!(&value["schema_version"], &serde_json::json!(schema_version));
+            prop_assert_eq!(&value["tool"], &serde_json::json!(tool));
+            prop_assert!(value["findings"].is_array());
+        }
+
+        #[test]
+        fn proptest_finding_serde_round_trips_arbitrary_text(
+            id in any::<String>(),
+            expression in any::<String>(),
+            recommended_next_step in prop::option::of(any::<String>()),
+            missing in proptest::collection::vec(any::<String>(), 0..8),
+        ) {
+            let mut finding = unknown_finding();
+            finding.id = id;
+            finding.probe.expression = expression;
+            finding.recommended_next_step = recommended_next_step;
+            finding.missing = missing;
+
+            let serialized = match serde_json::to_string(&finding) {
+                Ok(serialized) => serialized,
+                Err(error) => {
+                    prop_assert!(false, "Finding must serialize to JSON: {error}");
+                    return Ok(());
+                }
+            };
+            let reparsed = match serde_json::from_str::<Finding>(&serialized) {
+                Ok(reparsed) => reparsed,
+                Err(error) => {
+                    prop_assert!(false, "serialized Finding must deserialize: {error}");
+                    return Ok(());
+                }
+            };
+
+            prop_assert_eq!(reparsed, finding);
+        }
+    }
+
+    fn partial_scope_fixture() -> crate::analysis::PartialDiffScope {
+        crate::analysis::PartialDiffScope {
+            run_status: crate::analysis::PartialDiffScope::RUN_STATUS.to_string(),
+            diff_identity: "sha256:abc".to_string(),
+            file_budget: 2,
+            line_budget: 100,
+            budget_disclosures: vec![
+                "RIPR_PARTIAL_DIFF_LINE_BUDGET=2001 exceeds the hard analysis-cost guard (2000); clamped to 2000".to_string(),
+            ],
+            selected_files: vec!["src/a.rs".to_string()],
+            selected_changed_lines: 60,
+            uninspected_files_lower_bound: 2,
+            uninspected_changed_lines_lower_bound: 120,
+            stop_reason: crate::analysis::PartialDiffStopReason::LineBudget,
+            partition_identity: "b".repeat(64),
+        }
+    }
+
+    #[test]
+    fn render_emits_analysis_scope_block_for_partial_scope_run() -> Result<(), String> {
+        let output = CheckOutput {
+            partial_scope: Some(partial_scope_fixture()),
+            ..sample_output(None)
+        };
+
+        let rendered = render(&output);
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("check JSON should parse: {err}"))?;
+        let scope = &value["analysis_scope"];
+
+        let cases = [
+            (&scope["scope"], serde_json::json!("diff"), "scope"),
+            (
+                &scope["run_status"],
+                serde_json::json!("limited_partial_scope"),
+                "run_status",
+            ),
+            (
+                &scope["downstream_consumable"],
+                serde_json::json!(false),
+                "downstream_consumable",
+            ),
+            (
+                &scope["gate_eligibility"],
+                serde_json::json!("ineligible"),
+                "gate_eligibility",
+            ),
+            (
+                &scope["selection_version"],
+                serde_json::json!(crate::analysis::PARTIAL_DIFF_SELECTION_VERSION),
+                "selection_version",
+            ),
+            (
+                &scope["language_tier_version"],
+                serde_json::json!(crate::analysis::PARTIAL_DIFF_LANGUAGE_TIER_VERSION),
+                "language_tier_version",
+            ),
+            (
+                &scope["diff_identity"],
+                serde_json::json!("sha256:abc"),
+                "diff_identity",
+            ),
+            (
+                &scope["partition_identity"],
+                serde_json::json!("b".repeat(64)),
+                "partition_identity",
+            ),
+            (&scope["file_budget"], serde_json::json!(2), "file_budget"),
+            (&scope["line_budget"], serde_json::json!(100), "line_budget"),
+            (
+                &scope["stop_reason"],
+                serde_json::json!("line_budget"),
+                "stop_reason",
+            ),
+            (
+                &scope["selected_files"],
+                serde_json::json!(["src/a.rs"]),
+                "selected_files",
+            ),
+            (
+                &scope["selected_changed_lines"],
+                serde_json::json!(60),
+                "selected_changed_lines",
+            ),
+            (
+                &scope["uninspected_files_lower_bound"],
+                serde_json::json!(2),
+                "uninspected_files_lower_bound",
+            ),
+            (
+                &scope["uninspected_changed_lines_lower_bound"],
+                serde_json::json!(120),
+                "uninspected_changed_lines_lower_bound",
+            ),
+        ];
+        for (actual, expected, label) in cases {
+            assert_eq!(actual, &expected, "unexpected analysis_scope.{label}");
+        }
+        assert_eq!(
+            scope["budget_disclosures"].as_array().map(Vec::len),
+            Some(1)
+        );
+        assert!(
+            scope["continuation"]
+                .as_str()
+                .unwrap_or("")
+                .contains("RIPR_PARTIAL_DIFF_FILE_BUDGET"),
+            "continuation must name the budget-override route: {scope}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn render_omits_analysis_scope_block_for_full_scope_run() {
+        let rendered = render(&sample_output(None));
+
+        assert!(!rendered.contains("\"analysis_scope\""));
+        assert!(!rendered.contains("\"gate_eligibility\""));
+    }
+
     #[test]
     fn render_adds_presentation_text_finding_alignment_when_supported() -> Result<(), String> {
         let output = CheckOutput {
@@ -151,7 +409,12 @@ mod tests {
                 ),
             ],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -270,7 +533,12 @@ mod tests {
                 ),
             ],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -435,7 +703,12 @@ mod tests {
                 ),
             ],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -729,6 +1002,70 @@ mod tests {
     }
 
     #[test]
+    fn finding_json_emits_static_limitation_detail_when_complete() -> Result<(), String> {
+        let mut finding = unknown_finding();
+        finding.static_limit_kind = Some(StaticLimitKind::RustTransitiveReachUnresolved);
+        finding.evidence = vec![
+            "limitation_last_established_edge: test `test_outer` (tests/it.rs:4) -> entry `outer`"
+                .to_string(),
+            "limitation_first_unresolved_edge: entry `outer` -> owner `inner` through a transitive Rust helper path"
+                .to_string(),
+            "limitation_analyzer_route: analysis/rust-public-api-transitive-reach".to_string(),
+            "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"
+                .to_string(),
+        ];
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+        let value: serde_json::Value = serde_json::from_str(&out)
+            .map_err(|err| format!("finding JSON should parse: {err}"))?;
+
+        assert_eq!(
+            value["static_limitation"]["kind"],
+            "rust_transitive_reach_unresolved"
+        );
+        assert_eq!(
+            value["static_limitation"]["last_established_edge"],
+            "test `test_outer` (tests/it.rs:4) -> entry `outer`"
+        );
+        assert_eq!(
+            value["static_limitation"]["first_unresolved_edge"],
+            "entry `outer` -> owner `inner` through a transitive Rust helper path"
+        );
+        assert_eq!(
+            value["static_limitation"]["analyzer_route"],
+            "analysis/rust-public-api-transitive-reach"
+        );
+        assert_eq!(
+            value["static_limitation"]["non_claim"],
+            "named limitation only; ripr cannot confirm or deny that this path observes the change"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn finding_json_omits_static_limitation_detail_when_incomplete() -> Result<(), String> {
+        let mut finding = unknown_finding();
+        finding.static_limit_kind = Some(StaticLimitKind::RustTransitiveReachUnresolved);
+        finding.evidence = vec![
+            "limitation_last_established_edge: test `test_outer` (tests/it.rs:4) -> entry `outer`"
+                .to_string(),
+        ];
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+        let value: serde_json::Value = serde_json::from_str(&out)
+            .map_err(|err| format!("finding JSON should parse: {err}"))?;
+
+        assert_eq!(
+            value["static_limit_kind"],
+            "rust_transitive_reach_unresolved"
+        );
+        assert!(value.get("static_limitation").is_none());
+        Ok(())
+    }
+
+    #[test]
     fn finding_json_emits_owner_kind_only_when_present() {
         let mut finding = unknown_finding();
         let mut out = String::new();
@@ -884,9 +1221,9 @@ mod tests {
         assert_eq!(card["badge_candidate"], false);
         assert_eq!(card["ripr_zero_candidate"], false);
         assert_eq!(card["verify"]["command"], "prove t/app.t");
-        assert_eq!(card["verify"]["status"], "fact_only_not_delegated");
+        assert_eq!(card["verify"]["status"], "preview_fact_only_not_delegated");
         assert!(card["receipt"]["command"].is_null());
-        assert_eq!(card["receipt"]["status"], "available_not_delegated");
+        assert_eq!(card["receipt"]["status"], "preview_available_not_delegated");
         assert_eq!(card["raw_evidence_refs"][0]["file"], "lib/My/App.pm");
         assert_eq!(card["raw_evidence_refs"][0]["line"], 8);
         assert!(card.get("allowed_edit_surface").is_none());
@@ -1038,8 +1375,72 @@ mod tests {
             summary: Summary::default(),
             findings: vec![unknown_finding()],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         }
+    }
+
+    // ── `--suppression-policy` JSON projection (#1441) ──
+
+    #[test]
+    fn render_omits_suppression_fields_without_a_policy() {
+        let rendered = render(&sample_output(None));
+
+        assert!(!rendered.contains("\"suppression_policy\""));
+        assert!(!rendered.contains("\"suppressed\""));
+        assert!(!rendered.contains("\"suppressed_by_policy\""));
+    }
+
+    #[test]
+    fn render_marks_suppressed_findings_and_reports_policy_stats() {
+        use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
+        let mut output = sample_output(None);
+        let finding_id = output.findings[0].id.clone();
+        output.suppression = Some(CheckSuppressionOutcome {
+            policy_path: "policy/ripr-suppressions.toml".to_string(),
+            suppressed: vec![SuppressedCheckFinding {
+                finding_id,
+                selector: "src/**".to_string(),
+            }],
+            warnings: vec![
+                "expired exposure_gap suppression for `old/**` (expired on 2025-01-01)".to_string(),
+            ],
+        });
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("\"suppressed\": true"));
+        assert!(rendered.contains("\"suppressed_by\": \"src/**\""));
+        assert!(rendered.contains("\"suppressed_by_policy\":1"));
+        assert!(rendered.contains("\"suppression_policy\": {"));
+        assert!(rendered.contains("\"path\": \"policy/ripr-suppressions.toml\""));
+        assert!(rendered.contains("\"suppressed\": 1"));
+        assert!(rendered.contains("expired exposure_gap suppression"));
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&rendered).is_ok(),
+            "suppression fields must keep the check JSON parseable"
+        );
+    }
+
+    #[test]
+    fn render_reports_policy_block_even_when_nothing_matched() {
+        use crate::output::suppressions::CheckSuppressionOutcome;
+        let mut output = sample_output(None);
+        output.suppression = Some(CheckSuppressionOutcome {
+            policy_path: "policy/ripr-suppressions.toml".to_string(),
+            suppressed: Vec::new(),
+            warnings: Vec::new(),
+        });
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("\"suppressed_by_policy\":0"));
+        assert!(rendered.contains("\"suppression_policy\": {"));
+        assert!(!rendered.contains("\"suppressed\": true"));
     }
 
     fn finding_with_expression(
@@ -1108,7 +1509,12 @@ mod tests {
             summary: Summary::default(),
             findings: vec![finding],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1152,7 +1558,12 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1204,7 +1615,12 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -1235,7 +1651,12 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: true,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);

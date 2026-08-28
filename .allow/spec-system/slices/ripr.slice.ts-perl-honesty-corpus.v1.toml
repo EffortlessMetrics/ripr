@@ -1,0 +1,62 @@
+schema_version = "2.0"
+id = "ripr.slice.ts-perl-honesty-corpus.v1"
+generation = 1
+
+source_issue = "issue:1983"
+design_reference = "RIPR-SPEC-0108#typescriptjavascript-and-perl-family-coverage-issue-1983"
+change_class = "behavior_change"
+
+claim_boundary = """
+Extends the evidence-promotion honesty corpus (RIPR-SPEC-0108) with
+fixture-backed TypeScript/JavaScript adversarial charter fixtures,
+packet-produced Perl source_report charter cases, and same-entity positive
+controls for both languages, each enforced independently of goldens by
+check-evidence-promotion-honesty. Documents one live TypeScript owner-module
+mock over-credit finding without blessing it. No analyzer, matcher, gate,
+schema, or support-tier behavior changes; preview tiers stay advisory.
+"""
+
+non_goals = [
+  "production matcher or classifier changes, including the documented TypeScript owner-module mock over-credit",
+  "per-language matcher unification across python, typescript, and perl",
+  "support-tier promotion for typescript or perl (both stay preview/advisory)",
+  "default gate, badge, or RIPR Zero role for preview-language evidence",
+  "generated tests or real-repository success claims",
+  "honesty gate code changes (the existing gate is language-generic)",
+]
+
+return_conditions = [
+  "Return to root if a new charter fixture or report must be blessed to a promoted class to keep the gate green.",
+  "Return to root if the TypeScript owner-module mock over-credit is fixed and needs charter graduation.",
+  "Return to root if Perl fact-packet ingestion gains a default-feature production route that makes source_report cases expressible as goldens fixtures.",
+]
+
+owned_seams = [
+  "seam:ripr:fixtures:evidence-promotion-honesty-corpus",
+  "seam:ripr:fixtures:typescript-adversarial-honesty",
+  "seam:ripr:contract:ripr-spec-0108-ts-perl-families",
+]
+
+shared_seams = [
+  "seam:ripr:xtask:check-evidence-promotion-honesty",
+  "seam:ripr:output:golden-fixture-outputs",
+]
+
+forbidden_seams = [
+  "seam:ripr:analysis:language-typescript-matchers",
+  "seam:ripr:analysis:language-perl-adapter",
+  "seam:ripr:xtask:honesty-gate-implementation",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0108#typescriptjavascript-and-perl-family-coverage-issue-1983"
+requirement_generation = 1
+
+[implementation_claim]
+status = "outstanding"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

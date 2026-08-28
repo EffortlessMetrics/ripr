@@ -104,13 +104,26 @@ fn j5_request_identity(repo_root: &Path, scratch: &Path) -> Result<Value, String
         &index_env,
         None,
     )?;
-    let mut ledger = git_output(
+    let inherited = git_output(
         &identity_repo,
         &["show", "HEAD:policy/network_allowlist.txt"],
         &[],
         None,
     )?;
-    ledger.push('\n');
+    // Mirrors the production fixture: the J5 control must not inherit coverage
+    // for its own synthetic surfaces from whatever ledger the current HEAD
+    // carries, or the negative control silently becomes a passing one under a
+    // reconciled source/W7 join ledger.
+    let uncovered = [
+        ".github/workflows/server-archive-qualification.yml|",
+        "crates/ripr/src/output/perl_gap_record_projection.rs|",
+        "xtask/src/tests.rs|",
+    ];
+    let mut ledger = inherited
+        .lines()
+        .filter(|line| !uncovered.iter().any(|prefix| line.starts_with(prefix)))
+        .map(|line| format!("{line}\n"))
+        .collect::<String>();
     ledger.push_str(
         ".github/workflows/stale-network-surface.yml|curl|3|source|stale zero-count row\n",
     );

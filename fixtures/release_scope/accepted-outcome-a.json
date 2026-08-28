@@ -1,0 +1,61 @@
+{
+  "schema_version": "0.1",
+  "kind": "release_execution_scope",
+  "outcome": "preserve_accepted_0_11",
+  "candidate_parent_ref": "c38ad7420df0381b45d49f6e95416d8aacb3a1bd",
+  "candidate_parent_sha": "c38ad7420df0381b45d49f6e95416d8aacb3a1bd",
+  "execution_commit": "365f7d61e27fd441e997e6e17e3f3e28859a3964",
+  "strictly_dependent_commits": [],
+  "execution_only_paths": [
+    ".allow/spec-system/slices/verification-command-execution.v1.toml",
+    ".ripr/traceability.toml",
+    "crates/ripr/src/app.rs",
+    "crates/ripr/src/app/verification_execution.rs",
+    "crates/ripr/src/cli/agent.rs",
+    "crates/ripr/src/cli/commands/agent.rs",
+    "crates/ripr/src/cli/commands/agent_dispatch.rs",
+    "crates/ripr/src/cli/execute.rs",
+    "crates/ripr/src/cli/help.rs",
+    "crates/ripr/src/cli/help/agent.rs",
+    "crates/ripr/src/cli/help/overview.rs",
+    "crates/ripr/src/domain/verification_result.rs",
+    "crates/ripr/tests/cli_smoke.rs",
+    "crates/ripr/tests/verification_result.rs",
+    "docs/OUTPUT_SCHEMA.md",
+    "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md",
+    "policy/process_allowlist.txt",
+    "schemas/ripr/repair-assurance.schema.json"
+  ],
+  "candidate_excluded_paths": [
+    ".allow/spec-system/slices/verification-command-execution.v1.toml",
+    ".ripr/traceability.toml",
+    "crates/ripr/src/app.rs",
+    "crates/ripr/src/app/verification_execution.rs",
+    "crates/ripr/src/cli/agent.rs",
+    "crates/ripr/src/cli/commands/agent.rs",
+    "crates/ripr/src/cli/commands/agent_dispatch.rs",
+    "crates/ripr/src/cli/execute.rs",
+    "crates/ripr/src/cli/help.rs",
+    "crates/ripr/src/cli/help/agent.rs",
+    "crates/ripr/src/cli/help/overview.rs",
+    "crates/ripr/src/domain/verification_result.rs",
+    "crates/ripr/tests/cli_smoke.rs",
+    "crates/ripr/tests/verification_result.rs",
+    "docs/OUTPUT_SCHEMA.md",
+    "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md",
+    "policy/process_allowlist.txt",
+    "schemas/ripr/repair-assurance.schema.json"
+  ],
+  "preserved_paths": [
+    "crates/ripr/src/agent/provenance.rs",
+    "crates/ripr/src/analysis/test_grip_evidence.rs",
+    "editors/vscode/src/extension.ts"
+  ],
+  "release_non_claim": "RIPR 0.11.0 does not execute verification commands and does not issue RepairReceiptV2.",
+  "issue_2332_state": "open",
+  "candidate_tree": {
+    "state": "candidate_only_exclusion",
+    "operation": "exclude_commit_paths",
+    "source_history_unchanged": true
+  }
+}

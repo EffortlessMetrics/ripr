@@ -32,6 +32,8 @@ suite('Extension Smoke', () => {
   test('commands are registered', async () => {
     const commands = await vscode.commands.getCommands(true);
     assert.ok(commands.includes('ripr.restartServer'));
+    assert.ok(commands.includes('ripr.refreshDiagnostics'));
+    assert.ok(commands.includes('ripr.selectWorkspaceRoot'));
     assert.ok(commands.includes('ripr.showOutput'));
     assert.ok(commands.includes('ripr.showStatus'));
     assert.ok(commands.includes('ripr.diagnoseSetup'));
@@ -41,6 +43,7 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.openFirstPrPacket'));
     assert.ok(commands.includes('ripr.copyFirstPrSummary'));
     assert.ok(commands.includes('ripr.copyFirstPrRepairPacket'));
+    assert.ok(commands.includes('ripr.copyRepairPacketAtCursor'));
     assert.ok(commands.includes('ripr.copyFirstPrVerifyCommand'));
     assert.ok(commands.includes('ripr.copyFirstPrReceiptCommand'));
     assert.ok(commands.includes('ripr.copyFirstPrRegenerationGuidance'));
@@ -64,6 +67,12 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.copyTopVerifyCommand'));
     assert.ok(commands.includes('ripr.openReport'));
     assert.ok(commands.includes('ripr.showTopLimitation'));
+  });
+
+  test('trusted-host gate is limited to explicit untrusted harness mode', () => {
+    assert.strictEqual(shouldSkipTrustedTestHost('untrusted'), true);
+    assert.strictEqual(shouldSkipTrustedTestHost('trusted'), false);
+    assert.strictEqual(shouldSkipTrustedTestHost(undefined), false);
   });
 
   test('real extension first-pr bridge commands use safe packet artifacts', async function (this: Mocha.Context) {
@@ -152,6 +161,7 @@ suite('Extension Smoke', () => {
 
   test('real extension actionable gap queue commands copy bounded packets for safe artifacts', async function (this: Mocha.Context) {
     this.timeout(30000);
+    skipUnlessTrustedTestHost(this);
     await cleanupActionableGapQueueSmokeFiles();
     await writeWorkspaceFile('target/ripr/reports/actionable-gaps.json', actionableGapsReport({}));
     await writeWorkspaceFile('target/ripr/agent/agent-receipt.json', agentReceipt({ movement: 'improved' }));
@@ -304,20 +314,108 @@ suite('Extension Smoke', () => {
   test('defaults-first check mode is draft', () => {
     const config = vscode.workspace.getConfiguration('ripr');
     assert.strictEqual(config.inspect('check.mode')?.defaultValue, 'draft');
+    assert.strictEqual(config.inspect('includeUnchangedTests')?.defaultValue, true);
+    assert.strictEqual(config.inspect('seamDiagnostics')?.defaultValue, true);
+    assert.strictEqual(config.inspect('diagnosticProfile')?.defaultValue, 'actionable');
+  });
+
+  test('forwards seam diagnostic settings through LSP initialization options', async () => {
+    await withControllerTestContext({ seamDiagnostics: false, diagnosticProfile: 'full' }, async (context) => {
+      await context.controller.start();
+
+      const initializationOptions = context.client.receivedInitializationOptions;
+      assert.deepStrictEqual(
+        {
+          includeUnchangedTests: initializationOptions?.includeUnchangedTests,
+          seamDiagnostics: initializationOptions?.seamDiagnostics,
+          diagnosticProfile: initializationOptions?.diagnosticProfile
+        },
+        {
+          includeUnchangedTests: true,
+          seamDiagnostics: false,
+          diagnosticProfile: 'full'
+        }
+      );
+    });
+  });
+
+  test('preserves mixed LSP configuration request ordering', async () => {
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+      const options = context.clientOptions() as {
+        middleware?: {
+          workspace?: {
+            configuration?: (
+              params: { items: Array<{ section?: string; scopeUri?: string }> },
+              token: unknown,
+              next: (
+                params: { items: Array<{ section?: string; scopeUri?: string }> },
+                token: unknown
+              ) => Promise<unknown[]>
+            ) => Promise<unknown[]>;
+          };
+        };
+      };
+      const configuration = options.middleware?.workspace?.configuration;
+      assert.ok(configuration, 'expected configuration middleware');
+      const delegatedSections: string[] = [];
+      const result = await configuration(
+        {
+          items: [
+            { section: 'ripr', scopeUri: 'file:///workspace/src/lib.rs' },
+            { section: 'other.setting', scopeUri: 'file:///workspace/src/lib.rs' },
+            { section: 'ripr', scopeUri: 'file:///workspace/src/pricing.ts' }
+          ]
+        },
+        undefined,
+        async (params) => {
+          delegatedSections.push(...params.items.map((item) => item.section ?? '<missing>'));
+          return params.items.map((item) => `delegated:${item.section ?? '<missing>'}`);
+        }
+      );
+
+      assert.deepStrictEqual(delegatedSections, ['other.setting']);
+      assert.strictEqual((result[1] as string), 'delegated:other.setting');
+      assert.strictEqual(typeof (result[0] as Record<string, unknown>).diagnosticProfile, 'string');
+      assert.strictEqual(typeof (result[0] as Record<string, unknown>).includeUnchangedTests, 'boolean');
+      assert.strictEqual(typeof (result[2] as Record<string, unknown>).diagnosticProfile, 'string');
+      assert.strictEqual(typeof (result[2] as Record<string, unknown>).includeUnchangedTests, 'boolean');
+    });
+  });
+
+  test('reads startup settings against the selected workspace resource', async () => {
+    const workspaceRoot = path.join(path.parse(process.cwd()).root, 'ripr-resource-scope-test');
+    await withControllerTestContext({ workspaceRoot }, async (context) => {
+      await context.controller.start();
+
+      assert.strictEqual(context.configuredWorkspaceRootState.root, workspaceRoot);
+      const resource = context.configResource();
+      assert.ok(resource, 'startup config lookup must be resource-scoped');
+      assertWorkspacePathEqual(resource.fsPath, workspaceRoot);
+    });
   });
 
   test('real server surfaces seam diagnostic, hover provider, and agent actions', async function (this: Mocha.Context) {
     this.timeout(75000);
+    skipUnlessTrustedTestHost(this);
     if (!process.env.RIPR_TEST_SERVER_PATH) {
       this.skip();
     }
 
     const uri = workspaceFileUri('src/lib.rs');
-    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-    const document = await vscode.workspace.openTextDocument(uri);
-    assert.strictEqual(document.languageId, 'rust');
-    await vscode.window.showTextDocument(document);
-    await vscode.commands.executeCommand('ripr.restartServer');
+    const config = vscode.workspace.getConfiguration('ripr', uri);
+    const previousProfile = config.get<'actionable' | 'full'>('diagnosticProfile', 'actionable');
+    try {
+      await updateDiagnosticProfile(config, 'full');
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      const document = await vscode.workspace.openTextDocument(uri);
+      assert.strictEqual(document.languageId, 'rust');
+      await vscode.window.showTextDocument(document);
+      // The suite's activation already owns the initial trusted session. Keep
+      // this journey on that session; restart behavior is exercised separately
+      // by the lifecycle acceptance below.
+      await editAndSaveDocumentThenWaitForAnalysis(document, 60000);
+      await vscode.commands.executeCommand('ripr.refreshDiagnostics');
 
     const diagnostic = await waitForDiagnostic(
       uri,
@@ -393,13 +491,13 @@ suite('Extension Smoke', () => {
 
     await vscode.commands.executeCommand(contextCommand.command, ...(contextCommand.arguments ?? []));
     const contextPacket = await waitForClipboardText((text) =>
-      text.includes('"schema_version": "0.3"') && text.includes('"seam_id": "67fc764ba37d77bd"')
+      text.includes('"schema_version": "0.4"') && text.includes('"seam_id": "67fc764ba37d77bd"')
     );
     const parsedContextPacket = JSON.parse(contextPacket) as {
       schema_version?: string;
       packets?: Array<{ seam_id?: string }>;
     };
-    assert.strictEqual(parsedContextPacket.schema_version, '0.3');
+    assert.strictEqual(parsedContextPacket.schema_version, '0.4');
     assert.strictEqual(parsedContextPacket.packets?.[0]?.seam_id, '67fc764ba37d77bd');
 
     await vscode.commands.executeCommand(targetedBriefCommand.command, ...(targetedBriefCommand.arguments ?? []));
@@ -450,24 +548,181 @@ suite('Extension Smoke', () => {
       activeEditor.document.uri.fsPath.replace(/\\/g, '/').endsWith('/tests/pricing.rs'),
       activeEditor.document.uri.fsPath
     );
-    assert.strictEqual(activeEditor.selection.active.line, 3);
+      assert.strictEqual(activeEditor.selection.active.line, 3);
+    } finally {
+      await updateDiagnosticProfile(config, previousProfile);
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    }
   });
 
-  test('real server surfaces preview gap diagnostic, hover, status, and bounded actions', async function (this: Mocha.Context) {
-    this.timeout(75000);
+  test('real server invalidates a seam action across deferred save and full refresh', async function (this: Mocha.Context) {
+    this.timeout(90000);
+    skipUnlessTrustedTestHost(this);
     if (!process.env.RIPR_TEST_SERVER_PATH) {
       this.skip();
     }
 
-    await cleanupEditorGapSmokeFiles();
-    await writeEditorGapSmokeFiles();
-    const uri = workspaceFileUri('src/pricing.ts');
+    const uri = workspaceFileUri('src/lib.rs');
+    const config = vscode.workspace.getConfiguration('ripr', uri);
+    const previousProfile = config.get<'actionable' | 'full'>('diagnosticProfile', 'actionable');
     try {
+      await updateDiagnosticProfile(config, 'full');
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
+
+      await editAndSaveDocumentThenWaitForAnalysis(document, 60000);
+      await vscode.commands.executeCommand('ripr.refreshDiagnostics');
+      const firstDiagnostic = await waitForDiagnostic(
+        uri,
+        (entry) => entry.source === 'ripr' && diagnosticCode(entry) === 'ripr-seam-weakly-gripped',
+        60000
+      );
+      const firstActions = await waitForCodeActions(uri, firstDiagnostic.range, (action) =>
+        action.title === 'Inspect Test Gap - Copy Context'
+      );
+      const firstContext = assertCommandAction(
+        firstActions,
+        'Inspect Test Gap - Copy Context',
+        'ripr.copyContext'
+      );
+      const firstTarget = firstContext.arguments?.[0] as { evidence_identity?: unknown } | undefined;
+      assert.ok(firstTarget?.evidence_identity, 'first full-seam action must carry evidence identity');
+
+      await editAndSaveDocumentThenWaitForAnalysis(document, 60000, '\n// stale-action-refresh-sentinel\n');
+      await vscode.commands.executeCommand('ripr.refreshDiagnostics');
+      const secondDiagnostic = await waitForDiagnostic(
+        uri,
+        (entry) => entry.source === 'ripr' && diagnosticCode(entry) === 'ripr-seam-weakly-gripped',
+        60000
+      );
+      const secondActions = await waitForCodeActions(uri, secondDiagnostic.range, (action) =>
+        action.title === 'Inspect Test Gap - Copy Context'
+      );
+      const secondContext = assertCommandAction(
+        secondActions,
+        'Inspect Test Gap - Copy Context',
+        'ripr.copyContext'
+      );
+      const secondTarget = secondContext.arguments?.[0] as { evidence_identity?: unknown } | undefined;
+      assert.ok(secondTarget?.evidence_identity, 'second full-seam action must carry evidence identity');
+      assert.notDeepStrictEqual(
+        secondTarget.evidence_identity,
+        firstTarget.evidence_identity,
+        'a second full refresh must publish a new evidence identity'
+      );
+
+      await writeClipboardText('stale-seam-action-sentinel');
+      await vscode.commands.executeCommand(firstContext.command, ...(firstContext.arguments ?? []));
+      const stalePacketText = await waitForClipboardText((text) => text.includes('"status": "stale"'));
+      const stalePacket = JSON.parse(stalePacketText) as {
+        status?: string;
+        recovery_command?: string;
+        recovery_route?: string;
+      };
+      assert.strictEqual(stalePacket.status, 'stale');
+      assert.strictEqual(stalePacket.recovery_command, 'ripr.refreshDiagnostics');
+      assert.strictEqual(stalePacket.recovery_route, 'ripr.refreshDiagnostics');
+
+      await vscode.commands.executeCommand(secondContext.command, ...(secondContext.arguments ?? []));
+      const currentPacket = JSON.parse(await waitForClipboardText((text) => text.includes('"seam_id"'))) as {
+        status?: string;
+        packets?: Array<{ seam_id?: string }>;
+      };
+      assert.notStrictEqual(currentPacket.status, 'stale');
+      assert.strictEqual(currentPacket.packets?.[0]?.seam_id, '67fc764ba37d77bd');
+    } finally {
+      await updateDiagnosticProfile(config, previousProfile);
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    }
+  });
+
+  test('real server reapplies diagnostic profile after runtime configuration changes', async function (this: Mocha.Context) {
+    this.timeout(300000);
+    skipUnlessTrustedTestHost(this);
+    if (!process.env.RIPR_TEST_SERVER_PATH) {
+      this.skip();
+    }
+
+    const uri = workspaceFileUri('src/lib.rs');
+    const config = vscode.workspace.getConfiguration('ripr', uri);
+    const transitionTimeoutMs = 120000;
+    const previousProfile = config.get<'actionable' | 'full'>('diagnosticProfile', 'actionable');
+    try {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
+      await editAndSaveDocumentThenWaitForAnalysis(document, 60000);
+      await vscode.commands.executeCommand('ripr.refreshDiagnostics');
+      await waitForDiagnostic(
+        uri,
+        (entry) => entry.source === 'ripr' && diagnosticCode(entry) === 'weakly_exposed',
+        transitionTimeoutMs
+      );
+
+      await updateDiagnosticProfile(config, 'actionable');
+      await vscode.commands.executeCommand('ripr.refreshDiagnostics');
+      await waitForDiagnostic(
+        uri,
+        (entry) => entry.source === 'ripr' && diagnosticCode(entry) === 'weakly_exposed',
+        transitionTimeoutMs
+      );
+
+      await updateDiagnosticProfile(config, 'full');
+      await vscode.commands.executeCommand('ripr.refreshDiagnostics');
+      await waitForDiagnostic(
+        uri,
+        (entry) => entry.source === 'ripr' && diagnosticCode(entry) === 'ripr-seam-weakly-gripped',
+        transitionTimeoutMs
+      );
+
+      await updateDiagnosticProfile(config, 'actionable');
+      await vscode.commands.executeCommand('ripr.refreshDiagnostics');
+      await waitForDiagnosticAbsence(
+        uri,
+        (entry) => entry.source === 'ripr' && diagnosticCode(entry) === 'ripr-seam-weakly-gripped',
+        transitionTimeoutMs
+      );
+
+      await updateDiagnosticProfile(config, 'full');
+      await vscode.commands.executeCommand('ripr.refreshDiagnostics');
+      await waitForDiagnostic(
+        uri,
+        (entry) => entry.source === 'ripr' && diagnosticCode(entry) === 'ripr-seam-weakly-gripped',
+        transitionTimeoutMs
+      );
+    } finally {
+      await updateDiagnosticProfile(config, previousProfile);
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    }
+  });
+
+  test('real server surfaces preview gap diagnostic, hover, status, and bounded actions', async function (this: Mocha.Context) {
+    this.timeout(75000);
+    skipUnlessTrustedTestHost(this);
+    if (!process.env.RIPR_TEST_SERVER_PATH) {
+      this.skip();
+    }
+
+    const uri = workspaceFileUri('src/pricing.ts');
+    const config = vscode.workspace.getConfiguration('ripr', uri);
+    const previousProfile = config.get<'actionable' | 'full'>('diagnosticProfile', 'actionable');
+    try {
+      await cleanupEditorGapSmokeFiles();
+      await writeEditorGapSmokeFiles();
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       const document = await vscode.workspace.openTextDocument(uri);
       assert.strictEqual(document.languageId, 'typescript');
       await vscode.window.showTextDocument(document);
-      await vscode.commands.executeCommand('ripr.restartServer');
+      // Preview diagnostics are intentionally exposed on the actionable
+      // profile. Apply it after the resource is open so the next
+      // workspace/configuration pull is scoped to this TypeScript URI.
+      await updateDiagnosticProfile(config, 'actionable');
+      // Keep the preview journey on the same host/session as the trusted Rust
+      // journey so state leakage remains observable across the sequence.
+      await editAndSaveDocumentThenWaitForAnalysis(document, 60000);
+      await vscode.commands.executeCommand('ripr.refreshDiagnostics');
+      await vscode.commands.executeCommand('ripr.showStatus');
 
       const diagnostic = await waitForDiagnostic(
         uri,
@@ -497,10 +752,11 @@ suite('Extension Smoke', () => {
         hoverText
       );
 
-      const actions = await vscode.commands.executeCommand<Array<vscode.CodeAction | vscode.Command>>(
-        'vscode.executeCodeActionProvider',
+      const actions = await waitForCodeActions(
         uri,
-        diagnostic.range
+        diagnostic.range,
+        (action) => action.title === 'Inspect gap: copy repair packet',
+        10000
       );
       const repairPacketCommand = assertCommandAction(
         actions,
@@ -568,6 +824,7 @@ suite('Extension Smoke', () => {
       assert.strictEqual(activeEditor.selection.active.line, 3);
     } finally {
       await cleanupEditorGapSmokeFiles();
+      await updateDiagnosticProfile(config, previousProfile);
       await vscode.commands.executeCommand('ripr.restartServer');
     }
   });
@@ -579,6 +836,36 @@ suite('Extension Smoke', () => {
       await vscode.commands.executeCommand('ripr.restartServer');
     } catch {
       // Expected: server resolution fails in test environment.
+    }
+  });
+
+  test('refreshDiagnostics forwards to the server refresh command', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+      await context.controller.refreshDiagnostics();
+
+      assert.deepStrictEqual(context.client.requests, [{
+        method: 'workspace/executeCommand',
+        params: {
+          command: 'ripr.refresh',
+          arguments: []
+        }
+      }]);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('refreshDiagnostics reports when no server is running', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.refreshDiagnostics();
+
+      assert.deepStrictEqual(context.client.requests, []);
+      assert.ok(context.infoMessages.at(-1)?.includes('requires a running server'));
+    } finally {
+      await context.dispose();
     }
   });
 
@@ -700,6 +987,31 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('copyContext copies gap repair packets without LSP fallback for active workspace file', async () => {
+    const relativePath = 'src/gap-repair-packet.rs';
+    const uri = workspaceFileUri(relativePath);
+    const context = createControllerTestContext({});
+    const packet = 'RIPR gap repair packet\n\nGap identity: gap:rust:pricing';
+    try {
+      await writeWorkspaceFile(relativePath, 'pub fn gap_repair_packet_target() {}\n');
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
+      await context.controller.start();
+      await context.controller.copyContext({
+        label: 'gap_repair_packet',
+        packet
+      });
+
+      assert.deepStrictEqual(context.client.requests, []);
+      assert.strictEqual(context.clipboardWrites[0], packet);
+      assert.ok(context.infoMessages.at(-1)?.includes('gap repair packet'));
+    } finally {
+      await context.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await removeWorkspacePath(relativePath);
+    }
+  });
+
   test('direct repair commands fail closed without active file or target URI', async () => {
     const context = createControllerTestContext({});
     try {
@@ -794,7 +1106,8 @@ suite('Extension Smoke', () => {
     }
   });
 
-  test('startCurrentRepair executes the nearest existing repair action', async () => {
+  test('startCurrentRepair executes the nearest existing repair action', async function (this: Mocha.Context) {
+    skipUnlessTrustedTestHost(this);
     const relativePath = 'src/start-current-repair.rs';
     const uri = workspaceFileUri(relativePath);
     const collection = vscode.languages.createDiagnosticCollection('ripr-start-current-repair');
@@ -857,6 +1170,73 @@ suite('Extension Smoke', () => {
       const copied = await waitForClipboardText((text) => text === 'nearest repair packet');
       assert.notStrictEqual(copied, 'start-current-repair-sentinel');
       assert.strictEqual(copied, 'nearest repair packet');
+    } finally {
+      provider?.dispose();
+      collection.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await removeWorkspacePath(relativePath);
+    }
+  });
+
+  test('copyRepairPacketAtCursor uses only the packet action for the containing diagnostic', async function (this: Mocha.Context) {
+    skipUnlessTrustedTestHost(this);
+    const relativePath = 'src/copy-repair-packet-at-cursor.rs';
+    const uri = workspaceFileUri(relativePath);
+    const collection = vscode.languages.createDiagnosticCollection('ripr-copy-repair-packet-at-cursor');
+    let provider: vscode.Disposable | undefined;
+    try {
+      await writeWorkspaceFile(relativePath, [
+        'pub fn far() {}',
+        '',
+        'pub fn outside() {}',
+        '',
+        'pub fn near() {}',
+        ''
+      ].join('\n'));
+      const document = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(document);
+      editor.selection = new vscode.Selection(new vscode.Position(4, 2), new vscode.Position(4, 2));
+
+      const far = new vscode.Diagnostic(
+        new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 12)),
+        'far ripr gap',
+        vscode.DiagnosticSeverity.Warning
+      );
+      far.source = 'ripr';
+      far.code = 'ripr-gap-MissingBoundaryAssertion';
+      const near = new vscode.Diagnostic(
+        new vscode.Range(new vscode.Position(4, 0), new vscode.Position(4, 13)),
+        'near ripr gap',
+        vscode.DiagnosticSeverity.Warning
+      );
+      near.source = 'ripr';
+      near.code = 'ripr-gap-MissingBoundaryAssertion';
+      collection.set(uri, [far, near]);
+
+      provider = vscode.languages.registerCodeActionsProvider(
+        { language: 'rust', scheme: 'file' },
+        {
+          provideCodeActions(_document, range) {
+            const packet = range.start.line === 4 ? 'near repair packet' : 'far repair packet';
+            const action = new vscode.CodeAction('Copy repair packet', vscode.CodeActionKind.QuickFix);
+            action.command = {
+              title: 'Copy repair packet',
+              command: 'ripr.copyContext',
+              arguments: [{ label: 'gap_repair_packet', packet }]
+            };
+            return [action];
+          }
+        }
+      );
+
+      await waitForCodeAction(uri, near.range, (action) => action.title === 'Copy repair packet');
+      await vscode.commands.executeCommand('ripr.copyRepairPacketAtCursor');
+      assert.strictEqual(await waitForClipboardText((text) => text === 'near repair packet'), 'near repair packet');
+
+      editor.selection = new vscode.Selection(new vscode.Position(2, 2), new vscode.Position(2, 2));
+      await writeClipboardText('outside-diagnostic-sentinel');
+      await vscode.commands.executeCommand('ripr.copyRepairPacketAtCursor');
+      assert.strictEqual(await currentClipboardText(), 'outside-diagnostic-sentinel');
     } finally {
       provider?.dispose();
       collection.dispose();
@@ -1001,6 +1381,109 @@ suite('Extension Smoke', () => {
       assert.ok(context.status.text.includes('ripr: failed'));
       await context.controller.showStatus();
       assert.ok(context.infoMessages.at(-1)?.includes('analysis refresh failed'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('typed analysis status takes precedence over lifecycle log parsing', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'failed',
+        attempt_id: '9',
+        snapshot_id: 'snapshot:8',
+        run_status: 'stale',
+        failure: { kind: 'analysis_error', message: 'temporary timeout' },
+        retry_command: 'ripr.refresh'
+      });
+      assert.ok(context.status.text.includes('ripr: failed'));
+      assert.ok(String(context.status.tooltip).includes('last-known-good evidence is retained'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 1 ms: generation=9, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: failed'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('typed analysis status surfaces server-owned ambiguous root state', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'stopped',
+        run_status: 'no_snapshot',
+        root_state: 'workspace_ambiguous',
+        candidate_roots: ['<workspace-one>', '<workspace-two>'],
+        root_detail: 'select one workspace folder, then restart or refresh the session',
+        root_recovery_route: 'select_root_and_restart'
+      });
+
+      assert.ok(context.status.text.includes('ripr: select root'));
+      assert.ok(String(context.status.tooltip).includes('workspace_ambiguous'));
+      assert.ok(String(context.status.tooltip).includes('<workspace-one>'));
+      assert.ok(String(context.status.tooltip).includes('select_root_and_restart'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('typed analysis status surfaces a changed root as stale', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'stopped',
+        run_status: 'stale',
+        root_state: 'root_changed',
+        root_detail: 'workspace root changed; refresh to obtain current evidence',
+        root_recovery_route: 'refresh'
+      });
+
+      assert.ok(context.status.text.includes('ripr: stale'));
+      assert.ok(String(context.status.tooltip).includes('root_changed'));
+      assert.ok(String(context.status.tooltip).includes('new root'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('typed refresh completion preserves stale status for dirty routed files', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+      const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/lib.rs'));
+      context.controller.markWorkspaceStale(document);
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'completed',
+        attempt_id: 'dirty-refresh',
+        snapshot_id: 'snapshot:dirty-refresh'
+      });
+
+      assert.ok(context.status.text.includes('ripr: stale'));
+      assert.ok(String(context.status.tooltip).includes('unsaved routed-file changes remain'));
+      assert.ok(String(context.status.tooltip).includes('Current diagnostics describe the last saved workspace state.'));
     } finally {
       await context.dispose();
     }
@@ -2615,7 +3098,7 @@ suite('Extension Smoke', () => {
         'Status: Select one workspace folder before using ripr repair actions.',
         'Workspace root state: workspace_multi_root_ambiguous',
         'Root-scoped repair actions are suppressed until one workspace folder is selected.',
-        'Next safe action: Open a Rust or enabled preview-language file from one workspace folder'
+        'Next safe action: Run ripr: Select Workspace Root, or open a Rust or enabled preview-language file from one workspace folder'
       ]);
     } finally {
       await context.dispose();
@@ -2648,6 +3131,27 @@ suite('Extension Smoke', () => {
       assertRiprDocumentSelectorsScopedToWorkspace(context.clientOptions(), selectedRoot);
       assertCargoTomlWatcherScopedToWorkspace(context.watcherPatterns, selectedRoot);
       assert.strictEqual(context.runRiprCalls.length, 0);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('initialize advertises the RIPR experimental capability block', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+      const advertised = context.experimentalCapabilities() as
+        | { riprEditor?: { version?: string; commands?: string[]; guardedTestEdit?: boolean } }
+        | undefined;
+      assert.ok(advertised?.riprEditor, 'expected the riprEditor experimental block');
+      assert.ok(
+        typeof advertised.riprEditor.version === 'string' && advertised.riprEditor.version !== '',
+        'expected a non-empty extension version in the riprEditor block'
+      );
+      assert.ok(advertised.riprEditor.commands?.includes('ripr.showStatus'));
+      // Guarded test edits are not implemented by this extension; the opt-in
+      // must stay explicitly false rather than absent-truthy.
+      assert.strictEqual(advertised.riprEditor.guardedTestEdit, false);
     } finally {
       await context.dispose();
     }
@@ -2708,8 +3212,11 @@ suite('Extension Smoke', () => {
       await context.controller.start();
       const report = await diagnoseSetupReport(context);
       assertReportIncludes(report, [
+        'Status: ripr requires a trusted workspace to start the server.',
         'Workspace trust state: workspace_untrusted',
-        'ripr server state: ripr_version_ok (ripr 0.8.0-test)'
+        'ripr server state: ripr_missing',
+        'Server: not resolved',
+        'Server started: no; server stopped'
       ]);
 
       await withCurrentFirstPrDiagnostic({
@@ -3322,7 +3829,13 @@ suite('Extension Smoke', () => {
     const context = createControllerTestContext({
       lspResult: {
         kind: 'receipt_status',
-        route_quality_summary: 'coverage: 3/5 routes; top gap: gap:rust:pricing:discount:threshold-boundary'
+        route_quality_summary: {
+          report: 'route-quality',
+          status: 'advisory',
+          top_repair_kind_rows: [
+            { repair_kind: 'AddBoundaryAssertion', attempted: 2, success_rate: 0.5 }
+          ]
+        }
       }
     });
     try {
@@ -3332,7 +3845,11 @@ suite('Extension Smoke', () => {
       assert.strictEqual(context.client.requests.length, 1);
       assert.strictEqual(context.client.requests[0].method, 'workspace/executeCommand');
       assert.ok(context.infoMessages.length > 0, 'expected an info message');
-      assert.ok(context.infoMessages.at(-1)?.includes('coverage: 3/5 routes'), context.infoMessages.at(-1));
+      assert.ok(context.infoMessages.at(-1)?.includes('status=advisory'), context.infoMessages.at(-1));
+      assert.ok(context.infoMessages.at(-1)?.includes('AddBoundaryAssertion'), context.infoMessages.at(-1));
+      assert.ok(context.infoMessages.at(-1)?.includes('attempted=2'), context.infoMessages.at(-1));
+      assert.ok(context.infoMessages.at(-1)?.includes('success_rate=0.5'), context.infoMessages.at(-1));
+      assert.ok(context.outputLines.join('\n').includes('status=advisory'));
       assert.deepStrictEqual(context.clipboardWrites, [], 'showRouteQuality must not write to clipboard');
     } finally {
       await context.dispose();
@@ -3352,6 +3869,29 @@ suite('Extension Smoke', () => {
 
       assert.ok(context.infoMessages.length > 0, 'expected an info message');
       assert.ok(context.infoMessages.at(-1)?.includes('not_available'), context.infoMessages.at(-1));
+      assert.deepStrictEqual(context.clipboardWrites, [], 'showRouteQuality must not write to clipboard');
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('showRouteQuality fails closed for malformed structured summaries', async () => {
+    const context = createControllerTestContext({
+      lspResult: {
+        kind: 'receipt_status',
+        route_quality_summary: {
+          report: 'route-quality',
+          status: 'advisory',
+          top_repair_kind_rows: [{ repair_kind: 'AddBoundaryAssertion' }]
+        }
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.showRouteQuality();
+
+      assert.ok(context.infoMessages.at(-1)?.includes('not_available'), context.infoMessages.at(-1));
+      assert.ok(!context.infoMessages.at(-1)?.includes('attempted=0'));
       assert.deepStrictEqual(context.clipboardWrites, [], 'showRouteQuality must not write to clipboard');
     } finally {
       await context.dispose();
@@ -3383,6 +3923,9 @@ suite('Extension Smoke', () => {
 
 interface ControllerTestOptions {
   enabled?: boolean;
+  includeUnchangedTests?: boolean;
+  seamDiagnostics?: boolean;
+  diagnosticProfile?: 'actionable' | 'full';
   lspResult?: unknown;
   lspError?: Error;
   cliResult?: string;
@@ -3702,6 +4245,7 @@ function assertReportIncludes(report: string, expectedLines: string[]): void {
 
 class FakeLanguageClient {
   readonly requests: Array<{ method: string; params: unknown }> = [];
+  receivedInitializationOptions?: Record<string, unknown>;
   startCalls = 0;
   private readonly notificationHandlers = new Map<string, Array<(params: unknown) => void>>();
 
@@ -3738,6 +4282,12 @@ class FakeLanguageClient {
   }
 
   async stop(): Promise<void> {}
+
+  captureClientOptions(options: unknown): void {
+    this.receivedInitializationOptions = (options as {
+      initializationOptions?: Record<string, unknown>;
+    }).initializationOptions;
+  }
 }
 
 function controllerWorkspaceRootState(options: ControllerTestOptions): RiprWorkspaceRootState {
@@ -3774,28 +4324,40 @@ function createControllerTestContext(options: ControllerTestOptions) {
   const warningMessages: string[] = [];
   const errorMessages: string[] = [];
   let clientOptions: unknown;
+  let experimentalCapabilities: unknown;
+  const configResources: Array<vscode.Uri | undefined> = [];
   const configuredWorkspaceRootState = controllerWorkspaceRootState(options);
   const runtime: RiprClientRuntime = {
-    getConfig: () => ({
-      enabled: options.enabled ?? true,
-      serverPath: '',
-      serverArgs: ['lsp', '--stdio'],
-      autoDownload: false,
-      serverVersion: '',
-      downloadBaseUrl: '',
-      checkMode: 'draft',
-      baseRef: 'origin/main',
-      traceServer: 'off'
-    }),
+    getConfig: (resource) => {
+      configResources.push(resource);
+      return {
+        enabled: options.enabled ?? true,
+        serverPath: '',
+        serverArgs: ['lsp', '--stdio'],
+        autoDownload: false,
+        serverVersion: '',
+        downloadBaseUrl: '',
+        checkMode: 'draft',
+        baseRef: 'origin/main',
+        includeUnchangedTests: options.includeUnchangedTests ?? true,
+        seamDiagnostics: options.seamDiagnostics ?? true,
+        diagnosticProfile: options.diagnosticProfile ?? 'actionable',
+        traceServer: 'off'
+      };
+    },
     workspaceRootState: () => configuredWorkspaceRootState,
+    workspaceFolders: () => [],
+    showQuickPick: async () => undefined,
     resolveServer: async () => options.resolveFailure ?? ({
       command: 'ripr',
       source: 'path',
       detail: 'test ripr on PATH',
       version: options.serverVersion ?? 'ripr 0.8.0-test'
     }),
-    createLanguageClient: (_serverOptions, options) => {
+    createLanguageClient: (_serverOptions, options, experimental) => {
       clientOptions = options;
+      client.captureClientOptions(options);
+      experimentalCapabilities = experimental;
       return client;
     },
     createFileSystemWatcher: (pattern) => {
@@ -3837,6 +4399,9 @@ function createControllerTestContext(options: ControllerTestOptions) {
     errorMessages,
     outputLines,
     clientOptions: () => clientOptions,
+    experimentalCapabilities: () => experimentalCapabilities,
+    configResource: () => configResources.find((resource) => resource !== undefined),
+    configuredWorkspaceRootState,
     dispose: async () => {
       await controller.stop();
       output.dispose();
@@ -3896,13 +4461,13 @@ function assertCargoTomlWatcherScopedToWorkspace(
   watcherPatterns: vscode.GlobPattern[],
   workspaceRoot: string
 ): void {
-  assert.strictEqual(watcherPatterns.length, 1, 'expected one Cargo.toml watcher');
+  assert.strictEqual(watcherPatterns.length, 1, 'expected one repository manifest/config watcher');
   const pattern = watcherPatterns[0] as {
     base?: string;
     baseUri?: vscode.Uri;
     pattern?: string;
   };
-  assert.strictEqual(pattern.pattern, '**/Cargo.toml');
+  assert.strictEqual(pattern.pattern, '**/{Cargo.toml,ripr.toml}');
   const basePath = pattern.baseUri?.fsPath ?? pattern.base;
   assertWorkspacePathEqual(basePath ?? '', workspaceRoot);
 }
@@ -3917,7 +4482,7 @@ function assertWorkspacePathEqual(actual: string, expected: string): void {
   assert.strictEqual(normalizedActual, normalizedExpected);
 }
 
-function fakeOutputChannel(lines: string[] = []): vscode.OutputChannel {
+function fakeOutputChannel(lines: string[] = []): vscode.LogOutputChannel {
   return {
     name: 'ripr test',
     append: (value: string) => {
@@ -3936,7 +4501,7 @@ function fakeOutputChannel(lines: string[] = []): vscode.OutputChannel {
       lines.length = 0;
       lines.push(value);
     }
-  } as vscode.OutputChannel;
+  } as vscode.LogOutputChannel;
 }
 
 function fakeFileSystemWatcher(): vscode.FileSystemWatcher {
@@ -3964,11 +4529,47 @@ async function configureTestServer(): Promise<void> {
     return;
   }
 
-  const config = vscode.workspace.getConfiguration('ripr');
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspaceFolder, 'packaged integration tests require a workspace folder');
+  const config = vscode.workspace.getConfiguration('ripr', workspaceFolder.uri);
+  const desired = {
+    serverPath: testServerPath,
+    baseRef: process.env.RIPR_TEST_BASE_REF ?? 'HEAD',
+    checkMode: 'draft' as const,
+    autoDownload: false,
+    seamDiagnostics: true,
+    diagnosticProfile: 'full' as const
+  };
+  if (
+    config.get<string>('server.path') === desired.serverPath &&
+    config.get<string>('baseRef') === desired.baseRef &&
+    config.get<string>('check.mode') === desired.checkMode &&
+    config.get<boolean>('server.autoDownload') === desired.autoDownload &&
+    config.get<boolean>('seamDiagnostics') === desired.seamDiagnostics &&
+    config.get<string>('diagnosticProfile') === desired.diagnosticProfile
+  ) {
+    return;
+  }
   await config.update('server.path', testServerPath, vscode.ConfigurationTarget.Global);
-  await config.update('server.autoDownload', false, vscode.ConfigurationTarget.Global);
-  await config.update('baseRef', 'HEAD', vscode.ConfigurationTarget.Global);
-  await config.update('check.mode', 'instant', vscode.ConfigurationTarget.Global);
+  await config.update('server.autoDownload', desired.autoDownload, vscode.ConfigurationTarget.Global);
+  await config.update(
+    'baseRef',
+    desired.baseRef,
+    vscode.ConfigurationTarget.Global
+  );
+  await config.update('check.mode', 'draft', vscode.ConfigurationTarget.Global);
+  await config.update('seamDiagnostics', true, vscode.ConfigurationTarget.Workspace);
+  await config.update('diagnosticProfile', 'full', vscode.ConfigurationTarget.Workspace);
+}
+
+async function updateDiagnosticProfile(
+  config: vscode.WorkspaceConfiguration,
+  profile: 'actionable' | 'full'
+): Promise<void> {
+  await config.update('diagnosticProfile', profile, vscode.ConfigurationTarget.Workspace);
+  // Let the language client deliver workspace/didChangeConfiguration before
+  // the explicit refresh asks the server to publish the new projection.
+  await sleep(500);
 }
 
 function workspaceFileUri(relativePath: string): vscode.Uri {
@@ -3979,6 +4580,15 @@ function workspaceFileUri(relativePath: string): vscode.Uri {
 
 function workspaceFilePath(relativePath: string): string {
   return workspaceFileUri(relativePath).fsPath;
+}
+
+async function editAndSaveDocument(document: vscode.TextDocument, insertedText = '\n'): Promise<boolean> {
+  const end = document.positionAt(document.getText().length);
+  const editor = await vscode.window.showTextDocument(document);
+  const edited = await editor.edit((builder) => builder.insert(end, insertedText));
+  assert.ok(edited, `expected ${document.uri.fsPath} edit to apply before save`);
+  assert.strictEqual(document.isDirty, true, `expected ${document.uri.fsPath} to become dirty before save`);
+  return document.save();
 }
 
 async function writeWorkspaceFile(relativePath: string, contents: string): Promise<void> {
@@ -3992,12 +4602,7 @@ async function removeWorkspacePath(relativePath: string): Promise<void> {
 }
 
 async function cleanupEditorGapSmokeFiles(): Promise<void> {
-  await Promise.all([
-    removeWorkspacePath('ripr.toml'),
-    removeWorkspacePath('src/pricing.ts'),
-    removeWorkspacePath('tests/pricing.test.ts'),
-    removeWorkspacePath('target/ripr/reports/gap-decision-ledger.json')
-  ]);
+  await removeWorkspacePath('target/ripr/reports/gap-decision-ledger.json');
 }
 
 async function cleanupFirstPrBridgeSmokeFiles(): Promise<void> {
@@ -4176,6 +4781,74 @@ async function waitForDiagnostic(
   ].join('\n'));
 }
 
+async function waitForDiagnosticAbsence(
+  uri: vscode.Uri,
+  predicate: (diagnostic: vscode.Diagnostic) => boolean,
+  timeoutMs = 15000
+): Promise<void> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (!vscode.languages.getDiagnostics(uri).some(predicate)) {
+      return;
+    }
+    await sleep(150);
+  }
+  const current = vscode.languages
+    .getDiagnostics(uri)
+    .map((entry) => `${entry.source ?? '<no source>'}:${diagnosticCode(entry)}:${entry.message}`)
+    .join('\n');
+  throw new Error(`timed out waiting for diagnostic to disappear at ${uri}:\n${current}`);
+}
+
+async function editAndSaveDocumentThenWaitForAnalysis(
+  document: vscode.TextDocument,
+  timeoutMs = 15000,
+  insertedText = '\n'
+): Promise<void> {
+  const targetUri = document.uri.toString();
+  let saved = false;
+  let resolveSaved: () => void = () => {};
+  let resolveDiagnostics: () => void = () => {};
+  const savedEvent = new Promise<void>((resolve) => {
+    resolveSaved = resolve;
+  });
+  const diagnosticsEvent = new Promise<void>((resolve) => {
+    resolveDiagnostics = resolve;
+  });
+  const savedSubscription = vscode.workspace.onDidSaveTextDocument((savedDocument) => {
+    if (savedDocument.uri.toString() === targetUri) {
+      saved = true;
+      resolveSaved();
+    }
+  });
+  const diagnosticsSubscription = vscode.languages.onDidChangeDiagnostics((event) => {
+    if (saved && event.uris.some((uri) => uri.toString() === targetUri)) {
+      resolveDiagnostics();
+    }
+  });
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new Error(`timed out waiting for saved-workspace diagnostics at ${targetUri}`)),
+      timeoutMs
+    );
+  });
+  try {
+    assert.ok(
+      await editAndSaveDocument(document, insertedText),
+      `expected ${targetUri} to become dirty before save`
+    );
+    await Promise.race([savedEvent, timeout]);
+    await Promise.race([diagnosticsEvent, timeout]);
+  } finally {
+    savedSubscription.dispose();
+    diagnosticsSubscription.dispose();
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
 async function waitForHoverText(
   uri: vscode.Uri,
   position: vscode.Position,
@@ -4243,6 +4916,29 @@ async function waitForCodeAction(
   throw new Error(`timed out waiting for code action. Last actions:\n${lastTitles.join('\n')}`);
 }
 
+async function waitForCodeActions(
+  uri: vscode.Uri,
+  range: vscode.Range,
+  predicate: (action: vscode.CodeAction | vscode.Command) => boolean,
+  timeoutMs = 5000
+): Promise<Array<vscode.CodeAction | vscode.Command>> {
+  const started = Date.now();
+  let lastTitles: string[] = [];
+  while (Date.now() - started < timeoutMs) {
+    const actions = await vscode.commands.executeCommand<Array<vscode.CodeAction | vscode.Command>>(
+      'vscode.executeCodeActionProvider',
+      uri,
+      range
+    );
+    lastTitles = (actions ?? []).map((action) => action.title);
+    if ((actions ?? []).some(predicate)) {
+      return actions ?? [];
+    }
+    await sleep(50);
+  }
+  throw new Error(`timed out waiting for code actions. Last actions:\n${lastTitles.join('\n')}`);
+}
+
 async function currentClipboardText(): Promise<string> {
   const capturePath = process.env.RIPR_TEST_CLIPBOARD_CAPTURE_PATH;
   if (capturePath) {
@@ -4268,6 +4964,16 @@ async function writeClipboardText(text: string): Promise<void> {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
+}
+
+function shouldSkipTrustedTestHost(workspaceTrustMode: string | undefined): boolean {
+  return workspaceTrustMode === 'untrusted';
+}
+
+function skipUnlessTrustedTestHost(testContext: Mocha.Context): void {
+  if (shouldSkipTrustedTestHost(process.env.RIPR_TEST_WORKSPACE_TRUST)) {
+    testContext.skip();
+  }
 }
 
 function assertRepairTargetBlocker(message: string): void {

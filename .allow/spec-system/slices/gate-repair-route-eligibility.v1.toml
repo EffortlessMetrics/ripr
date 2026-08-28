@@ -1,0 +1,60 @@
+schema_version = "2.0"
+id = "ripr.slice.gate-repair-route-eligibility.v1"
+generation = 1
+
+source_issue = "issue:1933"
+design_reference = "RIPR-SPEC-0067#canonical-repair-route-eligibility"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Amends the PR-gate use-case contract with the producer-owned data required for
+policy eligibility and the closed fail-closed outcomes for incomplete, limited,
+stale, preview, advisory, and explicitly blocking modes. It does not populate
+gap-ledger seam identity, change gate behavior, execute commands, issue
+receipts, or promote support tiers.
+"""
+
+non_goals = [
+  "gap-ledger seam identity production",
+  "gate blocking behavior",
+  "verification command execution",
+  "receipt issuance",
+  "runtime mutation confirmation",
+  "support-tier promotion",
+]
+
+return_conditions = [
+  "Return to root if a renderer or gate adapter reconstructs identity or commands from presentation fields.",
+  "Return to root if limited, stale, failed, unavailable, or preview evidence can become a blocking decision.",
+  "Return to root if advisory mode is allowed to block a complete route.",
+]
+
+owned_seams = [
+  "seam:ripr:contract:gate-repair-route-eligibility",
+  "seam:ripr:docs:pr-gate-use-case",
+]
+
+shared_seams = [
+  "seam:ripr:output:gate-repair-route",
+  "seam:ripr:output:gap-ledger",
+  "seam:ripr:contract:analysis-currentness",
+]
+
+forbidden_seams = [
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:agent:receipt-issuer",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0067#canonical-repair-route-eligibility"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "design_only"
+
+[support_claim]
+state = "unchanged"

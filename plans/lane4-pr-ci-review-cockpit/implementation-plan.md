@@ -89,12 +89,12 @@ validation gates apply.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -121,12 +121,12 @@ update, non-goals, risks, evidence plan, and exit criteria.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-doc-roles
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -153,12 +153,12 @@ plan role boundaries without changing current acceptance semantics.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-spec-format
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-spec-format
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -186,12 +186,12 @@ commands, and branch-protection non-goals.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-spec-format
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-spec-format
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -217,11 +217,11 @@ rollback for each slice.
 Proof commands:
 
 ```bash
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -247,11 +247,11 @@ non-goals, acceptance, proof commands, and rollback for each slice.
 Proof commands:
 
 ```bash
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -278,11 +278,11 @@ entries, dependencies, stackability where needed, and proof commands.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-campaign
-rtk cargo xtask goals status
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-campaign
+cargo xtask goals status
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -309,10 +309,10 @@ policy report without changing docs automatically.
 Proof commands:
 
 ```bash
-rtk cargo test -p xtask doc_roles
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p xtask doc_roles
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -341,12 +341,12 @@ than future TODO work.
 Proof commands:
 
 ```bash
-rtk cargo test -p ripr pr_review_front_panel
-rtk cargo xtask check-fixture-contracts
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p ripr pr_review_front_panel
+cargo xtask check-fixture-contracts
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -375,11 +375,11 @@ baseline evidence rather than future TODO work.
 Proof commands:
 
 ```bash
-rtk cargo test -p ripr report_packet_index
-rtk cargo xtask check-fixture-contracts
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p ripr report_packet_index
+cargo xtask check-fixture-contracts
+cargo xtask check-output-contracts
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -410,11 +410,11 @@ front-panel or packet-index implementation.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -446,12 +446,12 @@ producers.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-campaign
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-campaign
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -483,11 +483,11 @@ workflow.
 Proof commands:
 
 ```bash
-rtk cargo test -p ripr init_generated_github_workflow
-rtk cargo xtask check-workflows
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p ripr init_generated_github_workflow
+cargo xtask check-workflows
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -514,12 +514,12 @@ labeled preview/advisory.
 Proof commands:
 
 ```bash
-rtk cargo test -p ripr language_aware
-rtk cargo xtask fixtures
-rtk cargo xtask goldens check
-rtk cargo xtask check-workflows
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p ripr language_aware
+cargo xtask fixtures
+cargo xtask goldens check
+cargo xtask check-workflows
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -551,12 +551,12 @@ for covered front-panel and packet-index states.
 Proof commands:
 
 ```bash
-rtk cargo test -p xtask dogfood_
-rtk cargo xtask dogfood
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-capabilities
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p xtask dogfood_
+cargo xtask dogfood
+cargo xtask check-output-contracts
+cargo xtask check-capabilities
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:
@@ -582,14 +582,14 @@ deferred language-aware grouping, known limits, and next-lane handoff.
 Proof commands:
 
 ```bash
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-campaign
-rtk cargo xtask check-capabilities
-rtk cargo xtask check-traceability
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-campaign
+cargo xtask check-capabilities
+cargo xtask check-traceability
+cargo xtask check-pr
+git diff --check
 ```
 
 Rollback:

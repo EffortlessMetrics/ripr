@@ -1,0 +1,24 @@
+schema_version = "0.1"
+policy_state = "advisory-rehearsal"
+enforcement = "workflow_dispatch_only"
+owner = "repo-maintainers"
+workflow = ".github/workflows/windows-packaged-qualification.yml"
+issues = [2379, 2769, 2816, 2528, 2834]
+
+# The workflow is credential-free and cannot become a release transport by
+# accident. It proves both candidate identities before package/editor work.
+candidate_identity = "full_sha_and_immutable_ref"
+publication = "forbidden"
+secrets = "forbidden"
+release_upload = "forbidden"
+receipt_transport = "actions_artifact_only"
+
+[required_journeys]
+cli = ["version", "help", "doctor-json", "check", "explain", "context", "pilot", "outcome"]
+editor_trusted = ["default", "full", "preview", "restart", "shutdown", "orphan-process"]
+editor_untrusted = ["zero-resolver-process-analysis-work"]
+artifact_identity = ["crate-sha256", "installed-binary-path-and-sha256", "vsix-sha256", "candidate-sha"]
+
+[non_claims]
+release = "No version, tag, release asset, signing, marketplace, or source publication claim."
+product = "Journeys do not establish correctness, mutation adequacy, test adequacy, or merge safety."
