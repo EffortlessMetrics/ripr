@@ -2926,17 +2926,59 @@ mod tests {
     }
 
     #[test]
-    fn finalizer_rejects_controller_repository_escape_before_invocation() -> Result<(), String> {
+    fn finalizer_rejects_canonical_controller_escape_and_retains_evidence() -> Result<(), String> {
         let (root, packet) =
             write_admitted_test_closure_for("finalizer-controller-escape", "constructor_dry_run")?;
-        let mut report = read_json(&packet.join(REPORT_JSON), "controller escape disposition")?;
-        report["controller_repository"] = Value::String("../source-checkout".to_string());
-        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
-        rewrite_test_packet_reports_and_index(&packet, &report)?;
-
         let workspace = root.join("workspace");
-        fs::create_dir(&workspace)
-            .map_err(|error| format!("failed to create escape workspace: {error}"))?;
+        let controller_parent = workspace.join("synthetic-fixture");
+        fs::create_dir_all(&controller_parent)
+            .map_err(|error| format!("failed to create controller parent: {error}"))?;
+        let outside = root.join("outside-controller-repository");
+        fs::create_dir(&outside)
+            .map_err(|error| format!("failed to create outside controller: {error}"))?;
+        let alias = controller_parent.join("fixture-repository");
+        #[cfg(windows)]
+        {
+            let alias_text = alias.to_string_lossy().into_owned();
+            let outside_text = outside.to_string_lossy().into_owned();
+            let output = Command::new("cmd")
+                .args([
+                    "/c",
+                    "mklink",
+                    "/J",
+                    alias_text.as_str(),
+                    outside_text.as_str(),
+                ])
+                .output()
+                .map_err(|error| format!("failed to start controller junction command: {error}"))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "failed to create controller directory junction: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ));
+            }
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, &alias)
+            .map_err(|error| format!("failed to create controller directory alias: {error}"))?;
+        #[cfg(not(any(windows, unix)))]
+        return Err("canonical controller escape test requires symlink support".to_string());
+
+        let report = read_json(&packet.join(REPORT_JSON), "controller escape disposition")?;
+        let resolver_error = match controller_repository_path(&workspace, &report) {
+            Ok(path) => {
+                return Err(format!(
+                    "profile-correct controller alias escaped to {}",
+                    path.display()
+                ));
+            }
+            Err(error) => error,
+        };
+        if !resolver_error.contains("escaped the runner-owned workspace") {
+            return Err(format!(
+                "controller resolver returned the wrong escape reason: {resolver_error}"
+            ));
+        }
         let final_packet = workspace.join("final-packet");
         let args = strings(&[
             FINALIZE,
@@ -2947,8 +2989,25 @@ mod tests {
             "--out",
             &path_text(&final_packet)?,
         ]);
-        if finalize(&args).is_ok() || final_packet.exists() {
-            return Err("controller repository escape reached finalizer invocation".to_string());
+        if finalize(&args).is_ok() {
+            return Err("controller repository escape unexpectedly finalized".to_string());
+        }
+        let final_report = verify_packet(&final_packet)?;
+        if json_string(&final_report, "status") != Some("rejected")
+            || final_report["producer"]["normalized_exit_code"].as_u64() != Some(1)
+            || !final_report["failure_reasons"]
+                .as_array()
+                .is_some_and(|reasons| {
+                    reasons.iter().any(|reason| {
+                        reason.as_str().is_some_and(|reason| {
+                            reason.contains("escaped the runner-owned workspace")
+                        })
+                    })
+                })
+        {
+            return Err(
+                "canonical controller escape did not retain a terminal rejected packet".to_string(),
+            );
         }
         fs::remove_dir_all(&root)
             .map_err(|error| format!("failed to clean finalizer escape fixture: {error}"))?;
