@@ -13903,3 +13903,91 @@ An unavailable final remote observation immediately rolls back only the local
 candidate ref behind an exact-state guard, then records every mandatory
 post-push authority reread before returning `publication_state_unknown`;
 remote state remains unknown and is never rolled back.
+
+## Source-promotion admission workflow packet
+
+`cargo xtask source-promotion run-admission-workflow` writes a normalized
+runner-owned disposition with schema
+`ripr.source_promotion_admission_workflow.v1`. The complete directory is
+indexed by `packet-index.json` using packet schema
+`ripr.source_promotion_admission_workflow_packet.v1`; the human projection is
+`workflow-disposition.md`.
+
+Before producer execution, the workflow writes one exact
+`ripr.source_promotion_admission_request.v1` request and captures the SHA-256
+of those bytes. The producer compares every requested identity and locator to
+its CLI inputs before materialization, embeds the request at
+`evidence/requested-identity.json`, and binds its digest into the disposition.
+Downloaded and final verification require the original request bytes and
+pre-producer digest; a packet cannot replace its request and authorize itself.
+
+The disposition status is one of:
+
+- `admitted` — every exact input, source-trusted producer, required command,
+  final reread, packet member, and mode-specific attempt invariant passed; or
+- `rejected` — the packet records a terminal non-green disposition and the
+  available reason/evidence.
+
+The closed `execution_profile` values are `live`, `positive_synthetic`, and
+`j5_negative`. Synthetic packets include a deterministic `fixture_identity`;
+live packets bind every external sidecar to its producer repository, immutable
+commit/ref, regular-file path/mode, and SHA-256. The closed operation modes are
+`admit_only` and `constructor_dry_run`.
+`reviewed_tree_carrier_sha` names the exact source-repository commit that
+materializes `reviewed_tree_sha`; live execution requires its ordered parents
+to equal `source_parent_sha` and `w7_peeled_sha`.
+Synthetic profiles require `reviewed_tree_carrier_sha` to be `not_required`
+and make no live carrier-materialization claim.
+`controller_packets.*.path` names the stable location beneath the uploaded
+packet, and `packet-index.json` recursively binds the controller receipts and
+all materialized locator evidence beneath `evidence/`. Final verification
+rejects missing, extra, corrupt, symlinked, or summary-inconsistent members.
+For admitted packets it also replays the indexed validation, trusted-builder,
+integration, admission, qualification, and construction receipt contracts and
+derives the normalized attempt summary from those receipt bytes. Rebinding
+outer indexes or summary digests cannot make semantically invalid nested
+evidence admissible.
+An admitted constructor final packet requires a valid indexed construction
+receipt. A rejected final packet may report that receipt unavailable while
+still indexing all partial construction bytes; an absent output directory does
+not create placeholder evidence.
+
+`trusted_checker_identity` has the closed form
+`source-owned-xtask@<40-character-workflow-source-SHA>` and must name the same
+commit as `workflow_source_sha`. It binds source ownership while the workflow's
+internally produced trusted-builder evidence binds toolchain, lockfile,
+isolated external build, and executable digest.
+
+The normalized mutation-attempt fields are:
+
+- `constructor_commit_tree_attempts`;
+- `local_ref_attempts`;
+- `remote_push_attempts`;
+- `merge_command_attempts`; and
+- `release_or_publication_attempts`.
+
+`admit_only` requires all five values to be zero. `constructor_dry_run` permits
+at most one constructor commit-tree attempt after terminal admission, in an
+isolated synthetic repository, and requires the other four values to remain
+zero. Neither mode grants ref, publication, merge, qualification, or release
+authority.
+If a rejected constructor invocation produced no parseable construction
+receipt, its constructor, local-ref, remote-push, and merge-command attempt
+counts are `null` (unknown), not zero. Publication reachability remains a
+separately proven zero because the closed harness has no publication command.
+
+After the immutable admission packet is independently enforced,
+`cargo xtask source-promotion finalize-admission-workflow` writes the separate
+final packet for admit-only normalization or the guarded constructor dry-run.
+
+`cargo xtask source-promotion verify-admission-workflow --packet <dir>
+--requested-identity <file> --requested-identity-sha256 <digest>` rereads the
+index, nested receipt semantics, packet bytes, and original request authority
+independently. `cargo xtask source-promotion
+enforce-admission-workflow --packet <dir> --expected-status admitted` fails for
+`rejected`, missing, malformed, unsupported, `not_run`, `unavailable`, non-zero
+producer exit, stale identity, failed reread, or packet/conclusion
+disagreement. The immutable admission packet uploads first, is downloaded to a
+fresh runner-owned path, verified, and enforced before constructor dry-run is
+reachable. The available final normalized packet uploads separately, so a
+terminal-red state still retains all evidence produced before the stop.

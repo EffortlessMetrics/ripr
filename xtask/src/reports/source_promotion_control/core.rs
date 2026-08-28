@@ -33,6 +33,13 @@ const PUBLICATION_REPORT: &str = "candidate-ref-publication.json";
 const PACKET_INDEX: &str = "packet-index.json";
 const VALIDATION_REPORT: &str = "resolved-tree-validation.json";
 
+const BUILDER_TITLE: &str = "Trusted source-promotion builder";
+const BUILDER_SUCCESS_CLAIM: &str = "This packet binds one clean source checkout, Rust toolchain, Cargo.lock, isolated locked build, workflow source, and executable digest. It grants no candidate-tree, construction, ref, merge, release, or publication authority.";
+const ADMISSION_TITLE: &str = "Resolved-tree admission";
+const ADMISSION_SUCCESS_CLAIM: &str = "This packet admits one exact terminal-green resolved-tree transaction for later exact-tree qualification and guarded construction. It does not construct a commit, move a ref, print a merge command, or authorize release publication.";
+const CONSTRUCTION_TITLE: &str = "Exact-join construction";
+const CONSTRUCTION_SUCCESS_CLAIM: &str = "This packet records one exact unreferenced direct two-parent object after terminal tree qualification. It moves no ref and grants no release or publication authority.";
+
 const DEFAULT_BUILDER_OUT: &str = "target/ripr/source-promotion/trusted-builder";
 const DEFAULT_ADMISSION_OUT: &str = "target/ripr/source-promotion/resolved-tree-admission";
 const DEFAULT_CONSTRUCTION_OUT: &str = "target/ripr/source-promotion/exact-join-construction";
@@ -54,6 +61,30 @@ const REQUIRED_QUALIFICATION_LANES: &[&str] = &[
     "untrusted_workspace_contract",
     "w7_product",
 ];
+
+fn validate_exact_json_fields(
+    value: &Value,
+    label: &str,
+    required: &[&str],
+    optional: &[&str],
+) -> Result<(), String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("{label} must be an object"))?;
+    let observed = object.keys().map(String::as_str).collect::<BTreeSet<_>>();
+    let required = required.iter().copied().collect::<BTreeSet<_>>();
+    let allowed = required
+        .iter()
+        .copied()
+        .chain(optional.iter().copied())
+        .collect::<BTreeSet<_>>();
+    if !required.is_subset(&observed) || !observed.is_subset(&allowed) {
+        return Err(format!(
+            "{label} fields differ from exact contract: {observed:?}"
+        ));
+    }
+    Ok(())
+}
 
 fn validate_source_main_ref(reference: &str) -> Result<(), String> {
     validate_full_ref(reference, "source main ref")?;

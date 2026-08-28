@@ -25,6 +25,8 @@ mod release;
 mod repo;
 mod review_comments;
 mod sarif;
+mod source_promotion_admission_fixture;
+mod source_promotion_admission_workflow;
 mod source_promotion_control;
 mod source_promotion_validate_resolved_tree;
 mod source_promotion_verify;
@@ -65,6 +67,9 @@ pub(crate) use repo::{
 };
 pub(crate) use review_comments::ripr_review_comments;
 pub(crate) use sarif::sarif_policy;
+pub(crate) use source_promotion_admission_workflow::{
+    source_promotion_admission_workflow, source_promotion_admission_workflow_handles,
+};
 pub(crate) use source_promotion_control::{
     source_promotion_control, source_promotion_control_handles,
 };

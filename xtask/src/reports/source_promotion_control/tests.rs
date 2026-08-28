@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod source_promotion_control_tests {
+pub(crate) mod source_promotion_control_tests {
     use super::*;
     use std::cell::Cell;
     use std::fmt::Debug;
@@ -140,6 +140,7 @@ mod source_promotion_control_tests {
 
     fn valid_resolved_tree_receipt() -> Value {
         let identity = test_identity();
+        let empty_digest = digest_bytes(&[]);
         let commands = [
             "check-network-policy",
             "check-process-policy",
@@ -167,11 +168,11 @@ mod source_promotion_control_tests {
                 "evidence_present": true,
                 "stdout_path": format!("commands/{:02}-{command}.stdout.log", index + 1),
                 "stdout_bytes": 0,
-                "stdout_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "stdout_sha256": empty_digest.as_str(),
                 "stdout_truncated": false,
                 "stderr_path": format!("commands/{:02}-{command}.stderr.log", index + 1),
                 "stderr_bytes": 0,
-                "stderr_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "stderr_sha256": empty_digest.as_str(),
                 "stderr_truncated": false,
                 "failure_reason": null,
             })
@@ -179,6 +180,7 @@ mod source_promotion_control_tests {
         .collect::<Vec<_>>();
         serde_json::json!({
             "schema": "ripr.source_promotion_resolved_tree_validation.v1",
+            "tool_version": env!("CARGO_PKG_VERSION"),
             "status": "validated",
             "source_parent": identity.source_parent.as_str(),
             "swarm_parent": identity.swarm_parent.as_str(),
@@ -196,10 +198,12 @@ mod source_promotion_control_tests {
                 "verified": true,
             },
             "trusted_checker": {
+                "selection": "running xtask executable from checkout whose HEAD equals source_parent",
                 "source_sha": "1111111111111111111111111111111111111111",
                 "executable_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
             },
             "materialization": {
+                "path_role": "os_temp_disposable_checkout",
                 "reviewed_tree": "3333333333333333333333333333333333333333",
                 "disposable_commit": "6666666666666666666666666666666666666666",
                 "created": true,
@@ -209,18 +213,30 @@ mod source_promotion_control_tests {
                 "directory_removed": true,
                 "worktree_residue_observed": false,
                 "cleanup_failure_reason": null,
+                "authoritative": false,
             },
+            "required_command_catalog": super::super::source_promotion_validate_resolved_tree::REQUIRED_COMMANDS,
             "commands": commands,
             "repository_observation": {
                 "ref_mutation_observed": false,
                 "worktree_registry_changed": false,
             },
+            "packet_contract": {
+                "runner_owned_exclusive_staging": true,
+                "create_new_files": true,
+                "index_written_last": true,
+                "atomic_directory_publish": true,
+                "index": "packet-index.json",
+            },
+            "disposable_git_object_write_attempted": true,
             "authoritative_commit_attempted": false,
             "branch_attempted": false,
             "tag_attempted": false,
             "push_attempted": false,
             "ref_mutation_attempted": false,
             "failure_reasons": [],
+            "invalidation_rules": super::super::source_promotion_validate_resolved_tree::INVALIDATION_RULES,
+            "non_claims": super::super::source_promotion_validate_resolved_tree::NON_CLAIMS,
         })
     }
 
@@ -256,6 +272,7 @@ mod source_promotion_control_tests {
             "push_attempted": false,
             "merge_command": null,
             "failure_reasons": [],
+            "invalidation_rules": [],
         })
     }
 
@@ -457,6 +474,21 @@ mod source_promotion_control_tests {
         executable_sha256: String,
     }
 
+    pub(crate) struct AdmissionReplayFixture {
+        _root: TestDir,
+        pub(crate) source_parent: String,
+        pub(crate) swarm_parent: String,
+        pub(crate) join_tree: String,
+        pub(crate) swarm_ref: String,
+        pub(crate) preflight: PathBuf,
+        pub(crate) resolution: PathBuf,
+        pub(crate) validation_packet: PathBuf,
+        pub(crate) builder_packet: PathBuf,
+        pub(crate) integration_index: PathBuf,
+        pub(crate) admission_packet: PathBuf,
+        pub(crate) qualification: PathBuf,
+    }
+
     fn write_test_json(path: &Path, value: &Value, label: &str) -> Result<Vec<u8>, String> {
         let mut bytes = serde_json::to_vec_pretty(value)
             .map_err(|error| format!("failed to encode {label}: {error}"))?;
@@ -476,19 +508,121 @@ mod source_promotion_control_tests {
         fs::create_dir_all(root)
             .map_err(|error| format!("failed to create test packet directory: {error}"))?;
         let report_bytes = write_test_json(&root.join(report_name), report, "test packet report")?;
+        let attempt_bytes = b"{}\n";
+        fs::write(root.join("control-attempt.json"), attempt_bytes)
+            .map_err(|error| format!("failed to write test attempt journal: {error}"))?;
+        let markdown_name = report_name
+            .strip_suffix(".json")
+            .map(|stem| format!("{stem}.md"))
+            .ok_or_else(|| "test packet report name must end in .json".to_string())?;
+        let (title, claim_boundary) = match kind {
+            "trusted_builder" => (BUILDER_TITLE, BUILDER_SUCCESS_CLAIM),
+            "resolved_tree_admission" => (ADMISSION_TITLE, ADMISSION_SUCCESS_CLAIM),
+            "exact_join_construction" => (CONSTRUCTION_TITLE, CONSTRUCTION_SUCCESS_CLAIM),
+            _ => ("Test controller packet", "Test-only controller packet."),
+        };
+        let markdown = render_control_markdown(title, report, claim_boundary)?;
+        let markdown_bytes = markdown.as_bytes();
+        fs::write(root.join(&markdown_name), markdown_bytes)
+            .map_err(|error| format!("failed to write test packet Markdown: {error}"))?;
+        let mut files = vec![
+            serde_json::json!({
+                "path": "control-attempt.json",
+                "bytes": attempt_bytes.len(),
+                "sha256": digest_bytes(attempt_bytes),
+            }),
+            serde_json::json!({
+                "path": markdown_name,
+                "bytes": markdown_bytes.len(),
+                "sha256": digest_bytes(markdown_bytes),
+            }),
+            serde_json::json!({
+                "path": report_name,
+                "bytes": report_bytes.len(),
+                "sha256": digest_bytes(&report_bytes),
+            }),
+        ];
+        files.sort_by(|left, right| json_string(left, "path").cmp(&json_string(right, "path")));
         let index = serde_json::json!({
             "schema": schema,
             "kind": kind,
             "status": status,
             "complete": true,
-            "files": [{
-                "path": report_name,
-                "bytes": report_bytes.len(),
-                "sha256": digest_bytes(&report_bytes),
-            }],
+            "files": files,
         });
         write_test_json(&root.join(PACKET_INDEX), &index, "test packet index")?;
         read_indexed_packet(root, schema, Some(kind), Some(status), report_name)
+    }
+
+    fn write_validation_packet_with_logs(
+        root: &Path,
+        report: &Value,
+    ) -> Result<IndexedPacket, String> {
+        fs::create_dir_all(root.join("commands")).map_err(|error| {
+            format!("failed to create validation command fixture directory: {error}")
+        })?;
+        let report_bytes = write_test_json(
+            &root.join(VALIDATION_REPORT),
+            report,
+            "test validation report",
+        )?;
+        let markdown_name = "resolved-tree-validation.md";
+        let markdown =
+            super::super::source_promotion_validate_resolved_tree::render_markdown(report)?;
+        let markdown_bytes = markdown.as_bytes();
+        fs::write(root.join(markdown_name), markdown_bytes)
+            .map_err(|error| format!("failed to write test validation Markdown: {error}"))?;
+        let mut files = vec![
+            serde_json::json!({
+                "path": VALIDATION_REPORT,
+                "bytes": report_bytes.len(),
+                "sha256": digest_bytes(&report_bytes),
+            }),
+            serde_json::json!({
+                "path": markdown_name,
+                "bytes": markdown_bytes.len(),
+                "sha256": digest_bytes(markdown_bytes),
+            }),
+        ];
+        let commands = report
+            .get("commands")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "test validation report is missing commands".to_string())?;
+        for (index, command) in commands.iter().enumerate() {
+            let name = json_string(command, "command")
+                .ok_or_else(|| "test validation command is missing its name".to_string())?;
+            for stream in ["stderr", "stdout"] {
+                let path = format!("commands/{:02}-{name}.{stream}.log", index + 1);
+                fs::write(root.join(&path), []).map_err(|error| {
+                    format!("failed to write validation command fixture: {error}")
+                })?;
+                files.push(serde_json::json!({
+                    "path": path,
+                    "bytes": 0,
+                    "sha256": digest_bytes(&[]),
+                }));
+            }
+        }
+        files.sort_by(|left, right| {
+            json_string(left, "path")
+                .unwrap_or_default()
+                .cmp(json_string(right, "path").unwrap_or_default())
+        });
+        let index = serde_json::json!({
+            "schema": RESOLVED_TREE_PACKET_SCHEMA,
+            "kind": "resolved_tree_validation",
+            "status": "validated",
+            "complete": true,
+            "files": files,
+        });
+        write_test_json(&root.join(PACKET_INDEX), &index, "test validation packet index")?;
+        read_indexed_packet(
+            root,
+            RESOLVED_TREE_PACKET_SCHEMA,
+            Some("resolved_tree_validation"),
+            Some("validated"),
+            VALIDATION_REPORT,
+        )
     }
 
     fn write_test_integration_index(
@@ -668,12 +802,8 @@ mod source_promotion_control_tests {
             Value::String(identity.join_tree.clone()),
             "admission validation materialized tree",
         )?;
-        let validation_packet = write_test_packet(
+        let validation_packet = write_validation_packet_with_logs(
             &evidence_root.join("validation-packet"),
-            RESOLVED_TREE_PACKET_SCHEMA,
-            "resolved_tree_validation",
-            "validated",
-            VALIDATION_REPORT,
             &validation,
         )?;
 
@@ -715,6 +845,91 @@ mod source_promotion_control_tests {
             integration,
             executable_sha256,
         })
+    }
+
+    pub(crate) fn admission_replay_fixture(
+        label: &str,
+    ) -> Result<AdmissionReplayFixture, String> {
+        let fixture = admission_snapshot_fixture(label)?;
+        let admission_packet = fixture.repo.join("workflow-admission-packet");
+        let admission = admission_success_report(&fixture.evidence);
+        let indexed_admission = write_test_packet(
+            &admission_packet,
+            CONTROL_PACKET_SCHEMA,
+            "resolved_tree_admission",
+            "admitted",
+            ADMISSION_REPORT,
+            &admission,
+        )?;
+        let admission_receipt_sha256 =
+            packet_file_sha256(&indexed_admission, ADMISSION_REPORT)?;
+        let network_policy_receipt_sha256 = fixture
+            .integration
+            .receipt_digests
+            .get("network_policy_integration")
+            .ok_or_else(|| "replay fixture is missing network policy evidence".to_string())?;
+        let qualification = valid_qualification_receipt_for(
+            &fixture.options.identity,
+            &admission,
+            &indexed_admission,
+            &admission_receipt_sha256,
+            network_policy_receipt_sha256,
+        )?;
+        let qualification_path = fixture.repo.join("workflow-qualification.json");
+        write_test_json(
+            &qualification_path,
+            &qualification,
+            "workflow replay qualification",
+        )?;
+        Ok(AdmissionReplayFixture {
+            source_parent: fixture.options.identity.source_parent.clone(),
+            swarm_parent: fixture.options.identity.swarm_parent.clone(),
+            join_tree: fixture.options.identity.join_tree.clone(),
+            swarm_ref: fixture.swarm_ref,
+            preflight: fixture.options.preflight,
+            resolution: fixture.options.resolution_manifest,
+            validation_packet: fixture.options.validation_packet,
+            builder_packet: fixture.options.builder_packet,
+            integration_index: fixture.options.integration_index,
+            admission_packet,
+            qualification: qualification_path,
+            _root: fixture.repo,
+        })
+    }
+
+    pub(crate) fn write_construction_replay_packet(
+        root: &Path,
+        admission: &Value,
+        admission_index_sha256: String,
+        admission_receipt_sha256: String,
+        validation_index_sha256: String,
+        qualification_sha256: String,
+    ) -> Result<Value, String> {
+        let evidence = ConstructionEvidence {
+            identity: identity_from_admission(admission)?,
+            swarm_ref: required_receipt_string(admission, "swarm_ref")?,
+            candidate_ref: "refs/heads/promote/0.11.0-replay-fixture".to_string(),
+            admission_index_sha256,
+            admission_receipt_sha256,
+            validation_index_sha256,
+            integration_index_sha256: required_receipt_string(
+                admission,
+                "integration_index_sha256",
+            )?,
+            qualification_sha256,
+            join_commit: "7".repeat(40),
+            commit_timestamp: "2026-08-28T00:00:00Z".to_string(),
+        };
+        let report = construction_success_report(&evidence);
+        write_test_packet(
+            root,
+            CONTROL_PACKET_SCHEMA,
+            "exact_join_construction",
+            "constructed",
+            CONSTRUCTION_REPORT,
+            &report,
+        )?;
+        Ok(report)
     }
 
     fn construction_snapshot_fixture(label: &str) -> Result<ConstructionSnapshotFixture, String> {

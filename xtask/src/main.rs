@@ -59094,6 +59094,9 @@ fn check_output_contracts() -> Result<(), String> {
         source_promotion_control.push_str(&read_text_lossy(Path::new(path))?);
         source_promotion_control.push('\n');
     }
+    let source_promotion_admission_workflow = read_text_lossy(Path::new(
+        "xtask/src/reports/source_promotion_admission_workflow.rs",
+    ))?;
     let mut json_output = String::new();
     for path in [
         "crates/ripr/src/output/json/mod.rs",
@@ -59240,6 +59243,27 @@ fn check_output_contracts() -> Result<(), String> {
                 require_contract_value(
                     "xtask/src/reports/source_promotion_control/",
                     &source_promotion_control,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
+            "source_promotion_admission_workflow_schema"
+            | "source_promotion_admission_workflow_packet_schema"
+            | "source_promotion_admission_workflow_status"
+            | "source_promotion_admission_workflow_profile"
+            | "source_promotion_admission_workflow_mode"
+            | "source_promotion_admission_workflow_attempt_field" => {
+                require_contract_value(
+                    "xtask/src/reports/source_promotion_admission_workflow.rs",
+                    &source_promotion_admission_workflow,
                     value,
                     kind,
                     &mut violations,

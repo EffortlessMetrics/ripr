@@ -150,8 +150,8 @@ fn write_trusted_builder_receipt(args: &[String]) -> Result<(), String> {
             kind: "trusted_builder",
             report_name: BUILDER_REPORT,
             report: &report,
-            title: "Trusted source-promotion builder",
-            claim_boundary: "This packet binds one clean source checkout, Rust toolchain, Cargo.lock, isolated locked build, workflow source, and executable digest. It grants no candidate-tree, construction, ref, merge, release, or publication authority.",
+            title: BUILDER_TITLE,
+            claim_boundary: BUILDER_SUCCESS_CLAIM,
         },
     );
     if status == "built" {
@@ -374,8 +374,8 @@ fn admit_resolved_tree(args: &[String]) -> Result<(), String> {
                     kind: "resolved_tree_admission",
                     report_name: ADMISSION_REPORT,
                     report: &report,
-                    title: "Resolved-tree admission",
-                    claim_boundary: "This packet admits one exact terminal-green resolved-tree transaction for later exact-tree qualification and guarded construction. It does not construct a commit, move a ref, print a merge command, or authorize release publication.",
+                    title: ADMISSION_TITLE,
+                    claim_boundary: ADMISSION_SUCCESS_CLAIM,
                 },
             )
         }
@@ -554,6 +554,13 @@ fn validate_resolved_tree_binding(
                 .to_string(),
         );
     }
+    validate_resolved_tree_identity_binding(receipt, identity)
+}
+
+fn validate_resolved_tree_identity_binding(
+    receipt: &Value,
+    identity: &PromotionIdentity,
+) -> Result<(), String> {
     if json_string(receipt, "source_parent") != Some(identity.source_parent.as_str())
         || json_string(receipt, "swarm_parent") != Some(identity.swarm_parent.as_str())
         || json_string(receipt, "reviewed_tree") != Some(identity.join_tree.as_str())
@@ -614,11 +621,44 @@ fn validate_builder_receipt(
     validation: &Value,
     options: &AdmissionOptions,
 ) -> Result<String, String> {
+    let executable =
+        validate_builder_receipt_contract(builder, validation, &options.identity)?;
+    let expected_lock = file_sha256(&options.repo.join("Cargo.lock"), "Cargo.lock")?;
+    if json_string(builder, "cargo_lock_sha256") != Some(expected_lock.as_str()) {
+        return Err(
+            "trusted builder Cargo.lock digest differs from live source checkout".to_string(),
+        );
+    }
+    if current_executable_sha256()? != executable {
+        return Err(
+            "running admission executable differs from trusted builder receipt".to_string(),
+        );
+    }
+    Ok(executable)
+}
+
+fn validate_builder_receipt_contract(
+    builder: &Value,
+    validation: &Value,
+    identity: &PromotionIdentity,
+) -> Result<String, String> {
+    validate_exact_json_fields(
+        builder,
+        "trusted builder receipt",
+        &[
+            "schema", "status", "source_parent", "workflow_source_sha", "clean_checkout",
+            "rust_toolchain", "cargo_lock_sha256", "locked_build", "isolated_cargo_target_dir",
+            "executable_sha256", "failure_reasons", "authoritative_commit_attempted",
+            "commit_tree_attempts", "local_ref_attempts", "remote_push_attempts",
+            "merge_command_attempts", "merge_command", "ref_mutation_attempted", "push_attempted",
+        ],
+        &["non_claims"],
+    )?;
     if json_string(builder, "schema") != Some(BUILDER_SCHEMA)
         || json_string(builder, "status") != Some("built")
-        || json_string(builder, "source_parent") != Some(options.identity.source_parent.as_str())
+        || json_string(builder, "source_parent") != Some(identity.source_parent.as_str())
         || json_string(builder, "workflow_source_sha")
-            != Some(options.identity.source_parent.as_str())
+            != Some(identity.source_parent.as_str())
         || json_bool(builder, "clean_checkout") != Some(true)
         || json_string(builder, "rust_toolchain")
             .is_none_or(|value| !value.starts_with(&format!("rustc {RUST_TOOLCHAIN} ")))
@@ -653,12 +693,9 @@ fn validate_builder_receipt(
         return Err("trusted builder receipt must not contain a merge command".to_string());
     }
 
-    let expected_lock = file_sha256(&options.repo.join("Cargo.lock"), "Cargo.lock")?;
-    if json_string(builder, "cargo_lock_sha256") != Some(expected_lock.as_str()) {
-        return Err(
-            "trusted builder Cargo.lock digest differs from live source checkout".to_string(),
-        );
-    }
+    json_string(builder, "cargo_lock_sha256")
+        .filter(|value| is_exact_lower_hex(value, 64))
+        .ok_or_else(|| "trusted builder receipt has invalid Cargo.lock digest".to_string())?;
     let executable = json_string(builder, "executable_sha256")
         .filter(|value| is_exact_lower_hex(value, 64))
         .ok_or_else(|| "trusted builder receipt has invalid executable digest".to_string())?
@@ -671,11 +708,6 @@ fn validate_builder_receipt(
         return Err(
             "trusted builder executable digest differs from resolved-tree validator receipt"
                 .to_string(),
-        );
-    }
-    if current_executable_sha256()? != executable {
-        return Err(
-            "running admission executable differs from trusted builder receipt".to_string(),
         );
     }
     Ok(executable)

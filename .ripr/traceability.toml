@@ -6110,6 +6110,19 @@ tests = [
   "xtask/src/reports/source_promotion_control/tests.rs::source_promotion_control_tests::source_promotion_publication_uses_expected_absent_guard_without_merge_authority",
   "xtask/src/reports/source_promotion_control/tests.rs::source_promotion_control_tests::source_promotion_publication_rolls_back_local_ref_on_remote_rejection",
   "xtask/tests/source_promotion_resolved_tree.rs::j5_source_ledger_rejects_and_semantic_reconciliation_passes",
+  "xtask/tests/source_promotion_workflow_contract.rs::admission_workflow_has_closed_exact_transport_and_terminal_order",
+  "xtask/tests/source_promotion_workflow_contract.rs::admission_workflow_contract_rejects_security_and_order_mutations",
+  "xtask/tests/source_promotion_workflow_contract.rs::admission_workflow_does_not_accept_caller_selected_authority",
+  "xtask/src/reports/source_promotion_admission_workflow.rs::tests::j5_negative_is_fail_closed_before_constructor",
+  "xtask/src/reports/source_promotion_admission_workflow.rs::tests::j5_negative_rejects_constructor_attempt",
+  "xtask/src/reports/source_promotion_admission_workflow.rs::tests::admitted_constructor_requires_exactly_one_unreferenced_object",
+  "xtask/src/reports/source_promotion_admission_workflow.rs::tests::verifier_rejects_every_forbidden_attempt_counter",
+  "xtask/src/reports/source_promotion_admission_workflow.rs::tests::parser_closes_profile_and_mode_enums",
+  "xtask/src/reports/source_promotion_admission_workflow.rs::tests::exact_identity_binding_rejects_moved_ref_and_sidecar",
+  "xtask/src/reports/source_promotion_admission_workflow.rs::tests::synthetic_paths_are_root_independent",
+  "xtask/src/reports/source_promotion_admission_fixture.rs::tests::profile_names_are_closed_and_stable",
+  "xtask/src/reports/source_promotion_admission_fixture.rs::tests::qualification_denominator_is_exact_and_ordered",
+  "xtask/src/reports/source_promotion_admission_fixture.rs::tests::retained_j5_literals_have_exact_requested_cardinality",
 ]
 fixtures = [
   "fixtures/source_promotion_verification",
@@ -6118,6 +6131,9 @@ fixtures = [
 ]
 code = [
   ".github/workflows/source-promotion-contract.yml",
+  ".github/workflows/source-promotion-admission.yml",
+  "xtask/src/reports/source_promotion_admission_workflow.rs",
+  "xtask/src/reports/source_promotion_admission_fixture.rs",
   "xtask/src/command.rs",
   "xtask/src/dispatch.rs",
   "xtask/src/reports/source_promotion_verify.rs",
@@ -6135,6 +6151,7 @@ outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/release/0.11.0/source-promotion-controller-recovery-manifest.json",
   ".github/workflows/source-promotion-contract.yml",
+  ".github/workflows/source-promotion-admission.yml",
   "fixtures/source_promotion_resolved_tree/expected/rejected.json",
   "fixtures/source_promotion_resolved_tree/expected/rejected.md",
   "fixtures/source_promotion_resolved_tree/expected/validated.json",

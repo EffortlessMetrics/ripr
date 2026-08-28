@@ -1,9 +1,10 @@
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 fn workflow_text() -> Result<String, String> {
     let xtask = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -12,6 +13,454 @@ fn workflow_text() -> Result<String, String> {
         .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
     fs::read_to_string(root.join(".github/workflows/source-promotion-contract.yml"))
         .map_err(|error| format!("read source-promotion contract workflow: {error}"))
+}
+
+fn admission_workflow_text() -> Result<String, String> {
+    let xtask = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let root = xtask
+        .parent()
+        .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
+    fs::read_to_string(root.join(".github/workflows/source-promotion-admission.yml"))
+        .map_err(|error| format!("read source-promotion admission workflow: {error}"))
+}
+
+fn git_output(
+    cwd: &Path,
+    args: &[&str],
+    environment: &[(&str, &str)],
+    input: Option<&[u8]>,
+) -> Result<String, String> {
+    let mut child = Command::new("git")
+        .current_dir(cwd)
+        .args(args)
+        .envs(environment.iter().copied())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("failed to start git {args:?}: {error}"))?;
+    if let Some(bytes) = input {
+        child
+            .stdin
+            .take()
+            .ok_or_else(|| "git child has no stdin".to_string())?
+            .write_all(bytes)
+            .map_err(|error| format!("failed to write git stdin: {error}"))?;
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("failed to wait for git {args:?}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    String::from_utf8(output.stdout)
+        .map(|value| value.trim().to_string())
+        .map_err(|error| format!("git {args:?} output was not UTF-8: {error}"))
+}
+
+fn path_text(path: &Path) -> Result<&str, String> {
+    path.to_str()
+        .ok_or_else(|| format!("path is not UTF-8: {}", path.display()))
+}
+
+fn j5_request_identity(repo_root: &Path, scratch: &Path) -> Result<Value, String> {
+    let source_parent = git_output(repo_root, &["rev-parse", "HEAD"], &[], None)?;
+    let source_tree = git_output(
+        repo_root,
+        &["rev-parse", &format!("{source_parent}^{{tree}}")],
+        &[],
+        None,
+    )?;
+    let identity_repo = scratch.join("identity-repository");
+    git_output(
+        repo_root,
+        &[
+            "clone",
+            "--local",
+            "--no-hardlinks",
+            "--no-checkout",
+            "--quiet",
+            path_text(repo_root)?,
+            path_text(&identity_repo)?,
+        ],
+        &[],
+        None,
+    )?;
+    git_output(
+        &identity_repo,
+        &["checkout", "--quiet", "--detach", &source_parent],
+        &[],
+        None,
+    )?;
+    let index = scratch.join("j5.index");
+    let index_text = path_text(&index)?;
+    let index_env = [("GIT_INDEX_FILE", index_text)];
+    git_output(
+        &identity_repo,
+        &["read-tree", &source_tree],
+        &index_env,
+        None,
+    )?;
+    let mut ledger = git_output(
+        &identity_repo,
+        &["show", "HEAD:policy/network_allowlist.txt"],
+        &[],
+        None,
+    )?;
+    ledger.push('\n');
+    ledger.push_str(
+        ".github/workflows/stale-network-surface.yml|curl|3|source|stale zero-count row\n",
+    );
+    let repeated = |literal: &str, count: usize| {
+        let mut value = std::iter::repeat_n(literal, count)
+            .collect::<Vec<_>>()
+            .join("\n");
+        value.push('\n');
+        value
+    };
+    for (path, contents) in [
+        ("policy/network_allowlist.txt", ledger),
+        (
+            ".github/workflows/server-archive-qualification.yml",
+            "name: server archive qualification\n# retained J5 fixture: curl\n".to_string(),
+        ),
+        (
+            "crates/ripr/src/output/perl_gap_record_projection.rs",
+            repeated("// retained J5 fixture: curl", 5),
+        ),
+        (
+            "xtask/src/tests.rs",
+            repeated("// retained J5 fixture: curl", 2),
+        ),
+        (
+            ".github/workflows/stale-network-surface.yml",
+            "name: stale network surface\n".to_string(),
+        ),
+    ] {
+        let blob = git_output(
+            &identity_repo,
+            &["hash-object", "-w", "--stdin"],
+            &[],
+            Some(contents.as_bytes()),
+        )?;
+        let cache = format!("100644,{blob},{path}");
+        git_output(
+            &identity_repo,
+            &["update-index", "--add", "--cacheinfo", &cache],
+            &index_env,
+            None,
+        )?;
+    }
+    let reviewed_tree = git_output(&identity_repo, &["write-tree"], &index_env, None)?;
+    let fixed = [
+        ("GIT_AUTHOR_NAME", "RIPR Source Promotion Fixture"),
+        ("GIT_AUTHOR_EMAIL", "source-promotion-fixture@invalid"),
+        ("GIT_AUTHOR_DATE", "2000-01-01T00:00:00+00:00"),
+        ("GIT_COMMITTER_NAME", "RIPR Source Promotion Fixture"),
+        ("GIT_COMMITTER_EMAIL", "source-promotion-fixture@invalid"),
+        ("GIT_COMMITTER_DATE", "2000-01-01T00:00:00+00:00"),
+    ];
+    let swarm_parent = git_output(
+        &identity_repo,
+        &["commit-tree", &reviewed_tree, "-p", &source_parent],
+        &fixed,
+        Some(b"test(promotion): deterministic protected W7 fixture\n"),
+    )?;
+    Ok(json!({
+        "schema": "ripr.source_promotion_admission_request.v1",
+        "source_repository": "EffortlessMetrics/ripr",
+        "source_parent_sha": source_parent,
+        "workflow_source_sha": source_parent,
+        "trusted_checker_identity": format!("source-owned-xtask@{source_parent}"),
+        "swarm_repository": "EffortlessMetrics/ripr-swarm",
+        "protected_w7_ref": format!("refs/tags/ripr-release-0.11.0-{swarm_parent}"),
+        "w7_peeled_sha": swarm_parent,
+        "reviewed_tree_sha": reviewed_tree,
+        "reviewed_tree_carrier_sha": "not_required",
+        "preflight_locator": "",
+        "resolution_manifest_locator": "",
+        "validation_packet_locator": "",
+        "integration_packet_locator": "",
+        "qualification_receipt_locator": "",
+        "receipt_schema": "ripr.source_promotion_admission_workflow.v1",
+        "operation_mode": "constructor_dry_run",
+        "execution_profile": "j5_negative",
+    }))
+}
+
+fn require_fragment(text: &str, fragment: &str) -> Result<(), String> {
+    if text.contains(fragment) {
+        Ok(())
+    } else {
+        Err(format!("workflow contract missing fragment: {fragment}"))
+    }
+}
+
+fn require_absent(text: &str, fragment: &str) -> Result<(), String> {
+    if text.contains(fragment) {
+        Err(format!(
+            "workflow contract exposes forbidden fragment: {fragment}"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn require_order(text: &str, before: &str, after: &str) -> Result<(), String> {
+    let before_offset = text
+        .find(before)
+        .ok_or_else(|| format!("workflow contract missing ordered fragment: {before}"))?;
+    let after_offset = text
+        .find(after)
+        .ok_or_else(|| format!("workflow contract missing ordered fragment: {after}"))?;
+    if before_offset < after_offset {
+        Ok(())
+    } else {
+        Err(format!(
+            "workflow contract orders {after:?} before {before:?}"
+        ))
+    }
+}
+
+fn validate_admission_workflow_contract(workflow: &str) -> Result<(), String> {
+    for required in [
+        "name: Source Promotion Admission",
+        "  workflow_call:",
+        "  workflow_dispatch:",
+        "permissions:\n  contents: read",
+        "      contents: read",
+        "github.repository == 'EffortlessMetrics/ripr' &&",
+        "github.ref == 'refs/heads/main' &&",
+        "inputs.source_repository == 'EffortlessMetrics/ripr'",
+        "runs-on: ubuntu-latest",
+        "admission_root=\"$RUNNER_TEMP/ripr-source-promotion-admission\"",
+        "\"ADMISSION_OUT=$admission_out\"",
+        "\"ADMISSION_EVIDENCE=$admission_evidence\"",
+        "\"ADMISSION_FINAL_EVIDENCE=$admission_final_evidence\"",
+        "\"ADMISSION_WORKSPACE=$admission_workspace\"",
+        "persist-credentials: false",
+        "repository: ${{ job.workflow_repository }}",
+        "ref: ${{ job.workflow_sha }}",
+        "WORKFLOW_FILE_SHA: ${{ job.workflow_sha }}",
+        "WORKFLOW_FILE_REF: ${{ job.workflow_ref }}",
+        "test \"$WORKFLOW_FILE_SHA\" = \"$WORKFLOW_SOURCE_SHA\"",
+        "test \"$REVIEWED_TREE_CARRIER_SHA\" = not_required",
+        "\"$SOURCE_REPOSITORY/.github/workflows/source-promotion-admission.yml@\"*",
+        "test \"$GITHUB_REF\" = refs/heads/main",
+        "test \"$GITHUB_SHA\" = \"$SOURCE_PARENT_SHA\"",
+        "test \"$WORKFLOW_SOURCE_SHA\" = \"$SOURCE_PARENT_SHA\"",
+        "test \"$(git rev-parse HEAD)\" = \"$WORKFLOW_SOURCE_SHA\"",
+        "ripr.source_promotion_admission_workflow.v1",
+        "ripr.source_promotion_admission_request.v1",
+        "@[0-9a-f]{40}:[A-Za-z0-9._/-]+#sha256:[0-9a-f]{64}",
+        "source-promotion run-admission-workflow",
+        "source-promotion verify-admission-workflow",
+        "source-promotion enforce-admission-workflow",
+        "source-promotion finalize-admission-workflow",
+        "if: always() && steps.enforce.outcome == 'success'",
+        "--admission-packet \"$ADMISSION_ROOT/downloaded/workflow-packet\"",
+        "--out \"$ADMISSION_FINAL_EVIDENCE\"",
+        "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8",
+        "sha256sum --check transport-index.sha256",
+        "diff --recursive --no-dereference \"$ADMISSION_OUT\" \"$downloaded\"",
+        "test \"$TRUSTED_CHECKER_IDENTITY\" = \"source-owned-xtask@$WORKFLOW_SOURCE_SHA\"",
+        "^refs/tags/ripr-release-",
+        "printf '%s\\n' \"$producer_exit\" > \"$ADMISSION_OUT/producer-exit-code.txt\"",
+        "tail -c 1048576 \"$log\"",
+        "\"truncated=$truncated\"",
+        "\"original_bytes=$original_bytes\"",
+        "identity_digest=$(sha256sum \"$admission_out/requested-identity.json\" | awk '{print $1}')",
+        "\"identity_digest=$identity_digest\"",
+        "--requested-identity \"$ADMISSION_OUT/requested-identity.json\"",
+        "--requested-identity \"$downloaded/requested-identity.json\"",
+        "--requested-identity-sha256 \"${{ steps.initialize.outputs.identity_digest }}\"",
+        "artifact_name=source-promotion-admission-v1-$identity_digest-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT",
+        "final_artifact_name=source-promotion-admission-final-v1-$identity_digest-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT",
+        "name: ${{ steps.initialize.outputs.artifact_name }}",
+        "name: ${{ steps.initialize.outputs.final_artifact_name }}",
+        "test \"${{ steps.producer.outcome }}\" = success",
+        "test \"${{ steps.finalize.outcome }}\" = success",
+        "test -d \"$downloaded/workflow-packet\"",
+        "test -d \"$ADMISSION_FINAL_EVIDENCE\"",
+        "--expected-status admitted",
+        "if-no-files-found: error",
+    ] {
+        require_fragment(workflow, required)?;
+    }
+
+    for input in [
+        "source_repository",
+        "source_parent_sha",
+        "workflow_source_sha",
+        "swarm_repository",
+        "protected_w7_ref",
+        "w7_peeled_sha",
+        "reviewed_tree_sha",
+        "reviewed_tree_carrier_sha",
+        "preflight_locator",
+        "resolution_manifest_locator",
+        "validation_packet_locator",
+        "integration_packet_locator",
+        "qualification_receipt_locator",
+        "receipt_schema",
+        "operation_mode",
+        "execution_profile",
+        "trusted_checker_identity",
+    ] {
+        require_fragment(workflow, &format!("      {input}:"))?;
+        require_fragment(workflow, &format!("--{}", input.replace('_', "-")))?;
+    }
+    require_fragment(workflow, "inputs: &admission_inputs")?;
+    require_fragment(workflow, "inputs: *admission_inputs")?;
+    for required_input in [
+        "source_repository",
+        "source_parent_sha",
+        "workflow_source_sha",
+        "swarm_repository",
+        "protected_w7_ref",
+        "w7_peeled_sha",
+        "reviewed_tree_sha",
+        "reviewed_tree_carrier_sha",
+        "receipt_schema",
+        "operation_mode",
+        "execution_profile",
+        "trusted_checker_identity",
+    ] {
+        let declaration = workflow
+            .lines()
+            .find(|line| line.trim_start().starts_with(&format!("{required_input}:")))
+            .ok_or_else(|| format!("missing input declaration: {required_input}"))?;
+        require_fragment(declaration, "required: true")?;
+    }
+    for optional_fixture_locator in [
+        "preflight_locator",
+        "resolution_manifest_locator",
+        "validation_packet_locator",
+        "integration_packet_locator",
+        "qualification_receipt_locator",
+    ] {
+        let declaration = workflow
+            .lines()
+            .find(|line| {
+                line.trim_start()
+                    .starts_with(&format!("{optional_fixture_locator}:"))
+            })
+            .ok_or_else(|| format!("missing locator declaration: {optional_fixture_locator}"))?;
+        require_fragment(declaration, "required: false")?;
+        require_fragment(declaration, "default: ''")?;
+    }
+
+    for closed_value in [
+        "admit_only",
+        "constructor_dry_run",
+        "positive_synthetic",
+        "j5_negative",
+    ] {
+        require_fragment(workflow, closed_value)?;
+    }
+
+    for forbidden in [
+        "pull_request_target:",
+        "pull_request:",
+        "contents: write",
+        "pull-requests: write",
+        "id-token: write",
+        "attestations: write",
+        "packages: write",
+        "environment:",
+        "self-hosted",
+        "target/ripr-source-promotion-admission",
+        "source-promotion publish-candidate-ref",
+        "repository: ${{ inputs.source_repository }}",
+        "ref: ${{ inputs.workflow_source_sha }}",
+        "gh release",
+        "git push",
+    ] {
+        require_absent(workflow, forbidden)?;
+    }
+
+    require_order(
+        workflow,
+        "- name: Run production admission controller and capture producer exit",
+        "- name: Upload complete pre-enforcement evidence",
+    )?;
+    require_order(
+        workflow,
+        "- name: Upload complete pre-enforcement evidence",
+        "- name: Download pre-enforcement evidence into a fresh runner-owned root",
+    )?;
+    require_order(
+        workflow,
+        "- name: Download pre-enforcement evidence into a fresh runner-owned root",
+        "- name: Independently verify downloaded and local evidence identity",
+    )?;
+    require_order(
+        workflow,
+        "- name: Independently verify downloaded and local evidence identity",
+        "- name: Enforce terminal admission before constructor",
+    )?;
+    require_order(
+        workflow,
+        "- name: Enforce terminal admission before constructor",
+        "- name: Finalize guarded constructor disposition after admission",
+    )?;
+    require_order(
+        workflow,
+        "- name: Finalize guarded constructor disposition after admission",
+        "- name: Upload final normalized workflow disposition",
+    )?;
+    require_order(
+        workflow,
+        "- name: Upload final normalized workflow disposition",
+        "- name: Enforce final normalized workflow disposition",
+    )?;
+
+    for upload_name in [
+        "- name: Upload complete pre-enforcement evidence",
+        "- name: Upload final normalized workflow disposition",
+    ] {
+        let upload = workflow
+            .split_once(upload_name)
+            .map(|(_, suffix)| suffix)
+            .ok_or_else(|| format!("missing upload step: {upload_name}"))?;
+        let step = upload.split("\n      - name:").next().unwrap_or(upload);
+        require_fragment(step, "if: always()")?;
+        for raw_input in [
+            "inputs.source_repository",
+            "inputs.source_parent_sha",
+            "inputs.workflow_source_sha",
+            "inputs.swarm_repository",
+            "inputs.protected_w7_ref",
+            "inputs.w7_peeled_sha",
+            "inputs.reviewed_tree_sha",
+            "inputs.reviewed_tree_carrier_sha",
+            "inputs.receipt_schema",
+            "inputs.operation_mode",
+            "inputs.execution_profile",
+            "inputs.trusted_checker_identity",
+        ] {
+            require_absent(step, raw_input)?;
+        }
+    }
+
+    let producer_step = workflow
+        .split_once("- name: Run production admission controller and capture producer exit")
+        .map(|(_, suffix)| suffix.split("\n      - name:").next().unwrap_or(suffix))
+        .ok_or_else(|| "missing producer step".to_string())?;
+    for required in ["continue-on-error: true", "exit \"$producer_exit\""] {
+        require_fragment(producer_step, required)?;
+    }
+    let finalizer_step = workflow
+        .split_once("- name: Finalize guarded constructor disposition after admission")
+        .map(|(_, suffix)| suffix.split("\n      - name:").next().unwrap_or(suffix))
+        .ok_or_else(|| "missing finalizer step".to_string())?;
+    for required in ["continue-on-error: true", "exit \"$finalizer_exit\""] {
+        require_fragment(finalizer_step, required)?;
+    }
+    Ok(())
 }
 
 fn jq_filter_matches(filter: &str, value: &Value) -> Result<bool, String> {
@@ -295,4 +744,242 @@ fn normalized_contract_is_runner_owned_uploaded_then_enforced() -> Result<(), St
         );
     }
     Ok(())
+}
+
+#[test]
+fn admission_workflow_has_closed_exact_transport_and_terminal_order() -> Result<(), String> {
+    validate_admission_workflow_contract(&admission_workflow_text()?)
+}
+
+#[test]
+fn admission_workflow_contract_rejects_security_and_order_mutations() -> Result<(), String> {
+    let workflow = admission_workflow_text()?;
+    let mutations = [
+        (
+            "name: Source Promotion Admission",
+            "name: Candidate Selected Admission",
+        ),
+        ("contents: read", "contents: write"),
+        ("${{ runner.temp }}", "target"),
+        ("persist-credentials: false", "persist-credentials: true"),
+        (
+            "source-promotion verify-admission-workflow",
+            "source-promotion publish-candidate-ref",
+        ),
+        (
+            "- name: Upload complete pre-enforcement evidence\n        if: always()",
+            "- name: Upload complete pre-enforcement evidence\n        if: success()",
+        ),
+        (
+            "if: always() && steps.enforce.outcome == 'success'",
+            "if: always()",
+        ),
+        (
+            "identity_digest=$(sha256sum \"$admission_out/requested-identity.json\" | awk '{print $1}')",
+            "identity_digest=$WORKFLOW_SOURCE_SHA",
+        ),
+        (
+            "name: ${{ steps.initialize.outputs.artifact_name }}",
+            "name: ${{ inputs.workflow_source_sha }}",
+        ),
+        (
+            "github.repository == 'EffortlessMetrics/ripr' &&",
+            "github.repository == inputs.source_repository &&",
+        ),
+        (
+            "ref: ${{ job.workflow_sha }}",
+            "ref: ${{ inputs.workflow_source_sha }}",
+        ),
+        ("--expected-status admitted", "--expected-status rejected"),
+    ];
+    for (needle, replacement) in mutations {
+        let mutated = workflow.replace(needle, replacement);
+        if mutated == workflow {
+            return Err(format!("mutation fixture did not match workflow: {needle}"));
+        }
+        if validate_admission_workflow_contract(&mutated).is_ok() {
+            return Err(format!(
+                "admission workflow contract accepted mutation {needle:?} -> {replacement:?}"
+            ));
+        }
+    }
+
+    let upload = "- name: Upload complete pre-enforcement evidence";
+    let enforce = "- name: Enforce terminal admission before constructor";
+    require_fragment(&workflow, upload)?;
+    require_fragment(&workflow, enforce)?;
+    let reordered = workflow
+        .replacen(upload, "- name: TEMPORARY ADMISSION STEP", 1)
+        .replacen(enforce, upload, 1)
+        .replacen("- name: TEMPORARY ADMISSION STEP", enforce, 1);
+    if validate_admission_workflow_contract(&reordered).is_ok() {
+        return Err("admission workflow contract accepted enforcement-before-upload".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn admission_workflow_does_not_accept_caller_selected_authority() -> Result<(), String> {
+    let workflow = admission_workflow_text()?;
+    for forbidden_input in [
+        "runner:",
+        "command:",
+        "permissions:",
+        "success:",
+        "expected_status:",
+        "target_ref:",
+    ] {
+        if workflow.contains(&format!("      {forbidden_input}")) {
+            return Err(format!(
+                "candidate-controlled authority input is forbidden: {forbidden_input}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn production_j5_rejection_is_a_self_verifying_workflow_packet() -> Result<(), String> {
+    let xtask = PathBuf::from(env!("CARGO_BIN_EXE_xtask"));
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?
+        .to_path_buf();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("test clock precedes epoch: {error}"))?
+        .as_nanos();
+    let root = repo_root
+        .parent()
+        .ok_or_else(|| "repository root has no temporary-workspace parent".to_string())?
+        .join(format!(
+            ".ripr-production-j5-workflow-{}-{nonce}",
+            std::process::id()
+        ));
+    fs::create_dir(&root)
+        .map_err(|error| format!("failed to create production J5 test root: {error}"))?;
+    let result = (|| {
+        let request = j5_request_identity(&repo_root, &root)?;
+        let request_bytes = serde_json::to_vec_pretty(&request)
+            .map_err(|error| format!("failed to serialize production J5 request: {error}"))?;
+        let request_sha256 = format!("{:x}", Sha256::digest(&request_bytes));
+        let request_path = root.join("requested-identity.json");
+        fs::write(&request_path, &request_bytes)
+            .map_err(|error| format!("failed to write production J5 request: {error}"))?;
+        let workspace = root.join("workspace");
+        fs::create_dir(&workspace)
+            .map_err(|error| format!("failed to create production J5 workspace: {error}"))?;
+        let packet = workspace.join("workflow-packet");
+        let required = |key: &str| {
+            request
+                .get(key)
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("production J5 request is missing {key}"))
+        };
+        let output = Command::new(&xtask)
+            .current_dir(&repo_root)
+            .args([
+                "source-promotion",
+                "run-admission-workflow",
+                "--source-repository",
+                required("source_repository")?,
+                "--source-parent-sha",
+                required("source_parent_sha")?,
+                "--workflow-source-sha",
+                required("workflow_source_sha")?,
+                "--trusted-checker-identity",
+                required("trusted_checker_identity")?,
+                "--swarm-repository",
+                required("swarm_repository")?,
+                "--protected-w7-ref",
+                required("protected_w7_ref")?,
+                "--w7-peeled-sha",
+                required("w7_peeled_sha")?,
+                "--reviewed-tree-sha",
+                required("reviewed_tree_sha")?,
+                "--reviewed-tree-carrier-sha",
+                "not_required",
+                "--preflight-locator",
+                "",
+                "--resolution-manifest-locator",
+                "",
+                "--validation-packet-locator",
+                "",
+                "--integration-packet-locator",
+                "",
+                "--qualification-receipt-locator",
+                "",
+                "--receipt-schema",
+                "ripr.source_promotion_admission_workflow.v1",
+                "--operation-mode",
+                "constructor_dry_run",
+                "--execution-profile",
+                "j5_negative",
+                "--requested-identity",
+                path_text(&request_path)?,
+                "--requested-identity-sha256",
+                &request_sha256,
+                "--workspace-root",
+                path_text(&workspace)?,
+                "--out",
+                path_text(&packet)?,
+            ])
+            .output()
+            .map_err(|error| format!("failed to run production J5 workflow: {error}"))?;
+        if output.status.success()
+            || !String::from_utf8_lossy(&output.stderr)
+                .contains("produced a complete rejected packet")
+        {
+            let disposition = match fs::read_to_string(packet.join("workflow-disposition.json")) {
+                Ok(value) => value,
+                Err(error) => format!("unavailable: {error}"),
+            };
+            return Err(format!(
+                "production J5 workflow did not return its expected rejected disposition: status={} stdout={:?} stderr={:?} disposition={disposition}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout).trim(),
+                String::from_utf8_lossy(&output.stderr).trim(),
+            ));
+        }
+        let verification = Command::new(&xtask)
+            .current_dir(&repo_root)
+            .args([
+                "source-promotion",
+                "verify-admission-workflow",
+                "--packet",
+                path_text(&packet)?,
+                "--requested-identity",
+                path_text(&request_path)?,
+                "--requested-identity-sha256",
+                &request_sha256,
+            ])
+            .output()
+            .map_err(|error| format!("failed to verify production J5 packet: {error}"))?;
+        if !verification.status.success() {
+            return Err(format!(
+                "production J5 packet was not self-verifying: status={} stdout={:?} stderr={:?}",
+                verification.status,
+                String::from_utf8_lossy(&verification.stdout).trim(),
+                String::from_utf8_lossy(&verification.stderr).trim(),
+            ));
+        }
+        let report: Value = serde_json::from_slice(
+            &fs::read(packet.join("workflow-disposition.json"))
+                .map_err(|error| format!("failed to read production J5 disposition: {error}"))?,
+        )
+        .map_err(|error| format!("production J5 disposition is malformed: {error}"))?;
+        if report.get("status").and_then(Value::as_str) != Some("rejected")
+            || report.get("execution_profile").and_then(Value::as_str) != Some("j5_negative")
+            || report["controller_packets"]["trusted_builder"]["status"].as_str() != Some("built")
+            || report["controller_packets"]["resolved_tree_admission"]["status"].as_str()
+                != Some("rejected")
+            || report["attempts"]["constructor_commit_tree_attempts"].as_u64() != Some(0)
+        {
+            return Err("production J5 packet has the wrong disposition or attempts".to_string());
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&root)
+        .map_err(|error| format!("failed to clean production J5 test root: {error}"));
+    result.and(cleanup)
 }

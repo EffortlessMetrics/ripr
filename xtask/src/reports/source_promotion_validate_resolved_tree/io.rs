@@ -1,4 +1,4 @@
-fn render_markdown(report: &Value) -> Result<String, String> {
+pub(super) fn render_markdown(report: &Value) -> Result<String, String> {
     let structured = serde_json::to_string_pretty(report)
         .map_err(|error| format!("failed to serialize structured receipt: {error}"))?;
     let schema = string_field(report, "schema")?;

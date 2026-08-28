@@ -22,4 +22,5 @@
 .github/workflows/security.yml|1|Security workflow installs cargo-deny as a normal binary, then runs the standard cargo-deny command without requiring Docker.
 .github/workflows/source-of-truth.yml|10|Advisory source-of-truth workflow runs three xtask checks and writes a short advisory summary.
 .github/workflows/source-promotion-contract.yml|170|Source-promotion contract keeps exact-head receipt binding, fail-closed validation diagnostics, complete receipt-shape validation, and manual post-merge verification in one bounded, read-only workflow.
+.github/workflows/source-promotion-admission.yml|44|Trusted read-only admission workflow binds the pre-producer request and exact identities, retains runner-owned evidence before enforcement, and delegates deterministic admission and dry-run semantics to the source-owned Rust harness.
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.

@@ -23,7 +23,7 @@ const GIT_TIMEOUT: Duration = Duration::from_mins(1);
 const MAX_STREAM_BYTES: usize = 2 * 1024 * 1024;
 const TEMP_ATTEMPTS: u32 = 128;
 
-const REQUIRED_COMMANDS: &[&str] = &[
+pub(crate) const REQUIRED_COMMANDS: &[&str] = &[
     "check-network-policy",
     "check-process-policy",
     "check-workflows",

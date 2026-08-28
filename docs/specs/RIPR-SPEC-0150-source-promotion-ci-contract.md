@@ -249,6 +249,114 @@ for every outcome. Issue #1508 owns the later authoritative promotion candidate
 and merge-command decision after accepted-tree and qualification evidence
 exist.
 
+### Trusted source-promotion admission workflow
+
+The permanent `Source Promotion Admission` workflow transports the recovered
+controller from committed source authority. It supports `workflow_call` and
+exactly bound `workflow_dispatch` execution with `contents: read` permission.
+It does not run on `pull_request_target`, accept a caller-selected runner or
+command, use a privileged environment, or receive write, identity-token,
+attestation, package, release, marketplace, registry, signing, or
+branch-administration authority.
+
+Every live input names a full identity rather than a success assertion:
+
+- source repository, source parent, workflow/controller commit, and
+  `trusted_checker_identity` in the closed form
+  `source-owned-xtask@<workflow/controller commit>`;
+- swarm repository, protected W7 ref, and peeled W7 commit;
+- reviewed tree and an exact source-repository carrier commit whose tree and
+  ordered parents are the reviewed tree, source parent, and W7 parent;
+- producer repository, immutable commit/ref, mode-100644 path, and lowercase
+  SHA-256 for the preflight, resolution manifest, resolved-tree validation
+  packet, integration index, and any qualification receipt consumed by
+  constructor dry-run; and
+- one closed mode, `admit_only` or `constructor_dry_run`.
+
+Mutable branch names, abbreviated SHAs, artifact names without their producer
+locator, caller-supplied booleans, and candidate-checkout paths carry no
+authority. The live profile rejects synthetic fixture selection. The bounded
+`positive_synthetic` and `j5_negative` profiles select source-owned fixtures;
+their `fixture_identity` is emitted by the production harness and cannot be
+chosen as an arbitrary command or path.
+
+The live harness fetches the exact carrier commit into its runner-owned clone
+and validates the commit header before invoking the controller. Possession of
+either parent alone is insufficient to materialize or admit a combined
+reviewed tree.
+The exact-J-free synthetic profiles use the closed `not_required` carrier
+sentinel; they test admission and mutation guards without claiming that a live
+carrier was transported.
+The uploaded normalized packet MUST recursively index its controller receipts
+and complete materialized locator closure. The finalizer MUST verify and
+consume that downloaded closure, and MUST reject missing, extra, corrupt,
+symlinked, or controller-summary-inconsistent members before construction.
+Final constructor success MUST include a valid indexed construction receipt.
+Constructor rejection MUST preserve every available partial output byte in the
+indexed closure, MUST remain self-verifying when the receipt is unavailable or
+malformed, and MUST invent no evidence when no output directory exists.
+
+The checker identity must name the same full commit as `workflow_source_sha`.
+It identifies committed source ownership; it is not a substitute for the
+trusted-builder packet. The workflow produces that packet internally from the
+exact source/workflow/checker SHA, pinned toolchain, `Cargo.lock`, isolated
+external target directory, and running executable digest.
+
+All checkouts, bare repositories, retained logs, and packet outputs live under
+runner-owned temporary roots. The workflow runs `source-promotion
+run-admission-workflow`, retains its producer exit status, finalizes the
+immutable admission packet, and uploads every available member with
+`if: always()`. It then downloads that artifact into a fresh runner-owned path,
+independently verifies the indexed bytes and exact requested identities, and
+enforces terminal admission before constructor dry-run becomes reachable.
+Missing or malformed packet files are terminal red, not an excuse to omit
+available evidence.
+
+Before any producer invocation, the runner MUST serialize the exact
+`ripr.source_promotion_admission_request.v1` input set and capture its byte
+digest. The producer MUST compare that request and digest against every CLI
+identity and locator before materialization. The packet MUST embed the request
+and bind its digest; downloaded and final verification MUST compare the
+embedded bytes to the original pre-producer request and digest.
+
+After admission enforcement, `source-promotion finalize-admission-workflow`
+performs admit-only normalization or the optional guarded constructor phase and
+produces the final normalized `workflow-disposition.json`,
+`workflow-disposition.md`, and `packet-index.json`; its available final packet
+also uploads with `if: always()`. `source-promotion
+verify-admission-workflow` checks the packet,
+and `source-promotion enforce-admission-workflow --expected-status admitted`
+is the sole terminal green predicate. The normalized disposition schema is
+`ripr.source_promotion_admission_workflow.v1`, the packet schema is
+`ripr.source_promotion_admission_workflow_packet.v1`, and the only statuses are
+`admitted` and `rejected`. `not_run`, `unavailable`, unsupported schema or
+profile, non-zero producer exit, missing/malformed evidence, stale identity,
+failed final reread, or disagreement between the packet and workflow conclusion
+is terminal red.
+
+For an admitted packet, verification MUST replay the indexed resolved-tree,
+trusted-builder, typed integration, admission, qualification, and construction
+contracts and MUST derive the normalized attempt summary from those receipts.
+Recomputed outer indexes do not cure invalid nested semantics. When a rejected
+constructor invocation has no parseable receipt, mutation attempt counts whose
+values cannot be proven MUST be `null` rather than zero.
+
+The `admit_only` mode requires zero constructor, local-ref, remote-push,
+merge-command, and release/publication attempts. `constructor_dry_run` is
+unreachable until admission is terminal and may create at most one
+unreferenced object in an isolated synthetic repository. It still requires
+zero local-ref, remote-push, merge-command, and release/publication attempts.
+The workflow never invokes `publish-candidate-ref` and cannot create J6, move a
+promotion ref, or grant product/editor qualification, merge, or release
+authority.
+
+The candidate PR can prove this static workflow and production-harness
+contract only. Trusted hosted behavior requires a later `workflow_dispatch`
+from the committed default-branch workflow with the exact merged source SHA,
+workflow blob SHA, controller/schema versions, fixture identities, and dispatch
+inputs. Candidate-branch execution is not a substitute for that post-merge
+control.
+
 ## Required Evidence
 
 - unrelated PRs skip without a success claim;
@@ -310,6 +418,23 @@ exist.
   guarded-push attribution plus observed remote and authority state; every
   controller outcome retains a null merge command with zero merge-command
   attempts.
+- the admission workflow exposes only `workflow_call` and `workflow_dispatch`,
+  uses read-only permissions, and cannot select a privileged event, arbitrary
+  command, runner, ref writer, publication path, or caller-controlled success;
+- source, W7, reviewed-tree, checker, and sidecar identities are exact and
+  movement of any bound repository, commit/ref, mode-100644 path, digest,
+  controller, or workflow identity invalidates the packet;
+- every available admission receipt and bounded log uploads before terminal
+  enforcement, while missing, malformed, unsupported, rejected, `not_run`,
+  `unavailable`, non-zero, stale, or contradictory evidence remains red;
+- `positive_synthetic` reaches terminal admission through the production
+  harness, while `j5_negative` retains a complete rejected packet with all
+  constructor/ref/push/merge/publication attempt counters at zero;
+- `constructor_dry_run` is unreachable before admission and creates at most one
+  unreferenced object in the isolated fixture repository without publishing or
+  moving a ref; and
+- pre-merge exact-head proof establishes the workflow contract only; the next
+  post-merge control owns trusted default-branch dispatch evidence.
 
 ## Non-Goals
 
@@ -348,9 +473,21 @@ completeness, duplicate
 `kind:key`, and flattened-history controls remain covered by the verifier tests
 mapped in `.ripr/traceability.toml`.
 
+The permanent admission transport is covered by the same workflow-contract
+integration target and by production-harness tests in
+`xtask/src/reports/source_promotion_admission_workflow.rs`. Those tests pin the
+closed profile/mode surface, exact locator and digest validation, deterministic
+positive and J5-shaped packets across absolute roots, upload-before-enforcement
+ordering, normalized conclusion agreement, constructor reachability, and zero
+publication authority.
+
 ## Implementation Mapping
 
 - Workflow: `.github/workflows/source-promotion-contract.yml`
+- Trusted admission workflow:
+  `.github/workflows/source-promotion-admission.yml`
+- Admission workflow harness:
+  `xtask/src/reports/source_promotion_admission_workflow.rs`
 - Operator contract: `docs/SOURCE_PROMOTION.md`
 - Exact verifier: `xtask/src/reports/source_promotion_verify.rs`
 - Resolved-tree validator: `xtask/src/reports/source_promotion_validate_resolved_tree.rs`

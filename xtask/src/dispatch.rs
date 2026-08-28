@@ -57,6 +57,11 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::ReleaseServerManifest(args) => super::release_server_manifest(&args),
         XtaskCommand::ReleaseUploadAssets(args) => super::release_upload_assets(&args),
         XtaskCommand::SourcePromotion(args)
+            if super::reports::source_promotion_admission_workflow_handles(&args) =>
+        {
+            super::reports::source_promotion_admission_workflow(&args)
+        }
+        XtaskCommand::SourcePromotion(args)
             if super::reports::source_promotion_control_handles(&args) =>
         {
             super::reports::source_promotion_control(&args)
