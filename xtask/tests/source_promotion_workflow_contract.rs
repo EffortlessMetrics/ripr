@@ -171,8 +171,8 @@ fn verifier_receipt_schema_predicate_is_balanced() -> Result<(), String> {
             "cccccccccccccccccccccccccccccccccccccccc"
         ],
         "tree": "dddddddddddddddddddddddddddddddddddddddd",
-        "preflight_sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-        "resolution_manifest_sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "preflight_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "resolution_manifest_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         "merge_base": "1111111111111111111111111111111111111111",
         "swarm_reachability": {
             "all_reachable_count": 1,
@@ -191,6 +191,20 @@ fn verifier_receipt_schema_predicate_is_balanced() -> Result<(), String> {
         jq_filter_matches(filter, &valid)?,
         "complete verifier-receipt jq predicate rejected a valid receipt"
     );
+
+    let mut prefixed_sidecar = valid.clone();
+    prefixed_sidecar["preflight_sha256"] =
+        json!("sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
+    if jq_filter_matches(filter, &prefixed_sidecar)? {
+        return Err("verifier-receipt predicate accepted a prefixed sidecar digest".into());
+    }
+
+    let mut bare_ancestry = valid.clone();
+    bare_ancestry["swarm_reachability"]["all_reachable_sha256"] =
+        json!("2222222222222222222222222222222222222222222222222222222222222222");
+    if jq_filter_matches(filter, &bare_ancestry)? {
+        return Err("verifier-receipt predicate accepted a bare ancestry digest".into());
+    }
 
     let mut malformed = valid;
     malformed["swarm_reachability"]["verified_through_parent_2"] = json!("true");
