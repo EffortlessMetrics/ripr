@@ -6,7 +6,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::model::{
     BADGE_REASON_KEYS, BadgeCounts, BadgeKind, BadgePolicy, BadgeStatus, BadgeSummary,
 };
-use super::summaries::{badge_status_color, ripr_badge_summary_with_suppressions};
+use super::summaries::{
+    apply_analysis_outcome_disclosure, badge_status_color, ripr_badge_summary_with_suppressions,
+};
 
 /// One test-efficiency entry seen by the badge, retained so suppressions
 /// can be applied per-`(test, path)` after the report is parsed and so
@@ -449,20 +451,26 @@ fn ripr_plus_badge_summary_from_exposure(
     // The same downgrade rule as the exposure badge applies: pass/green must
     // not be shown when preview-language files were silently skipped.
     let preview_skipped = exposure.preview_skipped;
-    let (final_status, final_color, final_message) =
-        if !preview_skipped.is_empty() && status == BadgeStatus::Pass {
-            let names = preview_skipped.join(", ");
-            (
-                BadgeStatus::Warn,
-                "yellow",
-                format!("preview-skipped: {names}"),
-            )
-        } else if !preview_skipped.is_empty() {
-            let names = preview_skipped.join(", ");
-            (status, color, format!("preview-skipped: {names}"))
-        } else {
-            (status, color, headline.to_string())
-        };
+    let (status, color, message) = if !preview_skipped.is_empty() && status == BadgeStatus::Pass {
+        let names = preview_skipped.join(", ");
+        (
+            BadgeStatus::Warn,
+            "yellow",
+            format!("preview-skipped: {names}"),
+        )
+    } else if !preview_skipped.is_empty() {
+        let names = preview_skipped.join(", ");
+        (status, color, format!("preview-skipped: {names}"))
+    } else {
+        (status, color, headline.to_string())
+    };
+    let (final_status, final_color, final_message, analysis_outcome) =
+        apply_analysis_outcome_disclosure(
+            exposure.analysis_outcome.as_ref(),
+            status,
+            color,
+            message,
+        );
 
     BadgeSummary {
         kind: BadgeKind::RiprPlus,
@@ -476,6 +484,8 @@ fn ripr_plus_badge_summary_from_exposure(
         policy,
         warnings,
         preview_skipped,
+        projection: None,
+        analysis_outcome,
     }
 }
 

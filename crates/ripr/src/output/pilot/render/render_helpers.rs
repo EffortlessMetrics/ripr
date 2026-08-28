@@ -72,11 +72,18 @@ pub(super) fn push_markdown_recommendation(out: &mut String, entry: &ClassifiedS
         entry.class.as_str()
     ));
     out.push_str(&format!("- Why it matters: {}\n", why_line(entry)));
-    out.push_str(&format!(
-        "- Focused test: add `{}` in `{}`\n",
-        outline.suggested_name,
-        display_path_text(&outline.suggested_file)
-    ));
+    if outline.is_not_applicable() {
+        out.push_str(&format!(
+            "- Focused test: not applicable (route limited: {})\n",
+            outline.suggested_reason
+        ));
+    } else {
+        out.push_str(&format!(
+            "- Focused test: add `{}` in `{}`\n",
+            outline.suggested_name,
+            display_path_text(&outline.suggested_file)
+        ));
+    }
     if let Some(value) = outline.candidate_value.as_ref() {
         out.push_str(&format!("- Candidate value: `{value}`\n"));
     }

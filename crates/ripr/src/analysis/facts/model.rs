@@ -18,6 +18,9 @@ pub struct FileFacts {
     pub returns: Vec<ReturnFact>,
     pub literals: Vec<LiteralFact>,
     pub probe_shapes: Vec<ProbeShapeFact>,
+    /// True when parser-backed syntax failed and lexical fallback produced these facts.
+    /// Lexical fallback intentionally emits no probe shapes and may under-credit repo seams.
+    pub used_lexical_fallback: bool,
     /// Original file source text. Held so `analysis/value-extraction-v2`
     /// can scan for top-level `const`/`static` declarations without
     /// re-reading the file at evidence-build time. Not part of any
@@ -127,6 +130,7 @@ mod tests {
         assert!(facts.returns.is_empty());
         assert!(facts.literals.is_empty());
         assert!(facts.probe_shapes.is_empty());
+        assert!(!facts.used_lexical_fallback);
     }
 
     #[test]

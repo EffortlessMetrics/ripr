@@ -1,5 +1,6 @@
 use crate::app::agent_brief::{AGENT_BRIEF_HARD_MAX_SEAMS, DEFAULT_AGENT_BRIEF_MAX_SEAMS};
 use crate::cli::parse::expect_value;
+use crate::cli::suggest::unknown_argument;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -9,16 +10,20 @@ pub(super) enum AgentCommand {
     BriefHelp,
     PacketHelp,
     VerifyHelp,
+    VerifyExecuteHelp,
     ReceiptHelp,
     StatusHelp,
     ReviewSummaryHelp,
+    RepairHelp,
     Start(AgentStartOptions),
     Brief(AgentBriefOptions),
     Packet(AgentPacketOptions),
     Verify(AgentVerifyOptions),
+    VerifyExecute(AgentVerifyExecuteOptions),
     Receipt(AgentReceiptOptions),
     Status(AgentStatusOptions),
     ReviewSummary(AgentReviewSummaryOptions),
+    Repair(AgentRepairOptions),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -54,6 +59,16 @@ pub(super) struct AgentVerifyOptions {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AgentVerifyExecuteOptions {
+    pub(super) root: PathBuf,
+    pub(super) packet: PathBuf,
+    pub(super) result_json: PathBuf,
+    pub(super) authorize: bool,
+    pub(super) cancel_after_ms: Option<u64>,
+    pub(super) json: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct AgentReceiptOptions {
     pub(super) root: PathBuf,
     pub(super) verify_json: PathBuf,
@@ -66,6 +81,7 @@ pub(super) struct AgentReceiptOptions {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct AgentStatusOptions {
+    pub(super) out_dir: Option<PathBuf>,
     pub(super) root: PathBuf,
     pub(super) json: bool,
 }
@@ -74,6 +90,19 @@ pub(super) struct AgentStatusOptions {
 pub(super) struct AgentReviewSummaryOptions {
     pub(super) root: PathBuf,
     pub(super) json: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AgentRepairOptions {
+    pub(super) root: PathBuf,
+    pub(super) seam_id: String,
+    pub(super) phase: AgentRepairPhase,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum AgentRepairPhase {
+    Before,
+    After,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -110,11 +139,13 @@ pub(super) fn parse_agent_args(args: &[String]) -> Result<AgentCommand, String> 
         Some("brief") => parse_agent_brief_command(&args[1..]),
         Some("packet") => parse_agent_packet_command(&args[1..]),
         Some("verify") => parse_agent_verify_command(&args[1..]),
+        Some("verify-execute") => parse_agent_verify_execute_command(&args[1..]),
         Some("receipt") => parse_agent_receipt_command(&args[1..]),
         Some("status") => parse_agent_status_command(&args[1..]),
         Some("review-summary") => parse_agent_review_summary_command(&args[1..]),
+        Some("repair") => parse_agent_repair_command(&args[1..]),
         Some(other) => Err(format!(
-            "unknown agent subcommand {other:?}; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, or `review-summary`"
+            "unknown agent subcommand {other:?}; expected `start`, `brief`, `packet`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
         )),
     }
 }
@@ -147,6 +178,13 @@ fn parse_agent_verify_command(args: &[String]) -> Result<AgentCommand, String> {
     parse_agent_verify_options(args).map(AgentCommand::Verify)
 }
 
+fn parse_agent_verify_execute_command(args: &[String]) -> Result<AgentCommand, String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        return Ok(AgentCommand::VerifyExecuteHelp);
+    }
+    parse_agent_verify_execute_options(args).map(AgentCommand::VerifyExecute)
+}
+
 fn parse_agent_receipt_command(args: &[String]) -> Result<AgentCommand, String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         return Ok(AgentCommand::ReceiptHelp);
@@ -166,6 +204,50 @@ fn parse_agent_review_summary_command(args: &[String]) -> Result<AgentCommand, S
         return Ok(AgentCommand::ReviewSummaryHelp);
     }
     parse_agent_review_summary_options(args).map(AgentCommand::ReviewSummary)
+}
+
+fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        return Ok(AgentCommand::RepairHelp);
+    }
+    let mut root = PathBuf::from(".");
+    let mut seam_id: Option<String> = None;
+    let mut phase: Option<AgentRepairPhase> = None;
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--seam-id" => {
+                i += 1;
+                seam_id = Some(expect_value(args, i, "--seam-id")?.to_string());
+            }
+            "--phase" => {
+                i += 1;
+                let value = expect_value(args, i, "--phase")?;
+                phase = Some(match value {
+                    "before" => AgentRepairPhase::Before,
+                    "after" => AgentRepairPhase::After,
+                    other => {
+                        return Err(format!(
+                            "unknown --phase {other:?}; expected `before` or `after`"
+                        ));
+                    }
+                });
+            }
+            other => return Err(unknown_argument("agent repair", other)),
+        }
+        i += 1;
+    }
+    let seam_id = seam_id.ok_or_else(|| "agent repair requires --seam-id <id>".to_string())?;
+    let phase = phase.unwrap_or(AgentRepairPhase::Before);
+    Ok(AgentCommand::Repair(AgentRepairOptions {
+        root,
+        seam_id,
+        phase,
+    }))
 }
 
 pub(super) fn parse_agent_start_options(args: &[String]) -> Result<AgentStartOptions, String> {
@@ -196,7 +278,7 @@ pub(super) fn parse_agent_start_options(args: &[String]) -> Result<AgentStartOpt
                 }
                 out_dir = PathBuf::from(value);
             }
-            other => return Err(format!("unknown agent start argument {other:?}")),
+            other => return Err(unknown_argument("agent start", other)),
         }
         i += 1;
     }
@@ -256,13 +338,9 @@ pub(super) fn parse_agent_brief_options(args: &[String]) -> Result<AgentBriefOpt
                 i += 1;
                 max_seams = parse_max_seams(expect_value(args, i, "--max-seams")?)?;
             }
-            other => return Err(format!("unknown agent brief argument {other:?}")),
+            other => return Err(unknown_argument("agent brief", other)),
         }
         i += 1;
-    }
-
-    if !json {
-        return Err("agent brief requires --json until human output is implemented".to_string());
     }
 
     let working_set = working_set
@@ -270,6 +348,12 @@ pub(super) fn parse_agent_brief_options(args: &[String]) -> Result<AgentBriefOpt
             "agent brief requires exactly one of --diff, --base, --files, or --seam-id".to_string()
         })?
         .into_working_set();
+
+    if !json {
+        return Err(
+            "agent brief requires --json (the supported output for this subcommand)".to_string(),
+        );
+    }
 
     Ok(AgentBriefOptions {
         root,
@@ -318,14 +402,11 @@ pub(super) fn parse_agent_packet_options(args: &[String]) -> Result<AgentPacketO
                 gap_id = Some(value.to_string());
             }
             "--json" => json = true,
-            other => return Err(format!("unknown agent packet argument {other:?}")),
+            other => return Err(unknown_argument("agent packet", other)),
         }
         i += 1;
     }
 
-    if !json {
-        return Err("agent packet requires --json until human output is implemented".to_string());
-    }
     if seam_id.is_some() && (gap_ledger.is_some() || gap_id.is_some()) {
         return Err(
             "agent packet accepts either --seam-id or --gap-ledger with --gap-id, not both"
@@ -346,6 +427,12 @@ pub(super) fn parse_agent_packet_options(args: &[String]) -> Result<AgentPacketO
             );
         }
         _ => {}
+    }
+
+    if !json {
+        return Err(
+            "agent packet requires --json (the supported output for this subcommand)".to_string(),
+        );
     }
 
     Ok(AgentPacketOptions {
@@ -379,19 +466,88 @@ pub(super) fn parse_agent_verify_options(args: &[String]) -> Result<AgentVerifyO
                 after = Some(PathBuf::from(expect_value(args, i, "--after")?));
             }
             "--json" => json = true,
-            other => return Err(format!("unknown agent verify argument {other:?}")),
+            other => return Err(unknown_argument("agent verify", other)),
         }
         i += 1;
     }
 
+    let before = before.ok_or_else(|| "agent verify requires --before <path>".to_string())?;
+    let after = after.ok_or_else(|| "agent verify requires --after <path>".to_string())?;
     if !json {
-        return Err("agent verify requires --json until human output is implemented".to_string());
+        return Err(
+            "agent verify requires --json (the supported output for this subcommand)".to_string(),
+        );
     }
 
     Ok(AgentVerifyOptions {
         root,
-        before: before.ok_or_else(|| "agent verify requires --before <path>".to_string())?,
-        after: after.ok_or_else(|| "agent verify requires --after <path>".to_string())?,
+        before,
+        after,
+        json,
+    })
+}
+
+pub(super) fn parse_agent_verify_execute_options(
+    args: &[String],
+) -> Result<AgentVerifyExecuteOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut packet: Option<PathBuf> = None;
+    let mut result_json: Option<PathBuf> = None;
+    let mut authorize = false;
+    let mut cancel_after_ms = None;
+    let mut json = false;
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--packet" => {
+                i += 1;
+                packet = Some(PathBuf::from(expect_value(args, i, "--packet")?));
+            }
+            "--result-json" => {
+                i += 1;
+                result_json = Some(PathBuf::from(expect_value(args, i, "--result-json")?));
+            }
+            "--authorize" => authorize = true,
+            "--cancel-after-ms" => {
+                i += 1;
+                let value = expect_value(args, i, "--cancel-after-ms")?;
+                let parsed = value.parse::<u64>().map_err(|error| {
+                    format!("invalid --cancel-after-ms: expected a positive integer: {error}")
+                })?;
+                if parsed == 0 {
+                    return Err(
+                        "invalid --cancel-after-ms: expected a positive integer".to_string()
+                    );
+                }
+                cancel_after_ms = Some(parsed);
+            }
+            "--json" => json = true,
+            other => return Err(unknown_argument("agent verify-execute", other)),
+        }
+        i += 1;
+    }
+    if !json {
+        return Err(
+            "agent verify-execute requires --json (the supported output for this subcommand)"
+                .to_string(),
+        );
+    }
+    // Missing authorization is deliberately not a usage error: it is a policy
+    // refusal, and the app layer renders it as the typed
+    // `verification_rejected_policy` disposition so every terminal state of
+    // this surface is machine-readable on stdout.
+    Ok(AgentVerifyExecuteOptions {
+        root,
+        packet: packet
+            .ok_or_else(|| "agent verify-execute requires --packet <path>".to_string())?,
+        result_json: result_json
+            .ok_or_else(|| "agent verify-execute requires --result-json <path>".to_string())?,
+        authorize,
+        cancel_after_ms,
         json,
     })
 }
@@ -445,20 +601,24 @@ pub(super) fn parse_agent_receipt_options(args: &[String]) -> Result<AgentReceip
                 i += 1;
                 out = Some(PathBuf::from(expect_value(args, i, "--out")?));
             }
-            other => return Err(format!("unknown agent receipt argument {other:?}")),
+            other => return Err(unknown_argument("agent receipt", other)),
         }
         i += 1;
     }
 
+    let verify_json =
+        verify_json.ok_or_else(|| "agent receipt requires --verify-json <path>".to_string())?;
+    let seam_id = seam_id.ok_or_else(|| "agent receipt requires --seam-id".to_string())?;
     if !json {
-        return Err("agent receipt requires --json until human output is implemented".to_string());
+        return Err(
+            "agent receipt requires --json (the supported output for this subcommand)".to_string(),
+        );
     }
 
     Ok(AgentReceiptOptions {
         root,
-        verify_json: verify_json
-            .ok_or_else(|| "agent receipt requires --verify-json <path>".to_string())?,
-        seam_id: seam_id.ok_or_else(|| "agent receipt requires --seam-id".to_string())?,
+        verify_json,
+        seam_id,
         test_changed,
         commands_run,
         json,
@@ -469,6 +629,7 @@ pub(super) fn parse_agent_receipt_options(args: &[String]) -> Result<AgentReceip
 pub(super) fn parse_agent_status_options(args: &[String]) -> Result<AgentStatusOptions, String> {
     let mut root = PathBuf::from(".");
     let mut json = false;
+    let mut out_dir = None;
 
     let mut i = 0usize;
     while i < args.len() {
@@ -478,12 +639,20 @@ pub(super) fn parse_agent_status_options(args: &[String]) -> Result<AgentStatusO
                 root = PathBuf::from(expect_value(args, i, "--root")?);
             }
             "--json" => json = true,
-            other => return Err(format!("unknown agent status argument {other:?}")),
+            "--out" => {
+                i += 1;
+                out_dir = Some(PathBuf::from(expect_value(args, i, "--out")?));
+            }
+            other => return Err(unknown_argument("agent status", other)),
         }
         i += 1;
     }
 
-    Ok(AgentStatusOptions { root, json })
+    Ok(AgentStatusOptions {
+        root,
+        json,
+        out_dir,
+    })
 }
 
 pub(super) fn parse_agent_review_summary_options(
@@ -500,7 +669,7 @@ pub(super) fn parse_agent_review_summary_options(
                 root = PathBuf::from(expect_value(args, i, "--root")?);
             }
             "--json" => json = true,
-            other => return Err(format!("unknown agent review-summary argument {other:?}")),
+            other => return Err(unknown_argument("agent review-summary", other)),
         }
         i += 1;
     }
@@ -557,6 +726,71 @@ mod tests {
     }
 
     #[test]
+    fn agent_verify_execute_parses_bounded_options() -> Result<(), String> {
+        let parsed = parse_agent_verify_execute_options(&args(&[
+            "--root",
+            "repo",
+            "--packet",
+            "packet.json",
+            "--result-json",
+            "result.json",
+            "--authorize",
+            "--cancel-after-ms",
+            "250",
+            "--json",
+        ]))?;
+        assert_eq!(parsed.root, PathBuf::from("repo"));
+        assert_eq!(parsed.packet, PathBuf::from("packet.json"));
+        assert_eq!(parsed.result_json, PathBuf::from("result.json"));
+        assert!(parsed.authorize);
+        assert_eq!(parsed.cancel_after_ms, Some(250));
+        assert!(parsed.json);
+        Ok(())
+    }
+
+    /// Authorization is a policy refusal rendered by the app layer, so the
+    /// parser must accept its absence and record it rather than erroring. Only
+    /// genuine usage problems fail here.
+    #[test]
+    fn agent_verify_execute_defers_authorization_to_the_policy_layer() -> Result<(), String> {
+        let parsed = parse_agent_verify_execute_options(&args(&[
+            "--packet",
+            "packet.json",
+            "--result-json",
+            "result.json",
+            "--json",
+        ]))?;
+        assert!(!parsed.authorize);
+
+        for (argv, needle) in [
+            (
+                vec!["--packet", "packet.json", "--result-json", "result.json"],
+                "--json",
+            ),
+            (vec!["--result-json", "result.json", "--json"], "--packet"),
+            (vec!["--packet", "packet.json", "--json"], "--result-json"),
+            (
+                vec![
+                    "--packet",
+                    "packet.json",
+                    "--result-json",
+                    "result.json",
+                    "--cancel-after-ms",
+                    "0",
+                    "--json",
+                ],
+                "--cancel-after-ms",
+            ),
+        ] {
+            let error = parse_agent_verify_execute_options(&args(&argv))
+                .err()
+                .ok_or_else(|| format!("expected {argv:?} to fail"))?;
+            assert!(error.contains(needle), "{argv:?} reported {error}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn agent_args_parse_help_and_brief_help() {
         assert_eq!(parse_agent_args(&args(&[])), Ok(AgentCommand::Help));
         assert_eq!(parse_agent_args(&args(&["--help"])), Ok(AgentCommand::Help));
@@ -592,14 +826,23 @@ mod tests {
 
     #[test]
     fn agent_args_reject_unknown_subcommand() {
+        // #2073: a missing scope is reported before the output-format
+        // requirement.
         assert_eq!(
             parse_agent_args(&args(&["packet"])),
-            Err("agent packet requires --json until human output is implemented".to_string())
+            Err("agent packet requires --seam-id or --gap-ledger with --gap-id".to_string())
+        );
+        assert_eq!(
+            parse_agent_args(&args(&["packet", "--seam-id", "abc"])),
+            Err(
+                "agent packet requires --json (the supported output for this subcommand)"
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_agent_args(&args(&["other"])),
             Err(
-                "unknown agent subcommand \"other\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, or `review-summary`"
+                "unknown agent subcommand \"other\"; expected `start`, `brief`, `packet`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
                     .to_string()
             )
         );
@@ -665,7 +908,10 @@ mod tests {
         );
         assert_eq!(
             parse_agent_start_options(&args(&["--seam-id", "abc", "--xml"])),
-            Err("unknown agent start argument \"--xml\"".to_string())
+            Err(
+                "unknown agent start argument \"--xml\". Run `ripr agent start --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -753,7 +999,10 @@ mod tests {
     fn agent_brief_requires_json() {
         assert_eq!(
             parse_agent_brief_options(&args(&["--diff", "change.diff"])),
-            Err("agent brief requires --json until human output is implemented".to_string())
+            Err(
+                "agent brief requires --json (the supported output for this subcommand)"
+                    .to_string()
+            )
         );
     }
 
@@ -854,7 +1103,10 @@ mod tests {
     fn agent_brief_rejects_unknown_arguments() {
         assert_eq!(
             parse_agent_brief_options(&args(&["--diff", "change.diff", "--xml"])),
-            Err("unknown agent brief argument \"--xml\"".to_string())
+            Err(
+                "unknown agent brief argument \"--xml\". Run `ripr agent brief --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -882,7 +1134,10 @@ mod tests {
     fn agent_packet_requires_json_and_seam_id() {
         assert_eq!(
             parse_agent_packet_options(&args(&["--seam-id", "abc"])),
-            Err("agent packet requires --json until human output is implemented".to_string())
+            Err(
+                "agent packet requires --json (the supported output for this subcommand)"
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_agent_packet_options(&args(&["--json"])),
@@ -903,7 +1158,10 @@ mod tests {
                 "--json",
                 "--xml",
             ])),
-            Err("unknown agent packet argument \"--xml\"".to_string())
+            Err(
+                "unknown agent packet argument \"--xml\". Run `ripr agent packet --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -1002,7 +1260,10 @@ mod tests {
                 "--after",
                 "after.json",
             ])),
-            Err("agent verify requires --json until human output is implemented".to_string())
+            Err(
+                "agent verify requires --json (the supported output for this subcommand)"
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_agent_verify_options(&args(&["--after", "after.json", "--json"])),
@@ -1026,7 +1287,10 @@ mod tests {
                 "--format",
                 "md",
             ])),
-            Err("unknown agent verify argument \"--format\"".to_string())
+            Err(
+                "unknown agent verify argument \"--format\". Run `ripr agent verify --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -1074,7 +1338,10 @@ mod tests {
                 "--seam-id",
                 "abc",
             ])),
-            Err("agent receipt requires --json until human output is implemented".to_string())
+            Err(
+                "agent receipt requires --json (the supported output for this subcommand)"
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_agent_receipt_options(&args(&["--seam-id", "abc", "--json"])),
@@ -1108,7 +1375,10 @@ mod tests {
                 "--format",
                 "md",
             ])),
-            Err("unknown agent receipt argument \"--format\"".to_string())
+            Err(
+                "unknown agent receipt argument \"--format\". Run `ripr agent receipt --help`."
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_agent_receipt_options(&args(&[
@@ -1143,6 +1413,7 @@ mod tests {
             Ok(AgentStatusOptions {
                 root: PathBuf::from("repo"),
                 json: true,
+                out_dir: None,
             })
         );
         assert_eq!(
@@ -1150,6 +1421,7 @@ mod tests {
             Ok(AgentCommand::Status(AgentStatusOptions {
                 root: PathBuf::from("repo"),
                 json: true,
+                out_dir: None,
             }))
         );
     }
@@ -1161,6 +1433,7 @@ mod tests {
             Ok(AgentStatusOptions {
                 root: PathBuf::from("."),
                 json: false,
+                out_dir: None,
             })
         );
         assert_eq!(
@@ -1169,7 +1442,10 @@ mod tests {
         );
         assert_eq!(
             parse_agent_status_options(&args(&["--json", "--xml"])),
-            Err("unknown agent status argument \"--xml\"".to_string())
+            Err(
+                "unknown agent status argument \"--xml\". Run `ripr agent status --help`."
+                    .to_string()
+            )
         );
     }
 
@@ -1206,7 +1482,7 @@ mod tests {
         );
         assert_eq!(
             parse_agent_review_summary_options(&args(&["--xml"])),
-            Err("unknown agent review-summary argument \"--xml\"".to_string())
+            Err("unknown agent review-summary argument \"--xml\". Run `ripr agent review-summary --help`.".to_string())
         );
     }
 }

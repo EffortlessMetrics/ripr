@@ -1,0 +1,166 @@
+{
+  "schema_version": "candidate_state_negative.v1",
+  "base_selection": {
+    "schema_version": "0.1",
+    "selected_cut_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "selected_claims": [
+      {
+        "claim_id": "claim:lifecycle",
+        "owner_issue": 2822,
+        "required_for_candidate": true,
+        "resolution": "landed",
+        "evidence_refs": ["issue:2822"],
+        "commit_refs": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+        "artifact_refs": [],
+        "candidate_effect": "include",
+        "non_claim": null,
+        "reviewed": true
+      }
+    ],
+    "candidate_exclusions": [],
+    "known_candidate_defects": [],
+    "denominator_decisions_remaining_through_provisional_cutoff": 0,
+    "denominator_decisions_remaining_through_selected_cut": 0,
+    "final_cut_authority": {
+      "cut_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "record_set_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "provisional_decisions_remaining": 0,
+      "unreviewed_post_provisional_records_through_cut": 0,
+      "final_cut_decisions_remaining": 0,
+      "reviewed_through_selected_cut": true
+    },
+    "projection": {
+      "reproducible": true,
+      "candidate_tree_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "candidate_tree_parent_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "exclusion_digest": "sha256:exclusions",
+      "expected_exclusion_digest": "sha256:exclusions",
+      "preservation_digest": "sha256:preservation",
+      "expected_preservation_digest": "sha256:preservation"
+    },
+    "qualification": {
+      "immutable_candidate_ref": "refs/ripr/candidate-0.11",
+      "manifest_candidate_tree_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "required_instruments_available": true
+    }
+  },
+  "cases": [
+    {
+      "name": "selected claim remains pending",
+      "expected_status": "scope_pending",
+      "selected_claim_resolution": "pending"
+    },
+    {
+      "name": "known candidate defect remains unresolved",
+      "expected_status": "scope_closed",
+      "unresolved_defect": true
+    },
+    {
+      "name": "denominator decisions remain",
+      "expected_status": "scope_closed",
+      "denominator_decisions_remaining_through_provisional_cutoff": 1
+    },
+    {
+      "name": "legacy denominator field name remains accepted",
+      "expected_status": "scope_closed",
+      "denominator_decisions_remaining": 1
+    },
+    {
+      "name": "denominator decisions remain after provisional cutoff",
+      "expected_status": "scope_closed",
+      "denominator_decisions_remaining_through_selected_cut": 1
+    },
+    {
+      "name": "development cut is not selected",
+      "expected_status": "scope_closed",
+      "clear_selected_cut": true
+    },
+    {
+      "name": "candidate projection is not reproducible",
+      "expected_status": "scope_closed",
+      "projection_reproducible": false
+    },
+    {
+      "name": "candidate tree is not materialized",
+      "expected_status": "hard_cut_eligible",
+      "clear_candidate_tree": true
+    },
+    {
+      "name": "immutable candidate ref is absent",
+      "expected_status": "candidate_materialized",
+      "clear_immutable_ref": true
+    },
+    {
+      "name": "candidate manifest identifies a different tree",
+      "expected_status": "candidate_materialized",
+      "manifest_tree_sha": "dddddddddddddddddddddddddddddddddddddddd"
+    },
+    {
+      "name": "landed claim has only an issue reference",
+      "expected_status": "scope_pending",
+      "clear_landed_binding": true
+    },
+    {
+      "name": "accepted defer has a whitespace-only non-claim",
+      "expected_status": "scope_pending",
+      "selected_claim_resolution": "accepted_defer",
+      "selected_claim_non_claim": " \t"
+    },
+    {
+      "name": "optional failed claim remains unresolved",
+      "expected_status": "scope_pending",
+      "selected_claim_resolution": "failed",
+      "selected_claim_required_for_candidate": false
+    },
+    {
+      "name": "blank exclusion digest does not materialize",
+      "expected_status": "hard_cut_eligible",
+      "blank_exclusion_digest": true
+    },
+    {
+      "name": "blank preservation digest does not materialize",
+      "expected_status": "hard_cut_eligible",
+      "blank_preservation_digest": true
+    },
+    {
+      "name": "mutable candidate ref does not qualify",
+      "expected_status": "candidate_materialized",
+      "immutable_candidate_ref": "refs/heads/main"
+    },
+    {
+      "name": "blank candidate exclusion identity is rejected",
+      "expected_status": "scope_pending",
+      "exclusion_mutation": "blank_id"
+    },
+    {
+      "name": "duplicate candidate exclusion identity is rejected",
+      "expected_status": "scope_pending",
+      "exclusion_mutation": "duplicate_id"
+    },
+    {
+      "name": "unknown candidate exclusion claim is rejected",
+      "expected_status": "scope_pending",
+      "exclusion_mutation": "unknown_claim"
+    },
+    {
+      "name": "blank candidate exclusion reason is rejected",
+      "expected_status": "scope_pending",
+      "exclusion_mutation": "blank_reason"
+    },
+    {
+      "name": "blank candidate exclusion non-claim is rejected",
+      "expected_status": "scope_pending",
+      "exclusion_mutation": "blank_non_claim"
+    },
+    {
+      "name": "unreviewed candidate exclusion is rejected",
+      "expected_status": "scope_pending",
+      "exclusion_mutation": "unreviewed"
+    },
+    {
+      "name": "candidate exclusion resolution needs a record",
+      "expected_status": "scope_pending",
+      "exclusion_mutation": "candidate_resolution_without_record"
+    }
+  ]
+}

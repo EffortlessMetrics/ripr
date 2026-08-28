@@ -51,7 +51,7 @@
       "path": "target/ripr/agent/agent-receipt.json",
       "required": true,
       "state": "present",
-      "status": "advisory",
+      "status": "incomplete",
       "summary": "Receipt for seam 67fc764ba37d77bd: unchanged; before weakly_gripped, after weakly_gripped. Static grip class did not move."
     },
     {
@@ -169,7 +169,7 @@
       "command": "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <seam-id> --json --out target/ripr/agent/agent-receipt.json",
       "signal": "Receipt for seam 67fc764ba37d77bd: unchanged; before weakly_gripped, after weakly_gripped. Static grip class did not move.",
       "state": "present",
-      "status": "advisory",
+      "status": "incomplete",
       "surface": "agent receipt"
     },
     {

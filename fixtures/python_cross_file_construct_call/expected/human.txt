@@ -4,39 +4,35 @@ root: fixtures/python_cross_file_construct_call/input
 
 Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-INFO src/formatter.py:4
+Changed file(s) by language: python: 1, rust: 0.
 
-Changed
-  after:              if any(c < " " for c in key):
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
-Probe
-  family: predicate
-  delta:  control
-  owner:  python:src/formatter.py::Formatter.__call__
-  canonical gap: gap:python:src/formatter.py:Formatter.__call__:predicate_boundary:predicate:any_c<for_c_in_key
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/formatter.py:4
+  Language: python
+  Language status: preview
+  Static exposure: exposed (warning, confidence 0.60)
+  Canonical gap: gap:python:src/formatter.py:Formatter.__call__:predicate_boundary:predicate:any_c<for_c_in_key
+  Changed behavior: if any(c < " " for c in key):
+  Discriminator (observed, advisory): Related Python test reaches `__call__` with a `exact_error_variant` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+  Related test: tests/test_render.py:6 test_rejects_space_in_key
+  Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `__call__`
+    - infection yes: Changed Python predicate can alter branch selection: `if any(c < " " for c in key):`
+    - 5 more evidence line(s) hidden
 
-Language
-  language: python
-  status: preview
-  owner kind: method
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_cross_file_construct_call/input --diff fixtures/python_cross_file_construct_call/diff.patch --mode fast probe:src_formatter.py:python_preview:93f32878
+  ripr context --root fixtures/python_cross_file_construct_call/input --diff fixtures/python_cross_file_construct_call/diff.patch --mode fast --at probe:src_formatter.py:python_preview:93f32878
 
-Static exposure
-  exposed (info, confidence 0.60)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `__call__`
-  - infection yes: Changed Python predicate can alter branch selection: `if any(c < " " for c in key):`
-  - propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.
-  - observation yes: Strongest extracted Python oracle kind: `exact_error_variant` (rank 5)
-  - discriminator yes: Related Python test uses a `exact_error_variant` oracle; static evidence suggests the changed behavior is discriminated.
-  - local flow reaches unknown sink: if any(c < " " for c in key): (line 4)
-  - related test tests/test_render.py:6 test_rejects_space_in_key uses strong exact error variant oracle: pytest.raises(ValueError, match='Invalid key')
-
-Weakness
-  - Related Python test reaches `__call__` with a `exact_error_variant` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
-
-Next step
-  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

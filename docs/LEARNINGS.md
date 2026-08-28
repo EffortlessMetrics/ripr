@@ -3,6 +3,24 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-07-29: Property tests and lexical fallback disclosure
+
+Added the first property-based tests (`proptest`) for the diff parser. The
+three highest-value properties: parser totality (never panics), structural
+invariants (no empty paths, no newlines in text), and line-number validity
+(`new_side_line >= 1`). The existing hand-rolled LCG fuzz tests stay as
+deterministic regression sets; proptest adds automatic shrinking.
+
+Also fixed the lexical adapter's `used_lexical_fallback` flag: it was hardcoded
+`false` inside the function that IS the lexical fallback. The dispatcher
+overwrote it at the call site, but direct calls (including unit tests) saw the
+wrong value. Now set to `true` inside the adapter so the flag is honest
+regardless of caller (#2698).
+
+Lesson: hand-rolled LCG fuzzing with fixed seeds finds specific regressions
+but cannot prove invariants hold across the input space. Property tests with
+shrinking are the right tool for parser totality and structural soundness.
+
 ## 2026-05-01: Product Contract
 
 `ripr` answers a narrow question:
@@ -724,6 +742,16 @@ than grinding the backlog. The unwalked path that matters most next: the full
 agent loop end-to-end (status -> packet -> edit-in-cage -> verify -> receipt ->
 re-status).
 
+### Navigation guidance must be replayable, not merely printable
+
+The first `check -> explain/context` route looked correct when inspected as
+text, but a user replaying it could lose the analyzed scope or pass options the
+follow-up parser did not accept. The reliable contract is an executable
+round-trip: preserve the finding identity, analysis scope, artifact inputs,
+mode, and supported configuration flags, then run the copied command against a
+fresh binary. Golden output proves the guidance is present; CLI smoke tests
+prove that the guidance actually works.
+
 ### Constraints produced autonomy — the intuition inverts
 
 Conservative-language gates, the scoped-PR contract, traceability, and the
@@ -811,8 +839,13 @@ swarm CI only ever runs `cargo publish -p ripr --dry-run` (validation, never a r
 
 So the rule for autonomous work: normal swarm development is fine (PRs, tests,
 dry-runs, docs, changelog drafts, release-candidate prep, source-sync prep), but
-do **not** bump `crates/ripr/Cargo.toml`'s version or trigger the release
-workflow without explicit approval — that lever auto-publishes. Publishing the
+do **not** bump the release version or trigger the release workflow without
+explicit approval — that lever auto-publishes. Since #2711 the version lives in
+the root `Cargo.toml` under `[workspace.package]`, and `crates/ripr/Cargo.toml`
+inherits it with `version.workspace = true`. The approval boundary is the
+*version value*, wherever it is declared: editing the root `[workspace.package]
+version`, or replacing the member's `version.workspace = true` with a literal,
+both cross it. Publishing the
 current work is an explicit next-release decision (choose 0.9.1 vs 0.10.0, audit
 what is on main since 0.9.0, draft changelog, source sync, then bump).
 
@@ -1497,3 +1530,536 @@ non-pinned rustfmt and disagreed with CI's 1.95.0 / rustfmt 1.9.0. Run the
 --check` under the pinned toolchain. When a fix "doesn't work" but the builder
 insists it does, suspect your own harness before the builder — inject a unique
 string into the output to confirm your edits are even in the binary you're running.
+
+## 2026-06-15: Not every adversarial "false-`exposed`" is a bug — separate the runtime-equivalence floor from the static missing-discriminator
+
+A broad red-team round (40 traps) surfaced a large residue after the token-identity
+families were closed. Triaging by the **missing signal** — not the surface vector —
+split them three ways, and only some are `ripr`'s to fix:
+
+- **Tractable sink-precision (fix it).** The oracle observes the owner's *output* but
+  the wrong *part* of it: a sibling dict key (`{"port": 9090}` changed,
+  `cfg()["host"]` observed), a sibling list index, or an aggregate (`len(...)`). This
+  is syntactic and in-contract — credit only when a strong oracle observes the
+  *changed* element (changed key/index subscript, changed value, or whole-collection
+  comparison). Fixed via the dict/list element gate (`field_construction_credit_ok`).
+- **Runtime-equivalence floor (do NOT fix; document).** The oracle observes the
+  changed output, but only *evaluation* shows old ≡ new for the test's input
+  (operator identity at `0`/`1`, coincident slice/`len`, boolean short-circuit,
+  ASCII `lower`/`casefold`). Detecting these = running the mutant; `ripr` is static
+  and cannot, and cannot conservatively downgrade without also dropping the genuine
+  discriminators (it can't tell `compute(10,3)==7` from `apply_discount(5,100)==5`
+  without evaluation). This is the honest floor — see
+  `docs/STATIC_EXPOSURE_MODEL.md` § The static/runtime boundary.
+- **Static missing-discriminator (in scope, as a gap).** A boundary change
+  (`>= → >`) is discriminated only at `total == threshold`; a far-from-boundary test
+  is genuinely non-discriminating, but the gap is *nameable* and stays a valid
+  repair-routing candidate — not floor, not `exposed`.
+
+**The durable rule:** input-specific old/new equivalence is a runtime floor; a
+syntactically nameable missing discriminator stays in scope. "Drive false-`exposed`
+to zero" is not achievable purely statically — the honest target is *zero confirmed
+in-contract false-`exposed`*, with the floor explicitly bounded. **A regression
+caught the same run:** a literal-element gate that locates the brace with `find('{')`
+mis-reads an f-string (`f"{value:.3f}"`) as a dict literal — require the expression
+to *start with* the literal opener, and re-run the full adversarial trap set after
+merge to catch downgraded positives (goldens won't cover a synthetic trap that has no
+fixture).
+
+## 2026-06-16: "Observed but not reached" is a distinct, tractable false-`exposed` family from "observed the wrong part"
+
+Trap 45 (changed default value not exercised) is a *third* tractable sink-precision
+shape, orthogonal to the dict/list/f-string "wrong part of the output" gates. Here the
+oracle observes the owner's output *correctly and exactly*, but the changed code path
+is **never reached**: `def render(name, verbose=True)` changes its default, yet the
+only strong test calls `render("Sam", verbose=False)` — binding the parameter
+explicitly, so the default is irrelevant and the assertion passes identically before
+and after. This is *static and in-contract* (no evaluation needed — argument binding is
+syntactic), so it is `ripr`'s to fix, unlike the runtime-equivalence floor. The
+mirror image of error-path Class C (`raise` change on an untaken branch): both are
+"strong oracle reaches the owner but the *specific changed behavior* is not exercised."
+
+**Implementation rule that keeps it honest (fail open, never false-clean):** block
+`exposed` only when you can *positively prove* every strong reaching call overrides the
+changed default. Concretely (`changed_default_overridden_params`): (a) restrict to a
+*pure* default-value change (added/removed default, rename, or method/classmethod owner
+→ fail open — a method's implicit `self`/`cls` shifts positional indexing); (b) require
+**each** strong related test to contain at least one *directly analyzable* `owner(...)`
+call — if a strong test reaches the owner via an alias/wrapper the scanner can't
+resolve, fail open (it might omit the parameter and be the real discriminator); (c)
+treat `*args`/`**kwargs` unpacking or any unparseable call as fail-open. A coarse
+"does any related test omit the param" gate is *not* safe — a sibling override test plus
+an aliased omitting test would wrongly block. Per-candidate "must have a direct call I
+can read" is what avoids the false-clean.
+
+## 2026-06-16: Annotation-only suppression is safe at module scope, not in class bodies
+
+The #1289 annotation-only no-probe family splits cleanly on owner scope. At **module
+scope**, Python annotations are never enforced at runtime, so an annotation-only change
+(identical target name and value, only the annotation text differs) has no behavior
+delta and can be safely suppressed — mirror the `def`-header skeleton pattern
+(`variable_annotation_skeleton` re-parses the line as an `AnnAssign` and compares the
+target+value, excluding the annotation). Inside a **class body**, the same change is
+behavioral: `@dataclass`, Pydantic `BaseModel`, and `attrs` drive runtime validation and
+coercion from field annotations, so suppressing there would be a false-clean. The guard
+is therefore `owner.is_module_owner()` first, and fails closed for every class body
+until base-class tracking exists. This is the recurring rule for the whole annotation
+family: the suppression's safety comes from *where* the annotation lives, not just from
+*what* changed. (See `docs/DEFERRED.md` § python-annotation-only-no-probe for the two
+remaining open sub-cases: class-body annotations and multiline-docstring interiors.)
+
+## 2026-06-26: Perl mapper honesty — owner-target is not sink observation; the producer gate is the wrong harness
+
+From the Campaign 31 Phase D mapper hotfix (PR H1, #1409). Two distinct lessons,
+both load-bearing for any preview-language adapter that consumes a producer's
+fact packet.
+
+### Owner-target identity is not changed-sink observation
+
+The Perl packet can prove `oracle.target_owner_id == changed_owner_id` — the
+oracle targets the same owner the change lives in. That is **not** the same as
+the oracle observing the **specific changed sink**. The production Finding
+leaves `observed_sink`, `oracle_alignment`, and `alignment_reason` all `None`
+because the packet carries no sink-level detail. Crediting reach-plus-a-strong
+-oracle as "already discriminated" on owner-target identity alone is exactly the
+recurring false-`exposed` family (cf. "Token coincidence" above): proximity
+dressed up as discrimination.
+
+The honest interim policy, until the producer contract adds
+`ChangeFact.changed_observable` and `OracleFact.observed_sink`, is to **fail
+closed**: a strong oracle aligned to the owner stays `WeaklyExposed` (or is
+downgraded to `ReachableUnrevealed` for advisory relations), never promoted to
+an "observed" claim. Do not encode the three-way matrix until sink alignment is
+real; split "mapping integrity" (H1) from "classification semantics" (H2) so the
+integrity fix can land without assuming the unprovable. This mirrors the
+"Real producers only" rule: do not flip a field to a fabricated taxonomy before
+a real production condition populates it.
+
+### The feature gate makes the default-feature gate a false-green oracle
+
+`lang-perl` is **not** a default feature (`crates/ripr/Cargo.toml`: `default =
+["lang-rust","lang-typescript","lang-python"]`). The Perl module is
+`#[cfg(feature = "lang-perl")]`. CI's `cargo clippy --workspace --all-targets`
+runs on default features, so it **never compiles the Perl module** — it reports
+green for code it did not see. Any validation command for a feature-gated module
+must pass `--features <feature>` explicitly, or it is the wrong harness
+manufacturing a false negative. (This is the "verify the artifact" rule cutting
+the other way: a gate that passes because it never ran is not evidence.) The
+signal that you have the right harness: the targeted test count is non-zero and
+the module's symbols resolve.
+
+### Concrete shape
+
+PR H1 rewrote `packet_to_findings` to route through the packet-owned helpers
+(`related_test_evidence_for_change`, `verify_command_for_test`,
+`has_blocking_dynamic_boundary`, `canonical_gap_identity_for_change`) instead
+of a parallel classifier. Before H1, every `related_test.file` was built from
+the **production** source path (`PathBuf::from(&file.path)`) — the edit surface
+could point at `lib/*.pm`. The cardinal regression was latent (the projection
+gate returns `None` at the `gap_state:` check before production findings reach
+it), not live — but it would have flipped `repair_packet_ready: true` against a
+production file the moment H2 wired the evidence. The 8 adversarial tests added
+were the **first** direct coverage of the mapper; it previously had zero, which
+is why the bug survived three merged PRs.
+
+Followups tracked separately: H2 classification semantics (after cross-repo
+contract freeze adds sink fields), and a `perl-lsp-swarm` CI scratch-GC fix
+(that repo's orphan reaper searches `/mnt/ci-scratch -maxdepth 1 -name 'ripr-*'`
+but the per-run dirs nest under `/mnt/ci-scratch/perl-lsp-swarm/ripr-*` and
+`/mnt/ci-scratch/tmp/ripr-*` — `ripr-swarm`'s own `scratch-gc.yml` does the
+sweep correctly and is the reference pattern).
+
+## 2026-07-12: A related test is not a repair route without producer facts
+
+The first authorized internal-repository pilot found a real false-actionable
+shape in `ub-review`: a field-construction seam was rendered `actionable` even
+though producer evidence supplied no concrete missing discriminator, and the
+suggested test selection resolved to a production source file. The targeted
+rerun correctly rejected that selector as ambiguous, but the earlier review
+projection had already made the route look safe.
+
+The shared Rust evidence-record decision now fails closed when either invariant
+is absent: no producer-owned discriminator means `static_limitation`, and a
+test target equal to the production seam means `static_limitation`. Review
+comments project the same decision: limitations have no repair target, verify
+command, or receipt command; they carry the named investigation route instead.
+Keep the real pilot row excluded until the corrected analyzer produces a
+complete before/after route. A plausible test name or weak related-test match
+is context, not permission to mutate.
+
+## 2026-07-19: The gate does not gate — hardcoded seam_id breaks the blocking path
+
+`gate/repair_route.rs:114` hardcodes `seam_id: None` for gap-ledger candidates.
+`missing_route_fields` always pushes `"seam_id"`, so `gate_repair_route_is_complete`
+is always false for them. Since `candidate_is_policy_eligible` requires a complete
+route, `eligible` is always false, so `would_block` is always false. The gate
+emits `advisory` and `gate_decision_should_fail` returns false — CI exits 0.
+
+The tests named `*_fails_closed_*` (`tests.rs:764`, `tests.rs:1761`) assert
+`advisory` status with `!gate_decision_should_fail` — they are **fail-open at
+the CI level** despite their names. This contradicts `CALIBRATED_GATE_POLICY.md:74-75`
+which says baseline-check/calibrated-gate "blocks for new baseline misses."
+
+The recurring lesson: a test named `fails_closed` that asserts exit-0 is not
+fail-closed. The exit code is the oracle, not the test name. When the product
+contract says "blocks," the test must assert a non-zero exit — otherwise the
+test encodes the bug as the expected behavior, and the bug survives indefinitely.
+This is the "verify the artifact, not the report" rule applied to the gate's
+own test suite.
+
+## 2026-07-19: Static receipts are advisory — fabrication is trivial
+
+The repair-receipt chain (`ripr agent verify`, `ripr agent receipt`,
+`ripr receipt write`) performs no test re-execution, no git head binding, and no
+signature verification. `ripr agent verify` reads two JSON files and computes
+static movement between them. `ripr receipt write --current-head` is optional
+and only format-validated (40 hex chars) — never compared to `git rev-parse HEAD`.
+
+This is honest about ripr being a static analyzer: the receipt is a static
+movement record, not a runtime proof. The output carries `status: "advisory"`,
+`safe_to_merge: false`, and `provenance.runtime_mutation_execution: false`.
+
+But downstream consumers (CI gates, dashboards, agents) who treat the receipt
+as proof of testing are deceived. The lesson: a static analyzer's receipt is
+only as trustworthy as the chain of custody from the analysis to the consumer.
+ripr should stamp the receipt with the analyzed head SHA (resolved via git,
+not caller-supplied) and the artifact content hashes, so a consumer can at least
+verify the receipt corresponds to a real analysis at a known commit — even if
+it cannot verify the analysis was correct.
+
+## 2026-07-19: Every save re-runs the full pipeline — the cache exists but isn't wired in
+
+`RustAdapter::analyze_diff` (`rust.rs:655`) calls `rust_index::build_index` →
+`build_index_with_adapters` (`build.rs:80`, **uncached**). The cached variant
+`build_index_from_loaded_files_with_cache` (`build.rs:19`) and `RepoFilesFactCache`
+(`seam_cache.rs:769`) exist and work — but are only wired into the repo-seam
+inventory path. Every `ripr check` and every LSP `did_save` re-reads and re-parses
+every indexed file with `ra_ap_syntax` from scratch.
+
+Additionally, `advance_workspace_revision` (`backend.rs:628`) bumps a counter on
+every `did_save`, and the counter is part of `LspAnalysisInputIdentity`
+(`input_identity.rs:17`). The dedup path at `refresh_scheduler.rs:204-221` compares
+identity — but since every save produces a different revision, dedup never fires
+for saves. The one cheap fast-path that exists is dead code in practice.
+
+The lesson: a cache that isn't wired into the hot path is documentation, not
+infrastructure. When you build a cache, wire it into the diff-scoped path (the
+path that runs on every save), not just the repo-scoped path (which runs rarely).
+And: a dedup identity that includes a monotonic counter will never dedup — use a
+content hash or omit the counter from the identity comparison.
+
+## 2026-07-19: `continue-on-error: true` on every step makes green meaningless
+
+The generated CI workflow (`init.rs`) uses `continue-on-error: true` on ~30 of
+~31 steps. Only the gate step and the diff-capture step lack it. A consumer
+sees a green job and missing artifacts (SARIF, badge, reports) with no signal
+that anything failed.
+
+The lesson: advisory CI steps are fine, but they must be clearly separated from
+load-bearing steps. A step that produces the gate input (`review-comments`) is
+load-bearing — if it fails, the gate has no input and the "green" is a
+false-clean. Reserve `continue-on-error` for genuinely advisory outputs (badge
+rendering, policy reports), never for the analysis pipeline itself. Add a final
+summary step that checks for expected artifacts and surfaces missing ones as
+a visible warning.
+
+## 2026-07-19: `Result<_, String>` everywhere is the single highest-leverage refactor target
+
+2,474 `Result<_, String>` signatures across 170 files, with 1,254
+`.map_err(|err| format!("...: {err}"))` call sites. Zero typed error enums in
+production (only 2 defined: `DiagnosticBudgetError`, `ArtifactReadError`).
+
+This blocks:
+- Programmatic error handling for library consumers (callers cannot match on
+  error variants)
+- Clean `# Errors` documentation on public API functions
+- The public library surface from being credible (`Ok::<(), String>(())` in
+  the quick-start example is a tell)
+
+The lesson: `String` errors are acceptable for a CLI binary but become
+technical debt the moment a library surface is exposed. The fix (introduce
+`thiserror`, migrate module by module) is mechanical and low-risk, but the
+payoff is structural: every downstream consumer (the LSP backend, the agent
+loop, external embedders) gains the ability to distinguish `Io` from `Git`
+from `Parse` from `Analysis` errors.
+
+## 2026-07-19: Cross-language consistency requires a shared vocabulary layer
+
+`SeamKind` (7 variants) is Rust-only. Preview adapters use `ProbeFamily` (8
+variants) — different variant names, different cardinality, no canonical
+crosswalk. Perl defines its own `OracleKind` (12 variants) and `OracleStrength`
+(5 variants) separate from the domain enum (9/6). Python and TypeScript never
+emit `ReachableUnrevealed`, `InfectionUnknown`, or `PropagationUnknown`.
+
+The lesson: a shared `LanguageAdapter` trait is necessary but not sufficient.
+The trait ensures structural consistency (same method signatures), but the
+*classification vocabulary* diverges because each adapter independently
+decides which domain values it can produce. A shared vocabulary layer — either
+a trait method that declares "this adapter can emit these ExposureClass values"
+or a canonical crosswalk from `ProbeFamily` to `SeamKind` — would prevent the
+silent gaps where a preview-language change whose probe is reached-but-unrevealed
+falls through to `StaticUnknown` instead of `ReachableUnrevealed`.
+
+## 2026-07-19: A file-policy gate that fails on main breaks every subsequent PR
+
+During this session, a merged PR (#1836, authority map) added
+`.allow/conformance/legacy-dialect.json` without adding a `non-rust-allowlist.toml`
+entry. `check-file-policy` — a required CI gate — broke on main. Every subsequent
+PR inherited the failure. The fix (#1848) was a one-line allowlist addition, but
+it blocked ~15 open PRs until it landed.
+
+The lesson: when a gate validates "every file must be in an allowlist," adding
+a new file type in one PR without the allowlist entry is a main-breaking change.
+The fix is either: (a) make the gate advisory with a warning instead of
+required, or (b) add a pre-commit hook / xtask check that proposes the
+allowlist entry when a new file type is detected. At minimum, the gate's error
+message should say "add an entry to `policy/non-rust-allowlist.toml`" — which
+it does, but the breakage was on main, not in the PR that added the file.
+
+## 2026-07-19: Duplicate run-status logic drifts — extract or unify
+
+`workspace_status_run_status` (`backend.rs:2518-2545`) and
+`snapshot_run_status` (`diagnostics.rs:821-843`) are near-identical
+implementations of the same five-state decision tree. The `diagnostics.rs`
+version's doc comment says "This replicates the logic of
+`backend::workspace_status_run_status`" — an acknowledged copy. They differ
+subtly: `backend.rs` checks `gap_artifacts.iter().any(|a| a.has_static_limit())`
+at line 2533, which `diagnostics.rs` omits.
+
+The recurring lesson (cf. "Reuse the shared enforcement layer" in AGENTS.md):
+when two functions implement the same decision, they will drift. The drift is
+not a question of *if* but *when*. Extract the logic into one function and call
+it from both sites. The cost of extraction is always lower than the cost of the
+bug that drift produces — especially when the drift is in a fail-closed
+posture (one copy discloses `seams_deferred`, the other doesn't).
+
+## 2026-07-22: The required CI lane must invoke the local gate table, not enumerate a copy
+
+The routed-rust lanes enumerated an xtask check list that had drifted from
+`cargo xtask precommit` by ten gates (`check-architecture`,
+`check-readme-state`, `check-workspace-shape`, `check-public-api`,
+`check-doc-artifacts`, `check-doc-index`, `markdown-links`, `check-pr-shape`,
+`check-proof-packs`, `check-lint-policy`). Main broke three times in one day
+(#2234, #2240, #2257) when PRs passed the required lane but violated a gate
+that only ran locally — and `check-architecture` is textual, so docs-only and
+test-only diffs are not exempt. The fix (#2265) makes every required lane and
+the docs-gate invoke `cargo xtask precommit` as the single shared table and
+pins the composition with drift tests.
+
+The lesson: never maintain two enumerated copies of a gate list — one always
+drifts. A lane should invoke the same entry point developers run locally; if
+a gate is too slow for the lane, narrow the documented contract explicitly
+rather than letting the lane silently skip it. Command-catalog truth then
+needs a semantic expansion rule (an enforced `precommit` invocation
+transitively enforces its table), not just string matching.
+
+## 2026-07-22: Advisory databases move under a green main
+
+`cargo deny check advisories` went red on main with zero repo changes when
+RUSTSEC-2026-0190 (anyhow `Error::downcast_mut` unsoundness) was published;
+the locked anyhow 1.0.102 predated the patched >=1.0.103 floor. The fix was
+an in-range lockfile bump (#2263), not a suppression.
+
+The lesson: a cargo-deny failure on an unrelated PR is often a newly
+published advisory, not the PR's diff. Reproduce on clean main first; the
+fix is usually `cargo update -p <crate>` within the existing semver
+requirement. Related verification: cargo-deny 0.18.9 does not deserialize
+`until` fields on advisory ignores (verified at 0.19.0), so expiry enforcement
+for long-lived suppressions must live in repo tooling (an xtask check reading
+dated comments), not in deny.toml syntax (#1949).
+
+## 2026-07-22: Canonical-input validation must compare bytes, not parsed values
+
+The receipt verify-input validator compared two parsed `serde_json::Value`s;
+hand-authored JSON with identical values but different key order or spacing
+passed as "canonical" (codex P1 on #2254, reproduced by compact
+re-serialization of real `agent verify` output). The fix compares the
+supplied document against the canonical rendered bytes (trailing-newline
+tolerant) and parses the downstream value from the canonical body, with a
+regression test that re-renders real output differently and expects
+rejection.
+
+The lesson: whenever a contract says "must be the exact output of tool X",
+equality of parsed values is not the contract — byte identity is. Parsed-value
+equality silently accepts any producer that emits semantically equal JSON.
+This generalizes beyond receipts: any "canonical" or "producer-bound" input
+check should pin bytes (or a digest of bytes). On the fail-closed seams
+(repair packets, receipts, provenance) that distinction is the difference
+between validation and theater.
+
+## 2026-07-22: A squash merge is invisible to branch-ancestry checks
+
+A builder reported "PR #2259 is not merged" because the PR's branch head was
+not an ancestor of main — but the PR had squash-merged hours earlier, so main
+contained every change under a new commit while the branch head remained
+outside the ancestry. The builder still flagged the right collision risk (its
+own diff rewrote the same file), but for the wrong reason.
+
+The lesson: in a squash-merge repo, "does my base include PR N" means "does
+main contain N's squash commit" (check `git log main --grep "(#N)"` or the
+PR's merged-at timestamp against your base), never "is the PR branch head an
+ancestor". Sub-agent prompts should state the merge mechanism whenever base
+recency matters, and builders should re-fetch main before pronouncing a PR
+unmerged.
+
+## 2026-07-23: A both-append rebase splice can silently corrupt JSON with duplicate keys
+
+During the #2272 rebase, a "take both appended blocks" splice of
+`fixtures/evidence-promotion-honesty-corpus/corpus.json` fused two case
+objects into one object with duplicate `id`/`language`/`tier`/`source_fixture`
+keys. `serde_json` (and Python `json`) apply last-wins to duplicate keys, so
+the file still parsed, every gate stayed green — and the
+`ts_hoc_wrapped_owner` case silently vanished from the parsed corpus, taking
+its non-promotion pin with it. Caught only by a coderabbit review thread.
+
+The lesson: JSON is not append-splice-safe the way TOML/Markdown lists are.
+When a rebase conflicts on a JSON array, re-apply your own append on top of
+the new base (or parse the result and compare case counts/ids against both
+parents) instead of text-splicing. And when a corpus is authority for a
+fail-closed gate, the loader should reject duplicate keys outright — the
+gate hole itself is fixed in #2279 (`parse_json_rejecting_duplicate_keys`),
+with a red-verified negative test. Verify the artifact, not the parse: "it
+parsed" is not "it contained all the cases".
+
+## 2026-07-23: A PR-body verification claim must be an executed experiment
+
+While opening #2279 the draft body asserted the negative test was "verified
+red before the loader swap" — but the parser and test had been written
+together and only ever run green. The claim was caught before merge and made
+true by actually reverting the loader swap, watching the test fail with the
+exact last-wins symptom (the spliced corpus returned `Ok` and the surviving
+case was the wrong one), then restoring.
+
+The lesson: treat verification sentences in PR bodies as debt until executed.
+"Red before, green after" is a two-run experiment, not a narrative device —
+if you wrote fix and test together, you have only run one of the two arms.
+This is the guard-disable-experiment discipline applied to prose: every
+behavioral claim in a PR description should name a run that could have
+contradicted it.
+
+## 2026-07-23: Merge-then-cleanup must be `&&`-chained, and red-arm experiments must not use `git checkout --`
+
+Two self-inflicted recovery incidents in one day, same family:
+
+1. `gh pr merge N && gh-cleanup; git branch -D ...` — the cleanup ran on `;` even when the merge was refused (unresolved threads, GitHub recompute lag), deleting the local branch and worktree out from under an open PR. Three recoveries. Chain cleanup behind the merge's exit code with `&&`, or run cleanup only after confirming `state: MERGED`.
+2. During a red-arm experiment (revert the fix, watch the test fail), restoring with `git checkout -- <file>` also reverted the *uncommitted fix itself* when the fix had not been committed yet — twice. For uncommitted work, snapshot with `git stash` (and `git stash pop`), or re-apply the edit explicitly, never `checkout --`. After any red arm, re-run the full target suite and read `git status` before believing "restored".
+
+The lesson: a recovery command restores the LAST COMMITTED state, not the state you were just working in. Any destructive-restore step in an experiment protocol needs the uncommitted-delta question answered first: "what is the nearest committed checkpoint, and is everything I care about behind it?"
+
+## 2026-07-23: mergeState BLOCKED is usually recompute lag, not a policy wall — and auto-merge rides it out
+
+Branch protection here is one required check (`Ripr Rust Small Result`), `strict: false` (no up-to-date requirement). Several merges were refused with `BLOCKED` while the required check was green and `mergeable: MERGEABLE`: GitHub's mergeState computation lags a fresh check completion or a main move. The earlier habit of attributing every BLOCKED to a stale base (and rebasing reflexively) was partly superstition — strict:false means old-head checks stay valid.
+
+The working protocol: check the required check + `mergeable` + unresolved threads. If all green and BLOCKED persists, `gh pr merge N --squash --auto --delete-branch` queues the merge and it fires when GitHub's state settles (#2287). Rebase for content reasons (real single-writer collisions, golden freshness), not to placate a lagging state machine.
+
+## 2026-07-23: Queued-forever CI runs, local gate-list discipline, and worktree-first cleanup
+
+Three lane-operations lessons from the #1628/#2119 wave:
+
+- A workflow run can sit `queued` forever while newer runs on other branches get picked — the queue is not strict FIFO and a wedged queued run cannot be `gh run rerun` ("workflow file may be broken"). Diagnose by comparing `gh run list --workflow <name>` across branches: if a newer run started while yours sat queued for >10 min, cancel it and push an empty re-trigger commit (`git commit --allow-empty`); the fresh run schedules normally (#2306, run 29996424587).
+- Run the FULL routed `check-*` list locally before pushing, not a hand-picked subset: `check-local-context` caught a Windows drive-letter path literal that the "usual" subset missed (#2289). The gate also scans docs — quoting such a literal in Markdown re-trips it (this entry's first draft failed CI that way); describe the class ("drive-letter path"), never the literal. HEAD-scanned gates (check-process-policy and friends) only see committed content — run them after committing, and re-run after any amend.
+- `gh pr merge --squash --delete-branch` fails its local branch deletion when a worktree still holds the branch, and exits non-zero even though the merge itself succeeded — the `&&`-chained cleanup then never runs. Remove the worktree BEFORE the merge, but only after confirming `git status --short` is clean in it (or deliberately stashing/committing what matters): `git worktree remove --force` discards uncommitted work silently. Alternatively chain cleanup as separate steps and verify each. Treat a non-zero `gh pr merge` exit as ambiguous: always confirm the merge state with `gh pr view N --json state` before assuming failure.
+
+## 2026-07-23: Verify the worktree branch a builder left behind — twice burned in one PR
+
+A builder switched its worktree onto `main` twice (once mid-run, once at completion as a "courtesy"), and two rounds of root commits landed on local `main` instead of the feature branch — the tell was `git push` attempting `main -> main` and bouncing off branch protection. Recovery each time: force-move the feature branch to the stray commit, `git switch` to it (cherry-pick when the stray commit's parent was wrong — and expect the cherry-pick to conflict against context the branch already changed), then restore the shared `main` pointer from the main worktree with `git reset --mixed origin/main` (content-identical, so non-destructive). The cheap prevention: `git branch --show-current` is now part of the pre-commit ritual in any builder-touched worktree, and commits in builder worktrees always run with an explicit branch check before `git push origin <branch>` (never bare `git push`).
+
+Two adjacent lessons from the same PR (#2317): adding a field to a widely-constructed struct (`AnalysisOptions.git_timeout`) cascades `field: None` into every literal site — including files outside the planned cage (`cli/commands.rs`) and into `policy/no-panic-allowlist.toml` receiver fingerprints, which embed the literal text and must be updated in the same PR. And the xtask policy facade (`tests::policy_checker_facade_runs_current_repo_checks`) runs gates a hand-picked `check-*` list misses — it caught a second `allow(dead_code)` over the per-file cap that the individual gate list never ran. Run the facade test locally before pushing policy-adjacent changes; prefer deleting a dead wrapper over bumping an allowlist cap.
+
+## 2026-07-23: Branch-switching builders are a repeating class, and stall recovery has a pattern
+
+Third instance of a builder leaving its worktree on `main` (agent-96, #2300) — the recovery protocol from the earlier entry worked unchanged, but the prompt rule needs to be sharper than "verify `git branch --show-current` before commit-adjacent steps": builders must treat *finding themselves on main* as a stop-and-report condition, never something to commit through. Root-side, `git push` output now gets read, not skimmed: "Everything up-to-date" after a feature commit is the tell that the commit went to the wrong branch.
+
+Two stall recoveries from the same wave: (1) a builder that sits 60+ minutes with zero files and no process is not "reading carefully" — kill it and either re-spawn fresh with a capped-reading, start-writing-immediately directive (agent-94 → agent-95 produced the full #1972 slice within the hour) or take over in root when the design context is root-held (agent-91 → #2299 shipped root-built). (2) A resume after TaskStop preserves context and breaks model loops — a narrow "write exactly these N steps, reading is done" resume prompt finished the stalled backend.rs step on the first try.
+
+Also: `Duration::from_mins` / `from_hours` ARE stable in the pinned 1.95.0 toolchain (core/src/time.rs:450) — review bots flag them as nonexistent roughly once per PR now; the rebuttal is one line with the toolchain evidence, and the required check compiling is the proof. And one CI-hygiene note: a `HEAD...HEAD: unknown revision` failure signature in fixture tests on CX43 was a one-off setup race under runner load (rerun green, taskset-clean locally) — if it recurs, it becomes a flake issue, not a debug-the-diff issue.
+
+## 2026-07-25: A green check is not evidence — five ways a passing signal covered a broken surface
+
+The #2390/#2391/#2409/#2429/#2393 wave fixed 27 deterministic Windows failures. Every one of them had been green on `main` indefinitely, and the recurring shape was not "nobody tested it" but "the passing signal did not exercise the thing it appeared to cover." Five distinct instances, all worth recognising by shape:
+
+- **A single-platform test cannot cover a platform-specific branch.** A path-confinement guard was hardened to reject rooted anchors; the pre-existing test passed on Linux *with the old code*, because `is_absolute()` already caught the Unix form. Green CI proved nothing about the new branch. The repo's own `tests-oracle` check caught this. The rule: when platform semantics select different branches, expose the branch decision as a small pure function returning *which* reason fired, order the checks so the shared shape is attributed identically everywhere, and assert each platform-specific branch under `#[cfg(...)]` with a counterpart asserting the other platform's correct behavior. A test that looks cross-platform and proves nothing on one side is worse than two honest per-platform tests.
+- **WSL settles cross-platform questions in seconds, and reasoning does not.** Three claims about Unix `std::path` behavior were wrong in one session, including asserting that a backslash-leading path yields a root component on Unix (it does not; a backslash is not a separator there) and shipping a `replace('\\', "/")` normalizer that rewrites the legal Unix filename `od\d.rs` into a two-segment path. `wsl -d Ubuntu` has `rustc`; a ~20-line probe compiled there answers definitively. For portable path output, join `Component::Normal` parts with `/` — never string-replace separators.
+- **`cargo test` stops after the first failing target, so later targets are invisible.** While `--lib` was red, the `cli_smoke` binary never ran; a deterministic failure in it therefore appeared to "fail 1 of N runs" and was filed as a flake. What actually varied was whether an unrelated flake aborted the run first. Any "failed N of M runs, therefore flaky" claim is unsafe while an earlier target is also red — establish presence by running that target directly. Each fix in the chain revealed the next previously-unreachable failure, three layers deep.
+- **A fixture helper that swallows a prerequisite failure blames the wrong subsystem.** `init_git_repo` used `Command::output()?`, which propagates only *spawn* failure; a git command that ran and exited non-zero was ignored, so the helper returned success having produced a repo with no commit and no refs. Seven tests then failed asserting things about default-base resolution. Fixture helpers must fail at the prerequisite boundary and name the command, status, and stderr. Likewise a fixture built by interpolating a path into a raw JSON string parsed to zero records on Windows, and the tests ran anyway — a test over a parsed artifact must assert its own input is non-empty before asserting anything downstream.
+- **A policy gate can be structurally blind to the file class it governs.** `check-workflows` passed a workflow whose `run:` was truncated mid-command, because it does line-budget and text checks and never parses YAML. In a plain YAML scalar, ` #` starts a comment; the command was cut, leaving an unterminated quote. The dangerous variant is silent: with balanced quotes, truncation runs a *shorter* command and reports success. Now gated (plain-scalar `run:` containing ` #` is rejected) and every lane step uses a `|` block scalar.
+
+Two method notes from the same wave. A mutation experiment must make behavior wrong, not code uncompilable — deleting a match arm produced a compiler error and demonstrated nothing; making the arm inert produced the vulnerable return value and the assertion failed as intended. And in PowerShell, `-match` and `Select-String` are case-insensitive by default, so a check for `FAILED` matches `0 failed` and inverts the result: an experiment reported "3/3 runs failed" for a subset that was 8/8 clean. Detect failures with an anchored case-sensitive match on the libtest shape so the measurement yields failing test *names* rather than a boolean.
+
+Finally, two disclosure lessons. Third-party review providers post quota-exhaustion notices as ordinary comments — one as a `COMMENTED` review — so a PR page can show four reviewers "having reviewed" when none read the diff; unavailable review is evidence of missing review, never clean review (#2432). And a CI watcher must distinguish `cancelled` from `failure`: a run superseded by a newer push is expected and meaningless, and collapsing every non-success conclusion to "failed" produced two false alarms.
+
+## 2026-07-25: False-confidence gates — the enforcement-layer cardinal sin
+
+A full-repo audit (54 issues across every surface) revealed a recurring
+defect family that the existing doctrine did not name: **gates, fields, and
+commands whose stated contract is stronger than their enforcement.** This is
+the policy-layer mirror of a wrong `repair_packet_ready: true` — the cardinal
+sin applied to the enforcement layer rather than the finding layer.
+
+Thirteen instances were identified in one session:
+
+- `expires` field validated as present but never compared to today (#2344)
+- traceability paths checked for file existence but not symbol resolution (#2345)
+- `shell_arg` escaped backslash and quote but not `$` or backtick (#2347)
+- `is_absolute()` not sufficient on Windows (#2392)
+- process-allowlist `max_count` stale — bound rots silently (#2399)
+- `"analyzed"` JSON field mirrored `"enabled"` — name promises more than value (#2403)
+- receipt lifecycle defaulted unrecognized movement to RECEIPT_FOUND (#2404)
+- `goldens bless` was a raw byte-copy with no JSON parse or count sanity (#2410)
+- dogfood exit code reflected report-write success, not scenario outcomes (#2411)
+- network-policy detected only 7 hardcoded substrings (#2412)
+- count-based gates checked one direction only — stale bounds never flagged (#2413)
+- `npm test` was a no-op — compiled but ran zero tests (#2437)
+
+Four recurring shapes produce this family:
+
+1. **Presence-without-value:** a field is validated as non-empty but its value
+   is never checked (the `expires` shape).
+2. **One-directional bounds:** a count gate flags `actual > allowed` but not
+   `actual < allowed` (the `max_count` shape).
+3. **Exit-code/report mismatch:** a gate's final expression is a report-write,
+   not an outcome aggregation (the dogfood shape).
+4. **Denylist-only detection:** a policy gate detects hardcoded substrings
+   without an allowlist fallback (the network-policy shape).
+
+The doctrine fix: **when you write or touch a gate, field, or command, bind
+the enforcement to the claim.** If the schema says "burn-down ready," the gate
+must compare against the current date. If the field is named `analyzed`, it
+must reflect actual analysis. If the gate claims to detect network calls, it
+must cover the common networking crates. A gate whose stated contract is
+stronger than its code misleads every future reader who trusts it.
+
+The existing cardinal-sin doctrine covers *findings* ("under-emit before
+over-emit"). This extends it to the *enforcement layer*: a false-confidence
+gate is worse than no gate, because it creates the impression of enforcement
+where none exists. The evidence-promotion corpus defends goldens against
+dishonest re-bless; the false-confidence doctrine defends gates against
+incomplete enforcement.
+
+Cross-references: #2346 (doctrine ask), #2463 (contract-parity meta-gate),
+#2466/#2479/#2484 (implementation PRs for individual instances).
+
+## 2026-07-29: A visible fallback must survive the warm path
+
+Fallback disclosure is only honest if the provenance survives caching. Emitting
+the lexical-fallback file list during cold computation is insufficient: a warm
+file-facts or classified-seam cache can otherwise replay the result without
+the limitation that explains its weaker evidence. Persist the fallback paths in
+each relevant cache envelope/manifest and replay one stable, sorted disclosure
+on every supported route. The same audit applies to policy candidate lists:
+include the actual editor languages and pin each extension with focused tests.
+
+The claim remains deliberately narrow. Disclosure explains where static
+evidence was weakened; it does not prove runtime behavior, test adequacy, or
+release readiness.
+
+## 2026-07-29: Preserve the source vocabulary at every operator boundary
+
+When an output adapter maps an internal value to a platform vocabulary, test
+the values produced by the real upstream contract, not only nearby internal
+labels. The annotation path received literal `warning` values while its first
+repair tested `medium`; matching only oracle-strength names silently downgraded
+warnings to notices. Keep the mapping fail-closed for unknown values, but pin
+the exact warning and quiet paths. The same discipline applies to submodule and
+gate disclosures: preserve the non-claim and first actionable reason at the
+terminal boundary instead of requiring artifact archaeology.

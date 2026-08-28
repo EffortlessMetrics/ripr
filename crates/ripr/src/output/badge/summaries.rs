@@ -4,13 +4,17 @@ use crate::analysis::SeamGripClassCounts;
 use crate::analysis::canonical_gap::canonical_gap_identities;
 #[cfg(test)]
 use crate::analysis::seams::SeamGripClass;
+use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::CheckOutput;
 #[cfg(test)]
 use crate::config::{ConfigSeverity, RiprConfig};
 use crate::domain::ExposureClass;
 use crate::output::evidence_record::evidence_record_for;
 use crate::output::gap_decision_ledger;
-use crate::output::suppressions::{SuppressionEntry, apply_exposure_suppressions};
+use crate::output::suppressions::{
+    CheckSuppressionCandidate, SuppressionEntry, apply_check_suppressions,
+    root_relative_finding_path,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::model::{
@@ -48,18 +52,52 @@ fn preview_skip_status_color_message(
     (BadgeStatus::Warn, "yellow", message)
 }
 
+pub(super) fn apply_analysis_outcome_disclosure(
+    source: Option<&AnalysisOutcome>,
+    status: BadgeStatus,
+    color: &'static str,
+    message: String,
+) -> (BadgeStatus, &'static str, String, Option<AnalysisOutcome>) {
+    let analysis_outcome = source.cloned();
+    let Some(outcome) = analysis_outcome.as_ref() else {
+        return (status, color, message, None);
+    };
+    if outcome.kind.is_complete() {
+        return (status, color, message, analysis_outcome);
+    }
+
+    let final_color = if status == BadgeStatus::Pass {
+        "yellow"
+    } else {
+        color
+    };
+    (
+        if status == BadgeStatus::Fail {
+            BadgeStatus::Fail
+        } else {
+            BadgeStatus::Warn
+        },
+        final_color,
+        format!("analysis-incomplete: {}", outcome.kind.as_str()),
+        analysis_outcome,
+    )
+}
+
 /// Builds the `ripr` badge summary from a `CheckOutput`, applying any
-/// `kind = "exposure_gap"` suppressions whose `finding_id` matches a
-/// currently-counted exposure gap. Expired and unmatched suppressions
-/// surface as `warnings` so silently-stale debt cannot keep the badge
-/// green. `today` is the ISO date used for expiry comparison.
+/// `kind = "exposure_gap"` suppression whose `finding_id` or root-relative
+/// `path`/`static_class` selector matches a currently-counted exposure gap.
+/// Implicit badge suppression uses the same matcher as explicit
+/// `--suppression-policy` findings, so path-glob policy applies consistently
+/// across both surfaces. Expired and unmatched suppressions surface as
+/// `warnings` so silently-stale debt cannot keep the badge green. `today` is
+/// the ISO date used for expiry comparison.
 pub fn ripr_badge_summary_with_suppressions(
     output: &CheckOutput,
     suppressions: &[SuppressionEntry],
     today: &str,
     policy: BadgePolicy,
 ) -> BadgeSummary {
-    let mut candidate_ids: Vec<String> = Vec::new();
+    let mut candidates: Vec<CheckSuppressionCandidate> = Vec::new();
     let mut unknowns = 0usize;
     let mut unique_tests: BTreeSet<(String, String, usize)> = BTreeSet::new();
 
@@ -68,7 +106,11 @@ pub fn ripr_badge_summary_with_suppressions(
             ExposureClass::WeaklyExposed
             | ExposureClass::ReachableUnrevealed
             | ExposureClass::NoStaticPath => {
-                candidate_ids.push(finding.id.clone());
+                candidates.push(CheckSuppressionCandidate {
+                    finding_id: finding.id.clone(),
+                    path: root_relative_finding_path(&output.root, &finding.probe.location.file),
+                    class: finding.class.as_str().to_string(),
+                });
             }
             ExposureClass::InfectionUnknown
             | ExposureClass::PropagationUnknown
@@ -86,9 +128,10 @@ pub fn ripr_badge_summary_with_suppressions(
         }
     }
 
-    let suppression_app = apply_exposure_suppressions(&candidate_ids, suppressions, today);
-    let suppressed = suppression_app.suppressed_findings.len();
-    let unsuppressed_exposure_gaps = candidate_ids.len().saturating_sub(suppressed);
+    let (suppressed_findings, warnings) =
+        apply_check_suppressions(&candidates, suppressions, today);
+    let suppressed = suppressed_findings.len();
+    let unsuppressed_exposure_gaps = candidates.len().saturating_sub(suppressed);
 
     let counts = BadgeCounts {
         unsuppressed_exposure_gaps,
@@ -123,20 +166,21 @@ pub fn ripr_badge_summary_with_suppressions(
     // to warn/yellow and name the skipped languages in the message so the
     // consumer has an actionable signal without reading full JSON.
     let preview_skipped = collect_preview_skipped(output);
-    let (final_status, final_color, final_message) =
-        if !preview_skipped.is_empty() && status == BadgeStatus::Pass {
-            // Only downgrade from Pass; if there are already real findings the
-            // headline already reflects non-pass, and we just annotate the skip.
-            let (ds, dc, dm) = preview_skip_status_color_message(&preview_skipped);
-            (ds, dc, dm)
-        } else if !preview_skipped.is_empty() {
-            // Already not pass (there are real findings). Keep existing
-            // status/color but override message to name the skip.
-            let (_, _, dm) = preview_skip_status_color_message(&preview_skipped);
-            (status, color, dm)
-        } else {
-            (status, color, headline.to_string())
-        };
+    let (status, color, message) = if !preview_skipped.is_empty() && status == BadgeStatus::Pass {
+        // Only downgrade from Pass; if there are already real findings the
+        // headline already reflects non-pass, and we just annotate the skip.
+        let (ds, dc, dm) = preview_skip_status_color_message(&preview_skipped);
+        (ds, dc, dm)
+    } else if !preview_skipped.is_empty() {
+        // Already not pass (there are real findings). Keep existing
+        // status/color but override message to name the skip.
+        let (_, _, dm) = preview_skip_status_color_message(&preview_skipped);
+        (status, color, dm)
+    } else {
+        (status, color, headline.to_string())
+    };
+    let (final_status, final_color, final_message, analysis_outcome) =
+        apply_analysis_outcome_disclosure(output.analysis_outcome.as_ref(), status, color, message);
 
     BadgeSummary {
         kind: BadgeKind::Ripr,
@@ -148,8 +192,10 @@ pub fn ripr_badge_summary_with_suppressions(
         counts,
         reason_counts,
         policy,
-        warnings: suppression_app.warnings,
+        warnings,
         preview_skipped,
+        projection: None,
+        analysis_outcome,
     }
 }
 
@@ -246,6 +292,8 @@ pub(crate) fn ripr_seam_badge_summary_from_counts(
         policy,
         warnings: Vec::new(),
         preview_skipped: Vec::new(),
+        projection: None,
+        analysis_outcome: None,
     }
 }
 
@@ -321,6 +369,8 @@ pub(crate) fn ripr_canonical_actionable_gap_badge_summary(
         policy,
         warnings: Vec::new(),
         preview_skipped: Vec::new(),
+        projection: None,
+        analysis_outcome: None,
     }
 }
 
@@ -374,6 +424,8 @@ pub(crate) fn repo_gap_ledger_badge_summary_from_json(
         policy,
         warnings: Vec::new(),
         preview_skipped: Vec::new(),
+        projection: None,
+        analysis_outcome: None,
     })
 }
 

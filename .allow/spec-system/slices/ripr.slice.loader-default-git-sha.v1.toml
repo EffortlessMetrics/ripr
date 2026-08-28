@@ -1,0 +1,65 @@
+schema_version = "2.0"
+id = "ripr.slice.loader-default-git-sha.v1"
+generation = 1
+
+source_issue = "issue:2261"
+design_reference = "RIPR-SPEC-0142"
+change_class = "behavior_change"
+
+claim_boundary = """
+Amends RIPR-SPEC-0142 so the LSP refresh Git-input record's `loader_default`
+state resolves the diff loader's default base once per accepted refresh
+through the new `analysis::diff` export `resolve_default_base_commit` and
+carries the resolved commit, letting default-base workspace identity and
+dedup consume the same commit authority as the explicit-base path. A
+workspace with no resolvable default base fails closed with no resolved
+commit and the unchanged `load_diff` named-error surface. It does not
+change analysis results, CLI behavior, output contracts, classification, or
+the RIPR-SPEC-0112 dirty-worktree disclosure semantics, and it introduces
+no new production process-spawn site (the export lives in the existing
+allowlisted `analysis::diff` adapter), no global Git cache, and no network
+access.
+"""
+
+non_goals = [
+  "HEAD/merge-base commit identity beyond current refresh consumers",
+  "git fetch, merge-compatibility assessment, or merge policy",
+  "diff-cache redesign, debounce implementation, or repository-watcher expansion",
+  "analysis result, classification, or CLI behavior changes",
+  "global or ambient Git caches or time-based reuse",
+]
+
+return_conditions = [
+  "Return to root if the default-base identity differs between the record-consuming and compatibility constructors for the same inputs.",
+  "Return to root if a default-base accepted refresh resolves Git inputs more than once, or a moved default base fails to invalidate dedup.",
+  "Return to root if golden fixtures drift or the LSP status payload contract breaks.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:git-input-authority",
+  "seam:ripr:lsp:input-identity",
+  "seam:ripr:lsp:refresh-scheduler",
+]
+
+shared_seams = [
+  "seam:ripr:analysis:diff-load",
+]
+
+forbidden_seams = [
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:cli:commands",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0142"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

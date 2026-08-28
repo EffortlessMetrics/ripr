@@ -3,6 +3,7 @@
     {
       "code": "exposed",
       "data": {
+        "diagnostic_id": "finding:ccb83d5f4cab32af",
         "classification": "exposed",
         "confidence": 0.6,
         "finding_id": "probe:src_totals.py:python_preview:1274639f",

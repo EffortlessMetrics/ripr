@@ -1,0 +1,258 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/typescript_adversarial_owner_identity_after_insertion/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":0,"probes":2,"findings":2,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:96bc4f328221076ad671ac6e78755286875f5c73dfc7126791a1c86b090dae97","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":9,"candidate_line_count":2,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_pricing.ts:typescript_preview:fff3ea84",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_pricing.ts:typescript_preview:fff3ea84",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pricing.ts",
+        "line": 6,
+        "expression": "export const DEFAULT_FEE_RULE: FeeRule = { bps: 300, cap: 50 };",
+        "owner": "typescript:src/pricing.ts::DEFAULT_FEE_RULE"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"low","summary":"0 related test(s) found for owner `DEFAULT_FEE_RULE`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"no","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+       },
+      "evidence_path": ["reach no: 0 related test(s) found for owner `DEFAULT_FEE_RULE`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation no: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: DEFAULT_FEE_RULE", "probe_fact: ambiguous_fallback", "gap_state: advisory", "actionability_category: missing_context", "why_not_actionable: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route", "repair_route: add trusted related-test matching for this owner shape before emitting a repair packet", "missing_actionability_fields: related_test_or_observer, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: trusted related test or observer, target shape, verify command, receipt command, and edit boundaries", "raw_evidence_ref: file=src/pricing.ts;line=6;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:typescript_preview:fff3ea84;owner=DEFAULT_FEE_RULE", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["No trusted TypeScript module-initializer observer for `DEFAULT_FEE_RULE`. Direct `expect(IMPORTED_CONST)...` and `expect(namespace.EXPORT)...` observers are supported, but helper-derived values, shadowed aliases, dynamic initialization, and non-expect references stay advisory in preview.", "TypeScript preview actionability `advisory` / `missing_context`: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route. Repair route: add trusted related-test matching for this owner shape before emitting a repair packet"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/pricing.ts:6: `export const DEFAULT_FEE_RULE: FeeRule = { bps: 300, cap: 50 };`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "unknown",
+        "oracle_strength": "none",
+        "owner": "DEFAULT_FEE_RULE",
+        "owner_kind": "module_function",
+        "probe_family": "predicate",
+        "related_test": null,
+        "repair_packet_ready": false,
+        "repair_route": "add trusted related-test matching for this owner shape before emitting a repair packet",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Add an exact boundary assertion for the changed predicate.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route"
+      },
+      "preview_actionability": {
+        "actionability_category": "missing_context",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "trusted related test or observer, target shape, verify command, receipt command, and edit boundaries",
+        "gap_state": "advisory",
+        "missing_actionability_fields": [
+          "related_test_or_observer",
+          "target_test_shape",
+          "verify_command",
+          "receipt_command",
+          "must_not_change",
+          "allowed_edit_surface",
+          "raw_evidence_refs"
+        ],
+        "missing_graph_legs": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/pricing.ts",
+            "kind": "typescript_preview_probe",
+            "leg": null,
+            "line": 6,
+            "owner": "DEFAULT_FEE_RULE",
+            "raw": "file=src/pricing.ts;line=6;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:typescript_preview:fff3ea84;owner=DEFAULT_FEE_RULE",
+            "sample": null,
+            "source_id": "probe:src_pricing.ts:typescript_preview:fff3ea84"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "add trusted related-test matching for this owner shape before emitting a repair packet",
+        "unlock_condition": null,
+        "why_not_actionable": "no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "TypeScript preview advisory: module initializer observer is missing context; add a direct `expect(IMPORTED_CONST).toBe(...)` or `expect(namespace.EXPORT).toEqual(...)` observer when safe, and keep helper-derived or dynamic initialization evidence advisory.",
+      "suggested_next_action": "TypeScript preview advisory: module initializer observer is missing context; add a direct `expect(IMPORTED_CONST).toBe(...)` or `expect(namespace.EXPORT).toEqual(...)` observer when safe, and keep helper-derived or dynamic initialization evidence advisory.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "module_function"
+    },
+    {
+      "id": "probe:src_pricing.ts:typescript_preview:bd772dc8",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_pricing.ts:typescript_preview:bd772dc8",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pricing.ts",
+        "line": 14,
+        "expression": "  if (amount >= threshold) {",
+        "owner": "typescript:src/pricing.ts::applyDiscount"
+       },
+      "ripr": {
+        "reach": {"state":"weak","confidence":"low","summary":"1 related test(s) found for owner `applyDiscount`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+       },
+      "evidence_path": ["reach weak: 1 related test(s) found for owner `applyDiscount`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/pricing.test.ts:3 computes the processing fee uses unknown unknown oracle"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: applyDiscount", "gap_state: advisory", "actionability_category: ambiguous_related_test", "why_not_actionable: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof", "repair_route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection", "missing_actionability_fields: related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: trusted token-aware relation plus complete verify, receipt, and edit-boundary fields", "raw_evidence_ref: file=src/pricing.ts;line=14;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:typescript_preview:bd772dc8;owner=applyDiscount", "related_test_relation: same_file_proximity (computes the processing fee)", "related_test_uncertain: same_file_proximity (computes the processing fee)", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.", "TypeScript preview actionability `advisory` / `ambiguous_related_test`: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof. Repair route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "computes the processing fee",
+          "file": "tests/pricing.test.ts",
+          "line": 3,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": ""
+        }
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/pricing.ts:14: `if (amount >= threshold) {`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "unknown",
+        "oracle_strength": "unknown",
+        "owner": "applyDiscount",
+        "owner_kind": "function",
+        "probe_family": "predicate",
+        "related_test": {
+          "file": "tests/pricing.test.ts",
+          "line": 3,
+          "name": "computes the processing fee"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Add an exact boundary assertion for the changed predicate.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "related-test link is heuristic-only and cannot safely borrow extracted assertions as proof"
+      },
+      "preview_actionability": {
+        "actionability_category": "ambiguous_related_test",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "trusted token-aware relation plus complete verify, receipt, and edit-boundary fields",
+        "gap_state": "advisory",
+        "missing_actionability_fields": [
+          "related_test_or_observer",
+          "verify_command",
+          "receipt_command",
+          "must_not_change",
+          "allowed_edit_surface",
+          "raw_evidence_refs"
+        ],
+        "missing_graph_legs": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/pricing.ts",
+            "kind": "typescript_preview_probe",
+            "leg": null,
+            "line": 14,
+            "owner": "applyDiscount",
+            "raw": "file=src/pricing.ts;line=14;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:typescript_preview:bd772dc8;owner=applyDiscount",
+            "sample": null,
+            "source_id": "probe:src_pricing.ts:typescript_preview:bd772dc8"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection",
+        "unlock_condition": null,
+        "why_not_actionable": "related-test link is heuristic-only and cannot safely borrow extracted assertions as proof"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.",
+      "suggested_next_action": "TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "typescript",
+      "file_count": 1,
+      "sample_paths": ["src/pricing.ts"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

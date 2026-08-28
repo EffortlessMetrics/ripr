@@ -1,4 +1,4 @@
-use super::{Finding, MissingDiscriminatorFact, RelatedTest, ValueFact};
+use super::{DiagnosticWitness, Finding, MissingDiscriminatorFact, RelatedTest, ValueFact};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ContextPacket {
@@ -10,6 +10,7 @@ pub struct ContextPacket {
     pub related_tests: Vec<RelatedTest>,
     pub observed_values: Vec<ValueFact>,
     pub missing_discriminators: Vec<MissingDiscriminatorFact>,
+    pub witness: Option<DiagnosticWitness>,
     pub missing: Vec<String>,
     pub stop_reasons: Vec<String>,
     pub recommended_next_step: Option<String>,
@@ -67,6 +68,7 @@ impl ContextPacket {
                 .collect(),
             observed_values: finding.activation.observed_values.clone(),
             missing_discriminators: finding.activation.missing_discriminators.clone(),
+            witness: DiagnosticWitness::from_finding(finding),
             missing: finding.missing.clone(),
             stop_reasons,
             recommended_next_step: finding.recommended_next_step.clone(),

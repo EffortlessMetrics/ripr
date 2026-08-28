@@ -3,6 +3,7 @@
     {
       "code": "ripr-seam-weakly-gripped",
       "data": {
+        "diagnostic_id": "seam:2a9b75e33cbdbdc9",
         "evidence": {
           "activate": "yes",
           "discriminate": "yes",

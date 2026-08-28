@@ -1,0 +1,31 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/rust_async_fn_owner/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/rust_async_fn_owner/input/src/lib.rs:2
+  Static exposure: propagation_unknown (note, confidence 0.66)
+  Why propagation_unknown: the change propagates but the downstream effect is unknown statically
+  Changed behavior: capacity > threshold
+  Missing discriminator: capacity == threshold
+  Related test: src/lib.rs:10 above_threshold_gets_reduced
+  Next step: Escalate to real mutation testing or deep static analysis for this probe.
+  Evidence:
+    - reach yes: Related tests appear to reach fetch_limit: above_threshold_gets_reduced
+    - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+    - 7 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/rust_async_fn_owner/input --diff fixtures/rust_async_fn_owner/diff.patch --mode fast probe:src_lib.rs:predicate:736b22b0
+  ripr context --root fixtures/rust_async_fn_owner/input --diff fixtures/rust_async_fn_owner/diff.patch --mode fast --at probe:src_lib.rs:predicate:736b22b0
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
