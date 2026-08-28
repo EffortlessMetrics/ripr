@@ -33,6 +33,13 @@ const PUBLICATION_REPORT: &str = "candidate-ref-publication.json";
 const PACKET_INDEX: &str = "packet-index.json";
 const VALIDATION_REPORT: &str = "resolved-tree-validation.json";
 
+const BUILDER_TITLE: &str = "Trusted source-promotion builder";
+const BUILDER_SUCCESS_CLAIM: &str = "This packet binds one clean source checkout, Rust toolchain, Cargo.lock, isolated locked build, workflow source, and executable digest. It grants no candidate-tree, construction, ref, merge, release, or publication authority.";
+const ADMISSION_TITLE: &str = "Resolved-tree admission";
+const ADMISSION_SUCCESS_CLAIM: &str = "This packet admits one exact terminal-green resolved-tree transaction for later exact-tree qualification and guarded construction. It does not construct a commit, move a ref, print a merge command, or authorize release publication.";
+const CONSTRUCTION_TITLE: &str = "Exact-join construction";
+const CONSTRUCTION_SUCCESS_CLAIM: &str = "This packet records one exact unreferenced direct two-parent object after terminal tree qualification. It moves no ref and grants no release or publication authority.";
+
 const DEFAULT_BUILDER_OUT: &str = "target/ripr/source-promotion/trusted-builder";
 const DEFAULT_ADMISSION_OUT: &str = "target/ripr/source-promotion/resolved-tree-admission";
 const DEFAULT_CONSTRUCTION_OUT: &str = "target/ripr/source-promotion/exact-join-construction";

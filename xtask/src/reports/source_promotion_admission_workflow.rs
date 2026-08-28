@@ -677,6 +677,17 @@ fn verify_packet_with_request(root: &Path) -> Result<(Value, Vec<u8>), String> {
         }
     }
     let report = read_json(&root.join(REPORT_JSON), "workflow disposition")?;
+    if json_string(&index, "status") != json_string(&report, "status") {
+        return Err("workflow packet index status differs from disposition".to_string());
+    }
+    let observed_markdown = fs::read(root.join(REPORT_MD))
+        .map_err(|error| format!("failed to read workflow disposition Markdown: {error}"))?;
+    let expected_markdown = render_markdown(&report)?;
+    if observed_markdown != expected_markdown.as_bytes() {
+        return Err(
+            "workflow disposition Markdown differs from canonical JSON rendering".to_string(),
+        );
+    }
     validate_report(&report)?;
     let requested_identity_bytes = validate_closure_bindings(root, &report)?;
     Ok((report, requested_identity_bytes))
@@ -2734,6 +2745,34 @@ mod tests {
     }
 
     #[test]
+    fn verifier_rejects_digest_rebound_markdown_and_packet_status() -> Result<(), String> {
+        let (markdown_root, markdown_packet) = write_test_closure("markdown-moved")?;
+        fs::write(
+            markdown_packet.join(REPORT_MD),
+            b"# Source Promotion Admission Workflow\n\n- Status: `rejected`\n",
+        )
+        .map_err(|error| format!("failed to mutate workflow Markdown: {error}"))?;
+        reindex_workflow_packet(&markdown_packet)?;
+        if verify_packet(&markdown_packet).is_ok() {
+            return Err("digest-rebound workflow Markdown escaped JSON parity".to_string());
+        }
+        fs::remove_dir_all(&markdown_root)
+            .map_err(|error| format!("failed to clean Markdown parity fixture: {error}"))?;
+
+        let (status_root, status_packet) = write_test_closure("packet-status-moved")?;
+        let index_path = status_packet.join(PACKET_INDEX);
+        let mut index = read_json(&index_path, "workflow packet status fixture")?;
+        index["status"] = Value::String("rejected".to_string());
+        write_pretty_json(&index_path, &index, "moved workflow packet status")?;
+        if verify_packet(&status_packet).is_ok() {
+            return Err("workflow packet index status escaped disposition parity".to_string());
+        }
+        fs::remove_dir_all(&status_root)
+            .map_err(|error| format!("failed to clean packet status fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn verifier_replays_nested_builder_semantics_after_digest_rebinding() -> Result<(), String> {
         let (root, packet) = write_test_closure("nested-builder-replay")?;
         let builder_root = packet.join("evidence/trusted-builder");
@@ -2798,6 +2837,188 @@ mod tests {
         }
         fs::remove_dir_all(&root)
             .map_err(|error| format!("failed to clean command-log replay fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_rejects_digest_rebound_undeclared_nested_members() -> Result<(), String> {
+        let (validation_root, validation_packet) = write_test_closure("extra-validation-member")?;
+        let nested_validation = validation_packet.join("evidence/locators/validation_packet");
+        fs::write(
+            nested_validation.join("commands/99-undeclared.stdout.log"),
+            b"undeclared command evidence\n",
+        )
+        .map_err(|error| format!("failed to add undeclared validation member: {error}"))?;
+        let validation_index_sha256 = reindex_control_packet(&nested_validation)?;
+        let validation_receipt_sha256 = digest_file(
+            &nested_validation.join("resolved-tree-validation.json"),
+            "validation receipt with extra member",
+        )?;
+        let admission_root = validation_packet.join("evidence/resolved-tree-admission");
+        let admission_report = admission_root.join("resolved-tree-admission.json");
+        let mut admission = read_json(&admission_report, "extra-member admission fixture")?;
+        admission["resolved_tree_packet_index_sha256"] = Value::String(validation_index_sha256);
+        admission["resolved_tree_validation_receipt_sha256"] =
+            Value::String(validation_receipt_sha256);
+        write_pretty_json(
+            &admission_report,
+            &admission,
+            "rebound extra-member admission fixture",
+        )?;
+        reindex_control_packet(&admission_root)?;
+        reindex_workflow_packet(&validation_packet)?;
+        if verify_packet(&validation_packet).is_ok() {
+            return Err(
+                "digest-rebound undeclared validation member escaped exact inventory".to_string(),
+            );
+        }
+        fs::remove_dir_all(&validation_root).map_err(|error| {
+            format!("failed to clean undeclared validation member fixture: {error}")
+        })?;
+
+        let (controller_root, controller_packet) = write_test_closure("extra-controller-member")?;
+        let builder_root = controller_packet.join("evidence/trusted-builder");
+        fs::write(
+            builder_root.join("undeclared.log"),
+            b"undeclared controller evidence\n",
+        )
+        .map_err(|error| format!("failed to add undeclared controller member: {error}"))?;
+        let builder_index_sha256 = reindex_control_packet(&builder_root)?;
+        let builder_receipt_sha256 = digest_file(
+            &builder_root.join("trusted-builder.json"),
+            "builder receipt with extra member",
+        )?;
+        let admission_root = controller_packet.join("evidence/resolved-tree-admission");
+        let admission_report = admission_root.join("resolved-tree-admission.json");
+        let mut admission = read_json(&admission_report, "extra-controller admission fixture")?;
+        admission["trusted_builder_packet_index_sha256"] = Value::String(builder_index_sha256);
+        admission["trusted_builder_receipt_sha256"] = Value::String(builder_receipt_sha256);
+        write_pretty_json(
+            &admission_report,
+            &admission,
+            "rebound extra-controller admission fixture",
+        )?;
+        reindex_control_packet(&admission_root)?;
+        reindex_workflow_packet(&controller_packet)?;
+        if verify_packet(&controller_packet).is_ok() {
+            return Err(
+                "digest-rebound undeclared controller member escaped exact inventory".to_string(),
+            );
+        }
+        fs::remove_dir_all(&controller_root).map_err(|error| {
+            format!("failed to clean undeclared controller member fixture: {error}")
+        })?;
+
+        let (admission_root, admission_packet) = write_test_closure("extra-admission-member")?;
+        let nested_admission = admission_packet.join("evidence/resolved-tree-admission");
+        fs::write(
+            nested_admission.join("undeclared.log"),
+            b"undeclared admission evidence\n",
+        )
+        .map_err(|error| format!("failed to add undeclared admission member: {error}"))?;
+        reindex_control_packet(&nested_admission)?;
+        reindex_workflow_packet(&admission_packet)?;
+        if verify_packet(&admission_packet).is_ok() {
+            return Err(
+                "digest-rebound undeclared admission member escaped exact inventory".to_string(),
+            );
+        }
+        fs::remove_dir_all(&admission_root).map_err(|error| {
+            format!("failed to clean undeclared admission member fixture: {error}")
+        })?;
+
+        let (construction_root, construction_packet) =
+            write_admitted_test_closure_for("extra-construction-member", "constructor_dry_run")?;
+        let nested_admission = construction_packet.join("evidence/resolved-tree-admission");
+        let admission_receipt = read_json(
+            &nested_admission.join("resolved-tree-admission.json"),
+            "construction replay admission receipt",
+        )?;
+        let nested_validation = construction_packet.join("evidence/locators/validation_packet");
+        let qualification =
+            construction_packet.join("evidence/locators/qualification_receipt/input");
+        let nested_construction = construction_packet.join("evidence/exact-join-construction");
+        let construction_receipt = super::super::source_promotion_control::source_promotion_control_tests::write_construction_replay_packet(
+            &nested_construction,
+            &admission_receipt,
+            digest_file(&nested_admission.join(PACKET_INDEX), "construction replay admission index")?,
+            digest_file(
+                &nested_admission.join("resolved-tree-admission.json"),
+                "construction replay admission receipt",
+            )?,
+            digest_file(
+                &nested_validation.join(PACKET_INDEX),
+                "construction replay validation index",
+            )?,
+            digest_file(&qualification, "construction replay qualification")?,
+        )?;
+        let mut report = read_json(
+            &construction_packet.join(REPORT_JSON),
+            "construction replay workflow report",
+        )?;
+        report["phase"] = Value::String("final".to_string());
+        report["controller_packets"]["exact_join_construction"] = serde_json::json!({
+            "path": "evidence/exact-join-construction",
+            "available": true,
+            "status": "constructed",
+            "schema": "ripr.source_promotion_exact_join_construction.v1",
+        });
+        report["producer"]["constructor_state"] = Value::String("passed".to_string());
+        report["attempts"] =
+            normalized_attempts(&Some(admission_receipt), &Some(construction_receipt), true);
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        rewrite_test_packet_reports_and_index(&construction_packet, &report)?;
+        verify_packet(&construction_packet)?;
+
+        fs::write(
+            nested_construction.join("undeclared.log"),
+            b"undeclared construction evidence\n",
+        )
+        .map_err(|error| format!("failed to add undeclared construction member: {error}"))?;
+        reindex_control_packet(&nested_construction)?;
+        reindex_workflow_packet(&construction_packet)?;
+        if verify_packet(&construction_packet).is_ok() {
+            return Err(
+                "digest-rebound undeclared construction member escaped exact inventory".to_string(),
+            );
+        }
+        fs::remove_dir_all(&construction_root).map_err(|error| {
+            format!("failed to clean undeclared construction member fixture: {error}")
+        })?;
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_rejects_digest_rebound_nested_markdown() -> Result<(), String> {
+        let (root, packet) = write_test_closure("nested-markdown-moved")?;
+        let builder_root = packet.join("evidence/trusted-builder");
+        fs::write(
+            builder_root.join("trusted-builder.md"),
+            b"# Trusted source-promotion builder\n\n- Status: **rejected**\n",
+        )
+        .map_err(|error| format!("failed to mutate nested builder Markdown: {error}"))?;
+        let builder_index_sha256 = reindex_packet_inventory(&builder_root)?;
+        let builder_receipt_sha256 = digest_file(
+            &builder_root.join("trusted-builder.json"),
+            "builder receipt with moved Markdown",
+        )?;
+        let admission_root = packet.join("evidence/resolved-tree-admission");
+        let admission_report = admission_root.join("resolved-tree-admission.json");
+        let mut admission = read_json(&admission_report, "nested-Markdown admission fixture")?;
+        admission["trusted_builder_packet_index_sha256"] = Value::String(builder_index_sha256);
+        admission["trusted_builder_receipt_sha256"] = Value::String(builder_receipt_sha256);
+        write_pretty_json(
+            &admission_report,
+            &admission,
+            "rebound nested-Markdown admission fixture",
+        )?;
+        reindex_control_packet(&admission_root)?;
+        reindex_workflow_packet(&packet)?;
+        if verify_packet(&packet).is_ok() {
+            return Err("digest-rebound nested Markdown escaped JSON parity".to_string());
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean nested Markdown fixture: {error}"))?;
         Ok(())
     }
 
@@ -3663,18 +3884,63 @@ mod tests {
 
     fn reindex_control_packet(root: &Path) -> Result<String, String> {
         let index_path = root.join(PACKET_INDEX);
-        let mut index = read_json(&index_path, "test controller packet index")?;
-        let entries = index
-            .get_mut("files")
-            .and_then(Value::as_array_mut)
-            .ok_or_else(|| "test controller packet index is missing files".to_string())?;
-        for entry in entries {
-            let path = required_json_string(entry, "path")?.to_string();
+        let index = read_json(&index_path, "test controller packet index")?;
+        let kind = required_json_string(&index, "kind")?;
+        let (report_name, markdown) = match kind {
+            "resolved_tree_validation" => {
+                let report = read_json(
+                    &root.join("resolved-tree-validation.json"),
+                    "test validation packet report",
+                )?;
+                (
+                    "resolved-tree-validation.json",
+                    super::super::source_promotion_validate_resolved_tree::render_markdown(
+                        &report,
+                    )?,
+                )
+            }
+            "trusted_builder" | "resolved_tree_admission" | "exact_join_construction" => {
+                let report_name = match kind {
+                    "trusted_builder" => "trusted-builder.json",
+                    "resolved_tree_admission" => "resolved-tree-admission.json",
+                    "exact_join_construction" => "exact-join-construction.json",
+                    _ => return Err(format!("unsupported test controller packet kind: {kind}")),
+                };
+                let report = read_json(&root.join(report_name), "test controller packet report")?;
+                (
+                    report_name,
+                    super::super::source_promotion_control::render_admitted_control_markdown(
+                        report_name,
+                        &report,
+                    )?,
+                )
+            }
+            _ => return Err(format!("unsupported test packet kind: {kind}")),
+        };
+        let markdown_name = report_name
+            .strip_suffix(".json")
+            .map(|stem| format!("{stem}.md"))
+            .ok_or_else(|| format!("test report name must end in .json: {report_name}"))?;
+        fs::write(root.join(markdown_name), markdown).map_err(|error| {
+            format!("failed to rewrite canonical test packet Markdown: {error}")
+        })?;
+        reindex_packet_inventory(root)
+    }
+
+    fn reindex_packet_inventory(root: &Path) -> Result<String, String> {
+        let index_path = root.join(PACKET_INDEX);
+        let mut index = read_json(&index_path, "test packet index")?;
+        let mut entries = Vec::new();
+        for (path, sha256) in collect_packet_files(root)? {
             let bytes = fs::read(root.join(&path))
                 .map_err(|error| format!("failed to read rebound controller member: {error}"))?;
-            entry["bytes"] = Value::from(bytes.len() as u64);
-            entry["sha256"] = Value::String(digest_bytes(&bytes));
+            entries.push(serde_json::json!({
+                "path": path,
+                "bytes": bytes.len(),
+                "sha256": sha256,
+            }));
         }
+        index["files"] = Value::Array(entries);
         write_pretty_json(&index_path, &index, "rebound controller packet index")?;
         digest_file(&index_path, "rebound controller packet index")
     }

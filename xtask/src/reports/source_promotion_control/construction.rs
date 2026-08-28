@@ -187,8 +187,8 @@ fn construct_exact_join(args: &[String]) -> Result<(), String> {
                 "exact_join_construction",
                 CONSTRUCTION_REPORT,
                 &report,
-                "Exact-join construction",
-                "This packet records one exact unreferenced direct two-parent object after terminal tree qualification. It moves no ref and grants no release or publication authority.",
+                CONSTRUCTION_TITLE,
+                CONSTRUCTION_SUCCESS_CLAIM,
             )
         }
         Err(failure) => {

@@ -58,6 +58,12 @@ pub(super) fn replay_admitted_closure(
         VALIDATION_REPORT,
         "resolved-tree validation receipt",
     )?;
+    validate_packet_markdown(
+        &validation_packet,
+        VALIDATION_REPORT,
+        &super::source_promotion_validate_resolved_tree::render_markdown(&validation)?,
+        "resolved-tree validation",
+    )?;
     validate_resolved_tree_binding(&validation, &identity)?;
     validate_validation_command_evidence(&validation_packet, &validation)?;
 
@@ -87,6 +93,12 @@ pub(super) fn replay_admitted_closure(
         BUILDER_REPORT,
     )?;
     let builder = packet_json(&builder_packet, BUILDER_REPORT, "trusted builder receipt")?;
+    validate_control_packet(
+        &builder_packet,
+        BUILDER_REPORT,
+        &builder,
+        "trusted builder",
+    )?;
     let executable = validate_builder_receipt_contract(&builder, &validation, &identity)?;
     let integration = validate_integration_index(
         input.integration_index,
@@ -106,6 +118,12 @@ pub(super) fn replay_admitted_closure(
         &admission_packet,
         ADMISSION_REPORT,
         "resolved-tree admission receipt",
+    )?;
+    validate_control_packet(
+        &admission_packet,
+        ADMISSION_REPORT,
+        &admission,
+        "resolved-tree admission",
     )?;
     validate_admission_receipt(&admission, &identity)?;
     let validation_receipt_sha256 =
@@ -174,6 +192,12 @@ pub(super) fn replay_admitted_closure(
                 CONSTRUCTION_REPORT,
                 "exact-join construction receipt",
             )?;
+            validate_control_packet(
+                &packet,
+                CONSTRUCTION_REPORT,
+                &receipt,
+                "exact-join construction",
+            )?;
             let evidence = construction_evidence_from_receipt(&receipt)?;
             validate_construction_receipt(&receipt, &evidence)?;
             if evidence.identity != identity
@@ -207,11 +231,16 @@ fn validate_validation_command_evidence(
         .get("commands")
         .and_then(Value::as_array)
         .ok_or_else(|| "resolved-tree validation receipt is missing commands".to_string())?;
+    let mut expected_files = BTreeSet::from([
+        VALIDATION_REPORT.to_string(),
+        markdown_sibling(VALIDATION_REPORT)?,
+    ]);
     for (index, command) in commands.iter().enumerate() {
         let name = json_string(command, "command")
             .ok_or_else(|| "resolved-tree command receipt is missing command".to_string())?;
         for stream in ["stdout", "stderr"] {
             let expected_path = format!("commands/{:02}-{name}.{stream}.log", index + 1);
+            expected_files.insert(expected_path.clone());
             if json_string(command, &format!("{stream}_path")) != Some(expected_path.as_str()) {
                 return Err(format!(
                     "resolved-tree {name} {stream} path differs from canonical indexed evidence"
@@ -230,6 +259,80 @@ fn validate_validation_command_evidence(
                 ));
             }
         }
+    }
+    validate_exact_packet_inventory(packet, &expected_files, "resolved-tree validation")?;
+    Ok(())
+}
+
+fn validate_control_packet(
+    packet: &IndexedPacket,
+    report_name: &str,
+    report: &Value,
+    label: &str,
+) -> Result<(), String> {
+    let expected = BTreeSet::from([
+        "control-attempt.json".to_string(),
+        report_name.to_string(),
+        markdown_sibling(report_name)?,
+    ]);
+    validate_exact_packet_inventory(packet, &expected, label)?;
+    validate_packet_markdown(
+        packet,
+        report_name,
+        &render_admitted_control_markdown(report_name, report)?,
+        label,
+    )
+}
+
+pub(super) fn render_admitted_control_markdown(
+    report_name: &str,
+    report: &Value,
+) -> Result<String, String> {
+    let (title, claim_boundary) = match report_name {
+        BUILDER_REPORT => (BUILDER_TITLE, BUILDER_SUCCESS_CLAIM),
+        ADMISSION_REPORT => (ADMISSION_TITLE, ADMISSION_SUCCESS_CLAIM),
+        CONSTRUCTION_REPORT => (CONSTRUCTION_TITLE, CONSTRUCTION_SUCCESS_CLAIM),
+        _ => return Err(format!("unsupported admitted control report: {report_name}")),
+    };
+    render_control_markdown(title, report, claim_boundary)
+}
+
+fn markdown_sibling(report_name: &str) -> Result<String, String> {
+    report_name
+        .strip_suffix(".json")
+        .map(|stem| format!("{stem}.md"))
+        .ok_or_else(|| format!("packet report name must end in .json: {report_name}"))
+}
+
+fn validate_exact_packet_inventory(
+    packet: &IndexedPacket,
+    expected: &BTreeSet<String>,
+    label: &str,
+) -> Result<(), String> {
+    let observed = packet.files.keys().cloned().collect::<BTreeSet<_>>();
+    if &observed != expected {
+        return Err(format!(
+            "{label} packet inventory differs from its exact contract: expected {expected:?}, observed {observed:?}"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_packet_markdown(
+    packet: &IndexedPacket,
+    report_name: &str,
+    expected: &str,
+    label: &str,
+) -> Result<(), String> {
+    let markdown = markdown_sibling(report_name)?;
+    let observed = packet
+        .files
+        .get(&markdown)
+        .ok_or_else(|| format!("{label} packet is missing canonical Markdown"))?;
+    if observed.contents != expected.as_bytes() {
+        return Err(format!(
+            "{label} Markdown differs from its canonical JSON rendering"
+        ));
     }
     Ok(())
 }

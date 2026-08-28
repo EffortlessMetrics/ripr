@@ -150,8 +150,8 @@ fn write_trusted_builder_receipt(args: &[String]) -> Result<(), String> {
             kind: "trusted_builder",
             report_name: BUILDER_REPORT,
             report: &report,
-            title: "Trusted source-promotion builder",
-            claim_boundary: "This packet binds one clean source checkout, Rust toolchain, Cargo.lock, isolated locked build, workflow source, and executable digest. It grants no candidate-tree, construction, ref, merge, release, or publication authority.",
+            title: BUILDER_TITLE,
+            claim_boundary: BUILDER_SUCCESS_CLAIM,
         },
     );
     if status == "built" {
@@ -374,8 +374,8 @@ fn admit_resolved_tree(args: &[String]) -> Result<(), String> {
                     kind: "resolved_tree_admission",
                     report_name: ADMISSION_REPORT,
                     report: &report,
-                    title: "Resolved-tree admission",
-                    claim_boundary: "This packet admits one exact terminal-green resolved-tree transaction for later exact-tree qualification and guarded construction. It does not construct a commit, move a ref, print a merge command, or authorize release publication.",
+                    title: ADMISSION_TITLE,
+                    claim_boundary: ADMISSION_SUCCESS_CLAIM,
                 },
             )
         }

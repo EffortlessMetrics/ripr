@@ -492,16 +492,47 @@ pub(crate) mod source_promotion_control_tests {
         fs::create_dir_all(root)
             .map_err(|error| format!("failed to create test packet directory: {error}"))?;
         let report_bytes = write_test_json(&root.join(report_name), report, "test packet report")?;
+        let attempt_bytes = b"{}\n";
+        fs::write(root.join("control-attempt.json"), attempt_bytes)
+            .map_err(|error| format!("failed to write test attempt journal: {error}"))?;
+        let markdown_name = report_name
+            .strip_suffix(".json")
+            .map(|stem| format!("{stem}.md"))
+            .ok_or_else(|| "test packet report name must end in .json".to_string())?;
+        let (title, claim_boundary) = match kind {
+            "trusted_builder" => (BUILDER_TITLE, BUILDER_SUCCESS_CLAIM),
+            "resolved_tree_admission" => (ADMISSION_TITLE, ADMISSION_SUCCESS_CLAIM),
+            "exact_join_construction" => (CONSTRUCTION_TITLE, CONSTRUCTION_SUCCESS_CLAIM),
+            _ => ("Test controller packet", "Test-only controller packet."),
+        };
+        let markdown = render_control_markdown(title, report, claim_boundary)?;
+        let markdown_bytes = markdown.as_bytes();
+        fs::write(root.join(&markdown_name), markdown_bytes)
+            .map_err(|error| format!("failed to write test packet Markdown: {error}"))?;
+        let mut files = vec![
+            serde_json::json!({
+                "path": "control-attempt.json",
+                "bytes": attempt_bytes.len(),
+                "sha256": digest_bytes(attempt_bytes),
+            }),
+            serde_json::json!({
+                "path": markdown_name,
+                "bytes": markdown_bytes.len(),
+                "sha256": digest_bytes(markdown_bytes),
+            }),
+            serde_json::json!({
+                "path": report_name,
+                "bytes": report_bytes.len(),
+                "sha256": digest_bytes(&report_bytes),
+            }),
+        ];
+        files.sort_by(|left, right| json_string(left, "path").cmp(&json_string(right, "path")));
         let index = serde_json::json!({
             "schema": schema,
             "kind": kind,
             "status": status,
             "complete": true,
-            "files": [{
-                "path": report_name,
-                "bytes": report_bytes.len(),
-                "sha256": digest_bytes(&report_bytes),
-            }],
+            "files": files,
         });
         write_test_json(&root.join(PACKET_INDEX), &index, "test packet index")?;
         read_indexed_packet(root, schema, Some(kind), Some(status), report_name)
@@ -519,11 +550,24 @@ pub(crate) mod source_promotion_control_tests {
             report,
             "test validation report",
         )?;
-        let mut files = vec![serde_json::json!({
-            "path": VALIDATION_REPORT,
-            "bytes": report_bytes.len(),
-            "sha256": digest_bytes(&report_bytes),
-        })];
+        let markdown_name = "resolved-tree-validation.md";
+        let markdown =
+            super::super::source_promotion_validate_resolved_tree::render_markdown(report)?;
+        let markdown_bytes = markdown.as_bytes();
+        fs::write(root.join(markdown_name), markdown_bytes)
+            .map_err(|error| format!("failed to write test validation Markdown: {error}"))?;
+        let mut files = vec![
+            serde_json::json!({
+                "path": VALIDATION_REPORT,
+                "bytes": report_bytes.len(),
+                "sha256": digest_bytes(&report_bytes),
+            }),
+            serde_json::json!({
+                "path": markdown_name,
+                "bytes": markdown_bytes.len(),
+                "sha256": digest_bytes(markdown_bytes),
+            }),
+        ];
         let commands = report
             .get("commands")
             .and_then(Value::as_array)
@@ -835,6 +879,41 @@ pub(crate) mod source_promotion_control_tests {
             qualification: qualification_path,
             _root: fixture.repo,
         })
+    }
+
+    pub(crate) fn write_construction_replay_packet(
+        root: &Path,
+        admission: &Value,
+        admission_index_sha256: String,
+        admission_receipt_sha256: String,
+        validation_index_sha256: String,
+        qualification_sha256: String,
+    ) -> Result<Value, String> {
+        let evidence = ConstructionEvidence {
+            identity: identity_from_admission(admission)?,
+            swarm_ref: required_receipt_string(admission, "swarm_ref")?,
+            candidate_ref: "refs/heads/promote/0.11.0-replay-fixture".to_string(),
+            admission_index_sha256,
+            admission_receipt_sha256,
+            validation_index_sha256,
+            integration_index_sha256: required_receipt_string(
+                admission,
+                "integration_index_sha256",
+            )?,
+            qualification_sha256,
+            join_commit: "7".repeat(40),
+            commit_timestamp: "2026-08-28T00:00:00Z".to_string(),
+        };
+        let report = construction_success_report(&evidence);
+        write_test_packet(
+            root,
+            CONTROL_PACKET_SCHEMA,
+            "exact_join_construction",
+            "constructed",
+            CONSTRUCTION_REPORT,
+            &report,
+        )?;
+        Ok(report)
     }
 
     fn construction_snapshot_fixture(label: &str) -> Result<ConstructionSnapshotFixture, String> {
