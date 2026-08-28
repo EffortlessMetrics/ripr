@@ -59097,6 +59097,9 @@ fn check_output_contracts() -> Result<(), String> {
     let source_promotion_admission_workflow = read_text_lossy(Path::new(
         "xtask/src/reports/source_promotion_admission_workflow.rs",
     ))?;
+    let source_promotion_network_policy_resolution = read_text_lossy(Path::new(
+        "xtask/src/reports/source_promotion_network_policy_resolution.rs",
+    ))?;
     let mut json_output = String::new();
     for path in [
         "crates/ripr/src/output/json/mod.rs",
@@ -59264,6 +59267,22 @@ fn check_output_contracts() -> Result<(), String> {
                 require_contract_value(
                     "xtask/src/reports/source_promotion_admission_workflow.rs",
                     &source_promotion_admission_workflow,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
+            "source_promotion_network_policy_resolution_schema" => {
+                require_contract_value(
+                    "xtask/src/reports/source_promotion_network_policy_resolution.rs",
+                    &source_promotion_network_policy_resolution,
                     value,
                     kind,
                     &mut violations,

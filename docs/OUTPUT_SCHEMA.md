@@ -13814,6 +13814,25 @@ This receipt proves only the named source-governed repository contracts for one
 exact reviewed tree. It does not construct J, qualify later product or editor
 surfaces, move source or swarm authority, or authorize release publication.
 
+## Source-promotion network-policy resolution receipt
+
+`cargo xtask source-promotion resolve-network-policy` writes the typed
+`ripr.source_promotion_network_policy_resolution.v1` receipt for one exact
+source/W7 preview tree. It binds the accepted P0 receipt and artifact digests,
+both parent policy blobs, explicit reviewer decisions, the complete live
+production-pattern inventory, the one-path policy tree delta, and a run of the
+source-owned production network-policy checker.
+
+The companion `ripr.source_promotion_resolution_manifest_fragment.v1` object
+describes only the integrated `policy/network_allowlist.txt` path and binds its
+resolved blob and subject tree. Its published sidecar additionally binds the
+resolution receipt bytes by SHA-256 so the fragment cannot stand alone as
+authority.
+
+The receipt proves semantic network-policy resolution for the frozen parent
+pair. It does not create the complete resolution manifest, construct or qualify
+the eventual join, move a ref, or authorize release or publication.
+
 ## Source-promotion control packets
 
 The source-owned controller writes indexed JSON/Markdown packets using

@@ -1,0 +1,10 @@
+{
+  "disposition": "integrated",
+  "key": "policy/network_allowlist.txt",
+  "kind": "integrated_policy",
+  "receipt_schema": "ripr.source_promotion_network_policy_resolution.v1",
+  "receipt_sha256": "f44ba4b01060381991d55eeeefb24326431eca2648201f9db39aa104e8c5d986",
+  "receipt_subject_tree": "111516422c1187ad70344855698b8be9f482eec4",
+  "schema": "ripr.source_promotion_resolution_manifest_fragment.v1",
+  "subject_blob": "9e86da2f83df8dc6f38878f6388b7489622d3830"
+}

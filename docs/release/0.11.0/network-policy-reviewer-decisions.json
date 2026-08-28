@@ -1,0 +1,30 @@
+{
+  "schema": "ripr.source_promotion_network_policy_decisions.v1",
+  "p0_receipt_sha256": "db9121c2857caa0a9b1a70d88c2ba9f037fb63f5ca66b56cdd187c9b2c85f4b1",
+  "decisions": [
+    {
+      "path": "crates/ripr/src/lsp/backend.rs",
+      "pattern": "\"push\"",
+      "maximum": 1,
+      "owner": "lsp/diagnostics",
+      "reason": "Push/pull diagnostic parity classifies the transport name as data; this literal does not execute Git or networking.",
+      "rationale": "W7 added a live surface governed only after the source checker introduced the quoted-push pattern; exact preview count is one."
+    },
+    {
+      "path": "crates/ripr/src/lsp/tests.rs",
+      "pattern": "\"push\"",
+      "maximum": 1,
+      "owner": "lsp/tests",
+      "reason": "Push/pull parity fixture names the push transport while comparing diagnostic actions; it performs no network operation.",
+      "rationale": "W7 added a live test surface governed only after the source checker introduced the quoted-push pattern; exact preview count is one."
+    },
+    {
+      "path": "xtask/src/branch_inventory.rs",
+      "pattern": "\"push\"",
+      "maximum": 2,
+      "owner": "repo-ops/branch-inventory",
+      "reason": "Owner-confirmed stale-branch deletion constructs one force-with-lease Git push command and its exact unit-test expectation.",
+      "rationale": "W7 added the guarded branch-deletion adapter before the source checker governed quoted-push literals; exact preview count is two and no wider maximum is granted."
+    }
+  ]
+}

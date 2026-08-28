@@ -67,6 +67,11 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
             super::reports::source_promotion_control(&args)
         }
         XtaskCommand::SourcePromotion(args)
+            if super::reports::source_promotion_network_policy_resolution_handles(&args) =>
+        {
+            super::reports::source_promotion_network_policy_resolution(&args)
+        }
+        XtaskCommand::SourcePromotion(args)
             if args.first().map(String::as_str)
                 == Some(super::reports::SOURCE_PROMOTION_VALIDATE_RESOLVED_TREE_SUBCOMMAND) =>
         {

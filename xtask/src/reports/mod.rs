@@ -28,6 +28,7 @@ mod sarif;
 mod source_promotion_admission_fixture;
 mod source_promotion_admission_workflow;
 mod source_promotion_control;
+mod source_promotion_network_policy_resolution;
 mod source_promotion_validate_resolved_tree;
 mod source_promotion_verify;
 mod targeted_test;
@@ -72,6 +73,9 @@ pub(crate) use source_promotion_admission_workflow::{
 };
 pub(crate) use source_promotion_control::{
     source_promotion_control, source_promotion_control_handles,
+};
+pub(crate) use source_promotion_network_policy_resolution::{
+    source_promotion_network_policy_resolution, source_promotion_network_policy_resolution_handles,
 };
 pub(crate) use source_promotion_validate_resolved_tree::{
     SOURCE_PROMOTION_VALIDATE_RESOLVED_TREE_SUBCOMMAND, source_promotion_validate_resolved_tree,
