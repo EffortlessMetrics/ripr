@@ -785,7 +785,8 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, Str
     let construction = &report["controller_packets"]["exact_join_construction"];
     let qualification_required = json_string(report, "operation_mode")
         == Some("constructor_dry_run")
-        && json_string(report, "status") == Some("admitted");
+        && (json_string(report, "phase") == Some("final")
+            || json_string(report, "status") == Some("admitted"));
     let construction_required = json_string(report, "phase") == Some("final")
         && json_string(report, "operation_mode") == Some("constructor_dry_run");
     if construction_required {
@@ -918,6 +919,7 @@ fn validate_disposition_semantics(
     status: &str,
     phase: &str,
     mode: OperationMode,
+    profile: ExecutionProfile,
 ) -> Result<(), String> {
     let controller_packets = report
         .get("controller_packets")
@@ -965,39 +967,31 @@ fn validate_disposition_semantics(
             "workflow disposition producer state differs from controller evidence".to_string(),
         );
     }
-    if status == "admitted"
-        && (!packet_passed("trusted_builder", "built")
-            || !packet_passed("resolved_tree_admission", "admitted")
-            || (phase == "final"
-                && mode == OperationMode::ConstructorDryRun
-                && !packet_passed("exact_join_construction", "constructed")))
-    {
-        return Err("admitted workflow disposition has non-terminal controller state".to_string());
-    }
     let builder_passed = packet_passed("trusted_builder", "built");
     let admission_passed = packet_passed("resolved_tree_admission", "admitted");
     let construction_completed = packet_passed("exact_join_construction", "constructed");
-    if status == "rejected" {
-        match (phase, mode) {
-            ("admission", _) if builder_passed && admission_passed => {
-                return Err(
-                    "rejected admission disposition has no failed controller stage".to_string(),
-                );
-            }
-            ("final", OperationMode::AdmitOnly) if builder_passed && admission_passed => {
-                return Err(
-                    "rejected final admit_only disposition has no failed controller stage"
-                        .to_string(),
-                );
-            }
-            ("final", OperationMode::ConstructorDryRun) if construction_completed => {
-                return Err(
-                    "rejected final constructor disposition has terminal construction evidence"
-                        .to_string(),
-                );
-            }
-            _ => {}
+    let reachable = match (phase, mode, status) {
+        ("admission", _, "admitted") => builder_passed && admission_passed,
+        ("admission", _, "rejected") => !builder_passed || !admission_passed,
+        ("final", OperationMode::AdmitOnly, "admitted") => builder_passed && admission_passed,
+        ("final", OperationMode::AdmitOnly, "rejected") => false,
+        ("final", OperationMode::ConstructorDryRun, "admitted") => {
+            builder_passed && admission_passed && construction_completed
         }
+        ("final", OperationMode::ConstructorDryRun, "rejected") => {
+            builder_passed && admission_passed && !construction_completed
+        }
+        _ => false,
+    };
+    if !reachable {
+        return Err(
+            "workflow disposition phase, mode, status, and stages are unreachable".to_string(),
+        );
+    }
+    if profile == ExecutionProfile::J5Negative
+        && (phase != "admission" || status != "rejected" || !builder_passed || admission_passed)
+    {
+        return Err("j5_negative disposition moved outside its failed admission stage".to_string());
     }
 
     let failure_reasons = report
@@ -1202,7 +1196,12 @@ fn validate_report(report: &Value) -> Result<(), String> {
                 .to_string(),
         );
     }
-    if profile == ExecutionProfile::J5Negative && (status != "rejected" || commit_tree != Some(0)) {
+    if profile == ExecutionProfile::J5Negative
+        && (phase != "admission"
+            || status != "rejected"
+            || construction_receipt_available
+            || commit_tree != Some(0))
+    {
         return Err("j5_negative must be rejected before constructor execution".to_string());
     }
     if json_string(report, "source_repository") != Some(SOURCE_REPOSITORY)
@@ -1213,7 +1212,7 @@ fn validate_report(report: &Value) -> Result<(), String> {
     if json_string(report, "receipt_schema") != Some(SUPPORTED_RECEIPT_SCHEMA) {
         return Err("workflow disposition receipt schema is unsupported".to_string());
     }
-    validate_disposition_semantics(report, status, phase, mode)?;
+    validate_disposition_semantics(report, status, phase, mode, profile)?;
     Ok(())
 }
 
@@ -2612,7 +2611,8 @@ fn validate_locator_provenance(
         &locators["qualification_receipt"],
         "qualification receipt",
         profile,
-        mode == OperationMode::AdmitOnly || status == "rejected",
+        mode == OperationMode::AdmitOnly
+            || (json_string(report, "phase") == Some("admission") && status == "rejected"),
     )?;
     Ok(())
 }
@@ -2688,7 +2688,8 @@ fn workflow_identity(report: &Value) -> Result<String, String> {
         locator_identity(
             "qualification_receipt",
             "qualification receipt",
-            mode == OperationMode::AdmitOnly || status == "rejected",
+            mode == OperationMode::AdmitOnly
+                || (json_string(report, "phase") == Some("admission") && status == "rejected"),
         )?,
     ];
     let canonical = serde_json::to_vec(&fields)
@@ -2754,6 +2755,30 @@ mod tests {
     }
 
     #[test]
+    fn j5_negative_rejects_final_phase_and_passed_admission_mutations() -> Result<(), String> {
+        let baseline = test_report("rejected", "constructor_dry_run", "j5_negative", 0)?;
+        validate_report(&baseline)?;
+
+        let mut final_phase = baseline.clone();
+        final_phase["phase"] = Value::String("final".to_string());
+        final_phase["producer"]["constructor_state"] = Value::String("rejected".to_string());
+        if validate_report(&final_phase).is_ok() {
+            return Err("final-phase J5 disposition escaped reachability".to_string());
+        }
+
+        let mut passed_admission = baseline;
+        passed_admission["controller_packets"]["resolved_tree_admission"]["status"] =
+            Value::String("admitted".to_string());
+        passed_admission["producer"]["admission_state"] = Value::String("passed".to_string());
+        passed_admission["workflow_identity_sha256"] =
+            Value::String(workflow_identity(&passed_admission)?);
+        if validate_report(&passed_admission).is_ok() {
+            return Err("passed-admission J5 disposition escaped reachability".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn rejected_admission_requires_a_failed_builder_or_admission_stage() -> Result<(), String> {
         let mut report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
         report["phase"] = Value::String("admission".to_string());
@@ -2796,7 +2821,22 @@ mod tests {
     }
 
     #[test]
-    fn rejected_final_dispositions_require_a_failed_final_stage() -> Result<(), String> {
+    fn final_dispositions_require_an_admitted_prefix_and_reachable_terminal_status()
+    -> Result<(), String> {
+        let mut failed_prefix = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
+        failed_prefix["controller_packets"]["resolved_tree_admission"] = serde_json::json!({
+            "path": "evidence/resolved-tree-admission",
+            "available": false,
+            "status": null,
+            "schema": null,
+        });
+        failed_prefix["producer"]["admission_state"] = Value::String("rejected".to_string());
+        failed_prefix["workflow_identity_sha256"] =
+            Value::String(workflow_identity(&failed_prefix)?);
+        if validate_report(&failed_prefix).is_ok() {
+            return Err("final disposition with a failed admission prefix escaped".to_string());
+        }
+
         let mut admit_only = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
         admit_only["status"] = Value::String("rejected".to_string());
         admit_only["producer"]["normalized_exit_code"] = Value::from(1);
@@ -3373,6 +3413,37 @@ mod tests {
         }
         fs::remove_dir_all(&root)
             .map_err(|error| format!("failed to clean qualification fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn rejected_constructor_packet_replays_digest_rebound_qualification() -> Result<(), String> {
+        let (root, packet) =
+            write_rejected_constructor_test_closure("rejected-qualification-replay", false)?;
+        verify_packet(&packet)?;
+        let qualification_path = packet.join("evidence/locators/qualification_receipt/input");
+        let mut qualification = read_json(&qualification_path, "rejected qualification fixture")?;
+        qualification["lanes"][0]["state"] = Value::String("failed".to_string());
+        write_pretty_json(
+            &qualification_path,
+            &qualification,
+            "mutated rejected qualification fixture",
+        )?;
+        let mut report = read_json(
+            &packet.join(REPORT_JSON),
+            "rejected qualification workflow report",
+        )?;
+        report["locators"]["qualification_receipt"]["sha256"] = Value::String(digest_file(
+            &qualification_path,
+            "mutated rejected qualification",
+        )?);
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        rewrite_test_packet_reports_and_index(&packet, &report)?;
+        if verify_packet(&packet).is_ok() {
+            return Err("rejected constructor qualification mutation escaped replay".to_string());
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean rejected qualification fixture: {error}"))?;
         Ok(())
     }
 
@@ -4046,8 +4117,10 @@ mod tests {
         commit_tree: u64,
     ) -> Result<Value, String> {
         let synthetic = profile != "live";
+        let j5_negative = profile == "j5_negative";
+        let phase = if j5_negative { "admission" } else { "final" };
         let construction_attempts_unknown =
-            mode == "constructor_dry_run" && status == "rejected" && profile != "j5_negative";
+            phase == "final" && mode == "constructor_dry_run" && status == "rejected";
         let locator = |label: &str, path: &str, sha256: String| {
             if synthetic {
                 serde_json::json!({
@@ -4073,22 +4146,23 @@ mod tests {
                 })
             }
         };
-        let qualification = if mode == "constructor_dry_run" && status == "admitted" {
-            locator(
-                "qualification receipt",
-                "qualification/receipt.json",
-                "2".repeat(64),
-            )
-        } else {
-            serde_json::json!({
-                "schema": LOCATOR_SCHEMA,
-                "status": "not_required",
-                "label": "qualification receipt",
-            })
-        };
+        let qualification =
+            if mode == "constructor_dry_run" && (phase == "final" || status == "admitted") {
+                locator(
+                    "qualification receipt",
+                    "qualification/receipt.json",
+                    "2".repeat(64),
+                )
+            } else {
+                serde_json::json!({
+                    "schema": LOCATOR_SCHEMA,
+                    "status": "not_required",
+                    "label": "qualification receipt",
+                })
+            };
         let mut report = serde_json::json!({
             "schema": SCHEMA,
-            "phase": "final",
+            "phase": phase,
             "status": status,
             "complete": true,
             "operation_mode": mode,
@@ -4121,18 +4195,32 @@ mod tests {
                     "status": "built",
                     "schema": "ripr.source_promotion_trusted_builder.v1",
                 },
-                "resolved_tree_admission": {
+                "resolved_tree_admission": if j5_negative {
+                    serde_json::json!({
+                        "path": "evidence/resolved-tree-admission",
+                        "available": true,
+                        "status": "rejected",
+                        "schema": "ripr.source_promotion_resolved_tree_admission.v1",
+                    })
+                } else { serde_json::json!({
                     "path": "evidence/resolved-tree-admission",
                     "available": true,
                     "status": "admitted",
                     "schema": "ripr.source_promotion_resolved_tree_admission.v1",
-                },
-                "exact_join_construction": if mode == "constructor_dry_run" && status == "admitted" {
+                })},
+                "exact_join_construction": if phase == "final" && mode == "constructor_dry_run" && status == "admitted" {
                     serde_json::json!({
                         "path": "evidence/exact-join-construction",
                         "available": true,
                         "status": "constructed",
                         "schema": "ripr.source_promotion_exact_join_construction.v1",
+                    })
+                } else if phase == "final" && mode == "constructor_dry_run" {
+                    serde_json::json!({
+                        "path": "evidence/exact-join-construction",
+                        "available": false,
+                        "status": null,
+                        "schema": null,
                     })
                 } else {
                     serde_json::json!({
@@ -4146,8 +4234,8 @@ mod tests {
             "producer": {
                 "normalized_exit_code": if status == "admitted" { 0 } else { 1 },
                 "trusted_builder_state": "passed",
-                "admission_state": "passed",
-                "constructor_state": if mode == "admit_only" { "not_requested" } else if status == "admitted" { "passed" } else { "rejected" },
+                "admission_state": if j5_negative { "rejected" } else { "passed" },
+                "constructor_state": if phase == "admission" { "not_run_before_upload_and_enforcement" } else if mode == "admit_only" { "not_requested" } else if status == "admitted" { "passed" } else { "rejected" },
             },
             "attempts": {
                 "admission_receipt_available": true,
