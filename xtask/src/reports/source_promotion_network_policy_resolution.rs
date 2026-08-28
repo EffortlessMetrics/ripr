@@ -8,6 +8,7 @@ use std::process::{Command, Stdio};
 
 const SUBCOMMAND: &str = "resolve-network-policy";
 const SCHEMA: &str = "ripr.source_promotion_network_policy_resolution.v1";
+const EXECUTION_SCHEMA: &str = "ripr.source_promotion_network_policy_checker_execution.v1";
 const POLICY_PATH: &str = "policy/network_allowlist.txt";
 const MANIFEST_SCHEMA: &str = "ripr.source_promotion_resolution_manifest_fragment.v1";
 type SemanticKey = (String, String);
@@ -312,15 +313,10 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
             "locked": true,
             "offline": true,
             "isolated_target_dir": true,
-            "build_exit_code": checker_execution.build_exit_code,
-            "build_stdout_sha256": checker_execution.build_stdout_sha256,
-            "build_stderr_sha256": checker_execution.build_stderr_sha256,
-            "checker_exit_code": checker_execution.checker_exit_code,
-            "checker_stdout_sha256": checker_execution.checker_stdout_sha256,
-            "checker_stderr_sha256": checker_execution.checker_stderr_sha256,
-            "executable_sha256": checker_execution.executable_sha256,
-            "rustc_verbose_version": checker_execution.rustc_verbose_version,
-            "build_path_remapping": checker_execution.build_path_remapping,
+            "execution_attestation": {
+                "schema": EXECUTION_SCHEMA,
+                "path": "network-policy-checker-execution.json",
+            },
             "result": "pass",
         },
         "negative_controls": controls,
@@ -343,6 +339,9 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
     let ledger_path = inputs.output_dir.join("network-policy-ledger.txt");
     let receipt_path = inputs.output_dir.join("network-policy-resolution.json");
     let markdown_path = inputs.output_dir.join("network-policy-resolution.md");
+    let execution_path = inputs
+        .output_dir
+        .join("network-policy-checker-execution.json");
     let manifest_path = inputs
         .output_dir
         .join("network-policy-manifest-fragment.json");
@@ -351,15 +350,50 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
 
     let receipt_text = pretty_json(&receipt)?;
     let receipt_sha256 = sha256(receipt_text.as_bytes());
+    let execution_attestation = json!({
+        "schema": EXECUTION_SCHEMA,
+        "resolution_receipt_sha256": receipt_sha256,
+        "source_parent": inputs.source,
+        "source_tree": source_tree,
+        "source_blob": checker_source_blob,
+        "subject_tree": after_tree,
+        "command": "cargo xtask check-network-policy",
+        "locked": true,
+        "offline": true,
+        "isolated_target_dir": true,
+        "build_exit_code": checker_execution.build_exit_code,
+        "build_stdout_sha256": checker_execution.build_stdout_sha256,
+        "build_stderr_sha256": checker_execution.build_stderr_sha256,
+        "checker_exit_code": checker_execution.checker_exit_code,
+        "checker_stdout_sha256": checker_execution.checker_stdout_sha256,
+        "checker_stderr_sha256": checker_execution.checker_stderr_sha256,
+        "executable_sha256": checker_execution.executable_sha256,
+        "rustc_verbose_version": checker_execution.rustc_verbose_version,
+        "build_path_remapping": checker_execution.build_path_remapping,
+        "result": "pass",
+        "no_ref_mutation": true,
+        "non_claims": [
+            "the execution-attestation bytes are environment-specific and are not part of the stable resolution receipt digest",
+            "does not authorize join construction, ref movement, release, or publication"
+        ],
+    });
     fs::write(&receipt_path, &receipt_text)
         .map_err(|error| format!("failed to write {}: {error}", receipt_path.display()))?;
+    fs::write(&execution_path, pretty_json(&execution_attestation)?)
+        .map_err(|error| format!("failed to write {}: {error}", execution_path.display()))?;
     let mut final_manifest = manifest;
     final_manifest["receipt_sha256"] = json!(receipt_sha256);
     fs::write(&manifest_path, pretty_json(&final_manifest)?)
         .map_err(|error| format!("failed to write {}: {error}", manifest_path.display()))?;
     fs::write(
         &markdown_path,
-        render_markdown(&receipt, &receipt_path, &ledger_path, &receipt_sha256),
+        render_markdown(
+            &receipt,
+            &receipt_path,
+            &ledger_path,
+            &execution_path,
+            &receipt_sha256,
+        ),
     )
     .map_err(|error| format!("failed to write {}: {error}", markdown_path.display()))?;
 
@@ -1276,6 +1310,7 @@ fn run_production_checker(
             path_text(target_dir)?
         ),
         "-Cstrip=debuginfo".to_string(),
+        "-Cmetadata=ripr-source-promotion-checker-v1".to_string(),
     ];
     if cfg!(windows) {
         rustflags.push("-Clink-arg=/Brepro".to_string());
@@ -1286,6 +1321,8 @@ fn run_production_checker(
         .args(["build", "--quiet", "--locked", "--offline", "-p", "xtask"])
         .env("CARGO_TARGET_DIR", target_dir)
         .env("CARGO_ENCODED_RUSTFLAGS", &encoded_rustflags)
+        .env("CARGO_INCREMENTAL", "0")
+        .env("SOURCE_DATE_EPOCH", "0")
         .output()
         .map_err(|error| format!("failed to build exact-source xtask checker: {error}"))?;
     if !build.status.success() {
@@ -1329,9 +1366,9 @@ fn run_production_checker(
         executable_sha256,
         rustc_verbose_version,
         build_path_remapping: if cfg!(windows) {
-            "--remap-path-prefix=<private-source>=/ripr-source --remap-path-prefix=<private-target>=/ripr-target -Cstrip=debuginfo -Clink-arg=/Brepro"
+            "--remap-path-prefix=<private-source>=/ripr-source --remap-path-prefix=<private-target>=/ripr-target -Cstrip=debuginfo -Cmetadata=ripr-source-promotion-checker-v1 -Clink-arg=/Brepro CARGO_INCREMENTAL=0 SOURCE_DATE_EPOCH=0"
         } else {
-            "--remap-path-prefix=<private-source>=/ripr-source --remap-path-prefix=<private-target>=/ripr-target -Cstrip=debuginfo"
+            "--remap-path-prefix=<private-source>=/ripr-source --remap-path-prefix=<private-target>=/ripr-target -Cstrip=debuginfo -Cmetadata=ripr-source-promotion-checker-v1 CARGO_INCREMENTAL=0 SOURCE_DATE_EPOCH=0"
         }
         .to_string(),
     })
@@ -1513,10 +1550,11 @@ fn render_markdown(
     receipt: &Value,
     receipt_path: &Path,
     ledger_path: &Path,
+    execution_path: &Path,
     receipt_sha256: &str,
 ) -> String {
     format!(
-        "# Source/W7 semantic network-policy resolution\n\n- Schema: `{}`\n- Source parent: `{}`\n- W7: `{}`\n- P0 receipt SHA-256: `{}`\n- Preview tree before: `{}`\n- Policy-only tree after: `{}`\n- Final ledger blob: `{}`\n- Final ledger SHA-256: `{}`\n- Production checker: **pass**\n- Changed path: `{}` only\n- Receipt SHA-256: `{}`\n\nMachine-readable receipt: `{}`\nLedger path: `{}`\nLedger bytes: `{}`\n\nThis control does not create the complete manifest, JOIN_TREE, P1, or J6 and moves no ref.\n",
+        "# Source/W7 semantic network-policy resolution\n\n- Schema: `{}`\n- Source parent: `{}`\n- W7: `{}`\n- P0 receipt SHA-256: `{}`\n- Preview tree before: `{}`\n- Policy-only tree after: `{}`\n- Final ledger blob: `{}`\n- Final ledger SHA-256: `{}`\n- Production checker: **pass**\n- Changed path: `{}` only\n- Receipt SHA-256: `{}`\n\nMachine-readable receipt: `{}`\nChecker execution attestation: `{}`\nLedger path: `{}`\nLedger bytes: `{}`\n\nThe receipt and manifest are deterministic for the bound inputs; the separate execution attestation records environment-specific executable and toolchain identity. This control does not create the complete manifest, JOIN_TREE, P1, or J6 and moves no ref.\n",
         SCHEMA,
         receipt["p0"]["source_parent"].as_str().unwrap_or("unknown"),
         receipt["p0"]["swarm_parent"].as_str().unwrap_or("unknown"),
@@ -1536,6 +1574,7 @@ fn render_markdown(
         POLICY_PATH,
         receipt_sha256,
         portable_path(receipt_path),
+        portable_path(execution_path),
         portable_path(ledger_path),
         receipt["final_ledger"]["bytes"].as_u64().unwrap_or(0),
     )

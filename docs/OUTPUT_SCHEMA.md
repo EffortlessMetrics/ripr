@@ -13823,6 +13823,13 @@ both parent policy blobs, explicit reviewer decisions, the complete live
 production-pattern inventory, the one-path policy tree delta, and a run of the
 source-owned production network-policy checker.
 
+The stable receipt names a companion
+`ripr.source_promotion_network_policy_checker_execution.v1` attestation. The
+attestation binds the stable receipt SHA-256 to the exact checker executable,
+Rust toolchain, isolated build controls, and execution-output digests. Its bytes
+are environment-specific and therefore do not participate in the stable
+resolution-receipt or manifest-fragment digest.
+
 The companion `ripr.source_promotion_resolution_manifest_fragment.v1` object
 describes only the integrated `policy/network_allowlist.txt` path and binds its
 resolved blob and subject tree. Its published sidecar additionally binds the

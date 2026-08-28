@@ -10,10 +10,11 @@
 - Final ledger SHA-256: `db317972d01d94b5964d4fb7de2c4a3b99066888117c9148ec1d8598ec43a680`
 - Production checker: **pass**
 - Changed path: `policy/network_allowlist.txt` only
-- Receipt SHA-256: `9d069e8affcb82c0f4f55424d1ac229395828dfa468e1506805c027747bb9d19`
+- Receipt SHA-256: `23edfaf268a5c271603bf142a067fc54b37fd37330f55a927c450eae4023708c`
 
 Machine-readable receipt: `docs/release/0.11.0/network-policy-resolution/network-policy-resolution.json`
+Checker execution attestation: `docs/release/0.11.0/network-policy-resolution/network-policy-checker-execution.json`
 Ledger path: `docs/release/0.11.0/network-policy-resolution/network-policy-ledger.txt`
 Ledger bytes: `5447`
 
-This control does not create the complete manifest, JOIN_TREE, P1, or J6 and moves no ref.
+The receipt and manifest are deterministic for the bound inputs; the separate execution attestation records environment-specific executable and toolchain identity. This control does not create the complete manifest, JOIN_TREE, P1, or J6 and moves no ref.

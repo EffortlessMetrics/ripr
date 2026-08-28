@@ -459,20 +459,15 @@
     "swarm_sha256": "775fe025b7b7f8e6a3ea56eca8b78f461758082adcde0f8eedc60aaf6f57d7b5"
   },
   "production_checker": {
-    "build_exit_code": 0,
-    "build_path_remapping": "--remap-path-prefix=<private-source>=/ripr-source --remap-path-prefix=<private-target>=/ripr-target -Cstrip=debuginfo -Clink-arg=/Brepro",
-    "build_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "build_stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "checker_exit_code": 0,
-    "checker_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "checker_stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "command": "cargo xtask check-network-policy",
-    "executable_sha256": "59fe640f5d49326af980a582d490b5c4f452e3f13d33325682ac793ba9a64ee8",
+    "execution_attestation": {
+      "path": "network-policy-checker-execution.json",
+      "schema": "ripr.source_promotion_network_policy_checker_execution.v1"
+    },
     "isolated_target_dir": true,
     "locked": true,
     "offline": true,
     "result": "pass",
-    "rustc_verbose_version": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-pc-windows-msvc\nrelease: 1.95.0\nLLVM version: 22.1.2",
     "source_blob": "190f938633578175a84c60525e38dd585efb2370",
     "source_parent": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
     "source_tree": "0a70b23aef650e268dcdbe8fe70edcc4e16617a7",
