@@ -16,7 +16,8 @@ The read-only `cargo xtask source-promotion verify` command consumes one exact
 40-character lowercase commit identities for `--join-head`, `--source-main`,
 and optional `--main-head`; branch names, `HEAD`, and abbreviations fail closed.
 
-The manifest binds the preflight byte digest, exact parents and merge base,
+The manifest binds the preflight byte digest as one canonical bare lowercase
+64-character SHA-256 value, exact parents and merge base,
 reviewed join tree, and one non-empty disposition/rationale for every preflight
 conflict, source-survivor candidate, and swarm-exclusion candidate. Missing,
 duplicate, extra, or out-of-inventory rows are rejected; semantic rulings
@@ -47,8 +48,9 @@ state.
 ## Required Evidence
 
 The verifier emits deterministic `ripr.source_promotion_verification.v2` JSON
-and Markdown receipts containing exact identities, ordered parents, tree and
-ancestry digests, governed release-version checks, source-authoritative
+and Markdown receipts containing exact identities, ordered parents, tree,
+canonical bare preflight and resolution-manifest digests, qualified ancestry
+digests, governed release-version checks, source-authoritative
 changelog-byte checks, invalidation rules, non-claims, and structured failure
 reasons. Git object probes use an explicit repository root and disable
 replacement refs.

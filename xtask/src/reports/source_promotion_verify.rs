@@ -844,7 +844,7 @@ fn digest_lines(values: &[String]) -> String {
     format!("sha256:{:x}", hasher.finalize())
 }
 fn digest_bytes(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("{:x}", Sha256::digest(bytes))
 }
 
 #[cfg(test)]
@@ -1032,10 +1032,10 @@ mod tests {
   "schema": "ripr.source_promotion_preflight.v1"
 }
 "#;
-        if digest_bytes(bytes).is_empty() {
-            return Err("producer receipt digest is empty".into());
+        if digest_bytes(bytes).len() != 64 {
+            return Err("producer receipt digest is not canonical bare SHA-256".into());
         }
-        if digest_lines(&[]) != digest_bytes(b"") {
+        if digest_lines(&[]) != format!("sha256:{}", digest_bytes(b"")) {
             return Err("empty ancestry must preserve producer empty-stream semantics".into());
         }
         Ok(())
@@ -1381,18 +1381,17 @@ mod tests {
                 .map_err(|error| error.to_string())?;
             let manifest = serde_json::json!({
                 "schema": RESOLUTION_SCHEMA,
-                "preflight_sha256": digest_bytes(&preflight_bytes),
+                "preflight_sha256": format!("{:x}", Sha256::digest(&preflight_bytes)),
                 "source_parent": source,
                 "swarm_parent": swarm,
                 "merge_base": base,
                 "reviewed_join_tree": tree,
                 "dispositions": []
             });
-            fs::write(
-                root.join("manifest.json"),
-                serde_json::to_vec(&manifest).map_err(|error| error.to_string())?,
-            )
-            .map_err(|error| error.to_string())?;
+            let manifest_bytes =
+                serde_json::to_vec(&manifest).map_err(|error| error.to_string())?;
+            fs::write(root.join("manifest.json"), &manifest_bytes)
+                .map_err(|error| error.to_string())?;
             let end_to_end_out = root.join("receipt");
             let rejected_options = Options {
                 repo: root.clone(),
@@ -1427,6 +1426,43 @@ mod tests {
                 out: valid_out.clone(),
             };
             let valid_report = verify(&valid_receipt_options)?;
+            if valid_report.get("preflight_sha256").and_then(Value::as_str)
+                != Some(digest_bytes(&preflight_bytes).as_str())
+                || valid_report
+                    .get("resolution_manifest_sha256")
+                    .and_then(Value::as_str)
+                    != Some(digest_bytes(&manifest_bytes).as_str())
+            {
+                return Err("valid receipt did not preserve canonical bare sidecar digests".into());
+            }
+            for field in ["all_reachable_sha256", "first_parent_ordered_sha256"] {
+                let digest = valid_report
+                    .get("swarm_reachability")
+                    .and_then(|value| value.get(field))
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("valid receipt is missing {field}"))?;
+                if !digest.starts_with("sha256:") || digest.len() != 71 {
+                    return Err(format!(
+                        "valid receipt did not qualify ancestry digest {field}"
+                    ));
+                }
+            }
+            let mut prefixed_manifest = manifest.clone();
+            prefixed_manifest["preflight_sha256"] =
+                Value::String(format!("sha256:{}", digest_bytes(&preflight_bytes)));
+            fs::write(
+                root.join("manifest.json"),
+                serde_json::to_vec(&prefixed_manifest).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let prefixed_error = verify(&valid_receipt_options)
+                .err()
+                .ok_or_else(|| "prefixed preflight digest was accepted".to_string())?;
+            if !prefixed_error.contains("different preflight digest") {
+                return Err(format!(
+                    "prefixed preflight digest failed for the wrong reason: {prefixed_error}"
+                ));
+            }
             write_report(&valid_out, &valid_report)?;
             let valid_json = fs::read_to_string(valid_out.join(REPORT_JSON))
                 .map_err(|error| error.to_string())?;
