@@ -24,6 +24,325 @@ pub(super) struct ReplayedControllerReceipts {
     pub(super) construction: Option<Value>,
 }
 
+pub(super) fn replay_rejected_builder_packet(
+    root: &Path,
+    source_parent: &str,
+    workflow_source_sha: &str,
+) -> Result<Value, String> {
+    let receipt = read_rejected_control_packet(root, "trusted_builder", BUILDER_REPORT)?;
+    if json_string(&receipt, "schema") != Some(BUILDER_SCHEMA)
+        || optional_exact_string(&receipt, "source_parent", source_parent).is_err()
+        || optional_exact_string(&receipt, "workflow_source_sha", workflow_source_sha).is_err()
+    {
+        return Err("rejected builder receipt has invalid provenance".to_string());
+    }
+    validate_rejected_no_authority(&receipt, false)?;
+    Ok(receipt)
+}
+
+pub(super) fn replay_rejected_admission_closure(
+    input: &AdmissionClosureReplayInput<'_>,
+    require_exact_identity: bool,
+) -> Result<Value, String> {
+    let identity = PromotionIdentity {
+        source_parent: input.source_parent.to_string(),
+        swarm_parent: input.swarm_parent.to_string(),
+        join_tree: input.join_tree.to_string(),
+        preflight_sha256: input.preflight_sha256.to_string(),
+        resolution_sha256: input.resolution_sha256.to_string(),
+    };
+    validate_rejected_admission_prefix(input, &identity)?;
+    let receipt = read_rejected_control_packet(
+        input.admission_packet,
+        "resolved_tree_admission",
+        ADMISSION_REPORT,
+    )?;
+    if json_string(&receipt, "schema") != Some(ADMISSION_SCHEMA) {
+        return Err("rejected admission receipt uses an unsupported schema".to_string());
+    }
+    let has_identity = [
+        "source_parent",
+        "swarm_parent",
+        "join_tree",
+        "preflight_sha256",
+        "resolution_manifest_sha256",
+    ]
+    .into_iter()
+    .any(|key| !receipt[key].is_null());
+    if (require_exact_identity || has_identity) && !identity.matches_json(&receipt) {
+        return Err("rejected admission receipt differs from exact workflow identity".to_string());
+    }
+    if receipt
+        .get("identity")
+        .is_some_and(|value| !value.is_null())
+        && receipt.get("identity") != Some(&identity.as_json())
+    {
+        return Err(
+            "rejected admission embedded identity differs from workflow identity".to_string(),
+        );
+    }
+    for key in [
+        "all_required_typed_integration_receipts_present",
+        "final_identity_reread_passed",
+        "constructor_eligible_after_tree_qualification",
+    ] {
+        if json_bool(&receipt, key) != Some(false) {
+            return Err(format!(
+                "rejected admission receipt reports forbidden {key}"
+            ));
+        }
+    }
+    validate_rejected_no_authority(&receipt, false)?;
+    Ok(receipt)
+}
+
+pub(super) fn replay_rejected_construction_packet(
+    root: &Path,
+    input: &AdmissionClosureReplayInput<'_>,
+) -> Result<Value, String> {
+    let receipt =
+        read_rejected_control_packet(root, "exact_join_construction", CONSTRUCTION_REPORT)?;
+    if json_string(&receipt, "schema") != Some(CONSTRUCTION_SCHEMA) {
+        return Err("rejected construction receipt uses an unsupported schema".to_string());
+    }
+    for (key, expected) in [
+        ("source_parent", input.source_parent),
+        ("swarm_parent", input.swarm_parent),
+        ("join_tree", input.join_tree),
+        ("preflight_sha256", input.preflight_sha256),
+        ("resolution_manifest_sha256", input.resolution_sha256),
+    ] {
+        optional_exact_string(&receipt, key, expected)?;
+    }
+    if !receipt["join_commit"].is_null()
+        || !receipt["refs_unchanged"].is_null()
+        || receipt["ordered_parents"]
+            .as_array()
+            .is_none_or(|parents| !parents.is_empty())
+        || json_bool(&receipt, "final_identity_reread_passed") != Some(false)
+        || json_bool(&receipt, "unreferenced_exact_join_constructed") != Some(false)
+    {
+        return Err("rejected construction receipt claims constructed join authority".to_string());
+    }
+    validate_rejected_no_authority(&receipt, true)?;
+    Ok(receipt)
+}
+
+#[cfg(test)]
+pub(super) fn render_rejected_control_markdown(
+    report_name: &str,
+    report: &Value,
+) -> Result<String, String> {
+    let (title, claim) = match report_name {
+        BUILDER_REPORT => (
+            BUILDER_TITLE,
+            "A rejected builder packet grants no validation, construction, ref, merge, or publication authority.",
+        ),
+        ADMISSION_REPORT => (
+            ADMISSION_TITLE,
+            "A rejected admission packet is not construction eligibility and grants no object, ref, merge, release, or publication authority.",
+        ),
+        CONSTRUCTION_REPORT => (
+            CONSTRUCTION_TITLE,
+            "A rejected construction packet grants no ref, merge, release, or publication authority.",
+        ),
+        _ => {
+            return Err(format!(
+                "unsupported rejected control report: {report_name}"
+            ));
+        }
+    };
+    render_control_markdown(title, report, claim)
+}
+
+fn read_rejected_control_packet(
+    root: &Path,
+    kind: &str,
+    report_name: &str,
+) -> Result<Value, String> {
+    let packet = read_indexed_packet(
+        root,
+        CONTROL_PACKET_SCHEMA,
+        Some(kind),
+        Some("rejected"),
+        report_name,
+    )?;
+    let receipt = packet_json(&packet, report_name, "rejected controller receipt")?;
+    if json_string(&receipt, "status") != Some("rejected") {
+        return Err("rejected controller index differs from receipt status".to_string());
+    }
+    validate_exact_packet_inventory(
+        &packet,
+        &BTreeSet::from([
+            "control-attempt.json".to_string(),
+            report_name.to_string(),
+            markdown_sibling(report_name)?,
+        ]),
+        "rejected controller",
+    )?;
+    let claims: &[&str] = match report_name {
+        BUILDER_REPORT => &[
+            BUILDER_SUCCESS_CLAIM,
+            "A rejected builder packet grants no validation, construction, ref, merge, or publication authority.",
+        ],
+        ADMISSION_REPORT => &[
+            "A rejected admission packet is not construction eligibility and grants no object, ref, merge, release, or publication authority.",
+        ],
+        CONSTRUCTION_REPORT => &[
+            "A rejected construction packet grants no ref, merge, release, or publication authority.",
+        ],
+        _ => {
+            return Err(format!(
+                "unsupported rejected control report: {report_name}"
+            ));
+        }
+    };
+    let title = match report_name {
+        BUILDER_REPORT => BUILDER_TITLE,
+        ADMISSION_REPORT => ADMISSION_TITLE,
+        CONSTRUCTION_REPORT => CONSTRUCTION_TITLE,
+        _ => {
+            return Err(format!(
+                "unsupported rejected control report: {report_name}"
+            ));
+        }
+    };
+    let canonical = claims
+        .iter()
+        .map(|claim| render_control_markdown(title, &receipt, claim))
+        .collect::<Result<Vec<_>, _>>()?;
+    let markdown = packet
+        .files
+        .get(&markdown_sibling(report_name)?)
+        .ok_or_else(|| "rejected controller packet is missing Markdown".to_string())?;
+    if canonical
+        .iter()
+        .all(|expected| markdown.contents != expected.as_bytes())
+    {
+        return Err("rejected controller Markdown differs from canonical receipt".to_string());
+    }
+    Ok(receipt)
+}
+
+fn validate_rejected_no_authority(receipt: &Value, allow_commit_tree: bool) -> Result<(), String> {
+    receipt
+        .get("failure_reasons")
+        .and_then(Value::as_array)
+        .filter(|reasons| {
+            !reasons.is_empty()
+                && reasons.iter().all(|reason| {
+                    reason.as_str().is_some_and(|value| {
+                        !value.trim().is_empty() && !value.contains(['\n', '\r', '\0'])
+                    })
+                })
+        })
+        .ok_or_else(|| "rejected controller receipt has no failure reason".to_string())?;
+    for key in ["ref_mutation_attempted", "push_attempted"] {
+        if json_bool(receipt, key) != Some(false) {
+            return Err(format!(
+                "rejected controller receipt reports forbidden {key}"
+            ));
+        }
+    }
+    let commit_tree_attempts = receipt
+        .get("commit_tree_attempts")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| "rejected controller receipt is missing commit_tree_attempts".to_string())?;
+    let authoritative = json_bool(receipt, "authoritative_commit_attempted").ok_or_else(|| {
+        "rejected controller receipt is missing authoritative attempt state".to_string()
+    })?;
+    if (!allow_commit_tree && (authoritative || commit_tree_attempts != 0))
+        || (allow_commit_tree
+            && (commit_tree_attempts > 1 || authoritative != (commit_tree_attempts == 1)))
+    {
+        return Err(
+            "rejected controller receipt has inconsistent commit-tree authority".to_string(),
+        );
+    }
+    for key in [
+        "local_ref_attempts",
+        "remote_push_attempts",
+        "merge_command_attempts",
+    ] {
+        if receipt.get(key).and_then(Value::as_u64) != Some(0) {
+            return Err(format!(
+                "rejected controller receipt reports forbidden {key}"
+            ));
+        }
+    }
+    if !receipt["merge_command"].is_null() {
+        return Err("rejected controller receipt contains a merge command".to_string());
+    }
+    Ok(())
+}
+
+fn optional_exact_string(receipt: &Value, key: &str, expected: &str) -> Result<(), String> {
+    if !receipt[key].is_null() && json_string(receipt, key) != Some(expected) {
+        return Err(format!("rejected controller receipt has mismatched {key}"));
+    }
+    Ok(())
+}
+
+fn validate_rejected_admission_prefix(
+    input: &AdmissionClosureReplayInput<'_>,
+    identity: &PromotionIdentity,
+) -> Result<(), String> {
+    let validation_packet = read_indexed_packet(
+        input.validation_packet,
+        RESOLVED_TREE_PACKET_SCHEMA,
+        None,
+        Some("validated"),
+        VALIDATION_REPORT,
+    )?;
+    let validation = packet_json(
+        &validation_packet,
+        VALIDATION_REPORT,
+        "resolved-tree validation receipt",
+    )?;
+    validate_packet_markdown(
+        &validation_packet,
+        VALIDATION_REPORT,
+        &super::source_promotion_validate_resolved_tree::render_markdown(&validation)?,
+        "resolved-tree validation",
+    )?;
+    validate_resolved_tree_binding(&validation, identity)?;
+    validate_validation_command_evidence(&validation_packet, &validation)?;
+    let (preflight, preflight_bytes) = read_bound_json(
+        input.preflight,
+        input.preflight_sha256,
+        "finalized P1 preflight",
+    )?;
+    validate_preflight(&preflight, input.source_parent)?;
+    validate_preflight_identity(&preflight, identity)?;
+    if json_string(&preflight, "swarm_ref") != Some(input.protected_w7_ref) {
+        return Err("preflight protected W7 ref differs from workflow identity".to_string());
+    }
+    let (manifest, _) = read_bound_json(
+        input.resolution_manifest,
+        input.resolution_sha256,
+        "complete resolution manifest",
+    )?;
+    validate_manifest(&manifest, &preflight, &digest_bytes(&preflight_bytes))?;
+    validate_manifest_identity(&manifest, identity)?;
+    let builder_packet = read_indexed_packet(
+        input.builder_packet,
+        CONTROL_PACKET_SCHEMA,
+        Some("trusted_builder"),
+        Some("built"),
+        BUILDER_REPORT,
+    )?;
+    let builder = packet_json(&builder_packet, BUILDER_REPORT, "trusted builder receipt")?;
+    validate_control_packet(&builder_packet, BUILDER_REPORT, &builder, "trusted builder")?;
+    let executable = validate_builder_receipt_contract(&builder, &validation, identity)?;
+    validate_integration_index(
+        input.integration_index,
+        input.integration_index_sha256,
+        identity,
+        &executable,
+    )?;
+    Ok(())
+}
+
 pub(super) fn replay_admitted_closure(
     input: &AdmissionClosureReplayInput<'_>,
 ) -> Result<ReplayedControllerReceipts, String> {
@@ -40,7 +359,11 @@ pub(super) fn replay_admitted_closure(
         ("join tree", identity.join_tree.as_str(), 40),
         ("preflight digest", identity.preflight_sha256.as_str(), 64),
         ("resolution digest", identity.resolution_sha256.as_str(), 64),
-        ("integration index digest", input.integration_index_sha256, 64),
+        (
+            "integration index digest",
+            input.integration_index_sha256,
+            64,
+        ),
     ] {
         validate_exact_hex(label, value, width)?;
     }
@@ -93,12 +416,7 @@ pub(super) fn replay_admitted_closure(
         BUILDER_REPORT,
     )?;
     let builder = packet_json(&builder_packet, BUILDER_REPORT, "trusted builder receipt")?;
-    validate_control_packet(
-        &builder_packet,
-        BUILDER_REPORT,
-        &builder,
-        "trusted builder",
-    )?;
+    validate_control_packet(&builder_packet, BUILDER_REPORT, &builder, "trusted builder")?;
     let executable = validate_builder_receipt_contract(&builder, &validation, &identity)?;
     let integration = validate_integration_index(
         input.integration_index,
@@ -126,8 +444,7 @@ pub(super) fn replay_admitted_closure(
         "resolved-tree admission",
     )?;
     validate_admission_receipt(&admission, &identity)?;
-    let validation_receipt_sha256 =
-        packet_file_sha256(&validation_packet, VALIDATION_REPORT)?;
+    let validation_receipt_sha256 = packet_file_sha256(&validation_packet, VALIDATION_REPORT)?;
     let builder_receipt_sha256 = packet_file_sha256(&builder_packet, BUILDER_REPORT)?;
     let integration_receipts = serde_json::to_value(&integration.receipt_digests)
         .map_err(|error| format!("could not serialize integration receipts: {error}"))?;
@@ -177,9 +494,9 @@ pub(super) fn replay_admitted_closure(
     };
     let construction = match input.construction_packet {
         Some(construction_root) => {
-            let (_, qualification_sha256) = qualification.as_ref().ok_or_else(|| {
-                "constructor replay requires qualification evidence".to_string()
-            })?;
+            let (_, qualification_sha256) = qualification
+                .as_ref()
+                .ok_or_else(|| "constructor replay requires qualification evidence".to_string())?;
             let packet = read_indexed_packet(
                 construction_root,
                 CONTROL_PACKET_SCHEMA,
@@ -246,10 +563,13 @@ fn validate_validation_command_evidence(
                     "resolved-tree {name} {stream} path differs from canonical indexed evidence"
                 ));
             }
-            let indexed = packet.files.get(&expected_path).ok_or_else(|| {
-                format!("resolved-tree {name} {stream} evidence is not indexed")
-            })?;
-            if command.get(format!("{stream}_bytes")).and_then(Value::as_u64)
+            let indexed = packet
+                .files
+                .get(&expected_path)
+                .ok_or_else(|| format!("resolved-tree {name} {stream} evidence is not indexed"))?;
+            if command
+                .get(format!("{stream}_bytes"))
+                .and_then(Value::as_u64)
                 != Some(indexed.contents.len() as u64)
                 || json_string(command, &format!("{stream}_sha256"))
                     != Some(indexed.sha256.as_str())
@@ -292,7 +612,11 @@ pub(super) fn render_admitted_control_markdown(
         BUILDER_REPORT => (BUILDER_TITLE, BUILDER_SUCCESS_CLAIM),
         ADMISSION_REPORT => (ADMISSION_TITLE, ADMISSION_SUCCESS_CLAIM),
         CONSTRUCTION_REPORT => (CONSTRUCTION_TITLE, CONSTRUCTION_SUCCESS_CLAIM),
-        _ => return Err(format!("unsupported admitted control report: {report_name}")),
+        _ => {
+            return Err(format!(
+                "unsupported admitted control report: {report_name}"
+            ));
+        }
     };
     render_control_markdown(title, report, claim_boundary)
 }

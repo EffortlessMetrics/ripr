@@ -849,16 +849,34 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, Str
             );
         }
     }
-    let controller_prefix_passed = [
-        ("trusted_builder", "built"),
-        ("resolved_tree_admission", "admitted"),
-    ]
-    .into_iter()
-    .all(|(key, expected_status)| {
+    let packet_passed = |key: &str, expected_status: &str| {
         report["controller_packets"][key]["available"].as_bool() == Some(true)
             && json_string(&report["controller_packets"][key], "status") == Some(expected_status)
-    });
-    if json_string(report, "status") == Some("admitted") || controller_prefix_passed {
+    };
+    let builder_passed = packet_passed("trusted_builder", "built");
+    let admission_passed = packet_passed("resolved_tree_admission", "admitted");
+    let controller_prefix_passed = builder_passed && admission_passed;
+    let builder_available =
+        report["controller_packets"]["trusted_builder"]["available"].as_bool() == Some(true);
+    let admission_available = report["controller_packets"]["resolved_tree_admission"]["available"]
+        .as_bool()
+        == Some(true);
+    if !builder_passed && builder_available {
+        super::source_promotion_control::replay_rejected_builder_packet(
+            &evidence.join("trusted-builder"),
+            required_json_string(report, "source_parent_sha")?,
+            required_json_string(report, "workflow_source_sha")?,
+        )?;
+        let expected_attempts = normalized_attempts(&None, &None, false);
+        if report.get("attempts") != Some(&expected_attempts) {
+            return Err(
+                "workflow attempt summary differs from rejected builder evidence".to_string(),
+            );
+        }
+    }
+    let needs_rejected_admission_replay =
+        builder_passed && !admission_passed && admission_available;
+    if needs_rejected_admission_replay || controller_prefix_passed {
         let integration_index = closure_index_path(
             &evidence.join("locators/integration_packet"),
             &locators["integration_packet"],
@@ -868,39 +886,68 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, Str
         let construction_packet = (construction_required
             && json_string(report, "status") == Some("admitted"))
         .then(|| evidence.join("exact-join-construction"));
-        let replay = super::source_promotion_control::replay_admitted_closure(
-            &super::source_promotion_control::AdmissionClosureReplayInput {
-                validation_packet: &evidence.join("locators/validation_packet"),
-                builder_packet: &evidence.join("trusted-builder"),
-                admission_packet: &evidence.join("resolved-tree-admission"),
-                integration_index: &integration_index,
-                preflight: &evidence.join("locators/preflight/input"),
-                resolution_manifest: &evidence.join("locators/resolution_manifest/input"),
-                qualification_receipt: qualification.as_deref(),
-                construction_packet: construction_packet.as_deref(),
-                source_parent: required_json_string(report, "source_parent_sha")?,
-                swarm_parent: required_json_string(report, "w7_peeled_sha")?,
-                join_tree: required_json_string(report, "reviewed_tree_sha")?,
-                protected_w7_ref: required_json_string(report, "protected_w7_ref")?,
-                preflight_sha256: required_json_string(&locators["preflight"], "sha256")?,
-                resolution_sha256: required_json_string(
-                    &locators["resolution_manifest"],
-                    "sha256",
-                )?,
-                integration_index_sha256: required_json_string(
-                    &locators["integration_packet"],
-                    "sha256",
-                )?,
-                qualification_sha256: qualification
-                    .as_ref()
-                    .map(|_| required_json_string(&locators["qualification_receipt"], "sha256"))
-                    .transpose()?,
-            },
-        )?;
-        if json_string(report, "status") == Some("admitted") {
+        let validation_packet = evidence.join("locators/validation_packet");
+        let builder_packet = evidence.join("trusted-builder");
+        let admission_packet = evidence.join("resolved-tree-admission");
+        let preflight = evidence.join("locators/preflight/input");
+        let resolution_manifest = evidence.join("locators/resolution_manifest/input");
+        let replay_input = super::source_promotion_control::AdmissionClosureReplayInput {
+            validation_packet: &validation_packet,
+            builder_packet: &builder_packet,
+            admission_packet: &admission_packet,
+            integration_index: &integration_index,
+            preflight: &preflight,
+            resolution_manifest: &resolution_manifest,
+            qualification_receipt: qualification.as_deref(),
+            construction_packet: construction_packet.as_deref(),
+            source_parent: required_json_string(report, "source_parent_sha")?,
+            swarm_parent: required_json_string(report, "w7_peeled_sha")?,
+            join_tree: required_json_string(report, "reviewed_tree_sha")?,
+            protected_w7_ref: required_json_string(report, "protected_w7_ref")?,
+            preflight_sha256: required_json_string(&locators["preflight"], "sha256")?,
+            resolution_sha256: required_json_string(&locators["resolution_manifest"], "sha256")?,
+            integration_index_sha256: required_json_string(
+                &locators["integration_packet"],
+                "sha256",
+            )?,
+            qualification_sha256: qualification
+                .as_ref()
+                .map(|_| required_json_string(&locators["qualification_receipt"], "sha256"))
+                .transpose()?,
+        };
+        if needs_rejected_admission_replay {
+            let admission = super::source_promotion_control::replay_rejected_admission_closure(
+                &replay_input,
+                json_string(report, "execution_profile") == Some("j5_negative"),
+            )?;
+            let expected_attempts = normalized_attempts(&Some(admission), &None, false);
+            if report.get("attempts") != Some(&expected_attempts) {
+                return Err(
+                    "workflow attempt summary differs from rejected admission evidence".to_string(),
+                );
+            }
+        } else {
+            let replay = super::source_promotion_control::replay_admitted_closure(&replay_input)?;
+            let rejected_construction = if construction_required
+                && json_string(report, "status") == Some("rejected")
+                && construction["available"].as_bool() == Some(true)
+            {
+                Some(
+                    super::source_promotion_control::replay_rejected_construction_packet(
+                        &evidence.join("exact-join-construction"),
+                        &replay_input,
+                    )?,
+                )
+            } else {
+                None
+            };
             let replayed_attempts = normalized_attempts(
                 &Some(replay.admission),
-                &replay.construction,
+                if rejected_construction.is_some() {
+                    &rejected_construction
+                } else {
+                    &replay.construction
+                },
                 construction_required,
             );
             if report.get("attempts") != Some(&replayed_attempts) {
@@ -2779,6 +2826,45 @@ mod tests {
     }
 
     #[test]
+    fn j5_replays_built_builder_and_rejected_admission_semantics() -> Result<(), String> {
+        let (builder_root, builder_packet) = write_j5_rejected_test_closure("j5-builder-replay")?;
+        verify_packet(&builder_packet)?;
+        let builder = builder_packet.join("evidence/trusted-builder");
+        let builder_receipt = builder.join("trusted-builder.json");
+        let mut mutated_builder = read_json(&builder_receipt, "J5 builder replay fixture")?;
+        mutated_builder["commit_tree_attempts"] = Value::from(1);
+        write_pretty_json(&builder_receipt, &mutated_builder, "mutated J5 builder")?;
+        reindex_control_packet(&builder)?;
+        reindex_workflow_packet(&builder_packet)?;
+        if verify_packet(&builder_packet).is_ok() {
+            return Err("J5 builder authority mutation escaped semantic replay".to_string());
+        }
+        fs::remove_dir_all(&builder_root)
+            .map_err(|error| format!("failed to clean J5 builder fixture: {error}"))?;
+
+        let (admission_root, admission_packet) =
+            write_j5_rejected_test_closure("j5-admission-replay")?;
+        verify_packet(&admission_packet)?;
+        let admission = admission_packet.join("evidence/resolved-tree-admission");
+        let admission_receipt = admission.join("resolved-tree-admission.json");
+        let mut mutated_admission = read_json(&admission_receipt, "J5 admission replay fixture")?;
+        mutated_admission["source_parent"] = Value::String("f".repeat(40));
+        write_pretty_json(
+            &admission_receipt,
+            &mutated_admission,
+            "mutated J5 admission",
+        )?;
+        reindex_control_packet(&admission)?;
+        reindex_workflow_packet(&admission_packet)?;
+        if verify_packet(&admission_packet).is_ok() {
+            return Err("J5 admission identity mutation escaped semantic replay".to_string());
+        }
+        fs::remove_dir_all(&admission_root)
+            .map_err(|error| format!("failed to clean J5 admission fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn rejected_admission_requires_a_failed_builder_or_admission_stage() -> Result<(), String> {
         let mut report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
         report["phase"] = Value::String("admission".to_string());
@@ -2818,6 +2904,28 @@ mod tests {
         report["failure_reasons"] = serde_json::json!(["builder rejected before admission"]);
         report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
         validate_report(&report)
+    }
+
+    #[test]
+    fn builder_rejection_replays_optional_provenance_and_zero_authority() -> Result<(), String> {
+        let (root, packet) = write_builder_rejected_test_closure("builder-rejection-replay")?;
+        verify_packet(&packet)?;
+        let builder = packet.join("evidence/trusted-builder");
+        let receipt_path = builder.join("trusted-builder.json");
+        let mut receipt = read_json(&receipt_path, "rejected builder fixture")?;
+        receipt["source_parent"] = Value::String("f".repeat(40));
+        receipt["ref_mutation_attempted"] = Value::Bool(true);
+        write_pretty_json(&receipt_path, &receipt, "mutated rejected builder")?;
+        reindex_control_packet(&builder)?;
+        reindex_workflow_packet(&packet)?;
+        if verify_packet(&packet).is_ok() {
+            return Err(
+                "rejected builder provenance/authority mutation escaped replay".to_string(),
+            );
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean builder rejection fixture: {error}"))?;
+        Ok(())
     }
 
     #[test]
@@ -3448,6 +3556,56 @@ mod tests {
     }
 
     #[test]
+    fn rejected_constructor_replays_parseable_attempt_and_outer_parity() -> Result<(), String> {
+        for attempted in [false, true] {
+            let label = if attempted {
+                "parseable-rejection-attempted"
+            } else {
+                "parseable-rejection-not-attempted"
+            };
+            let (root, packet) =
+                write_parseable_rejected_constructor_test_closure(label, attempted)?;
+            let baseline = verify_packet(&packet)?;
+            let mut moved = baseline;
+            moved["attempts"]["constructor_commit_tree_attempts"] =
+                Value::from(usize::from(!attempted));
+            rewrite_test_packet_reports_and_index(&packet, &moved)?;
+            if verify_packet(&packet).is_ok() {
+                return Err(format!(
+                    "parseable rejected construction attempted={attempted} escaped outer parity"
+                ));
+            }
+            fs::remove_dir_all(&root)
+                .map_err(|error| format!("failed to clean parseable rejection fixture: {error}"))?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rejected_constructor_replays_forbidden_inner_authority() -> Result<(), String> {
+        let (root, packet) =
+            write_parseable_rejected_constructor_test_closure("rejected-inner-authority", true)?;
+        verify_packet(&packet)?;
+        let construction = packet.join("evidence/exact-join-construction");
+        let receipt_path = construction.join("exact-join-construction.json");
+        let mut receipt = read_json(&receipt_path, "rejected construction authority fixture")?;
+        receipt["ref_mutation_attempted"] = Value::Bool(true);
+        write_pretty_json(
+            &receipt_path,
+            &receipt,
+            "mutated rejected construction receipt",
+        )?;
+        reindex_control_packet(&construction)?;
+        reindex_workflow_packet(&packet)?;
+        if verify_packet(&packet).is_ok() {
+            return Err("rejected construction inner ref authority escaped replay".to_string());
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean rejected authority fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn finalizer_records_rejected_exit_and_unknown_attempts_without_constructor_receipt()
     -> Result<(), String> {
         let (root, packet) =
@@ -3983,6 +4141,246 @@ mod tests {
         Ok((root, packet))
     }
 
+    fn write_parseable_rejected_constructor_test_closure(
+        label: &str,
+        attempted: bool,
+    ) -> Result<(PathBuf, PathBuf), String> {
+        let (root, packet) = write_rejected_constructor_test_closure(label, false)?;
+        let mut report = read_json(&packet.join(REPORT_JSON), "parseable rejection fixture")?;
+        let construction = packet.join("evidence/exact-join-construction");
+        let receipt = serde_json::json!({
+            "schema": "ripr.source_promotion_exact_join_construction.v1",
+            "status": "rejected",
+            "source_parent": required_json_string(&report, "source_parent_sha")?,
+            "swarm_parent": required_json_string(&report, "w7_peeled_sha")?,
+            "join_tree": required_json_string(&report, "reviewed_tree_sha")?,
+            "preflight_sha256": required_json_string(&report["locators"]["preflight"], "sha256")?,
+            "resolution_manifest_sha256": required_json_string(&report["locators"]["resolution_manifest"], "sha256")?,
+            "candidate_ref": "refs/heads/promote/0.11.0-admission-dry-run",
+            "join_commit": null,
+            "ordered_parents": [],
+            "final_identity_reread_passed": false,
+            "refs_unchanged": null,
+            "authoritative_commit_attempted": attempted,
+            "commit_tree_attempts": usize::from(attempted),
+            "local_ref_attempts": 0,
+            "remote_push_attempts": 0,
+            "merge_command_attempts": 0,
+            "unreferenced_exact_join_constructed": false,
+            "ref_mutation_attempted": false,
+            "push_attempted": false,
+            "merge_command": null,
+            "failure_reasons": ["synthetic parseable constructor rejection"],
+            "non_claims": [
+                "A rejected construction receipt cannot be published.",
+                "No candidate ref, merge command, source integration, release, or public channel authority was created.",
+            ],
+        });
+        write_rejected_control_packet(
+            &construction,
+            "exact_join_construction",
+            "exact-join-construction.json",
+            &receipt,
+        )?;
+        let admission = read_json(
+            &packet
+                .join("evidence/resolved-tree-admission")
+                .join("resolved-tree-admission.json"),
+            "parseable rejection admission receipt",
+        )?;
+        report["controller_packets"]["exact_join_construction"] = packet_state(
+            &construction,
+            "exact-join-construction.json",
+            "evidence/exact-join-construction",
+        );
+        report["attempts"] = normalized_attempts(&Some(admission), &Some(receipt), true);
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        rewrite_test_packet_reports_and_index(&packet, &report)?;
+        Ok((root, packet))
+    }
+
+    fn write_j5_rejected_test_closure(label: &str) -> Result<(PathBuf, PathBuf), String> {
+        let (root, packet) = write_admitted_test_closure_for(label, "constructor_dry_run")?;
+        let mut report = read_json(&packet.join(REPORT_JSON), "J5 workflow fixture")?;
+        let admission = packet.join("evidence/resolved-tree-admission");
+        fs::remove_dir_all(&admission)
+            .map_err(|error| format!("failed to replace J5 admission packet: {error}"))?;
+        let receipt = serde_json::json!({
+            "schema": "ripr.source_promotion_resolved_tree_admission.v1",
+            "status": "rejected",
+            "identity": {
+                "source_parent": required_json_string(&report, "source_parent_sha")?,
+                "swarm_parent": required_json_string(&report, "w7_peeled_sha")?,
+                "join_tree": required_json_string(&report, "reviewed_tree_sha")?,
+                "preflight_sha256": required_json_string(&report["locators"]["preflight"], "sha256")?,
+                "resolution_manifest_sha256": required_json_string(&report["locators"]["resolution_manifest"], "sha256")?,
+            },
+            "source_parent": required_json_string(&report, "source_parent_sha")?,
+            "swarm_parent": required_json_string(&report, "w7_peeled_sha")?,
+            "join_tree": required_json_string(&report, "reviewed_tree_sha")?,
+            "preflight_sha256": required_json_string(&report["locators"]["preflight"], "sha256")?,
+            "resolution_manifest_sha256": required_json_string(&report["locators"]["resolution_manifest"], "sha256")?,
+            "all_required_typed_integration_receipts_present": false,
+            "final_identity_reread_passed": false,
+            "constructor_eligible_after_tree_qualification": false,
+            "authoritative_commit_attempted": false,
+            "commit_tree_attempts": 0,
+            "local_ref_attempts": 0,
+            "remote_push_attempts": 0,
+            "merge_command_attempts": 0,
+            "ref_mutation_attempted": false,
+            "push_attempted": false,
+            "merge_command": null,
+            "failure_reasons": ["synthetic J5 admission rejection"],
+            "non_claims": [
+                "A rejected admission is not construction eligibility.",
+                "No exact join object, candidate ref, merge command, release, or publication authority was created.",
+            ],
+        });
+        write_rejected_control_packet(
+            &admission,
+            "resolved_tree_admission",
+            "resolved-tree-admission.json",
+            &receipt,
+        )?;
+        let qualification = packet.join("evidence/locators/qualification_receipt/input");
+        fs::remove_file(&qualification)
+            .map_err(|error| format!("failed to remove J5 qualification fixture: {error}"))?;
+        report["phase"] = Value::String("admission".to_string());
+        report["status"] = Value::String("rejected".to_string());
+        report["execution_profile"] = Value::String("j5_negative".to_string());
+        report["locators"]["qualification_receipt"] = serde_json::json!({
+            "schema": LOCATOR_SCHEMA,
+            "status": "not_required",
+            "label": "qualification receipt",
+        });
+        report["controller_packets"]["resolved_tree_admission"] = packet_state(
+            &admission,
+            "resolved-tree-admission.json",
+            "evidence/resolved-tree-admission",
+        );
+        report["controller_packets"]["exact_join_construction"] = serde_json::json!({
+            "path": null,
+            "available": false,
+            "status": "not_run",
+            "schema": null,
+        });
+        report["producer"] = serde_json::json!({
+            "normalized_exit_code": 1,
+            "trusted_builder_state": "passed",
+            "admission_state": "rejected",
+            "constructor_state": "not_run_before_upload_and_enforcement",
+        });
+        report["attempts"] = normalized_attempts(&Some(receipt), &None, false);
+        report["failure_reasons"] = serde_json::json!(["synthetic J5 admission rejection"]);
+        let request = requested_identity_for_report(&report)?;
+        let request_bytes = serde_json::to_vec_pretty(&request)
+            .map_err(|error| format!("failed to serialize J5 requested identity: {error}"))?;
+        fs::write(
+            packet.join("evidence/requested-identity.json"),
+            &request_bytes,
+        )
+        .map_err(|error| format!("failed to write J5 requested identity: {error}"))?;
+        report["requested_identity_sha256"] = Value::String(digest_bytes(&request_bytes));
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        rewrite_test_packet_reports_and_index(&packet, &report)?;
+        Ok((root, packet))
+    }
+
+    fn write_builder_rejected_test_closure(label: &str) -> Result<(PathBuf, PathBuf), String> {
+        let (root, packet) = write_admitted_test_closure(label)?;
+        let mut report = read_json(&packet.join(REPORT_JSON), "builder rejection fixture")?;
+        let builder = packet.join("evidence/trusted-builder");
+        fs::remove_dir_all(&builder)
+            .map_err(|error| format!("failed to replace rejected builder packet: {error}"))?;
+        let receipt = serde_json::json!({
+            "schema": "ripr.source_promotion_trusted_builder.v1",
+            "status": "rejected",
+            "source_parent": required_json_string(&report, "source_parent_sha")?,
+            "workflow_source_sha": required_json_string(&report, "workflow_source_sha")?,
+            "clean_checkout": false,
+            "rust_toolchain": null,
+            "cargo_lock_sha256": null,
+            "locked_build": true,
+            "isolated_cargo_target_dir": true,
+            "executable_sha256": null,
+            "failure_reasons": ["synthetic builder rejection"],
+            "authoritative_commit_attempted": false,
+            "commit_tree_attempts": 0,
+            "local_ref_attempts": 0,
+            "remote_push_attempts": 0,
+            "merge_command_attempts": 0,
+            "merge_command": null,
+            "ref_mutation_attempted": false,
+            "push_attempted": false,
+        });
+        write_rejected_control_packet(
+            &builder,
+            "trusted_builder",
+            "trusted-builder.json",
+            &receipt,
+        )?;
+        let admission = packet.join("evidence/resolved-tree-admission");
+        fs::remove_dir_all(&admission)
+            .map_err(|error| format!("failed to remove skipped admission packet: {error}"))?;
+        report["phase"] = Value::String("admission".to_string());
+        report["status"] = Value::String("rejected".to_string());
+        report["controller_packets"]["trusted_builder"] =
+            packet_state(&builder, "trusted-builder.json", "evidence/trusted-builder");
+        report["controller_packets"]["resolved_tree_admission"] = packet_state(
+            &admission,
+            "resolved-tree-admission.json",
+            "evidence/resolved-tree-admission",
+        );
+        report["producer"] = serde_json::json!({
+            "normalized_exit_code": 1,
+            "trusted_builder_state": "rejected",
+            "admission_state": "rejected",
+            "constructor_state": "not_run_before_upload_and_enforcement",
+        });
+        report["attempts"] = normalized_attempts(&None, &None, false);
+        report["failure_reasons"] = serde_json::json!(["synthetic builder rejection"]);
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        rewrite_test_packet_reports_and_index(&packet, &report)?;
+        Ok((root, packet))
+    }
+
+    fn write_rejected_control_packet(
+        root: &Path,
+        kind: &str,
+        report_name: &str,
+        report: &Value,
+    ) -> Result<(), String> {
+        fs::create_dir(root)
+            .map_err(|error| format!("failed to create rejected control packet: {error}"))?;
+        fs::write(root.join("control-attempt.json"), b"{}\n")
+            .map_err(|error| format!("failed to write rejected attempt journal: {error}"))?;
+        write_pretty_json(&root.join(report_name), report, "rejected control receipt")?;
+        let markdown = super::super::source_promotion_control::render_rejected_control_markdown(
+            report_name,
+            report,
+        )?;
+        let markdown_name = report_name
+            .strip_suffix(".json")
+            .map(|stem| format!("{stem}.md"))
+            .ok_or_else(|| "rejected report name must end in .json".to_string())?;
+        fs::write(root.join(markdown_name), markdown)
+            .map_err(|error| format!("failed to write rejected control Markdown: {error}"))?;
+        write_pretty_json(
+            &root.join(PACKET_INDEX),
+            &serde_json::json!({
+                "schema": "ripr.source_promotion_control_packet.v1",
+                "kind": kind,
+                "status": "rejected",
+                "complete": true,
+                "files": [],
+            }),
+            "rejected control packet index",
+        )?;
+        reindex_packet_inventory(root)?;
+        Ok(())
+    }
+
     fn write_admitted_test_closure_for(
         label: &str,
         mode: &str,
@@ -4345,13 +4743,18 @@ mod tests {
                     _ => return Err(format!("unsupported test controller packet kind: {kind}")),
                 };
                 let report = read_json(&root.join(report_name), "test controller packet report")?;
-                (
-                    report_name,
+                let markdown = if json_string(&report, "status") == Some("rejected") {
+                    super::super::source_promotion_control::render_rejected_control_markdown(
+                        report_name,
+                        &report,
+                    )?
+                } else {
                     super::super::source_promotion_control::render_admitted_control_markdown(
                         report_name,
                         &report,
-                    )?,
-                )
+                    )?
+                };
+                (report_name, markdown)
             }
             _ => return Err(format!("unsupported test packet kind: {kind}")),
         };
