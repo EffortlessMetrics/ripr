@@ -31,12 +31,7 @@ fn validate(
         "resolution manifest",
     )?;
     state.inputs.resolution_path = Some(resolution_path);
-    validate_manifest(
-        &manifest,
-        &preflight,
-        &format!("sha256:{}", options.preflight_sha256),
-    )?;
-    validate_resolution_manifest_dispositions(&manifest)?;
+    validate_resolution_manifest_contract(&manifest, &preflight, &options.preflight_sha256)?;
     state.resolution_verified = true;
 
     verify_exact_commit(&options.repo, &options.source_parent, "--source-parent")?;
@@ -128,6 +123,15 @@ fn validate(
         return Err("one or more required governance commands did not pass".to_string());
     }
     Ok(())
+}
+
+fn validate_resolution_manifest_contract(
+    manifest: &Value,
+    preflight: &Value,
+    preflight_sha256: &str,
+) -> Result<(), String> {
+    validate_manifest(manifest, preflight, preflight_sha256)?;
+    validate_resolution_manifest_dispositions(manifest)
 }
 
 fn validate_resolution_manifest_dispositions(manifest: &Value) -> Result<(), String> {
@@ -298,7 +302,60 @@ fn observe_repository_after(
 
 #[cfg(test)]
 mod manifest_disposition_tests {
-    use super::validate_resolution_manifest_dispositions;
+    use super::{
+        validate_resolution_manifest_contract, validate_resolution_manifest_dispositions,
+    };
+
+    fn preflight() -> serde_json::Value {
+        serde_json::json!({
+            "schema": "ripr.source_promotion_preflight.v1",
+            "source_parent": "0".repeat(40),
+            "swarm_parent": "1".repeat(40),
+            "merge_base": "2".repeat(40),
+            "dry_merge": {
+                "reviewed_resolved_tree": "3".repeat(40),
+                "reviewed_resolved_tree_verified": true,
+                "conflicts": []
+            },
+            "source_survivor_candidates": [],
+            "swarm_authority_resolution_candidates": []
+        })
+    }
+
+    fn bound_manifest(preflight_sha256: &str) -> serde_json::Value {
+        serde_json::json!({
+            "schema": "ripr.source_promotion_resolution.v1",
+            "preflight_sha256": preflight_sha256,
+            "source_parent": "0".repeat(40),
+            "swarm_parent": "1".repeat(40),
+            "merge_base": "2".repeat(40),
+            "reviewed_join_tree": "3".repeat(40),
+            "dispositions": []
+        })
+    }
+
+    #[test]
+    fn production_manifest_contract_uses_bare_preflight_digest_and_rejects_mismatch(
+    ) -> Result<(), String> {
+        let digest = "a".repeat(64);
+        let preflight = preflight();
+        let manifest = bound_manifest(&digest);
+
+        validate_resolution_manifest_contract(&manifest, &preflight, &digest)?;
+
+        for mismatched_digest in [format!("sha256:{digest}"), "b".repeat(64)] {
+            let Err(_) = validate_resolution_manifest_contract(
+                &manifest,
+                &preflight,
+                &mismatched_digest,
+            ) else {
+                return Err(format!(
+                    "mismatched preflight digest {mismatched_digest:?} unexpectedly passed"
+                ));
+            };
+        }
+        Ok(())
+    }
 
     fn row(disposition: &str) -> serde_json::Value {
         serde_json::json!({
