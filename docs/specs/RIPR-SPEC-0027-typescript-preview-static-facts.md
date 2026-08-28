@@ -128,7 +128,7 @@ Assertions / oracles the adapter must recognise:
   `toBeDefined()` → smoke oracle
 
 The 0.8.1 Bun UB advisory lane also permits internal, evidence-only
-TypeScript facts for the Blob / ArrayBuffer calibration route: syntactic
+TypeScript facts for the configured Bun bridge calibration routes: syntactic
 `SharedArrayBuffer` construction, resizable `ArrayBuffer` construction through
 `maxByteLength`, `ArrayBuffer.resize(...)`, typed-array/DataView views,
 view-backed `Blob(...)` input, `blob.arrayBuffer()` observers, stable byte/text
@@ -136,13 +136,16 @@ assertions, weak byte/text smoke or snapshot oracles, byte/text read-only
 mentions without assertions, and `maxByteLength` mention-only controls. A
 bounded internal Bun Blob bridge profile may combine those facts into
 evidence-only `configured_hint` / `bridge_unknown` advisory lines for
-`Blob::from_js_without_defer_gc` and the
-`array_buffer.shared || array_buffer.resizable` Rust boundary. A bounded
-cross-language preview projection may surface those lines in the advisory
+`Blob::from_js_without_defer_gc`, `copy_to_unshared`, and
+`MarkdownObject::to_string` owners, together with their configured Rust
+boundaries. A bounded cross-language preview projection may surface one
+coherent configured profile in the advisory
 TypeScript preview card as `rust_ungripped_ts_discriminated`,
 `rust_ungripped_ts_missing_discriminator`, `ts_mention_not_observer`, or
-`bridge_unknown` state for the configured Bun Blob route. Missing-discriminator
-Bun Blob bridge findings must fail closed as
+`bridge_unknown` state for the selected configured Bun route. When multiple
+profiles share related evidence, the card must keep the hint, verdict, grip,
+and placement from one profile rather than mix fields across profiles.
+Missing-discriminator Bun bridge findings must fail closed as
 `cross_language_oracle_visibility_unresolved` until the binding route, external
 callsite, and external oracle are proven; their suggested test file remains
 `not_applicable` instead of selecting a TypeScript or Rust repair target. These
@@ -217,6 +220,11 @@ can show:
 - VS Code e2e smoke covers opening a TypeScript file when the adapter is
   enabled
 - `cargo xtask dogfood` records a checked TypeScript preview receipt
+- the preview repair-loop corpus can opt into semantic assertions that require
+  an operator verify command and receipt command while also requiring the source
+  fixture to withhold packet-ready verify evidence (`typescript_verify_command`
+  and preview-card `verify.command`) until a complete repair-packet contract
+  exists
 - the capability matrix gains `TypeScript preview static facts` at
   `alpha`, marked preview, with metrics from RIPR-SPEC-0026 plus
   TypeScript-specific counts where the language adds vocabulary

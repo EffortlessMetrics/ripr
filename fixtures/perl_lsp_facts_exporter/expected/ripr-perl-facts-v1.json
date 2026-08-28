@@ -2,7 +2,7 @@
   "schema_version": "ripr-perl-facts-v1",
   "packet_id": "perl-facts:repo:exact-return",
   "packet_status": "complete",
-  "packet_fingerprint": "sha256:exact-return",
+  "packet_fingerprint": "sha256:9fe55f74a7a154f886ff67be506c3ef70fc223a2a1dd5bcd67a275fd4f3b179a",
   "producer": {
     "name": "perl-lsp",
     "version": "0.0.0-fixture",

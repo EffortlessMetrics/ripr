@@ -15,6 +15,8 @@ for the right reason.
 | Dogfood | `ripr` on `ripr`. | product quality loop |
 | Extension smoke | VS Code client and server path. | provisioning, startup, diagnostics |
 | Calibration | Static prediction compared with real mutation data. | cargo-mutants integration |
+| Property | Generated inputs asserting invariants hold. | parser surfaces (diff, config) |
+| Fuzz | Adversarial random inputs asserting no crash. | LSP transport, JSON parsing |
 
 ## Required Proof By Change Type
 

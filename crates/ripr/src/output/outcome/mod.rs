@@ -18,11 +18,33 @@ use markdown::md_escape;
 pub(crate) use markdown::render_targeted_test_outcome_md;
 pub(crate) use path::display_path;
 use path::normalize_report_path;
-pub(crate) use render_json::{render_agent_verify_json, render_targeted_test_outcome_json};
+pub(crate) use render_json::{
+    render_agent_verify_json_with_currentness, render_targeted_test_outcome_json,
+};
 use review::review_attention_class;
 
 pub(crate) const TARGETED_TEST_OUTCOME_SCHEMA_VERSION: &str = "0.1";
-pub(crate) const AGENT_VERIFY_SCHEMA_VERSION: &str = "0.1";
+// #2922 PR B: version 0.2 adds the artifact content-commitment binding
+// (`inputs.before_content_sha256` / `inputs.after_content_sha256`) so a
+// verify result is bound to the exact artifact bytes it compared; the
+// receipt path fails closed on older or newer schema versions. The shape is
+// otherwise unchanged from 0.1 (#2646).
+// #3027: version 0.3 corrects the pair-level `artifact_currentness` value
+// domain (mixed pairs were mislabeled `dirty_worktree`; the closed
+// vocabulary now names each side). A consumer dispatching on 0.2 values
+// breaks, so this is a breaking family change: 0.2 documents keep their own
+// version and are NOT current evidence — there is no migration path.
+pub(crate) const AGENT_VERIFY_SCHEMA_VERSION: &str = "0.3";
+
+/// The exact-bytes content commitments of the validated before/after
+/// artifacts a verify result was computed from (#2922 PR B). Every canonical
+/// agent-verify render carries this binding: it is the replay defense that
+/// lets a downstream consumer detect artifact bytes changed after verify.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentVerifyArtifactBinding {
+    pub(crate) before_content_sha256: String,
+    pub(crate) after_content_sha256: String,
+}
 
 const SEAM_GRIP_CLASS_ORDER: &[&str] = &[
     "strongly_gripped",
@@ -54,6 +76,27 @@ pub(crate) struct StaticSeamRecord {
     evidence_source: String,
     evidence_path: BTreeMap<String, StaticEvidenceStage>,
     related_tests_total: usize,
+}
+
+/// The minimal fact set a targeted rerun owns. This deliberately contains
+/// analysis facts rather than rendered outcome JSON, so the rerun command can
+/// reuse the same static-movement rules without treating a report as input
+/// evidence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TargetedRerunStaticSeam {
+    pub(crate) seam_id: String,
+    pub(crate) seam_kind: String,
+    pub(crate) file: String,
+    pub(crate) line: usize,
+    pub(crate) static_class: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TargetedRerunMovement {
+    pub(crate) state: &'static str,
+    pub(crate) before_seam_count: usize,
+    pub(crate) matched_seam_count: usize,
+    pub(crate) limitation: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -154,6 +197,141 @@ pub(crate) fn targeted_test_outcome_report_from_json(
     build_targeted_test_outcome_report(&before, &after, before_path, after_path)
 }
 
+/// Compare explicit static before evidence with current targeted-rerun facts.
+///
+/// The caller must supply the prior artifact explicitly.  A missing selected
+/// seam or an unsupported snapshot is an error so the caller can render a
+/// named limitation rather than infer movement.
+pub(crate) fn targeted_rerun_movement_from_json(
+    before_json: &str,
+    current: &[TargetedRerunStaticSeam],
+) -> Result<TargetedRerunMovement, String> {
+    let before = parse_rerun_before_static_seams(before_json)?;
+    let current = current
+        .iter()
+        .map(|seam| StaticSeamRecord {
+            seam_id: seam.seam_id.clone(),
+            seam_kind: seam.seam_kind.clone(),
+            file: seam.file.clone(),
+            line: seam.line,
+            seam_grip_class: seam.static_class.clone(),
+            oracle_kind: "unknown".to_string(),
+            oracle_strength: "unknown".to_string(),
+            observed_values: Vec::new(),
+            missing_discriminators: Vec::new(),
+            evidence_source: "targeted_rerun_current".to_string(),
+            evidence_path: BTreeMap::new(),
+            related_tests_total: 0,
+        })
+        .collect::<Vec<_>>();
+    let before_by_id = targeted_outcome_seams_by_id(&before, "before")?;
+    let current_by_id = targeted_outcome_seams_by_id(&current, "current")?;
+    if current_by_id.is_empty() {
+        return Err("targeted rerun selected no current seams".to_string());
+    }
+    let missing = current_by_id
+        .keys()
+        .filter(|seam_id| !before_by_id.contains_key(*seam_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(format!(
+            "before artifact does not contain selected seam_id(s): {}",
+            missing.join(", ")
+        ));
+    }
+
+    let mut has_improvement = false;
+    let mut all_closed = true;
+    for (seam_id, after) in &current_by_id {
+        let before = before_by_id
+            .get(seam_id)
+            .ok_or_else(|| format!("before artifact lost selected seam_id `{seam_id}`"))?;
+        let movement = targeted_test_outcome_movement(before, after);
+        match movement.gap_movement.as_str() {
+            "closed" => has_improvement = true,
+            "improved" => {
+                has_improvement = true;
+                all_closed = false;
+            }
+            "unchanged" => all_closed = false,
+            "regressed" | "opened" => {
+                return Ok(TargetedRerunMovement {
+                    state: "regressed",
+                    before_seam_count: before_by_id.len(),
+                    matched_seam_count: current_by_id.len(),
+                    limitation: None,
+                });
+            }
+            _ => {
+                return Ok(TargetedRerunMovement {
+                    state: "limited",
+                    before_seam_count: before_by_id.len(),
+                    matched_seam_count: current_by_id.len(),
+                    limitation: Some(format!(
+                        "selected seam_id `{seam_id}` changed from {} to {} without an ordered static movement",
+                        movement.before, movement.after
+                    )),
+                });
+            }
+        }
+    }
+    Ok(TargetedRerunMovement {
+        state: if all_closed {
+            "closed"
+        } else if has_improvement {
+            "improved"
+        } else {
+            "unchanged"
+        },
+        before_seam_count: before_by_id.len(),
+        matched_seam_count: current_by_id.len(),
+        limitation: None,
+    })
+}
+
+fn parse_rerun_before_static_seams(json: &str) -> Result<Vec<StaticSeamRecord>, String> {
+    let value: Value = serde_json::from_str(json)
+        .map_err(|err| format!("failed to parse explicit before JSON: {err}"))?;
+    if value.get("schema_version").and_then(Value::as_str) == Some("ripr-targeted-rerun-v1") {
+        let seams = value
+            .get("seams")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "targeted rerun before artifact is missing `seams` array".to_string())?;
+        return seams
+            .iter()
+            .map(|seam| {
+                Ok(StaticSeamRecord {
+                    seam_id: optional_json_string(Some(seam), "seam_id").ok_or_else(|| {
+                        "targeted rerun seam is missing string `seam_id`".to_string()
+                    })?,
+                    seam_kind: optional_json_string(Some(seam), "seam_kind")
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    file: optional_json_string(Some(seam), "file")
+                        .map(|path| normalize_report_path(&path))
+                        .ok_or_else(|| {
+                            "targeted rerun seam is missing string `file`".to_string()
+                        })?,
+                    line: optional_json_usize(Some(seam), "line").ok_or_else(|| {
+                        "targeted rerun seam is missing numeric `line`".to_string()
+                    })?,
+                    seam_grip_class: optional_json_string(Some(seam), "static_class").ok_or_else(
+                        || "targeted rerun seam is missing string `static_class`".to_string(),
+                    )?,
+                    oracle_kind: "unknown".to_string(),
+                    oracle_strength: "unknown".to_string(),
+                    observed_values: Vec::new(),
+                    missing_discriminators: Vec::new(),
+                    evidence_source: "targeted_rerun_before".to_string(),
+                    evidence_path: BTreeMap::new(),
+                    related_tests_total: 0,
+                })
+            })
+            .collect();
+    }
+    parse_repo_exposure_static_seams(json)
+}
+
 fn parse_repo_exposure_static_seams(json: &str) -> Result<Vec<StaticSeamRecord>, String> {
     let value: Value = serde_json::from_str(json)
         .map_err(|err| format!("failed to parse repo exposure JSON: {err}"))?;
@@ -247,6 +425,7 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
             &["canonical_gap_id"],
             &["canonical_gap", "id"],
             &["python_repair_card", "canonical_gap_id"],
+            &["typescript_repair_packet", "canonical_gap_id"],
         ],
     )?;
     let canonical_gap = finding
@@ -258,6 +437,7 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
             &["canonical_gap", "behavior_kind"],
             &["probe", "family"],
             &["python_repair_card", "source"],
+            &["typescript_repair_packet", "repair_kind"],
         ],
     )
     .unwrap_or("unknown");
@@ -267,6 +447,7 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
             &["canonical_gap", "file"],
             &["probe", "file"],
             &["python_repair_card", "suggested_location", "source_file"],
+            &["typescript_repair_packet", "file"],
         ],
     )
     .map(normalize_report_path)
@@ -1088,11 +1269,25 @@ mod tests {
             "after.json".to_string(),
         )?;
 
-        let json = render_agent_verify_json(&report)?;
+        let json = render_json::render_agent_verify_json_with_currentness(
+            &report,
+            None,
+            &test_agent_verify_binding(),
+        )?;
         let value: Value = serde_json::from_str(&json)
             .map_err(|err| format!("agent verify JSON should parse: {err}"))?;
         assert_eq!(value["schema_version"], AGENT_VERIFY_SCHEMA_VERSION);
         assert_eq!(value["status"], "advisory");
+        // The canonical verify result binds the exact artifact content
+        // commitments it compared (#2922 PR B).
+        assert_eq!(
+            value["inputs"]["before_content_sha256"],
+            test_agent_verify_binding().before_content_sha256.as_str()
+        );
+        assert_eq!(
+            value["inputs"]["after_content_sha256"],
+            test_agent_verify_binding().after_content_sha256.as_str()
+        );
         assert_eq!(value["summary"]["improved"], 1);
         assert_eq!(value["summary"]["regressed"], 1);
         assert_eq!(value["summary"]["unchanged"], 1);
@@ -1289,12 +1484,141 @@ mod tests {
             "check_output_finding"
         );
 
-        let verify_json = render_agent_verify_json(&report)?;
+        let verify_json = render_json::render_agent_verify_json_with_currentness(
+            &report,
+            None,
+            &test_agent_verify_binding(),
+        )?;
         let verify: Value = serde_json::from_str(&verify_json)
             .map_err(|err| format!("agent verify JSON should parse: {err}"))?;
         assert_eq!(verify["summary"]["gap_movement"]["closed"], 1);
         assert_eq!(verify["changed_seams"][0]["change"], "improved");
         assert_eq!(verify["changed_seams"][0]["gap_movement"], "closed");
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_outcome_from_typescript_packet_json_matches_canonical_gap_ids()
+    -> Result<(), String> {
+        let before = r#"{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "findings": [
+    {
+      "id": "probe:src_discount.ts:typescript_preview:2396aec1",
+      "classification": "weakly_exposed",
+      "probe": {"family": "predicate", "file": "src/discount.ts", "line": 2},
+      "ripr": {
+        "reach": {"state": "yes", "confidence": "low", "summary": "related test reaches owner"},
+        "infect": {"state": "unknown", "confidence": "low", "summary": "preview infection unknown"},
+        "propagate": {"state": "unknown", "confidence": "low", "summary": "preview propagation unknown"},
+        "observe": {"state": "weak", "confidence": "low", "summary": "relational check only"},
+        "discriminate": {"state": "weak", "confidence": "low", "summary": "boundary not asserted"}
+      },
+      "missing_discriminators": [
+        {"value": "amount == threshold", "reason": "not observed"}
+      ],
+      "related_tests": [
+        {"name": "applyDiscount applies discount when amount meets threshold", "file": "tests/discount.test.ts", "line": 3, "oracle_strength": "weak", "oracle_kind": "relational_check"}
+      ],
+      "typescript_repair_packet": {
+        "source": "typescript_preview_projection",
+        "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+        "language": "typescript",
+        "language_status": "preview",
+        "file": "src/discount.ts",
+        "line": 2,
+        "owner": "applyDiscount",
+        "repair_kind": "AddBoundaryAssertion",
+        "target_test": "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold",
+        "verify_command": "jest tests/discount.test.ts"
+      },
+      "language": "typescript",
+      "language_status": "preview"
+    }
+  ]
+}"#;
+        let after = r#"{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "findings": [
+    {
+      "id": "probe:src_discount.ts:typescript_preview:2396aec1",
+      "classification": "exposed",
+      "probe": {"family": "predicate", "file": "src/discount.ts", "line": 2},
+      "ripr": {
+        "reach": {"state": "yes", "confidence": "low", "summary": "related test reaches owner"},
+        "infect": {"state": "unknown", "confidence": "low", "summary": "preview infection unknown"},
+        "propagate": {"state": "unknown", "confidence": "low", "summary": "preview propagation unknown"},
+        "observe": {"state": "yes", "confidence": "low", "summary": "exact assertion"},
+        "discriminate": {"state": "yes", "confidence": "low", "summary": "boundary asserted"}
+      },
+      "missing_discriminators": [],
+      "related_tests": [
+        {"name": "applyDiscount applies discount at threshold", "file": "tests/discount.test.ts", "line": 3, "oracle_strength": "strong", "oracle_kind": "exact_value", "oracle": "expect(result).toBe(50)"}
+      ],
+      "typescript_repair_packet": {
+        "source": "typescript_preview_projection",
+        "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+        "language": "typescript",
+        "language_status": "preview",
+        "file": "src/discount.ts",
+        "line": 2,
+        "owner": "applyDiscount",
+        "repair_kind": "AddBoundaryAssertion",
+        "target_test": "tests/discount.test.ts::applyDiscount applies discount at threshold",
+        "verify_command": "jest tests/discount.test.ts"
+      },
+      "language": "typescript",
+      "language_status": "preview"
+    }
+  ]
+}"#;
+
+        let report = targeted_test_outcome_report_from_json(
+            before,
+            after,
+            "before-check.json".to_string(),
+            "after-check.json".to_string(),
+        )?;
+
+        assert_eq!(report.moved.len(), 1);
+        let movement = &report.moved[0];
+        assert_eq!(
+            movement.seam_id,
+            "gap:typescript:typescript_preview:2396aec1"
+        );
+        assert_eq!(movement.seam_kind, "predicate");
+        assert_eq!(movement.file, "src/discount.ts");
+        assert_eq!(movement.before, "weakly_gripped");
+        assert_eq!(movement.after, "strongly_gripped");
+        assert_eq!(movement.direction, "improved");
+        assert_eq!(movement.gap_movement, "closed");
+        assert_eq!(movement.evidence_source, "check_output_finding");
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_outcome_typescript_preview_fixture_matches_expected_receipts()
+    -> Result<(), String> {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
+            before: include_str!(
+                "../../../../../fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json"
+            ),
+            after: include_str!(
+                "../../../../../fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/after-check.json"
+            ),
+            before_path: "fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/before-check.json",
+            after_path: "fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/after-check.json",
+            expected_gap_movement: "closed",
+            expected_bucket: "moved",
+            expected_json: include_str!(
+                "../../../../../fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.json"
+            ),
+            expected_md: include_str!(
+                "../../../../../fixtures/first_successful_pr/typescript-preview-gap/expected/outcome/closed.md"
+            ),
+        })?;
         Ok(())
     }
 
@@ -1310,7 +1634,7 @@ mod tests {
         let no_path = include_str!(
             "../../../../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json"
         );
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: weak,
             after: strong,
             before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
@@ -1325,7 +1649,7 @@ mod tests {
             ),
         })?;
 
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: weak,
             after: weak,
             before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
@@ -1340,7 +1664,7 @@ mod tests {
             ),
         })?;
 
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: strong,
             after: weak,
             before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/after-check.json",
@@ -1355,7 +1679,7 @@ mod tests {
             ),
         })?;
 
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: no_path,
             after: weak,
             before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json",
@@ -1370,7 +1694,7 @@ mod tests {
             ),
         })?;
 
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: weak,
             after: no_path,
             before_path: "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json",
@@ -1390,7 +1714,7 @@ mod tests {
     #[test]
     fn targeted_test_outcome_python_return_value_fixture_matches_expected_receipts()
     -> Result<(), String> {
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: include_str!(
                 "../../../../../fixtures/first_successful_pr/python-return-gap/inputs/reports/before-check.json"
             ),
@@ -1414,7 +1738,7 @@ mod tests {
     #[test]
     fn targeted_test_outcome_python_exception_fixture_matches_expected_receipts()
     -> Result<(), String> {
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: include_str!(
                 "../../../../../fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json"
             ),
@@ -1435,7 +1759,7 @@ mod tests {
         Ok(())
     }
 
-    struct PythonPreviewOutcomeFixture<'a> {
+    struct PreviewOutcomeFixture<'a> {
         before: &'a str,
         after: &'a str,
         before_path: &'a str,
@@ -1446,9 +1770,7 @@ mod tests {
         expected_md: &'a str,
     }
 
-    fn assert_python_preview_outcome_fixture(
-        fixture: PythonPreviewOutcomeFixture<'_>,
-    ) -> Result<(), String> {
+    fn assert_preview_outcome_fixture(fixture: PreviewOutcomeFixture<'_>) -> Result<(), String> {
         let report = targeted_test_outcome_report_from_json(
             fixture.before,
             fixture.after,
@@ -1476,7 +1798,7 @@ mod tests {
     #[test]
     fn targeted_test_outcome_python_field_fixture_matches_expected_receipts() -> Result<(), String>
     {
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: include_str!(
                 "../../../../../fixtures/first_successful_pr/python-field-gap/inputs/reports/before-check.json"
             ),
@@ -1500,7 +1822,7 @@ mod tests {
     #[test]
     fn targeted_test_outcome_python_output_fixture_matches_expected_receipts() -> Result<(), String>
     {
-        assert_python_preview_outcome_fixture(PythonPreviewOutcomeFixture {
+        assert_preview_outcome_fixture(PreviewOutcomeFixture {
             before: include_str!(
                 "../../../../../fixtures/first_successful_pr/python-output-gap/inputs/reports/before-check.json"
             ),
@@ -1802,6 +2124,66 @@ mod tests {
         assert!(matches!(result, Err(message) if message.contains("missing string field `kind`")));
     }
 
+    #[test]
+    fn targeted_rerun_movement_uses_explicit_rerun_before_artifact() -> Result<(), String> {
+        let before = r#"{
+  "schema_version":"ripr-targeted-rerun-v1",
+  "seams":[{"seam_id":"seam:price","file":"src/pricing.rs","line":42,"static_class":"weakly_gripped"}]
+}"#;
+        let current = vec![TargetedRerunStaticSeam {
+            seam_id: "seam:price".to_string(),
+            seam_kind: "predicate_boundary".to_string(),
+            file: "src/pricing.rs".to_string(),
+            line: 42,
+            static_class: "strongly_gripped".to_string(),
+        }];
+        let movement = targeted_rerun_movement_from_json(before, &current)?;
+        if movement.state != "closed"
+            || movement.before_seam_count != 1
+            || movement.matched_seam_count != 1
+        {
+            return Err(format!("unexpected targeted rerun movement: {movement:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_rerun_movement_rejects_before_without_selected_seam() {
+        let current = vec![TargetedRerunStaticSeam {
+            seam_id: "seam:current".to_string(),
+            seam_kind: "predicate_boundary".to_string(),
+            file: "src/pricing.rs".to_string(),
+            line: 42,
+            static_class: "weakly_gripped".to_string(),
+        }];
+        let result = targeted_rerun_movement_from_json(
+            r#"{"schema_version":"ripr-targeted-rerun-v1","seams":[{"seam_id":"seam:other","file":"src/pricing.rs","line":42,"static_class":"weakly_gripped"}]}"#,
+            &current,
+        );
+        assert!(
+            matches!(result, Err(message) if message.contains("does not contain selected seam_id"))
+        );
+    }
+
+    #[test]
+    fn targeted_rerun_movement_names_same_rank_change_as_limited() -> Result<(), String> {
+        let current = vec![TargetedRerunStaticSeam {
+            seam_id: "seam:price".to_string(),
+            seam_kind: "predicate_boundary".to_string(),
+            file: "src/pricing.rs".to_string(),
+            line: 42,
+            static_class: "static_unknown".to_string(),
+        }];
+        let movement = targeted_rerun_movement_from_json(
+            r#"{"schema_version":"ripr-targeted-rerun-v1","seams":[{"seam_id":"seam:price","file":"src/pricing.rs","line":42,"static_class":"unknown"}]}"#,
+            &current,
+        )?;
+        if movement.state != "limited" || movement.limitation.is_none() {
+            return Err(format!("expected named limited movement, got {movement:?}"));
+        }
+        Ok(())
+    }
+
     fn targeted_static_seam(id: &str, grip_class: &str) -> StaticSeamRecord {
         StaticSeamRecord {
             seam_id: id.to_string(),
@@ -1816,6 +2198,13 @@ mod tests {
             evidence_source: "legacy_fields".to_string(),
             evidence_path: BTreeMap::new(),
             related_tests_total: 0,
+        }
+    }
+
+    fn test_agent_verify_binding() -> AgentVerifyArtifactBinding {
+        AgentVerifyArtifactBinding {
+            before_content_sha256: format!("sha256:{}", "b".repeat(64)),
+            after_content_sha256: format!("sha256:{}", "c".repeat(64)),
         }
     }
 }

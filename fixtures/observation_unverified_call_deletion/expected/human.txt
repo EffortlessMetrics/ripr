@@ -4,62 +4,29 @@ root: fixtures/observation_unverified_call_deletion/input
 
 Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
 
-WARNING fixtures/observation_unverified_call_deletion/input/src/lib.rs:10
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
-Changed
-  before: cache.insert("old_key", result)
-  after:  cache.insert("result_key", result);
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/observation_unverified_call_deletion/input/src/lib.rs:10
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: cache.insert("result_key", result)
+  Missing discriminator: No strong discriminator was detected
+  Related test: tests/store_tests.rs:4 store_result_runs_without_panic
+  Next step: Strengthen the related assertion so it discriminates the changed behavior.
+  Evidence:
+    - reach yes: Related tests appear to reach store_result: store_result_runs_without_panic
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 6 more evidence line(s) hidden
 
-Probe
-  family: call_deletion
-  delta:  effect
-  owner:  src/lib.rs::store_result
+Next: drill into the top finding:
+  ripr explain --root fixtures/observation_unverified_call_deletion/input --diff fixtures/observation_unverified_call_deletion/diff.patch --mode fast probe:src_lib.rs:call_deletion:c13d820a
+  ripr context --root fixtures/observation_unverified_call_deletion/input --diff fixtures/observation_unverified_call_deletion/diff.patch --mode fast --at probe:src_lib.rs:call_deletion:c13d820a
 
-Static exposure
-  weakly_exposed (warning, confidence 0.92)
-
-Evidence
-  - reach yes: Related tests appear to reach store_result: store_result_runs_without_panic
-  - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence state write: cache.insert("result_key", result)
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
-  - local flow reaches state write: cache.insert("result_key", result) (line 10)
-  - related test tests/store_tests.rs:4 store_result_runs_without_panic uses weak relational check oracle: assert!(true);
-  - observed function argument value result = 42 at line 6
-
-Weakness
-  - No strong discriminator was detected
-
-Next step
-  Strengthen the related assertion so it discriminates the changed behavior.
-
-WARNING fixtures/observation_unverified_call_deletion/input/src/lib.rs:10
-
-Changed
-  before: cache.insert("old_key", result)
-  after:  cache.insert("result_key", result);
-
-Probe
-  family: side_effect
-  delta:  effect
-  owner:  src/lib.rs::store_result
-
-Static exposure
-  weakly_exposed (warning, confidence 0.92)
-
-Evidence
-  - reach yes: Related tests appear to reach store_result: store_result_runs_without_panic
-  - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence state write: cache.insert("result_key", result)
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
-  - local flow reaches state write: cache.insert("result_key", result) (line 10)
-  - related test tests/store_tests.rs:4 store_result_runs_without_panic uses weak relational check oracle: assert!(true);
-  - observed function argument value result = 42 at line 6
-
-Weakness
-  - No strong discriminator was detected
-
-Next step
-  Add a mock expectation, event receiver assertion, persisted-state check, or metric assertion for the changed effect.
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

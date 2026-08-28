@@ -75,6 +75,15 @@ limitations, not proof failures; they are re-run on infrastructure terms
 (issue #1058), and they must not be paid at all by changes whose proof
 never needed the heavy lane.
 
+`routed-rust.yml` consumes self-hosted disk-guard tempfails only as a
+routing signal. A selected CX43, CPX42, or CX53 implementation job that exits
+75 from `ci-disk-guard` records `scratch_status=tempfail`; the hosted fallback
+then runs the same Rust command surface. The normalized
+`Ripr Rust Small Result` passes only when the selected implementation job
+succeeds or when the tempfail fallback succeeds; docs-only PRs still
+short-circuit the hosted fallback through `detect-docs-only`. Compile, lint,
+test, policy, and product failures remain hard failures.
+
 ## The delivery sequence
 
 This model lands in slices, each with its own evidence:

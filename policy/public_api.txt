@@ -1,10 +1,25 @@
 # Public exports allowed from crates/ripr/src/lib.rs.
+#
+# One line per crate-root `pub mod` / `pub use` declaration, in file order.
+# This narrow crate-root view is the format the source-trusted resolved-tree
+# validator checks; the transitive module-level surface is recorded separately
+# in policy/public_api_surface.txt.
 
 pub mod analysis;
 pub mod app;
 pub mod cli;
+pub mod config;
 pub mod domain;
 pub mod lsp;
 pub mod output;
-pub use app::{CheckInput, CheckOutput, check_workspace, collect_context, explain_finding};
+pub use analysis::LanguageRun;
+pub use analysis::LanguageRunStatus;
+pub use analysis::PartialDiffScope;
+pub use analysis::PartialDiffStopReason;
+pub use analysis::PreviewLanguageAdvisory;
+pub use app::{
+pub use app::{Mode, OutputFormat};
 pub use domain::{ExposureClass, Finding, Probe, ProbeFamily, RiprEvidence};
+pub use domain::{LanguageFileCount, Summary};
+pub use output::suppressions::CheckSuppressionOutcome;
+pub use output::suppressions::SuppressedCheckFinding;

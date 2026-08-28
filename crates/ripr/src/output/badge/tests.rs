@@ -10,13 +10,19 @@ use crate::analysis::PreviewLanguageAdvisory;
 use crate::analysis::seams::{
     ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
 };
-use crate::analysis::test_grip_evidence::TestGripEvidence;
+use crate::analysis::test_grip_evidence::{
+    RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence, TestTargetEvidence,
+};
+use crate::analysis_outcome::{
+    AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome, AnalysisOutcomeCounts,
+    AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind, AnalysisStage,
+};
 use crate::app::{CheckInput, CheckOutput, Mode};
 use crate::config::RiprConfig;
 use crate::domain::{
-    ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, OracleKind, OracleStrength,
-    Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation,
-    StageEvidence, StageState, Summary,
+    ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, MissingDiscriminatorFact,
+    OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
+    RiprEvidence, SourceLocation, StageEvidence, StageState, Summary,
 };
 use std::path::PathBuf;
 
@@ -93,7 +99,12 @@ fn check_output(findings: Vec<Finding>) -> CheckOutput {
         summary: Summary::default(),
         findings,
         preview_language_advisories: Vec::new(),
+        language_runs: Vec::new(),
         no_scope_provided: false,
+        unanalyzed_working_tree: false,
+        suppression: None,
+        analysis_outcome: None,
+        partial_scope: None,
     }
 }
 
@@ -117,14 +128,32 @@ fn classified_seam(class: SeamGripClass) -> ClassifiedSeam {
     ClassifiedSeam {
         evidence: TestGripEvidence {
             seam_id: seam.id().clone(),
-            related_tests: Vec::new(),
+            related_tests: vec![RelatedTestGrip {
+                test_name: "discounted_total_boundary".to_string(),
+                file: PathBuf::from("tests/pricing.rs"),
+                line: 8,
+                test_target: Some(TestTargetEvidence::fixture(
+                    "discounted_total_boundary",
+                    std::path::Path::new("tests/pricing.rs"),
+                    8,
+                )),
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+                evidence_summary: "exact return assertion".to_string(),
+                relation_reason: RelationReason::DirectOwnerCall,
+                relation_confidence: RelationConfidence::High,
+            }],
             reach: stage(StageState::Yes),
             activate: stage(StageState::Yes),
             propagate: stage(StageState::Yes),
             observe: stage(StageState::Yes),
             discriminate: stage(StageState::Weak),
             observed_values: Vec::new(),
-            missing_discriminators: Vec::new(),
+            missing_discriminators: vec![MissingDiscriminatorFact {
+                value: "amount == threshold".to_string(),
+                reason: "producer identified the equality boundary as missing".to_string(),
+                flow_sink: None,
+            }],
         },
         seam,
         class,
@@ -394,8 +423,10 @@ fn badge_native_json_uses_snake_case_schema_version_and_all_required_fields() {
     let summary = ripr_badge_summary(&output, BadgePolicy::default());
     let json = render_native_json(&summary);
 
-    assert!(json.contains("\"schema_version\": \"0.6\""));
+    assert!(json.contains("\"schema_version\": \"0.8\""));
     assert!(!json.contains("\"schemaVersion\""));
+    // Diff-scoped badges carry no public projection.
+    assert!(!json.contains("\"public_projection\""));
     assert!(json.contains("\"kind\": \"ripr\""));
     assert!(json.contains("\"scope\": \"diff\""));
     assert!(json.contains("\"basis\": \"finding_exposure\""));
@@ -922,6 +953,31 @@ fn exposure_suppression(finding_id: &str, expires: Option<&str>) -> SuppressionE
     }
 }
 
+fn path_exposure_suppression(
+    path: &str,
+    static_class: Option<&str>,
+    expires: Option<&str>,
+) -> SuppressionEntry {
+    SuppressionEntry {
+        kind: SuppressionKind::ExposureGap,
+        finding_id: None,
+        test: None,
+        path: Some(path.to_string()),
+        reason: "x".to_string(),
+        owner: "y".to_string(),
+        expires: expires.map(str::to_string),
+        scope: None,
+        created_at: None,
+        last_seen: None,
+        review_by: None,
+        expected_visibility: None,
+        static_class: static_class.map(str::to_string),
+        language: None,
+        language_status: None,
+        block_line: 11,
+    }
+}
+
 fn te_suppression(test: &str, path: Option<&str>, expires: Option<&str>) -> SuppressionEntry {
     SuppressionEntry {
         kind: SuppressionKind::TestEfficiency,
@@ -984,6 +1040,67 @@ fn ripr_badge_with_expired_suppression_keeps_finding_in_headline_and_warns() {
     assert_eq!(summary.warnings.len(), 1);
     assert!(summary.warnings[0].contains("expired"));
     assert!(summary.warnings[0].contains("probe:a"));
+}
+
+#[test]
+fn ripr_badge_path_glob_suppression_matches_relative_path_and_static_class() {
+    let mut finding = finding_at_id("probe:generated", ExposureClass::NoStaticPath);
+    finding.probe.location.file = PathBuf::from("src/generated/a.rs");
+    let output = check_output(vec![finding]);
+    let suppressions = vec![path_exposure_suppression(
+        "src/generated/**",
+        Some("no_static_path"),
+        None,
+    )];
+
+    let summary = ripr_badge_summary_with_suppressions(
+        &output,
+        &suppressions,
+        "2026-05-03",
+        BadgePolicy::default(),
+    );
+
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 0);
+    assert_eq!(summary.counts.suppressed_exposure_gaps, 1);
+    assert!(summary.warnings.is_empty());
+}
+
+#[test]
+fn ripr_badge_path_glob_suppression_warns_for_class_mismatch_and_expiry() {
+    let mut finding = finding_at_id("probe:generated", ExposureClass::NoStaticPath);
+    finding.probe.location.file = PathBuf::from("src/generated/a.rs");
+    let output = check_output(vec![finding]);
+    let suppressions = vec![
+        path_exposure_suppression("src/generated/**", Some("weakly_exposed"), None),
+        path_exposure_suppression(
+            "src/generated/**",
+            Some("no_static_path"),
+            Some("2025-01-01"),
+        ),
+    ];
+
+    let summary = ripr_badge_summary_with_suppressions(
+        &output,
+        &suppressions,
+        "2026-05-03",
+        BadgePolicy::default(),
+    );
+
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 1);
+    assert_eq!(summary.counts.suppressed_exposure_gaps, 0);
+    assert_eq!(summary.warnings.len(), 2);
+    assert!(
+        summary
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("did not match"))
+    );
+    assert!(
+        summary
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("expired"))
+    );
 }
 
 #[test]
@@ -1538,7 +1655,12 @@ fn check_output_with_preview_advisory(
             sample_paths: vec![format!("src/foo.{language}")],
             enabled,
         }],
+        language_runs: Vec::new(),
         no_scope_provided: false,
+        unanalyzed_working_tree: false,
+        suppression: None,
+        analysis_outcome: None,
+        partial_scope: None,
     }
 }
 
@@ -1561,6 +1683,50 @@ fn clean_rust_diff_zero_findings_no_preview_is_pass_green() {
         json.contains("\"preview_skipped\": []"),
         "native JSON has empty preview_skipped"
     );
+}
+
+#[test]
+fn incomplete_zero_finding_diff_is_not_a_green_badge() -> Result<(), String> {
+    let mut output = check_output(Vec::new());
+    output.analysis_outcome = Some(incomplete_outcome()?);
+
+    let summary = ripr_badge_summary(&output, BadgePolicy::default());
+    assert_eq!(summary.status, BadgeStatus::Warn);
+    assert_eq!(summary.color, "yellow");
+    assert_eq!(summary.message, "analysis-incomplete: unsupported_input");
+
+    let rendered = render_native_json(&summary);
+    let value: serde_json::Value = serde_json::from_str(&rendered)
+        .map_err(|error| format!("badge JSON should parse: {error}"))?;
+    assert_eq!(value["analysis_complete"], false);
+    assert_eq!(value["analysis_outcome"]["kind"], "unsupported_input");
+    assert_eq!(
+        value["analysis_outcome"]["limitations"][0]["kind"],
+        "unresolved_conflict_markers"
+    );
+    let shields: serde_json::Value = serde_json::from_str(&render_shields_json(&summary))
+        .map_err(|error| format!("Shields JSON should parse: {error}"))?;
+    assert_eq!(shields["message"], "analysis-incomplete: unsupported_input");
+    assert_eq!(shields["color"], "yellow");
+    Ok(())
+}
+
+fn incomplete_outcome() -> Result<AnalysisOutcome, String> {
+    let recovery = AnalysisRecovery::new(
+        AnalysisRecoveryKind::ResolveConflicts,
+        "resolve conflict markers before rerunning analysis",
+    )?;
+    let limitation = AnalysisLimitation::new(
+        AnalysisLimitationKind::UnresolvedConflictMarkers,
+        AnalysisStage::DiffParse,
+        recovery,
+    );
+    AnalysisOutcome::new(
+        AnalysisOutcomeKind::UnsupportedInput,
+        Default::default(),
+        AnalysisOutcomeCounts::default(),
+        vec![limitation],
+    )
 }
 
 #[test]
@@ -1658,14 +1824,14 @@ fn typescript_disabled_with_rust_findings_keeps_warn_and_names_skip() {
 }
 
 #[test]
-fn native_json_schema_version_is_0_6() {
+fn native_json_schema_version_is_0_8() {
     let output = check_output(vec![]);
     let summary = ripr_badge_summary(&output, BadgePolicy::default());
     let json = render_native_json(&summary);
 
     assert!(
-        json.contains("\"schema_version\": \"0.6\""),
-        "schema_version must be 0.6 after preview_skipped addition"
+        json.contains("\"schema_version\": \"0.8\""),
+        "schema_version must be 0.8 after typed diff outcome addition"
     );
 }
 

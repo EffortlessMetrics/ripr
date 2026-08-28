@@ -115,7 +115,14 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
         calls: file_calls,
         returns: file_returns,
         literals: file_literals,
+        // probe_shapes is intentionally empty: shape extraction is parser-only.
+        // Files summarized by the lexical adapter will not produce
+        // parser-derived probe families (ErrorPath, MatchArm, etc.), so the
+        // downstream classifier under-credits them (#2698).
         probe_shapes: Vec::new(),
+        // This function IS the lexical fallback; the flag is honest regardless
+        // of whether the caller is the adapter dispatcher or a direct test.
+        used_lexical_fallback: true,
         source,
     }
 }
@@ -283,6 +290,26 @@ fn checks_value() {
                 .iter()
                 .flat_map(|test| test.assertions.iter())
                 .any(|assertion| assertion.kind == OracleKind::SmokeOnly)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn lexical_adapter_discloses_fallback_and_empty_probe_shapes() -> Result<(), String> {
+        // #2698: the lexical adapter must honestly report used_lexical_fallback
+        // and must not fabricate probe_shapes (shape extraction is parser-only).
+        let adapter = LexicalRustSyntaxAdapter;
+        let facts = adapter.summarize_file(
+            Path::new("src/lib.rs"),
+            "pub fn example() -> bool { true }\n",
+        )?;
+        assert!(
+            facts.used_lexical_fallback,
+            "lexical adapter must set used_lexical_fallback = true"
+        );
+        assert!(
+            facts.probe_shapes.is_empty(),
+            "lexical adapter must not fabricate probe_shapes (parser-only extraction)"
         );
         Ok(())
     }

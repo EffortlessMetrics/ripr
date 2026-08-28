@@ -183,9 +183,9 @@ ripr.toml.example
 If taking the config-current-state clarification separately:
 
 ```bash
-rtk git add -- .ripr/positioning-language-allowlist.txt crates/ripr/src/config.rs docs/CONFIGURATION.md docs/OUTPUT_SCHEMA.md policy/output_contracts.txt ripr.toml.example
-rtk git diff --cached --name-only
-rtk git diff --cached --check
+git add -- .ripr/positioning-language-allowlist.txt crates/ripr/src/config.rs docs/CONFIGURATION.md docs/OUTPUT_SCHEMA.md policy/output_contracts.txt ripr.toml.example
+git diff --cached --name-only
+git diff --cached --check
 ```
 
 ## Hard Boundaries

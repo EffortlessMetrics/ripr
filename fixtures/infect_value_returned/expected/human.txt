@@ -2,98 +2,31 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/infect_value_returned/input
 
-Summary: 3 probe(s), 1 exposed, 1 weak, 0 unrevealed, 0 no path, 1 unknown
+Summary: 2 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 1 unknown
 
-INFO fixtures/infect_value_returned/input/src/lib.rs:4
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 3 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
 
-Changed
-  before: amount + 1
-  after:  let result = helper(amount * MULTIPLIER);
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/infect_value_returned/input/src/lib.rs:5
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: result + 1
+  Missing discriminator: No strong discriminator was detected
+  Related test: tests/score_tests.rs:4 score_uses_multiplier
+  Next step: Replace broad assertions with exact equality or a property that constrains the changed returned value.
+  Evidence:
+    - reach yes: Related tests appear to reach score: score_uses_multiplier
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 8 more evidence line(s) hidden
 
-Probe
-  family: call_deletion
-  delta:  effect
-  owner:  src/lib.rs::score
+Next: drill into the top finding:
+  ripr explain --root fixtures/infect_value_returned/input --diff fixtures/infect_value_returned/diff.patch --mode fast probe:src_lib.rs:return_value:d146b764
+  ripr context --root fixtures/infect_value_returned/input --diff fixtures/infect_value_returned/diff.patch --mode fast --at probe:src_lib.rs:return_value:d146b764
 
-Static exposure
-  exposed (info, confidence 1.00)
-
-Evidence
-  - reach yes: Related tests appear to reach score: score_uses_multiplier
-  - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence call effect: let result = helper(amount * MULTIPLIER)
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator yes: Strong oracle found: exact value or pattern assertion
-  - local flow reaches call effect: let result = helper(amount * MULTIPLIER) (line 4)
-  - related test tests/score_tests.rs:4 score_uses_multiplier uses strong exact value oracle: assert_eq!(score(10), 10 * MULTIPLIER / 10 + 1);
-  - observed assertion argument value 1 at line 5
-  - observed assertion argument value 10 at line 5
-  - observed function argument value amount = 10 at line 5
-
-NOTE fixtures/infect_value_returned/input/src/lib.rs:4
-
-Changed
-  before: amount + 1
-  expr:   amount + 1
-
-Probe
-  family: static_unknown
-  delta:  unknown
-  owner:  src/lib.rs::score
-
-Static exposure
-  static_unknown (note, confidence 0.50)
-
-Evidence
-  - reach yes: Related tests appear to reach score: score_uses_multiplier
-  - infection unknown: Changed syntax is not mapped to a high-confidence probe family
-  - propagation unknown: No propagation model is available for this changed syntax
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator unknown: Assertions exist, but oracle strength is unknown
-  - local flow reaches unknown sink: unknown sink (line 4)
-  - related test tests/score_tests.rs:4 score_uses_multiplier uses unknown exact value oracle: assert_eq!(score(10), 10 * MULTIPLIER / 10 + 1);
-  - observed assertion argument value 1 at line 5
-  - observed assertion argument value 10 at line 5
-  - observed function argument value amount = 10 at line 5
-
-Weakness
-  - No strong discriminator was detected
-  - Syntax-first analysis cannot classify this change; use deep mode or real mutation
-
-Stop reasons:
-  - static_probe_unknown
-
-Next step
-  Escalate to real mutation testing or deep static analysis for this probe.
-
-WARNING fixtures/infect_value_returned/input/src/lib.rs:5
-
-Changed
-  before: amount + 1
-  after:  result + 1
-
-Probe
-  family: return_value
-  delta:  value
-  owner:  src/lib.rs::score
-
-Static exposure
-  weakly_exposed (warning, confidence 0.92)
-
-Evidence
-  - reach yes: Related tests appear to reach score: score_uses_multiplier
-  - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence returned value: result + 1
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
-  - local flow reaches returned value: result + 1 (line 5)
-  - related test tests/score_tests.rs:4 score_uses_multiplier uses strong exact value oracle: assert_eq!(score(10), 10 * MULTIPLIER / 10 + 1);
-  - observed assertion argument value 1 at line 5
-  - observed assertion argument value 10 at line 5
-  - observed function argument value amount = 10 at line 5
-
-Weakness
-  - No strong discriminator was detected
-
-Next step
-  Replace broad assertions with exact equality or a property that constrains the changed returned value.
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

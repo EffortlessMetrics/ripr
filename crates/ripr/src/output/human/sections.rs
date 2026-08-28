@@ -1,5 +1,8 @@
 use crate::config::RiprConfig;
-use crate::domain::{Finding, LanguageId, LanguageStatus};
+use crate::domain::{
+    ExposureClass, Finding, LanguageId, LanguageStatus, MISSING_DISCRIMINATOR_VALUE_PREFIX,
+    RevealEvidence, StageState,
+};
 use crate::output::agent_seam_packets::{
     allowed_edit_surface_for_gap_route, gap_record_packet_do_not_do,
 };
@@ -17,6 +20,161 @@ use crate::output::typescript_preview_card::{
 };
 
 use super::evidence_lines::{evidence_path_lines, weakness_lines};
+use super::{is_wrappable_advisory_prose, wrap_human_prose};
+
+pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &RiprConfig) -> String {
+    let mut out = String::new();
+    let severity = config.severity().for_exposure(&finding.class).as_str();
+    out.push_str(&format!(
+        "  File: {}:{}\n",
+        display_path(&finding.probe.location.file),
+        finding.probe.location.line
+    ));
+    if should_render_language_metadata(finding) {
+        if let Some(language) = finding.language {
+            out.push_str(&format!("  Language: {}\n", language.as_str()));
+        }
+        if let Some(status) = finding.language_status {
+            out.push_str(&format!("  Language status: {}\n", status.as_str()));
+        }
+    }
+    out.push_str(&format!(
+        "  Static exposure: {} ({}, confidence {:.2})\n",
+        finding.class.as_str(),
+        severity,
+        finding.confidence
+    ));
+    // #2614: add a brief classification hint so the digest reader understands
+    // WHY the finding is at this class without reading the full form.
+    if let Some(hint) = classification_hint(&finding.class, &finding.ripr.reveal) {
+        out.push_str(&format!("  Why {0}: {hint}\n", finding.class.as_str()));
+    }
+    if let Some(gap) = &finding.canonical_gap {
+        out.push_str(&format!("  Canonical gap: {}\n", gap.id));
+    }
+    let changed = finding
+        .probe
+        .after
+        .as_deref()
+        .or(finding.probe.before.as_deref())
+        .unwrap_or(&finding.probe.expression);
+    out.push_str(&format!("  Changed behavior: {}\n", one_line(changed)));
+    if let Some(missing) = finding.missing.first() {
+        // #2273: preview-language classifiers record an observation rationale
+        // (not a missing discriminator) in this field for `exposed` findings;
+        // label it as observed advisory evidence so the header does not
+        // contradict the machine state. Rust `exposed` findings never carry a
+        // `missing` entry, so this switch only affects advisory preview output.
+        let label = if finding.class == ExposureClass::Exposed {
+            "Discriminator (observed, advisory)"
+        } else {
+            "Missing discriminator"
+        };
+        // `decision.rs` builds these entries as `Missing discriminator value:
+        // <value>`, which restates the label the renderer is about to print:
+        // `Missing discriminator: Missing discriminator value: X`. Print the
+        // value alone. Entries that are not value-shaped ("No strong
+        // discriminator was detected") carry no such prefix and are unchanged.
+        // `evidence_lines.rs` strips the same prefix for the same reason.
+        let missing = missing
+            .strip_prefix(MISSING_DISCRIMINATOR_VALUE_PREFIX)
+            .unwrap_or(missing);
+        out.push_str(&format!("  {label}: {}\n", one_line(missing)));
+    }
+    if let Some(test) = finding.related_tests.first() {
+        out.push_str(&format!(
+            "  Related test: {}:{} {}\n",
+            display_path(&test.file),
+            test.line,
+            test.name
+        ));
+    }
+    if let Some(placement) = repair_placement_from_evidence(finding) {
+        out.push_str(&format!("  Suggested test file: {}\n", placement.test_file));
+        out.push_str(&format!("  Suggested test: {}\n", placement.test_name));
+        if let Some(node_id) = placement.test_node_id {
+            out.push_str(&format!("  Test node: {node_id}\n"));
+        }
+        out.push_str(&format!(
+            "  Verify command: {} ({})\n",
+            placement.verify_command, placement.verify_confidence
+        ));
+    }
+    if finding.recommended_next_step.is_some() {
+        out.push_str(&format!(
+            "  Next step: {}\n",
+            one_line(&reconcile_next_step(finding))
+        ));
+    }
+    let evidence = evidence_path_lines(finding);
+    if !evidence.is_empty() {
+        out.push_str("  Evidence:\n");
+        for line in evidence.iter().take(2) {
+            out.push_str(&format!("    - {}\n", one_line(line)));
+        }
+        if evidence.len() > 2 {
+            out.push_str(&format!(
+                "    - {} more evidence line(s) hidden\n",
+                evidence.len() - 2
+            ));
+        }
+    }
+    out
+}
+
+/// Collapse a possibly-multi-line value to one bounded display line.
+///
+/// This is the *digest* policy: the digest shows one selected finding and routes
+/// the reader to `--format human-full`, so losing detail here is recoverable.
+/// The full form must not use it — see [`wrapped_fragment`].
+fn one_line(value: &str) -> String {
+    let collapsed = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() <= LINE_BUDGET {
+        collapsed
+    } else {
+        let mut truncated = collapsed.chars().take(LINE_BUDGET).collect::<String>();
+        truncated.push('…');
+        truncated
+    }
+}
+
+/// Maximum displayed characters for one rendered source fragment.
+const LINE_BUDGET: usize = 180;
+
+/// Render a changed-source fragment for the exhaustive surface: **complete**,
+/// but hard-wrapped so no display line runs past the budget.
+///
+/// Truncating here would be wrong in two ways that review on #2752 caught:
+///
+/// - `--format json` serializes only `probe.expression`, never `probe.before`
+///   or `probe.after` (`output/json/report.rs`). When a long `before` differs
+///   from the shorter probe expression — the normal case for a widened branch —
+///   truncating the full form would leave the complete changed source in *no*
+///   ripr output at all.
+/// - Collapsing whitespace can erase the delta itself. A diff that changes
+///   `"a  b"` to `"a b"` renders as two identical lines once whitespace is
+///   normalized, hiding exactly the behavior that changed.
+///
+/// So the wrap is positional, not whitespace-aware: every character survives,
+/// including runs of spaces, and a reader sees the whole fragment.
+fn wrapped_fragment(label: &str, value: &str) -> String {
+    // The label column is the continuation indent, so wrapped lines line up
+    // under the value rather than under the field name.
+    let indent = " ".repeat(label.chars().count());
+    let budget = LINE_BUDGET.saturating_sub(indent.chars().count()).max(1);
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() <= budget {
+        return format!("{label}{value}\n");
+    }
+    let mut out = String::new();
+    for (index, chunk) in chars.chunks(budget).enumerate() {
+        let prefix = if index == 0 { label } else { indent.as_str() };
+        out.push_str(prefix);
+        out.extend(chunk.iter());
+        out.push('\n');
+    }
+    out
+}
 
 pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig) -> String {
     let mut out = String::new();
@@ -28,14 +186,20 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         finding.probe.location.line
     ));
 
+    // #2752: these three printed at full source width, so a long changed
+    // expression (a chained iterator, a jq pipeline, a heredoc) rendered 400+
+    // characters on one line inside output whose every other line stays under
+    // ~100. They are bounded by wrapping rather than truncation, because this is
+    // the only surface that carries `before`/`after` at all — see
+    // `wrapped_fragment`.
     out.push_str("\nChanged\n");
     if let Some(before) = &finding.probe.before {
-        out.push_str(&format!("  before: {before}\n"));
+        out.push_str(&wrapped_fragment("  before: ", before));
     }
     if let Some(after) = &finding.probe.after {
-        out.push_str(&format!("  after:  {after}\n"));
+        out.push_str(&wrapped_fragment("  after:  ", after));
     } else {
-        out.push_str(&format!("  expr:   {}\n", finding.probe.expression));
+        out.push_str(&wrapped_fragment("  expr:   ", &finding.probe.expression));
     }
 
     out.push_str("\nProbe\n");
@@ -78,7 +242,12 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
 
     out.push_str("\nEvidence\n");
     for line in evidence_path_lines(finding) {
-        out.push_str(&format!("  - {line}\n"));
+        if is_wrappable_advisory_prose(&line) {
+            out.push_str(&wrap_human_prose(&line, "  - ", "    "));
+        } else {
+            out.push_str(&format!("  - {line}"));
+        }
+        out.push('\n');
     }
 
     let weakness = weakness_lines(finding);
@@ -97,6 +266,41 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         }
     }
 
+    // #1162 explain enhancement: when a named static limitation is present,
+    // surface its plain-English meaning (not just the snake_case token) so a CLI
+    // reader understands *why* ripr could not resolve the path. Fail-closed
+    // disclosure only — `describe()` asserts no coverage.
+    if let Some(static_limit_kind) = &finding.static_limit_kind {
+        out.push_str("\nStatic limitation\n");
+        out.push_str(&format!(
+            "  {} \u{2014} {}\n",
+            static_limit_kind.as_str(),
+            static_limit_kind.describe()
+        ));
+    }
+
+    // RIPR-SPEC-0115/0117: when a Rust no_static_path limitation named a
+    // witnessing test, surface it in human output as a concrete "Where to look"
+    // pointer. The witness prose lives in `evidence` (the limitation channel);
+    // we recognize it by the shared prefix so JSON evidence and human output
+    // stay single-sourced.
+    if let Some(witness) = finding
+        .evidence
+        .iter()
+        .find(|line| line.starts_with(crate::domain::TRANSITIVE_REACH_WITNESS_PREFIX))
+    {
+        out.push_str("\nWhere to look\n");
+        out.push_str(&format!("  {witness}\n"));
+    }
+
+    let limitation_details = limitation_detail_lines(finding);
+    if !limitation_details.is_empty() {
+        out.push_str("\nLimitation detail\n");
+        for (label, value) in limitation_details {
+            out.push_str(&format!("  {label}: {value}\n"));
+        }
+    }
+
     if let Some(card) = python_repair_card(finding) {
         push_python_repair_card(&mut out, &card);
     } else if let Some(card) = typescript_preview_card(finding) {
@@ -105,6 +309,10 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         // actionable, or the named limitation when blocked. Emitted after the
         // preview card so it reads as a separate operator-facing section.
         push_typescript_repair_packet_field_note(&mut out, finding);
+        // ADR-0019 §83-86 bespoke path (Campaign 31 item 6): advisory-only,
+        // hard-pinned to never flip an authority flag. See perl_preview_card.rs
+        // `advisory_only_readiness()` + the invariant test. Decommissioned in
+        // the post-Phase-B PR.
     } else if let Some(card) = perl_preview_card(finding) {
         push_perl_preview_card(&mut out, &card);
     } else if let Some(placement) = repair_placement_from_evidence(finding) {
@@ -126,6 +334,33 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
     }
 
     out
+}
+
+fn limitation_detail_lines(finding: &Finding) -> Vec<(&'static str, &str)> {
+    [
+        (
+            "last established edge",
+            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
+        ),
+        (
+            "first unresolved edge",
+            crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
+        ),
+        (
+            "analyzer route",
+            crate::domain::LIMITATION_ANALYZER_ROUTE_PREFIX,
+        ),
+        ("non-claim", crate::domain::LIMITATION_NON_CLAIM_PREFIX),
+    ]
+    .into_iter()
+    .filter_map(|(label, prefix)| {
+        finding
+            .evidence
+            .iter()
+            .find_map(|line| line.trim().strip_prefix(prefix).map(str::trim))
+            .map(|value| (label, value))
+    })
+    .collect()
 }
 
 fn push_preview_actionability(out: &mut String, actionability: &PreviewActionability) {
@@ -288,8 +523,16 @@ fn push_typescript_preview_card(out: &mut String, card: &TypeScriptPreviewCard) 
         "  oracle: {} ({})\n",
         card.oracle_kind, card.oracle_strength
     ));
-    if let Some(grip) = &card.bun_cross_language_grip {
-        out.push_str("  Bun cross-language grip:\n");
+    for (index, grip) in card.bun_cross_language_grips.iter().enumerate() {
+        if card.bun_cross_language_grips.len() == 1 {
+            out.push_str("  Bun cross-language grip:\n");
+        } else {
+            out.push_str(&format!(
+                "  Bun cross-language grip {}/{}:\n",
+                index + 1,
+                card.bun_cross_language_grips.len()
+            ));
+        }
         out.push_str(&format!("    state: {}\n", grip.state));
         out.push_str(&format!(
             "    Rust seam: {} owner={} boundary={}\n",
@@ -561,10 +804,10 @@ fn push_perl_preview_card(out: &mut String, card: &PerlPreviewCard) {
         card.suggested_assertion
     ));
     out.push_str(&format!(
-        "  verify: {} (fact_only_not_delegated)\n",
+        "  verify: {} (preview_fact_only_not_delegated)\n",
         card.verify_command
     ));
-    out.push_str("  receipt: available_not_delegated\n");
+    out.push_str("  receipt: preview_available_not_delegated\n");
     out.push_str(&format!("  confidence: {}\n", card.confidence));
     for raw_ref in &card.raw_evidence_refs {
         out.push_str("  raw evidence: ");
@@ -608,6 +851,41 @@ struct RepairPlacement<'a> {
     test_node_id: Option<&'a str>,
     verify_command: &'a str,
     verify_confidence: &'a str,
+}
+
+/// Returns a one-line hint explaining why a finding landed at its exposure
+/// class (#2614). Only emitted for classes where the reasoning is non-obvious
+/// from the class name alone.
+fn classification_hint(class: &ExposureClass, reveal: &RevealEvidence) -> Option<String> {
+    match class {
+        ExposureClass::WeaklyExposed => {
+            if reveal.discriminate.state == StageState::Weak {
+                Some("a related test reaches this change but does not observe the exact changed value".to_string())
+            } else {
+                Some(
+                    "the evidence path is partially complete — see full form for details"
+                        .to_string(),
+                )
+            }
+        }
+        ExposureClass::ReachableUnrevealed => {
+            Some("no related test was found that reaches this change".to_string())
+        }
+        ExposureClass::NoStaticPath => {
+            Some("the changed behavior could not be traced to an observable output".to_string())
+        }
+        ExposureClass::InfectionUnknown => Some(
+            "the change reaches a sink but infection could not be determined statically"
+                .to_string(),
+        ),
+        ExposureClass::PropagationUnknown => Some(
+            "the change propagates but the downstream effect is unknown statically".to_string(),
+        ),
+        ExposureClass::StaticUnknown => {
+            Some("the analysis could not determine a static exposure state".to_string())
+        }
+        ExposureClass::Exposed => None, // self-explanatory: strong oracle observes the change
+    }
 }
 
 fn repair_placement_from_evidence(finding: &Finding) -> Option<RepairPlacement<'_>> {

@@ -1,0 +1,9 @@
+{
+  "protocol_version": "0.1",
+  "schema_version": "0.1",
+  "request": "ripr/listActionableItems",
+  "mode": "read_only",
+  "profile": "experimental",
+  "snapshot_id": null,
+  "continuation_id": null
+}

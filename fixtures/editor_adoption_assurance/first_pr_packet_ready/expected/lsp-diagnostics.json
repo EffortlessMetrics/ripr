@@ -8,6 +8,7 @@
       "message": "RIPR adoption assurance gap: missing equality-boundary assertion.",
       "data": {
         "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+        "diagnostic_id": "gap:rust:pricing:discount:threshold-boundary",
         "gap_id": "gap:pr:pricing:threshold-boundary",
         "language": "rust",
         "language_status": "stable",

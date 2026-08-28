@@ -1,0 +1,50 @@
+schema_version = "2.0"
+id = "ripr.slice.remove-singleton-goal-authority.v1"
+generation = 1
+
+source_issue = "issue:1701"
+design_reference = "RIPR-SPEC-0130#authority-map"
+change_class = "behavior_change"
+
+claim_boundary = """
+Removes live execution authority from `.ripr/goals/` and moves the spec-system
+profile to `current-v2` without claiming that historical goal content is
+migrated, that every consumer is already historical-only, or that the parent
+migration (#1701) is complete.
+"""
+
+non_goals = [
+  "deleting `.ripr/goals/` files",
+  "migrating historical goal content into specs, plans, or slices",
+  "rewriting every legacy spec to the requirement model",
+  "support-tier promotion",
+]
+
+return_conditions = [
+  "Return to root if a retained consumer still grants live authority after this change.",
+  "Return to root if cargo-allow rejects the `current-v2` profile shape.",
+]
+
+owned_seams = [
+  "seam:ripr:xtask:goal-reader-authority",
+  "seam:ripr:policy:spec-system-profile",
+  "seam:ripr:docs:agent-operating-instructions",
+]
+
+shared_seams = []
+forbidden_seams = [
+  "seam:ripr:crates:product-analysis",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0130#authority-map"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

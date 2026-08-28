@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.effortlessmetrics.dev/ripr/ripr-agent-error.schema.json",
+  "title": "RIPR riprAgent error envelope",
+  "description": "Closed typed failure and recovery contract for generic clients.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "schema_version",
+    "request",
+    "status",
+    "error",
+    "allowed_edit_surface",
+    "must_not_change"
+  ],
+  "properties": {
+    "protocol_version": { "const": "0.1" },
+    "schema_version": { "const": "0.1" },
+    "request": { "$ref": "ripr-agent-request.schema.json#/properties/request" },
+    "status": { "const": "error" },
+    "error": { "$ref": "#/$defs/error" },
+    "allowed_edit_surface": { "const": "read_only" },
+    "must_not_change": {
+      "type": "array",
+      "items": { "enum": ["source_edits", "workspace_edit", "autonomous_repair"] },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "error_kind": {
+      "enum": [
+        "no_snapshot",
+        "analysis_in_flight",
+        "stale_snapshot",
+        "stale_continuation",
+        "workspace_ambiguous",
+        "config_invalid",
+        "item_not_found",
+        "route_static_limitation",
+        "unsupported_protocol_version",
+        "unsupported_schema_version",
+        "unsupported_profile",
+        "cancelled",
+        "superseded"
+      ]
+    },
+    "recovery_route": {
+      "enum": [
+        "refresh",
+        "select_workspace",
+        "fix_configuration",
+        "request_supported_version",
+        "retry",
+        "inspect_limitation",
+        "discard_stale_request",
+        "none"
+      ]
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "retryable", "recovery_route", "snapshot_id"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/error_kind" },
+        "retryable": { "type": "boolean" },
+        "recovery_route": { "anyOf": [{ "$ref": "#/$defs/recovery_route" }, { "type": "null" }] },
+        "snapshot_id": { "type": ["string", "null"], "minLength": 1 }
+      }
+    }
+  }
+}
