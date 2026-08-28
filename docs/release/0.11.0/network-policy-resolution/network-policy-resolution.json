@@ -1,0 +1,926 @@
+{
+  "claim": "semantic network-policy resolution for the frozen source/W7 pair",
+  "final_ledger": {
+    "blob": "9e86da2f83df8dc6f38878f6388b7489622d3830",
+    "bytes": 5447,
+    "path": "policy/network_allowlist.txt",
+    "sha256": "db317972d01d94b5964d4fb7de2c4a3b99066888117c9148ec1d8598ec43a680"
+  },
+  "manifest_fragment": {
+    "disposition": "integrated",
+    "key": "policy/network_allowlist.txt",
+    "kind": "integrated_policy",
+    "receipt_schema": "ripr.source_promotion_network_policy_resolution.v1",
+    "receipt_subject_tree": "111516422c1187ad70344855698b8be9f482eec4",
+    "schema": "ripr.source_promotion_resolution_manifest_fragment.v1",
+    "subject_blob": "9e86da2f83df8dc6f38878f6388b7489622d3830"
+  },
+  "negative_controls": {
+    "duplicate_semantic_key": {
+      "status": "rejected",
+      "violations": [
+        {
+          "kind": "duplicate_semantic_key",
+          "path": ".github/workflows/droid-review.yml",
+          "pattern": "curl"
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": ".github/workflows/droid-security-scan.yml",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": ".github/workflows/droid.yml",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": ".github/workflows/publish-extension.yml",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": ".github/workflows/server-archive-qualification.yml",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": ".github/workflows/source-promotion-contract.yml",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 6,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/analysis/probes/subprocess.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/analysis/syntax/ra.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/lsp/backend.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/lsp/tests.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 5,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/output/perl_gap_record_projection.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/output/pr_inline_comment_publish_plan.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 4,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/output/typescript_packet_projection.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "editors/vscode/src/downloader.ts",
+          "pattern": "https.get",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 2,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/branch_inventory.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/main.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 8,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/reports/source_promotion_admission_fixture.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/reports/source_promotion_control/publication.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 11,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/reports/source_promotion_control/tests.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 2,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/tests.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 28,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/tests/source_promotion_resolved_tree.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 4,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/tests/source_promotion_workflow_contract.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        }
+      ]
+    },
+    "identity_movement": {
+      "changed_field": "source_parent",
+      "error": "preflight source_parent mismatch: expected 0d291d1bc936d00847d9712d2adf9ea56ca19533, found ad291d1bc936d00847d9712d2adf9ea56ca19533",
+      "status": "rejected"
+    },
+    "implicit_maximum_widening": {
+      "status": "rejected",
+      "violations": [
+        {
+          "candidate_maximum": 2,
+          "kind": "implicit_maximum_widening",
+          "path": ".github/workflows/droid-review.yml",
+          "pattern": "curl",
+          "reviewed_maximum": 1
+        }
+      ]
+    },
+    "live_count_above_selected_maximum": {
+      "status": "rejected",
+      "violations": [
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": ".github/workflows/droid-review.yml",
+          "pattern": "curl",
+          "selected_maximum": 0
+        }
+      ]
+    },
+    "metadata_conflict_without_decision": {
+      "status": "rejected",
+      "violations": [
+        {
+          "candidate_owner": "conflicting-owner",
+          "kind": "owner_or_reason_substitution",
+          "path": ".github/workflows/droid-review.yml",
+          "pattern": "curl",
+          "reviewed_owner": "ci/droid"
+        }
+      ]
+    },
+    "outside_policy_path": {
+      "changed_paths": [
+        "outside-policy-control.txt",
+        "policy/network_allowlist.txt"
+      ],
+      "control_tree": "12d92de6eafd875452d1aeff942a00f1691164b4",
+      "status": "rejected",
+      "violation": "changed paths must contain only policy/network_allowlist.txt, found: outside-policy-control.txt, policy/network_allowlist.txt"
+    },
+    "raw_line_union": {
+      "status": "rejected",
+      "violations": [
+        {
+          "kind": "duplicate_semantic_key",
+          "path": ".github/workflows/droid-review.yml",
+          "pattern": "curl"
+        },
+        {
+          "kind": "duplicate_semantic_key",
+          "path": ".github/workflows/droid-security-scan.yml",
+          "pattern": "curl"
+        },
+        {
+          "kind": "duplicate_semantic_key",
+          "path": ".github/workflows/droid.yml",
+          "pattern": "curl"
+        },
+        {
+          "kind": "duplicate_semantic_key",
+          "path": ".github/workflows/publish-extension.yml",
+          "pattern": "curl"
+        },
+        {
+          "kind": "duplicate_semantic_key",
+          "path": "crates/ripr/src/output/typescript_packet_projection.rs",
+          "pattern": "curl"
+        },
+        {
+          "kind": "duplicate_semantic_key",
+          "path": "editors/vscode/src/downloader.ts",
+          "pattern": "https.get"
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/lsp/backend.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/lsp/tests.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 2,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/branch_inventory.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        }
+      ]
+    },
+    "raw_source": {
+      "status": "rejected",
+      "violations": [
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": ".github/workflows/server-archive-qualification.yml",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/lsp/backend.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/lsp/tests.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 5,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/output/perl_gap_record_projection.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 2,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/branch_inventory.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 2,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/tests.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        }
+      ]
+    },
+    "raw_source_current_input_correction": "fresh ad291d source has exactly six missing live rows and no stale http orphan; three quoted-push surfaces emerge only under the source checker over the W7 preview, while rejected J5 had the orphan",
+    "raw_swarm": {
+      "status": "rejected",
+      "violations": [
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": ".github/workflows/source-promotion-contract.yml",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 6,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/analysis/probes/subprocess.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/analysis/syntax/ra.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/lsp/backend.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/lsp/tests.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "crates/ripr/src/output/pr_inline_comment_publish_plan.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 2,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/branch_inventory.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/main.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 8,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/reports/source_promotion_admission_fixture.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 1,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/reports/source_promotion_control/publication.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 11,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/src/reports/source_promotion_control/tests.rs",
+          "pattern": "\"push\"",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 28,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/tests/source_promotion_resolved_tree.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        },
+        {
+          "actual_count": 4,
+          "kind": "missing_or_under_counted_live_row",
+          "path": "xtask/tests/source_promotion_workflow_contract.rs",
+          "pattern": "curl",
+          "selected_maximum": 0
+        }
+      ]
+    },
+    "zero_count_row": {
+      "status": "rejected",
+      "violations": [
+        {
+          "actual_count": 0,
+          "kind": "orphaned_zero_count_row",
+          "path": ".github/workflows/droid-review.yml",
+          "pattern": "ureq",
+          "selected_maximum": 1
+        }
+      ]
+    }
+  },
+  "no_ref_mutation": true,
+  "non_claims": [
+    "does not create the complete resolution manifest",
+    "does not create or verify JOIN_TREE, P1, or J6",
+    "does not move any source, promotion, tag, release, or publication ref",
+    "does not authorize versioning, release, publication, signing, marketplace use, or back-sync"
+  ],
+  "p0": {
+    "artifact_sha256": "74456bddf8649c391a2b2bc19841d48c809146f1b946eba81d1ccd0a2f7849ee",
+    "merge_base": "36909460db013ed3a3238ee8b2fc3ccda1135c15",
+    "preview_tree_before": "b827f60a0f34284d9046bd6b646647efc76df3c6",
+    "receipt_sha256": "db9121c2857caa0a9b1a70d88c2ba9f037fb63f5ca66b56cdd187c9b2c85f4b1",
+    "source_parent": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
+    "swarm_parent": "83217e97ec6847db41d757f57279a8b1ca433fe6"
+  },
+  "policy_inputs": {
+    "reviewer_decisions_sha256": "fb8148d6a9742de5cfee04439346e4b5f7187ddabff4fd998c292c05733e1812",
+    "source_blob": "622503196ee0be2bf04a058f265ee2a71e522bc7",
+    "source_sha256": "85f317c5c64b93ed57e1fc57a7a01963fd390ce480659a5d51834a7a82bf599b",
+    "swarm_blob": "52bd6ec58db40f4194c7547975df676e9727f220",
+    "swarm_sha256": "775fe025b7b7f8e6a3ea56eca8b78f461758082adcde0f8eedc60aaf6f57d7b5"
+  },
+  "production_checker": {
+    "command": "cargo xtask check-network-policy",
+    "execution_attestation": {
+      "path": "network-policy-checker-execution.json",
+      "schema": "ripr.source_promotion_network_policy_checker_execution.v1"
+    },
+    "isolated_target_dir": true,
+    "locked": true,
+    "offline": true,
+    "result": "pass",
+    "source_blob": "190f938633578175a84c60525e38dd585efb2370",
+    "source_parent": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
+    "source_tree": "0a70b23aef650e268dcdbe8fe70edcc4e16617a7",
+    "subject_tree": "111516422c1187ad70344855698b8be9f482eec4"
+  },
+  "rejected_precedent": {
+    "j5": "7fcb62a3433424dddadd1afb47025ee284c5755e",
+    "j5_tree": "7a915ae9827358aab88eca6ddad746720cbe92a4"
+  },
+  "rows": [
+    {
+      "actual_count": 1,
+      "disposition": "retained_shared",
+      "evidence_blob": "c999f2aa772ba05af1c7991320f5b381bdb72047",
+      "path": ".github/workflows/droid-review.yml",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 1,
+      "selected_owner": "ci/droid",
+      "selected_reason": "Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh.",
+      "source_row": {
+        "maximum": 1,
+        "owner": "ci/droid",
+        "path": ".github/workflows/droid-review.yml",
+        "pattern": "curl",
+        "reason": "Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh."
+      },
+      "swarm_row": {
+        "maximum": 1,
+        "owner": "ci/droid",
+        "path": ".github/workflows/droid-review.yml",
+        "pattern": "curl",
+        "reason": "Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh."
+      }
+    },
+    {
+      "actual_count": 1,
+      "disposition": "retained_shared",
+      "evidence_blob": "b24ca1b5f6fd16088c227ec22df1fdb1acf389c2",
+      "path": ".github/workflows/droid-security-scan.yml",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 1,
+      "selected_owner": "ci/droid",
+      "selected_reason": "Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh.",
+      "source_row": {
+        "maximum": 1,
+        "owner": "ci/droid",
+        "path": ".github/workflows/droid-security-scan.yml",
+        "pattern": "curl",
+        "reason": "Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh."
+      },
+      "swarm_row": {
+        "maximum": 1,
+        "owner": "ci/droid",
+        "path": ".github/workflows/droid-security-scan.yml",
+        "pattern": "curl",
+        "reason": "Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh."
+      }
+    },
+    {
+      "actual_count": 1,
+      "disposition": "retained_shared",
+      "evidence_blob": "05dc9c5016abe4ba52d9e68db066c78c7e57860e",
+      "path": ".github/workflows/droid.yml",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 1,
+      "selected_owner": "ci/droid",
+      "selected_reason": "Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh.",
+      "source_row": {
+        "maximum": 1,
+        "owner": "ci/droid",
+        "path": ".github/workflows/droid.yml",
+        "pattern": "curl",
+        "reason": "Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh."
+      },
+      "swarm_row": {
+        "maximum": 1,
+        "owner": "ci/droid",
+        "path": ".github/workflows/droid.yml",
+        "pattern": "curl",
+        "reason": "Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh."
+      }
+    },
+    {
+      "actual_count": 1,
+      "disposition": "retained_shared",
+      "evidence_blob": "9d56e1ee9efef38fa6379f035b10c72d21a6c39e",
+      "path": ".github/workflows/publish-extension.yml",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 1,
+      "selected_owner": "release/ci",
+      "selected_reason": "Release workflow polls GitHub Releases for the server manifest before publishing extension packages.",
+      "source_row": {
+        "maximum": 1,
+        "owner": "release/ci",
+        "path": ".github/workflows/publish-extension.yml",
+        "pattern": "curl",
+        "reason": "Release workflow polls GitHub Releases for the server manifest before publishing extension packages."
+      },
+      "swarm_row": {
+        "maximum": 1,
+        "owner": "release/ci",
+        "path": ".github/workflows/publish-extension.yml",
+        "pattern": "curl",
+        "reason": "Release workflow polls GitHub Releases for the server manifest before publishing extension packages."
+      }
+    },
+    {
+      "actual_count": 1,
+      "disposition": "retained_swarm",
+      "evidence_blob": "54d14b49bde1dbd808e4422b523d3da13afe6a3c",
+      "path": ".github/workflows/server-archive-qualification.yml",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 1,
+      "selected_owner": "ci/release-qualification",
+      "selected_reason": "Issue #3155 exact public ruleset detail read for active tag update/deletion protection; bounded retries, rate-limit and response-digest diagnostics, no token, artifact-only qualification, reviewed 2026-08-11.",
+      "source_row": null,
+      "swarm_row": {
+        "maximum": 1,
+        "owner": "ci/release-qualification",
+        "path": ".github/workflows/server-archive-qualification.yml",
+        "pattern": "curl",
+        "reason": "Issue #3155 exact public ruleset detail read for active tag update/deletion protection; bounded retries, rate-limit and response-digest diagnostics, no token, artifact-only qualification, reviewed 2026-08-11."
+      }
+    },
+    {
+      "actual_count": 1,
+      "disposition": "retained_source",
+      "evidence_blob": "1bc3f13f1053262acbcf967a299fe1f69b3b867f",
+      "path": ".github/workflows/source-promotion-contract.yml",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 1,
+      "selected_owner": "release/source-promotion",
+      "selected_reason": "Fixed public GitHub ruleset 20661783 provenance for source-promotion admission; evidence is the workflow jq predicate and review is required on contract changes.",
+      "source_row": {
+        "maximum": 1,
+        "owner": "release/source-promotion",
+        "path": ".github/workflows/source-promotion-contract.yml",
+        "pattern": "curl",
+        "reason": "Fixed public GitHub ruleset 20661783 provenance for source-promotion admission; evidence is the workflow jq predicate and review is required on contract changes."
+      },
+      "swarm_row": null
+    },
+    {
+      "actual_count": 6,
+      "disposition": "retained_source",
+      "evidence_blob": "32fa6f026aee5f9b62bae389945191d7b8ef23b4",
+      "path": "crates/ripr/src/analysis/probes/subprocess.rs",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 6,
+      "selected_owner": "analysis/probes",
+      "selected_reason": "RIPR-SPEC-0112: bounded subprocess adapter recognizer and fixture corpus inspect an allowlisted literal command; this source does not execute networking or add a network client.",
+      "source_row": {
+        "maximum": 6,
+        "owner": "analysis/probes",
+        "path": "crates/ripr/src/analysis/probes/subprocess.rs",
+        "pattern": "curl",
+        "reason": "RIPR-SPEC-0112: bounded subprocess adapter recognizer and fixture corpus inspect an allowlisted literal command; this source does not execute networking or add a network client."
+      },
+      "swarm_row": null
+    },
+    {
+      "actual_count": 1,
+      "disposition": "retained_source",
+      "evidence_blob": "e40e01de685da4a8ef7505e8aa5c2cee673762d7",
+      "path": "crates/ripr/src/analysis/syntax/ra.rs",
+      "pattern": "\"push\"",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 1,
+      "selected_owner": "analysis/rust-syntax",
+      "selected_reason": "Rust syntax heuristics classify a method named push as a generic mutation effect; this string does not invoke Git or network access.",
+      "source_row": {
+        "maximum": 1,
+        "owner": "analysis/rust-syntax",
+        "path": "crates/ripr/src/analysis/syntax/ra.rs",
+        "pattern": "\"push\"",
+        "reason": "Rust syntax heuristics classify a method named push as a generic mutation effect; this string does not invoke Git or network access."
+      },
+      "swarm_row": null
+    },
+    {
+      "actual_count": 1,
+      "disposition": "added",
+      "evidence_blob": "fdd76ad59580d2610ac033c1fe229afc00f003d8",
+      "path": "crates/ripr/src/lsp/backend.rs",
+      "pattern": "\"push\"",
+      "rationale": "W7 added a live surface governed only after the source checker introduced the quoted-push pattern; exact preview count is one.",
+      "selected_maximum": 1,
+      "selected_owner": "lsp/diagnostics",
+      "selected_reason": "Push/pull diagnostic parity classifies the transport name as data; this literal does not execute Git or networking.",
+      "source_row": null,
+      "swarm_row": null
+    },
+    {
+      "actual_count": 1,
+      "disposition": "added",
+      "evidence_blob": "3a66c2d7f34ad837081d225caadaaddefe1648d7",
+      "path": "crates/ripr/src/lsp/tests.rs",
+      "pattern": "\"push\"",
+      "rationale": "W7 added a live test surface governed only after the source checker introduced the quoted-push pattern; exact preview count is one.",
+      "selected_maximum": 1,
+      "selected_owner": "lsp/tests",
+      "selected_reason": "Push/pull parity fixture names the push transport while comparing diagnostic actions; it performs no network operation.",
+      "source_row": null,
+      "swarm_row": null
+    },
+    {
+      "actual_count": 5,
+      "disposition": "retained_swarm",
+      "evidence_blob": "921df70a6f46f40888a10d8b65a7bc0039040d90",
+      "path": "crates/ripr/src/output/perl_gap_record_projection.rs",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 5,
+      "selected_owner": "analysis-perl",
+      "selected_reason": "Absence-assertions mirroring the TS projection: comments + unit tests verifying the Perl receipt_command is a fixed `ripr outcome` shape that never invokes curl/an external provider. No network behavior; these reference the term only to prove it is absent.",
+      "source_row": null,
+      "swarm_row": {
+        "maximum": 5,
+        "owner": "analysis-perl",
+        "path": "crates/ripr/src/output/perl_gap_record_projection.rs",
+        "pattern": "curl",
+        "reason": "Absence-assertions mirroring the TS projection: comments + unit tests verifying the Perl receipt_command is a fixed `ripr outcome` shape that never invokes curl/an external provider. No network behavior; these reference the term only to prove it is absent."
+      }
+    },
+    {
+      "actual_count": 1,
+      "disposition": "retained_source",
+      "evidence_blob": "b63f57e0e2ff5904a94b29b1c857ed88d0440dab",
+      "path": "crates/ripr/src/output/pr_inline_comment_publish_plan.rs",
+      "pattern": "\"push\"",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 1,
+      "selected_owner": "output/pr-inline-plan",
+      "selected_reason": "A unit fixture names the GitHub push event to prove inline publication is blocked for an unsafe event; it performs no network operation.",
+      "source_row": {
+        "maximum": 1,
+        "owner": "output/pr-inline-plan",
+        "path": "crates/ripr/src/output/pr_inline_comment_publish_plan.rs",
+        "pattern": "\"push\"",
+        "reason": "A unit fixture names the GitHub push event to prove inline publication is blocked for an unsafe event; it performs no network operation."
+      },
+      "swarm_row": null
+    },
+    {
+      "actual_count": 4,
+      "disposition": "retained_shared",
+      "evidence_blob": "bfbcf4a26d6aa6aa3eee717e78f7a94fd69d02c1",
+      "path": "crates/ripr/src/output/typescript_packet_projection.rs",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 4,
+      "selected_owner": "analysis-typescript",
+      "selected_reason": "F7 absence-assertions: comments + unit tests verifying the TS receipt_command is a fixed `ripr outcome` shape that never invokes curl/an external provider. No network behavior; these reference the term only to prove it is absent.",
+      "source_row": {
+        "maximum": 4,
+        "owner": "analysis-typescript",
+        "path": "crates/ripr/src/output/typescript_packet_projection.rs",
+        "pattern": "curl",
+        "reason": "F7 absence-assertions: comments + unit tests verifying the TS receipt_command is a fixed `ripr outcome` shape that never invokes curl/an external provider. No network behavior; these reference the term only to prove it is absent."
+      },
+      "swarm_row": {
+        "maximum": 4,
+        "owner": "analysis-typescript",
+        "path": "crates/ripr/src/output/typescript_packet_projection.rs",
+        "pattern": "curl",
+        "reason": "F7 absence-assertions: comments + unit tests verifying the TS receipt_command is a fixed `ripr outcome` shape that never invokes curl/an external provider. No network behavior; these reference the term only to prove it is absent."
+      }
+    },
+    {
+      "actual_count": 1,
+      "disposition": "retained_shared",
+      "evidence_blob": "5ea33e7251eddc5d2ea1973c78325a8d944b758f",
+      "path": "editors/vscode/src/downloader.ts",
+      "pattern": "https.get",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 1,
+      "selected_owner": "lsp/editor",
+      "selected_reason": "VS Code extension downloads verified server assets from the configured release source.",
+      "source_row": {
+        "maximum": 1,
+        "owner": "lsp/editor",
+        "path": "editors/vscode/src/downloader.ts",
+        "pattern": "https.get",
+        "reason": "VS Code extension downloads verified server assets from the configured release source."
+      },
+      "swarm_row": {
+        "maximum": 1,
+        "owner": "lsp/editor",
+        "path": "editors/vscode/src/downloader.ts",
+        "pattern": "https.get",
+        "reason": "VS Code extension downloads verified server assets from the configured release source."
+      }
+    },
+    {
+      "actual_count": 2,
+      "disposition": "added",
+      "evidence_blob": "70de28ccaab8ce1f4266a983ee1935a11f6afdb2",
+      "path": "xtask/src/branch_inventory.rs",
+      "pattern": "\"push\"",
+      "rationale": "W7 added the guarded branch-deletion adapter before the source checker governed quoted-push literals; exact preview count is two and no wider maximum is granted.",
+      "selected_maximum": 2,
+      "selected_owner": "repo-ops/branch-inventory",
+      "selected_reason": "Owner-confirmed stale-branch deletion constructs one force-with-lease Git push command and its exact unit-test expectation.",
+      "source_row": null,
+      "swarm_row": null
+    },
+    {
+      "actual_count": 1,
+      "disposition": "retained_source",
+      "evidence_blob": "52b5849f7b2296c7459c46876841b308c58b579c",
+      "path": "xtask/src/main.rs",
+      "pattern": "\"push\"",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 1,
+      "selected_owner": "xtask/test-efficiency",
+      "selected_reason": "The test-efficiency analyzer ignores the common Vec push method when classifying meaningful test calls; this token does not invoke Git or network access.",
+      "source_row": {
+        "maximum": 1,
+        "owner": "xtask/test-efficiency",
+        "path": "xtask/src/main.rs",
+        "pattern": "\"push\"",
+        "reason": "The test-efficiency analyzer ignores the common Vec push method when classifying meaningful test calls; this token does not invoke Git or network access."
+      },
+      "swarm_row": null
+    },
+    {
+      "actual_count": 8,
+      "disposition": "retained_source",
+      "evidence_blob": "8821137476f34692b868d1df4392bd456612c611",
+      "path": "xtask/src/reports/source_promotion_admission_fixture.rs",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 8,
+      "selected_owner": "release/source-promotion-admission",
+      "selected_reason": "RIPR-SPEC-0150: the deterministic J5 fixture retains exact governed curl-token cardinality across synthetic source-only policy rows and tests; it executes the production checker locally and performs no network request.",
+      "source_row": {
+        "maximum": 8,
+        "owner": "release/source-promotion-admission",
+        "path": "xtask/src/reports/source_promotion_admission_fixture.rs",
+        "pattern": "curl",
+        "reason": "RIPR-SPEC-0150: the deterministic J5 fixture retains exact governed curl-token cardinality across synthetic source-only policy rows and tests; it executes the production checker locally and performs no network request."
+      },
+      "swarm_row": null
+    },
+    {
+      "actual_count": 1,
+      "disposition": "retained_source",
+      "evidence_blob": "3b90a184c964770794be4d7a2bc907ed87a6a5ff",
+      "path": "xtask/src/reports/source_promotion_control/publication.rs",
+      "pattern": "\"push\"",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 1,
+      "selected_owner": "release/source-promotion",
+      "selected_reason": "RIPR-SPEC-0150: guarded candidate-ref publication is the only production Git network mutation in the recovered controller and requires exact URL, expected-state lease, and post-attempt reconciliation.",
+      "source_row": {
+        "maximum": 1,
+        "owner": "release/source-promotion",
+        "path": "xtask/src/reports/source_promotion_control/publication.rs",
+        "pattern": "\"push\"",
+        "reason": "RIPR-SPEC-0150: guarded candidate-ref publication is the only production Git network mutation in the recovered controller and requires exact URL, expected-state lease, and post-attempt reconciliation."
+      },
+      "swarm_row": null
+    },
+    {
+      "actual_count": 11,
+      "disposition": "retained_source",
+      "evidence_blob": "b3926c885bb17192f625ed7b0fa80d5f2e2714db",
+      "path": "xtask/src/reports/source_promotion_control/tests.rs",
+      "pattern": "\"push\"",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 11,
+      "selected_owner": "release/source-promotion-tests",
+      "selected_reason": "RIPR-SPEC-0150: isolated local bare-repository fixtures seed, clear, and reseed source and W7 refs while exercising immutable-object publication under local-ref, up-to-date/no-op, malformed-success attribution, and attributed-update-then-divergent-remote races, fail-closed post-push observation, unknown-state rollback, and remote rejection without touching a production remote.",
+      "source_row": {
+        "maximum": 11,
+        "owner": "release/source-promotion-tests",
+        "path": "xtask/src/reports/source_promotion_control/tests.rs",
+        "pattern": "\"push\"",
+        "reason": "RIPR-SPEC-0150: isolated local bare-repository fixtures seed, clear, and reseed source and W7 refs while exercising immutable-object publication under local-ref, up-to-date/no-op, malformed-success attribution, and attributed-update-then-divergent-remote races, fail-closed post-push observation, unknown-state rollback, and remote rejection without touching a production remote."
+      },
+      "swarm_row": null
+    },
+    {
+      "actual_count": 2,
+      "disposition": "retained_swarm",
+      "evidence_blob": "ecf2a588cc9ba9b1831e288a577ae0d8358a914a",
+      "path": "xtask/src/tests.rs",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 2,
+      "selected_owner": "ci/release-qualification",
+      "selected_reason": "PR #3147 structured workflow security oracle requires the exact unauthenticated rulesets API marker and rejects replacing it with authenticated gh api; reviewed 2026-08-11.",
+      "source_row": null,
+      "swarm_row": {
+        "maximum": 2,
+        "owner": "ci/release-qualification",
+        "path": "xtask/src/tests.rs",
+        "pattern": "curl",
+        "reason": "PR #3147 structured workflow security oracle requires the exact unauthenticated rulesets API marker and rejects replacing it with authenticated gh api; reviewed 2026-08-11."
+      }
+    },
+    {
+      "actual_count": 28,
+      "disposition": "retained_source",
+      "evidence_blob": "be58ac1105a307aa28c3b3725219f725326c0acd",
+      "path": "xtask/tests/source_promotion_resolved_tree.rs",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 28,
+      "selected_owner": "release/source-promotion",
+      "selected_reason": "J5 regression fixture intentionally embeds governed curl literals to prove source-only network ledgers reject and semantic reconciliation passes without executing networking.",
+      "source_row": {
+        "maximum": 28,
+        "owner": "release/source-promotion",
+        "path": "xtask/tests/source_promotion_resolved_tree.rs",
+        "pattern": "curl",
+        "reason": "J5 regression fixture intentionally embeds governed curl literals to prove source-only network ledgers reject and semantic reconciliation passes without executing networking."
+      },
+      "swarm_row": null
+    },
+    {
+      "actual_count": 4,
+      "disposition": "retained_source",
+      "evidence_blob": "50feebad36b12a420f31d04919a225af5a139e60",
+      "path": "xtask/tests/source_promotion_workflow_contract.rs",
+      "pattern": "curl",
+      "rationale": "narrowest reviewed maximum covers the exact preview-tree count",
+      "selected_maximum": 4,
+      "selected_owner": "release/source-promotion-admission",
+      "selected_reason": "The authentic J5 workflow E2E embeds exact governed curl literals to construct a deterministic rejected policy receipt; it executes the local production checker and performs no network request.",
+      "source_row": {
+        "maximum": 4,
+        "owner": "release/source-promotion-admission",
+        "path": "xtask/tests/source_promotion_workflow_contract.rs",
+        "pattern": "curl",
+        "reason": "The authentic J5 workflow E2E embeds exact governed curl literals to construct a deterministic rejected policy receipt; it executes the local production checker and performs no network request."
+      },
+      "swarm_row": null
+    }
+  ],
+  "schema": "ripr.source_promotion_network_policy_resolution.v1",
+  "tree_delta": {
+    "after": "111516422c1187ad70344855698b8be9f482eec4",
+    "before": "b827f60a0f34284d9046bd6b646647efc76df3c6",
+    "changed_paths": [
+      "policy/network_allowlist.txt"
+    ]
+  }
+}

@@ -134,6 +134,9 @@ source_promotion_admission_workflow_status|rejected|Admission workflow evidence 
 source_promotion_admission_workflow_profile|j5_negative|Deterministic source-owned J5-shaped network-policy under-description fixture.
 source_promotion_admission_workflow_profile|live|Exact external source-promotion evidence profile.
 source_promotion_admission_workflow_profile|positive_synthetic|Deterministic source-owned terminal-admission fixture.
+source_promotion_network_policy_resolution_schema|ripr.source_promotion_network_policy_resolution.v1|Exact source/W7 network-policy resolution receipt schema.
+source_promotion_network_policy_resolution_schema|ripr.source_promotion_network_policy_checker_execution.v1|Environment-specific exact checker execution attestation bound to the stable resolution receipt.
+source_promotion_network_policy_resolution_schema|ripr.source_promotion_resolution_manifest_fragment.v1|Single-path integration manifest fragment schema.
 source_promotion_admission_workflow_mode|admit_only|Admission only; all mutation and publication attempt counters remain zero.
 source_promotion_admission_workflow_mode|constructor_dry_run|After terminal admission, permit at most one unreferenced commit-tree attempt in an isolated synthetic repository and no ref, push, merge, or publication attempt.
 source_promotion_admission_workflow_attempt_field|constructor_commit_tree_attempts|Count of constructor commit-tree starts in the isolated dry-run repository.

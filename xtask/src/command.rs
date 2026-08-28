@@ -352,6 +352,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "release-server-manifest --version <version> --repository <owner/repo>",
         "release-upload-assets --version <version>",
         "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
+        "source-promotion resolve-network-policy --preflight <receipt.json> --decisions <decisions.json> --preflight-sha256 <digest> --p0-artifact-sha256 <digest> --source <sha> --swarm <sha> --merge-base <sha> --preview-tree <tree> --rejected-j5 <sha> --rejected-j5-tree <tree> --output-dir <dir>",
         "source-promotion validate-resolved-tree --source-parent <sha> --swarm-parent <sha> --reviewed-tree <tree> --preflight <receipt.json> --preflight-sha256 <digest> --resolution-manifest <manifest.json> --resolution-sha256 <digest> [--out <dir>]",
         "source-promotion write-trusted-builder-receipt --source-parent <sha> --workflow-source-sha <sha> --executable <path> --cargo-target-dir <path> --locked-build --isolated-target-dir [--out <dir>]",
         "source-promotion admit-resolved-tree --source-parent <sha> --swarm-parent <sha> --join-tree <tree> --preflight <path> --preflight-sha256 <digest> --resolution-manifest <path> --resolution-sha256 <digest> --validation-packet <dir> --builder-packet <dir> --integration-index <path> --integration-index-sha256 <digest> [--out <dir>]",
@@ -837,6 +838,13 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/source-promotion/source-promotion-verification.{json,md} or explicit --out <dir>",
             false,
             "Verifies an exact history-preserving join, reviewed resolution manifest, ancestry digests, and metadata identity without constructing or mutating Git refs.",
+        ),
+        command_entry(
+            "source-promotion resolve-network-policy --preflight <receipt.json> --decisions <decisions.json> --preflight-sha256 <digest> --p0-artifact-sha256 <digest> --source <sha> --swarm <sha> --merge-base <sha> --preview-tree <tree> --rejected-j5 <sha> --rejected-j5-tree <tree> --output-dir <dir>",
+            "mutating",
+            "explicit --output-dir plus unreferenced immutable Git objects and a disposable target/ripr checkout",
+            false,
+            "Reconciles the exact source/W7 network ledger with reviewer decisions, runs the source-owned production checker on a one-path policy tree, and writes typed integration evidence without moving a ref.",
         ),
         command_entry(
             "source-promotion validate-resolved-tree --source-parent <sha> --swarm-parent <sha> --reviewed-tree <tree> --preflight <receipt.json> --preflight-sha256 <digest> --resolution-manifest <manifest.json> --resolution-sha256 <digest> [--out <dir>]",
