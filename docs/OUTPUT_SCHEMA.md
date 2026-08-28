@@ -13934,6 +13934,10 @@ and make no live carrier-materialization claim.
 packet, and `packet-index.json` recursively binds the controller receipts and
 all materialized locator evidence beneath `evidence/`. Final verification
 rejects missing, extra, corrupt, symlinked, or summary-inconsistent members.
+An admitted constructor final packet requires a valid indexed construction
+receipt. A rejected final packet may report that receipt unavailable while
+still indexing all partial construction bytes; an absent output directory does
+not create placeholder evidence.
 
 `trusted_checker_identity` has the closed form
 `source-owned-xtask@<40-character-workflow-source-SHA>` and must name the same

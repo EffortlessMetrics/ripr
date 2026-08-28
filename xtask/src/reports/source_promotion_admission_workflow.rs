@@ -366,6 +366,7 @@ fn finalize(args: &[String]) -> Result<(), String> {
     validate_directory(&evidence, "downloaded admission evidence closure")?;
     let mut construction_report = None;
     let mut construction_error = None;
+    let construction_out = workspace.join("exact-join-construction");
     if mode == OperationMode::ConstructorDryRun {
         let admission_controller = evidence.join("resolved-tree-admission");
         let validation_index = evidence
@@ -378,7 +379,6 @@ fn finalize(args: &[String]) -> Result<(), String> {
         let preflight = evidence.join("locators/preflight/input");
         let resolution = evidence.join("locators/resolution_manifest/input");
         let qualification = evidence.join("locators/qualification_receipt/input");
-        let construction_out = workspace.join("exact-join-construction");
         reject_existing_output(&construction_out)?;
         let command = strings(&[
             "construct-exact-join",
@@ -462,12 +462,17 @@ fn finalize(args: &[String]) -> Result<(), String> {
         source: evidence,
         destination: PathBuf::new(),
     }];
-    if let Some(construction) = construction_report.as_ref() {
-        let _ = construction;
-        closure.push(ClosureSource {
-            source: workspace.join("exact-join-construction"),
+    match fs::symlink_metadata(&construction_out) {
+        Ok(_) => closure.push(ClosureSource {
+            source: construction_out,
             destination: PathBuf::from("exact-join-construction"),
-        });
+        }),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect construction evidence for final closure: {error}"
+            ));
+        }
     }
     write_packet(&out, &report, &closure)?;
     verify_packet(&out)?;
@@ -829,7 +834,8 @@ fn validate_report(report: &Value) -> Result<(), String> {
     {
         return Err("workflow disposition has unavailable admission attempt evidence".to_string());
     }
-    if phase == "final"
+    if status == "admitted"
+        && phase == "final"
         && mode == OperationMode::ConstructorDryRun
         && attempts
             .get("construction_receipt_available")
@@ -2410,6 +2416,57 @@ mod tests {
     }
 
     #[test]
+    fn rejected_constructor_packet_retains_partial_evidence_or_accepts_no_output()
+    -> Result<(), String> {
+        let (partial_root, partial_packet) = write_test_closure_for(
+            "partial-construction",
+            "rejected",
+            "constructor_dry_run",
+            true,
+        )?;
+        let partial_report = verify_packet(&partial_packet)?;
+        if json_string(&partial_report, "status") != Some("rejected")
+            || !partial_packet
+                .join("evidence/exact-join-construction/partial.log")
+                .is_file()
+            || !partial_packet
+                .join("evidence/exact-join-construction/exact-join-construction.json")
+                .is_file()
+        {
+            return Err("rejected constructor packet did not retain partial evidence".to_string());
+        }
+        let enforce_args = strings(&[
+            ENFORCE,
+            "--packet",
+            &path_text(&partial_packet)?,
+            "--expected-status",
+            "admitted",
+        ]);
+        if enforce_command(&enforce_args).is_ok() {
+            return Err("rejected constructor packet escaped terminal enforcement".to_string());
+        }
+        fs::remove_dir_all(&partial_root)
+            .map_err(|error| format!("failed to clean partial constructor fixture: {error}"))?;
+
+        let (absent_root, absent_packet) = write_test_closure_for(
+            "absent-construction",
+            "rejected",
+            "constructor_dry_run",
+            false,
+        )?;
+        verify_packet(&absent_packet)?;
+        if collect_packet_files(&absent_packet)?
+            .keys()
+            .any(|path| path.starts_with("evidence/exact-join-construction/"))
+        {
+            return Err("absent constructor output created synthetic evidence".to_string());
+        }
+        fs::remove_dir_all(&absent_root)
+            .map_err(|error| format!("failed to clean absent constructor fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn synthetic_paths_are_root_independent() -> Result<(), String> {
         let left = Path::new("one/root/synthetic-fixture/fixture-repository/.git/evidence.json");
         let right =
@@ -2421,6 +2478,15 @@ mod tests {
     }
 
     fn write_test_closure(label: &str) -> Result<(PathBuf, PathBuf), String> {
+        write_test_closure_for(label, "admitted", "admit_only", false)
+    }
+
+    fn write_test_closure_for(
+        label: &str,
+        status: &str,
+        mode: &str,
+        partial_construction: bool,
+    ) -> Result<(PathBuf, PathBuf), String> {
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|error| format!("test clock precedes epoch: {error}"))?
@@ -2470,7 +2536,20 @@ mod tests {
             fs::write(source.join(path), bytes)
                 .map_err(|error| format!("failed to write closure fixture: {error}"))?;
         }
-        let mut report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
+        if partial_construction {
+            let construction = source.join("exact-join-construction");
+            fs::create_dir_all(&construction).map_err(|error| {
+                format!("failed to create partial construction fixture: {error}")
+            })?;
+            fs::write(construction.join("partial.log"), b"constructor started\n")
+                .map_err(|error| format!("failed to write partial construction log: {error}"))?;
+            fs::write(
+                construction.join("exact-join-construction.json"),
+                b"{malformed",
+            )
+            .map_err(|error| format!("failed to write malformed construction receipt: {error}"))?;
+        }
+        let mut report = test_report(status, mode, "positive_synthetic", 0)?;
         for (key, path) in [
             ("preflight", "preflight/input"),
             ("resolution_manifest", "resolution_manifest/input"),
@@ -2493,9 +2572,24 @@ mod tests {
                 "status": "admitted",
                 "schema": "ripr.source_promotion_resolved_tree_admission.v1",
             },
+            "exact_join_construction": if mode == "constructor_dry_run" {
+                serde_json::json!({
+                    "path": "evidence/exact-join-construction",
+                    "available": false,
+                    "status": null,
+                    "schema": null,
+                })
+            } else {
+                serde_json::json!({
+                    "path": null,
+                    "available": false,
+                    "status": "not_run",
+                    "schema": null,
+                })
+            },
         });
         report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
-        let closure = [
+        let mut closure = [
             ("trusted-builder", "trusted-builder"),
             ("resolved-tree-admission", "resolved-tree-admission"),
             ("preflight", "locators/preflight"),
@@ -2509,6 +2603,12 @@ mod tests {
             destination: PathBuf::from(to),
         })
         .collect::<Vec<_>>();
+        if partial_construction {
+            closure.push(ClosureSource {
+                source: source.join("exact-join-construction"),
+                destination: PathBuf::from("exact-join-construction"),
+            });
+        }
         let packet = root.join("packet");
         write_packet(&packet, &report, &closure)?;
         Ok((root, packet))
@@ -2594,7 +2694,7 @@ mod tests {
             },
             "attempts": {
                 "admission_receipt_available": true,
-                "construction_receipt_available": mode == "constructor_dry_run",
+                "construction_receipt_available": mode == "constructor_dry_run" && status == "admitted",
                 "constructor_refs_unchanged": commit_tree == 1,
                 "constructor_object_unreferenced": commit_tree == 1,
                 "constructor_final_identity_reread_passed": commit_tree == 1,

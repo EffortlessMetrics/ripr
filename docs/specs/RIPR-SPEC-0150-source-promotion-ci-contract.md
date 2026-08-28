@@ -291,6 +291,10 @@ The uploaded normalized packet MUST recursively index its controller receipts
 and complete materialized locator closure. The finalizer MUST verify and
 consume that downloaded closure, and MUST reject missing, extra, corrupt,
 symlinked, or controller-summary-inconsistent members before construction.
+Final constructor success MUST include a valid indexed construction receipt.
+Constructor rejection MUST preserve every available partial output byte in the
+indexed closure, MUST remain self-verifying when the receipt is unavailable or
+malformed, and MUST invent no evidence when no output directory exists.
 
 The checker identity must name the same full commit as `workflow_source_sha`.
 It identifies committed source ownership; it is not a substitute for the

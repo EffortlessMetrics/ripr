@@ -518,6 +518,10 @@ The normalized admission artifact recursively indexes the controller receipts
 and every materialized locator sibling under `evidence/`. Finalization verifies
 and consumes that downloaded closure; only the runner-owned Git controller
 checkout is read again for the construction command itself.
+Rejected finalization packets may declare the construction receipt unavailable,
+but still recursively index every partial construction log or sidecar that was
+created before rejection. No output directory is represented by no invented
+construction evidence; either rejected packet remains self-verifying and red.
 Artifact names, floating branches, abbreviated SHAs, candidate-checkout paths,
 and caller-supplied success booleans are not authority. Synthetic profiles use
 source-owned fixture identities; they are not general path or command inputs.
