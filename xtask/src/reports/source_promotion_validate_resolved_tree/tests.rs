@@ -5,7 +5,8 @@ mod tests {
         ValidationState, command_receipt, commands_are_terminal_green, create_exclusive_temp_dir,
         ensure_checker_source_identity, git, input_echo, packet_entries, parse_args, read_bound_json,
         reject_parent_components, render_markdown, report_value, resolved_tree_receipt_is_admissible,
-        snapshot_refs, snapshot_worktrees, validate_exact_hex, verify_exact_commit,
+        snapshot_refs, snapshot_worktrees, validate_exact_hex,
+        validate_resolved_tree_receipt_contract, verify_exact_commit,
         verify_exact_tree, worktree_listing_contains_path, write_new_file,
     };
     use serde_json::Value;
@@ -207,6 +208,106 @@ mod tests {
         let mut forged = rejected;
         forged["status"] = Value::String("validated".to_string());
         assert!(!resolved_tree_receipt_is_admissible(&forged));
+    }
+
+    #[test]
+    fn receipt_contract_rejects_catalog_and_unknown_field_tampering() -> Result<(), String> {
+        let validated = report_value(&valid_fixture_state());
+        validate_resolved_tree_receipt_contract(&validated, "validated")?;
+        let mut rejected_state = valid_fixture_state();
+        rejected_state
+            .failure_reasons
+            .push("required command failed".to_string());
+        let rejected = report_value(&rejected_state);
+        validate_resolved_tree_receipt_contract(&rejected, "rejected")?;
+
+        let mut removed_catalog = validated.clone();
+        let catalog = removed_catalog["required_command_catalog"]
+            .as_array_mut()
+            .ok_or_else(|| "fixture command catalog is not an array".to_string())?;
+        if catalog.is_empty() {
+            return Err("fixture command catalog is unexpectedly empty".to_string());
+        }
+        let _ = catalog.remove(0);
+        if validate_resolved_tree_receipt_contract(&removed_catalog, "validated").is_ok() {
+            return Err("receipt contract accepted a removed catalog row".to_string());
+        }
+
+        let mut changed_catalog = validated.clone();
+        let first = changed_catalog["required_command_catalog"]
+            .as_array_mut()
+            .and_then(|catalog| catalog.first_mut())
+            .ok_or_else(|| "fixture command catalog has no first row".to_string())?;
+        *first = Value::String("check-forged-policy".to_string());
+        if validate_resolved_tree_receipt_contract(&changed_catalog, "validated").is_ok() {
+            return Err("receipt contract accepted a changed catalog row".to_string());
+        }
+
+        let mut unknown_top_level = validated.clone();
+        unknown_top_level["merge_authorized"] = Value::Bool(true);
+        if validate_resolved_tree_receipt_contract(&unknown_top_level, "validated").is_ok() {
+            return Err("receipt contract accepted an unknown top-level authority field".to_string());
+        }
+
+        let mut unknown_nested = validated;
+        unknown_nested["trusted_checker"]["merge_authorized"] = Value::Bool(true);
+        if validate_resolved_tree_receipt_contract(&unknown_nested, "validated").is_ok() {
+            return Err("receipt contract accepted an unknown nested authority field".to_string());
+        }
+
+        let mut changed_claim = report_value(&valid_fixture_state());
+        let claim = changed_claim["non_claims"]
+            .as_array_mut()
+            .and_then(|claims| claims.first_mut())
+            .ok_or_else(|| "fixture has no first non-claim".to_string())?;
+        *claim = Value::String("This receipt grants release authority.".to_string());
+        if validate_resolved_tree_receipt_contract(&changed_claim, "validated").is_ok() {
+            return Err("receipt contract accepted a changed non-claim".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_contract_rejects_shared_semantic_tampering() -> Result<(), String> {
+        let validated = report_value(&valid_fixture_state());
+        for (pointer, replacement) in [
+            ("/preflight/verified", Value::Bool(false)),
+            ("/trusted_checker/source_sha", Value::String("2".repeat(40))),
+            (
+                "/trusted_checker/executable_sha256",
+                Value::String("short".to_string()),
+            ),
+            ("/materialization/authoritative", Value::Bool(true)),
+            (
+                "/repository_observation/ref_mutation_observed",
+                Value::Bool(true),
+            ),
+            (
+                "/packet_contract/atomic_directory_publish",
+                Value::Bool(false),
+            ),
+            ("/authoritative_commit_attempted", Value::Bool(true)),
+        ] {
+            let mut candidate = validated.clone();
+            let target = candidate
+                .pointer_mut(pointer)
+                .ok_or_else(|| format!("fixture has no {pointer}"))?;
+            *target = replacement;
+            if validate_resolved_tree_receipt_contract(&candidate, "validated").is_ok() {
+                return Err(format!("receipt contract accepted semantic tampering at {pointer}"));
+            }
+        }
+
+        let mut rejected_state = valid_fixture_state();
+        rejected_state
+            .failure_reasons
+            .push("required command failed".to_string());
+        let mut rejected = report_value(&rejected_state);
+        rejected["failure_reasons"] = Value::Array(Vec::new());
+        if validate_resolved_tree_receipt_contract(&rejected, "rejected").is_ok() {
+            return Err("receipt contract accepted rejected status without a reason".to_string());
+        }
+        Ok(())
     }
 
     #[test]

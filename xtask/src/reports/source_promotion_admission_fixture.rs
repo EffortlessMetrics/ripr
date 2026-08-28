@@ -527,10 +527,17 @@ fn require_validation_disposition(
 }
 
 pub(super) fn require_exact_j5_failure(packet: &Path, report: &Value) -> Result<(), String> {
+    super::source_promotion_validate_resolved_tree::validate_resolved_tree_receipt_contract(
+        report, "rejected",
+    )?;
     let commands = report
         .get("commands")
         .and_then(Value::as_array)
         .ok_or_else(|| "J5 validation receipt is missing command evidence".to_string())?;
+    require_exact_j5_command_failure(packet, commands)
+}
+
+fn require_exact_j5_command_failure(packet: &Path, commands: &[Value]) -> Result<(), String> {
     let required = super::source_promotion_validate_resolved_tree::REQUIRED_COMMANDS;
     if commands.len() != required.len()
         || commands
@@ -871,7 +878,7 @@ fn combined_output(output: &Output) -> String {
 mod tests {
     use super::{
         QUALIFICATION_LANES, SyntheticProfile, digest_bytes, hash_blob, repeated_literal,
-        require_exact_j5_failure, require_validation_disposition, run_output_with_input,
+        require_exact_j5_command_failure, require_validation_disposition, run_output_with_input,
         validate_hex, verify_reviewed_tree_carrier,
     };
     use serde_json::Value;
@@ -993,36 +1000,37 @@ mod tests {
                 }
             })
             .collect::<Vec<_>>();
-        let baseline = serde_json::json!({"commands": commands});
-        require_exact_j5_failure(&root, &baseline)?;
+        require_exact_j5_command_failure(&root, &commands)?;
 
-        let mut removed = baseline.clone();
-        let removed_commands = removed["commands"]
-            .as_array_mut()
-            .ok_or_else(|| "J5 removal fixture has no commands".to_string())?;
-        removed_commands.remove(2);
-        if require_exact_j5_failure(&root, &removed).is_ok() {
+        let mut removed = commands.clone();
+        removed.remove(2);
+        if require_exact_j5_command_failure(&root, &removed).is_ok() {
             return Err("J5 failure oracle accepted a removed required command".to_string());
         }
 
-        let mut reordered = baseline.clone();
-        let reordered_commands = reordered["commands"]
-            .as_array_mut()
-            .ok_or_else(|| "J5 reorder fixture has no commands".to_string())?;
-        reordered_commands.swap(1, 2);
-        if require_exact_j5_failure(&root, &reordered).is_ok() {
+        let mut reordered = commands.clone();
+        reordered.swap(1, 2);
+        if require_exact_j5_command_failure(&root, &reordered).is_ok() {
             return Err("J5 failure oracle accepted reordered required commands".to_string());
         }
 
-        let mut zero_exit = baseline.clone();
-        zero_exit["commands"][0]["exit_code"] = Value::from(0);
-        if require_exact_j5_failure(&root, &zero_exit).is_ok() {
+        let mut zero_exit = commands.clone();
+        let zero_exit_code = zero_exit
+            .first_mut()
+            .and_then(|command| command.get_mut("exit_code"))
+            .ok_or_else(|| "J5 zero-exit fixture has no first exit code".to_string())?;
+        *zero_exit_code = Value::from(0);
+        if require_exact_j5_command_failure(&root, &zero_exit).is_ok() {
             return Err("J5 failure oracle accepted a zero failed-command exit".to_string());
         }
 
-        let mut unknown_authority = baseline;
-        unknown_authority["commands"][0]["merge_authorized"] = Value::Bool(true);
-        if require_exact_j5_failure(&root, &unknown_authority).is_ok() {
+        let mut unknown_authority = commands;
+        unknown_authority
+            .first_mut()
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| "J5 unknown-field fixture has no first command object".to_string())?
+            .insert("merge_authorized".to_string(), Value::Bool(true));
+        if require_exact_j5_command_failure(&root, &unknown_authority).is_ok() {
             return Err("J5 failure oracle accepted an unknown authority field".to_string());
         }
         remove_test_roots(&[&root])

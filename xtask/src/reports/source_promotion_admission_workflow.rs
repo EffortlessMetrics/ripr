@@ -3523,6 +3523,129 @@ mod tests {
         Ok(())
     }
 
+    fn verify_digest_rebound_validation_contract_mutation_rejected(
+        label: &str,
+        mutate: impl FnOnce(&mut Value) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let (root, packet) = write_test_closure(label)?;
+        let validation_root = packet.join("evidence/locators/validation_packet");
+        let validation_report = validation_root.join("resolved-tree-validation.json");
+        let mut validation = read_json(&validation_report, "nested validation fixture")?;
+        mutate(&mut validation)?;
+        write_pretty_json(
+            &validation_report,
+            &validation,
+            "mutated nested validation fixture",
+        )?;
+        let validation_index_sha256 = reindex_control_packet(&validation_root)?;
+        let validation_receipt_sha256 =
+            digest_file(&validation_report, "rebound validation receipt")?;
+
+        let admission_root = packet.join("evidence/resolved-tree-admission");
+        let admission_report = admission_root.join("resolved-tree-admission.json");
+        let mut admission = read_json(&admission_report, "nested admission fixture")?;
+        admission["resolved_tree_packet_index_sha256"] =
+            Value::String(validation_index_sha256.clone());
+        admission["resolved_tree_validation_receipt_sha256"] =
+            Value::String(validation_receipt_sha256);
+        write_pretty_json(
+            &admission_report,
+            &admission,
+            "rebound nested admission fixture",
+        )?;
+        reindex_control_packet(&admission_root)?;
+
+        let mut workflow = read_json(&packet.join(REPORT_JSON), "rebound workflow fixture")?;
+        workflow["locators"]["validation_packet"]["sha256"] =
+            Value::String(validation_index_sha256);
+        workflow["workflow_identity_sha256"] = Value::String(workflow_identity(&workflow)?);
+        rewrite_test_packet_reports_and_index(&packet, &workflow)?;
+
+        let escaped = verify_packet(&packet).is_ok();
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean validation contract fixture: {error}"))?;
+        if escaped {
+            return Err(format!(
+                "digest-rebound {label} escaped resolved-tree receipt contract replay"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_rejects_digest_rebound_validation_catalog_and_envelope_tampering()
+    -> Result<(), String> {
+        verify_digest_rebound_validation_contract_mutation_rejected(
+            "removed-validation-catalog-row",
+            |report| {
+                let catalog = report["required_command_catalog"]
+                    .as_array_mut()
+                    .ok_or_else(|| "validation command catalog is not an array".to_string())?;
+                if catalog.is_empty() {
+                    return Err("validation command catalog is unexpectedly empty".to_string());
+                }
+                let _ = catalog.remove(0);
+                Ok(())
+            },
+        )?;
+        verify_digest_rebound_validation_contract_mutation_rejected(
+            "changed-validation-catalog-row",
+            |report| {
+                let first = report["required_command_catalog"]
+                    .as_array_mut()
+                    .and_then(|catalog| catalog.first_mut())
+                    .ok_or_else(|| "validation command catalog has no first row".to_string())?;
+                *first = Value::String("check-forged-policy".to_string());
+                Ok(())
+            },
+        )?;
+        verify_digest_rebound_validation_contract_mutation_rejected(
+            "unknown-validation-top-level-field",
+            |report| {
+                report
+                    .as_object_mut()
+                    .ok_or_else(|| "validation report is not an object".to_string())?
+                    .insert("merge_authorized".to_string(), Value::Bool(true));
+                Ok(())
+            },
+        )?;
+        verify_digest_rebound_validation_contract_mutation_rejected(
+            "unknown-validation-nested-field",
+            |report| {
+                report["trusted_checker"]
+                    .as_object_mut()
+                    .ok_or_else(|| "trusted checker is not an object".to_string())?
+                    .insert("merge_authorized".to_string(), Value::Bool(true));
+                Ok(())
+            },
+        )?;
+        verify_digest_rebound_validation_contract_mutation_rejected(
+            "changed-validation-checker-source",
+            |report| {
+                report["trusted_checker"]["source_sha"] = Value::String("2".repeat(40));
+                Ok(())
+            },
+        )?;
+        verify_digest_rebound_validation_contract_mutation_rejected(
+            "changed-validation-authority-attempt",
+            |report| {
+                report["authoritative_commit_attempted"] = Value::Bool(true);
+                Ok(())
+            },
+        )?;
+        verify_digest_rebound_validation_contract_mutation_rejected(
+            "changed-validation-non-claim",
+            |report| {
+                let claim = report["non_claims"]
+                    .as_array_mut()
+                    .and_then(|claims| claims.first_mut())
+                    .ok_or_else(|| "validation report has no first non-claim".to_string())?;
+                *claim = Value::String("This receipt grants release authority.".to_string());
+                Ok(())
+            },
+        )
+    }
+
     #[test]
     fn verifier_binds_validation_receipt_to_indexed_command_logs() -> Result<(), String> {
         let (root, packet) = write_test_closure("nested-command-log-replay")?;

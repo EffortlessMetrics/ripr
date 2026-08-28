@@ -180,6 +180,7 @@ pub(crate) mod source_promotion_control_tests {
         .collect::<Vec<_>>();
         serde_json::json!({
             "schema": "ripr.source_promotion_resolved_tree_validation.v1",
+            "tool_version": env!("CARGO_PKG_VERSION"),
             "status": "validated",
             "source_parent": identity.source_parent.as_str(),
             "swarm_parent": identity.swarm_parent.as_str(),
@@ -197,10 +198,12 @@ pub(crate) mod source_promotion_control_tests {
                 "verified": true,
             },
             "trusted_checker": {
+                "selection": "running xtask executable from checkout whose HEAD equals source_parent",
                 "source_sha": "1111111111111111111111111111111111111111",
                 "executable_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
             },
             "materialization": {
+                "path_role": "os_temp_disposable_checkout",
                 "reviewed_tree": "3333333333333333333333333333333333333333",
                 "disposable_commit": "6666666666666666666666666666666666666666",
                 "created": true,
@@ -210,18 +213,30 @@ pub(crate) mod source_promotion_control_tests {
                 "directory_removed": true,
                 "worktree_residue_observed": false,
                 "cleanup_failure_reason": null,
+                "authoritative": false,
             },
+            "required_command_catalog": super::super::source_promotion_validate_resolved_tree::REQUIRED_COMMANDS,
             "commands": commands,
             "repository_observation": {
                 "ref_mutation_observed": false,
                 "worktree_registry_changed": false,
             },
+            "packet_contract": {
+                "runner_owned_exclusive_staging": true,
+                "create_new_files": true,
+                "index_written_last": true,
+                "atomic_directory_publish": true,
+                "index": "packet-index.json",
+            },
+            "disposable_git_object_write_attempted": true,
             "authoritative_commit_attempted": false,
             "branch_attempted": false,
             "tag_attempted": false,
             "push_attempted": false,
             "ref_mutation_attempted": false,
             "failure_reasons": [],
+            "invalidation_rules": super::super::source_promotion_validate_resolved_tree::INVALIDATION_RULES,
+            "non_claims": super::super::source_promotion_validate_resolved_tree::NON_CLAIMS,
         })
     }
 
