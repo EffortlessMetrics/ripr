@@ -522,21 +522,17 @@ where
         &options.source_remote_url,
         &options.target_ref,
     );
-    match final_remote {
+    let final_remote_failure = match final_remote {
         Ok(value) => {
             state.remote_state_observed = true;
             state.observed_final_ref = value;
+            None
         }
         Err(reason) => {
             rollback_local_candidate(options, &evidence, &expected, &mut state);
-            return Err((
-                format!("remote candidate-ref state unavailable after push attempt: {reason}"),
-                Some(evidence),
-                state,
-            ));
+            Some(reason)
         }
-    }
-
+    };
     let source_main_result = validate_source_main_authority(options, &evidence);
     state.source_main_unchanged = Some(source_main_result.is_ok());
     let swarm_parent_result = validate_swarm_parent_authority(options, &evidence);
@@ -555,6 +551,14 @@ where
         .and(construction_packet_result)
         .and(remote_authority_result)
         .and(join_result);
+
+    if let Some(reason) = final_remote_failure {
+        return Err((
+            format!("remote candidate-ref state unavailable after push attempt: {reason}"),
+            Some(evidence),
+            state,
+        ));
+    }
 
     if state.observed_final_ref.as_deref() == Some(evidence.join_commit.as_str()) {
         if state.push_process_succeeded != Some(true) {

@@ -2430,7 +2430,11 @@ mod source_promotion_control_tests {
         let unavailable_observation = publish_candidate_ref_inner_with_final_remote_reader(
             &options,
             Some(&context),
-            |_repo, _remote, _reference| {
+            |repo, _remote, _reference| {
+                git_test(
+                    repo,
+                    &["update-ref", SOURCE_MAIN_REF, identity.swarm_parent.as_str()],
+                )?;
                 Err("injected post-push remote observation failure".to_string())
             },
         )
@@ -2453,9 +2457,78 @@ mod source_promotion_control_tests {
             "post-push observation local rollback disposition",
         )?;
         require_equal(
+            unavailable_observation.2.push_process_succeeded,
+            Some(true),
+            "post-push observation preserves push-process truth",
+        )?;
+        require_equal(
+            unavailable_observation.2.target_ref_updated,
+            Some(true),
+            "post-push observation preserves target-update attribution",
+        )?;
+        require(
+            !unavailable_observation.2.remote_state_observed
+                && unavailable_observation.2.observed_final_ref.is_none(),
+            "post-push observation failure must not invent remote state",
+        )?;
+        require_equal(
+            unavailable_observation.2.source_main_unchanged,
+            Some(false),
+            "post-push observation failure still records moved source-main authority",
+        )?;
+        require_equal(
+            unavailable_observation.2.swarm_parent_unchanged,
+            Some(true),
+            "post-push observation failure still records W7 authority",
+        )?;
+        require_equal(
+            unavailable_observation.2.construction_packet_unchanged,
+            Some(true),
+            "post-push observation failure still records construction-packet authority",
+        )?;
+        require_equal(
+            unavailable_observation.2.remote_authority_unchanged,
+            Some(true),
+            "post-push observation failure still records remote authority",
+        )?;
+        require_equal(
             read_optional_local_ref(&repo, &evidence.candidate_ref)?,
             None,
             "post-push observation failure restores the absent local ref",
+        )?;
+        require_equal(
+            read_remote_ref(
+                &repo,
+                &options.source_remote_url,
+                &evidence.candidate_ref,
+            )?,
+            Some(join.clone()),
+            "post-push observation failure leaves the attributed remote join intact",
+        )?;
+        require_equal(
+            read_commit_ref(&repo, SOURCE_MAIN_REF, "moved source main")?,
+            identity.swarm_parent.clone(),
+            "candidate rollback must not rewrite moved source-main authority",
+        )?;
+        let unavailable_report = publication_rejection_report(
+            unavailable_observation.1.as_deref(),
+            Some(options.target_ref.as_str()),
+            &unavailable_observation.0,
+            &unavailable_observation.2,
+        );
+        require_equal(
+            json_string(&unavailable_report, "status"),
+            Some("publication_state_unknown"),
+            "post-push observation failure receipt status",
+        )?;
+        require_equal(
+            json_bool(&unavailable_report, "source_main_unchanged"),
+            Some(false),
+            "post-push observation failure receipt records moved source main",
+        )?;
+        git_test(
+            &repo,
+            &["update-ref", SOURCE_MAIN_REF, identity.source_parent.as_str()],
         )?;
         git_test(
             &repo,
