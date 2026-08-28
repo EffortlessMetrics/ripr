@@ -1730,8 +1730,8 @@ mod tests {
 
     #[test]
     fn synthetic_paths_are_root_independent() -> Result<(), String> {
-        let left = Path::new("C:/one/synthetic-fixture/fixture-repository/.git/evidence.json");
-        let right = Path::new("D:/two/synthetic-fixture/fixture-repository/.git/evidence.json");
+        let left = Path::new("one/root/synthetic-fixture/fixture-repository/.git/evidence.json");
+        let right = Path::new("another/root/synthetic-fixture/fixture-repository/.git/evidence.json");
         if stable_synthetic_path(left) != stable_synthetic_path(right) {
             return Err("synthetic locator retained its absolute root".to_string());
         }
