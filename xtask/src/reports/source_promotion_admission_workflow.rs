@@ -2923,41 +2923,47 @@ mod tests {
     }
 
     #[test]
-    fn j5_replays_built_builder_and_rejected_admission_semantics() -> Result<(), String> {
-        let (builder_root, builder_packet) = write_j5_rejected_test_closure("j5-builder-replay")?;
+    fn rejected_admission_replays_built_builder_and_rejection_semantics() -> Result<(), String> {
+        let (builder_root, builder_packet) =
+            write_admission_rejected_test_closure("rejected-admission-builder-replay")?;
         verify_packet(&builder_packet)?;
         let builder = builder_packet.join("evidence/trusted-builder");
         let builder_receipt = builder.join("trusted-builder.json");
-        let mut mutated_builder = read_json(&builder_receipt, "J5 builder replay fixture")?;
+        let mut mutated_builder = read_json(&builder_receipt, "rejected builder replay fixture")?;
         mutated_builder["commit_tree_attempts"] = Value::from(1);
-        write_pretty_json(&builder_receipt, &mutated_builder, "mutated J5 builder")?;
+        write_pretty_json(
+            &builder_receipt,
+            &mutated_builder,
+            "mutated rejected builder",
+        )?;
         reindex_control_packet(&builder)?;
         reindex_workflow_packet(&builder_packet)?;
         if verify_packet(&builder_packet).is_ok() {
-            return Err("J5 builder authority mutation escaped semantic replay".to_string());
+            return Err("rejected-admission builder mutation escaped semantic replay".to_string());
         }
         fs::remove_dir_all(&builder_root)
-            .map_err(|error| format!("failed to clean J5 builder fixture: {error}"))?;
+            .map_err(|error| format!("failed to clean rejected builder fixture: {error}"))?;
 
         let (admission_root, admission_packet) =
-            write_j5_rejected_test_closure("j5-admission-replay")?;
+            write_admission_rejected_test_closure("rejected-admission-replay")?;
         verify_packet(&admission_packet)?;
         let admission = admission_packet.join("evidence/resolved-tree-admission");
         let admission_receipt = admission.join("resolved-tree-admission.json");
-        let mut mutated_admission = read_json(&admission_receipt, "J5 admission replay fixture")?;
+        let mut mutated_admission =
+            read_json(&admission_receipt, "rejected admission replay fixture")?;
         mutated_admission["source_parent"] = Value::String("f".repeat(40));
         write_pretty_json(
             &admission_receipt,
             &mutated_admission,
-            "mutated J5 admission",
+            "mutated rejected admission",
         )?;
         reindex_control_packet(&admission)?;
         reindex_workflow_packet(&admission_packet)?;
         if verify_packet(&admission_packet).is_ok() {
-            return Err("J5 admission identity mutation escaped semantic replay".to_string());
+            return Err("rejected admission identity mutation escaped semantic replay".to_string());
         }
         fs::remove_dir_all(&admission_root)
-            .map_err(|error| format!("failed to clean J5 admission fixture: {error}"))?;
+            .map_err(|error| format!("failed to clean rejected admission fixture: {error}"))?;
         Ok(())
     }
 
@@ -3090,7 +3096,7 @@ mod tests {
             let (root, packet) = if builder {
                 write_builder_rejected_test_closure(label)?
             } else {
-                write_j5_rejected_test_closure(label)?
+                write_admission_rejected_test_closure(label)?
             };
             let (directory, report_name, summary_key) = if builder {
                 ("trusted-builder", "trusted-builder.json", "trusted_builder")
@@ -3344,7 +3350,7 @@ mod tests {
         ] {
             let (root, packet) = match constructor {
                 "builder" => write_builder_rejected_test_closure(label)?,
-                "admission" => write_j5_rejected_test_closure(label)?,
+                "admission" => write_admission_rejected_test_closure(label)?,
                 _ => write_parseable_rejected_constructor_test_closure(label, false)?,
             };
             verify_packet(&packet)?;
@@ -4554,12 +4560,12 @@ mod tests {
         Ok((root, packet))
     }
 
-    fn write_j5_rejected_test_closure(label: &str) -> Result<(PathBuf, PathBuf), String> {
+    fn write_admission_rejected_test_closure(label: &str) -> Result<(PathBuf, PathBuf), String> {
         let (root, packet) = write_admitted_test_closure_for(label, "constructor_dry_run")?;
-        let mut report = read_json(&packet.join(REPORT_JSON), "J5 workflow fixture")?;
+        let mut report = read_json(&packet.join(REPORT_JSON), "rejected workflow fixture")?;
         let admission = packet.join("evidence/resolved-tree-admission");
         fs::remove_dir_all(&admission)
-            .map_err(|error| format!("failed to replace J5 admission packet: {error}"))?;
+            .map_err(|error| format!("failed to replace rejected admission packet: {error}"))?;
         let receipt = serde_json::json!({
             "schema": "ripr.source_promotion_resolved_tree_admission.v1",
             "status": "rejected",
@@ -4586,7 +4592,7 @@ mod tests {
             "ref_mutation_attempted": false,
             "push_attempted": false,
             "merge_command": null,
-            "failure_reasons": ["synthetic J5 admission rejection"],
+            "failure_reasons": ["synthetic admission rejection"],
             "non_claims": [
                 "A rejected admission is not construction eligibility.",
                 "No exact join object, candidate ref, merge command, release, or publication authority was created.",
@@ -4600,10 +4606,10 @@ mod tests {
         )?;
         let qualification = packet.join("evidence/locators/qualification_receipt/input");
         fs::remove_file(&qualification)
-            .map_err(|error| format!("failed to remove J5 qualification fixture: {error}"))?;
+            .map_err(|error| format!("failed to remove rejected qualification fixture: {error}"))?;
         report["phase"] = Value::String("admission".to_string());
         report["status"] = Value::String("rejected".to_string());
-        report["execution_profile"] = Value::String("j5_negative".to_string());
+        report["execution_profile"] = Value::String("positive_synthetic".to_string());
         report["locators"]["qualification_receipt"] = serde_json::json!({
             "schema": LOCATOR_SCHEMA,
             "status": "not_required",
@@ -4627,15 +4633,15 @@ mod tests {
             "constructor_state": "not_run_before_upload_and_enforcement",
         });
         report["attempts"] = normalized_attempts(&Some(receipt), &None, false);
-        report["failure_reasons"] = serde_json::json!(["synthetic J5 admission rejection"]);
+        report["failure_reasons"] = serde_json::json!(["synthetic admission rejection"]);
         let request = requested_identity_for_report(&report)?;
         let request_bytes = serde_json::to_vec_pretty(&request)
-            .map_err(|error| format!("failed to serialize J5 requested identity: {error}"))?;
+            .map_err(|error| format!("failed to serialize rejected requested identity: {error}"))?;
         fs::write(
             packet.join("evidence/requested-identity.json"),
             &request_bytes,
         )
-        .map_err(|error| format!("failed to write J5 requested identity: {error}"))?;
+        .map_err(|error| format!("failed to write rejected requested identity: {error}"))?;
         report["requested_identity_sha256"] = Value::String(digest_bytes(&request_bytes));
         report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
         rewrite_test_packet_reports_and_index(&packet, &report)?;

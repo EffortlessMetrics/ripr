@@ -554,6 +554,13 @@ fn validate_resolved_tree_binding(
                 .to_string(),
         );
     }
+    validate_resolved_tree_identity_binding(receipt, identity)
+}
+
+fn validate_resolved_tree_identity_binding(
+    receipt: &Value,
+    identity: &PromotionIdentity,
+) -> Result<(), String> {
     if json_string(receipt, "source_parent") != Some(identity.source_parent.as_str())
         || json_string(receipt, "swarm_parent") != Some(identity.swarm_parent.as_str())
         || json_string(receipt, "reviewed_tree") != Some(identity.join_tree.as_str())

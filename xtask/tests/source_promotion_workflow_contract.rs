@@ -1,9 +1,10 @@
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 fn workflow_text() -> Result<String, String> {
     let xtask = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -21,6 +22,173 @@ fn admission_workflow_text() -> Result<String, String> {
         .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
     fs::read_to_string(root.join(".github/workflows/source-promotion-admission.yml"))
         .map_err(|error| format!("read source-promotion admission workflow: {error}"))
+}
+
+fn git_output(
+    cwd: &Path,
+    args: &[&str],
+    environment: &[(&str, &str)],
+    input: Option<&[u8]>,
+) -> Result<String, String> {
+    let mut child = Command::new("git")
+        .current_dir(cwd)
+        .args(args)
+        .envs(environment.iter().copied())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("failed to start git {args:?}: {error}"))?;
+    if let Some(bytes) = input {
+        child
+            .stdin
+            .take()
+            .ok_or_else(|| "git child has no stdin".to_string())?
+            .write_all(bytes)
+            .map_err(|error| format!("failed to write git stdin: {error}"))?;
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("failed to wait for git {args:?}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    String::from_utf8(output.stdout)
+        .map(|value| value.trim().to_string())
+        .map_err(|error| format!("git {args:?} output was not UTF-8: {error}"))
+}
+
+fn path_text(path: &Path) -> Result<&str, String> {
+    path.to_str()
+        .ok_or_else(|| format!("path is not UTF-8: {}", path.display()))
+}
+
+fn j5_request_identity(repo_root: &Path, scratch: &Path) -> Result<Value, String> {
+    let source_parent = git_output(repo_root, &["rev-parse", "HEAD"], &[], None)?;
+    let source_tree = git_output(
+        repo_root,
+        &["rev-parse", &format!("{source_parent}^{{tree}}")],
+        &[],
+        None,
+    )?;
+    let identity_repo = scratch.join("identity-repository");
+    git_output(
+        repo_root,
+        &[
+            "clone",
+            "--local",
+            "--no-hardlinks",
+            "--no-checkout",
+            "--quiet",
+            path_text(repo_root)?,
+            path_text(&identity_repo)?,
+        ],
+        &[],
+        None,
+    )?;
+    git_output(
+        &identity_repo,
+        &["checkout", "--quiet", "--detach", &source_parent],
+        &[],
+        None,
+    )?;
+    let index = scratch.join("j5.index");
+    let index_text = path_text(&index)?;
+    let index_env = [("GIT_INDEX_FILE", index_text)];
+    git_output(
+        &identity_repo,
+        &["read-tree", &source_tree],
+        &index_env,
+        None,
+    )?;
+    let mut ledger = git_output(
+        &identity_repo,
+        &["show", "HEAD:policy/network_allowlist.txt"],
+        &[],
+        None,
+    )?;
+    ledger.push('\n');
+    ledger.push_str(
+        ".github/workflows/stale-network-surface.yml|curl|3|source|stale zero-count row\n",
+    );
+    let repeated = |literal: &str, count: usize| {
+        let mut value = std::iter::repeat_n(literal, count)
+            .collect::<Vec<_>>()
+            .join("\n");
+        value.push('\n');
+        value
+    };
+    for (path, contents) in [
+        ("policy/network_allowlist.txt", ledger),
+        (
+            ".github/workflows/server-archive-qualification.yml",
+            "name: server archive qualification\n# retained J5 fixture: curl\n".to_string(),
+        ),
+        (
+            "crates/ripr/src/output/perl_gap_record_projection.rs",
+            repeated("// retained J5 fixture: curl", 5),
+        ),
+        (
+            "xtask/src/tests.rs",
+            repeated("// retained J5 fixture: curl", 2),
+        ),
+        (
+            ".github/workflows/stale-network-surface.yml",
+            "name: stale network surface\n".to_string(),
+        ),
+    ] {
+        let blob = git_output(
+            &identity_repo,
+            &["hash-object", "-w", "--stdin"],
+            &[],
+            Some(contents.as_bytes()),
+        )?;
+        let cache = format!("100644,{blob},{path}");
+        git_output(
+            &identity_repo,
+            &["update-index", "--add", "--cacheinfo", &cache],
+            &index_env,
+            None,
+        )?;
+    }
+    let reviewed_tree = git_output(&identity_repo, &["write-tree"], &index_env, None)?;
+    let fixed = [
+        ("GIT_AUTHOR_NAME", "RIPR Source Promotion Fixture"),
+        ("GIT_AUTHOR_EMAIL", "source-promotion-fixture@invalid"),
+        ("GIT_AUTHOR_DATE", "2000-01-01T00:00:00+00:00"),
+        ("GIT_COMMITTER_NAME", "RIPR Source Promotion Fixture"),
+        ("GIT_COMMITTER_EMAIL", "source-promotion-fixture@invalid"),
+        ("GIT_COMMITTER_DATE", "2000-01-01T00:00:00+00:00"),
+    ];
+    let swarm_parent = git_output(
+        &identity_repo,
+        &["commit-tree", &reviewed_tree, "-p", &source_parent],
+        &fixed,
+        Some(b"test(promotion): deterministic protected W7 fixture\n"),
+    )?;
+    Ok(json!({
+        "schema": "ripr.source_promotion_admission_request.v1",
+        "source_repository": "EffortlessMetrics/ripr",
+        "source_parent_sha": source_parent,
+        "workflow_source_sha": source_parent,
+        "trusted_checker_identity": format!("source-owned-xtask@{source_parent}"),
+        "swarm_repository": "EffortlessMetrics/ripr-swarm",
+        "protected_w7_ref": format!("refs/tags/ripr-release-0.11.0-{swarm_parent}"),
+        "w7_peeled_sha": swarm_parent,
+        "reviewed_tree_sha": reviewed_tree,
+        "reviewed_tree_carrier_sha": "not_required",
+        "preflight_locator": "",
+        "resolution_manifest_locator": "",
+        "validation_packet_locator": "",
+        "integration_packet_locator": "",
+        "qualification_receipt_locator": "",
+        "receipt_schema": "ripr.source_promotion_admission_workflow.v1",
+        "operation_mode": "constructor_dry_run",
+        "execution_profile": "j5_negative",
+    }))
 }
 
 fn require_fragment(text: &str, fragment: &str) -> Result<(), String> {
@@ -668,4 +836,150 @@ fn admission_workflow_does_not_accept_caller_selected_authority() -> Result<(), 
         }
     }
     Ok(())
+}
+
+#[test]
+fn production_j5_rejection_is_a_self_verifying_workflow_packet() -> Result<(), String> {
+    let xtask = PathBuf::from(env!("CARGO_BIN_EXE_xtask"));
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?
+        .to_path_buf();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("test clock precedes epoch: {error}"))?
+        .as_nanos();
+    let root = repo_root
+        .parent()
+        .ok_or_else(|| "repository root has no temporary-workspace parent".to_string())?
+        .join(format!(
+            ".ripr-production-j5-workflow-{}-{nonce}",
+            std::process::id()
+        ));
+    fs::create_dir(&root)
+        .map_err(|error| format!("failed to create production J5 test root: {error}"))?;
+    let result = (|| {
+        let request = j5_request_identity(&repo_root, &root)?;
+        let request_bytes = serde_json::to_vec_pretty(&request)
+            .map_err(|error| format!("failed to serialize production J5 request: {error}"))?;
+        let request_sha256 = format!("{:x}", Sha256::digest(&request_bytes));
+        let request_path = root.join("requested-identity.json");
+        fs::write(&request_path, &request_bytes)
+            .map_err(|error| format!("failed to write production J5 request: {error}"))?;
+        let workspace = root.join("workspace");
+        fs::create_dir(&workspace)
+            .map_err(|error| format!("failed to create production J5 workspace: {error}"))?;
+        let packet = workspace.join("workflow-packet");
+        let required = |key: &str| {
+            request
+                .get(key)
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("production J5 request is missing {key}"))
+        };
+        let output = Command::new(&xtask)
+            .current_dir(&repo_root)
+            .args([
+                "source-promotion",
+                "run-admission-workflow",
+                "--source-repository",
+                required("source_repository")?,
+                "--source-parent-sha",
+                required("source_parent_sha")?,
+                "--workflow-source-sha",
+                required("workflow_source_sha")?,
+                "--trusted-checker-identity",
+                required("trusted_checker_identity")?,
+                "--swarm-repository",
+                required("swarm_repository")?,
+                "--protected-w7-ref",
+                required("protected_w7_ref")?,
+                "--w7-peeled-sha",
+                required("w7_peeled_sha")?,
+                "--reviewed-tree-sha",
+                required("reviewed_tree_sha")?,
+                "--reviewed-tree-carrier-sha",
+                "not_required",
+                "--preflight-locator",
+                "",
+                "--resolution-manifest-locator",
+                "",
+                "--validation-packet-locator",
+                "",
+                "--integration-packet-locator",
+                "",
+                "--qualification-receipt-locator",
+                "",
+                "--receipt-schema",
+                "ripr.source_promotion_admission_workflow.v1",
+                "--operation-mode",
+                "constructor_dry_run",
+                "--execution-profile",
+                "j5_negative",
+                "--requested-identity",
+                path_text(&request_path)?,
+                "--requested-identity-sha256",
+                &request_sha256,
+                "--workspace-root",
+                path_text(&workspace)?,
+                "--out",
+                path_text(&packet)?,
+            ])
+            .output()
+            .map_err(|error| format!("failed to run production J5 workflow: {error}"))?;
+        if output.status.success()
+            || !String::from_utf8_lossy(&output.stderr)
+                .contains("produced a complete rejected packet")
+        {
+            let disposition = match fs::read_to_string(packet.join("workflow-disposition.json")) {
+                Ok(value) => value,
+                Err(error) => format!("unavailable: {error}"),
+            };
+            return Err(format!(
+                "production J5 workflow did not return its expected rejected disposition: status={} stdout={:?} stderr={:?} disposition={disposition}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout).trim(),
+                String::from_utf8_lossy(&output.stderr).trim(),
+            ));
+        }
+        let verification = Command::new(&xtask)
+            .current_dir(&repo_root)
+            .args([
+                "source-promotion",
+                "verify-admission-workflow",
+                "--packet",
+                path_text(&packet)?,
+                "--requested-identity",
+                path_text(&request_path)?,
+                "--requested-identity-sha256",
+                &request_sha256,
+            ])
+            .output()
+            .map_err(|error| format!("failed to verify production J5 packet: {error}"))?;
+        if !verification.status.success() {
+            return Err(format!(
+                "production J5 packet was not self-verifying: status={} stdout={:?} stderr={:?}",
+                verification.status,
+                String::from_utf8_lossy(&verification.stdout).trim(),
+                String::from_utf8_lossy(&verification.stderr).trim(),
+            ));
+        }
+        let report: Value = serde_json::from_slice(
+            &fs::read(packet.join("workflow-disposition.json"))
+                .map_err(|error| format!("failed to read production J5 disposition: {error}"))?,
+        )
+        .map_err(|error| format!("production J5 disposition is malformed: {error}"))?;
+        if report.get("status").and_then(Value::as_str) != Some("rejected")
+            || report.get("execution_profile").and_then(Value::as_str) != Some("j5_negative")
+            || report["controller_packets"]["trusted_builder"]["status"].as_str() != Some("built")
+            || report["controller_packets"]["resolved_tree_admission"]["status"].as_str()
+                != Some("rejected")
+            || report["attempts"]["constructor_commit_tree_attempts"].as_u64() != Some(0)
+        {
+            return Err("production J5 packet has the wrong disposition or attempts".to_string());
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&root)
+        .map_err(|error| format!("failed to clean production J5 test root: {error}"));
+    result.and(cleanup)
 }

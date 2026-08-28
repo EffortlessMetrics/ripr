@@ -54,7 +54,7 @@ pub(super) fn replay_rejected_builder_packet(
 
 pub(super) fn replay_rejected_admission_closure(
     input: &AdmissionClosureReplayInput<'_>,
-    require_exact_identity: bool,
+    j5_negative: bool,
 ) -> Result<Value, String> {
     let identity = PromotionIdentity {
         source_parent: input.source_parent.to_string(),
@@ -63,7 +63,7 @@ pub(super) fn replay_rejected_admission_closure(
         preflight_sha256: input.preflight_sha256.to_string(),
         resolution_sha256: input.resolution_sha256.to_string(),
     };
-    validate_rejected_admission_prefix(input, &identity)?;
+    validate_rejected_admission_prefix(input, &identity, j5_negative)?;
     let receipt = read_rejected_control_packet(
         input.admission_packet,
         "resolved_tree_admission",
@@ -95,7 +95,7 @@ pub(super) fn replay_rejected_admission_closure(
     ]
     .into_iter()
     .any(|key| !receipt[key].is_null());
-    if (require_exact_identity || has_identity) && !identity.matches_json(&receipt) {
+    if (j5_negative || has_identity) && !identity.matches_json(&receipt) {
         return Err("rejected admission receipt differs from exact workflow identity".to_string());
     }
     if receipt
@@ -350,12 +350,18 @@ fn optional_exact_string(receipt: &Value, key: &str, expected: &str) -> Result<(
 fn validate_rejected_admission_prefix(
     input: &AdmissionClosureReplayInput<'_>,
     identity: &PromotionIdentity,
+    j5_negative: bool,
 ) -> Result<(), String> {
+    let expected_validation_status = if j5_negative {
+        "rejected"
+    } else {
+        "validated"
+    };
     let validation_packet = read_indexed_packet(
         input.validation_packet,
         RESOLVED_TREE_PACKET_SCHEMA,
         None,
-        Some("validated"),
+        Some(expected_validation_status),
         VALIDATION_REPORT,
     )?;
     let validation = packet_json(
@@ -369,8 +375,19 @@ fn validate_rejected_admission_prefix(
         &super::source_promotion_validate_resolved_tree::render_markdown(&validation)?,
         "resolved-tree validation",
     )?;
-    validate_resolved_tree_binding(&validation, identity)?;
-    validate_validation_command_evidence(&validation_packet, &validation)?;
+    if j5_negative {
+        if json_string(&validation, "status") != Some("rejected") {
+            return Err("J5 validation receipt differs from rejected packet status".to_string());
+        }
+        validate_resolved_tree_identity_binding(&validation, identity)?;
+        super::source_promotion_admission_fixture::require_exact_j5_failure(
+            input.validation_packet,
+            &validation,
+        )?;
+    } else {
+        validate_resolved_tree_binding(&validation, identity)?;
+    }
+    validate_validation_command_evidence(&validation_packet, &validation, j5_negative)?;
     let (preflight, preflight_bytes) = read_bound_json(
         input.preflight,
         input.preflight_sha256,
@@ -452,7 +469,7 @@ pub(super) fn replay_admitted_closure(
         "resolved-tree validation",
     )?;
     validate_resolved_tree_binding(&validation, &identity)?;
-    validate_validation_command_evidence(&validation_packet, &validation)?;
+    validate_validation_command_evidence(&validation_packet, &validation, false)?;
 
     let (preflight, preflight_bytes) = read_bound_json(
         input.preflight,
@@ -607,6 +624,7 @@ pub(super) fn replay_admitted_closure(
 fn validate_validation_command_evidence(
     packet: &IndexedPacket,
     validation: &Value,
+    allow_not_run: bool,
 ) -> Result<(), String> {
     let commands = validation
         .get("commands")
@@ -619,6 +637,38 @@ fn validate_validation_command_evidence(
     for (index, command) in commands.iter().enumerate() {
         let name = json_string(command, "command")
             .ok_or_else(|| "resolved-tree command receipt is missing command".to_string())?;
+        if json_bool(command, "evidence_present") == Some(false) {
+            let evidence_fields_are_null = [
+                "exit_code",
+                "stdout_path",
+                "stdout_bytes",
+                "stdout_sha256",
+                "stdout_truncated",
+                "stderr_path",
+                "stderr_bytes",
+                "stderr_sha256",
+                "stderr_truncated",
+            ]
+            .into_iter()
+            .all(|key| command.get(key).is_some_and(Value::is_null));
+            let has_reason = json_string(command, "failure_reason")
+                .is_some_and(|reason| !reason.trim().is_empty());
+            if !allow_not_run
+                || json_string(command, "state") != Some("not_run")
+                || !evidence_fields_are_null
+                || !has_reason
+            {
+                return Err(format!(
+                    "resolved-tree {name} has invalid missing command evidence"
+                ));
+            }
+            continue;
+        }
+        if json_bool(command, "evidence_present") != Some(true) {
+            return Err(format!(
+                "resolved-tree {name} is missing command evidence disposition"
+            ));
+        }
         for stream in ["stdout", "stderr"] {
             let expected_path = format!("commands/{:02}-{name}.{stream}.log", index + 1);
             expected_files.insert(expected_path.clone());

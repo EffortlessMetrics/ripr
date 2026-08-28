@@ -526,18 +526,53 @@ fn require_validation_disposition(
     Ok(())
 }
 
-fn require_exact_j5_failure(packet: &Path, report: &Value) -> Result<(), String> {
+pub(super) fn require_exact_j5_failure(packet: &Path, report: &Value) -> Result<(), String> {
     let commands = report
         .get("commands")
         .and_then(Value::as_array)
         .ok_or_else(|| "J5 validation receipt is missing command evidence".to_string())?;
+    let required = super::source_promotion_validate_resolved_tree::REQUIRED_COMMANDS;
+    if commands.len() != required.len()
+        || commands
+            .iter()
+            .zip(required)
+            .any(|(command, expected)| string(command, "command") != Some(expected))
+    {
+        return Err(
+            "J5 validation receipt differs from the exact required command catalog".to_string(),
+        );
+    }
     let network = commands
         .first()
         .ok_or_else(|| "J5 validation receipt has no network-policy command".to_string())?;
     if string(network, "command") != Some("check-network-policy")
         || string(network, "state") != Some("failed")
+        || network.get("evidence_present").and_then(Value::as_bool) != Some(true)
     {
         return Err("J5 fixture did not fail at the production network-policy seam".to_string());
+    }
+    for command in commands.iter().skip(1) {
+        let exact_not_run = string(command, "state") == Some("not_run")
+            && command.get("evidence_present").and_then(Value::as_bool) == Some(false)
+            && [
+                "exit_code",
+                "stdout_path",
+                "stdout_bytes",
+                "stdout_sha256",
+                "stdout_truncated",
+                "stderr_path",
+                "stderr_bytes",
+                "stderr_sha256",
+                "stderr_truncated",
+            ]
+            .into_iter()
+            .all(|key| command.get(key).is_some_and(Value::is_null))
+            && string(command, "failure_reason").is_some_and(|reason| !reason.trim().is_empty());
+        if !exact_not_run {
+            return Err(
+                "J5 validation receipt has invalid post-failure command evidence".to_string(),
+            );
+        }
     }
     let stderr = string(network, "stderr_path")
         .ok_or_else(|| "J5 network-policy receipt has no stderr path".to_string())?;
@@ -850,8 +885,8 @@ fn combined_output(output: &Output) -> String {
 mod tests {
     use super::{
         QUALIFICATION_LANES, SyntheticProfile, hash_blob, repeated_literal,
-        require_validation_disposition, run_output_with_input, validate_hex,
-        verify_reviewed_tree_carrier,
+        require_exact_j5_failure, require_validation_disposition, run_output_with_input,
+        validate_hex, verify_reviewed_tree_carrier,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -900,6 +935,76 @@ mod tests {
             return Err("J5 fixture literal cardinality moved".to_string());
         }
         Ok(())
+    }
+
+    #[test]
+    fn exact_j5_failure_requires_the_complete_ordered_command_vector() -> Result<(), String> {
+        let root = unique_test_root("exact-j5-command-vector");
+        fs::create_dir_all(root.join("commands"))
+            .map_err(|error| format!("failed to create J5 command evidence root: {error}"))?;
+        let stderr_path = "commands/01-check-network-policy.stderr.log";
+        fs::write(
+            root.join(stderr_path),
+            [
+                ".github/workflows/server-archive-qualification.yml",
+                ".github/workflows/stale-network-surface.yml",
+                "crates/ripr/src/output/perl_gap_record_projection.rs",
+                "xtask/src/tests.rs",
+            ]
+            .join("\n"),
+        )
+        .map_err(|error| format!("failed to write J5 network-policy evidence: {error}"))?;
+        let commands = super::super::source_promotion_validate_resolved_tree::REQUIRED_COMMANDS
+            .iter()
+            .enumerate()
+            .map(|(index, command)| {
+                if index == 0 {
+                    serde_json::json!({
+                        "command": command,
+                        "state": "failed",
+                        "evidence_present": true,
+                        "stderr_path": stderr_path,
+                    })
+                } else {
+                    serde_json::json!({
+                        "command": command,
+                        "state": "not_run",
+                        "evidence_present": false,
+                        "exit_code": null,
+                        "stdout_path": null,
+                        "stdout_bytes": null,
+                        "stdout_sha256": null,
+                        "stdout_truncated": null,
+                        "stderr_path": null,
+                        "stderr_bytes": null,
+                        "stderr_sha256": null,
+                        "stderr_truncated": null,
+                        "failure_reason": "not run because prior required command check-network-policy did not pass",
+                    })
+                }
+            })
+            .collect::<Vec<_>>();
+        let baseline = serde_json::json!({"commands": commands});
+        require_exact_j5_failure(&root, &baseline)?;
+
+        let mut removed = baseline.clone();
+        let removed_commands = removed["commands"]
+            .as_array_mut()
+            .ok_or_else(|| "J5 removal fixture has no commands".to_string())?;
+        removed_commands.remove(2);
+        if require_exact_j5_failure(&root, &removed).is_ok() {
+            return Err("J5 failure oracle accepted a removed required command".to_string());
+        }
+
+        let mut reordered = baseline;
+        let reordered_commands = reordered["commands"]
+            .as_array_mut()
+            .ok_or_else(|| "J5 reorder fixture has no commands".to_string())?;
+        reordered_commands.swap(1, 2);
+        if require_exact_j5_failure(&root, &reordered).is_ok() {
+            return Err("J5 failure oracle accepted reordered required commands".to_string());
+        }
+        remove_test_roots(&[&root])
     }
 
     #[test]
