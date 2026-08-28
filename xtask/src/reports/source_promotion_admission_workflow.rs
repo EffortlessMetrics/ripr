@@ -848,15 +848,25 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, Str
             );
         }
     }
-    if json_string(report, "status") == Some("admitted") {
+    let controller_prefix_passed = [
+        ("trusted_builder", "built"),
+        ("resolved_tree_admission", "admitted"),
+    ]
+    .into_iter()
+    .all(|(key, expected_status)| {
+        report["controller_packets"][key]["available"].as_bool() == Some(true)
+            && json_string(&report["controller_packets"][key], "status") == Some(expected_status)
+    });
+    if json_string(report, "status") == Some("admitted") || controller_prefix_passed {
         let integration_index = closure_index_path(
             &evidence.join("locators/integration_packet"),
             &locators["integration_packet"],
         )?;
         let qualification =
             qualification_required.then(|| evidence.join("locators/qualification_receipt/input"));
-        let construction_packet =
-            construction_required.then(|| evidence.join("exact-join-construction"));
+        let construction_packet = (construction_required
+            && json_string(report, "status") == Some("admitted"))
+        .then(|| evidence.join("exact-join-construction"));
         let replay = super::source_promotion_control::replay_admitted_closure(
             &super::source_promotion_control::AdmissionClosureReplayInput {
                 validation_packet: &evidence.join("locators/validation_packet"),
@@ -886,15 +896,18 @@ fn validate_closure_bindings(root: &Path, report: &Value) -> Result<Vec<u8>, Str
                     .transpose()?,
             },
         )?;
-        let replayed_attempts = normalized_attempts(
-            &Some(replay.admission),
-            &replay.construction,
-            construction_required,
-        );
-        if report.get("attempts") != Some(&replayed_attempts) {
-            return Err(
-                "workflow attempt summary differs from replayed controller receipts".to_string(),
+        if json_string(report, "status") == Some("admitted") {
+            let replayed_attempts = normalized_attempts(
+                &Some(replay.admission),
+                &replay.construction,
+                construction_required,
             );
+            if report.get("attempts") != Some(&replayed_attempts) {
+                return Err(
+                    "workflow attempt summary differs from replayed controller receipts"
+                        .to_string(),
+                );
+            }
         }
     }
     Ok(requested_identity.bytes)
@@ -960,6 +973,31 @@ fn validate_disposition_semantics(
                 && !packet_passed("exact_join_construction", "constructed")))
     {
         return Err("admitted workflow disposition has non-terminal controller state".to_string());
+    }
+    let builder_passed = packet_passed("trusted_builder", "built");
+    let admission_passed = packet_passed("resolved_tree_admission", "admitted");
+    let construction_completed = packet_passed("exact_join_construction", "constructed");
+    if status == "rejected" {
+        match (phase, mode) {
+            ("admission", _) if builder_passed && admission_passed => {
+                return Err(
+                    "rejected admission disposition has no failed controller stage".to_string(),
+                );
+            }
+            ("final", OperationMode::AdmitOnly) if builder_passed && admission_passed => {
+                return Err(
+                    "rejected final admit_only disposition has no failed controller stage"
+                        .to_string(),
+                );
+            }
+            ("final", OperationMode::ConstructorDryRun) if construction_completed => {
+                return Err(
+                    "rejected final constructor disposition has terminal construction evidence"
+                        .to_string(),
+                );
+            }
+            _ => {}
+        }
     }
 
     let failure_reasons = report
@@ -1070,11 +1108,13 @@ fn validate_report(report: &Value) -> Result<(), String> {
     {
         return Err("workflow disposition lacks closed publication reachability proof".to_string());
     }
-    if attempts
+    let admission_receipt_available = attempts
         .get("admission_receipt_available")
         .and_then(Value::as_bool)
-        != Some(true)
-    {
+        .ok_or_else(|| {
+            "workflow disposition is missing admission receipt availability".to_string()
+        })?;
+    if (status == "admitted" || phase == "final") && !admission_receipt_available {
         return Err("workflow disposition has unavailable admission attempt evidence".to_string());
     }
     let construction_receipt_available = attempts
@@ -2714,6 +2754,72 @@ mod tests {
     }
 
     #[test]
+    fn rejected_admission_requires_a_failed_builder_or_admission_stage() -> Result<(), String> {
+        let mut report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
+        report["phase"] = Value::String("admission".to_string());
+        report["status"] = Value::String("rejected".to_string());
+        report["producer"]["normalized_exit_code"] = Value::from(1);
+        report["producer"]["constructor_state"] =
+            Value::String("not_run_before_upload_and_enforcement".to_string());
+        report["failure_reasons"] = serde_json::json!(["fabricated rejection"]);
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        if validate_report(&report).is_ok() {
+            return Err("rejected admission with two passed stages escaped parity".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rejected_admission_accepts_unavailable_admission_receipt_after_builder_failure()
+    -> Result<(), String> {
+        let mut report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
+        report["phase"] = Value::String("admission".to_string());
+        report["status"] = Value::String("rejected".to_string());
+        for key in ["trusted_builder", "resolved_tree_admission"] {
+            report["controller_packets"][key] = serde_json::json!({
+                "path": format!("evidence/{}", key.replace('_', "-")),
+                "available": false,
+                "status": null,
+                "schema": null,
+            });
+        }
+        report["producer"] = serde_json::json!({
+            "normalized_exit_code": 1,
+            "trusted_builder_state": "rejected",
+            "admission_state": "rejected",
+            "constructor_state": "not_run_before_upload_and_enforcement",
+        });
+        report["attempts"]["admission_receipt_available"] = Value::Bool(false);
+        report["failure_reasons"] = serde_json::json!(["builder rejected before admission"]);
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        validate_report(&report)
+    }
+
+    #[test]
+    fn rejected_final_dispositions_require_a_failed_final_stage() -> Result<(), String> {
+        let mut admit_only = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
+        admit_only["status"] = Value::String("rejected".to_string());
+        admit_only["producer"]["normalized_exit_code"] = Value::from(1);
+        admit_only["failure_reasons"] = serde_json::json!(["fabricated rejection"]);
+        admit_only["workflow_identity_sha256"] = Value::String(workflow_identity(&admit_only)?);
+        if validate_report(&admit_only).is_ok() {
+            return Err("rejected final admit_only disposition escaped stage parity".to_string());
+        }
+
+        let mut constructor =
+            test_report("admitted", "constructor_dry_run", "positive_synthetic", 1)?;
+        constructor["status"] = Value::String("rejected".to_string());
+        constructor["producer"]["normalized_exit_code"] = Value::from(1);
+        constructor["producer"]["constructor_state"] = Value::String("rejected".to_string());
+        constructor["failure_reasons"] = serde_json::json!(["fabricated rejection"]);
+        constructor["workflow_identity_sha256"] = Value::String(workflow_identity(&constructor)?);
+        if validate_report(&constructor).is_ok() {
+            return Err("rejected final constructor with constructed evidence escaped".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn admitted_constructor_requires_exactly_one_unreferenced_object() -> Result<(), String> {
         let zero = test_report("admitted", "constructor_dry_run", "positive_synthetic", 0)?;
         let two = test_report("admitted", "constructor_dry_run", "positive_synthetic", 2)?;
@@ -2889,6 +2995,26 @@ mod tests {
         }
         fs::remove_dir_all(&root)
             .map_err(|error| format!("failed to clean failure reason fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn verifier_rejects_digest_rebound_admitted_status_to_rejected() -> Result<(), String> {
+        let (root, packet) = write_test_closure("status-stage-rebound")?;
+        let baseline = verify_packet(&packet)?;
+        let mut moved = baseline;
+        moved["status"] = Value::String("rejected".to_string());
+        moved["producer"]["normalized_exit_code"] = Value::from(1);
+        moved["failure_reasons"] = serde_json::json!(["fabricated rejection"]);
+        moved["workflow_identity_sha256"] = Value::String(workflow_identity(&moved)?);
+        rewrite_test_packet_reports_and_index(&packet, &moved)?;
+        if verify_packet(&packet).is_ok() {
+            return Err(
+                "digest-rebound rejected status escaped unchanged controller evidence".to_string(),
+            );
+        }
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean status parity fixture: {error}"))?;
         Ok(())
     }
 
@@ -3601,6 +3727,9 @@ mod tests {
         if status == "admitted" && mode == "admit_only" {
             return write_admitted_test_closure(label);
         }
+        if status == "rejected" && mode == "constructor_dry_run" {
+            return write_rejected_constructor_test_closure(label, partial_construction);
+        }
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|error| format!("test clock precedes epoch: {error}"))?
@@ -3740,6 +3869,47 @@ mod tests {
 
     fn write_admitted_test_closure(label: &str) -> Result<(PathBuf, PathBuf), String> {
         write_admitted_test_closure_for(label, "admit_only")
+    }
+
+    fn write_rejected_constructor_test_closure(
+        label: &str,
+        partial_construction: bool,
+    ) -> Result<(PathBuf, PathBuf), String> {
+        let (root, packet) = write_admitted_test_closure_for(label, "constructor_dry_run")?;
+        let construction = packet.join("evidence/exact-join-construction");
+        if partial_construction {
+            fs::create_dir(&construction).map_err(|error| {
+                format!("failed to create partial construction fixture: {error}")
+            })?;
+            fs::write(construction.join("partial.log"), b"constructor started\n")
+                .map_err(|error| format!("failed to write partial construction log: {error}"))?;
+            fs::write(
+                construction.join("exact-join-construction.json"),
+                b"{malformed",
+            )
+            .map_err(|error| format!("failed to write malformed construction receipt: {error}"))?;
+        }
+        let mut report = read_json(&packet.join(REPORT_JSON), "rejected constructor fixture")?;
+        let admission = read_json(
+            &packet
+                .join("evidence/resolved-tree-admission")
+                .join("resolved-tree-admission.json"),
+            "rejected constructor admission receipt",
+        )?;
+        report["phase"] = Value::String("final".to_string());
+        report["status"] = Value::String("rejected".to_string());
+        report["controller_packets"]["exact_join_construction"] = packet_state(
+            &construction,
+            "exact-join-construction.json",
+            "evidence/exact-join-construction",
+        );
+        report["producer"]["normalized_exit_code"] = Value::from(1);
+        report["producer"]["constructor_state"] = Value::String("rejected".to_string());
+        report["attempts"] = normalized_attempts(&Some(admission), &None, true);
+        report["failure_reasons"] = serde_json::json!(["synthetic constructor rejection"]);
+        report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+        rewrite_test_packet_reports_and_index(&packet, &report)?;
+        Ok((root, packet))
     }
 
     fn write_admitted_test_closure_for(
