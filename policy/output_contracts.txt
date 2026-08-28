@@ -99,3 +99,30 @@ source_promotion_command_state|passed|Required governed command executed success
 source_promotion_command_state|unavailable|Required governed command could not be executed or its evidence could not be retained.
 source_promotion_path_role|os_temp_disposable_checkout|Materialized reviewed tree lives in an operating-system temporary checkout and is not authoritative.
 source_promotion_path_role|source_checkout_regular_file|Bound sidecar is a non-symlink regular file beneath the exact source checkout.
+source_promotion_control_schema|ripr.source_promotion_trusted_builder.v1|Trusted source-built controller executable receipt schema.
+source_promotion_control_schema|ripr.source_promotion_resolved_tree_admission.v1|Exact resolved-tree admission receipt schema.
+source_promotion_control_schema|ripr.source_promotion_exact_join_construction.v1|Unreferenced exact-J construction receipt schema.
+source_promotion_control_schema|ripr.source_promotion_candidate_ref_publication.v1|Guarded candidate-ref publication receipt schema.
+source_promotion_control_schema|ripr.source_promotion_control_packet.v1|Indexed deterministic controller packet schema.
+source_promotion_control_schema|ripr.source_promotion_integration_index.v1|Typed producer-bound integration receipt index schema.
+source_promotion_control_schema|ripr.source_promotion_tree_qualification.v1|Terminal exact-tree qualification receipt schema consumed by construction.
+source_promotion_control_status|admitted|Exact resolved-tree evidence is eligible for later qualification and construction.
+source_promotion_control_status|built|Trusted builder evidence binds the source-built controller executable.
+source_promotion_control_status|constructed|One exact unreferenced two-parent join object was constructed.
+source_promotion_control_status|published|Machine-readable guarded-push status reported an actual update of the exact target ref, the exact candidate ref was observed at the constructed join, and all bound post-push authorities remained current.
+source_promotion_control_status|published_but_invalidated|The remote candidate ref reached the constructed join but a bound input invalidated during publication or the post-push local candidate-ref observation was unavailable.
+source_promotion_control_status|publication_state_unknown|Final remote state was unavailable or equaled the join without machine-readable actual target-update attribution; an exit-zero up-to-date/no-op push is not publication attribution.
+source_promotion_control_status|reserved_before_side_effects|The exclusive output journal exists, but a missing packet index requires Git and remote reconciliation before retry.
+source_promotion_control_status|rejected|The controller denied authority; counters and observations describe any operation already attempted.
+source_promotion_attempt_field|commit_tree_attempts|Count of guarded git commit-tree starts.
+source_promotion_attempt_field|local_ref_attempts|Count of local candidate-ref create, update, or rollback attempts.
+source_promotion_attempt_field|merge_command_attempts|Count of merge-command emissions; this controller requires zero.
+source_promotion_attempt_field|remote_push_attempts|Count of exact-lease remote push starts.
+source_promotion_qualification_lane|editor_package_linux|Linux clean editor/package proof.
+source_promotion_qualification_lane|editor_package_windows|Windows clean editor/package proof.
+source_promotion_qualification_lane|rust_product|Full Rust and product proof.
+source_promotion_qualification_lane|source_governance|Source-governed policy and contract proof.
+source_promotion_qualification_lane|source_survivors|Source-only survivor proof.
+source_promotion_qualification_lane|trusted_product_journeys|Trusted packaged product journey proof.
+source_promotion_qualification_lane|untrusted_workspace_contract|Production untrusted-workspace zero-work proof.
+source_promotion_qualification_lane|w7_product|Frozen-W7 analyzer, CLI, editor, schema, fixture, and product proof.

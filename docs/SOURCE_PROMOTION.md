@@ -336,6 +336,153 @@ Parent-comparative semantic policy decisions remain reviewer-owned inputs. For
 that receipt into the complete resolution manifest before this command runs the
 source-trusted final-tree checks.
 
+## Source-owned admission, construction, and candidate-ref controller
+
+Issue #1609 adds four typed control-plane subcommands under
+`cargo xtask source-promotion`:
+
+1. `write-trusted-builder-receipt` records the exact clean source/workflow SHA,
+   Rust toolchain, `Cargo.lock`, isolated locked target directory, and running
+   executable digest.
+2. `admit-resolved-tree` binds that producer to the exact validated-tree
+   packet, preflight and resolution bytes, and command-catalog and
+   network-policy integration receipts. The integration-index bytes must match
+   the caller-bound lowercase `--integration-index-sha256` before JSON parsing
+   and again during the final identity snapshot.
+3. `construct-exact-join` consumes the admitted packet and a terminal
+   qualification receipt, rechecks the same caller-bound integration-index
+   digest, and requires the qualification bytes to match the caller-bound
+   `--qualification-receipt-sha256` to create one deterministic, unreferenced,
+   direct two-parent commit object without moving a ref.
+4. `publish-candidate-ref` creates the construction-bound local candidate ref
+   and publishes it only to the bound source repository behind an exact
+   old-or-absent lease.
+
+The typed integration receipts must identify the admitted `SOURCE_PARENT` as
+`producer_source_sha` and the trusted-builder executable as
+`producer_executable_sha256`; matching schemas and status strings alone are not
+producer authority. Admission and construction final snapshots reread every
+indexed packet member and typed integration receipt; unchanged index bytes do
+not authorize changed member bytes.
+
+The local #1609 controller validates exact content identity and internal
+consistency only. Its producer fields and digests do not independently prove
+producer provenance or reviewer acceptance. #1610 owns trusted transport from
+fixed producer repository, commit/ref, path, and digest authority; #1478 owns
+reviewer acceptance of integration evidence, and #1507 owns qualification-lane
+execution and evidence. No local receipt grants merge, publication, or release
+authority.
+
+The tree-qualification receipt has this exact ordered denominator:
+
+```text
+editor_package_linux
+editor_package_windows
+rust_product
+source_governance
+source_survivors
+trusted_product_journeys
+untrusted_workspace_contract
+w7_product
+```
+
+Every lane must be terminal `passed` with a lowercase 64-character evidence
+SHA-256. Missing, extra, reordered, renamed, failed, or evidence-free lanes
+reject. The qualification also binds the admission packet and receipt,
+resolved-tree validation receipt, and admitted network-policy receipt.
+Construction compares the complete qualification receipt bytes with the
+caller-bound digest before parsing and again during the final preconstruction
+reread; a substituted receipt rejects with zero commit-tree attempts.
+
+Controller receipts use numeric `commit_tree_attempts`, `local_ref_attempts`,
+`remote_push_attempts`, and `merge_command_attempts`. Admission performs none
+of those operations. Construction may attempt `commit-tree` once only after
+admission and qualification, and never attempts a ref, push, or merge command.
+Publication never constructs a commit or attempts a merge command; a local-ref
+rollback is a second local-ref attempt and remains visible in the receipt.
+
+The `--out` packet destination is exclusively reserved before any commit-tree,
+local-ref, or remote-push operation. The reservation creates and syncs the
+contents of `control-attempt.json`; a missing `packet-index.json` means final state is
+unknown and must be reconciled before retry. The journal binds the protected
+commit/tree and packet identities, refs, fixed remotes, expected state, and
+maximum operation counters needed for that
+reconciliation. Completed packets retain the
+attempt journal and publish the complete index last. An existing output path or
+unsafe/non-directory parent fails closed without overwriting the earlier packet
+and without advancing a Git-mutation attempt counter. Outputs beneath either
+Git administration directory or a consumed packet/indexed-sidecar root reject
+before any output path is created, so a receipt cannot corrupt its own input.
+Malformed-command rejection paths protect every supplied known input, and the
+comparison resolves filesystem aliases before testing containment.
+This ordering detects process-visible interruption; it does not claim
+power-loss durability for directory entries on every supported filesystem.
+
+Construction performs its complete live reread of refs, tree and sidecar
+digests, indexed packet members, typed integration receipts, and qualification
+bytes immediately before `commit-tree`. A changed or unreadable value stops
+with zero commit-tree attempts.
+
+Construction and publication require `--source-main-ref refs/heads/main`;
+caller-selected aliases never stand in for source authority. Publication
+requires `--target-ref` to equal the construction receipt's
+`candidate_ref`, requires exact matching old-or-absent state locally and
+remotely, and uses
+`--force-with-lease=<target-ref>:<expected-old-or-empty>`. Fetch and push URLs
+must both equal `https://github.com/EffortlessMetrics/ripr.git`; the protected
+W7 ref is reread from
+`https://github.com/EffortlessMetrics/ripr-swarm.git`.
+
+Before local mutation, after creating the local candidate ref but before push,
+and after the push attempt, the controller rereads local and remote source,
+local and remote W7, the complete indexed construction packet, the exact join
+object, and source fetch/push URLs. A stale pre-push reread attempts to roll the
+local ref back to its exact expected old-or-absent state without pushing. If
+the guarded push process fails, or the remote is observed not to have published
+the exact join, the controller likewise attempts to restore only the local
+candidate ref behind an exact-state guard and records whether that rollback
+succeeded. This local-only rollback also applies when a failed push is followed
+by an observed join: the remote ref is never rolled back, the join remains
+unattributed, and the receipt records `publication_state_unknown`.
+An unavailable final remote observation immediately rolls back only the local
+candidate ref behind an exact-state guard, then records every mandatory
+post-push authority reread before returning `publication_state_unknown`;
+remote state remains unknown and is never rolled back.
+
+Publication receipts state what was observed:
+
+The receipt keeps `push_process_succeeded` separate from
+`target_ref_updated`; an exit-zero no-op records true and false respectively.
+Exit-zero malformed or unparseable porcelain records true process success and
+null target-update attribution, remains fail closed, and cannot publish.
+The `atomic_push` and `expected_state_guard_passed` fields describe that
+guarded operation, not the later publication status: both are true for an
+attributed target update, null after an attempted push without attribution,
+and false when no push was attempted. If another actor moves the remote before
+the final reread, the receipt can consequently be `rejected` while retaining
+true operation facts for the controller's attributed update.
+
+- `published` means the guarded push's machine-readable status reported an
+  actual update of the exact target ref, the remote candidate ref was observed
+  at the exact join, and every post-push authority reread remained valid;
+- `published_but_invalidated` means the exact join reached the remote candidate
+  ref but a bound source, W7, packet, object, or URL identity invalidated during
+  publication, or the post-push local candidate-ref observation was
+  unavailable;
+- `publication_state_unknown` means the final remote state could not be read,
+  or it equals the join without an actual target-update attribution; an
+  exit-zero up-to-date/no-op push is not publication attribution; and
+- `rejected` means the controller observed no authoritative publication.
+
+Only `published` is a successful candidate-ref transport result, and even it is
+not source integration or release authority. The other states are stop states;
+do not retry blindly or infer rollback of an observed remote mutation.
+
+The #1609 controller never emits or executes a merge command. Every controller
+receipt keeps `merge_command: null` and `merge_command_attempts: 0`. Issue #1508
+owns the later authoritative promotion candidate and merge-command decision
+after accepted-tree and qualification evidence exist.
+
 ## Source Promotion Contract workflow
 
 Promotion PRs opt into the source-side contract check with this exact body

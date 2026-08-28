@@ -59082,6 +59082,18 @@ fn check_output_contracts() -> Result<(), String> {
         source_promotion_resolved_tree.push_str(&read_text_lossy(Path::new(path))?);
         source_promotion_resolved_tree.push('\n');
     }
+    let mut source_promotion_control = String::new();
+    for path in [
+        "xtask/src/reports/source_promotion_control.rs",
+        "xtask/src/reports/source_promotion_control/core.rs",
+        "xtask/src/reports/source_promotion_control/admission.rs",
+        "xtask/src/reports/source_promotion_control/construction.rs",
+        "xtask/src/reports/source_promotion_control/publication.rs",
+        "xtask/src/reports/source_promotion_control/io.rs",
+    ] {
+        source_promotion_control.push_str(&read_text_lossy(Path::new(path))?);
+        source_promotion_control.push('\n');
+    }
     let mut json_output = String::new();
     for path in [
         "crates/ripr/src/output/json/mod.rs",
@@ -59209,6 +59221,25 @@ fn check_output_contracts() -> Result<(), String> {
                 require_contract_value(
                     "xtask/src/reports/source_promotion_validate_resolved_tree/",
                     &source_promotion_resolved_tree,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
+            "source_promotion_control_schema"
+            | "source_promotion_control_status"
+            | "source_promotion_attempt_field"
+            | "source_promotion_qualification_lane" => {
+                require_contract_value(
+                    "xtask/src/reports/source_promotion_control/",
+                    &source_promotion_control,
                     value,
                     kind,
                     &mut violations,
@@ -68554,6 +68585,7 @@ fn network_policy_patterns() -> Vec<String> {
         concat!("Tcp", "Stream"),
         concat!("cu", "rl"),
         concat!("w", "get"),
+        concat!("\"pu", "sh\""),
     ]
     .iter()
     .map(|value| value.to_string())
@@ -71360,6 +71392,7 @@ mod tests {
     use super::XtaskCommand;
     use super::dispatch;
     use super::lane1_runtime_status_full;
+    use super::network_policy_patterns;
     use super::ripr_swarm_attempt_ledger_latest_attempts;
     use super::ripr_swarm_attempt_ledger_repair_route_quality;
     use super::ripr_swarm_repair_route_quality_attempt_is_failure;
@@ -76509,6 +76542,27 @@ fn has_unwrap_in_name() -> bool {
         let spec_commands: Vec<&str> = specs.iter().map(|s| s.command).collect();
         assert!(spec_commands.contains(&"cargo xtask shape"));
         assert!(spec_commands.contains(&"cargo xtask check-pr"));
+    }
+
+    #[test]
+    fn network_policy_push_pattern_covers_rust_argument_forms() -> Result<(), String> {
+        let patterns = network_policy_patterns();
+        let push = patterns
+            .iter()
+            .find(|pattern| pattern.as_str() == "\"push\"")
+            .ok_or_else(|| "network policy is missing the exact push token".to_string())?;
+        for source in [
+            concat!("Command", "::new(\"git\").arg(\"push\")"),
+            "[\"fetch\", \"push\"]",
+            "[\"fetch\",\n    \"push\"\n]",
+        ] {
+            if !source.contains(push) {
+                return Err(format!(
+                    "push pattern should match candidate source: {source}"
+                ));
+            }
+        }
+        Ok(())
     }
 
     #[test]

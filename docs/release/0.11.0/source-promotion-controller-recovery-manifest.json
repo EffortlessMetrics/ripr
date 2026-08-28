@@ -1,0 +1,300 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_source_promotion_controller_recovery_manifest",
+  "status": "recovered_originals_imported_repairs_finalized",
+  "owner_issue": "EffortlessMetrics/ripr#1609",
+  "failed_transport_pr": "EffortlessMetrics/ripr#1608",
+  "identity_basis": {
+    "repository": "EffortlessMetrics/ripr",
+    "failed_transport_base": {
+      "commit": "2e8e1d5a790ff21dca82f8104a00e703ea6179c5",
+      "tree": "29b019cf8736071d5ecf8903043b4a41b29ceccd"
+    },
+    "failed_transport_head": {
+      "commit": "7e90002d041b219ddc53e01f280ff8a7080010a5",
+      "tree": "ee4f425ed79a75263021417dcafc003f97e1d7b7"
+    },
+    "replacement_checkout": {
+      "branch": "feat/recover-source-promotion-control-1609",
+      "starting_commit": "2e8e1d5a790ff21dca82f8104a00e703ea6179c5",
+      "starting_tree": "29b019cf8736071d5ecf8903043b4a41b29ceccd",
+      "matches_failed_transport_base": true
+    }
+  },
+  "carrier_commits": [
+    {
+      "role": "stage_carrier",
+      "commit": "22c1a8032e11622e2e0fec0d957c2644c06fba7e",
+      "tree": "631da5d33d3e4e2c8b57ffb2200ddede2b587f13",
+      "path": ".github/workflows/one-use-stage-1575-complete2.yml",
+      "git_blob": "2cfe187460f9a92ab06fbf5801d51c5009814413",
+      "bytes": 11036,
+      "sha256": "fd610cb032a4d994155b389fae069bcafc6df467ff2d9478d8400cd8840cfa27"
+    },
+    {
+      "role": "candidate_ref_binding_amendment",
+      "commit": "269300fded25f32b7b15f0168380eff24258606e",
+      "tree": "8247283ab88c68158060dce86a8d9a239eecf3c3",
+      "path": ".github/workflows/one-use-repair-1575-ref-binding.yml",
+      "git_blob": "2b60cab569d9e124e8e3388b3a986913ba10d442",
+      "bytes": 6149,
+      "sha256": "cd7de2d8a3761c3f5b9cdaa629a166ebc9414addd1396475c797953c430eca6d"
+    },
+    {
+      "role": "exact_remote_lease_amendment",
+      "commit": "7e90002d041b219ddc53e01f280ff8a7080010a5",
+      "tree": "ee4f425ed79a75263021417dcafc003f97e1d7b7",
+      "path": ".github/workflows/one-use-repair-1575-remote-lease.yml",
+      "git_blob": "6efa7bc8ecdab263c194377b312957580277487a",
+      "bytes": 6685,
+      "sha256": "d1a86a35640fe1351c297f12d40e5f946b56f12e6665f9184c5bbd7f9a36ef75"
+    }
+  ],
+  "payload_reconstruction": {
+    "algorithm": "concatenate each Git blob's exact consumed prefix in listed order, then decode the complete concatenation as base64",
+    "chunks": [
+      {
+        "sequence": 1,
+        "git_blob": "d1fa6e9db717492e869448ec75f0a8f56c4bcc90",
+        "raw_blob_bytes": 9092,
+        "raw_blob_sha256": "40fe26417c9c56a47278390145feba1e547a7598ed7370b9781b8eb7d60c0ef7",
+        "consumed_prefix_bytes": 8800,
+        "unused_suffix_bytes": 292
+      },
+      {
+        "sequence": 2,
+        "git_blob": "81289ee90ae939469a2e7e54c51414ce989360e1",
+        "raw_blob_bytes": 8800,
+        "raw_blob_sha256": "0d28aa5286244ef4250ca91eb244a6a5646d295f122d2220cc71828c6f4591d3",
+        "consumed_prefix_bytes": 8800,
+        "unused_suffix_bytes": 0
+      },
+      {
+        "sequence": 3,
+        "git_blob": "d48d8b3aba0577f531d3b13dda0894af31b13e89",
+        "raw_blob_bytes": 8800,
+        "raw_blob_sha256": "30351a97c7dad685cba7372b14e512c7c4d5aa929f81a58a7c564d5933fafa16",
+        "consumed_prefix_bytes": 8800,
+        "unused_suffix_bytes": 0
+      },
+      {
+        "sequence": 4,
+        "git_blob": "adc008d5a65f373d8f9b200b41ca60b6ee3e6815",
+        "raw_blob_bytes": 8800,
+        "raw_blob_sha256": "19e33da6a4cb17fa5ef10a75a8befdcb1f1de765de355a5da6133c3f7de1ca6f",
+        "consumed_prefix_bytes": 8800,
+        "unused_suffix_bytes": 0
+      },
+      {
+        "sequence": 5,
+        "git_blob": "2bcd0c601266ccb5fc6b2b9463cb9887f4cd8911",
+        "raw_blob_bytes": 128,
+        "raw_blob_sha256": "3622720a5ca350ffe696d7c7ad909795b85197ada455f791900fe63f687dae68",
+        "consumed_prefix_bytes": 128,
+        "unused_suffix_bytes": 0
+      }
+    ],
+    "encoded_stream": {
+      "encoding": "base64",
+      "bytes": 35328,
+      "sha256": "d5b862c84aef1b3a7a669cf0a50d3726efba5e963d6ac9ed2989732a5a230a36"
+    },
+    "decoded_archive": {
+      "format": "tar.gz",
+      "bytes": 26496,
+      "declared_sha256": "6321329573ad03bea0cadc918791952a6c70e30456a9e5b3fe971385487aa4d1",
+      "observed_sha256": "6321329573ad03bea0cadc918791952a6c70e30456a9e5b3fe971385487aa4d1",
+      "digest_matches": true
+    }
+  },
+  "archive_members": [
+    {
+      "archive_path": "apply_patch.py",
+      "bytes": 1681,
+      "sha256": "cda0a990de90e355bfc9a15696ff01174c255de4be4728f266ba06a193b6c017",
+      "git_blob": "f4c19bd093c6cb14de6ca1e65362795a41b7bb88",
+      "disposition": "excluded_transport_helper",
+      "repository_path": null,
+      "reason": "The replacement is durable Rust source only. This non-Rust carrier helper was not imported or executed; its two integration edits were reproduced as ordinary reviewed source changes against the exact integration preimages below."
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control.rs",
+      "bytes": 607,
+      "imported_original_sha256": "fb20bf0a6bd8d76f32e4a896151e8bef1f77ee53c113896de4659517cc7d5631",
+      "imported_original_git_blob": "60ec195837d42c1764cc5be03790ac6feec8a14d",
+      "disposition": "imported_original_retained_byte_identical",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 607,
+        "sha256": "fb20bf0a6bd8d76f32e4a896151e8bef1f77ee53c113896de4659517cc7d5631",
+        "git_blob": "60ec195837d42c1764cc5be03790ac6feec8a14d",
+        "classification": "byte_identical_to_imported_original",
+        "difference_from_imported_original": "none"
+      }
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control/admission.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control/admission.rs",
+      "bytes": 30081,
+      "imported_original_sha256": "291b7d2049558d7b2ed3121ce799091ddb0e26cbd4190266d8dc2086d36fa498",
+      "imported_original_git_blob": "64fc954c5970e1864bc1075cd8c707a40aa945fa",
+      "disposition": "imported_original_repaired",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 36947,
+        "sha256": "6fc47b622a548d73b3528d547d824844c4a9027de3f9f03b097ea43cc0f316fc",
+        "git_blob": "053326dc566a120ffa568b639c06525d12822e3f",
+        "classification": "intentional_repair_differs_from_imported_original",
+        "difference_from_imported_original": "Adds explicit zero attempt counters to builder and admission receipts, binds each typed integration receipt to the admitted SOURCE_PARENT and trusted builder executable identity, requires the protected W7 ref to equal the admitted SWARM_PARENT, requires the integration-index bytes to match a caller-bound lowercase SHA-256 before parsing, and revalidates the complete validation and builder packets plus every typed integration receipt during each final snapshot rather than trusting unchanged index bytes alone. Each final snapshot is independently compared with the caller-bound source, W7, reviewed-tree, preflight, and resolution identities, so a valid but stably replaced sidecar after initial parsing rejects on the first reread instead of earning admission merely because two later snapshots agree. Builder and admission outputs reject overlap with their build, packet, and indexed-sidecar inputs before creating a receipt path, including malformed-command rejection paths derived from supplied inputs. It emits merge_command: null for every trusted-builder outcome and requires consumers to reject missing or non-null merge-command values. It replaces unchecked builder/admission --out option-pair indexing with fallible access; remaining differences are formatting and fallible value-flow cleanup."
+      }
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control/construction.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control/construction.rs",
+      "bytes": 28265,
+      "imported_original_sha256": "267e78fd400970ae2dd3c8ab221a1e24a497830a02e298dc9189a8f129529212",
+      "imported_original_git_blob": "98c40e05a55d951053d68480c66af2e232338d8c",
+      "disposition": "imported_original_repaired",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 42265,
+        "sha256": "79ac8c24d522ba921be067b0582c86e77d1860680acd24ed8f19d02097100f74",
+        "git_blob": "16766ca583b660e53fbea90fcd3b5afa7a0d8c96",
+        "classification": "intentional_repair_differs_from_imported_original",
+        "difference_from_imported_original": "Requires the protected source main input to be exactly refs/heads/main and validates the admitted transaction before reserving the output or reaching commit-tree. The journal reconciliation_context binds the exact source/W7 parents, reviewed tree, preflight and resolution digests, source/W7/candidate refs, admission and validation packet/receipt digests, caller-bound integration-index and qualification-receipt digests, canonical commit author/timestamp/message identity, and maximum commit-tree/local-ref/push/merge-command attempt counts. Construction compares that complete context immediately after journal reservation and again immediately before commit-tree, so an observed mismatch or unreadable current context rejects without a construction attempt; the production construction helper accepts the expected context and a bounded ValidatedConstructionInputs value explicitly so this boundary is exercised without substituting a test-only guard. It requires integration-index and qualification-receipt bytes to match their caller-bound lowercase SHA-256 values, exact-compares the admitted integration-receipt map with freshly validated integration evidence, binds qualification to the current network-policy digest, and revalidates protected refs, tree and sidecar digests, complete admission and validation packets, every typed integration receipt, and qualification bytes immediately before commit-tree. Construction output also rejects overlap with any consumed packet or indexed-sidecar root before reservation or malformed-command rejection output. It propagates the trusted executable identity into integration-receipt validation, requires the exact ordered eight-lane qualification denominator, records exact attempt counters, boxes the large failure payload, and replaces unchecked --out option-pair and commit-tree output-row indexing with fallible access; remaining differences are formatting cleanup."
+      }
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control/core.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control/core.rs",
+      "bytes": 10516,
+      "imported_original_sha256": "b9a7cdba54f42f227ab2dd834fb77b310515e9456fedd4427cd1a47150542c86",
+      "imported_original_git_blob": "4184f0184a6ae3a60c5a1e6e8cfe9cdedc28ec85",
+      "disposition": "imported_original_repaired",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 12134,
+        "sha256": "82e8abb1403435df1b843f4f1c62fff515b722480449f2aa55f961c3aa4bb4f4",
+        "git_blob": "2d53d707b5877ab2bac5c3d140b423908a3884fc",
+        "classification": "intentional_repair_differs_from_imported_original",
+        "difference_from_imported_original": "Adds the bound source and swarm repository URLs, enforces the source main authority as exactly refs/heads/main rather than a caller-selected head alias, carries required caller-bound integration-index and qualification-receipt SHA-256 inputs, defines the exact ordered qualification-lane denominator, records publication attempt/reread/rollback state with separate push-process and actual-target-update facts, supports equality for full indexed-packet and integration-evidence rereads, and boxes construction/publication failure payloads; remaining differences are formatting cleanup."
+      }
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control/io.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control/io.rs",
+      "bytes": 23754,
+      "imported_original_sha256": "62fd9a21c45ad4482dee44d757575907873f896d1a91748d51ef154f52cf9b87",
+      "imported_original_git_blob": "0bb662519b03518854048b3cb2c91e878e052a6f",
+      "disposition": "imported_original_repaired",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 36047,
+        "sha256": "64ef60d49e8dd3247095535d056b7ce52ced96fb95c29726fb42f2525145cbc3",
+        "git_blob": "bd7da9835a491703fcaf8a5eb5936eb060abec01",
+        "classification": "intentional_repair_differs_from_imported_original",
+        "difference_from_imported_original": "Adds exclusive output-directory reservation before any controlled side effect, immediately and synchronously writes and syncs control-attempt.json with a caller-supplied deterministic reconciliation_context, retains that incomplete journal when finalization fails, and writes packet-index.json last as the completion boundary so a process-interrupted attempt must be reconciled rather than retried blindly; this does not claim portable directory-entry durability across power loss. It discovers both per-worktree and common Git administration directories and rejects output equal to or beneath either one or any stage-protected packet, build, or indexed-sidecar root before creating a path. It protects parse-failure rejection writers from every supplied known input, refuses ambiguous or unavailable output destinations without writing, canonicalizes the deepest existing ancestor to resolve filesystem aliases, and applies case-insensitive comparison on Windows. The construction and publication callers bind protected refs, expected state where applicable, and maximum commit-tree/local-ref/push/merge-command attempt counts into that journal. A shared guard requires the complete current reconciliation context to equal the journaled value and rejects an observed mismatch or unreadable current context after reservation. Bound JSON reads now compare the exact byte digest before parsing. It also adds exact optional local-ref reads that reject symbolic and broken refs instead of treating them as absent, validates candidate refs against Git-invalid control, space, reflog, dot-component, trailing-dot, and dot-lock forms, adds bound remote URL reads, uses --no-deref expected-old guarded local-ref update/delete support for publication rollback, and makes argument-cursor and remote-ref-row access fallible; remaining differences are formatting cleanup."
+      }
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control/publication.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control/publication.rs",
+      "bytes": 18054,
+      "imported_original_sha256": "dd6beceaa4ed261d048161e89044ed79b29e4cd8de23070e3be9e57c0aa91439",
+      "imported_original_git_blob": "807ccdddf2c1880222b97fe1beba8dc2bc2f95cd",
+      "disposition": "imported_original_repaired",
+      "final_post_repair_identity": {
+        "status": "final",
+          "bytes": 40881,
+          "sha256": "9303694e2f2e9432d08ef936fe90d8effd75e3155b7a3cbcca98691b65eb64b3",
+          "git_blob": "0bdb6e5766f1a70202573bbb129c6afe72e9b338",
+        "classification": "intentional_repair_differs_from_imported_original",
+        "difference_from_imported_original": "Binds source and swarm remote authorities, requires the source main ref to be exactly refs/heads/main, and validates the exact constructed transaction and expected local/remote ref state before reserving the output or reaching ref/push side effects. The deterministic publication reconciliation_context binds the exact source/W7 parents, reviewed tree, intended join commit, protected W7 and source-main refs, source/swarm repository URLs, remote and target ref, construction packet/receipt digests, exact expected old-or-absent state, and maximum commit-tree/local-ref/push/merge-command attempt counts. Publication compares that complete context immediately after journal reservation and again immediately before local-ref mutation; full-value equality, including the intended join identity, rejects an observed mismatch, unrelated observed ref state, or unreadable current context without a local-ref or push attempt. Its output rejects overlap with the consumed construction packet before reservation. It performs guarded local candidate-ref mutation with rollback, pushes the immutable verified join object rather than resolving a mutable local source ref, strictly parses machine-readable push status, records process success separately from actual target-update attribution, and preserves exit-zero process truth while recording null attribution and failing closed on malformed, non-UTF-8, or extra status output. It keeps the post-push local candidate reread fallible through mandatory remote reconciliation and derives source-main and W7 authority fields from the same paired local/remote observations used for post-push validation. An unavailable post-push local observation invalidates an otherwise observed publication, while an unavailable remote observation immediately triggers guarded local rollback but still performs and records every mandatory source-main, W7, construction-packet, remote-URL, and join-object reread before returning publication_state_unknown. An unattributed observed join after a failed, exit-zero no-op, or exit-zero unparseable push also triggers guarded local rollback. A successful publication requires both process success and an attributable actual target update plus every post-push authority reread to be true; a coincidental remote join without that attribution is publication_state_unknown, while an attributed update followed by invalidated authority is published_but_invalidated. It preserves true atomic-push and expected-state-guard operation facts for an attributed update even when a later divergent remote observation makes the final status rejected. It records exact attempt counters and rollback outcome, replaces unchecked --out option-pair indexing with fallible access, and never emits a merge command."
+      }
+    },
+    {
+      "archive_path": "xtask/src/reports/source_promotion_control/tests.rs",
+      "repository_path": "xtask/src/reports/source_promotion_control/tests.rs",
+      "bytes": 26119,
+      "imported_original_sha256": "8d485ffb1704a15015efffc193141e55f96d805f3ebd15c576edb8a8ea7bc0bd",
+      "imported_original_git_blob": "1347e20e9375896d97791c23508ea600a735239b",
+      "disposition": "imported_original_repaired",
+      "final_post_repair_identity": {
+        "status": "final",
+          "bytes": 157950,
+          "sha256": "4206a7a4a4fb55604f3be27f0c53b97e263b97682018848b23e50bb19d599666",
+          "git_blob": "b83c18e44291ddf7ed70bb7c35e12da6cbb635c4",
+        "classification": "intentional_repair_differs_from_imported_original",
+        "difference_from_imported_original": "Converts temporary repository cleanup, JSON fixture mutation, and assertion plumbing to fallible test support, disables ambient commit/tag signing in synthetic repositories, and updates fixtures and assertions for producer binding, exact lane denominator, attempt counters, no merge-command authority, guarded local-ref publication, and rollback. It adds discriminating coverage that rejects caller-selected source aliases in favor of exact refs/heads/main, rejects symbolic and broken candidate refs portably without mutating the symbolic referent, rejects Git-invalid candidate-ref forms including an interior dot-lock component, rejects actual main movement before publication mutation, and rejects a stable protected W7 value that differs from the admitted SWARM_PARENT before any authority attempt. It exercises the production admission and construction snapshot functions to reject changed indexed packet members and typed integration receipts behind unchanged index bytes, while separately rejecting well-shaped integration-index and qualification-receipt substitutions against caller-bound digests. An injected production snapshot reader replaces the already parsed preflight or resolution sidecar immediately before the first final admission snapshot and proves the stable replacement rejects on that first call with unchanged refs, zero authority attempts, and no merge command. It proves construction rejects a forged admission and matching qualification that disagree with freshly validated integration receipt bytes before commit-tree, and proves a typed receipt changed after the outer snapshot is rejected by the final live snapshot with zero commit-tree attempts. It requires machine-readable actual target-update attribution plus every post-push authority reread, proves paired authority checks catch remote-only source movement and local-only W7 movement, and proves an unavailable post-push remote observation immediately rolls back the local candidate while still recording a deliberately moved source authority, unchanged W7/construction/remote authorities, preserved push attribution, unavailable remote state, and an intact remote join in a publication_state_unknown receipt. It independently pins the unavailable-observation rollback wording across SPEC-0150, the operator guide, and OUTPUT_SCHEMA. It also proves local rollback when a failed push is followed by an unattributed observed join, and proves exit-zero up-to-date/no-op, malformed-porcelain, and non-UTF-8 output preserve process truth separately from false or null update attribution while leaving any coincidental remote join unknown. It proves an attributed guarded push followed by divergent remote movement rejects while preserving true operation facts, restoring only the local ref, and leaving the divergent remote value untouched. It proves an immediate local-ref race cannot change the immutable join object sent by the real push runner and that the receipt reports the raced local value, proves an unreadable post-push local state remains explicit and invalidates an otherwise observed publication only after remote reconciliation while retaining the local candidate at the attributed remote join for reconciliation without claiming rollback, and independently exact-compares all three publication-status definitions across the spec, operator guide, output schema, and governed output-contract ledger in a dedicated test. It rejects missing or conflicting publication expected-state options, verifies trusted-builder consumers require merge_command: null and both rejection emitters retain it with zero authority attempts, compares the dedicated qualification-lane documentation block against an independent test-only mirror of the SPEC-0150 denominator and separately asserts production equality, and independently pins integration evidence to admission and terminal qualification evidence to construction in OUTPUT_SCHEMA. It proves exclusive pre-side-effect output reservation and deterministic reconciliation_context journaling, rejects normal and linked-worktree Git administration destinations plus builder, admission, construction, and publication input-root overlaps without creating output or corrupting packet readability, invokes all four malformed command entry points to prove rejection packets cannot be nested beneath supplied inputs, and resolves a real filesystem alias before overlap comparison. It preserves and compares the full reserved context through the production side-effect path, invokes the production construction helper with mismatched journal context and bundled ValidatedConstructionInputs and proves zero commit-tree attempts plus unchanged refs, rejects an unrelated intended-join publication context with zero local-ref and push attempts, verifies that the publication journal binds the intended join and construction-packet identity rather than unrelated ref state, and proves failed finalization retains control-attempt.json without publishing packet-index.json."
+      }
+    },
+    {
+      "archive_path": "xtask/tests/fixtures/source_promotion_control/impossible-validated.json",
+      "repository_path": "xtask/tests/fixtures/source_promotion_control/impossible-validated.json",
+      "bytes": 1472,
+      "imported_original_sha256": "9dbc7b962a438d8e70c0b4a89959f8fa1cd04cda542d18d08682691bd091babd",
+      "imported_original_git_blob": "0972b7e103cf602bb6c356f1fc055c4245aec022",
+      "disposition": "imported_original_retained_byte_identical",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 1472,
+        "sha256": "9dbc7b962a438d8e70c0b4a89959f8fa1cd04cda542d18d08682691bd091babd",
+        "git_blob": "0972b7e103cf602bb6c356f1fc055c4245aec022",
+        "classification": "byte_identical_to_imported_original",
+        "difference_from_imported_original": "none"
+      }
+    }
+  ],
+  "integration_preimages": [
+    {
+      "path": "xtask/src/reports/mod.rs",
+      "base_commit": "2e8e1d5a790ff21dca82f8104a00e703ea6179c5",
+      "preimage_git_blob": "79367e4751d2f1da291e3c9dbce2adbbbb27f3be",
+      "preimage_bytes": 3138,
+      "preimage_sha256": "c9c3e68a8ba88af2dc0f82311b1d3f31551e9d7226035d8c2fcef0181cbd7a0f",
+      "integration": "Declare source_promotion_control immediately before source_promotion_validate_resolved_tree and export source_promotion_control plus source_promotion_control_handles immediately before the existing resolved-tree validator export.",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 3278,
+        "sha256": "e26d7a36fc46f03d738308d032cc3284557a35ffa66a90da50be2657f89e8164",
+        "git_blob": "f93639fa0eb20401a4d621c53c7a692c03744f70",
+        "classification": "intentional_integration_differs_from_base_preimage",
+        "difference_from_preimage": "Declares the recovered source_promotion_control module and exports source_promotion_control plus source_promotion_control_handles immediately before the existing resolved-tree validator integration."
+      }
+    },
+    {
+      "path": "xtask/src/dispatch.rs",
+      "base_commit": "2e8e1d5a790ff21dca82f8104a00e703ea6179c5",
+      "preimage_git_blob": "fa94bc791e3a70ddb62f0b53cb738abef78bc2db",
+      "preimage_bytes": 10111,
+      "preimage_sha256": "bfad795557e40cab46ecf2c3bc11fdd1f0aec69a0a1469395bd86728027a2200",
+      "integration": "Route source-promotion arguments accepted by source_promotion_control_handles to source_promotion_control immediately before the existing validate-resolved-tree dispatch arm.",
+      "final_post_repair_identity": {
+        "status": "final",
+        "bytes": 10309,
+        "sha256": "c93b4263cb3ee4d1497852b58ccb029567ba4cc3b7cee2259e0a71201829b939",
+        "git_blob": "3dc9b3fe8ddc44b170bf449989daac5fa8f10f08",
+        "classification": "intentional_integration_differs_from_base_preimage",
+        "difference_from_preimage": "Adds one guarded SourcePromotion dispatch arm that routes the four controller subcommands through source_promotion_control before the existing validate-resolved-tree dispatch arm."
+      }
+    }
+  ],
+  "verification": {
+    "archive_digest": "passed",
+    "payload_git_blob_identities": "passed",
+    "archive_member_inventory": "passed",
+    "archive_member_types": "nine_regular_files_only",
+    "integration_preimage_identities": "passed",
+    "final_post_repair_identities": "passed",
+    "imported_original_comparisons": "passed",
+    "unsafe_archive_paths": 0,
+    "recovered_scripts_executed": false,
+    "carrier_workflows_executed": false,
+    "mismatches": []
+  },
+  "remaining_issue_work_not_claimed_by_manifest": [
+    "Run the focused, policy, traceability, full-repository, and hosted exact-head proof required by issue #1609."
+  ],
+  "authority_boundary": "This manifest proves deterministic recovery of the declared archive and identifies its imported originals and integration preimages. It does not approve the recovered implementation, claim semantic equivalence after repair, execute a carrier or recovered script, create an exact-J object, mutate any ref, authorize source integration, or authorize release publication."
+}

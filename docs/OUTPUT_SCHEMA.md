@@ -13813,3 +13813,93 @@ Receipt paths carry an explicit role rather than ambient authority:
 This receipt proves only the named source-governed repository contracts for one
 exact reviewed tree. It does not construct J, qualify later product or editor
 surfaces, move source or swarm authority, or authorize release publication.
+
+## Source-promotion control packets
+
+The source-owned controller writes indexed JSON/Markdown packets using
+`ripr.source_promotion_control_packet.v1`. Its typed receipts are
+`ripr.source_promotion_trusted_builder.v1`,
+`ripr.source_promotion_resolved_tree_admission.v1`,
+`ripr.source_promotion_exact_join_construction.v1`, and
+`ripr.source_promotion_candidate_ref_publication.v1`. Admission consumes the
+producer-bound `ripr.source_promotion_integration_index.v1` schema; construction
+consumes the terminal `ripr.source_promotion_tree_qualification.v1` schema.
+
+Admission and construction final snapshots reread every indexed packet member
+and typed integration receipt. Matching index-file digests alone do not make
+changed member bytes current. Construction performs the complete final live
+snapshot immediately before its sole `commit-tree` attempt.
+
+Controller status values are `built`, `admitted`, `constructed`, `published`,
+`reserved_before_side_effects`, and `rejected`. `published` means
+machine-readable guarded-push status reported an actual update of the exact
+target ref, the exact join was observed there, and every bound post-push
+authority remained current. Publication additionally uses
+`published_but_invalidated` when the exact remote candidate ref moved but a
+bound input invalidated afterward or the post-push local candidate-ref
+observation was unavailable, and `publication_state_unknown` when a push was
+attempted but its final remote state could not be observed or the exact join
+was observed without a machine-readable actual target-update attribution. An
+exit-zero up-to-date/no-op push is not publication attribution.
+Neither status grants merge or release authority.
+
+Publication receipts report `push_process_succeeded` independently from
+`target_ref_updated`; an exit-zero up-to-date/no-op push records true and false
+respectively and cannot produce `published`. Exit-zero malformed or unparseable
+porcelain records true and null, respectively, and likewise cannot produce
+`published`. `atomic_push` and
+`expected_state_guard_passed` report the guarded operation independently from
+the final status: both are true for an attributed target update, null after an
+attempt without attribution, and false when no push was attempted. A later
+divergent remote observation may therefore produce `rejected` while retaining
+true values for those operation facts.
+
+Every receipt exposes numeric `commit_tree_attempts`, `local_ref_attempts`,
+`remote_push_attempts`, and `merge_command_attempts`. Admission and all
+pre-mutation rejection paths require zero forbidden attempts. This controller
+never emits a merge command, so `merge_command_attempts` remains zero.
+
+Before any construction or publication side effect, the controller exclusively
+creates the requested packet directory and syncs `control-attempt.json` with
+status `reserved_before_side_effects`. A complete packet indexes that journal
+and writes `packet-index.json` last. The journal's deterministic
+`reconciliation_context` binds the protected refs, expected ref state, and
+maximum per-operation attempt counters plus the admitted or constructed
+commit/tree and packet identities. A reserved directory without the index is
+an incomplete attempt with unknown final Git/remote state, not a rejection or
+success receipt, and must be reconciled before retry. This is a
+process-interruption ordering contract, not a portable power-loss durability
+claim for directory entries. Outputs equal to or beneath either Git
+administration directory, a consumed packet, or an indexed-receipt sidecar
+directory reject before any output path is created. This applies to rejection
+packets emitted for malformed commands as well as successful parses, and path
+comparison resolves filesystem aliases before testing containment.
+
+Qualification requires exactly these ordered lane names:
+
+- `editor_package_linux`;
+- `editor_package_windows`;
+- `rust_product`;
+- `source_governance`;
+- `source_survivors`;
+- `trusted_product_journeys`;
+- `untrusted_workspace_contract`;
+- `w7_product`.
+
+Construction and publication accept only `refs/heads/main` as source-main
+authority. Candidate-ref publication binds both source remote URLs to the exact
+source repository, rereads local and remote source/W7 refs and the full indexed
+construction packet before and after mutation, uses an exact expected-state
+lease, requires machine-readable proof that the push actually updated the
+exact target plus every post-push authority bit for `published`, and reconciles
+the remote after every push attempt. A rejected
+remote push, including one whose final remote observation already equals the
+constructed join, attempts to restore only the local candidate ref behind an
+exact-state guard; the controller never rolls a remote ref back. An observed
+join without an actual target-update status remains unattributed and produces
+`publication_state_unknown`, including after an exit-zero up-to-date/no-op
+push.
+An unavailable final remote observation immediately rolls back only the local
+candidate ref behind an exact-state guard, then records every mandatory
+post-push authority reread before returning `publication_state_unknown`;
+remote state remains unknown and is never rolled back.

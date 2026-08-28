@@ -24,6 +24,10 @@ fn source_promotion_output_contract_vocabulary_is_registered_and_checked() -> Re
         "source_promotion_resolved_tree_status",
         "source_promotion_command_state",
         "source_promotion_path_role",
+        "source_promotion_control_schema",
+        "source_promotion_control_status",
+        "source_promotion_attempt_field",
+        "source_promotion_qualification_lane",
     ] {
         if !registry
             .lines()
@@ -46,6 +50,19 @@ fn source_promotion_output_contract_vocabulary_is_registered_and_checked() -> Re
         "unavailable",
         "os_temp_disposable_checkout",
         "source_checkout_regular_file",
+        "ripr.source_promotion_trusted_builder.v1",
+        "ripr.source_promotion_resolved_tree_admission.v1",
+        "ripr.source_promotion_exact_join_construction.v1",
+        "ripr.source_promotion_candidate_ref_publication.v1",
+        "ripr.source_promotion_control_packet.v1",
+        "ripr.source_promotion_integration_index.v1",
+        "ripr.source_promotion_tree_qualification.v1",
+        "published_but_invalidated",
+        "publication_state_unknown",
+        "commit_tree_attempts",
+        "local_ref_attempts",
+        "remote_push_attempts",
+        "merge_command_attempts",
     ] {
         if !schema.contains(value) {
             return Err(format!(

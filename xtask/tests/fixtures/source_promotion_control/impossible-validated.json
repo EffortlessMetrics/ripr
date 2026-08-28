@@ -1,0 +1,43 @@
+{
+  "schema": "ripr.source_promotion_resolved_tree_validation.v1",
+  "status": "validated",
+  "source_parent": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "swarm_parent": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "reviewed_tree": "cccccccccccccccccccccccccccccccccccccccc",
+  "preflight": {
+    "path": "preflight.json",
+    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "verified": true
+  },
+  "resolution_manifest": {
+    "path": "resolution.json",
+    "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "verified": true
+  },
+  "trusted_checker": {
+    "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "executable_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  "materialization": {
+    "reviewed_tree": "cccccccccccccccccccccccccccccccccccccccc",
+    "disposable_commit": "1111111111111111111111111111111111111111",
+    "created": true,
+    "clean_before": true,
+    "clean_after": true,
+    "worktree_remove_succeeded": true,
+    "directory_removed": true,
+    "worktree_residue_observed": false,
+    "cleanup_failure_reason": null
+  },
+  "commands": [],
+  "repository_observation": {
+    "ref_mutation_observed": true,
+    "worktree_registry_changed": false
+  },
+  "authoritative_commit_attempted": true,
+  "branch_attempted": true,
+  "tag_attempted": false,
+  "push_attempted": false,
+  "ref_mutation_attempted": true,
+  "failure_reasons": []
+}
