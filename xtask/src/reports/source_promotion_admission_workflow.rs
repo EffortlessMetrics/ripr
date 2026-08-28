@@ -1033,6 +1033,13 @@ fn validate_disposition_semantics(
     let builder_passed = packet_passed("trusted_builder", "built");
     let admission_passed = packet_passed("resolved_tree_admission", "admitted");
     let construction_completed = packet_passed("exact_join_construction", "constructed");
+    let admission_available =
+        controller_packets["resolved_tree_admission"]["available"].as_bool() == Some(true);
+    if !builder_passed && admission_available {
+        return Err(
+            "workflow disposition has admission evidence after a failed builder stage".to_string(),
+        );
+    }
     let reachable = match (phase, mode, status) {
         ("admission", _, "admitted") => builder_passed && admission_passed,
         ("admission", _, "rejected") => !builder_passed || !admission_passed,
@@ -2994,6 +3001,62 @@ mod tests {
         report["failure_reasons"] = serde_json::json!(["builder rejected before admission"]);
         report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
         validate_report(&report)
+    }
+
+    #[test]
+    fn failed_builder_rejects_every_available_admission_state() -> Result<(), String> {
+        for (builder_label, builder_summary) in [
+            (
+                "unavailable",
+                serde_json::json!({
+                    "path": "evidence/trusted-builder",
+                    "available": false,
+                    "status": null,
+                    "schema": null,
+                }),
+            ),
+            (
+                "rejected",
+                serde_json::json!({
+                    "path": "evidence/trusted-builder",
+                    "available": true,
+                    "status": "rejected",
+                    "schema": "ripr.source_promotion_trusted_builder.v1",
+                }),
+            ),
+        ] {
+            for (admission_label, admission_status) in
+                [("admitted", "admitted"), ("rejected", "rejected")]
+            {
+                let mut report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
+                report["phase"] = Value::String("admission".to_string());
+                report["status"] = Value::String("rejected".to_string());
+                report["controller_packets"]["trusted_builder"] = builder_summary.clone();
+                report["controller_packets"]["resolved_tree_admission"] = serde_json::json!({
+                    "path": "evidence/resolved-tree-admission",
+                    "available": true,
+                    "status": admission_status,
+                    "schema": "ripr.source_promotion_resolved_tree_admission.v1",
+                });
+                report["producer"] = serde_json::json!({
+                    "normalized_exit_code": 1,
+                    "trusted_builder_state": "rejected",
+                    "admission_state": if admission_status == "admitted" { "passed" } else { "rejected" },
+                    "constructor_state": "not_run_before_upload_and_enforcement",
+                });
+                report["attempts"] = normalized_attempts(&None, &None, false);
+                report["failure_reasons"] = serde_json::json!([format!(
+                    "{builder_label} builder with {admission_label} admission"
+                )]);
+                report["workflow_identity_sha256"] = Value::String(workflow_identity(&report)?);
+                if validate_report(&report).is_ok() {
+                    return Err(format!(
+                        "{builder_label} builder accepted available {admission_label} admission"
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     #[test]
