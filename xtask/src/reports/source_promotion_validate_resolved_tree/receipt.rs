@@ -24,11 +24,41 @@ fn command_receipt(
     })
 }
 
-fn command_receipt_is_terminal_pass(receipt: &Value, expected: &str) -> bool {
-    receipt.get("command").and_then(Value::as_str) == Some(expected)
+const COMMAND_RECEIPT_FIELDS: &[&str] = &[
+    "command",
+    "subject_role",
+    "state",
+    "exit_code",
+    "timeout_bound_ms",
+    "evidence_present",
+    "stdout_path",
+    "stdout_bytes",
+    "stdout_sha256",
+    "stdout_truncated",
+    "stderr_path",
+    "stderr_bytes",
+    "stderr_sha256",
+    "stderr_truncated",
+    "failure_reason",
+];
+
+fn command_receipt_has_exact_fields(receipt: &Value) -> bool {
+    receipt.as_object().is_some_and(|object| {
+        object.len() == COMMAND_RECEIPT_FIELDS.len()
+            && COMMAND_RECEIPT_FIELDS
+                .iter()
+                .all(|field| object.contains_key(*field))
+    })
+}
+
+pub(crate) fn command_receipt_is_terminal_pass(receipt: &Value, expected: &str) -> bool {
+    command_receipt_has_exact_fields(receipt)
+        && receipt.get("command").and_then(Value::as_str) == Some(expected)
         && receipt.get("subject_role").and_then(Value::as_str) == Some(command_subject_role(expected))
         && receipt.get("state").and_then(Value::as_str) == Some("passed")
         && receipt.get("exit_code").and_then(Value::as_i64) == Some(0)
+        && receipt.get("timeout_bound_ms").and_then(Value::as_u64)
+            == Some(duration_ms(COMMAND_TIMEOUT))
         && receipt.get("evidence_present").and_then(Value::as_bool) == Some(true)
         && receipt.get("stdout_path").and_then(Value::as_str).is_some()
         && receipt.get("stdout_bytes").and_then(Value::as_u64).is_some()
@@ -45,6 +75,67 @@ fn command_receipt_is_terminal_pass(receipt: &Value, expected: &str) -> bool {
             .is_some_and(|value| is_exact_lower_hex(value, 64))
         && receipt.get("stderr_truncated").and_then(Value::as_bool).is_some()
         && receipt.get("failure_reason").is_some_and(Value::is_null)
+}
+
+pub(crate) fn command_receipt_is_j5_failed(receipt: &Value, expected: &str) -> bool {
+    command_receipt_has_exact_fields(receipt)
+        && receipt.get("command").and_then(Value::as_str) == Some(expected)
+        && receipt.get("subject_role").and_then(Value::as_str)
+            == Some(command_subject_role(expected))
+        && receipt.get("state").and_then(Value::as_str) == Some("failed")
+        && receipt
+            .get("exit_code")
+            .and_then(Value::as_i64)
+            .is_some_and(|exit_code| exit_code != 0)
+        && receipt.get("timeout_bound_ms").and_then(Value::as_u64)
+            == Some(duration_ms(COMMAND_TIMEOUT))
+        && receipt.get("evidence_present").and_then(Value::as_bool) == Some(true)
+        && receipt.get("stdout_path").and_then(Value::as_str).is_some()
+        && receipt.get("stdout_bytes").and_then(Value::as_u64).is_some()
+        && receipt
+            .get("stdout_sha256")
+            .and_then(Value::as_str)
+            .is_some_and(|value| is_exact_lower_hex(value, 64))
+        && receipt.get("stdout_truncated").and_then(Value::as_bool).is_some()
+        && receipt.get("stderr_path").and_then(Value::as_str).is_some()
+        && receipt.get("stderr_bytes").and_then(Value::as_u64).is_some()
+        && receipt
+            .get("stderr_sha256")
+            .and_then(Value::as_str)
+            .is_some_and(|value| is_exact_lower_hex(value, 64))
+        && receipt.get("stderr_truncated").and_then(Value::as_bool).is_some()
+        && receipt
+            .get("failure_reason")
+            .and_then(Value::as_str)
+            .is_some_and(|reason| !reason.trim().is_empty())
+}
+
+pub(crate) fn command_receipt_is_j5_not_run(receipt: &Value, expected: &str) -> bool {
+    command_receipt_has_exact_fields(receipt)
+        && receipt.get("command").and_then(Value::as_str) == Some(expected)
+        && receipt.get("subject_role").and_then(Value::as_str)
+            == Some(command_subject_role(expected))
+        && receipt.get("state").and_then(Value::as_str) == Some("not_run")
+        && receipt.get("exit_code").is_some_and(Value::is_null)
+        && receipt.get("timeout_bound_ms").and_then(Value::as_u64)
+            == Some(duration_ms(COMMAND_TIMEOUT))
+        && receipt.get("evidence_present").and_then(Value::as_bool) == Some(false)
+        && [
+            "stdout_path",
+            "stdout_bytes",
+            "stdout_sha256",
+            "stdout_truncated",
+            "stderr_path",
+            "stderr_bytes",
+            "stderr_sha256",
+            "stderr_truncated",
+        ]
+        .into_iter()
+        .all(|field| receipt.get(field).is_some_and(Value::is_null))
+        && receipt
+            .get("failure_reason")
+            .and_then(Value::as_str)
+            .is_some_and(|reason| !reason.trim().is_empty())
 }
 
 fn commands_are_terminal_green(commands: &[Value]) -> bool {

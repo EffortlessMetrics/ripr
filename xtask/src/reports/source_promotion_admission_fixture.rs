@@ -545,30 +545,16 @@ pub(super) fn require_exact_j5_failure(packet: &Path, report: &Value) -> Result<
     let network = commands
         .first()
         .ok_or_else(|| "J5 validation receipt has no network-policy command".to_string())?;
-    if string(network, "command") != Some("check-network-policy")
-        || string(network, "state") != Some("failed")
-        || network.get("evidence_present").and_then(Value::as_bool) != Some(true)
-    {
+    if !super::source_promotion_validate_resolved_tree::command_receipt_is_j5_failed(
+        network,
+        required[0],
+    ) {
         return Err("J5 fixture did not fail at the production network-policy seam".to_string());
     }
-    for command in commands.iter().skip(1) {
-        let exact_not_run = string(command, "state") == Some("not_run")
-            && command.get("evidence_present").and_then(Value::as_bool) == Some(false)
-            && [
-                "exit_code",
-                "stdout_path",
-                "stdout_bytes",
-                "stdout_sha256",
-                "stdout_truncated",
-                "stderr_path",
-                "stderr_bytes",
-                "stderr_sha256",
-                "stderr_truncated",
-            ]
-            .into_iter()
-            .all(|key| command.get(key).is_some_and(Value::is_null))
-            && string(command, "failure_reason").is_some_and(|reason| !reason.trim().is_empty());
-        if !exact_not_run {
+    for (command, expected) in commands.iter().zip(required).skip(1) {
+        if !super::source_promotion_validate_resolved_tree::command_receipt_is_j5_not_run(
+            command, expected,
+        ) {
             return Err(
                 "J5 validation receipt has invalid post-failure command evidence".to_string(),
             );
@@ -884,10 +870,11 @@ fn combined_output(output: &Output) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        QUALIFICATION_LANES, SyntheticProfile, hash_blob, repeated_literal,
+        QUALIFICATION_LANES, SyntheticProfile, digest_bytes, hash_blob, repeated_literal,
         require_exact_j5_failure, require_validation_disposition, run_output_with_input,
         validate_hex, verify_reviewed_tree_carrier,
     };
+    use serde_json::Value;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::{ExitStatus, Output};
@@ -954,6 +941,15 @@ mod tests {
             .join("\n"),
         )
         .map_err(|error| format!("failed to write J5 network-policy evidence: {error}"))?;
+        let stdout_path = "commands/01-check-network-policy.stdout.log";
+        fs::write(root.join(stdout_path), b"")
+            .map_err(|error| format!("failed to write J5 network-policy stdout: {error}"))?;
+        let stderr_bytes = fs::read(root.join(stderr_path))
+            .map_err(|error| format!("failed to reread J5 network-policy stderr: {error}"))?;
+        let stderr_len = u64::try_from(stderr_bytes.len())
+            .map_err(|error| format!("J5 network-policy stderr length overflowed: {error}"))?;
+        let stderr_sha256 = digest_bytes(&stderr_bytes);
+        let stdout_sha256 = digest_bytes(b"");
         let commands = super::super::source_promotion_validate_resolved_tree::REQUIRED_COMMANDS
             .iter()
             .enumerate()
@@ -961,14 +957,27 @@ mod tests {
                 if index == 0 {
                     serde_json::json!({
                         "command": command,
+                        "subject_role": "reviewed_tree_source_governance_contract",
                         "state": "failed",
+                        "exit_code": 1,
+                        "timeout_bound_ms": 180000,
                         "evidence_present": true,
+                        "stdout_path": stdout_path,
+                        "stdout_bytes": 0,
+                        "stdout_sha256": stdout_sha256.as_str(),
+                        "stdout_truncated": false,
                         "stderr_path": stderr_path,
+                        "stderr_bytes": stderr_len,
+                        "stderr_sha256": stderr_sha256.as_str(),
+                        "stderr_truncated": false,
+                        "failure_reason": "command exited non-zero",
                     })
                 } else {
                     serde_json::json!({
                         "command": command,
+                        "subject_role": if *command == "check-command-catalog" { "source_parent_trusted_checker_self_health" } else { "reviewed_tree_source_governance_contract" },
                         "state": "not_run",
+                        "timeout_bound_ms": 180000,
                         "evidence_present": false,
                         "exit_code": null,
                         "stdout_path": null,
@@ -996,13 +1005,25 @@ mod tests {
             return Err("J5 failure oracle accepted a removed required command".to_string());
         }
 
-        let mut reordered = baseline;
+        let mut reordered = baseline.clone();
         let reordered_commands = reordered["commands"]
             .as_array_mut()
             .ok_or_else(|| "J5 reorder fixture has no commands".to_string())?;
         reordered_commands.swap(1, 2);
         if require_exact_j5_failure(&root, &reordered).is_ok() {
             return Err("J5 failure oracle accepted reordered required commands".to_string());
+        }
+
+        let mut zero_exit = baseline.clone();
+        zero_exit["commands"][0]["exit_code"] = Value::from(0);
+        if require_exact_j5_failure(&root, &zero_exit).is_ok() {
+            return Err("J5 failure oracle accepted a zero failed-command exit".to_string());
+        }
+
+        let mut unknown_authority = baseline;
+        unknown_authority["commands"][0]["merge_authorized"] = Value::Bool(true);
+        if require_exact_j5_failure(&root, &unknown_authority).is_ok() {
+            return Err("J5 failure oracle accepted an unknown authority field".to_string());
         }
         remove_test_roots(&[&root])
     }

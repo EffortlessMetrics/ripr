@@ -638,25 +638,10 @@ fn validate_validation_command_evidence(
         let name = json_string(command, "command")
             .ok_or_else(|| "resolved-tree command receipt is missing command".to_string())?;
         if json_bool(command, "evidence_present") == Some(false) {
-            let evidence_fields_are_null = [
-                "exit_code",
-                "stdout_path",
-                "stdout_bytes",
-                "stdout_sha256",
-                "stdout_truncated",
-                "stderr_path",
-                "stderr_bytes",
-                "stderr_sha256",
-                "stderr_truncated",
-            ]
-            .into_iter()
-            .all(|key| command.get(key).is_some_and(Value::is_null));
-            let has_reason = json_string(command, "failure_reason")
-                .is_some_and(|reason| !reason.trim().is_empty());
             if !allow_not_run
-                || json_string(command, "state") != Some("not_run")
-                || !evidence_fields_are_null
-                || !has_reason
+                || !super::source_promotion_validate_resolved_tree::command_receipt_is_j5_not_run(
+                    command, name,
+                )
             {
                 return Err(format!(
                     "resolved-tree {name} has invalid missing command evidence"
@@ -664,9 +649,18 @@ fn validate_validation_command_evidence(
             }
             continue;
         }
-        if json_bool(command, "evidence_present") != Some(true) {
+        let exact_state = if allow_not_run {
+            super::source_promotion_validate_resolved_tree::command_receipt_is_j5_failed(
+                command, name,
+            )
+        } else {
+            super::source_promotion_validate_resolved_tree::command_receipt_is_terminal_pass(
+                command, name,
+            )
+        };
+        if !exact_state {
             return Err(format!(
-                "resolved-tree {name} is missing command evidence disposition"
+                "resolved-tree {name} has invalid command evidence disposition"
             ));
         }
         for stream in ["stdout", "stderr"] {
