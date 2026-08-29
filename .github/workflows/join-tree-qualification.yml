@@ -271,18 +271,34 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y xvfb
-          xvfb-run -a npm --prefix editors/vscode run test 2>&1 | tee ../evidence/vscode-test.log
           RIPR_TEST_SERVER_PATH="${GITHUB_WORKSPACE}/tree/target/debug/ripr" \
             xvfb-run -a npm --prefix editors/vscode run test:e2e 2>&1 | tee ../evidence/vscode-test-e2e.log
+          RIPR_TEST_SERVER_PATH="${GITHUB_WORKSPACE}/tree/target/debug/ripr" \
+            RIPR_TEST_WORKSPACE_TRUST=untrusted \
+            xvfb-run -a npm --prefix editors/vscode run test:e2e 2>&1 | tee ../evidence/vscode-untrusted.log
 
       - name: Editor host tests (Windows)
         if: runner.os == 'Windows'
         working-directory: tree
         run: |
           set -euo pipefail
-          npm --prefix editors/vscode run test 2>&1 | tee ../evidence/vscode-test.log
           RIPR_TEST_SERVER_PATH="${GITHUB_WORKSPACE}/tree/target/debug/ripr.exe" \
             npm --prefix editors/vscode run test:e2e 2>&1 | tee ../evidence/vscode-test-e2e.log
+          RIPR_TEST_SERVER_PATH="${GITHUB_WORKSPACE}/tree/target/debug/ripr.exe" \
+            RIPR_TEST_WORKSPACE_TRUST=untrusted \
+            npm --prefix editors/vscode run test:e2e 2>&1 | tee ../evidence/vscode-untrusted.log
+
+      - name: Prove the untrusted Workspace Trust host actually ran
+        working-directory: tree
+        run: |
+          set -euo pipefail
+          grep -q "untrusted host keeps an actionable repair packet out of the clipboard" \
+            ../evidence/vscode-untrusted.log \
+            || { echo "::error::untrusted packaged-trust journey is absent from the run"; exit 1; }
+          if grep -qE "^\\s+- untrusted host keeps an actionable repair packet" ../evidence/vscode-untrusted.log; then
+            echo "::error::untrusted packaged-trust journey self-skipped"
+            exit 1
+          fi
 
       - name: Prove no ref, tag, or remote mutation was attempted
         if: always()
