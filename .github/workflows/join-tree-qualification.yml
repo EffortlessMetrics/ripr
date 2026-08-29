@@ -27,12 +27,12 @@ on:
       reviewed_tree:
         description: Exact 40-character reviewed tree object accepted by ripr#1478
         required: false
-        default: b4afc63b6c65e1263b3b906bbcf0f6a16301f5a9
+        default: f61b4b5b650b77843fd0126aa1e6facced48128e
         type: string
       reviewed_tree_ref:
         description: Repository ref that points directly at the reviewed tree object
         required: false
-        default: refs/qualify/join-tree-b4afc63b
+        default: refs/qualify/join-tree-f61b4b5b
         type: string
       preflight_sha256:
         description: Bare 64-hex digest of the finalized P1 preflight receipt
@@ -62,8 +62,8 @@ concurrency:
 env:
   SOURCE_PARENT: ${{ inputs.source_parent || 'ad291d1bc936d00847d9712d2adf9ea56ca19533' }}
   SWARM_PARENT: ${{ inputs.swarm_parent || '83217e97ec6847db41d757f57279a8b1ca433fe6' }}
-  REVIEWED_TREE: ${{ inputs.reviewed_tree || 'b4afc63b6c65e1263b3b906bbcf0f6a16301f5a9' }}
-  REVIEWED_TREE_REF: ${{ inputs.reviewed_tree_ref || 'refs/qualify/join-tree-b4afc63b' }}
+  REVIEWED_TREE: ${{ inputs.reviewed_tree || 'f61b4b5b650b77843fd0126aa1e6facced48128e' }}
+  REVIEWED_TREE_REF: ${{ inputs.reviewed_tree_ref || 'refs/qualify/join-tree-f61b4b5b' }}
   PREFLIGHT_SHA256: ${{ inputs.preflight_sha256 || '5e18d5353f745a919c00a7b42056dd1086af9cf547af311ff5293dd2a59e1549' }}
   RESOLUTION_MANIFEST_SHA256: ${{ inputs.resolution_manifest_sha256 || 'd75b1db4f55cce7d21c6159667ba1e7b87da39de0b98df8ff20e9dd790dce7f0' }}
   VALIDATION_RECEIPT_SHA256: ${{ inputs.validation_receipt_sha256 || '52876fd2a64ddda6dfc48f31fe7e19ec1a395c5d5f58b5cbd08c6c0a98557ca3' }}
