@@ -1,0 +1,23 @@
+{
+  "complete": true,
+  "files": [
+    {
+      "bytes": 373,
+      "path": "control-attempt.json",
+      "sha256": "a7b3e715250c6adf14904c5b7bfd0b1e1f129bd0343332bea90c03fbb305f8e4"
+    },
+    {
+      "bytes": 2465,
+      "path": "resolved-tree-admission.json",
+      "sha256": "0cfbec5d94ac0542e5f81fc69d2355b0d3941a4dca8c2e76a51f76e3bb57f07f"
+    },
+    {
+      "bytes": 2803,
+      "path": "resolved-tree-admission.md",
+      "sha256": "16ee161f9c6cfd5003fa972e4c488b62f8d41396d79d492fdeede0c2a40069f4"
+    }
+  ],
+  "kind": "resolved_tree_admission",
+  "schema": "ripr.source_promotion_control_packet.v1",
+  "status": "admitted"
+}

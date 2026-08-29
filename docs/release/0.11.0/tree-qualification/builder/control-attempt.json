@@ -1,0 +1,8 @@
+{
+  "claim_boundary": "If packet-index.json is absent, a controller attempt was reserved but its final Git and remote state is unknown and must be reconciled before retry.",
+  "complete": false,
+  "kind": "trusted_builder",
+  "packet_schema": "ripr.source_promotion_control_packet.v1",
+  "reconciliation_context": null,
+  "status": "reserved_before_side_effects"
+}

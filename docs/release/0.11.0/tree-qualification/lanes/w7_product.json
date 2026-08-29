@@ -1,0 +1,284 @@
+{
+  "schema": "ripr.source_promotion_tree_qualification_lane.v1",
+  "lane": "w7_product",
+  "join_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+  "claim": "Every named frozen W7 product surface is present in the exact reviewed tree, byte-identical to W7 where it was uncontested.",
+  "assertion_group": "w7_product",
+  "assertions_total": 26,
+  "assertions_passed": 26,
+  "source_receipt_sha256": "aba0e65726ca02961c9b5f83e6ed8abe7992beba317425e32752e5cdfc2800cd",
+  "assertions": [
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/analysis/facts/build.rs",
+      "join_blob": "ea1fb2e8261e05b6ae102a97e3faa9fadcb045a2",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "ea1fb2e8261e05b6ae102a97e3faa9fadcb045a2",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/lsp/backend.rs",
+      "join_blob": "fdd76ad59580d2610ac033c1fe229afc00f003d8",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "fdd76ad59580d2610ac033c1fe229afc00f003d8",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/output/human.rs",
+      "join_blob": "0456947801c77b9eaf541ad396ee11aab88a7ed8",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "0456947801c77b9eaf541ad396ee11aab88a7ed8",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/output/json/report.rs",
+      "join_blob": "b10e33b494b6aeb2dd4dcfb00333311673db5534",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "b10e33b494b6aeb2dd4dcfb00333311673db5534",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/agent/artifact.rs",
+      "join_blob": "dd7b220dd1296e35f248f2b98864b3fd3db3f5d0",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "dd7b220dd1296e35f248f2b98864b3fd3db3f5d0",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/cli/commands/check.rs",
+      "join_blob": "ee3da015aec15a34d8b4809d08df4c80bc06cb08",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "ee3da015aec15a34d8b4809d08df4c80bc06cb08",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/cli/commands/doctor.rs",
+      "join_blob": "f03dcccec46dcdc8cf6dc4537f0f30b340787231",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "f03dcccec46dcdc8cf6dc4537f0f30b340787231",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "editors/vscode/src/downloader.ts",
+      "join_blob": "5ea33e7251eddc5d2ea1973c78325a8d944b758f",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "5ea33e7251eddc5d2ea1973c78325a8d944b758f",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "editors/vscode/src/extension.ts",
+      "join_blob": "ef7b758122164191c036068a561290758e6248d2",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "ef7b758122164191c036068a561290758e6248d2",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 parser-shape probe pipeline survives",
+      "path": "crates/ripr/src/analysis/probes/diff.rs",
+      "needle": "parser_probe_shapes_for_changed_line(index, &changed.path, added.new_side_line, text)",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 transitive public-API surface recording survives",
+      "path": "policy/public_api_surface.txt",
+      "needle": "pub const ripr::lsp::diagnostic_budget::DIAGNOSTIC_BUDGET_SCHEMA_VERSION",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 product policy ledger survives",
+      "path": "policy/dependency_allowlist.txt",
+      "join_blob": "a74c3f542711a0b8c54a957feab9314cf1a403b9",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "a74c3f542711a0b8c54a957feab9314cf1a403b9",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 product policy ledger survives",
+      "path": "policy/workspace_shape.txt",
+      "join_blob": "35a63bb3b7e4ad78f47b5a798d20f8928c6e97e7",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "35a63bb3b7e4ad78f47b5a798d20f8928c6e97e7",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 product policy ledger survives",
+      "path": "policy/no-panic-allowlist.toml",
+      "join_blob": "a389433d34b2971e5dad146b446aab40631162b9",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "a389433d34b2971e5dad146b446aab40631162b9",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 product policy ledger survives",
+      "path": "policy/clippy-exceptions.toml",
+      "join_blob": "f71298fd4ac9a5cd5471a339086101d9a5dab021",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "f71298fd4ac9a5cd5471a339086101d9a5dab021",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 product policy ledger survives",
+      "path": ".ripr/static-language-allowlist.toml",
+      "join_blob": "e421caf2dca55b3de0336d52243fba142ae04e28",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "e421caf2dca55b3de0336d52243fba142ae04e28",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 product policy ledger survives",
+      "path": ".ripr/allow-attributes.txt",
+      "join_blob": "55a998078c1e91cbcdd545e9cd9a011238134d13",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "55a998078c1e91cbcdd545e9cd9a011238134d13",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 command catalog shape survives with the #1557 repair (integrated blob)",
+      "path": "xtask/src/command.rs",
+      "join_blob": "4a1140465a9c65a9d0e80d5cb7b448bb84f0b98b",
+      "present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 fixture-contract implementation is the retained one",
+      "path": "xtask/src/dispatch.rs",
+      "needle": "XtaskCommand::CheckFixtureContracts => super::check_fixture_contracts(),",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 module-level test organisation survives",
+      "path": "xtask/src/main.rs",
+      "needle": "mod tests;",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI/qualification surface the retained governance commands enforce survives",
+      "path": ".github/workflows/ci.yml",
+      "join_blob": "ae42ec6f86c914d43378ee783c169f5973a0be43",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "ae42ec6f86c914d43378ee783c169f5973a0be43",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI/qualification surface the retained governance commands enforce survives",
+      "path": ".github/workflows/routed-rust.yml",
+      "join_blob": "16aa52c15cf2aa5783baa874120b52f6c8c7df82",
+      "present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI/qualification surface the retained governance commands enforce survives",
+      "path": ".github/workflows/windows-advisory.yml",
+      "join_blob": "36ee1c40f2eb9ff682f555b845b1f58eb5ba0455",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "36ee1c40f2eb9ff682f555b845b1f58eb5ba0455",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI/qualification surface the retained governance commands enforce survives",
+      "path": ".github/workflows/windows-packaged-qualification.yml",
+      "join_blob": "4257d4730d15f8d468533bddbf3f41e525f7b998",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "4257d4730d15f8d468533bddbf3f41e525f7b998",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI/qualification surface the retained governance commands enforce survives",
+      "path": ".github/workflows/server-archive-qualification.yml",
+      "join_blob": "54d14b49bde1dbd808e4422b523d3da13afe6a3c",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "54d14b49bde1dbd808e4422b523d3da13afe6a3c",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI/qualification surface the retained governance commands enforce survives",
+      "path": ".github/actions/ripr-check/action.yml",
+      "join_blob": "1918ed0a79820bcddbf61b6920ed986f228694dc",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "1918ed0a79820bcddbf61b6920ed986f228694dc",
+      "matches_parent": true,
+      "result": "pass"
+    }
+  ]
+}

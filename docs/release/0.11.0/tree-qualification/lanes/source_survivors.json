@@ -1,0 +1,221 @@
+{
+  "schema": "ripr.source_promotion_tree_qualification_lane.v1",
+  "lane": "source_survivors",
+  "join_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+  "claim": "Every named source-only survivor is present in the exact reviewed tree, byte-identical to the source parent where it was uncontested.",
+  "assertion_group": "source_survivor",
+  "assertions_total": 21,
+  "assertions_passed": 21,
+  "source_receipt_sha256": "aba0e65726ca02961c9b5f83e6ed8abe7992beba317425e32752e5cdfc2800cd",
+  "assertions": [
+    {
+      "group": "source_survivor",
+      "claim": "source-only bounded subprocess adapter recognition is wired into the retained W7 probe pipeline",
+      "path": "crates/ripr/src/analysis/probes/diff.rs",
+      "needle": "bounded_subprocess_family(index, &changed.path, added.new_side_line, text)",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "bounded subprocess adapter recognizer survives byte-identical to the source parent",
+      "path": "crates/ripr/src/analysis/probes/subprocess.rs",
+      "join_blob": "32fa6f026aee5f9b62bae389945191d7b8ef23b4",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "32fa6f026aee5f9b62bae389945191d7b8ef23b4",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "bounded subprocess adapter spec survives (renumbered to RIPR-SPEC-0151 for identifier collision)",
+      "path": "docs/specs/RIPR-SPEC-0151-bounded-subprocess-adapter-boundary.md",
+      "join_blob": "24d887dc7f5ad924c438aa4a9b9c928939da3303",
+      "present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_validate_resolved_tree/validation.rs",
+      "join_blob": "923eed5cd994a777f84131d2a9660194541ff8c1",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "923eed5cd994a777f84131d2a9660194541ff8c1",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_validate_resolved_tree/materialization.rs",
+      "join_blob": "8b100d4802402d2d662dd08e13e7cdaf46f847cb",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "8b100d4802402d2d662dd08e13e7cdaf46f847cb",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_control/admission.rs",
+      "join_blob": "4e2dbb56288ff00bfb5efb2d70b4443d2b0285a9",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "4e2dbb56288ff00bfb5efb2d70b4443d2b0285a9",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_control/construction.rs",
+      "join_blob": "c3cb00ff76ef37d51ef8f200e66f2be075e7f486",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "c3cb00ff76ef37d51ef8f200e66f2be075e7f486",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_control/publication.rs",
+      "join_blob": "3b90a184c964770794be4d7a2bc907ed87a6a5ff",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "3b90a184c964770794be4d7a2bc907ed87a6a5ff",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_admission_workflow.rs",
+      "join_blob": "a30c130c0970478832a6dd66c5fa3106335c1123",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "a30c130c0970478832a6dd66c5fa3106335c1123",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_verify.rs",
+      "join_blob": "851834903c28d175c81d445113bfe797266727c0",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "851834903c28d175c81d445113bfe797266727c0",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned hosted admission contract survives",
+      "path": ".github/workflows/source-promotion-admission.yml",
+      "join_blob": "a4af19c9fa634648e4922a0a637257e83a4f7e77",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "a4af19c9fa634648e4922a0a637257e83a4f7e77",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned hosted admission contract survives",
+      "path": ".github/workflows/source-promotion-contract.yml",
+      "join_blob": "1bc3f13f1053262acbcf967a299fe1f69b3b867f",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "1bc3f13f1053262acbcf967a299fe1f69b3b867f",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source structured review-warning behavior survives as the schema-conformant warning producer",
+      "path": "crates/ripr/src/output/review_comments.rs",
+      "needle": "review_warnings_json(&warnings)",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source release/publication workflow authority survives",
+      "path": ".github/workflows/publish-extension.yml",
+      "join_blob": "f67d782c661d9f319151671003f5f445cef2e533",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "f67d782c661d9f319151671003f5f445cef2e533",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source release/publication workflow authority survives",
+      "path": ".github/workflows/release-server-binaries.yml",
+      "join_blob": "2fadb1b79c021f40e1cd6f65ccff1179b8b6dafc",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "2fadb1b79c021f40e1cd6f65ccff1179b8b6dafc",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source audit/runbook history survives",
+      "path": "docs/SOURCE_PROMOTION.md",
+      "join_blob": "6952a923819983c80258a34cf0452e65456c4fec",
+      "present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source audit/runbook history survives",
+      "path": "docs/RELEASE_TRANSACTION.md",
+      "join_blob": "c99e42ebb54f5441635ed47769576d0d2198722f",
+      "present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source audit/runbook history survives",
+      "path": "docs/swarm-development.md",
+      "join_blob": "1fd30e7da3250ab4e4c11281c2e2bb951c260de5",
+      "present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "staged source crate version stays pre-0.11",
+      "path": "crates/ripr/Cargo.toml",
+      "needle": "version = \"0.10.1\"",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "staged source changelog section stays pre-0.11",
+      "path": "CHANGELOG.md",
+      "needle": "## 0.10.1 - Bounded subprocess adapter analysis",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "no 0.11.0 release heading is introduced",
+      "path": "CHANGELOG.md",
+      "needle": "## 0.11.0",
+      "expect_present": false,
+      "observed_present": false,
+      "result": "pass"
+    }
+  ]
+}

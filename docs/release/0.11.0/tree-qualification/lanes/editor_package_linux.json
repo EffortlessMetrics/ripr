@@ -1,0 +1,44 @@
+{
+  "schema": "ripr.source_promotion_tree_qualification_lane.v1",
+  "lane": "editor_package_linux",
+  "join_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+  "claim": "Clean extension install, compile and VSIX packaging on hosted Linux.",
+  "artifacts": [
+    {
+      "os": "ubuntu-latest",
+      "artifact": "npm-ci.log",
+      "sha256": "0af0215ffd8ea85bc7664487523cd52516f38448653ef06c6f2991b39569ca5f",
+      "bytes": 1344
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "npm-compile.log",
+      "sha256": "bb3cc36a077678957960779638fd8826474f650e69603caf0185a44053e11bf2",
+      "bytes": 341
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "npm-package.log",
+      "sha256": "0432d511312837332a47001cbf884aa20a7d7804401c550401eae685c41e1c43",
+      "bytes": 1821
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "vsix-identity.txt",
+      "sha256": "67706a70a881943bba96af12cd12fd5a6ed32c8102cabb7e4f198f88a4db7fd8",
+      "bytes": 142
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "vsix-inventory.txt",
+      "sha256": "d6d8d523fd6673d5ec245491ad4208039059d944eed1e38c16f6e694a893f13d",
+      "bytes": 39072
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "server-identity.txt",
+      "sha256": "0dc81aaea67fa0c42d86dabd62fff28418ba6435c9db9398e23a9563db2ae6bd",
+      "bytes": 136
+    }
+  ]
+}

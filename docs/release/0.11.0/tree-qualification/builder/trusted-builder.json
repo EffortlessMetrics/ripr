@@ -1,0 +1,25 @@
+{
+  "authoritative_commit_attempted": false,
+  "cargo_lock_sha256": "fadd84304d7936ca6c611228892face090e5d9d63b820e5e245055865f645241",
+  "clean_checkout": true,
+  "commit_tree_attempts": 0,
+  "executable_sha256": "2240a3753a6028c4b4455771dccca0d6b7716393abf2c4090aa259bee0ef6675",
+  "failure_reasons": [],
+  "isolated_cargo_target_dir": true,
+  "local_ref_attempts": 0,
+  "locked_build": true,
+  "merge_command": null,
+  "merge_command_attempts": 0,
+  "non_claims": [
+    "This packet records build provenance for the exact executable; it does not validate a candidate tree.",
+    "The locked-build and isolated-target-dir facts are accepted only because the source-owned hosted workflow supplies those explicit flags and is separately contract-checked."
+  ],
+  "push_attempted": false,
+  "ref_mutation_attempted": false,
+  "remote_push_attempts": 0,
+  "rust_toolchain": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "schema": "ripr.source_promotion_trusted_builder.v1",
+  "source_parent": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
+  "status": "built",
+  "workflow_source_sha": "ad291d1bc936d00847d9712d2adf9ea56ca19533"
+}

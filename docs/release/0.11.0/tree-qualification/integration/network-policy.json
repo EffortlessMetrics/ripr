@@ -1,0 +1,13 @@
+{
+  "schema": "ripr.source_promotion_network_policy_integration.v1",
+  "status": "integrated",
+  "source_parent": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
+  "swarm_parent": "83217e97ec6847db41d757f57279a8b1ca433fe6",
+  "join_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+  "preflight_sha256": "293b0b1b441068ba84f780500527743b5a7965e150b307be5850846bd518a631",
+  "resolution_manifest_sha256": "1a490e51b35173bf39240c20cce44fb316cbe7c1d61ed30df8e4ada6fdb54ea3",
+  "producer_source_sha": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
+  "producer_executable_sha256": "2240a3753a6028c4b4455771dccca0d6b7716393abf2c4090aa259bee0ef6675",
+  "ref_mutation_attempted": false,
+  "failure_reasons": []
+}

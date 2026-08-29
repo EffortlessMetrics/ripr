@@ -1,0 +1,20 @@
+{
+  "schema": "ripr.source_promotion_tree_qualification_lane.v1",
+  "lane": "untrusted_workspace_contract",
+  "join_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+  "claim": "The packaged extension is exercised in an untrusted Workspace Trust host on hosted Linux and Windows, and the untrusted packaged-trust journey executes rather than self-skipping. Its complement, the trusted-only journeys, are reported pending in this mode by construction and are covered by the trusted run recorded under trusted_product_journeys.",
+  "artifacts": [
+    {
+      "os": "ubuntu-latest",
+      "artifact": "vscode-untrusted.log",
+      "sha256": "8075282332797a91af5b5392e79112446770218d4792b7ebdc07e0e30273da55",
+      "bytes": 33430
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "vscode-untrusted.log",
+      "sha256": "903f58ee8b9c0e9b9eeec711755c6c70b1466ce17c39b82afbe941fb07d8c14e",
+      "bytes": 34408
+    }
+  ]
+}

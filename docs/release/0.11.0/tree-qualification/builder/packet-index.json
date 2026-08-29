@@ -1,0 +1,23 @@
+{
+  "complete": true,
+  "files": [
+    {
+      "bytes": 365,
+      "path": "control-attempt.json",
+      "sha256": "3f7915b402f25bbbabce83bab1b81959785abb75bf2b8cd43ba2a5a185916e26"
+    },
+    {
+      "bytes": 1121,
+      "path": "trusted-builder.json",
+      "sha256": "904d208b67e198ae842834f2ea277b84f8d0bbecc7a8ea5c50c9cbbf5744fa21"
+    },
+    {
+      "bytes": 1459,
+      "path": "trusted-builder.md",
+      "sha256": "14a7b341816249e0fd24dbd02dd976bb681e4de25c926ee18fad83f45f17581c"
+    }
+  ],
+  "kind": "trusted_builder",
+  "schema": "ripr.source_promotion_control_packet.v1",
+  "status": "built"
+}

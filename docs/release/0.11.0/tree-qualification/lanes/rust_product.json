@@ -1,0 +1,92 @@
+{
+  "schema": "ripr.source_promotion_tree_qualification_lane.v1",
+  "lane": "rust_product",
+  "join_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+  "claim": "cargo fmt --check, check, clippy -D warnings, test and doc are terminal green on the exact reviewed tree on hosted Linux and Windows.",
+  "artifacts": [
+    {
+      "os": "ubuntu-latest",
+      "artifact": "host-identity.txt",
+      "sha256": "3b8f55afa4b663e1133207c46ad20799a4b58c043e79531faf2aae08d8299810",
+      "bytes": 335
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "carrier-identity.txt",
+      "sha256": "a89f05f3713ac3b3466b58438bd541c7f2be35bacc3f5276e71eed67a15cd750",
+      "bytes": 168
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "cargo-fmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "cargo-check.log",
+      "sha256": "86d2db01dbe62f4723343bcbf802888b0261c58944631bffa62d97a859dd19bc",
+      "bytes": 13413
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "cargo-clippy.log",
+      "sha256": "b5028af013e8ff9b37f074dd19015363193ce0024df9d2b86f06c92ec5d1903a",
+      "bytes": 213
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "cargo-test.log",
+      "sha256": "9a2d09fa09d852944b3ec526544c42e4f9c7dcd1566e4ed09f2749efb24f74b1",
+      "bytes": 655660
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "cargo-doc.log",
+      "sha256": "35dd88a0cac7d9a294d0d246de13183af610b494bc252bf1072e240dfa211f21",
+      "bytes": 2007
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "host-identity.txt",
+      "sha256": "e9b956c4c2309b0c1c4daf3279a493d71124a1e4adaf2bdc3f4d6432eb70ee63",
+      "bytes": 348
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "carrier-identity.txt",
+      "sha256": "7071b5cd50cbfbd0a2b164c514539d1952d773204b9f7b6ceb965f222c1a9c2a",
+      "bytes": 168
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "cargo-fmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "cargo-check.log",
+      "sha256": "f48b8bcc309bf1932cd901b0cd9c3f4a31e1c65d34ad52140e06b697d3e3b554",
+      "bytes": 13534
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "cargo-clippy.log",
+      "sha256": "a900ac4e63a04979c577d3be0307d5f1ae0c23b56b1d88a3edab600b5a153312",
+      "bytes": 187
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "cargo-test.log",
+      "sha256": "3b73bf1ab23059571cb0ee492113aaa3596b2837d7bf86156d1e393d68e35a28",
+      "bytes": 654177
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "cargo-doc.log",
+      "sha256": "de6e3fe5b2d804e5de8149308dd1275efe85ab9ea2b1bc80531fc367ead2f757",
+      "bytes": 1877
+    }
+  ]
+}

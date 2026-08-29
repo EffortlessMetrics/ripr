@@ -1,0 +1,41 @@
+{
+  "all_required_typed_integration_receipts_present": true,
+  "authoritative_commit_attempted": false,
+  "checker_executable_sha256": "2240a3753a6028c4b4455771dccca0d6b7716393abf2c4090aa259bee0ef6675",
+  "commit_tree_attempts": 0,
+  "constructor_eligible_after_tree_qualification": true,
+  "failure_reasons": [],
+  "final_identity_reread_passed": true,
+  "integration_index_sha256": "8eb7ef1b8a8ad7b25fdde282e4df8c0e83616b3d6ad0b0656f9fe9b8edbd978d",
+  "integration_receipts": {
+    "command_catalog_integration": "c17a7ad12dbadc71cd4b002199b6b0502773d2d54bc69229ed2a7b8ba48da4af",
+    "network_policy_integration": "cbecc3cfeb9c4b50670a80d9852e72c192ca46ddc1fba081ea25500f138e49f8"
+  },
+  "invalidation_rules": [
+    "Any movement in SOURCE_PARENT, W7 ref, JOIN_TREE, finalized P1 bytes, complete manifest bytes, validator packet/index, builder packet/index, integration receipts, or checker executable invalidates this admission.",
+    "A later constructor must also consume a terminal exact TREE_QUALIFICATION receipt before git commit-tree."
+  ],
+  "join_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+  "local_ref_attempts": 0,
+  "merge_command": null,
+  "merge_command_attempts": 0,
+  "non_claims": [
+    "No exact join object was constructed.",
+    "No candidate ref, source ref, tag, release, marketplace, or publication channel was changed.",
+    "Admission is not product/editor qualification and is not release authorization."
+  ],
+  "preflight_sha256": "293b0b1b441068ba84f780500527743b5a7965e150b307be5850846bd518a631",
+  "push_attempted": false,
+  "ref_mutation_attempted": false,
+  "remote_push_attempts": 0,
+  "resolution_manifest_sha256": "1a490e51b35173bf39240c20cce44fb316cbe7c1d61ed30df8e4ada6fdb54ea3",
+  "resolved_tree_packet_index_sha256": "cb4f2f198cc9c109ca50ab76de7968a66eb50b86d2e2e249418c3195907b505d",
+  "resolved_tree_validation_receipt_sha256": "1381eeceb276b29f46cb027286e335daaf40b818ad6e897961dcbfa62b227c6b",
+  "schema": "ripr.source_promotion_resolved_tree_admission.v1",
+  "source_parent": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
+  "status": "admitted",
+  "swarm_parent": "83217e97ec6847db41d757f57279a8b1ca433fe6",
+  "swarm_ref": "refs/tags/ripr-release-0.11.0-83217e97ec6847db41d757f57279a8b1ca433fe6",
+  "trusted_builder_packet_index_sha256": "8d5946553d1cdf145081db4224f09d9ef5b35cd9fafaee02e17369a04b5fca63",
+  "trusted_builder_receipt_sha256": "904d208b67e198ae842834f2ea277b84f8d0bbecc7a8ea5c50c9cbbf5744fa21"
+}

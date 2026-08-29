@@ -1,0 +1,26 @@
+{
+  "schema": "ripr.source_promotion_integration_index.v1",
+  "status": "complete",
+  "source_parent": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
+  "swarm_parent": "83217e97ec6847db41d757f57279a8b1ca433fe6",
+  "join_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+  "preflight_sha256": "293b0b1b441068ba84f780500527743b5a7965e150b307be5850846bd518a631",
+  "resolution_manifest_sha256": "1a490e51b35173bf39240c20cce44fb316cbe7c1d61ed30df8e4ada6fdb54ea3",
+  "required_kinds": [
+    "command_catalog_integration",
+    "network_policy_integration"
+  ],
+  "receipts": [
+    {
+      "kind": "command_catalog_integration",
+      "path": "command-catalog.json",
+      "sha256": "c17a7ad12dbadc71cd4b002199b6b0502773d2d54bc69229ed2a7b8ba48da4af"
+    },
+    {
+      "kind": "network_policy_integration",
+      "path": "network-policy.json",
+      "sha256": "cbecc3cfeb9c4b50670a80d9852e72c192ca46ddc1fba081ea25500f138e49f8"
+    }
+  ],
+  "failure_reasons": []
+}

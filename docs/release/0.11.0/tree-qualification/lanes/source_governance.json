@@ -1,0 +1,44 @@
+{
+  "schema": "ripr.source_promotion_tree_qualification_lane.v1",
+  "lane": "source_governance",
+  "join_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+  "claim": "Every source-governed repository contract passes on the exact reviewed tree, and the source-trusted resolved-tree validator is terminal green.",
+  "artifacts": [
+    {
+      "os": "ubuntu-latest",
+      "artifact": "governance.log",
+      "sha256": "bface5cae126dacad3a9825abb5d6911658d1912adb50c8a1d57ba292b10ab2f",
+      "bytes": 42250
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "goldens.log",
+      "sha256": "b7d70e6b5f78ace48be340cf32df84eb9407cc1dced3237c1df89b24e6a0cd9a",
+      "bytes": 214
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "fixtures.log",
+      "sha256": "ded94da2f6a37e80ee55bbb304a6f05a2117697ae683a8c86b752f71d2f39562",
+      "bytes": 209
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "governance.log",
+      "sha256": "bc7a1fcf9e4e46c07cf9ae09184b428e3d52a593885b5079a9f39b81adf775c8",
+      "bytes": 42158
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "goldens.log",
+      "sha256": "a4b4bc7c8850e32db7afc8eb6233e8819e91b1b3c5597d6b4e043327e2ee9d8f",
+      "bytes": 218
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "fixtures.log",
+      "sha256": "3251b7d2ae4c4bd0545e7f876a4959e38c2e97cfbf9b8b222e1553bd7f9efe27",
+      "bytes": 213
+    }
+  ]
+}

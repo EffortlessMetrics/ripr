@@ -1,0 +1,44 @@
+{
+  "schema": "ripr.source_promotion_tree_qualification_lane.v1",
+  "lane": "editor_package_windows",
+  "join_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+  "claim": "Clean extension install, compile and VSIX packaging on hosted Windows.",
+  "artifacts": [
+    {
+      "os": "windows-latest",
+      "artifact": "npm-ci.log",
+      "sha256": "964b2609ec5dc34f9fbdfd666f0d86f7e718e6a29e881cc8a8a0a5ee5ce92558",
+      "bytes": 1345
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "npm-compile.log",
+      "sha256": "c0e33dbeab3e8531f24f65cc804cbff0bbde38ecbe25afd1eedebb1a1ded6520",
+      "bytes": 310
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "npm-package.log",
+      "sha256": "37d0582fe1992245fa23e1054f8f31a0932b2a8250ef75d17add408ed6439c6a",
+      "bytes": 1811
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "vsix-identity.txt",
+      "sha256": "0e234ffe21bb16f9a54b85996dcd86a4c61d793530c162596ff756f1d56e6ea8",
+      "bytes": 142
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "vsix-inventory.txt",
+      "sha256": "916e77ef66bf298bf64ab5d535bf3986fe61131885aa77e7f4e3d9abfcfdc0ea",
+      "bytes": 39072
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "server-identity.txt",
+      "sha256": "71f6905fcf2f0de6d2d300cc6ee5378540705a2623f45d90ab3b63fe45d3ddd3",
+      "bytes": 140
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "ripr.source_promotion_tree_qualification_lane.v1",
+  "lane": "trusted_product_journeys",
+  "join_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+  "claim": "Editor end-to-end journeys pass against the exact locally built server on hosted Linux and Windows. `npm run test` delegates to the same `vscode-test-e2e` runner, so this is one suite per platform, not two.",
+  "artifacts": [
+    {
+      "os": "ubuntu-latest",
+      "artifact": "vscode-test-e2e.log",
+      "sha256": "0a4e99876113098689038fe6b8a276798401e9d271a8194c66837f74cec4c755",
+      "bytes": 34130
+    },
+    {
+      "os": "ubuntu-latest",
+      "artifact": "server-identity.txt",
+      "sha256": "0dc81aaea67fa0c42d86dabd62fff28418ba6435c9db9398e23a9563db2ae6bd",
+      "bytes": 136
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "vscode-test-e2e.log",
+      "sha256": "0bbd5324338c2363781e668796e4b4f7cc9d67d70d3bafefa875f3bc5a86309a",
+      "bytes": 37544
+    },
+    {
+      "os": "windows-latest",
+      "artifact": "server-identity.txt",
+      "sha256": "71f6905fcf2f0de6d2d300cc6ee5378540705a2623f45d90ab3b63fe45d3ddd3",
+      "bytes": 140
+    }
+  ]
+}
