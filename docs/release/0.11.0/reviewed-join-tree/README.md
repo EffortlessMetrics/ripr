@@ -11,9 +11,9 @@ SOURCE_PARENT   = ad291d1bc936d00847d9712d2adf9ea56ca19533
 SWARM_PARENT    = 83217e97ec6847db41d757f57279a8b1ca433fe6
 SWARM_REF       = refs/tags/ripr-release-0.11.0-83217e97ec6847db41d757f57279a8b1ca433fe6
 MERGE_BASE      = 36909460db013ed3a3238ee8b2fc3ccda1135c15
-JOIN_TREE       = 7d592c00142f850cf08d52baa4c04398870d50a2
-P1_SHA256       = 293b0b1b441068ba84f780500527743b5a7965e150b307be5850846bd518a631
-MANIFEST_SHA256 = 1a490e51b35173bf39240c20cce44fb316cbe7c1d61ed30df8e4ada6fdb54ea3
+JOIN_TREE       = 4ab6e86179f35858c4048a29d0f5cf4a3dabc33a
+P1_SHA256       = 1697c57a493baa78dd3e43a58d4ddb82538615203533b46e157c17017e54558d
+MANIFEST_SHA256 = b807813a81832f25f30f431196619f637e3dbe0c5609ebdf54359c5eedcc174f
 ```
 
 `P1_SHA256` is the SHA-256 of `source-promotion-preflight.json`, the finalized
@@ -38,7 +38,7 @@ survivors, 56 swarm-authority candidates).
 
 ```bash
 # 1. Materialize the reviewed tree and confirm its identity.
-git cat-file -t 7d592c00142f850cf08d52baa4c04398870d50a2   # tree
+git cat-file -t 4ab6e86179f35858c4048a29d0f5cf4a3dabc33a   # tree
 
 # 2. Regenerate P1 with the frozen W7 producer checked out at SWARM_PARENT.
 cargo xtask source-promotion preflight \
@@ -48,7 +48,7 @@ cargo xtask source-promotion preflight \
   --source-repo <ripr checkout at SOURCE_PARENT> \
   --swarm-repo <ripr-swarm checkout> \
   --version 0.11.0 \
-  --resolved-tree 7d592c00142f850cf08d52baa4c04398870d50a2 \
+  --resolved-tree 4ab6e86179f35858c4048a29d0f5cf4a3dabc33a \
   --out <dir>
 
 # 3. Re-run the source-trusted validator from a ripr checkout whose HEAD is
@@ -56,11 +56,11 @@ cargo xtask source-promotion preflight \
 cargo xtask source-promotion validate-resolved-tree \
   --source-parent ad291d1bc936d00847d9712d2adf9ea56ca19533 \
   --swarm-parent 83217e97ec6847db41d757f57279a8b1ca433fe6 \
-  --reviewed-tree 7d592c00142f850cf08d52baa4c04398870d50a2 \
+  --reviewed-tree 4ab6e86179f35858c4048a29d0f5cf4a3dabc33a \
   --preflight <dir>/source-promotion-preflight.json \
-  --preflight-sha256 293b0b1b441068ba84f780500527743b5a7965e150b307be5850846bd518a631 \
+  --preflight-sha256 1697c57a493baa78dd3e43a58d4ddb82538615203533b46e157c17017e54558d \
   --resolution-manifest resolution-manifest.json \
-  --resolution-sha256 1a490e51b35173bf39240c20cce44fb316cbe7c1d61ed30df8e4ada6fdb54ea3 \
+  --resolution-sha256 b807813a81832f25f30f431196619f637e3dbe0c5609ebdf54359c5eedcc174f \
   --out <dir>/validation
 ```
 
@@ -162,6 +162,40 @@ carrying one reviewer-applied identifier correction described below.
    carrier commit. A worktree holding an uncommitted merge still has the source
    parent at `HEAD`, so every test that resolves content through `git HEAD` was
    silently exercising the source parent rather than the join.
+
+8. **Promotion-scale `git diff --check`.** `cargo xtask precommit` diffs the merge
+   base against the head, so a promotion PR lints the entire imported W7 range.
+   It flagged 26 pre-existing trailing-whitespace occurrences: 16 in Markdown
+   hard line breaks, 10 in `.patch`/`.diff` fixtures where the trailing space is
+   the payload under test. `.gitattributes` now declares whitespace linting
+   inapplicable to that content rather than editing characters the fixtures
+   depend on. Discriminating control, same tree and command: 0 violations with
+   the attributes, 26 without.
+
+9. **A CI cross-check that never functioned.** W7's `ci.yml` passes
+   `--check-output target/ripr/pr/check.json` to `ripr-review-comments`, but no
+   step in that job produces the file: it is written by the `pr-evidence`
+   command, which `ci.yml` never runs, and the step's own producer deletes any
+   stale copy first. The source parent runs the same command without those
+   arguments and passes. The arguments are removed; ripr#1623 carries the proper
+   restoration with its missing producer and a negative control.
+
+10. **A racing Windows deadline in a W7-only test.**
+    `deadline_kills_pipe_inheriting_descendants_without_blocking_the_reader`
+    failed twice on hosted `windows-latest` with `descendant PID marker was not
+    written`. The production behaviour under test worked -- the deadline fired
+    and returned the named timeout error -- but the setup script does
+    `Start-Process` then `Set-Content`, and a five-second deadline kills the tree
+    between them when two PowerShell cold starts do not fit. Polling cannot help:
+    after the kill the marker is never written at all. The deadline is now
+    fifteen seconds; the descendant still sleeps sixty, so the "was the inherited
+    writer terminated" discriminator is unchanged, and the thirty-second bound
+    still holds with 2x margin.
+
+Items 8 to 10 are conditions the promotion *surfaced* rather than caused. None is
+reachable by an ordinary pull request in either repository: they require a diff
+that imports 860 commits, a label that is normally unset, or a loaded hosted
+Windows runner.
 
 ## Non-claims
 

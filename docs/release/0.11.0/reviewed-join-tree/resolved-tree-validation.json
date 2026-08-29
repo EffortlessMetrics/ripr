@@ -239,9 +239,9 @@
     "cleanup_failure_reason": null,
     "created": true,
     "directory_removed": true,
-    "disposable_commit": "a56e572ebe89ac708bb1d7e5755998e45319fae3",
+    "disposable_commit": "0974d1cfbbc180dcab04098f22ce5c2596e1260c",
     "path_role": "os_temp_disposable_checkout",
-    "reviewed_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+    "reviewed_tree": "4ab6e86179f35858c4048a29d0f5cf4a3dabc33a",
     "worktree_remove_succeeded": true,
     "worktree_residue_observed": false
   },
@@ -263,7 +263,7 @@
   "preflight": {
     "path": "target/1478/source-promotion-preflight.json",
     "path_role": "source_checkout_regular_file",
-    "sha256": "293b0b1b441068ba84f780500527743b5a7965e150b307be5850846bd518a631",
+    "sha256": "1697c57a493baa78dd3e43a58d4ddb82538615203533b46e157c17017e54558d",
     "verified": true
   },
   "push_attempted": false,
@@ -290,10 +290,10 @@
   "resolution_manifest": {
     "path": "target/1478/resolution-manifest.json",
     "path_role": "source_checkout_regular_file",
-    "sha256": "1a490e51b35173bf39240c20cce44fb316cbe7c1d61ed30df8e4ada6fdb54ea3",
+    "sha256": "b807813a81832f25f30f431196619f637e3dbe0c5609ebdf54359c5eedcc174f",
     "verified": true
   },
-  "reviewed_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+  "reviewed_tree": "4ab6e86179f35858c4048a29d0f5cf4a3dabc33a",
   "schema": "ripr.source_promotion_resolved_tree_validation.v1",
   "source_parent": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
   "status": "validated",
@@ -301,7 +301,7 @@
   "tag_attempted": false,
   "tool_version": "0.1.0",
   "trusted_checker": {
-    "executable_sha256": "f521ad71bc0e2e54e74988c2fd94f149fbd16e00628b46c2870f40c841a1cd62",
+    "executable_sha256": "2240a3753a6028c4b4455771dccca0d6b7716393abf2c4090aa259bee0ef6675",
     "selection": "running xtask executable from checkout whose HEAD equals source_parent",
     "source_sha": "ad291d1bc936d00847d9712d2adf9ea56ca19533"
   }

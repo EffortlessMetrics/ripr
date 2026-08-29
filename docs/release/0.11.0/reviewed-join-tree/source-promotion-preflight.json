@@ -10,7 +10,7 @@
   "merge_base": "36909460db013ed3a3238ee8b2fc3ccda1135c15",
   "source_repository": {
     "role": "source",
-    "remote": "git@github.com:EffortlessMetrics/ripr.git",
+    "remote": "https://github.com/EffortlessMetrics/ripr.git",
     "expected_remote": "EffortlessMetrics/ripr",
     "common_dir_verified": true,
     "immutable_ref": null,
@@ -2014,7 +2014,7 @@
   "dry_merge": {
     "status": "conflicts",
     "preview_tree": "b827f60a0f34284d9046bd6b646647efc76df3c6",
-    "reviewed_resolved_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
+    "reviewed_resolved_tree": "4ab6e86179f35858c4048a29d0f5cf4a3dabc33a",
     "reviewed_resolved_tree_verified": true,
     "conflicts": [
       ".github/workflows/source-of-truth.yml",
