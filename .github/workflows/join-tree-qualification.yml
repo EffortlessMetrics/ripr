@@ -103,6 +103,8 @@ jobs:
             refs/qualify/*) ;;
             *) echo "::error::reviewed_tree_ref must live under refs/qualify/"; exit 1 ;;
           esac
+          mkdir -p evidence
+          echo "reviewed_tree=$REVIEWED_TREE" > evidence/requested-identity.txt
 
       - name: Materialize the exact reviewed tree
         run: |
@@ -124,7 +126,7 @@ jobs:
           rebuilt="$(git write-tree)"
           test "$rebuilt" = "$REVIEWED_TREE" \
             || { echo "::error::materialized tree $rebuilt does not equal $REVIEWED_TREE"; exit 1; }
-          git update-index --refresh --quiet || true
+          git update-index -q --refresh || true
           git diff-files --quiet \
             || { echo "::error::materialized worktree does not match the reviewed tree index"; exit 1; }
           echo "materialized $REVIEWED_TREE"
@@ -144,7 +146,6 @@ jobs:
         working-directory: tree
         run: |
           set -euo pipefail
-          mkdir -p ../evidence
           {
             echo "os=${{ matrix.os }}"
             echo "runner_os=${RUNNER_OS}"
@@ -274,6 +275,7 @@ jobs:
         working-directory: tree
         run: |
           set -euo pipefail
+          mkdir -p ../evidence
           git for-each-ref --format='%(refname) %(objectname)' | tee ../evidence/refs-after.txt
           git tag --list | tee ../evidence/tags-after.txt
           test ! -s ../evidence/tags-after.txt \
