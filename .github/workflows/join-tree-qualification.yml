@@ -37,17 +37,17 @@ on:
       preflight_sha256:
         description: Bare 64-hex digest of the finalized P1 preflight receipt
         required: false
-        default: 5e18d5353f745a919c00a7b42056dd1086af9cf547af311ff5293dd2a59e1549
+        default: 1697c57a493baa78dd3e43a58d4ddb82538615203533b46e157c17017e54558d
         type: string
       resolution_manifest_sha256:
         description: Bare 64-hex digest of the accepted resolution manifest
         required: false
-        default: d75b1db4f55cce7d21c6159667ba1e7b87da39de0b98df8ff20e9dd790dce7f0
+        default: b807813a81832f25f30f431196619f637e3dbe0c5609ebdf54359c5eedcc174f
         type: string
       validation_receipt_sha256:
         description: Bare 64-hex digest of the terminal-green resolved-tree validation receipt
         required: false
-        default: 52876fd2a64ddda6dfc48f31fe7e19ec1a395c5d5f58b5cbd08c6c0a98557ca3
+        default: 1c112aa80f9a6ef74d4e08b642997f6b8e4815858d900aaedc38e891cd44fc21
         type: string
 
 permissions:
@@ -64,9 +64,9 @@ env:
   SWARM_PARENT: ${{ inputs.swarm_parent || '83217e97ec6847db41d757f57279a8b1ca433fe6' }}
   REVIEWED_TREE: ${{ inputs.reviewed_tree || '4ab6e86179f35858c4048a29d0f5cf4a3dabc33a' }}
   REVIEWED_TREE_REF: ${{ inputs.reviewed_tree_ref || 'refs/qualify/join-tree-4ab6e861' }}
-  PREFLIGHT_SHA256: ${{ inputs.preflight_sha256 || '5e18d5353f745a919c00a7b42056dd1086af9cf547af311ff5293dd2a59e1549' }}
-  RESOLUTION_MANIFEST_SHA256: ${{ inputs.resolution_manifest_sha256 || 'd75b1db4f55cce7d21c6159667ba1e7b87da39de0b98df8ff20e9dd790dce7f0' }}
-  VALIDATION_RECEIPT_SHA256: ${{ inputs.validation_receipt_sha256 || '52876fd2a64ddda6dfc48f31fe7e19ec1a395c5d5f58b5cbd08c6c0a98557ca3' }}
+  PREFLIGHT_SHA256: ${{ inputs.preflight_sha256 || '1697c57a493baa78dd3e43a58d4ddb82538615203533b46e157c17017e54558d' }}
+  RESOLUTION_MANIFEST_SHA256: ${{ inputs.resolution_manifest_sha256 || 'b807813a81832f25f30f431196619f637e3dbe0c5609ebdf54359c5eedcc174f' }}
+  VALIDATION_RECEIPT_SHA256: ${{ inputs.validation_receipt_sha256 || '1c112aa80f9a6ef74d4e08b642997f6b8e4815858d900aaedc38e891cd44fc21' }}
   CARGO_TERM_COLOR: never
 
 jobs:
