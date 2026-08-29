@@ -239,9 +239,9 @@
     "cleanup_failure_reason": null,
     "created": true,
     "directory_removed": true,
-    "disposable_commit": "650cd9a81df8b60b899874f47dd12b116d6a41cc",
+    "disposable_commit": "a56e572ebe89ac708bb1d7e5755998e45319fae3",
     "path_role": "os_temp_disposable_checkout",
-    "reviewed_tree": "ab7f81af954acdbe8486f9cfac1c88338ef279cd",
+    "reviewed_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
     "worktree_remove_succeeded": true,
     "worktree_residue_observed": false
   },
@@ -263,7 +263,7 @@
   "preflight": {
     "path": "target/1478/source-promotion-preflight.json",
     "path_role": "source_checkout_regular_file",
-    "sha256": "0be27b0aa83ad67ee89118c4463542864ed36654bb92c6c7c44fa88aefaf5f85",
+    "sha256": "293b0b1b441068ba84f780500527743b5a7965e150b307be5850846bd518a631",
     "verified": true
   },
   "push_attempted": false,
@@ -290,10 +290,10 @@
   "resolution_manifest": {
     "path": "target/1478/resolution-manifest.json",
     "path_role": "source_checkout_regular_file",
-    "sha256": "21356565db166226a2503af250dd526ac610128c427c46f010d6d92f9d2dba6c",
+    "sha256": "1a490e51b35173bf39240c20cce44fb316cbe7c1d61ed30df8e4ada6fdb54ea3",
     "verified": true
   },
-  "reviewed_tree": "ab7f81af954acdbe8486f9cfac1c88338ef279cd",
+  "reviewed_tree": "7d592c00142f850cf08d52baa4c04398870d50a2",
   "schema": "ripr.source_promotion_resolved_tree_validation.v1",
   "source_parent": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
   "status": "validated",

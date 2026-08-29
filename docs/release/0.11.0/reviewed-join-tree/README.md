@@ -11,9 +11,9 @@ SOURCE_PARENT   = ad291d1bc936d00847d9712d2adf9ea56ca19533
 SWARM_PARENT    = 83217e97ec6847db41d757f57279a8b1ca433fe6
 SWARM_REF       = refs/tags/ripr-release-0.11.0-83217e97ec6847db41d757f57279a8b1ca433fe6
 MERGE_BASE      = 36909460db013ed3a3238ee8b2fc3ccda1135c15
-JOIN_TREE       = ab7f81af954acdbe8486f9cfac1c88338ef279cd
-P1_SHA256       = 0be27b0aa83ad67ee89118c4463542864ed36654bb92c6c7c44fa88aefaf5f85
-MANIFEST_SHA256 = 21356565db166226a2503af250dd526ac610128c427c46f010d6d92f9d2dba6c
+JOIN_TREE       = 7d592c00142f850cf08d52baa4c04398870d50a2
+P1_SHA256       = 293b0b1b441068ba84f780500527743b5a7965e150b307be5850846bd518a631
+MANIFEST_SHA256 = 1a490e51b35173bf39240c20cce44fb316cbe7c1d61ed30df8e4ada6fdb54ea3
 ```
 
 `P1_SHA256` is the SHA-256 of `source-promotion-preflight.json`, the finalized
@@ -38,7 +38,7 @@ survivors, 56 swarm-authority candidates).
 
 ```bash
 # 1. Materialize the reviewed tree and confirm its identity.
-git cat-file -t ab7f81af954acdbe8486f9cfac1c88338ef279cd   # tree
+git cat-file -t 7d592c00142f850cf08d52baa4c04398870d50a2   # tree
 
 # 2. Regenerate P1 with the frozen W7 producer checked out at SWARM_PARENT.
 cargo xtask source-promotion preflight \
@@ -48,7 +48,7 @@ cargo xtask source-promotion preflight \
   --source-repo <ripr checkout at SOURCE_PARENT> \
   --swarm-repo <ripr-swarm checkout> \
   --version 0.11.0 \
-  --resolved-tree ab7f81af954acdbe8486f9cfac1c88338ef279cd \
+  --resolved-tree 7d592c00142f850cf08d52baa4c04398870d50a2 \
   --out <dir>
 
 # 3. Re-run the source-trusted validator from a ripr checkout whose HEAD is
@@ -56,11 +56,11 @@ cargo xtask source-promotion preflight \
 cargo xtask source-promotion validate-resolved-tree \
   --source-parent ad291d1bc936d00847d9712d2adf9ea56ca19533 \
   --swarm-parent 83217e97ec6847db41d757f57279a8b1ca433fe6 \
-  --reviewed-tree ab7f81af954acdbe8486f9cfac1c88338ef279cd \
+  --reviewed-tree 7d592c00142f850cf08d52baa4c04398870d50a2 \
   --preflight <dir>/source-promotion-preflight.json \
-  --preflight-sha256 0be27b0aa83ad67ee89118c4463542864ed36654bb92c6c7c44fa88aefaf5f85 \
+  --preflight-sha256 293b0b1b441068ba84f780500527743b5a7965e150b307be5850846bd518a631 \
   --resolution-manifest resolution-manifest.json \
-  --resolution-sha256 21356565db166226a2503af250dd526ac610128c427c46f010d6d92f9d2dba6c \
+  --resolution-sha256 1a490e51b35173bf39240c20cce44fb316cbe7c1d61ed30df8e4ada6fdb54ea3 \
   --out <dir>/validation
 ```
 
@@ -78,8 +78,8 @@ worktree of the source checkout changed.
 | `conflict` | `integrated` | 18 |
 | `conflict` | `source_blob` | 1 |
 | `conflict` | `swarm_blob` | 2 |
-| `source_survivor` | `integrated` | 34 |
-| `source_survivor` | `source_blob` | 93 |
+| `source_survivor` | `integrated` | 36 |
+| `source_survivor` | `source_blob` | 91 |
 | `source_survivor` | `swarm_blob` | 4 |
 | `swarm_exclusion` | `excluded` | 40 |
 | `swarm_exclusion` | `integrated` | 2 |
@@ -144,6 +144,24 @@ carrying one reviewer-applied identifier correction described below.
    `crates/ripr/src/analysis/probes/diff.rs` verbatim and reproducing the identical
    drift. The golden is re-blessed to the analyzer the tree actually contains, with
    a retained blessing CHANGELOG citing both specs.
+
+7. **Fail-open in the source-owned J5 negative control.** `build_j5_tree` in
+   `xtask/src/reports/source_promotion_admission_fixture.rs` seeded its synthetic
+   ledger from `HEAD:policy/network_allowlist.txt` and then asserted that the
+   production network-policy checker reports its synthetic surfaces as
+   violations. That holds only while HEAD carries the source-only ledger. Under
+   the reconciled join ledger from ripr#1572 the rows for those three paths
+   already match the synthetic literal counts exactly, no violation is reported,
+   and the control that exists to prove the checker fails closed would itself
+   have passed vacuously. The inherited ledger now drops rows for the fixture's
+   own synthetic surfaces, in both the production fixture and the test-side twin
+   in `xtask/tests/source_promotion_workflow_contract.rs` (they duplicate the
+   construction and the workflow rejects any disagreement between them).
+
+   This was found only because the hosted harness materializes the tree under a
+   carrier commit. A worktree holding an uncommitted merge still has the source
+   parent at `HEAD`, so every test that resolves content through `git HEAD` was
+   silently exercising the source parent rather than the join.
 
 ## Non-claims
 
