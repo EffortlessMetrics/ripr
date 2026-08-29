@@ -1,0 +1,57 @@
+{
+  "schema": "ripr.source_promotion_tree_qualification.v1",
+  "status": "qualified",
+  "source_parent": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
+  "swarm_parent": "83217e97ec6847db41d757f57279a8b1ca433fe6",
+  "join_tree": "f61b4b5b650b77843fd0126aa1e6facced48128e",
+  "preflight_sha256": "c0c2fca17f98a29de213a4fd951d14f3e0b1d6f594746359cd95c0b8c9636568",
+  "resolution_manifest_sha256": "5ae95c73efbd817786876fef22e5693e8059ab88ce76006413b12472397d9c25",
+  "admission_packet_index_sha256": "f8eb27bb0937e977b17138b0f237b2ab48f3ae7676dfbc10ad29acbb27ccdace",
+  "admission_receipt_sha256": "2050beb02b0b016d0083b2b20a9f3e33131bf5e1e6c1b34aa69c424ba1e7eeff",
+  "resolved_tree_validation_receipt_sha256": "add0bef8f40203a6230b2792843b953b524acbb0ef56dbf163e7c283c7f82f25",
+  "network_policy_receipt_sha256": "994e99e34721769455d757f1b2f2537351787d12d113d73e4d824054544ab245",
+  "promotion_ref_mutation_attempted": false,
+  "lanes": [
+    {
+      "name": "editor_package_linux",
+      "state": "passed",
+      "evidence_sha256": "7de73662f4091bdfd678d506bfe01f29c0eef68f4e0b1b5bea3c94ccae46e655"
+    },
+    {
+      "name": "editor_package_windows",
+      "state": "passed",
+      "evidence_sha256": "e554cfc8c3ceb03c0d6b88dff381ccf80e2ee319fa4d2398b982f476d8aea74f"
+    },
+    {
+      "name": "rust_product",
+      "state": "passed",
+      "evidence_sha256": "d13f38810f29744035bd00fc074786359a9276663569461529d3d52e7c9c4aaf"
+    },
+    {
+      "name": "source_governance",
+      "state": "passed",
+      "evidence_sha256": "b5a2c5b694b988bc449ed7334a327a7f8dcfa48dca280217af10d9d06d3066b8"
+    },
+    {
+      "name": "source_survivors",
+      "state": "passed",
+      "evidence_sha256": "485d93196822a41c0206472b9665c30a4459b40633093cc7f0e90f4d284608be"
+    },
+    {
+      "name": "trusted_product_journeys",
+      "state": "passed",
+      "evidence_sha256": "49d1c24f14253fc6e90464dadd504bc3037914f4f6a34542b391aec9a4352b38"
+    },
+    {
+      "name": "untrusted_workspace_contract",
+      "state": "passed",
+      "evidence_sha256": "6031b622cabe216aed13ac83c2ae519b5fd999c575b1da95483079529109087d"
+    },
+    {
+      "name": "w7_product",
+      "state": "passed",
+      "evidence_sha256": "e09f4e1e96f2e70121345cfc24fac1afedf46e3cf224deb5b5372407ba0ef22a"
+    }
+  ],
+  "failure_reasons": []
+}
