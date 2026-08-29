@@ -134,12 +134,12 @@
     {
       "bytes": 12943,
       "path": "resolved-tree-validation.json",
-      "sha256": "1c112aa80f9a6ef74d4e08b642997f6b8e4815858d900aaedc38e891cd44fc21"
+      "sha256": "f6298ff67ec6861692b4318cc210f34609d1e202ab559126c47a9ee034f1ef06"
     },
     {
       "bytes": 13720,
       "path": "resolved-tree-validation.md",
-      "sha256": "cb5296e4c01d2b3d811b3acf8289b4775439252a0bc404a29eb817b0cb103451"
+      "sha256": "44ebe871b728887ac5d98d2e0115413d837c9afabc3de65369e265125e8b61d2"
     }
   ],
   "schema": "ripr.source_promotion_resolved_tree_packet.v1",
