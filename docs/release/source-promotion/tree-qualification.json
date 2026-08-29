@@ -5,11 +5,11 @@
   "swarm_parent": "83217e97ec6847db41d757f57279a8b1ca433fe6",
   "join_tree": "4ab6e86179f35858c4048a29d0f5cf4a3dabc33a",
   "preflight_sha256": "1697c57a493baa78dd3e43a58d4ddb82538615203533b46e157c17017e54558d",
-  "resolution_manifest_sha256": "b807813a81832f25f30f431196619f637e3dbe0c5609ebdf54359c5eedcc174f",
-  "admission_packet_index_sha256": "b4868bacbe5dc36777193a20804782a4f7795a24fc28ef013636c5aa8d010db4",
-  "admission_receipt_sha256": "e7ab85606bc03fffaf2ee777ee1febde4fc7bd570aa11921ae30e3bc9975ee4a",
-  "resolved_tree_validation_receipt_sha256": "1c112aa80f9a6ef74d4e08b642997f6b8e4815858d900aaedc38e891cd44fc21",
-  "network_policy_receipt_sha256": "f4852aa9a06a1ad7c45928cf8782bc2a5e24ff0db182d0cc5751e00f17a9d01a",
+  "resolution_manifest_sha256": "5116aa0757b1787d0cf0a883261c023e8eeb423e705d9a5c3e08bb65159b05eb",
+  "admission_packet_index_sha256": "c771e6c22bed7cc7dabf9ef075dd96c60cf1760dbeaeaac4ce19933d4f8d2ada",
+  "admission_receipt_sha256": "78c914406e1641d81440926ac15462dbc962f193d41a3c6e5c8cbbb41cb3b89f",
+  "resolved_tree_validation_receipt_sha256": "f6298ff67ec6861692b4318cc210f34609d1e202ab559126c47a9ee034f1ef06",
+  "network_policy_receipt_sha256": "c8c6e0deb0e165642185ea448cfdb48f8adabed6277c9cd641ecbd7a4928a6b9",
   "promotion_ref_mutation_attempted": false,
   "lanes": [
     {

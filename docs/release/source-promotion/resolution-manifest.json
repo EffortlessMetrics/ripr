@@ -771,9 +771,9 @@
     {
       "kind": "source_survivor",
       "key": "docs/specs/RIPR-SPEC-0112-bounded-subprocess-adapter-boundary.md",
-      "disposition": "source_blob",
-      "rationale": "Source authority survives: the path carries source-owned release, promotion, governance, or repository history that W7 does not contest.",
-      "evidence": "Accepted-tree blob is byte-identical to the exact source parent ad291d1bc936d00847d9712d2adf9ea56ca19533."
+      "disposition": "excluded",
+      "rationale": "The source-side RIPR-SPEC-0112 identifier collides with a different W7 spec of the same number, and `check-traceability` and `check-doc-artifacts` both reject duplicate identifiers. The side with fewer consumers moves, so this spec is renumbered rather than dropped: the content survives, this path does not.",
+      "evidence": "Path is absent from the accepted tree. The same spec is present as docs/specs/RIPR-SPEC-0151-bounded-subprocess-adapter-boundary.md, registered in policy/doc-artifacts.toml and .ripr/traceability.toml under RIPR-SPEC-0151, and referenced from the retained bounded-subprocess arm in crates/ripr/src/analysis/probes/diff.rs."
     },
     {
       "kind": "source_survivor",
@@ -1112,7 +1112,7 @@
     {
       "kind": "source_survivor",
       "key": "xtask/src/reports/fixture_contracts.rs",
-      "disposition": "source_blob",
+      "disposition": "excluded",
       "rationale": "W7 owns fixture-contract evidence in xtask/src/fixture_contracts/. The source-side reports module is a duplicate implementation of the same checker and would be dead code in the accepted tree.",
       "evidence": "Path is absent from the accepted tree; xtask/src/dispatch.rs routes `check-fixture-contracts` to the retained W7 implementation."
     },

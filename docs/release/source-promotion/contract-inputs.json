@@ -5,9 +5,9 @@
   "preflight": "docs/release/source-promotion/preflight.json",
   "resolution_manifest": "docs/release/source-promotion/resolution-manifest.json",
   "preflight_sha256": "1697c57a493baa78dd3e43a58d4ddb82538615203533b46e157c17017e54558d",
-  "resolution_manifest_sha256": "b807813a81832f25f30f431196619f637e3dbe0c5609ebdf54359c5eedcc174f",
+  "resolution_manifest_sha256": "5116aa0757b1787d0cf0a883261c023e8eeb423e705d9a5c3e08bb65159b05eb",
   "resolved_tree_validation": "docs/release/source-promotion/resolved-tree-validation.json",
-  "resolved_tree_validation_sha256": "1c112aa80f9a6ef74d4e08b642997f6b8e4815858d900aaedc38e891cd44fc21",
+  "resolved_tree_validation_sha256": "f6298ff67ec6861692b4318cc210f34609d1e202ab559126c47a9ee034f1ef06",
   "tree_qualification": "docs/release/source-promotion/tree-qualification.json",
-  "tree_qualification_sha256": "54409036a85e5a4f81d8bd6ebb59f93e94335d0417d370b9ec053a0d58b728bb"
+  "tree_qualification_sha256": "eb5eb0770b53c10d9f03e3bf8c62f1f0401529838177226eab89f0f4c0374569"
 }
