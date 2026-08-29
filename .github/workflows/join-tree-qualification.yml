@@ -27,27 +27,27 @@ on:
       reviewed_tree:
         description: Exact 40-character reviewed tree object accepted by ripr#1478
         required: false
-        default: ab7f81af954acdbe8486f9cfac1c88338ef279cd
+        default: 7d592c00142f850cf08d52baa4c04398870d50a2
         type: string
       reviewed_tree_ref:
         description: Repository ref that points directly at the reviewed tree object
         required: false
-        default: refs/qualify/join-tree-ab7f81af
+        default: refs/qualify/join-tree-7d592c00
         type: string
       preflight_sha256:
         description: Bare 64-hex digest of the finalized P1 preflight receipt
         required: false
-        default: 0be27b0aa83ad67ee89118c4463542864ed36654bb92c6c7c44fa88aefaf5f85
+        default: 293b0b1b441068ba84f780500527743b5a7965e150b307be5850846bd518a631
         type: string
       resolution_manifest_sha256:
         description: Bare 64-hex digest of the accepted resolution manifest
         required: false
-        default: 21356565db166226a2503af250dd526ac610128c427c46f010d6d92f9d2dba6c
+        default: 1a490e51b35173bf39240c20cce44fb316cbe7c1d61ed30df8e4ada6fdb54ea3
         type: string
       validation_receipt_sha256:
         description: Bare 64-hex digest of the terminal-green resolved-tree validation receipt
         required: false
-        default: 873050c19505d9eb095090fe5bbf911b8ceec43044c7a91bbf560f8869ffe6e6
+        default: f2af07e0de90989143071681252c181d9d161204c8d478fa737f7992316968f5
         type: string
 
 permissions:
@@ -62,11 +62,11 @@ concurrency:
 env:
   SOURCE_PARENT: ${{ inputs.source_parent || 'ad291d1bc936d00847d9712d2adf9ea56ca19533' }}
   SWARM_PARENT: ${{ inputs.swarm_parent || '83217e97ec6847db41d757f57279a8b1ca433fe6' }}
-  REVIEWED_TREE: ${{ inputs.reviewed_tree || 'ab7f81af954acdbe8486f9cfac1c88338ef279cd' }}
-  REVIEWED_TREE_REF: ${{ inputs.reviewed_tree_ref || 'refs/qualify/join-tree-ab7f81af' }}
-  PREFLIGHT_SHA256: ${{ inputs.preflight_sha256 || '0be27b0aa83ad67ee89118c4463542864ed36654bb92c6c7c44fa88aefaf5f85' }}
-  RESOLUTION_MANIFEST_SHA256: ${{ inputs.resolution_manifest_sha256 || '21356565db166226a2503af250dd526ac610128c427c46f010d6d92f9d2dba6c' }}
-  VALIDATION_RECEIPT_SHA256: ${{ inputs.validation_receipt_sha256 || '873050c19505d9eb095090fe5bbf911b8ceec43044c7a91bbf560f8869ffe6e6' }}
+  REVIEWED_TREE: ${{ inputs.reviewed_tree || '7d592c00142f850cf08d52baa4c04398870d50a2' }}
+  REVIEWED_TREE_REF: ${{ inputs.reviewed_tree_ref || 'refs/qualify/join-tree-7d592c00' }}
+  PREFLIGHT_SHA256: ${{ inputs.preflight_sha256 || '293b0b1b441068ba84f780500527743b5a7965e150b307be5850846bd518a631' }}
+  RESOLUTION_MANIFEST_SHA256: ${{ inputs.resolution_manifest_sha256 || '1a490e51b35173bf39240c20cce44fb316cbe7c1d61ed30df8e4ada6fdb54ea3' }}
+  VALIDATION_RECEIPT_SHA256: ${{ inputs.validation_receipt_sha256 || 'f2af07e0de90989143071681252c181d9d161204c8d478fa737f7992316968f5' }}
   CARGO_TERM_COLOR: never
 
 jobs:
@@ -138,7 +138,7 @@ jobs:
           {
             echo "reviewed_tree=$REVIEWED_TREE"
             echo "carrier_commit=$(git rev-parse HEAD)"
-            echo "carrier_parents=$(git rev-list --parents -n 1 HEAD | cut -d' ' -f2-)"
+            echo "carrier_parents=$(git log -1 --format=%P)"
             echo "carrier_scope=runner_local_never_pushed"
           } | tee ../evidence/carrier-identity.txt
           echo "materialized $REVIEWED_TREE"
@@ -294,8 +294,12 @@ jobs:
           git tag --list | tee ../evidence/tags-after.txt
           test ! -s ../evidence/tags-after.txt \
             || { echo "::error::a tag exists in the qualification checkout"; exit 1; }
-          test -z "$(git ls-remote --heads origin 'refs/heads/*qualif*' 2>/dev/null)" \
-            || { echo "::error::a qualification branch was published"; exit 1; }
+          carrier="$(git rev-parse HEAD)"
+          git ls-remote origin > ../evidence/remote-refs.txt 2>/dev/null || true
+          if grep -q "^${carrier}" ../evidence/remote-refs.txt; then
+            echo "::error::a remote ref points at the runner-local carrier ${carrier}"
+            exit 1
+          fi
 
       - name: Upload qualification evidence
         if: always()
