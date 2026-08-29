@@ -11,9 +11,9 @@ SOURCE_PARENT   = ad291d1bc936d00847d9712d2adf9ea56ca19533
 SWARM_PARENT    = 83217e97ec6847db41d757f57279a8b1ca433fe6
 SWARM_REF       = refs/tags/ripr-release-0.11.0-83217e97ec6847db41d757f57279a8b1ca433fe6
 MERGE_BASE      = 36909460db013ed3a3238ee8b2fc3ccda1135c15
-JOIN_TREE       = 70f86fb26bf3f9795dca8511153b5d927124ded0
-P1_SHA256       = ffd58d692af82418c701946e510ef8ddef3acad7f31bd22b59dbacee14d1f118
-MANIFEST_SHA256 = dabe14d00246c9d4db94756d9273cf79feda6724f9d811051f50c6e862aa3384
+JOIN_TREE       = ab7f81af954acdbe8486f9cfac1c88338ef279cd
+P1_SHA256       = 0be27b0aa83ad67ee89118c4463542864ed36654bb92c6c7c44fa88aefaf5f85
+MANIFEST_SHA256 = 21356565db166226a2503af250dd526ac610128c427c46f010d6d92f9d2dba6c
 ```
 
 `P1_SHA256` is the SHA-256 of `source-promotion-preflight.json`, the finalized
@@ -38,7 +38,7 @@ survivors, 56 swarm-authority candidates).
 
 ```bash
 # 1. Materialize the reviewed tree and confirm its identity.
-git cat-file -t 70f86fb26bf3f9795dca8511153b5d927124ded0   # tree
+git cat-file -t ab7f81af954acdbe8486f9cfac1c88338ef279cd   # tree
 
 # 2. Regenerate P1 with the frozen W7 producer checked out at SWARM_PARENT.
 cargo xtask source-promotion preflight \
@@ -48,7 +48,7 @@ cargo xtask source-promotion preflight \
   --source-repo <ripr checkout at SOURCE_PARENT> \
   --swarm-repo <ripr-swarm checkout> \
   --version 0.11.0 \
-  --resolved-tree 70f86fb26bf3f9795dca8511153b5d927124ded0 \
+  --resolved-tree ab7f81af954acdbe8486f9cfac1c88338ef279cd \
   --out <dir>
 
 # 3. Re-run the source-trusted validator from a ripr checkout whose HEAD is
@@ -56,11 +56,11 @@ cargo xtask source-promotion preflight \
 cargo xtask source-promotion validate-resolved-tree \
   --source-parent ad291d1bc936d00847d9712d2adf9ea56ca19533 \
   --swarm-parent 83217e97ec6847db41d757f57279a8b1ca433fe6 \
-  --reviewed-tree 70f86fb26bf3f9795dca8511153b5d927124ded0 \
+  --reviewed-tree ab7f81af954acdbe8486f9cfac1c88338ef279cd \
   --preflight <dir>/source-promotion-preflight.json \
-  --preflight-sha256 ffd58d692af82418c701946e510ef8ddef3acad7f31bd22b59dbacee14d1f118 \
+  --preflight-sha256 0be27b0aa83ad67ee89118c4463542864ed36654bb92c6c7c44fa88aefaf5f85 \
   --resolution-manifest resolution-manifest.json \
-  --resolution-sha256 dabe14d00246c9d4db94756d9273cf79feda6724f9d811051f50c6e862aa3384 \
+  --resolution-sha256 21356565db166226a2503af250dd526ac610128c427c46f010d6d92f9d2dba6c \
   --out <dir>/validation
 ```
 
@@ -78,8 +78,8 @@ worktree of the source checkout changed.
 | `conflict` | `integrated` | 18 |
 | `conflict` | `source_blob` | 1 |
 | `conflict` | `swarm_blob` | 2 |
-| `source_survivor` | `integrated` | 31 |
-| `source_survivor` | `source_blob` | 96 |
+| `source_survivor` | `integrated` | 34 |
+| `source_survivor` | `source_blob` | 93 |
 | `source_survivor` | `swarm_blob` | 4 |
 | `swarm_exclusion` | `excluded` | 40 |
 | `swarm_exclusion` | `integrated` | 2 |
@@ -130,6 +130,20 @@ carrying one reviewer-applied identifier correction described below.
    dependency key and `xtask/src/command.rs` gained a duplicate
    `SourcePromotion` variant and parse arm from the automatic merge. Both are
    repaired; neither was a reviewer decision.
+
+6. **Golden drift on a source-only fixture.** `cargo xtask goldens check` and
+   `cargo xtask fixtures` are not among the validator's thirteen required
+   commands, so the first accepted tree carried a stale golden. Fixture
+   `source_promotion_verification` is source-authored and its expected output was
+   recorded against the source-parent analyzer; the accepted tree runs the frozen
+   W7 analyzer, where RIPR-SPEC-0147 parser-shape canonicalisation emits one probe
+   per changed statement rather than per changed line and RIPR-SPEC-0122 makes
+   default human output a bounded triage view. The drift was proved causally
+   attributable to the W7 analyzer rather than to the integrated
+   bounded-subprocess arm by substituting W7's
+   `crates/ripr/src/analysis/probes/diff.rs` verbatim and reproducing the identical
+   drift. The golden is re-blessed to the analyzer the tree actually contains, with
+   a retained blessing CHANGELOG citing both specs.
 
 ## Non-claims
 

@@ -4,7 +4,7 @@
 - Status: **validated**
 - SOURCE_PARENT: `ad291d1bc936d00847d9712d2adf9ea56ca19533`
 - SWARM_PARENT: `83217e97ec6847db41d757f57279a8b1ca433fe6`
-- REVIEWED_TREE: `70f86fb26bf3f9795dca8511153b5d927124ded0`
+- REVIEWED_TREE: `ab7f81af954acdbe8486f9cfac1c88338ef279cd`
 
 ## Claim boundary
 
@@ -254,9 +254,9 @@ This source-parent-selected receipt reports the named repository-governance comm
     "cleanup_failure_reason": null,
     "created": true,
     "directory_removed": true,
-    "disposable_commit": "e89b35e6b4f4e9d931b3973c6e9155464d3c65d3",
+    "disposable_commit": "650cd9a81df8b60b899874f47dd12b116d6a41cc",
     "path_role": "os_temp_disposable_checkout",
-    "reviewed_tree": "70f86fb26bf3f9795dca8511153b5d927124ded0",
+    "reviewed_tree": "ab7f81af954acdbe8486f9cfac1c88338ef279cd",
     "worktree_remove_succeeded": true,
     "worktree_residue_observed": false
   },
@@ -278,7 +278,7 @@ This source-parent-selected receipt reports the named repository-governance comm
   "preflight": {
     "path": "target/1478/source-promotion-preflight.json",
     "path_role": "source_checkout_regular_file",
-    "sha256": "ffd58d692af82418c701946e510ef8ddef3acad7f31bd22b59dbacee14d1f118",
+    "sha256": "0be27b0aa83ad67ee89118c4463542864ed36654bb92c6c7c44fa88aefaf5f85",
     "verified": true
   },
   "push_attempted": false,
@@ -305,10 +305,10 @@ This source-parent-selected receipt reports the named repository-governance comm
   "resolution_manifest": {
     "path": "target/1478/resolution-manifest.json",
     "path_role": "source_checkout_regular_file",
-    "sha256": "dabe14d00246c9d4db94756d9273cf79feda6724f9d811051f50c6e862aa3384",
+    "sha256": "21356565db166226a2503af250dd526ac610128c427c46f010d6d92f9d2dba6c",
     "verified": true
   },
-  "reviewed_tree": "70f86fb26bf3f9795dca8511153b5d927124ded0",
+  "reviewed_tree": "ab7f81af954acdbe8486f9cfac1c88338ef279cd",
   "schema": "ripr.source_promotion_resolved_tree_validation.v1",
   "source_parent": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
   "status": "validated",
