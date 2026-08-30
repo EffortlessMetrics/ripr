@@ -420,7 +420,7 @@ The source repository proves its own pull requests on GitHub-hosted runners.
 Self-hosted runner capacity is `ripr-swarm` authority, so the source route
 performs no organization runner discovery, requests no private runner secret,
 and does not treat GitHub-hosted execution as a degraded fallback (ripr#1446).
-The route job emits three negative assertions that the protected result job
+The route job emits three negative assertions that the normalized result job
 re-checks and fails closed on:
 
 ```text
@@ -429,21 +429,37 @@ private_runner_secret_requested=false
 org_runner_query_attempted=false
 ```
 
-Every planned proposition resolves to an explicit state:
+The selected child and result job retain three byte-owned JSON packets plus the
+human-readable plan under `target/ripr/reports/`:
 
 ```text
-passed
-failed
-not_applicable
-cancelled
-unavailable
-not_run
+routed-rust-plan.json
+routed-rust-plan.md
+routed-rust-execution.json
+routed-rust-result.json
 ```
 
-The aggregate goes green only for `passed`, or for an applicability that was
-planned as `not_applicable`. It never goes green because a child check vanished
-or because GitHub reported it as `skipped`, so a required lane cannot pass by
-disappearing.
+The plan owns the exact subject/tree, changed-path inventory digest, typed
+applicability, runner/toolchain/Cargo/lock/cache/artifact identities, and ordered
+required-proposition set. The execution packet binds to the SHA-256 of those
+exact plan bytes and records each required proposition as `passed`, `failed`, or
+`not_run`; every observed command row names the exact retained command and the
+SHA-256 of its uploaded log bytes. Its aggregate state may additionally be
+`cancelled` or `instrument_failure`. The result job independently observes the
+current subject, paths, typed applicability, environment identities, cache
+outputs, and artifact name, then validates the downloaded packet pair and log
+bytes together with the GitHub conclusion and all three route assertions before
+writing its own packet. Job outputs schedule work and cross-check observations;
+they are not durable proof by themselves.
+
+The aggregate goes green only for an exact, complete `passed` packet pair. A
+missing proposition, unavailable or malformed packet, setup/instrument failure,
+subject mismatch, plan-digest mismatch, or contradiction with GitHub's child
+conclusion stays non-green.
+
+Workflow code does not make a check protected by itself. Repository protection
+must separately require `Ripr Rust Small Result`; until live protection does so,
+this job is normalized evidence but not merge authority.
 
 `ripr-swarm` keeps its own self-hosted routed lane; the copyable self-hosted
 proof runbook lives in
@@ -519,8 +535,8 @@ toolchain, while the MSRV job proves the declared workspace baseline.
 The legacy Rust workflow's `rust` and `msrv` jobs run on `ubuntu-latest`. These
 jobs are release-surface proof on main and manual dispatches; they must not
 depend on self-hosted runner capacity when preparing a source release. The
-routed Rust-small workflow remains the swarm development lane that selects
-self-hosted runners when available and falls back to hosted capacity.
+routed Rust-small workflow is also GitHub-hosted by construction; it neither
+selects self-hosted runners nor treats hosted execution as fallback capacity.
 
 Local shaping commands are intentionally separate from CI because they mutate
 the worktree:

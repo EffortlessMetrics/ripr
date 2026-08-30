@@ -188,6 +188,12 @@ jobs:
       observed_subject_sha: ${{ steps.subject.outputs.observed_subject_sha }}
       observed_subject_tree: ${{ steps.subject.outputs.observed_subject_tree }}
       child_receipt_state: ${{ steps.child_receipt.outputs.child_receipt_state }}
+      cache_hit: ${{ steps.rust_cache.outputs.cache-hit }}
+      cache_matched_key: ${{ steps.rust_cache.outputs.cache-matched-key }}
+      runner_os: ${{ steps.runner_identity.outputs.os }}
+      runner_arch: ${{ steps.runner_identity.outputs.arch }}
+      runner_image_os: ${{ steps.runner_identity.outputs.image_os }}
+      runner_image_version: ${{ steps.runner_identity.outputs.image_version }}
     steps:
       # Candidate-controlled code is compiled and executed in this job, so the
       # repository credential is not persisted into the working tree. `v6` still
@@ -224,10 +230,26 @@ jobs:
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: 1.95.0
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      # Restore-only is safe for candidate-controlled subjects: this action has
+      # no cache write path. The matching save action exists only on an exact
+      # protected-main push below.
+      - id: rust_cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          shared-key: ripr-rust-small-${{ runner.os }}-${{ needs.route.outputs.subject_trust_class }}
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            !target/ripr/**
+          key: ripr-routed-rust-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Observe the child runner identity
+        id: runner_identity
+        run: |
+          echo "os=$RUNNER_OS" >> "$GITHUB_OUTPUT"
+          echo "arch=$RUNNER_ARCH" >> "$GITHUB_OUTPUT"
+          echo "image_os=$ImageOS" >> "$GITHUB_OUTPUT"
+          echo "image_version=$ImageVersion" >> "$GITHUB_OUTPUT"
       # Job outputs schedule work; this packet proves it. Written here because the
       # route job has no toolchain, and this job already builds Rust. It
       # rederives the subject and changed-path identity rather than restating the
@@ -240,8 +262,21 @@ jobs:
           SUBJECT_SHA: ${{ needs.route.outputs.subject_sha }}
           EVENT: ${{ needs.route.outputs.subject_event }}
           TRUST_CLASS: ${{ needs.route.outputs.subject_trust_class }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW: ${{ github.workflow_ref }}
+          CACHE_PRIMARY_KEY: ${{ steps.rust_cache.outputs.cache-primary-key }}
+          CACHE_MATCHED_KEY: ${{ steps.rust_cache.outputs.cache-matched-key }}
+          CACHE_HIT: ${{ steps.rust_cache.outputs.cache-hit }}
         run: |
-          cargo run --locked -p xtask -- ci-routed-rust-plan             --scheduled-route "$SCHEDULED_ROUTE"             --base "$BASE_SHA"             --pr-head "$PR_HEAD_SHA"             --subject "$SUBJECT_SHA"             --event "$EVENT"             --trust-class "$TRUST_CLASS"
+          cargo run --locked -p xtask -- ci-routed-rust-plan \
+            --scheduled-route "$SCHEDULED_ROUTE" \
+            --base "$BASE_SHA" \
+            --pr-head "$PR_HEAD_SHA" \
+            --subject "$SUBJECT_SHA" \
+            --event "$EVENT" \
+            --trust-class "$TRUST_CLASS" \
+            --repository "$REPOSITORY" \
+            --workflow "$WORKFLOW"
       - name: Install nextest
         uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2
         with:
@@ -266,6 +301,26 @@ jobs:
           $R check_network_policy -- cargo xtask check-network-policy
           $R goldens_check -- cargo xtask goldens check
           $R fixtures -- cargo xtask fixtures
+      - name: Required PR evidence
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+        run: |
+          set -euo pipefail
+          R="cargo run --locked -p xtask -- ci-record-command --id"
+          $R ripr_pr -- cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
+          $R ripr_pr_check -- cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          $R ripr_review_comments -- cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
+          $R ripr_review_comments_check -- cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          $R impacted_evidence -- cargo xtask impacted-evidence
+          $R impacted_evidence_check -- cargo xtask impacted-evidence --check
+          $R ripr_pr_summary -- cargo xtask ripr-pr-summary
+          $R ripr_pr_summary_check -- cargo xtask ripr-pr-summary --check
+          $R ripr_annotations -- cargo xtask ripr-annotations
+          $R ripr_annotations_check -- cargo xtask ripr-annotations --check
       # Runs even when a gate failed or the job was interrupted, so the receipt
       # distinguishes failed, not_run and cancelled rather than
       # collapsing everything into one red tick.
@@ -276,22 +331,40 @@ jobs:
           JOB_OUTCOME: ${{ job.status }}
           SUBJECT_SHA: ${{ steps.subject.outputs.observed_subject_sha }}
           SUBJECT_TREE: ${{ steps.subject.outputs.observed_subject_tree }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -uo pipefail
+          plan="cargo_fmt,cargo_check,cargo_clippy,cargo_nextest,precommit,check_evidence_promotion_honesty,check_agent_skills,check_dependencies,check_process_policy,check_network_policy,goldens_check,fixtures"
+          if [ "$EVENT" = "pull_request" ]; then
+            plan="$plan,ripr_pr,ripr_pr_check,ripr_review_comments,ripr_review_comments_check,impacted_evidence,impacted_evidence_check,ripr_pr_summary,ripr_pr_summary_check,ripr_annotations,ripr_annotations_check"
+          fi
           cargo run --locked -p xtask -- ci-child-receipt \
-            --plan "cargo_fmt,cargo_check,cargo_clippy,cargo_nextest,precommit,check_evidence_promotion_honesty,check_agent_skills,check_dependencies,check_process_policy,check_network_policy,goldens_check,fixtures" \
+            --plan "$plan" \
+            --plan-path "target/ripr/reports/routed-rust-plan.json" \
             --job-outcome "$JOB_OUTCOME" \
             --subject-sha "$SUBJECT_SHA" \
             --subject-tree "$SUBJECT_TREE" >> "$GITHUB_OUTPUT"
+      - name: Save the protected-main Rust cache
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            !target/ripr/**
+          key: ${{ steps.rust_cache.outputs.cache-primary-key }}
       - name: Upload child execution evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ripr-routed-rust-child-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ripr-routed-rust-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            target/ripr/reports/routed-rust-child/
             target/ripr/reports/routed-rust-plan.json
             target/ripr/reports/routed-rust-plan.md
+            target/ripr/reports/routed-rust-execution.json
+            target/ripr/reports/routed-rust-command-*.log
           if-no-files-found: warn
       - name: Advisory reports
         if: always()
@@ -301,24 +374,6 @@ jobs:
           cargo xtask pr-summary || true
           cargo xtask receipts || true
           cargo xtask reports index || true
-      - name: PR evidence
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
-        run: |
-          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
-          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
-          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
-          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
-          cargo xtask impacted-evidence
-          cargo xtask impacted-evidence --check
-          cargo xtask ripr-pr-summary
-          cargo xtask ripr-pr-summary --check
-          cargo xtask ripr-annotations
-          cargo xtask ripr-annotations --check
       - name: Proof route dry-run (advisory)
         if: github.event_name == 'pull_request'
         env:
@@ -353,6 +408,12 @@ jobs:
       observed_subject_sha: ${{ steps.subject.outputs.observed_subject_sha }}
       observed_subject_tree: ${{ steps.subject.outputs.observed_subject_tree }}
       child_receipt_state: ${{ steps.child_receipt.outputs.child_receipt_state }}
+      cache_hit: ${{ steps.docs_cache.outputs.cache-hit }}
+      cache_matched_key: ${{ steps.docs_cache.outputs.cache-matched-key }}
+      runner_os: ${{ steps.runner_identity.outputs.os }}
+      runner_arch: ${{ steps.runner_identity.outputs.arch }}
+      runner_image_os: ${{ steps.runner_identity.outputs.image_os }}
+      runner_image_version: ${{ steps.runner_identity.outputs.image_version }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -378,10 +439,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: 1.95.0
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - id: docs_cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          shared-key: ripr-docs-gate-${{ needs.route.outputs.subject_trust_class }}
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            !target/ripr/**
+          key: ripr-routed-rust-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Observe the child runner identity
+        id: runner_identity
+        run: |
+          echo "os=$RUNNER_OS" >> "$GITHUB_OUTPUT"
+          echo "arch=$RUNNER_ARCH" >> "$GITHUB_OUTPUT"
+          echo "image_os=$ImageOS" >> "$GITHUB_OUTPUT"
+          echo "image_version=$ImageVersion" >> "$GITHUB_OUTPUT"
       # Job outputs schedule work; this packet proves it. Written here because the
       # route job has no toolchain, and this job already builds Rust. It
       # rederives the subject and changed-path identity rather than restating the
@@ -394,21 +468,54 @@ jobs:
           SUBJECT_SHA: ${{ needs.route.outputs.subject_sha }}
           EVENT: ${{ needs.route.outputs.subject_event }}
           TRUST_CLASS: ${{ needs.route.outputs.subject_trust_class }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW: ${{ github.workflow_ref }}
+          CACHE_PRIMARY_KEY: ${{ steps.docs_cache.outputs.cache-primary-key }}
+          CACHE_MATCHED_KEY: ${{ steps.docs_cache.outputs.cache-matched-key }}
+          CACHE_HIT: ${{ steps.docs_cache.outputs.cache-hit }}
         run: |
-          cargo run --locked -p xtask -- ci-routed-rust-plan             --scheduled-route "$SCHEDULED_ROUTE"             --base "$BASE_SHA"             --pr-head "$PR_HEAD_SHA"             --subject "$SUBJECT_SHA"             --event "$EVENT"             --trust-class "$TRUST_CLASS"
+          cargo run --locked -p xtask -- ci-routed-rust-plan \
+            --scheduled-route "$SCHEDULED_ROUTE" \
+            --base "$BASE_SHA" \
+            --pr-head "$PR_HEAD_SHA" \
+            --subject "$SUBJECT_SHA" \
+            --event "$EVENT" \
+            --trust-class "$TRUST_CLASS" \
+            --repository "$REPOSITORY" \
+            --workflow "$WORKFLOW"
       # Authority: the cheap scheduler decided this is documentation; the typed
       # rule re-decides and fails if that decision was wrong, so a mis-schedule
       # cannot silently skip the Rust proof.
       - name: Confirm the docs-only classification
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: cargo xtask ci-docs-only --base "$BASE_SHA" --expect docs_only
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: cargo xtask ci-docs-only --base "$BASE_SHA" --head "$HEAD_SHA" --expect docs_only
       - name: Doc/spec gates (full precommit table)
         run: |
           set -euo pipefail
           R="cargo run --locked -p xtask -- ci-record-command --id"
           $R precommit -- cargo xtask precommit
           $R check_agent_skills -- cargo xtask check-agent-skills
+      - name: Required PR evidence
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+        run: |
+          set -euo pipefail
+          R="cargo run --locked -p xtask -- ci-record-command --id"
+          $R ripr_pr -- cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
+          $R ripr_pr_check -- cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          $R ripr_review_comments -- cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
+          $R ripr_review_comments_check -- cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          $R impacted_evidence -- cargo xtask impacted-evidence
+          $R impacted_evidence_check -- cargo xtask impacted-evidence --check
+          $R ripr_pr_summary -- cargo xtask ripr-pr-summary
+          $R ripr_pr_summary_check -- cargo xtask ripr-pr-summary --check
+          $R ripr_annotations -- cargo xtask ripr-annotations
+          $R ripr_annotations_check -- cargo xtask ripr-annotations --check
       - name: Finalize the docs execution receipt
         id: child_receipt
         if: always()
@@ -419,7 +526,8 @@ jobs:
         run: |
           set -uo pipefail
           cargo run --locked -p xtask -- ci-child-receipt \
-            --plan "precommit,check_agent_skills" \
+            --plan "precommit,check_agent_skills,ripr_pr,ripr_pr_check,ripr_review_comments,ripr_review_comments_check,impacted_evidence,impacted_evidence_check,ripr_pr_summary,ripr_pr_summary_check,ripr_annotations,ripr_annotations_check" \
+            --plan-path "target/ripr/reports/routed-rust-plan.json" \
             --job-outcome "$JOB_OUTCOME" \
             --subject-sha "$SUBJECT_SHA" \
             --subject-tree "$SUBJECT_TREE" >> "$GITHUB_OUTPUT"
@@ -427,12 +535,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ripr-docs-gate
+          name: ripr-routed-rust-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            target/ripr/reports/routed-rust-child/
             target/ripr/reports/routed-rust-plan.json
             target/ripr/reports/routed-rust-plan.md
-            target/ripr/reports/
+            target/ripr/reports/routed-rust-execution.json
+            target/ripr/reports/routed-rust-command-*.log
           if-no-files-found: warn
 
   result:
@@ -449,10 +557,93 @@ jobs:
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: 1.95.0
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - if: always()
+        id: result_cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          shared-key: ripr-routed-rust-result-${{ needs.route.outputs.subject_trust_class }}
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            !target/ripr/**
+          key: ripr-routed-rust-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Observe the result subject and changed-path inventory
+        id: result_identity
+        env:
+          BASE_SHA: ${{ needs.route.outputs.base_sha }}
+          PR_HEAD_SHA: ${{ needs.route.outputs.pr_head_sha }}
+          SCHEDULED_SUBJECT_SHA: ${{ needs.route.outputs.subject_sha }}
+        run: |
+          set -euo pipefail
+          observed_sha="$(git rev-parse HEAD)"
+          observed_tree="$(git rev-parse 'HEAD^{tree}')"
+          if [ "$observed_sha" != "$SCHEDULED_SUBJECT_SHA" ]; then
+            echo "scheduled subject $SCHEDULED_SUBJECT_SHA but result checked out $observed_sha" >&2
+            exit 1
+          fi
+          range_head="${PR_HEAD_SHA:-$observed_sha}"
+          pr_head_tree=""
+          if [ -n "$PR_HEAD_SHA" ]; then
+            pr_head_tree="$(git rev-parse "$PR_HEAD_SHA^{tree}")"
+          fi
+          changed_file="$RUNNER_TEMP/ripr-result-changed-paths.z"
+          if [ -n "$BASE_SHA" ]; then
+            git diff --name-only -z "$BASE_SHA...$range_head" > "$changed_file"
+          else
+            : > "$changed_file"
+          fi
+          changed_digest="$(sha256sum "$changed_file" | cut -d ' ' -f 1)"
+          changed_count=0
+          while IFS= read -r -d '' _path; do
+            changed_count=$((changed_count + 1))
+          done < "$changed_file"
+          if python3 -c 'import pathlib,sys; pathlib.Path(sys.argv[1]).read_bytes().decode("utf-8")' "$changed_file"; then
+            changed_utf8=true
+          else
+            changed_utf8=false
+          fi
+          {
+            echo "subject_sha=$observed_sha"
+            echo "subject_tree=$observed_tree"
+            echo "pr_head_tree=$pr_head_tree"
+            echo "changed_paths_sha256=$changed_digest"
+            echo "changed_path_count=$changed_count"
+            echo "changed_paths_utf8=$changed_utf8"
+            echo "cargo_lock_sha256=$(sha256sum Cargo.lock | cut -d ' ' -f 1)"
+            echo "rustc_identity=$(rustc -Vv | sha256sum | cut -d ' ' -f 1)"
+            echo "cargo_identity=$(cargo -Vv | sha256sum | cut -d ' ' -f 1)"
+            echo "artifact_identity=ripr-routed-rust-evidence-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          } >> "$GITHUB_OUTPUT"
+      - name: Observe authoritative applicability
+        id: result_applicability
+        env:
+          BASE_SHA: ${{ needs.route.outputs.base_sha }}
+          PR_HEAD_SHA: ${{ needs.route.outputs.pr_head_sha }}
+        run: cargo run --locked -p xtask -- ci-docs-only --base "$BASE_SHA" --head "$PR_HEAD_SHA"
+      - name: Clear any non-artifact routed evidence
+        if: always()
+        run: |
+          rm -f \
+            target/ripr/reports/routed-rust-plan.json \
+            target/ripr/reports/routed-rust-plan.md \
+            target/ripr/reports/routed-rust-execution.json \
+            target/ripr/reports/routed-rust-result.json
+      - name: Download the selected child evidence
+        id: evidence_download
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ripr-routed-rust-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/ripr/reports/
+      - name: Quarantine evidence after an artifact integrity failure
+        if: always() && steps.evidence_download.outcome != 'success'
+        run: |
+          rm -f \
+            target/ripr/reports/routed-rust-plan.json \
+            target/ripr/reports/routed-rust-plan.md \
+            target/ripr/reports/routed-rust-execution.json
       # The verdict lives in Rust, where `routed_rust_aggregate_transition_matrix`
       # exercises every transition. Deciding here in shell would leave the
       # tested table describing something other than what actually runs.
@@ -460,33 +651,79 @@ jobs:
       # Planned propositions and child receipts decide the outcome; GitHub's
       # scheduling artefacts are inputs, not the answer. A required lane that was
       # skipped is `not_proven`, never a pass, and a green tick that disagrees
-      # with its own receipt is `contradictory_evidence`.
+      # with its own receipt is a failed result.
       - name: Publish the normalized routed result
+        if: always()
         env:
-          PLANNED_ROUTE: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && 'docs_only' || needs.route.outputs.route }}
+          DOWNLOAD_OUTCOME: ${{ steps.evidence_download.outcome }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          EXPECTED_WORKFLOW: ${{ github.workflow_ref }}
+          EXPECTED_EVENT: ${{ github.event_name }}
+          EXPECTED_BASE: ${{ needs.route.outputs.base_sha }}
+          EXPECTED_PR_HEAD: ${{ needs.route.outputs.pr_head_sha }}
+          EXPECTED_PR_HEAD_TREE: ${{ steps.result_identity.outputs.pr_head_tree }}
+          EXPECTED_TRUST_CLASS: ${{ needs.route.outputs.subject_trust_class }}
+          EXPECTED_APPLICABILITY: ${{ steps.result_applicability.outputs.docs_only == 'true' && 'docs_only' || steps.result_applicability.outputs.docs_only == 'false' && 'github_hosted_rust' || '' }}
+          EXPECTED_ROUTE: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && 'docs_only' || needs.route.outputs.route }}
+          EXPECTED_SUBJECT: ${{ steps.result_identity.outputs.subject_sha }}
+          EXPECTED_SUBJECT_TREE: ${{ steps.result_identity.outputs.subject_tree }}
+          EXPECTED_CHANGED_PATHS_SHA256: ${{ steps.result_identity.outputs.changed_paths_sha256 }}
+          EXPECTED_CHANGED_PATH_COUNT: ${{ steps.result_identity.outputs.changed_path_count }}
+          EXPECTED_CHANGED_PATHS_UTF8: ${{ steps.result_identity.outputs.changed_paths_utf8 }}
+          EXPECTED_TOOLCHAIN_IDENTITY: ${{ steps.result_identity.outputs.rustc_identity }}
+          EXPECTED_CARGO_IDENTITY: ${{ steps.result_identity.outputs.cargo_identity }}
+          EXPECTED_CARGO_LOCK_SHA256: ${{ steps.result_identity.outputs.cargo_lock_sha256 }}
+          EXPECTED_CACHE_IDENTITY: ${{ steps.result_cache.outputs.cache-primary-key }}
+          EXPECTED_CACHE_HIT: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.docs-gate.outputs.cache_hit || needs.rust-github.outputs.cache_hit }}
+          EXPECTED_CACHE_MATCHED_IDENTITY: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.docs-gate.outputs.cache_matched_key || needs.rust-github.outputs.cache_matched_key }}
+          EXPECTED_RUNNER_OS: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.docs-gate.outputs.runner_os || needs.rust-github.outputs.runner_os }}
+          EXPECTED_RUNNER_ARCH: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.docs-gate.outputs.runner_arch || needs.rust-github.outputs.runner_arch }}
+          EXPECTED_RUNNER_IMAGE_OS: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.docs-gate.outputs.runner_image_os || needs.rust-github.outputs.runner_image_os }}
+          EXPECTED_RUNNER_IMAGE_VERSION: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.docs-gate.outputs.runner_image_version || needs.rust-github.outputs.runner_image_version }}
+          EXPECTED_ARTIFACT_IDENTITY: ${{ steps.result_identity.outputs.artifact_identity }}
           CHILD_CONCLUSION: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.docs-gate.result || needs.rust-github.result }}
-          # The child's own receipt, not a re-derivation of GitHub's tick. When
-          # the two disagree the verdict is contradictory_evidence.
-          RECEIPT_STATE: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && (needs.docs-gate.outputs.child_receipt_state || 'missing') || (needs.rust-github.outputs.child_receipt_state || 'missing') }}
-          PLANNED_SUBJECT: ${{ needs.route.outputs.subject_sha }}
-          OBSERVED_SUBJECT: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.docs-gate.outputs.observed_subject_sha || needs.rust-github.outputs.observed_subject_sha }}
           SELF_HOSTED_SELECTION_ATTEMPTED: ${{ needs.route.outputs.self_hosted_selection_attempted }}
           PRIVATE_RUNNER_SECRET_REQUESTED: ${{ needs.route.outputs.private_runner_secret_requested }}
           ORG_RUNNER_QUERY_ATTEMPTED: ${{ needs.route.outputs.org_runner_query_attempted }}
-          ROUTE_RESULT: ${{ needs.route.result }}
         run: |
           set -uo pipefail
-          # A route job that did not succeed produced no usable plan.
-          planned="$PLANNED_ROUTE"
-          if [ "$ROUTE_RESULT" != "success" ]; then
-            planned=plan_failed
-          fi
           cargo run --locked -p xtask -- ci-routed-rust-result \
-            --planned-route "$planned" \
+            --plan-path "target/ripr/reports/routed-rust-plan.json" \
+            --execution-path "target/ripr/reports/routed-rust-execution.json" \
+            --download-outcome "$DOWNLOAD_OUTCOME" \
+            --expected-repository "$EXPECTED_REPOSITORY" \
+            --expected-workflow "$EXPECTED_WORKFLOW" \
+            --expected-event "$EXPECTED_EVENT" \
+            --expected-base "$EXPECTED_BASE" \
+            --expected-pr-head "$EXPECTED_PR_HEAD" \
+            --expected-pr-head-tree "$EXPECTED_PR_HEAD_TREE" \
+            --expected-trust-class "$EXPECTED_TRUST_CLASS" \
+            --expected-authoritative-applicability "$EXPECTED_APPLICABILITY" \
+            --expected-route "$EXPECTED_ROUTE" \
+            --expected-subject "$EXPECTED_SUBJECT" \
+            --expected-subject-tree "$EXPECTED_SUBJECT_TREE" \
+            --expected-changed-paths-sha256 "$EXPECTED_CHANGED_PATHS_SHA256" \
+            --expected-changed-path-count "$EXPECTED_CHANGED_PATH_COUNT" \
+            --expected-changed-paths-utf8 "$EXPECTED_CHANGED_PATHS_UTF8" \
+            --expected-toolchain-identity "$EXPECTED_TOOLCHAIN_IDENTITY" \
+            --expected-cargo-identity "$EXPECTED_CARGO_IDENTITY" \
+            --expected-cargo-lock-sha256 "$EXPECTED_CARGO_LOCK_SHA256" \
+            --expected-cache-identity "$EXPECTED_CACHE_IDENTITY" \
+            --expected-cache-hit "$EXPECTED_CACHE_HIT" \
+            --expected-cache-matched-identity "$EXPECTED_CACHE_MATCHED_IDENTITY" \
+            --expected-runner-os "$EXPECTED_RUNNER_OS" \
+            --expected-runner-arch "$EXPECTED_RUNNER_ARCH" \
+            --expected-runner-image-os "$EXPECTED_RUNNER_IMAGE_OS" \
+            --expected-runner-image-version "$EXPECTED_RUNNER_IMAGE_VERSION" \
+            --expected-artifact-identity "$EXPECTED_ARTIFACT_IDENTITY" \
             --child-conclusion "$CHILD_CONCLUSION" \
-            --receipt-state "$RECEIPT_STATE" \
-            --planned-subject "$PLANNED_SUBJECT" \
-            --observed-subject "$OBSERVED_SUBJECT" \
             --self-hosted-selection-attempted "$SELF_HOSTED_SELECTION_ATTEMPTED" \
             --private-runner-secret-requested "$PRIVATE_RUNNER_SECRET_REQUESTED" \
             --org-runner-query-attempted "$ORG_RUNNER_QUERY_ATTEMPTED"
+      - name: Upload the normalized result evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ripr-routed-rust-result-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/ripr/reports/routed-rust-result.json
+          if-no-files-found: error

@@ -4944,6 +4944,7 @@ const DOCS_ONLY_RELEASE_SURFACE: [&str; 5] = [
 ///
 /// The digest covers the same bytes the predicate consumed, so a receipt can
 /// name the path set a decision was made from rather than a re-derivation of it.
+#[cfg(test)]
 pub(crate) fn changed_paths_digest(paths: &[String]) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
@@ -4952,6 +4953,117 @@ pub(crate) fn changed_paths_digest(paths: &[String]) -> String {
         hasher.update([0u8]);
     }
     format!("{:x}", hasher.finalize())
+}
+
+fn routed_rust_bytes_digest(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+fn routed_rust_decode_changed_paths(bytes: &[u8]) -> Result<Vec<String>, std::str::Utf8Error> {
+    bytes
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+        .map(|path| std::str::from_utf8(path).map(str::to_string))
+        .collect()
+}
+
+const ROUTED_RUST_PROPOSITION_IDS: [&str; 22] = [
+    "cargo_fmt",
+    "cargo_check",
+    "cargo_clippy",
+    "cargo_nextest",
+    "precommit",
+    "check_evidence_promotion_honesty",
+    "check_agent_skills",
+    "check_dependencies",
+    "check_process_policy",
+    "check_network_policy",
+    "goldens_check",
+    "fixtures",
+    "ripr_pr",
+    "ripr_pr_check",
+    "ripr_review_comments",
+    "ripr_review_comments_check",
+    "impacted_evidence",
+    "impacted_evidence_check",
+    "ripr_pr_summary",
+    "ripr_pr_summary_check",
+    "ripr_annotations",
+    "ripr_annotations_check",
+];
+
+const ROUTED_RUST_DOCS_REQUIRED_IDS: [&str; 2] = ["precommit", "check_agent_skills"];
+const ROUTED_RUST_PR_REQUIRED_IDS: [&str; 10] = [
+    "ripr_pr",
+    "ripr_pr_check",
+    "ripr_review_comments",
+    "ripr_review_comments_check",
+    "impacted_evidence",
+    "impacted_evidence_check",
+    "ripr_pr_summary",
+    "ripr_pr_summary_check",
+    "ripr_annotations",
+    "ripr_annotations_check",
+];
+
+fn routed_rust_expected_command(id: &str, base: &str, pr_head: &str) -> Option<String> {
+    let command = match id {
+        "cargo_fmt" => "cargo fmt --check".to_string(),
+        "cargo_check" => "cargo check --workspace --all-targets".to_string(),
+        "cargo_clippy" => "cargo clippy --workspace --all-targets -- -D warnings".to_string(),
+        "cargo_nextest" => "cargo nextest run --workspace".to_string(),
+        "precommit" => "cargo xtask precommit".to_string(),
+        "check_evidence_promotion_honesty" => {
+            "cargo xtask check-evidence-promotion-honesty".to_string()
+        }
+        "check_agent_skills" => "cargo xtask check-agent-skills".to_string(),
+        "check_dependencies" => "cargo xtask check-dependencies".to_string(),
+        "check_process_policy" => "cargo xtask check-process-policy".to_string(),
+        "check_network_policy" => "cargo xtask check-network-policy".to_string(),
+        "goldens_check" => "cargo xtask goldens check".to_string(),
+        "fixtures" => "cargo xtask fixtures".to_string(),
+        "ripr_pr" => format!("cargo xtask ripr-pr --base {base} --head {pr_head}"),
+        "ripr_pr_check" => {
+            format!("cargo xtask ripr-pr --base {base} --head {pr_head} --check")
+        }
+        "ripr_review_comments" => {
+            format!("cargo xtask ripr-review-comments --base {base} --head {pr_head}")
+        }
+        "ripr_review_comments_check" => {
+            format!("cargo xtask ripr-review-comments --base {base} --head {pr_head} --check")
+        }
+        "impacted_evidence" => "cargo xtask impacted-evidence".to_string(),
+        "impacted_evidence_check" => "cargo xtask impacted-evidence --check".to_string(),
+        "ripr_pr_summary" => "cargo xtask ripr-pr-summary".to_string(),
+        "ripr_pr_summary_check" => "cargo xtask ripr-pr-summary --check".to_string(),
+        "ripr_annotations" => "cargo xtask ripr-annotations".to_string(),
+        "ripr_annotations_check" => "cargo xtask ripr-annotations --check".to_string(),
+        _ => return None,
+    };
+    Some(command)
+}
+
+fn routed_rust_required_ids(route: &str, event: &str) -> Vec<&'static str> {
+    let mut ids = if route == "docs_only" {
+        ROUTED_RUST_DOCS_REQUIRED_IDS.to_vec()
+    } else {
+        ROUTED_RUST_PROPOSITION_IDS[..12].to_vec()
+    };
+    if event == "pull_request" {
+        ids.extend(ROUTED_RUST_PR_REQUIRED_IDS);
+    }
+    ids
+}
+
+fn routed_rust_changed_subject<'a>(pr_head_sha: &'a str, subject_sha: &'a str) -> &'a str {
+    if pr_head_sha.is_empty() {
+        subject_sha
+    } else {
+        pr_head_sha
+    }
 }
 
 /// What the route planned for a subject.
@@ -4991,7 +5103,6 @@ pub(crate) enum AggregateVerdict {
     NotProven,
     StaleOrWrongSubject,
     Cancelled,
-    ContradictoryEvidence,
 }
 
 impl AggregateVerdict {
@@ -5007,7 +5118,6 @@ impl AggregateVerdict {
             AggregateVerdict::NotProven => "not_proven",
             AggregateVerdict::StaleOrWrongSubject => "stale_or_wrong_subject",
             AggregateVerdict::Cancelled => "cancelled",
-            AggregateVerdict::ContradictoryEvidence => "contradictory_evidence",
         }
     }
 }
@@ -5075,7 +5185,7 @@ pub(crate) fn routed_rust_aggregate_verdict(
     match (child, receipt) {
         (ChildConclusion::Success, ReceiptState::Failed)
         | (ChildConclusion::Failure, ReceiptState::Passed) => {
-            return AggregateVerdict::ContradictoryEvidence;
+            return AggregateVerdict::Failed;
         }
         _ => {}
     }
@@ -5152,20 +5262,265 @@ fn routed_rust_arg(args: &[String], name: &str) -> String {
 /// `routed_rust_aggregate_transition_matrix` rather than being re-implemented in
 /// shell where it cannot be tested.
 pub(crate) fn ci_routed_rust_result(args: &[String]) -> Result<(), String> {
-    let planned = match routed_rust_arg(args, "planned-route").as_str() {
+    let root = std::env::current_dir()
+        .map_err(|err| format!("failed to resolve the working directory: {err}"))?;
+    let evidence_dir = child_receipt_dir(&root);
+    let plan_path_arg = routed_rust_arg(args, "plan-path");
+    let execution_path_arg = routed_rust_arg(args, "execution-path");
+    let plan_path = if plan_path_arg.is_empty() {
+        evidence_dir.join("routed-rust-plan.json")
+    } else {
+        PathBuf::from(plan_path_arg)
+    };
+    let execution_path = if execution_path_arg.is_empty() {
+        evidence_dir.join("routed-rust-execution.json")
+    } else {
+        PathBuf::from(execution_path_arg)
+    };
+    let result_path = evidence_dir.join("routed-rust-result.json");
+    fs::create_dir_all(&evidence_dir)
+        .map_err(|err| format!("failed to create {}: {err}", evidence_dir.display()))?;
+
+    let mut invalidations = Vec::new();
+    if routed_rust_arg(args, "download-outcome") != "success" {
+        invalidations.push("artifact_download_not_successful".to_string());
+    }
+    let plan_bytes = fs::read(&plan_path).map_err(|err| {
+        invalidations.push(format!("plan_unavailable: {err}"));
+    });
+    let execution_bytes = fs::read(&execution_path).map_err(|err| {
+        invalidations.push(format!("execution_unavailable: {err}"));
+    });
+    let plan: serde_json::Value = plan_bytes
+        .as_ref()
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(bytes).ok())
+        .unwrap_or_else(|| {
+            if plan_bytes.is_ok() {
+                invalidations.push("plan_malformed".to_string());
+            }
+            serde_json::json!({})
+        });
+    let execution: serde_json::Value = execution_bytes
+        .as_ref()
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(bytes).ok())
+        .unwrap_or_else(|| {
+            if execution_bytes.is_ok() {
+                invalidations.push("execution_malformed".to_string());
+            }
+            serde_json::json!({})
+        });
+
+    if plan["schema"] != "ripr.routed_rust_plan.v1" {
+        invalidations.push("plan_schema_mismatch".to_string());
+    }
+    if execution["schema"] != "ripr.routed_rust_execution.v1" {
+        invalidations.push("execution_schema_mismatch".to_string());
+    }
+    if plan["plan_version"] != 1 || plan["workflow_version"] != 1 {
+        invalidations.push("plan_version_mismatch".to_string());
+    }
+    for field in [
+        "repository",
+        "workflow",
+        "event",
+        "trust_class",
+        "subject_sha",
+        "subject_tree",
+        "changed_paths_sha256",
+        "scheduled_route",
+        "toolchain_identity",
+        "cargo_identity",
+        "cargo_lock_sha256",
+        "cache_identity",
+        "artifact_identity",
+    ] {
+        if plan[field].as_str().is_none_or(str::is_empty) {
+            invalidations.push(format!("plan_missing_{field}"));
+        }
+    }
+    if plan["changed_path_count"].as_u64().is_none() {
+        invalidations.push("plan_missing_changed_path_count".to_string());
+    }
+    if !matches!(
+        plan["authoritative_applicability"].as_str(),
+        Some("docs_only" | "github_hosted_rust")
+    ) || plan["conservative_overproof"].as_bool().is_none()
+        || plan["state"] != "planned"
+        || !plan["failure_reason"].is_null()
+        || plan["non_claims"].as_array().is_none_or(Vec::is_empty)
+    {
+        invalidations.push("plan_disposition_contract_mismatch".to_string());
+    }
+    if plan["event"] == "pull_request"
+        && (plan["base_sha"].as_str().is_none_or(str::is_empty)
+            || plan["pr_head_sha"].as_str().is_none_or(str::is_empty)
+            || plan["pr_head_tree"].as_str().is_none_or(str::is_empty))
+    {
+        invalidations.push("plan_missing_pull_request_identity".to_string());
+    }
+    for field in ["os", "arch", "image_os", "image_version"] {
+        if plan["runner_identity"][field]
+            .as_str()
+            .is_none_or(str::is_empty)
+        {
+            invalidations.push(format!("plan_missing_runner_{field}"));
+        }
+    }
+    for field in [
+        "repository_write",
+        "org_runner",
+        "release",
+        "registry",
+        "marketplace",
+        "signing",
+    ] {
+        if plan["credential_availability"][field] != false {
+            invalidations.push(format!("credential_available_{field}"));
+        }
+    }
+    if !plan["invalidations"].as_array().is_some_and(Vec::is_empty) {
+        invalidations.push("plan_contains_invalidations".to_string());
+    }
+    for (argument, field) in [
+        ("expected-repository", "repository"),
+        ("expected-workflow", "workflow"),
+        ("expected-event", "event"),
+        ("expected-base", "base_sha"),
+        ("expected-pr-head", "pr_head_sha"),
+    ] {
+        let expected = routed_rust_arg(args, argument);
+        if expected != plan[field].as_str().unwrap_or_default() {
+            invalidations.push(format!("plan_{field}_not_current"));
+        }
+    }
+    for (argument, field) in [
+        ("expected-trust-class", "trust_class"),
+        ("expected-pr-head-tree", "pr_head_tree"),
+        ("expected-toolchain-identity", "toolchain_identity"),
+        ("expected-cargo-identity", "cargo_identity"),
+        ("expected-cargo-lock-sha256", "cargo_lock_sha256"),
+        ("expected-cache-identity", "cache_identity"),
+        ("expected-artifact-identity", "artifact_identity"),
+    ] {
+        let expected = routed_rust_arg(args, argument);
+        if expected != plan[field].as_str().unwrap_or_default() {
+            invalidations.push(format!("plan_{field}_not_current"));
+        }
+    }
+    let expected_changed_path_count = routed_rust_arg(args, "expected-changed-path-count")
+        .parse::<u64>()
+        .ok();
+    if plan["changed_path_count"].as_u64() != expected_changed_path_count {
+        invalidations.push("plan_changed_path_count_not_current".to_string());
+    }
+    let expected_changed_paths_utf8 = routed_rust_arg(args, "expected-changed-paths-utf8");
+    if plan["changed_paths_utf8"].as_bool()
+        != match expected_changed_paths_utf8.as_str() {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None,
+        }
+    {
+        invalidations.push("plan_changed_paths_utf8_not_current".to_string());
+    }
+    let cache_identity = plan["cache_identity"].as_str().unwrap_or_default();
+    let cache_matched_identity = plan["cache_matched_identity"].as_str().unwrap_or_default();
+    let cache_hit = plan["cache_hit"].as_str();
+    if !matches!(cache_hit, Some("" | "true" | "false")) {
+        invalidations.push("plan_cache_hit_invalid".to_string());
+    }
+    if matches!(cache_hit, Some("true")) && cache_matched_identity != cache_identity {
+        invalidations.push("plan_cache_exact_hit_identity_mismatch".to_string());
+    }
+    if matches!(cache_hit, Some("false"))
+        && (cache_matched_identity.is_empty() || cache_matched_identity == cache_identity)
+    {
+        invalidations.push("plan_cache_partial_hit_identity_mismatch".to_string());
+    }
+    if matches!(cache_hit, Some("")) && !cache_matched_identity.is_empty() {
+        invalidations.push("plan_cache_miss_has_matched_identity".to_string());
+    }
+    for (argument, observed) in [
+        ("expected-cache-hit", cache_hit.unwrap_or_default()),
+        ("expected-cache-matched-identity", cache_matched_identity),
+        (
+            "expected-runner-os",
+            plan["runner_identity"]["os"].as_str().unwrap_or_default(),
+        ),
+        (
+            "expected-runner-arch",
+            plan["runner_identity"]["arch"].as_str().unwrap_or_default(),
+        ),
+        (
+            "expected-runner-image-os",
+            plan["runner_identity"]["image_os"]
+                .as_str()
+                .unwrap_or_default(),
+        ),
+        (
+            "expected-runner-image-version",
+            plan["runner_identity"]["image_version"]
+                .as_str()
+                .unwrap_or_default(),
+        ),
+    ] {
+        if routed_rust_arg(args, argument) != observed {
+            invalidations.push(format!("plan_{}_not_current", argument.replace('-', "_")));
+        }
+    }
+    let plan_sha256 = plan_bytes
+        .as_ref()
+        .ok()
+        .map(|bytes| routed_rust_bytes_digest(bytes))
+        .unwrap_or_default();
+    if execution["plan_sha256"].as_str() != Some(plan_sha256.as_str()) {
+        invalidations.push("execution_plan_digest_mismatch".to_string());
+    }
+
+    let planned_route = plan["scheduled_route"].as_str().unwrap_or_default();
+    let expected_route = routed_rust_arg(args, "expected-route");
+    if expected_route.is_empty() || expected_route != planned_route {
+        invalidations.push("plan_route_mismatch".to_string());
+    }
+    let planned = match planned_route {
         "github_hosted_rust" => PlannedRoute::GithubHostedRust,
         "docs_only" => PlannedRoute::DocsOnly,
         "unsupported_subject" => PlannedRoute::UnsupportedSubject,
-        // An absent or unreadable plan is a planning failure, never a pass.
         _ => PlannedRoute::PlanFailed,
     };
+    let applicability_consistent = matches!(
+        (
+            planned_route,
+            plan["authoritative_applicability"].as_str(),
+            plan["conservative_overproof"].as_bool(),
+        ),
+        ("docs_only", Some("docs_only"), Some(false))
+            | (
+                "github_hosted_rust",
+                Some("github_hosted_rust"),
+                Some(false)
+            )
+            | ("github_hosted_rust", Some("docs_only"), Some(true))
+    );
+    if !applicability_consistent {
+        invalidations.push("plan_applicability_mismatch".to_string());
+    }
+    if routed_rust_arg(args, "expected-authoritative-applicability")
+        != plan["authoritative_applicability"]
+            .as_str()
+            .unwrap_or_default()
+    {
+        invalidations.push("plan_authoritative_applicability_not_current".to_string());
+    }
     let child = match routed_rust_arg(args, "child-conclusion").as_str() {
         "success" => ChildConclusion::Success,
         "failure" => ChildConclusion::Failure,
         "cancelled" => ChildConclusion::Cancelled,
         _ => ChildConclusion::Skipped,
     };
-    let receipt = match routed_rust_arg(args, "receipt-state").as_str() {
+    let receipt = match execution["state"].as_str().unwrap_or_default() {
         "passed" => ReceiptState::Passed,
         "failed" => ReceiptState::Failed,
         "not_run" => ReceiptState::NotRun,
@@ -5174,21 +5529,246 @@ pub(crate) fn ci_routed_rust_result(args: &[String]) -> Result<(), String> {
         _ => ReceiptState::Missing,
     };
 
-    let planned_subject = routed_rust_arg(args, "planned-subject");
-    let observed_subject = routed_rust_arg(args, "observed-subject");
+    let planned_subject = plan["subject_sha"].as_str().unwrap_or_default();
+    let expected_subject = routed_rust_arg(args, "expected-subject");
+    if expected_subject.is_empty() || expected_subject != planned_subject {
+        invalidations.push("plan_subject_not_current".to_string());
+    }
+    let observed_subject = execution["subject_sha"].as_str().unwrap_or_default();
     let subject_observed = !observed_subject.is_empty();
     // A subject claim only agrees when both sides actually named one.
     let subject_agrees = !planned_subject.is_empty()
         && !observed_subject.is_empty()
-        && planned_subject == observed_subject;
+        && planned_subject == observed_subject
+        && expected_subject == planned_subject;
+    if !subject_agrees {
+        invalidations.push("execution_subject_sha_mismatch".to_string());
+    }
+    let planned_tree = plan["subject_tree"].as_str().unwrap_or_default();
+    let observed_tree = execution["subject_tree"].as_str().unwrap_or_default();
+    let expected_tree = routed_rust_arg(args, "expected-subject-tree");
+    if planned_tree.is_empty()
+        || observed_tree.is_empty()
+        || expected_tree.is_empty()
+        || planned_tree != observed_tree
+        || planned_tree != expected_tree
+    {
+        invalidations.push("execution_subject_tree_mismatch".to_string());
+    }
+    let expected_changed_paths_sha256 = routed_rust_arg(args, "expected-changed-paths-sha256");
+    if expected_changed_paths_sha256.is_empty()
+        || plan["changed_paths_sha256"].as_str() != Some(expected_changed_paths_sha256.as_str())
+    {
+        invalidations.push("plan_changed_paths_not_current".to_string());
+    }
+
+    let required_ids: Vec<&str> = plan["required_proposition_ids"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    let proposition_plan = plan["proposition_plan"].as_array();
+    let planned_proposition_ids: Vec<&str> = proposition_plan
+        .into_iter()
+        .flatten()
+        .filter_map(|row| row["proposition_id"].as_str())
+        .collect();
+    if planned_proposition_ids != ROUTED_RUST_PROPOSITION_IDS {
+        invalidations.push("plan_proposition_catalog_mismatch".to_string());
+    }
+    let plan_required_ids: Vec<&str> = proposition_plan
+        .into_iter()
+        .flatten()
+        .filter(|row| row["applicability"] == "required")
+        .filter_map(|row| row["proposition_id"].as_str())
+        .collect();
+    if plan_required_ids != required_ids
+        || proposition_plan.into_iter().flatten().any(|row| {
+            !matches!(
+                row["applicability"].as_str(),
+                Some("required" | "not_applicable")
+            )
+        })
+    {
+        invalidations.push("plan_proposition_applicability_mismatch".to_string());
+    }
+    let expected_required =
+        routed_rust_required_ids(planned_route, plan["event"].as_str().unwrap_or_default());
+    if required_ids != expected_required {
+        invalidations.push("route_required_proposition_mismatch".to_string());
+    }
+    let command_ids: Vec<&str> = execution["commands"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|row| row["command_id"].as_str())
+        .collect();
+    if required_ids.is_empty() || required_ids != command_ids {
+        invalidations.push("required_proposition_set_mismatch".to_string());
+    }
+    let mut failed_commands = 0usize;
+    let mut passed_commands = 0usize;
+    let mut observed_commands = 0usize;
+    for row in execution["commands"].as_array().into_iter().flatten() {
+        if row["state"] == "failed" {
+            failed_commands += 1;
+        }
+        if row["state"] == "passed" {
+            passed_commands += 1;
+        }
+        if matches!(row["state"].as_str(), Some("passed" | "failed")) {
+            observed_commands += 1;
+        }
+        if !matches!(
+            row["state"].as_str(),
+            Some("passed" | "failed" | "not_run" | "cancelled" | "unavailable" | "not_applicable")
+        ) {
+            invalidations.push("non_terminal_or_unknown_proposition_state".to_string());
+            break;
+        }
+        let command_id = row["command_id"].as_str().unwrap_or_default();
+        let expected_command = routed_rust_expected_command(
+            command_id,
+            plan["base_sha"].as_str().unwrap_or_default(),
+            plan["pr_head_sha"].as_str().unwrap_or_default(),
+        );
+        let evidence_path = format!("target/ripr/reports/routed-rust-command-{command_id}.log");
+        let evidence_digest = fs::read(root.join(&evidence_path))
+            .ok()
+            .map(|bytes| routed_rust_bytes_digest(&bytes));
+        let observed_shape = row["command"].as_str() == expected_command.as_deref()
+            && row["duration_ms"].as_u64().is_some()
+            && row["evidence_path"].as_str() == Some(evidence_path.as_str())
+            && row["evidence_sha256"].as_str() == evidence_digest.as_deref();
+        let row_shape_holds = match row["state"].as_str() {
+            Some("passed") => row["exit_code"] == 0 && observed_shape,
+            Some("failed") => {
+                row["exit_code"].as_i64().is_some_and(|code| code != 0) && observed_shape
+            }
+            Some("not_run") => {
+                row["command"].is_null()
+                    && row["exit_code"].is_null()
+                    && row["duration_ms"].is_null()
+                    && row["evidence_path"].is_null()
+                    && row["evidence_sha256"].is_null()
+            }
+            _ => true,
+        };
+        if !row_shape_holds {
+            invalidations.push("command_row_contract_mismatch".to_string());
+            break;
+        }
+    }
+    match execution["state"].as_str() {
+        Some("passed") if passed_commands != required_ids.len() => {
+            invalidations.push("execution_pass_without_complete_proof".to_string());
+        }
+        Some("failed") if failed_commands == 0 => {
+            invalidations.push("execution_failure_without_failed_proposition".to_string());
+        }
+        Some("instrument_failure" | "not_run" | "cancelled") if failed_commands != 0 => {
+            invalidations.push("non_product_state_contains_failed_proposition".to_string());
+        }
+        Some("passed" | "failed" | "instrument_failure" | "not_run" | "cancelled") => {}
+        _ => invalidations.push("unknown_execution_state".to_string()),
+    }
+    if execution["job_outcome"].as_str().is_none_or(str::is_empty)
+        || execution["planned_command_count"].as_u64() != Some(required_ids.len() as u64)
+        || execution["observed_command_count"].as_u64() != Some(observed_commands as u64)
+        || !execution["invalidations"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    {
+        invalidations.push("execution_contract_incomplete".to_string());
+    }
+    let expected_failure_class = match execution["state"].as_str() {
+        Some("failed") => Some("product"),
+        Some("instrument_failure") => Some("instrument"),
+        _ => None,
+    };
+    if execution["failure_class"].as_str() != expected_failure_class {
+        invalidations.push("execution_failure_class_mismatch".to_string());
+    }
+    let expected_job_outcome = match child {
+        ChildConclusion::Success => "success",
+        ChildConclusion::Failure => "failure",
+        ChildConclusion::Cancelled => "cancelled",
+        ChildConclusion::Skipped => "skipped",
+    };
+    let job_outcome_mismatch = execution["job_outcome"] != expected_job_outcome;
+
     let self_hosted_selection_attempted = routed_rust_arg(args, "self-hosted-selection-attempted");
     let private_runner_secret_requested = routed_rust_arg(args, "private-runner-secret-requested");
     let org_runner_query_attempted = routed_rust_arg(args, "org-runner-query-attempted");
     let route_assertions_hold = self_hosted_selection_attempted == "false"
         && private_runner_secret_requested == "false"
-        && org_runner_query_attempted == "false";
+        && org_runner_query_attempted == "false"
+        && plan["self_hosted_selection_attempted"] == false
+        && plan["private_runner_secret_requested"] == false
+        && plan["org_runner_query_attempted"] == false;
 
-    let verdict = routed_rust_aggregate_verdict(
+    if !route_assertions_hold {
+        invalidations.push("forbidden_route_attempt".to_string());
+    }
+    if execution["required_proposition_ids"] != plan["required_proposition_ids"] {
+        invalidations.push("execution_plan_proposition_mismatch".to_string());
+    }
+    let execution_propositions = execution["propositions"].as_array();
+    let execution_proposition_ids: Vec<&str> = execution_propositions
+        .into_iter()
+        .flatten()
+        .filter_map(|row| row["proposition_id"].as_str())
+        .collect();
+    if execution_proposition_ids != ROUTED_RUST_PROPOSITION_IDS {
+        invalidations.push("execution_proposition_catalog_mismatch".to_string());
+    }
+    for (index, row) in execution_propositions.into_iter().flatten().enumerate() {
+        let Some(plan_row) = proposition_plan.and_then(|rows| rows.get(index)) else {
+            invalidations.push("execution_proposition_without_plan".to_string());
+            break;
+        };
+        if row["applicability"] != plan_row["applicability"]
+            || (row["applicability"] == "not_applicable" && row["state"] != "not_applicable")
+        {
+            invalidations.push("execution_proposition_state_mismatch".to_string());
+            break;
+        }
+        if row["applicability"] == "required"
+            && !execution["commands"].as_array().is_some_and(|commands| {
+                commands.iter().any(|command| {
+                    command["command_id"] == row["proposition_id"]
+                        && command["state"] == row["state"]
+                })
+            })
+        {
+            invalidations.push("execution_proposition_command_mismatch".to_string());
+            break;
+        }
+    }
+
+    let stale_only_invalidations = !invalidations.is_empty()
+        && invalidations.iter().all(|invalidation| {
+            matches!(
+                invalidation.as_str(),
+                "plan_subject_not_current"
+                    | "execution_subject_sha_mismatch"
+                    | "execution_subject_tree_mismatch"
+            )
+        });
+    let evidence_invalid = !invalidations.is_empty();
+    let conclusion_mismatch = matches!(
+        (child, receipt),
+        (ChildConclusion::Success, ReceiptState::Failed)
+            | (ChildConclusion::Failure, ReceiptState::Passed)
+    );
+    if conclusion_mismatch {
+        invalidations.push("child_conclusion_receipt_mismatch".to_string());
+    }
+    if job_outcome_mismatch {
+        invalidations.push("child_conclusion_job_outcome_mismatch".to_string());
+    }
+    let mut verdict = routed_rust_aggregate_verdict(
         planned,
         child,
         receipt,
@@ -5196,6 +5776,43 @@ pub(crate) fn ci_routed_rust_result(args: &[String]) -> Result<(), String> {
         subject_agrees,
         route_assertions_hold,
     );
+    if evidence_invalid
+        && (verdict != AggregateVerdict::StaleOrWrongSubject || !stale_only_invalidations)
+    {
+        verdict = AggregateVerdict::NotProven;
+    }
+    if job_outcome_mismatch && verdict.is_green() {
+        verdict = AggregateVerdict::Failed;
+    }
+
+    let result = serde_json::json!({
+        "schema": "ripr.routed_rust_result.v1",
+        "plan_sha256": plan_sha256,
+        "execution_sha256": execution_bytes.as_ref().ok().map(|bytes| routed_rust_bytes_digest(bytes)),
+        "planned_route": planned_route,
+        "child_conclusion": routed_rust_arg(args, "child-conclusion"),
+        "receipt_state": execution["state"],
+        "planned_subject_sha": planned_subject,
+        "observed_subject_sha": observed_subject,
+        "planned_subject_tree": planned_tree,
+        "observed_subject_tree": observed_tree,
+        "required_proposition_ids": required_ids,
+        "self_hosted_selection_attempted": self_hosted_selection_attempted,
+        "private_runner_secret_requested": private_runner_secret_requested,
+        "org_runner_query_attempted": org_runner_query_attempted,
+        "verdict": verdict.as_str(),
+        "invalidations": invalidations,
+        "non_claims": ["release_readiness", "publication_authority", "self_hosted_capacity"],
+    });
+    fs::write(
+        &result_path,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&result)
+                .map_err(|err| format!("render routed result: {err}"))?
+        ),
+    )
+    .map_err(|err| format!("failed to write {}: {err}", result_path.display()))?;
 
     if let Ok(summary) = std::env::var("GITHUB_STEP_SUMMARY") {
         use std::io::Write;
@@ -5210,8 +5827,8 @@ pub(crate) fn ci_routed_rust_result(args: &[String]) -> Result<(), String> {
                 ("planned route", &format!("{planned:?}")),
                 ("child conclusion", &format!("{child:?}")),
                 ("receipt state", &format!("{receipt:?}")),
-                ("planned subject", planned_subject.as_str()),
-                ("observed subject", observed_subject.as_str()),
+                ("planned subject", planned_subject),
+                ("observed subject", observed_subject),
                 (
                     "self-hosted selection attempted",
                     self_hosted_selection_attempted.as_str(),
@@ -5243,10 +5860,7 @@ pub(crate) fn ci_routed_rust_result(args: &[String]) -> Result<(), String> {
 
 /// Directory holding one child job's execution evidence.
 fn child_receipt_dir(root: &Path) -> PathBuf {
-    root.join("target")
-        .join("ripr")
-        .join("reports")
-        .join("routed-rust-child")
+    root.join("target").join("ripr").join("reports")
 }
 
 /// Run one planned proof command and record its terminal state.
@@ -5261,6 +5875,11 @@ pub(crate) fn ci_record_command(args: &[String]) -> Result<(), String> {
     if id.is_empty() {
         return Err("ci-record-command requires --id".to_string());
     }
+    if !ROUTED_RUST_PROPOSITION_IDS.contains(&id.as_str()) {
+        return Err(format!(
+            "ci-record-command rejects unknown proposition id `{id}`"
+        ));
+    }
     let separator = args
         .iter()
         .position(|arg| arg == "--")
@@ -5268,6 +5887,18 @@ pub(crate) fn ci_record_command(args: &[String]) -> Result<(), String> {
     let command: Vec<&str> = args[separator + 1..].iter().map(String::as_str).collect();
     if command.is_empty() {
         return Err("ci-record-command requires a command after `--`".to_string());
+    }
+    let expected_command = routed_rust_expected_command(
+        &id,
+        &std::env::var("BASE_SHA").unwrap_or_default(),
+        &std::env::var("HEAD_SHA").unwrap_or_default(),
+    )
+    .ok_or_else(|| format!("no command contract exists for proposition `{id}`"))?;
+    if command.join(" ") != expected_command {
+        return Err(format!(
+            "proposition `{id}` must run `{expected_command}`, not `{}`",
+            command.join(" ")
+        ));
     }
 
     let root = std::env::current_dir()
@@ -5290,6 +5921,10 @@ pub(crate) fn ci_record_command(args: &[String]) -> Result<(), String> {
     // The wrapped command's own output still belongs in the job log.
     print!("{}", observed.stdout);
     eprint!("{}", observed.stderr);
+    let evidence_path = format!("target/ripr/reports/routed-rust-command-{id}.log");
+    let evidence_bytes = format!("stdout:\n{}\nstderr:\n{}", observed.stdout, observed.stderr);
+    fs::write(root.join(&evidence_path), evidence_bytes.as_bytes())
+        .map_err(|err| format!("failed to write command evidence for {id}: {err}"))?;
 
     let row = serde_json::json!({
         "command_id": id,
@@ -5297,6 +5932,8 @@ pub(crate) fn ci_record_command(args: &[String]) -> Result<(), String> {
         "state": state,
         "exit_code": exit_code,
         "duration_ms": duration_ms,
+        "evidence_path": evidence_path,
+        "evidence_sha256": routed_rust_bytes_digest(evidence_bytes.as_bytes()),
     });
     let path = dir.join("commands.jsonl");
     let mut existing = fs::read_to_string(&path).unwrap_or_default();
@@ -5341,6 +5978,41 @@ pub(crate) fn ci_child_receipt_at(root: &Path, args: &[String]) -> Result<(), St
     let dir = child_receipt_dir(root);
     fs::create_dir_all(&dir).map_err(|err| format!("failed to create {}: {err}", dir.display()))?;
 
+    let plan_path_arg = routed_rust_arg(args, "plan-path");
+    let plan_path = if plan_path_arg.is_empty() {
+        dir.join("routed-rust-plan.json")
+    } else {
+        PathBuf::from(plan_path_arg)
+    };
+    let mut invalidations = Vec::new();
+    let plan_bytes = fs::read(&plan_path).map_err(|err| {
+        invalidations.push(format!("plan_unavailable: {err}"));
+    });
+    let plan_packet: serde_json::Value = plan_bytes
+        .as_ref()
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(bytes).ok())
+        .unwrap_or_else(|| {
+            if plan_bytes.is_ok() {
+                invalidations.push("plan_malformed".to_string());
+            }
+            serde_json::json!({})
+        });
+    let packet_ids: Vec<&str> = plan_packet["required_proposition_ids"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    if packet_ids != plan.iter().map(String::as_str).collect::<Vec<_>>() {
+        invalidations.push("plan_proposition_mismatch".to_string());
+    }
+    if plan_packet["subject_sha"].as_str() != Some(subject_sha.as_str())
+        || plan_packet["subject_tree"].as_str() != Some(subject_tree.as_str())
+    {
+        invalidations.push("plan_subject_mismatch".to_string());
+    }
+
     let recorded = fs::read_to_string(dir.join("commands.jsonl")).unwrap_or_default();
     let mut observed: Vec<serde_json::Value> = Vec::new();
     for line in recorded.lines().filter(|line| !line.trim().is_empty()) {
@@ -5368,33 +6040,70 @@ pub(crate) fn ci_child_receipt_at(root: &Path, args: &[String]) -> Result<(), St
                 any_not_run = true;
                 commands.push(serde_json::json!({
                     "command_id": id,
+                    "command": serde_json::Value::Null,
                     "state": "not_run",
                     "exit_code": serde_json::Value::Null,
+                    "duration_ms": serde_json::Value::Null,
+                    "evidence_path": serde_json::Value::Null,
+                    "evidence_sha256": serde_json::Value::Null,
                 }));
             }
         }
     }
+    let propositions: Vec<serde_json::Value> = ROUTED_RUST_PROPOSITION_IDS
+        .iter()
+        .map(|id| {
+            if let Some(command) = commands
+                .iter()
+                .find(|row| row["command_id"].as_str() == Some(id))
+            {
+                serde_json::json!({
+                    "proposition_id": id,
+                    "applicability": "required",
+                    "state": command["state"],
+                })
+            } else {
+                serde_json::json!({
+                    "proposition_id": id,
+                    "applicability": "not_applicable",
+                    "state": "not_applicable",
+                })
+            }
+        })
+        .collect();
 
     // Interruption is not product failure, and an incomplete run is not a pass.
     let state = match job_outcome.as_str() {
         "cancelled" => "cancelled",
-        _ if subject_sha.is_empty() || subject_tree.is_empty() => "instrument_failure",
+        _ if subject_sha.is_empty() || subject_tree.is_empty() || !invalidations.is_empty() => {
+            "instrument_failure"
+        }
         _ if any_failed => "failed",
+        "failure" => "instrument_failure",
         _ if any_not_run => "not_run",
         _ => "passed",
     };
 
     let receipt = serde_json::json!({
-        "schema": "ripr.routed_rust_child_receipt.v1",
+        "schema": "ripr.routed_rust_execution.v1",
+        "plan_sha256": plan_bytes.as_ref().ok().map(|bytes| routed_rust_bytes_digest(bytes)),
         "state": state,
         "job_outcome": job_outcome,
         "subject_sha": subject_sha,
         "subject_tree": subject_tree,
+        "required_proposition_ids": plan,
         "planned_command_count": plan.len(),
         "observed_command_count": observed.len(),
         "commands": commands,
+        "propositions": propositions,
+        "failure_class": match state {
+            "failed" => serde_json::Value::String("product".to_string()),
+            "instrument_failure" => serde_json::Value::String("instrument".to_string()),
+            _ => serde_json::Value::Null,
+        },
+        "invalidations": invalidations,
     });
-    let path = dir.join("child-receipt.json");
+    let path = dir.join("routed-rust-execution.json");
     fs::write(
         &path,
         format!(
@@ -5423,6 +6132,8 @@ pub(crate) fn ci_routed_rust_plan(args: &[String]) -> Result<(), String> {
     let planned_subject = routed_rust_arg(args, "subject");
     let event = routed_rust_arg(args, "event");
     let trust_class = routed_rust_arg(args, "trust-class");
+    let repository = routed_rust_arg(args, "repository");
+    let workflow = routed_rust_arg(args, "workflow");
 
     let root = std::env::current_dir()
         .map_err(|err| format!("failed to resolve the working directory: {err}"))?;
@@ -5437,6 +6148,11 @@ pub(crate) fn ci_routed_rust_plan(args: &[String]) -> Result<(), String> {
     };
     let subject_sha = rev_parse(&["rev-parse", "HEAD"])?;
     let subject_tree = rev_parse(&["rev-parse", "HEAD^{tree}"])?;
+    let pr_head_tree = if pr_head_sha.is_empty() {
+        String::new()
+    } else {
+        rev_parse(&["rev-parse", &format!("{pr_head_sha}^{{tree}}")])?
+    };
     if !planned_subject.is_empty() && planned_subject != subject_sha {
         return Err(format!(
             "planned subject {planned_subject} does not match the checked-out subject {subject_sha}"
@@ -5445,25 +6161,32 @@ pub(crate) fn ci_routed_rust_plan(args: &[String]) -> Result<(), String> {
 
     // Rederive the changed-path inventory NUL-delimited so path quoting stays
     // outside the trust boundary.
-    let mut changed_paths: Vec<String> = Vec::new();
+    let mut changed_path_bytes = Vec::new();
     if !base_sha.is_empty() {
-        let range = format!("{base_sha}...{subject_sha}");
-        let observed = crate::run::capture_output(
+        let changed_subject = routed_rust_changed_subject(&pr_head_sha, &subject_sha);
+        let range = format!("{base_sha}...{changed_subject}");
+        let observed = crate::run::capture_output_bytes(
             "git",
             &["diff", "--name-only", "-z", range.as_str()],
             "git diff --name-only -z",
         )?;
-        if observed.status.success() {
-            changed_paths = observed
-                .stdout
-                .split('\0')
-                .filter(|path| !path.is_empty())
-                .map(str::to_string)
-                .collect();
+        if !observed.status.success() {
+            return Err(format!(
+                "git diff --name-only -z failed: {}",
+                String::from_utf8_lossy(&observed.stderr).trim()
+            ));
         }
+        changed_path_bytes = observed.stdout;
     }
-    let changed_paths_sha256 = changed_paths_digest(&changed_paths);
-    let authoritative_docs_only = changed_paths_are_docs_only(&changed_paths);
+    let changed_path_count = changed_path_bytes
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+        .count();
+    let changed_paths_utf8 = routed_rust_decode_changed_paths(&changed_path_bytes);
+    let changed_paths_sha256 = routed_rust_bytes_digest(&changed_path_bytes);
+    let authoritative_docs_only = changed_paths_utf8
+        .as_ref()
+        .is_ok_and(|paths| changed_paths_are_docs_only(paths));
 
     // A change scheduled to the reduced lane that the typed rule refuses is a
     // mis-schedule, not an over-proof, and must not stand.
@@ -5471,29 +6194,102 @@ pub(crate) fn ci_routed_rust_plan(args: &[String]) -> Result<(), String> {
         return Err("scheduled the docs-only lane for a change the typed rule refuses".to_string());
     }
     let conservative_overproof = scheduled_route == "github_hosted_rust" && authoritative_docs_only;
+    let required_proposition_ids = routed_rust_required_ids(&scheduled_route, &event);
+    let proposition_plan: Vec<serde_json::Value> = ROUTED_RUST_PROPOSITION_IDS
+        .iter()
+        .map(|id| {
+            serde_json::json!({
+                "proposition_id": id,
+                "applicability": if required_proposition_ids.contains(id) { "required" } else { "not_applicable" },
+            })
+        })
+        .collect();
+    let cargo_lock_sha256 = fs::read(root.join("Cargo.lock"))
+        .map(|bytes| routed_rust_bytes_digest(&bytes))
+        .map_err(|err| format!("read Cargo.lock: {err}"))?;
+    let observed_identity = |program: &str, args: &[&str]| -> Result<String, String> {
+        let output = crate::run::capture_output(program, args, program)?;
+        if !output.status.success() {
+            return Err(format!(
+                "{program} identity failed: {}",
+                output.stderr.trim()
+            ));
+        }
+        Ok(routed_rust_bytes_digest(output.stdout.as_bytes()))
+    };
+    let rustc_identity = observed_identity("rustc", &["-Vv"])?;
+    let cargo_identity = observed_identity("cargo", &["-Vv"])?;
+    let runner_os = std::env::var("RUNNER_OS").unwrap_or_else(|_| std::env::consts::OS.to_string());
+    let runner_arch =
+        std::env::var("RUNNER_ARCH").unwrap_or_else(|_| std::env::consts::ARCH.to_string());
+    let runner_image_os = std::env::var("ImageOS").unwrap_or_default();
+    let runner_image_version = std::env::var("ImageVersion").unwrap_or_default();
+    let cache_identity = std::env::var("CACHE_PRIMARY_KEY").map_err(|err| {
+        format!("CACHE_PRIMARY_KEY must identify the exact restore request: {err}")
+    })?;
+    if cache_identity.is_empty() {
+        return Err("CACHE_PRIMARY_KEY must not be empty".to_string());
+    }
+    let cache_matched_identity = std::env::var("CACHE_MATCHED_KEY").unwrap_or_default();
+    let cache_hit = std::env::var("CACHE_HIT").unwrap_or_default();
+    let artifact_identity = format!(
+        "ripr-routed-rust-evidence-{}-{}",
+        std::env::var("GITHUB_RUN_ID").unwrap_or_default(),
+        std::env::var("GITHUB_RUN_ATTEMPT").unwrap_or_default()
+    );
 
     let plan = serde_json::json!({
         "schema": "ripr.routed_rust_plan.v1",
         "plan_version": 1,
+        "workflow_version": 1,
+        "repository": repository,
+        "workflow": workflow,
         "event": event,
         "trust_class": trust_class,
         "base_sha": base_sha,
         "pr_head_sha": pr_head_sha,
+        "pr_head_tree": pr_head_tree,
         "subject_sha": subject_sha,
         "subject_tree": subject_tree,
         "changed_paths_sha256": changed_paths_sha256,
-        "changed_path_count": changed_paths.len(),
+        "changed_path_count": changed_path_count,
+        "changed_paths_utf8": changed_paths_utf8.is_ok(),
         "scheduled_route": scheduled_route,
         "authoritative_applicability": if authoritative_docs_only { "docs_only" } else { "github_hosted_rust" },
+        "required_proposition_ids": required_proposition_ids,
+        "proposition_plan": proposition_plan,
         "conservative_overproof": conservative_overproof,
+        "credential_availability": {
+            "repository_write": false,
+            "org_runner": false,
+            "release": false,
+            "registry": false,
+            "marketplace": false,
+            "signing": false,
+        },
+        "runner_identity": {
+            "os": runner_os,
+            "arch": runner_arch,
+            "image_os": runner_image_os,
+            "image_version": runner_image_version,
+        },
+        "toolchain_identity": rustc_identity,
+        "cargo_identity": cargo_identity,
+        "cargo_lock_sha256": cargo_lock_sha256,
+        "cache_identity": cache_identity,
+        "cache_matched_identity": cache_matched_identity,
+        "cache_hit": cache_hit,
+        "artifact_identity": artifact_identity,
         "self_hosted_selection_attempted": false,
         "private_runner_secret_requested": false,
         "org_runner_query_attempted": false,
         "state": "planned",
         "failure_reason": serde_json::Value::Null,
+        "invalidations": [],
+        "non_claims": ["release_readiness", "publication_authority", "self_hosted_capacity"],
     });
 
-    let dir = root.join("target").join("ripr").join("reports");
+    let dir = child_receipt_dir(&root);
     fs::create_dir_all(&dir).map_err(|err| format!("failed to create {}: {err}", dir.display()))?;
     let json_path = dir.join("routed-rust-plan.json");
     fs::write(
@@ -5508,13 +6304,14 @@ pub(crate) fn ci_routed_rust_plan(args: &[String]) -> Result<(), String> {
 
     let md_path = dir.join("routed-rust-plan.md");
     let markdown = format!(
-        "# Routed Rust plan\n\n- event: `{event}`\n- trust class: `{trust_class}`\n- base: `{base_sha}`\n- pull-request head: `{pr_head_sha}`\n- tested subject: `{subject_sha}`\n- tested subject tree: `{subject_tree}`\n- changed paths: `{}` (sha256 `{changed_paths_sha256}`)\n- scheduled route: `{scheduled_route}`\n- authoritative applicability: `{}`\n- conservative over-proof: `{conservative_overproof}`\n",
-        changed_paths.len(),
+        "# Routed Rust plan\n\n- schema: `ripr.routed_rust_plan.v1`\n- plan/workflow version: `1/1`\n- repository: `{repository}`\n- workflow: `{workflow}`\n- event: `{event}`\n- trust class: `{trust_class}`\n- base: `{base_sha}`\n- pull-request head: `{pr_head_sha}`\n- pull-request head tree: `{pr_head_tree}`\n- tested subject: `{subject_sha}`\n- tested subject tree: `{subject_tree}`\n- changed paths: `{}` (sha256 `{changed_paths_sha256}`)\n- scheduled route: `{scheduled_route}`\n- authoritative applicability: `{}`\n- required propositions: `{}`\n- runner: `{runner_os}/{runner_arch}` (`{runner_image_os}` version `{runner_image_version}`)\n- rustc identity sha256: `{rustc_identity}`\n- Cargo identity sha256: `{cargo_identity}`\n- Cargo.lock sha256: `{cargo_lock_sha256}`\n- cache primary/matched/hit: `{cache_identity}` / `{cache_matched_identity}` / `{cache_hit}`\n- artifact identity: `{artifact_identity}`\n- conservative over-proof: `{conservative_overproof}`\n- forbidden route assertions: `false,false,false`\n",
+        changed_path_count,
         if authoritative_docs_only {
             "docs_only"
         } else {
             "github_hosted_rust"
-        }
+        },
+        required_proposition_ids.join(",")
     );
     fs::write(&md_path, markdown)
         .map_err(|err| format!("failed to write {}: {err}", md_path.display()))?;
@@ -5603,6 +6400,7 @@ pub(crate) fn changed_paths_are_docs_only(paths: &[String]) -> bool {
 /// cannot be tested. Emits `docs_only=<bool>` to `$GITHUB_OUTPUT` when present.
 pub(crate) fn ci_docs_only(args: &[String]) -> Result<(), String> {
     let mut base = None;
+    let mut head = None;
     let mut expect = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -5610,6 +6408,10 @@ pub(crate) fn ci_docs_only(args: &[String]) -> Result<(), String> {
             "--base" => base = iter.next().cloned(),
             other if other.starts_with("--base=") => {
                 base = Some(other.trim_start_matches("--base=").to_string());
+            }
+            "--head" => head = iter.next().cloned(),
+            other if other.starts_with("--head=") => {
+                head = Some(other.trim_start_matches("--head=").to_string());
             }
             "--expect" => expect = iter.next().cloned(),
             other if other.starts_with("--expect=") => {
@@ -5623,12 +6425,17 @@ pub(crate) fn ci_docs_only(args: &[String]) -> Result<(), String> {
     let docs_only = match base.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
         None => false,
         Some(base) => {
-            let range = format!("{base}...HEAD");
+            let range_head = head
+                .as_deref()
+                .map(str::trim)
+                .filter(|h| !h.is_empty())
+                .unwrap_or("HEAD");
+            let range = format!("{base}...{range_head}");
             // NUL-delimited so a fork-controlled filename containing a newline,
             // quote, or non-ASCII byte cannot change how the path set is parsed.
             // Git quotes such names in the default output, which would otherwise
             // put path quoting inside the trust boundary.
-            let observed = crate::run::capture_output(
+            let observed = crate::run::capture_output_bytes(
                 "git",
                 &["diff", "--name-only", "-z", range.as_str()],
                 "git diff --name-only -z",
@@ -5639,28 +6446,34 @@ pub(crate) fn ci_docs_only(args: &[String]) -> Result<(), String> {
                 eprintln!("ci-docs-only: changed-path observation failed; routing the full proof");
                 false
             } else {
-                let paths: Vec<String> = observed
-                    .stdout
-                    .split('\0')
-                    .filter(|path| !path.is_empty())
-                    .map(str::to_string)
-                    .collect();
-                // Defence in depth: the cheap scheduler must be a strict
-                // under-approximation of this rule. If it ever schedules the
-                // docs lane for a change this rule refuses, say so here rather
-                // than letting the reduced route stand.
-                if scheduler_schedules_docs_only(&paths) && !changed_paths_are_docs_only(&paths) {
-                    return Err(
-                        "scheduler routed a change to the docs-only lane that the typed rule refuses"
-                            .to_string(),
-                    );
+                match routed_rust_decode_changed_paths(&observed.stdout) {
+                    Err(_) => {
+                        eprintln!(
+                            "ci-docs-only: changed-path inventory is not UTF-8; routing the full proof"
+                        );
+                        false
+                    }
+                    Ok(paths) => {
+                        // Defence in depth: the cheap scheduler must be a strict
+                        // under-approximation of this rule. If it ever schedules
+                        // the docs lane for a change this rule refuses, say so
+                        // here rather than letting the reduced route stand.
+                        if scheduler_schedules_docs_only(&paths)
+                            && !changed_paths_are_docs_only(&paths)
+                        {
+                            return Err(
+                                "scheduler routed a change to the docs-only lane that the typed rule refuses"
+                                    .to_string(),
+                            );
+                        }
+                        let digest = routed_rust_bytes_digest(&observed.stdout);
+                        eprintln!(
+                            "ci-docs-only: changed_paths_sha256={digest} count={}",
+                            paths.len()
+                        );
+                        changed_paths_are_docs_only(&paths)
+                    }
                 }
-                let digest = changed_paths_digest(&paths);
-                eprintln!(
-                    "ci-docs-only: changed_paths_sha256={digest} count={}",
-                    paths.len()
-                );
-                changed_paths_are_docs_only(&paths)
             }
         }
     };
@@ -5770,8 +6583,8 @@ fn routed_rust_workflow_contract_violations(
         // Requiring shell strings here would pin an implementation that no
         // longer decides anything.
         ("typed verdict delegation", "ci-routed-rust-result"),
-        ("verdict planned-route input", "--planned-route"),
-        ("verdict observed-subject input", "--observed-subject"),
+        ("verdict plan packet input", "--plan-path"),
+        ("verdict execution packet input", "--execution-path"),
         (
             "verdict self-hosted assertion input",
             "--self-hosted-selection-attempted",
@@ -5785,13 +6598,12 @@ fn routed_rust_workflow_contract_violations(
             "--org-runner-query-attempted",
         ),
         ("child execution receipt", "ci-child-receipt"),
-        (
-            "docs child receipt consumption",
-            "needs.docs-gate.outputs.child_receipt_state",
-        ),
+        ("downloaded child evidence", "actions/download-artifact@"),
         // Job outputs schedule work; the plan packet proves it.
         ("durable plan packet", "ci-routed-rust-plan"),
         ("plan packet artifact", "routed-rust-plan.json"),
+        ("execution packet artifact", "routed-rust-execution.json"),
+        ("result packet artifact", "routed-rust-result.json"),
         // ripr#1446: the aggregate must bind the plan to the exact head it is
         // reporting on. Without this it can only repeat the conclusion of
         // whatever job graph ran, which is not a statement about this subject.
@@ -6020,6 +6832,14 @@ fn deprecated_workflow_action_refs() -> &'static [(&'static str, &'static str)] 
         (
             "actions/download-artifact@v4",
             "actions/download-artifact@v8",
+        ),
+        (
+            "actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809",
+            "actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25",
+        ),
+        (
+            "actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809",
+            "actions/cache/save@caa296126883cff596d87d8935842f9db880ef25",
         ),
         ("codecov/codecov-action@v4", "codecov/codecov-action@v6"),
     ]

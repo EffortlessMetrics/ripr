@@ -44,7 +44,7 @@ table and be absent from the current workflow.
 | `cargo xtask impacted-evidence` and `--check` | `retained_required` | Impact evidence producer and verifier. |
 | `cargo xtask ripr-pr-summary` and `--check` | `retained_required` | PR summary producer and verifier. |
 | `cargo xtask ripr-annotations` and `--check` | `retained_required` | Annotation producer and verifier. |
-| `cargo xtask proof route` | `retained_required` | Advisory dry-run artifact, `\|\| true`. |
+| `cargo xtask proof route` | `retained_advisory` | Advisory dry-run artifact; `\|\| true` intentionally keeps this diagnostic outside the required denominator. |
 | `cargo clean` | `not_applicable_ephemeral_host` | Appeared only inside `Clean scratch` steps that wipe `/mnt/ci-scratch` on persistent runners. A GitHub-hosted runner is discarded after the job, so there is nothing to reclaim. |
 | `sccache` | `not_applicable_ephemeral_host` | Shared compile cache for persistent hosts; no cross-run cache exists on ephemeral runners. |
 | `ci-disk-guard` | `not_applicable_ephemeral_host` | Free-space floor for shared scratch mounts that the hosted route does not use. |

@@ -8556,6 +8556,29 @@ jobs:
 }
 
 #[test]
+fn workflow_runtime_policy_rejects_pinned_node20_cache_actions() -> Result<(), String> {
+    let workflow = r#"
+jobs:
+  test:
+    steps:
+      - uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
+      - uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
+"#;
+    let violations =
+        workflow_runtime_violations(".github/workflows/ci.yml", workflow, &BTreeMap::new());
+    if violations.len() != 2
+        || !violations
+            .iter()
+            .all(|value| value.contains("caa296126883cff596d87d8935842f9db880ef25"))
+    {
+        return Err(format!(
+            "pinned Node 20 cache actions escaped the runtime policy: {violations:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn workflow_runtime_policy_allows_documented_dependency_review_exception() {
     let workflow = r#"
 jobs:
@@ -9150,10 +9173,7 @@ fn routed_rust_workflow_contract_rejects_missing_receipt_or_route_assertion() ->
             "verdict organization-query assertion input",
             "--org-runner-query-attempted",
         ),
-        (
-            "docs child receipt consumption",
-            "needs.docs-gate.outputs.child_receipt_state",
-        ),
+        ("downloaded child evidence", "actions/download-artifact@"),
     ] {
         let mutated = workflow.replacen(snippet, "", 1);
         let violations = routed_rust_workflow_contract_violations(&mutated, None, None);
@@ -46413,7 +46433,7 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             R::Failed,
             true,
             true,
-            V::ContradictoryEvidence,
+            V::Failed,
         ),
         (
             "failed tick with a passing receipt is contradictory",
@@ -46422,7 +46442,7 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             R::Passed,
             true,
             true,
-            V::ContradictoryEvidence,
+            V::Failed,
         ),
         (
             "docs lane proved by the docs gate",
@@ -46553,8 +46573,9 @@ fn routed_rust_docs_lane_retains_subject_bound_child_evidence() -> Result<(), St
         .nth(1)
         .ok_or("routed-rust.yml must contain result")?;
     for required in [
-        "needs.docs-gate.outputs.child_receipt_state",
-        "needs.docs-gate.outputs.observed_subject_sha",
+        "actions/download-artifact@",
+        "--plan-path \"target/ripr/reports/routed-rust-plan.json\"",
+        "--execution-path \"target/ripr/reports/routed-rust-execution.json\"",
     ] {
         if !result.contains(required) {
             return Err(format!(
@@ -46589,6 +46610,106 @@ fn routed_rust_subject_binding_publishes_identity_before_rejection() -> Result<(
     Ok(())
 }
 
+fn routed_rust_test_proposition_plan(required: &[&str]) -> Vec<serde_json::Value> {
+    crate::ROUTED_RUST_PROPOSITION_IDS
+        .iter()
+        .map(|id| {
+            serde_json::json!({
+                "proposition_id": id,
+                "applicability": if required.contains(id) { "required" } else { "not_applicable" },
+            })
+        })
+        .collect()
+}
+
+fn routed_rust_test_execution_propositions(required: &[&str]) -> Vec<serde_json::Value> {
+    crate::ROUTED_RUST_PROPOSITION_IDS
+        .iter()
+        .map(|id| {
+            let required = required.contains(id);
+            serde_json::json!({
+                "proposition_id": id,
+                "applicability": if required { "required" } else { "not_applicable" },
+                "state": if required { "passed" } else { "not_applicable" },
+            })
+        })
+        .collect()
+}
+
+fn routed_rust_test_command(id: &str, state: &str) -> serde_json::Value {
+    let evidence = format!("evidence for {id}\n");
+    serde_json::json!({
+        "command_id": id,
+        "command": crate::routed_rust_expected_command(id, "base", "head"),
+        "state": state,
+        "exit_code": if state == "passed" { serde_json::json!(0) } else { serde_json::json!(1) },
+        "duration_ms": 1,
+        "evidence_path": format!("target/ripr/reports/routed-rust-command-{id}.log"),
+        "evidence_sha256": crate::routed_rust_bytes_digest(evidence.as_bytes()),
+    })
+}
+
+fn write_routed_rust_test_evidence(root: &Path, required: &[&str]) -> Result<(), String> {
+    let dir = crate::child_receipt_dir(root);
+    fs::create_dir_all(&dir).map_err(|err| format!("create evidence directory: {err}"))?;
+    for id in required {
+        fs::write(
+            dir.join(format!("routed-rust-command-{id}.log")),
+            format!("evidence for {id}\n"),
+        )
+        .map_err(|err| format!("write test evidence for {id}: {err}"))?;
+    }
+    Ok(())
+}
+
+fn routed_rust_test_plan(route: &str, required: &[&str]) -> serde_json::Value {
+    serde_json::json!({
+        "schema": "ripr.routed_rust_plan.v1",
+        "plan_version": 1,
+        "workflow_version": 1,
+        "repository": "EffortlessMetrics/ripr",
+        "workflow": "EffortlessMetrics/ripr/.github/workflows/routed-rust.yml@refs/pull/1/merge",
+        "event": "pull_request",
+        "trust_class": "maintainer_candidate",
+        "base_sha": "base",
+        "pr_head_sha": "head",
+        "pr_head_tree": "head-tree",
+        "subject_sha": "subject",
+        "subject_tree": "tree",
+        "changed_paths_sha256": "changed-digest",
+        "changed_path_count": 1,
+        "changed_paths_utf8": true,
+        "scheduled_route": route,
+        "authoritative_applicability": route,
+        "conservative_overproof": false,
+        "required_proposition_ids": required,
+        "proposition_plan": routed_rust_test_proposition_plan(required),
+        "credential_availability": {
+            "repository_write": false,
+            "org_runner": false,
+            "release": false,
+            "registry": false,
+            "marketplace": false,
+            "signing": false,
+        },
+        "runner_identity": {"os": "Linux", "arch": "X64", "image_os": "ubuntu24", "image_version": "test-image-version"},
+        "toolchain_identity": "rustc-digest",
+        "cargo_identity": "cargo-digest",
+        "cargo_lock_sha256": "lock-digest",
+        "cache_identity": "ripr-routed-rust-Linux-cache-action-digest",
+        "cache_matched_identity": "ripr-routed-rust-Linux-cache-action-digest",
+        "cache_hit": "true",
+        "artifact_identity": "ripr-routed-rust-evidence-run-attempt",
+        "self_hosted_selection_attempted": false,
+        "private_runner_secret_requested": false,
+        "org_runner_query_attempted": false,
+        "state": "planned",
+        "failure_reason": null,
+        "invalidations": [],
+        "non_claims": ["release_readiness", "publication_authority", "self_hosted_capacity"],
+    })
+}
+
 #[test]
 fn routed_rust_child_receipt_preserves_state_commands_and_subject() -> Result<(), String> {
     let root = temp_dir("routed-rust-child-receipt");
@@ -46600,8 +46721,8 @@ fn routed_rust_child_receipt_preserves_state_commands_and_subject() -> Result<()
             "passed",
             "success",
             concat!(
-                "{\"command_id\":\"one\",\"state\":\"passed\",\"exit_code\":0}\n",
-                "{\"command_id\":\"two\",\"state\":\"passed\",\"exit_code\":0}\n"
+                "{\"command_id\":\"precommit\",\"state\":\"passed\",\"exit_code\":0}\n",
+                "{\"command_id\":\"check_agent_skills\",\"state\":\"passed\",\"exit_code\":0}\n"
             ),
             "subject-a",
             "tree-a",
@@ -46610,13 +46731,24 @@ fn routed_rust_child_receipt_preserves_state_commands_and_subject() -> Result<()
         (
             "failed",
             "failure",
-            "{\"command_id\":\"one\",\"state\":\"failed\",\"exit_code\":1}\n",
+            "{\"command_id\":\"precommit\",\"state\":\"failed\",\"exit_code\":1}\n",
             "subject-a",
             "tree-a",
             ["failed", "not_run"],
         ),
         (
-            "not_run",
+            "instrument_failure",
+            "failure",
+            concat!(
+                "{\"command_id\":\"precommit\",\"state\":\"passed\",\"exit_code\":0}\n",
+                "{\"command_id\":\"check_agent_skills\",\"state\":\"passed\",\"exit_code\":0}\n"
+            ),
+            "subject-a",
+            "tree-a",
+            ["passed", "passed"],
+        ),
+        (
+            "instrument_failure",
             "failure",
             "",
             "subject-a",
@@ -46635,8 +46767,8 @@ fn routed_rust_child_receipt_preserves_state_commands_and_subject() -> Result<()
             "instrument_failure",
             "success",
             concat!(
-                "{\"command_id\":\"one\",\"state\":\"passed\",\"exit_code\":0}\n",
-                "{\"command_id\":\"two\",\"state\":\"passed\",\"exit_code\":0}\n"
+                "{\"command_id\":\"precommit\",\"state\":\"passed\",\"exit_code\":0}\n",
+                "{\"command_id\":\"check_agent_skills\",\"state\":\"passed\",\"exit_code\":0}\n"
             ),
             "",
             "tree-a",
@@ -46646,8 +46778,8 @@ fn routed_rust_child_receipt_preserves_state_commands_and_subject() -> Result<()
             "instrument_failure",
             "success",
             concat!(
-                "{\"command_id\":\"one\",\"state\":\"passed\",\"exit_code\":0}\n",
-                "{\"command_id\":\"two\",\"state\":\"passed\",\"exit_code\":0}\n"
+                "{\"command_id\":\"precommit\",\"state\":\"passed\",\"exit_code\":0}\n",
+                "{\"command_id\":\"check_agent_skills\",\"state\":\"passed\",\"exit_code\":0}\n"
             ),
             "subject-a",
             "",
@@ -46659,9 +46791,25 @@ fn routed_rust_child_receipt_preserves_state_commands_and_subject() -> Result<()
     for (expected_state, outcome, recorded, subject, subject_tree, expected_commands) in cases {
         fs::write(dir.join("commands.jsonl"), recorded)
             .map_err(|err| format!("write command fixture: {err}"))?;
+        let plan = serde_json::json!({
+            "schema": "ripr.routed_rust_plan.v1",
+            "subject_sha": subject,
+            "subject_tree": subject_tree,
+            "required_proposition_ids": ["precommit", "check_agent_skills"],
+            "proposition_plan": routed_rust_test_proposition_plan(crate::ROUTED_RUST_DOCS_REQUIRED_IDS.as_slice()),
+        });
+        fs::write(
+            dir.join("routed-rust-plan.json"),
+            format!(
+                "{}\n",
+                serde_json::to_string_pretty(&plan)
+                    .map_err(|err| format!("render plan fixture: {err}"))?
+            ),
+        )
+        .map_err(|err| format!("write plan fixture: {err}"))?;
         let args = vec![
             "--plan".to_string(),
-            "one,two".to_string(),
+            "precommit,check_agent_skills".to_string(),
             "--job-outcome".to_string(),
             outcome.to_string(),
             "--subject-sha".to_string(),
@@ -46671,7 +46819,7 @@ fn routed_rust_child_receipt_preserves_state_commands_and_subject() -> Result<()
         ];
         crate::ci_child_receipt_at(&root, &args)?;
         let receipt: serde_json::Value = serde_json::from_str(
-            &fs::read_to_string(dir.join("child-receipt.json"))
+            &fs::read_to_string(dir.join("routed-rust-execution.json"))
                 .map_err(|err| format!("read child receipt: {err}"))?,
         )
         .map_err(|err| format!("parse child receipt: {err}"))?;
@@ -46720,73 +46868,580 @@ fn routed_rust_result_enforces_all_route_assertions() -> Result<(), String> {
 
 #[test]
 fn routed_rust_result_rejects_each_forbidden_route_attempt() -> Result<(), String> {
-    let assertions = [
-        "self-hosted-selection-attempted",
-        "private-runner-secret-requested",
-        "org-runner-query-attempted",
-    ];
-    for forbidden in assertions {
-        let mut args: Vec<String> = [
-            "--planned-route",
-            "github_hosted_rust",
-            "--child-conclusion",
-            "success",
-            "--receipt-state",
-            "passed",
-            "--planned-subject",
-            "subject",
-            "--observed-subject",
-            "subject",
-        ]
-        .into_iter()
-        .map(str::to_string)
-        .collect();
-        for assertion in assertions {
-            args.push(format!("--{assertion}"));
-            args.push(
-                if assertion == forbidden {
-                    "true"
-                } else {
-                    "false"
-                }
-                .to_string(),
-            );
+    with_temp_cwd("routed-rust-result-forbidden-route", |root| {
+        let dir = crate::child_receipt_dir(root);
+        fs::create_dir_all(&dir).map_err(|err| format!("create result fixture: {err}"))?;
+        let plan_path = dir.join("routed-rust-plan.json");
+        let execution_path = dir.join("routed-rust-execution.json");
+        let required = crate::routed_rust_required_ids("github_hosted_rust", "pull_request");
+        let plan = routed_rust_test_plan("github_hosted_rust", &required);
+        let plan_bytes = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&plan).map_err(|err| format!("render plan: {err}"))?
+        );
+        fs::write(&plan_path, &plan_bytes).map_err(|err| format!("write plan: {err}"))?;
+        let commands: Vec<serde_json::Value> = required
+            .iter()
+            .map(|id| routed_rust_test_command(id, "passed"))
+            .collect();
+        write_routed_rust_test_evidence(root, &required)?;
+        let execution = serde_json::json!({
+            "schema": "ripr.routed_rust_execution.v1",
+            "plan_sha256": crate::routed_rust_bytes_digest(plan_bytes.as_bytes()),
+            "state": "passed",
+            "subject_sha": "subject",
+            "subject_tree": "tree",
+            "required_proposition_ids": required,
+            "commands": commands,
+            "propositions": routed_rust_test_execution_propositions(&required),
+            "job_outcome": "success",
+            "planned_command_count": required.len(),
+            "observed_command_count": required.len(),
+            "failure_class": null,
+            "invalidations": [],
+        });
+        fs::write(
+            &execution_path,
+            format!(
+                "{}\n",
+                serde_json::to_string_pretty(&execution)
+                    .map_err(|err| format!("render execution: {err}"))?
+            ),
+        )
+        .map_err(|err| format!("write execution: {err}"))?;
+
+        let assertions = [
+            "self-hosted-selection-attempted",
+            "private-runner-secret-requested",
+            "org-runner-query-attempted",
+        ];
+        for forbidden in assertions {
+            let mut args: Vec<String> = [
+                "--plan-path",
+                plan_path.to_str().ok_or("non-UTF-8 plan path")?,
+                "--execution-path",
+                execution_path.to_str().ok_or("non-UTF-8 execution path")?,
+                "--child-conclusion",
+                "success",
+                "--download-outcome",
+                "success",
+                "--expected-repository",
+                "EffortlessMetrics/ripr",
+                "--expected-workflow",
+                "EffortlessMetrics/ripr/.github/workflows/routed-rust.yml@refs/pull/1/merge",
+                "--expected-event",
+                "pull_request",
+                "--expected-base",
+                "base",
+                "--expected-pr-head",
+                "head",
+                "--expected-pr-head-tree",
+                "head-tree",
+                "--expected-trust-class",
+                "maintainer_candidate",
+                "--expected-authoritative-applicability",
+                "github_hosted_rust",
+                "--expected-toolchain-identity",
+                "rustc-digest",
+                "--expected-cargo-identity",
+                "cargo-digest",
+                "--expected-cargo-lock-sha256",
+                "lock-digest",
+                "--expected-cache-identity",
+                "ripr-routed-rust-Linux-cache-action-digest",
+                "--expected-cache-hit",
+                "true",
+                "--expected-cache-matched-identity",
+                "ripr-routed-rust-Linux-cache-action-digest",
+                "--expected-runner-os",
+                "Linux",
+                "--expected-runner-arch",
+                "X64",
+                "--expected-runner-image-os",
+                "ubuntu24",
+                "--expected-runner-image-version",
+                "test-image-version",
+                "--expected-artifact-identity",
+                "ripr-routed-rust-evidence-run-attempt",
+                "--expected-route",
+                "github_hosted_rust",
+                "--expected-subject",
+                "subject",
+                "--expected-subject-tree",
+                "tree",
+                "--expected-changed-paths-sha256",
+                "changed-digest",
+                "--expected-changed-path-count",
+                "1",
+                "--expected-changed-paths-utf8",
+                "true",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+            for assertion in assertions {
+                args.push(format!("--{assertion}"));
+                args.push(
+                    if assertion == forbidden {
+                        "true"
+                    } else {
+                        "false"
+                    }
+                    .to_string(),
+                );
+            }
+            if crate::ci_routed_rust_result(&args).is_ok() {
+                return Err(format!(
+                    "protected result accepted forbidden route assertion `{forbidden}=true`"
+                ));
+            }
         }
-        if crate::ci_routed_rust_result(&args).is_ok() {
+        Ok(())
+    })
+}
+
+#[test]
+fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(), String> {
+    with_temp_cwd("routed-rust-result-byte-authority", |root| {
+        let dir = crate::child_receipt_dir(root);
+        fs::create_dir_all(&dir).map_err(|err| format!("create result fixture: {err}"))?;
+        let plan_path = dir.join("routed-rust-plan.json");
+        let execution_path = dir.join("routed-rust-execution.json");
+        let required = crate::routed_rust_required_ids("docs_only", "pull_request");
+        let base_plan = routed_rust_test_plan("docs_only", &required);
+        let make_args = |child: &str| -> Result<Vec<String>, String> {
+            Ok(vec![
+                "--plan-path".to_string(),
+                plan_path.to_str().ok_or("non-UTF-8 plan path")?.to_string(),
+                "--execution-path".to_string(),
+                execution_path
+                    .to_str()
+                    .ok_or("non-UTF-8 execution path")?
+                    .to_string(),
+                "--child-conclusion".to_string(),
+                child.to_string(),
+                "--download-outcome".to_string(),
+                "success".to_string(),
+                "--expected-repository".to_string(),
+                "EffortlessMetrics/ripr".to_string(),
+                "--expected-workflow".to_string(),
+                "EffortlessMetrics/ripr/.github/workflows/routed-rust.yml@refs/pull/1/merge"
+                    .to_string(),
+                "--expected-event".to_string(),
+                "pull_request".to_string(),
+                "--expected-base".to_string(),
+                "base".to_string(),
+                "--expected-pr-head".to_string(),
+                "head".to_string(),
+                "--expected-pr-head-tree".to_string(),
+                "head-tree".to_string(),
+                "--expected-trust-class".to_string(),
+                "maintainer_candidate".to_string(),
+                "--expected-authoritative-applicability".to_string(),
+                "docs_only".to_string(),
+                "--expected-toolchain-identity".to_string(),
+                "rustc-digest".to_string(),
+                "--expected-cargo-identity".to_string(),
+                "cargo-digest".to_string(),
+                "--expected-cargo-lock-sha256".to_string(),
+                "lock-digest".to_string(),
+                "--expected-cache-identity".to_string(),
+                "ripr-routed-rust-Linux-cache-action-digest".to_string(),
+                "--expected-cache-hit".to_string(),
+                "true".to_string(),
+                "--expected-cache-matched-identity".to_string(),
+                "ripr-routed-rust-Linux-cache-action-digest".to_string(),
+                "--expected-runner-os".to_string(),
+                "Linux".to_string(),
+                "--expected-runner-arch".to_string(),
+                "X64".to_string(),
+                "--expected-runner-image-os".to_string(),
+                "ubuntu24".to_string(),
+                "--expected-runner-image-version".to_string(),
+                "test-image-version".to_string(),
+                "--expected-artifact-identity".to_string(),
+                "ripr-routed-rust-evidence-run-attempt".to_string(),
+                "--expected-route".to_string(),
+                "docs_only".to_string(),
+                "--expected-subject".to_string(),
+                "subject".to_string(),
+                "--expected-subject-tree".to_string(),
+                "tree".to_string(),
+                "--expected-changed-paths-sha256".to_string(),
+                "changed-digest".to_string(),
+                "--expected-changed-path-count".to_string(),
+                "1".to_string(),
+                "--expected-changed-paths-utf8".to_string(),
+                "true".to_string(),
+                "--self-hosted-selection-attempted".to_string(),
+                "false".to_string(),
+                "--private-runner-secret-requested".to_string(),
+                "false".to_string(),
+                "--org-runner-query-attempted".to_string(),
+                "false".to_string(),
+            ])
+        };
+
+        for case in [
+            "valid",
+            "digest",
+            "subject",
+            "stale_pair",
+            "plan_catalog",
+            "plan_identity",
+            "plan_applicability",
+            "cache_hit_identity",
+            "cache_observation",
+            "runner_identity",
+            "propositions",
+            "wrong_command",
+            "missing_evidence_path",
+            "wrong_evidence_digest",
+            "missing_evidence_bytes",
+            "receipt_failed",
+            "tick_failed",
+            "malformed_failed",
+            "malformed_stale",
+            "job_outcome_mismatch",
+            "self_invalidated",
+        ] {
+            let mut plan = base_plan.clone();
+            if case == "stale_pair" {
+                plan["subject_sha"] = serde_json::json!("historical-subject");
+                plan["subject_tree"] = serde_json::json!("historical-tree");
+            }
+            if case == "plan_catalog" {
+                let rows = plan["proposition_plan"]
+                    .as_array_mut()
+                    .ok_or("fixture proposition plan must be an array")?;
+                rows.pop();
+            }
+            if case == "plan_identity" {
+                plan["artifact_identity"] = serde_json::json!("historical-artifact");
+            }
+            if case == "plan_applicability" {
+                plan["authoritative_applicability"] = serde_json::json!("github_hosted_rust");
+            }
+            if case == "cache_hit_identity" {
+                plan["cache_matched_identity"] = serde_json::json!("different-cache-key");
+            }
+            if case == "cache_observation" {
+                plan["cache_hit"] = serde_json::json!("");
+                plan["cache_matched_identity"] = serde_json::json!("");
+            }
+            if case == "runner_identity" {
+                plan["runner_identity"]["os"] = serde_json::json!("Windows");
+            }
+            let plan_bytes = format!(
+                "{}\n",
+                serde_json::to_string_pretty(&plan).map_err(|err| format!("render plan: {err}"))?
+            );
+            fs::write(&plan_path, &plan_bytes).map_err(|err| format!("write plan: {err}"))?;
+            let commands: Vec<serde_json::Value> = required
+                .iter()
+                .map(|id| routed_rust_test_command(id, "passed"))
+                .collect();
+            write_routed_rust_test_evidence(root, &required)?;
+            let mut execution = serde_json::json!({
+                "schema": "ripr.routed_rust_execution.v1",
+                "plan_sha256": crate::routed_rust_bytes_digest(plan_bytes.as_bytes()),
+                "state": "passed",
+                "subject_sha": plan["subject_sha"],
+                "subject_tree": plan["subject_tree"],
+                "required_proposition_ids": required,
+                "commands": commands,
+                "propositions": routed_rust_test_execution_propositions(&required),
+                "job_outcome": "success",
+                "planned_command_count": required.len(),
+                "observed_command_count": required.len(),
+                "failure_class": null,
+                "invalidations": [],
+            });
+            let child = match case {
+                "digest" => {
+                    execution["plan_sha256"] = serde_json::json!("wrong");
+                    "success"
+                }
+                "subject" => {
+                    execution["subject_sha"] = serde_json::json!("stale");
+                    "success"
+                }
+                "propositions" => {
+                    execution["commands"] = serde_json::json!([
+                        {"command_id": "precommit", "state": "passed"}
+                    ]);
+                    "success"
+                }
+                "missing_evidence_path" => {
+                    execution["commands"][0]
+                        .as_object_mut()
+                        .ok_or("command fixture must be an object")?
+                        .remove("evidence_path");
+                    "success"
+                }
+                "wrong_command" => {
+                    execution["commands"][0]["command"] = serde_json::json!("true");
+                    "success"
+                }
+                "wrong_evidence_digest" => {
+                    execution["commands"][0]["evidence_sha256"] = serde_json::json!("wrong-digest");
+                    "success"
+                }
+                "missing_evidence_bytes" => {
+                    fs::remove_file(dir.join(format!("routed-rust-command-{}.log", required[0])))
+                        .map_err(|err| format!("remove command evidence fixture: {err}"))?;
+                    "success"
+                }
+                "receipt_failed" => {
+                    execution["state"] = serde_json::json!("failed");
+                    execution["job_outcome"] = serde_json::json!("failure");
+                    execution["failure_class"] = serde_json::json!("product");
+                    execution["commands"][0]["state"] = serde_json::json!("failed");
+                    execution["commands"][0]["exit_code"] = serde_json::json!(1);
+                    execution["propositions"][4]["state"] = serde_json::json!("failed");
+                    "success"
+                }
+                "tick_failed" => "failure",
+                "malformed_failed" => {
+                    execution["state"] = serde_json::json!("failed");
+                    execution["job_outcome"] = serde_json::json!("failure");
+                    execution["failure_class"] = serde_json::json!("product");
+                    execution["commands"][0]["state"] = serde_json::json!("failed");
+                    execution["commands"][0]["exit_code"] = serde_json::json!(1);
+                    execution["commands"][0]
+                        .as_object_mut()
+                        .ok_or("command fixture must be an object")?
+                        .remove("duration_ms");
+                    execution["propositions"][4]["state"] = serde_json::json!("failed");
+                    "failure"
+                }
+                "malformed_stale" => {
+                    execution["schema"] = serde_json::json!("wrong");
+                    execution["subject_sha"] = serde_json::json!("historical-subject");
+                    "success"
+                }
+                "job_outcome_mismatch" => {
+                    execution["job_outcome"] = serde_json::json!("failure");
+                    "success"
+                }
+                "self_invalidated" => {
+                    execution["invalidations"] = serde_json::json!(["instrument broke"]);
+                    "success"
+                }
+                _ => "success",
+            };
+            fs::write(
+                &execution_path,
+                format!(
+                    "{}\n",
+                    serde_json::to_string_pretty(&execution)
+                        .map_err(|err| format!("render execution: {err}"))?
+                ),
+            )
+            .map_err(|err| format!("write execution: {err}"))?;
+            let result = crate::ci_routed_rust_result(&make_args(child)?);
+            if case == "valid" && result.is_err() {
+                return Err(format!("exact packet pair did not pass: {result:?}"));
+            }
+            if case != "valid" && result.is_ok() {
+                return Err(format!("result accepted invalid packet case `{case}`"));
+            }
+            let packet: serde_json::Value = serde_json::from_str(
+                &fs::read_to_string(dir.join("routed-rust-result.json"))
+                    .map_err(|err| format!("read result packet: {err}"))?,
+            )
+            .map_err(|err| format!("parse result packet: {err}"))?;
+            if matches!(case, "receipt_failed" | "tick_failed")
+                && (packet["verdict"] != "failed"
+                    || !packet["invalidations"].as_array().is_some_and(|values| {
+                        values
+                            .iter()
+                            .any(|value| value == "child_conclusion_receipt_mismatch")
+                    }))
+            {
+                return Err(format!(
+                    "conclusion mismatch `{case}` was not retained as failed contradictory evidence: {packet}"
+                ));
+            }
+            if case == "stale_pair" && packet["verdict"] != "stale_or_wrong_subject" {
+                return Err(format!(
+                    "matching historical packets were not classified stale: {packet}"
+                ));
+            }
+            if case == "plan_catalog" && packet["verdict"] != "not_proven" {
+                return Err(format!(
+                    "deleted not_applicable proposition did not invalidate the plan: {packet}"
+                ));
+            }
+            if case == "malformed_failed" && packet["verdict"] != "not_proven" {
+                return Err(format!(
+                    "malformed evidence was falsely attributed as product failure: {packet}"
+                ));
+            }
+            if case == "malformed_stale" && packet["verdict"] != "not_proven" {
+                return Err(format!(
+                    "malformed execution evidence masqueraded as stale: {packet}"
+                ));
+            }
+            if case == "job_outcome_mismatch" && packet["verdict"] != "failed" {
+                return Err(format!(
+                    "job outcome contradiction remained green: {packet}"
+                ));
+            }
+            if case == "self_invalidated" && packet["verdict"] != "not_proven" {
+                return Err(format!(
+                    "self-invalidated execution evidence remained green: {packet}"
+                ));
+            }
+        }
+
+        let mut failed_download_args = make_args("success")?;
+        let outcome = failed_download_args
+            .iter()
+            .position(|value| value == "--download-outcome")
+            .and_then(|index| failed_download_args.get_mut(index + 1))
+            .ok_or("download outcome argument missing")?;
+        *outcome = "failure".to_string();
+        if crate::ci_routed_rust_result(&failed_download_args).is_ok() {
+            return Err("result consumed evidence after failed artifact integrity".to_string());
+        }
+        let failed_download_packet: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(dir.join("routed-rust-result.json"))
+                .map_err(|err| format!("read failed-download result: {err}"))?,
+        )
+        .map_err(|err| format!("parse failed-download result: {err}"))?;
+        if failed_download_packet["verdict"] != "not_proven"
+            || !failed_download_packet["invalidations"]
+                .as_array()
+                .is_some_and(|values| {
+                    values
+                        .iter()
+                        .any(|value| value == "artifact_download_not_successful")
+                })
+        {
             return Err(format!(
-                "protected result accepted forbidden route assertion `{forbidden}=true`"
+                "failed artifact download did not fail closed: {failed_download_packet}"
             ));
         }
+
+        fs::remove_file(&execution_path).map_err(|err| format!("remove execution: {err}"))?;
+        if crate::ci_routed_rust_result(&make_args("success")?).is_ok() {
+            return Err("result accepted missing execution bytes".to_string());
+        }
+        let result: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(dir.join("routed-rust-result.json"))
+                .map_err(|err| format!("read result packet: {err}"))?,
+        )
+        .map_err(|err| format!("parse result packet: {err}"))?;
+        if result["verdict"] != "not_proven" || result["invalidations"].as_array().is_none() {
+            return Err(format!(
+                "missing evidence did not produce retained not_proven result: {result}"
+            ));
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn routed_rust_cache_restores_are_read_only_and_save_is_protected() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    validate_routed_rust_cache_boundary(&workflow)
+}
+
+#[test]
+fn routed_rust_cache_boundary_oracle_rejects_a_candidate_save() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    let mutated = workflow.replacen(
+        "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'",
+        "if: success()",
+        1,
+    );
+    if validate_routed_rust_cache_boundary(&mutated).is_ok() {
+        return Err("cache oracle accepted a save outside protected main".to_string());
     }
     Ok(())
 }
 
 #[test]
-fn routed_rust_caches_are_partitioned_by_trust_and_save_only_protected_pushes() -> Result<(), String>
-{
+fn routed_rust_cache_boundary_oracle_rejects_a_recomputed_save_key() -> Result<(), String> {
     let workflow = routed_rust_workflow_text()?;
-    let protected_save =
-        "save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}";
+    let mutated = workflow.replacen(
+        "key: ${{ steps.rust_cache.outputs.cache-primary-key }}",
+        "key: ripr-routed-rust-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}",
+        1,
+    );
+    if validate_routed_rust_cache_boundary(&mutated).is_ok() {
+        return Err("cache oracle accepted a save key recomputed after the proof ran".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_cache_boundary_oracle_rejects_cached_evidence() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    let mutated = workflow.replacen("            !target/ripr/**\n", "", 1);
+    if validate_routed_rust_cache_boundary(&mutated).is_ok() {
+        return Err("cache oracle accepted a restore that can contain stale evidence".to_string());
+    }
+    Ok(())
+}
+
+fn validate_routed_rust_cache_boundary(workflow: &str) -> Result<(), String> {
+    if workflow.contains("Swatinem/rust-cache@") || workflow.contains("uses: actions/cache@") {
+        return Err(
+            "candidate jobs must use the restore-only cache action, not a combined cache action"
+                .to_string(),
+        );
+    }
     let lines: Vec<&str> = workflow.lines().collect();
-    let mut cache_count = 0;
+    let mut restore_count = 0;
+    let mut save_count = 0;
     for (index, line) in lines.iter().enumerate() {
-        if !line.contains("uses: Swatinem/rust-cache@") {
-            continue;
+        if line.contains("uses: actions/cache/restore@") {
+            restore_count += 1;
+            let end = (index + 12).min(lines.len());
+            let block = lines[index..end].join("\n");
+            if !block.contains(
+                "key: ripr-routed-rust-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}",
+            ) {
+                return Err(format!(
+                    "restore at line {} lacks the exact cache key",
+                    index + 1
+                ));
+            }
+            if !block.contains("!target/ripr/**") {
+                return Err(format!(
+                    "cache restore at line {} can restore stale RIPR evidence",
+                    index + 1
+                ));
+            }
         }
-        cache_count += 1;
-        let end = (index + 6).min(lines.len());
-        let block = lines[index..end].join("\n");
-        if !block.contains("${{ needs.route.outputs.subject_trust_class }}")
-            || !block.contains(protected_save)
-        {
-            return Err(format!(
-                "routed cache at line {} must use a trust-class key and protected-push-only save policy",
-                index + 1
-            ));
+        if line.contains("uses: actions/cache/save@") {
+            save_count += 1;
+            let start = index.saturating_sub(3);
+            let end = (index + 12).min(lines.len());
+            let block = lines[start..end].join("\n");
+            if !block.contains(
+                "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'",
+            ) || !block.contains("key: ${{ steps.rust_cache.outputs.cache-primary-key }}")
+            {
+                return Err(format!(
+                    "cache save at line {} must be exact protected-main authority with the restore key",
+                    index + 1
+                ));
+            }
+            if !block.contains("!target/ripr/**") {
+                return Err(format!(
+                    "cache save at line {} can retain RIPR evidence",
+                    index + 1
+                ));
+            }
         }
     }
-    if cache_count == 0 {
-        return Err("routed-rust.yml must declare at least one Rust cache".to_string());
+    if restore_count != 3 || save_count != 1 {
+        return Err(format!(
+            "expected three restore-only caches and one protected save, found {restore_count} restores and {save_count} saves"
+        ));
     }
     Ok(())
 }
@@ -46794,19 +47449,33 @@ fn routed_rust_caches_are_partitioned_by_trust_and_save_only_protected_pushes() 
 #[test]
 fn routed_rust_restores_cache_before_first_cargo_call() -> Result<(), String> {
     let workflow = routed_rust_workflow_text()?;
-    let rust_job = workflow
-        .split("\n  rust-github:")
-        .nth(1)
-        .and_then(|tail| tail.split("\n  docs-gate:").next())
-        .ok_or("routed-rust.yml must contain rust-github before docs-gate")?;
-    let cache = rust_job
-        .find("uses: Swatinem/rust-cache@")
-        .ok_or("rust-github must restore a Rust cache")?;
-    let cargo = rust_job
-        .find("cargo run --locked -p xtask -- ci-routed-rust-plan")
-        .ok_or("rust-github must emit its plan")?;
-    if cache > cargo {
-        return Err("rust-github must restore its cache before the first Cargo call".to_string());
+    for (job, next) in [
+        ("rust-github", "docs-gate"),
+        ("docs-gate", "result"),
+        ("result", ""),
+    ] {
+        let tail = workflow
+            .split(&format!("\n  {job}:"))
+            .nth(1)
+            .ok_or_else(|| format!("routed-rust.yml must contain {job}"))?;
+        let section = if next.is_empty() {
+            tail
+        } else {
+            tail.split(&format!("\n  {next}:"))
+                .next()
+                .ok_or_else(|| format!("routed-rust.yml must contain {job} before {next}"))?
+        };
+        let cache = section
+            .find("uses: actions/cache/restore@")
+            .ok_or_else(|| format!("{job} must restore a Rust cache"))?;
+        let cargo = section
+            .find("cargo ")
+            .ok_or_else(|| format!("{job} must contain a Cargo call"))?;
+        if cache > cargo {
+            return Err(format!(
+                "{job} must restore its cache before the first Cargo call"
+            ));
+        }
     }
     Ok(())
 }
@@ -46859,9 +47528,11 @@ fn validate_routed_rust_action_pins(workflow: &str) -> Result<(), String> {
     }
     for required in [
         "actions/checkout@",
+        "actions/download-artifact@",
         "actions/upload-artifact@",
+        "actions/cache/restore@",
+        "actions/cache/save@",
         "dtolnay/rust-toolchain@",
-        "Swatinem/rust-cache@",
         "taiki-e/install-action@",
     ] {
         if !inspected.iter().any(|action| action.starts_with(required)) {
@@ -46883,6 +47554,33 @@ fn routed_rust_scheduler_preserves_nul_framing() -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+#[test]
+fn routed_rust_changed_path_decoder_rejects_non_utf8_without_lossy_replacement()
+-> Result<(), String> {
+    let hostile = b"docs/\xff.md\0";
+    if crate::routed_rust_decode_changed_paths(hostile).is_ok() {
+        return Err("non-UTF-8 Git path was accepted as a docs-only candidate".to_string());
+    }
+    let valid = crate::routed_rust_decode_changed_paths(b"docs/a.md\0docs/line\nname.md\0")
+        .map_err(|err| format!("valid NUL inventory was rejected: {err}"))?;
+    if valid != ["docs/a.md", "docs/line\nname.md"] {
+        return Err(format!("NUL records were not preserved exactly: {valid:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_plan_digests_pr_head_changes_not_merge_subject_changes() {
+    assert_eq!(
+        crate::routed_rust_changed_subject("pr-head", "merge-subject"),
+        "pr-head"
+    );
+    assert_eq!(
+        crate::routed_rust_changed_subject("", "push-subject"),
+        "push-subject"
+    );
 }
 
 #[test]
@@ -46912,7 +47610,6 @@ fn only_passed_is_green() -> Result<(), String> {
         V::NotProven,
         V::StaleOrWrongSubject,
         V::Cancelled,
-        V::ContradictoryEvidence,
     ];
     if !V::Passed.is_green() {
         return Err("passed must be green".to_string());
