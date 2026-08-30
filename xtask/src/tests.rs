@@ -47343,7 +47343,7 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
 }
 
 #[test]
-fn routed_rust_cache_restores_are_read_only_and_save_is_protected() -> Result<(), String> {
+fn routed_rust_cache_restores_are_read_only_and_have_no_writer() -> Result<(), String> {
     let workflow = routed_rust_workflow_text()?;
     validate_routed_rust_cache_boundary(&workflow)
 }
@@ -47352,26 +47352,18 @@ fn routed_rust_cache_restores_are_read_only_and_save_is_protected() -> Result<()
 fn routed_rust_cache_boundary_oracle_rejects_a_candidate_save() -> Result<(), String> {
     let workflow = routed_rust_workflow_text()?;
     let mutated = workflow.replacen(
-        "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'",
-        "if: success()",
+        "      - id: rust_cache\n",
+        concat!(
+            "      - uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25\n",
+            "        with:\n",
+            "          path: target/\n",
+            "          key: candidate-controlled\n",
+            "      - id: rust_cache\n"
+        ),
         1,
     );
     if validate_routed_rust_cache_boundary(&mutated).is_ok() {
         return Err("cache oracle accepted a save outside protected main".to_string());
-    }
-    Ok(())
-}
-
-#[test]
-fn routed_rust_cache_boundary_oracle_rejects_a_recomputed_save_key() -> Result<(), String> {
-    let workflow = routed_rust_workflow_text()?;
-    let mutated = workflow.replacen(
-        "key: ${{ steps.rust_cache.outputs.cache-primary-key }}",
-        "key: ripr-routed-rust-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}",
-        1,
-    );
-    if validate_routed_rust_cache_boundary(&mutated).is_ok() {
-        return Err("cache oracle accepted a save key recomputed after the proof ran".to_string());
     }
     Ok(())
 }
@@ -47395,7 +47387,6 @@ fn validate_routed_rust_cache_boundary(workflow: &str) -> Result<(), String> {
     }
     let lines: Vec<&str> = workflow.lines().collect();
     let mut restore_count = 0;
-    let mut save_count = 0;
     for (index, line) in lines.iter().enumerate() {
         if line.contains("uses: actions/cache/restore@") {
             restore_count += 1;
@@ -47417,30 +47408,15 @@ fn validate_routed_rust_cache_boundary(workflow: &str) -> Result<(), String> {
             }
         }
         if line.contains("uses: actions/cache/save@") {
-            save_count += 1;
-            let start = index.saturating_sub(3);
-            let end = (index + 12).min(lines.len());
-            let block = lines[start..end].join("\n");
-            if !block.contains(
-                "if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'",
-            ) || !block.contains("key: ${{ steps.rust_cache.outputs.cache-primary-key }}")
-            {
-                return Err(format!(
-                    "cache save at line {} must be exact protected-main authority with the restore key",
-                    index + 1
-                ));
-            }
-            if !block.contains("!target/ripr/**") {
-                return Err(format!(
-                    "cache save at line {} can retain RIPR evidence",
-                    index + 1
-                ));
-            }
+            return Err(format!(
+                "routed-rust must be restore-only; found cache save at line {}",
+                index + 1
+            ));
         }
     }
-    if restore_count != 3 || save_count != 1 {
+    if restore_count != 3 {
         return Err(format!(
-            "expected three restore-only caches and one protected save, found {restore_count} restores and {save_count} saves"
+            "expected three restore-only caches and no save, found {restore_count} restores"
         ));
     }
     Ok(())
@@ -47531,7 +47507,6 @@ fn validate_routed_rust_action_pins(workflow: &str) -> Result<(), String> {
         "actions/download-artifact@",
         "actions/upload-artifact@",
         "actions/cache/restore@",
-        "actions/cache/save@",
         "dtolnay/rust-toolchain@",
         "taiki-e/install-action@",
     ] {

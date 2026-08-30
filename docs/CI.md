@@ -452,6 +452,10 @@ bytes together with the GitHub conclusion and all three route assertions before
 writing its own packet. Job outputs schedule work and cross-check observations;
 they are not durable proof by themselves.
 
+This workflow is restore-only for every event. It never writes a cache after
+executing candidate or manually selected code; trusted cache production belongs
+to a separately protected control path.
+
 The aggregate goes green only for an exact, complete `passed` packet pair. A
 missing proposition, unavailable or malformed packet, setup/instrument failure,
 subject mismatch, plan-digest mismatch, or contradiction with GitHub's child
