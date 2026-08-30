@@ -171,7 +171,7 @@
       "key": "policy/network_allowlist.txt",
       "disposition": "integrated",
       "rationale": "Explicit integration required. ripr#1572 produced the semantic source/W7 network-policy reconciliation for this exact P0 tuple and is the only authority for this path.",
-      "evidence": "EffortlessMetrics/ripr#1572 network-policy resolution receipt (control branch control/network-policy-resolution-ad291d @ 888598387a7f4f8b3e2f97603fdd8f7602b9afbd); integrated ledger blob 9e86da2f83df8dc6f38878f6388b7489622d3830, receipt SHA-256 23edfaf268a5c271603bf142a067fc54b37fd37330f55a927c450eae4023708c.",
+      "evidence": "EffortlessMetrics/ripr#1572 network-policy resolution receipt (control branch control/network-policy-resolution-ad291d @ 888598387a7f4f8b3e2f97603fdd8f7602b9afbd); receipt SHA-256 23edfaf268a5c271603bf142a067fc54b37fd37330f55a927c450eae4023708c. The accepted-tree ledger blob is b514dd72a4589da7f4b5c859dbb471e407380610, which is the ripr#1572 reconciled ledger with the RIPR-SPEC-0112 -> RIPR-SPEC-0151 renumber applied. The receipt's own pre-renumber ledger blob 9e86da2f83df8dc6f38878f6388b7489622d3830 differs from the accepted tree in exactly that one identifier and is not present at any path in the tree.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
         "ref": "EffortlessMetrics/ripr#1572 network-policy resolution receipt (control branch control/network-policy-resolution-ad291d @ 888598387a7f4f8b3e2f97603fdd8f7602b9afbd)",
@@ -962,7 +962,7 @@
       "key": "policy/network_allowlist.txt",
       "disposition": "integrated",
       "rationale": "Explicit integration required. ripr#1572 produced the semantic source/W7 network-policy reconciliation for this exact P0 tuple and is the only authority for this path.",
-      "evidence": "EffortlessMetrics/ripr#1572 network-policy resolution receipt (control branch control/network-policy-resolution-ad291d @ 888598387a7f4f8b3e2f97603fdd8f7602b9afbd); integrated ledger blob 9e86da2f83df8dc6f38878f6388b7489622d3830, receipt SHA-256 23edfaf268a5c271603bf142a067fc54b37fd37330f55a927c450eae4023708c.",
+      "evidence": "EffortlessMetrics/ripr#1572 network-policy resolution receipt (control branch control/network-policy-resolution-ad291d @ 888598387a7f4f8b3e2f97603fdd8f7602b9afbd); receipt SHA-256 23edfaf268a5c271603bf142a067fc54b37fd37330f55a927c450eae4023708c. The accepted-tree ledger blob is b514dd72a4589da7f4b5c859dbb471e407380610, which is the ripr#1572 reconciled ledger with the RIPR-SPEC-0112 -> RIPR-SPEC-0151 renumber applied. The receipt's own pre-renumber ledger blob 9e86da2f83df8dc6f38878f6388b7489622d3830 differs from the accepted tree in exactly that one identifier and is not present at any path in the tree.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
         "ref": "EffortlessMetrics/ripr#1572 network-policy resolution receipt (control branch control/network-policy-resolution-ad291d @ 888598387a7f4f8b3e2f97603fdd8f7602b9afbd)",

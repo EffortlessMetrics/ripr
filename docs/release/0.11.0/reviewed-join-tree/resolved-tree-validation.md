@@ -305,7 +305,7 @@ This source-parent-selected receipt reports the named repository-governance comm
   "resolution_manifest": {
     "path": "target/tree9/resolution-manifest.json",
     "path_role": "source_checkout_regular_file",
-    "sha256": "07b5cbf5ea86320a3d509e5ec41ee1a59e4fd388fd67a539a2f9438ca71878e3",
+    "sha256": "55b3e0642bc7048cc52d1ee3906fcc94e2ebcff449606323939205f01d6d57bb",
     "verified": true
   },
   "reviewed_tree": "3c76c659bc311986c10e74c63373dd3350cd972b",

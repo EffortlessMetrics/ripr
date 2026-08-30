@@ -13,7 +13,7 @@ SWARM_REF       = refs/tags/ripr-release-0.11.0-83217e97ec6847db41d757f57279a8b1
 MERGE_BASE      = 36909460db013ed3a3238ee8b2fc3ccda1135c15
 JOIN_TREE       = 3c76c659bc311986c10e74c63373dd3350cd972b
 P1_SHA256       = aada8701c2b308414a1c37e222e2cbdcde883bf8d539e693e6d9da875a72bd84
-MANIFEST_SHA256 = 07b5cbf5ea86320a3d509e5ec41ee1a59e4fd388fd67a539a2f9438ca71878e3
+MANIFEST_SHA256 = 55b3e0642bc7048cc52d1ee3906fcc94e2ebcff449606323939205f01d6d57bb
 ```
 
 `P1_SHA256` is the SHA-256 of `source-promotion-preflight.json`, the finalized
@@ -60,7 +60,7 @@ cargo xtask source-promotion validate-resolved-tree \
   --preflight <dir>/source-promotion-preflight.json \
   --preflight-sha256 aada8701c2b308414a1c37e222e2cbdcde883bf8d539e693e6d9da875a72bd84 \
   --resolution-manifest resolution-manifest.json \
-  --resolution-sha256 07b5cbf5ea86320a3d509e5ec41ee1a59e4fd388fd67a539a2f9438ca71878e3 \
+  --resolution-sha256 55b3e0642bc7048cc52d1ee3906fcc94e2ebcff449606323939205f01d6d57bb \
   --out <dir>/validation
 ```
 
