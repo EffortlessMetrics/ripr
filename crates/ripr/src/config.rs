@@ -1,21 +1,23 @@
 //! Repository configuration loader for `ripr.toml`.
 //!
-//! The loader is intentionally small and repo-root scoped. It does not read
-//! user-global config, environment variables, or hidden alternate config
+//! The loader is intentionally small and repository-scoped. It walks from the
+//! selected root toward the repository boundary for `ripr.toml`; it does not
+//! read user-global config, environment variables, or hidden alternate config
 //! paths. Command adapters decide precedence by applying explicit flags or LSP
 //! initialization options after this file is loaded.
 
 use crate::app::{CheckInput, Mode};
 use crate::domain::{LanguageId, OracleStrength};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
 
 mod model;
 mod python;
 
 use model::{BunUbProfileConfig, FindingSeverityConfig, ProfilesConfig, SeamSeverityConfig};
-pub(crate) use model::{
-    CheckInputExplicit, ConfigSeverity, OraclePolicy, RiprConfig, SeverityConfig, TypescriptConfig,
+pub use model::{
+    CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION, CheckInputExplicit, ConfigIdentityRole, ConfigSeverity,
+    LspDiagnosticProfile, OraclePolicy, PerlConfig, RiprConfig, SeverityConfig, TypescriptConfig,
 };
 pub(crate) use python::detect_python_project;
 
@@ -38,7 +40,7 @@ broad_error_strength = "weak"
 
 [severity.findings]
 # Valid severities: info, warning, note.
-exposed = "info"
+exposed = "warning"
 weakly_exposed = "warning"
 reachable_unrevealed = "warning"
 no_static_path = "warning"
@@ -76,15 +78,25 @@ max_related_tests = 5
 path = ".ripr/suppressions.toml"
 
 [languages]
-# Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript`,
-# `python`, or `perl` to opt into preview adapters when the ripr binary was
-# built with the matching Cargo feature (`lang-typescript`, `lang-python`, or
-# `lang-perl`). When this file is absent, Python project markers can enable
-# Python preview analysis
+# Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript` or
+# `python` to opt into preview adapters when the ripr binary was built with
+# the matching Cargo feature (`lang-typescript` or `lang-python`). When this
+# file is absent, Python project markers can enable Python preview analysis
 # automatically for the detected repository root; this explicit list remains
 # authoritative when present.
 # Valid values: rust, typescript, python, perl.
+# (`perl` consumes externally-produced `ripr-perl-facts-v1` packets and does
+# not parse Perl source directly. Pass --perl-facts <path> for an explicit
+# packet, or configure a managed [perl].producer and make its exporter
+# available. Without a packet or available exporter, Perl analysis is
+# unavailable. See Campaign 31 #1379 + Support Tiers.)
 enabled = ["rust"]
+# Optional additive Rust generated-source globs. Built-in generated names and
+# directories remain excluded. A pattern without `/` matches any filename;
+# patterns with `/` match the repository-relative path.
+#
+# [languages.rust]
+# generated_file_patterns = ["*.gen.rs", "src/generated/**/*.rs"]
 
 # Optional Bun stable-byte UB advisory profile. Leave this commented unless the
 # repository wants TypeScript-family preview evidence for Bun Rust/FFI seams.
@@ -96,13 +108,63 @@ enabled = ["rust"]
 #   "test/js/**/*.test.js",
 # ]
 # bridge_hints = "ripr.bun.bridge.toml"
+
+# Optional TypeScript adapter settings (preview). Requires
+# enabled = ["typescript"] in [languages] and the `lang-typescript` Cargo feature.
+#
+# [typescript]
+# resolve_tsconfig_paths = false
+
+# Optional Perl adapter settings (fact-packet consumer, preview — see Campaign 31 #1379).
+#
+# [perl]
+# producer = "perl-ripr-facts"  # canonical managed exporter; "perllsp"/"perl-lsp" are compatibility wrappers
+# executable = "perl"      # Perl binary path
+# timeout_ms = 30000       # Per-invocation timeout
+# cache_dir = "target/ripr/perl-facts"  # Fact cache location
 "#;
 
-pub(crate) fn load_for_root(root: &Path) -> Result<RiprConfig, String> {
-    let path = root.join(CONFIG_FILE_NAME);
-    if !path.exists() {
-        return default_config_for_root(root);
+fn discover_config_path(root: &Path) -> Option<PathBuf> {
+    let direct = root.join(CONFIG_FILE_NAME);
+    if direct.exists() {
+        return std::fs::canonicalize(direct).ok();
     }
+
+    let search_root = std::fs::canonicalize(root).ok()?;
+    for ancestor in search_root.ancestors() {
+        let path = ancestor.join(CONFIG_FILE_NAME);
+        if path.exists() {
+            return Some(path);
+        }
+        if is_repository_boundary(ancestor) {
+            break;
+        }
+    }
+    None
+}
+
+fn is_repository_boundary(directory: &Path) -> bool {
+    if directory.join(".git").exists() {
+        return true;
+    }
+
+    let manifest = directory.join("Cargo.toml");
+    let Ok(contents) = std::fs::read_to_string(manifest) else {
+        return false;
+    };
+    if !contents.contains("workspace") {
+        return false;
+    }
+    let Ok(document) = toml::from_str::<toml::Value>(&contents) else {
+        return false;
+    };
+    document.get("workspace").is_some_and(toml::Value::is_table)
+}
+
+pub(crate) fn load_for_root(root: &Path) -> Result<RiprConfig, String> {
+    let Some(path) = discover_config_path(root) else {
+        return default_config_for_root(root);
+    };
     let text = std::fs::read_to_string(&path)
         .map_err(|err| format!("read {} failed: {err}", path.display()))?;
     let mut config = parse_config(&text).map_err(|err| format!("{}: {err}", path.display()))?;
@@ -140,6 +202,61 @@ pub(crate) fn config_fingerprint(source_text: &str) -> String {
         hash = hash.wrapping_mul(FNV_PRIME);
     }
     format!("fnv1a64:{hash:016x}")
+}
+
+/// Canonical analysis-config identity for the check-artifact identity gate
+/// (RIPR-SPEC-0140): the finding-affecting allowlist fields, canonically
+/// serialized (field name, normalized value, defaults materialized), sorted,
+/// and hashed. Render-only knobs are excluded by the allowlist and are
+/// honored fresh at render time by the consuming command.
+pub(crate) fn check_artifact_config_identity_hash(config: &RiprConfig) -> String {
+    let mut pairs = config
+        .check_artifact_identity_fields()
+        .into_iter()
+        .filter(|field| field.role == ConfigIdentityRole::FindingAffecting)
+        .map(|field| format!("{}={}", field.name, field.value.clone().unwrap_or_default()))
+        .collect::<Vec<_>>();
+    pairs.sort();
+    config_fingerprint(&pairs.join("\n"))
+}
+
+/// The exact `ripr.toml` fields the repo-exposure producer (the seam
+/// inventory in `crates/ripr/src/analysis/seam_inventory.rs`) consumes
+/// semantically. Verified against the producer: the seam walker is Rust-only
+/// and reads only the oracle-strength policy (via
+/// `rust_index::apply_oracle_policy`); it does not read `languages.enabled`,
+/// `rust.generated_file_patterns`, or any typescript/perl field, so those
+/// SPEC-0140 finding-affecting fields must NOT move the repo-exposure input
+/// identity (#2823 — two runs differing only in an unconsumed setting stay
+/// comparable). Closed set: when the producer starts consuming another config
+/// field, add it here in the same PR; do not widen the filter to whole
+/// sections.
+pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 3] = [
+    "oracles.broad_error_strength",
+    "oracles.mock_expectation_strength",
+    "oracles.snapshot_strength",
+];
+
+/// Canonical config identity for the repo-exposure artifact input identity
+/// (#2823): exactly the producer-consumed fields
+/// ([`REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS`]), canonically serialized through
+/// the same SPEC-0140 field enumerator (field name, normalized value,
+/// defaults materialized), sorted, and hashed. This is deliberately narrower
+/// than [`check_artifact_config_identity_hash`], which serves the diff-check
+/// pipeline and legitimately includes typescript/perl inputs the seam
+/// inventory never reads.
+pub(crate) fn repo_exposure_config_identity_hash(config: &RiprConfig) -> String {
+    let mut pairs = config
+        .check_artifact_identity_fields()
+        .into_iter()
+        .filter(|field| {
+            field.role == ConfigIdentityRole::FindingAffecting
+                && REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS.contains(&field.name)
+        })
+        .map(|field| format!("{}={}", field.name, field.value.clone().unwrap_or_default()))
+        .collect::<Vec<_>>();
+    pairs.sort();
+    config_fingerprint(&pairs.join("\n"))
 }
 
 pub(crate) fn apply_to_check_input(
@@ -192,10 +309,16 @@ impl RiprConfig {
         if let Some(severity) = raw.severity {
             config.severity = merge_severity(config.severity, severity)?;
         }
-        if let Some(lsp) = raw.lsp
-            && let Some(seam_diagnostics) = lsp.seam_diagnostics
-        {
-            config.lsp.seam_diagnostics = Some(seam_diagnostics);
+        if let Some(lsp) = raw.lsp {
+            if let Some(seam_diagnostics) = lsp.seam_diagnostics {
+                config.lsp.seam_diagnostics = Some(seam_diagnostics);
+            }
+            if let Some(profile) = lsp.diagnostic_profile {
+                config.lsp.diagnostic_profile = Some(
+                    LspDiagnosticProfile::parse(&profile)
+                        .map_err(|err| format!("{err} in [lsp]"))?,
+                );
+            }
         }
         if let Some(reports) = raw.reports
             && let Some(max) = reports.max_related_tests
@@ -207,10 +330,16 @@ impl RiprConfig {
         {
             config.suppressions.path = parse_relative_path("suppressions.path", &path)?;
         }
-        if let Some(languages) = raw.languages
-            && let Some(enabled) = languages.enabled
-        {
-            config.languages.enabled = parse_languages_enabled(&enabled)?;
+        if let Some(languages) = raw.languages {
+            if let Some(enabled) = languages.enabled {
+                config.languages.enabled = parse_languages_enabled(&enabled)?;
+            }
+            if let Some(rust) = languages.rust
+                && let Some(patterns) = rust.generated_file_patterns
+            {
+                config.languages.rust.generated_file_patterns =
+                    parse_generated_file_patterns(&patterns)?;
+            }
         }
         if let Some(profiles) = raw.profiles {
             config.profiles = parse_profiles(profiles)?;
@@ -218,6 +347,14 @@ impl RiprConfig {
         if let Some(ts) = raw.typescript {
             config.typescript = TypescriptConfig {
                 resolve_tsconfig_paths: ts.resolve_tsconfig_paths.unwrap_or(false),
+            };
+        }
+        if let Some(perl) = raw.perl {
+            config.perl = PerlConfig {
+                producer: perl.producer,
+                executable: perl.executable.map(PathBuf::from),
+                timeout_ms: perl.timeout_ms.unwrap_or(30_000),
+                cache_dir: perl.cache_dir.map(PathBuf::from),
             };
         }
         Ok(config)
@@ -234,7 +371,7 @@ fn parse_languages_enabled(values: &[String]) -> Result<Vec<LanguageId>, String>
             "perl" => LanguageId::Perl,
             other => {
                 return Err(format!(
-                    "languages.enabled lists unknown language `{other}`; valid values are rust, typescript, python, perl"
+                    "languages.enabled lists unknown language `{other}`; valid values are rust, typescript, python, perl (Perl consumes externally-produced fact packets; use --perl-facts <path> or a configured managed [perl].producer — see Campaign 31 #1379)"
                 ));
             }
         };
@@ -250,6 +387,33 @@ fn parse_languages_enabled(values: &[String]) -> Result<Vec<LanguageId>, String>
             ));
         }
         parsed.push(language);
+    }
+    Ok(parsed)
+}
+
+fn parse_generated_file_patterns(values: &[String]) -> Result<Vec<String>, String> {
+    let mut parsed = Vec::with_capacity(values.len());
+    for value in values {
+        if value.chars().any(char::is_control) {
+            return Err(
+                "languages.rust.generated_file_patterns must not contain control characters"
+                    .to_string(),
+            );
+        }
+        let trimmed = value.trim();
+        parse_relative_path("languages.rust.generated_file_patterns", trimmed)?;
+        if trimmed == "." {
+            return Err(
+                "languages.rust.generated_file_patterns must identify a file pattern, not `.`"
+                    .to_string(),
+            );
+        }
+        if parsed.iter().any(|existing| existing == trimmed) {
+            return Err(format!(
+                "languages.rust.generated_file_patterns lists `{trimmed}` more than once; remove the duplicate"
+            ));
+        }
+        parsed.push(trimmed.to_string());
     }
     Ok(parsed)
 }
@@ -288,7 +452,7 @@ fn parse_bun_ub_profile(raw: RawBunUbProfileConfig) -> Result<BunUbProfileConfig
     })
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawConfig {
     analysis: Option<RawAnalysisConfig>,
@@ -300,41 +464,58 @@ struct RawConfig {
     languages: Option<RawLanguagesConfig>,
     profiles: Option<RawProfilesConfig>,
     typescript: Option<RawTypescriptConfig>,
+    perl: Option<RawPerlConfig>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawTypescriptConfig {
     resolve_tsconfig_paths: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawLanguagesConfig {
     enabled: Option<Vec<String>>,
+    rust: Option<RawRustLanguageConfig>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RawRustLanguageConfig {
+    generated_file_patterns: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RawPerlConfig {
+    producer: Option<String>,
+    executable: Option<String>,
+    timeout_ms: Option<u64>,
+    cache_dir: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawProfilesConfig {
     bun_ub: Option<RawBunUbProfileConfig>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawBunUbProfileConfig {
     test_roots: Option<Vec<String>>,
     bridge_hints: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawAnalysisConfig {
     mode: Option<String>,
     include_unchanged_tests: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawOraclePolicy {
     snapshot_strength: Option<String>,
@@ -342,32 +523,33 @@ struct RawOraclePolicy {
     broad_error_strength: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawLspConfig {
     seam_diagnostics: Option<bool>,
+    diagnostic_profile: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawReportsConfig {
     max_related_tests: Option<usize>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawSuppressionsConfig {
     path: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawSeverityConfig {
     findings: Option<RawFindingSeverityConfig>,
     seams: Option<RawSeamSeverityConfig>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawFindingSeverityConfig {
     exposed: Option<String>,
@@ -379,7 +561,7 @@ struct RawFindingSeverityConfig {
     static_unknown: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawSeamSeverityConfig {
     strongly_gripped: Option<String>,

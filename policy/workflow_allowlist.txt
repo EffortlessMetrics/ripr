@@ -17,10 +17,14 @@
 .github/workflows/pr-plan.yml|1|Advisory PR Plan workflow keeps each run block to one shell command (mkdir/git, ls, printf).
 .github/workflows/publish-extension.yml|20|Release workflow includes marketplace packaging and publishing orchestration.
 .github/workflows/release-server-binaries.yml|1|Release workflow delegates server archive packaging, manifest generation, and release upload branching to Rust xtask commands.
+.github/workflows/server-archive-qualification.yml|82|Exact measured largest run block after preserving curl transport status, bounded rate-limit tokens, response digests, and strict public ruleset shape diagnostics; credential-free, artifact-only qualification delegates packaging and manifest generation to Rust xtask commands.
 .github/workflows/routed-rust.yml|63|Swarm routed Rust workflow selects CX53, CX43, or hosted fallback and runs the existing Rust/product command surface; scratch GC precedes each disk guard so cancelled runs cannot leak disk forever.
-.github/workflows/scratch-gc.yml|6|Scheduled scratch-GC lane reuses the existing inline cleanup (age-gated find + sccache trim + disk report + advisory guard) on a timer so disk recovery does not depend on PR traffic (#1028).
+.github/workflows/scratch-gc.yml|4|Scheduled scratch-GC lane reuses the existing inline cleanup (age-gated find + sccache trim + disk report + hard-fail guard) on a timer so disk recovery does not depend on PR traffic (#1028).
 .github/workflows/security.yml|1|Security workflow installs cargo-deny as a normal binary, then runs the standard cargo-deny command without requiring Docker.
 .github/workflows/source-of-truth.yml|10|Advisory source-of-truth workflow runs three xtask checks and writes a short advisory summary.
 .github/workflows/source-promotion-contract.yml|170|Source-promotion contract keeps exact-head receipt binding, fail-closed validation diagnostics, complete receipt-shape validation, and manual post-merge verification in one bounded, read-only workflow.
 .github/workflows/source-promotion-admission.yml|44|Trusted read-only admission workflow binds the pre-producer request and exact identities, retains runner-owned evidence before enforcement, and delegates deterministic admission and dry-run semantics to the source-owned Rust harness.
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.
+.github/workflows/ub-review.yml|0|ub-review workflow delegates entirely to the EffortlessMetrics/ub-review action (no inline run blocks); see #1469.
+.github/workflows/windows-advisory.yml|15|Advisory Windows lane runs a multi-step log-to-verdict pipeline in YAML; the cargo xtask windows-advisory-summary command is the verdict authority.
+.github/workflows/windows-packaged-qualification.yml|50|On-demand exact-candidate Windows package and VSIX rehearsal must retain identity checks, isolated CLI/editor journeys, and Actions-only receipts in one workflow.

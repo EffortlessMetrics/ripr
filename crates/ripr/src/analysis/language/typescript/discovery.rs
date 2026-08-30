@@ -2,8 +2,22 @@
 
 use super::*;
 
-/// Whether a path is a test file by convention (`*.test.ts`, `*.spec.ts`,
-/// and `.tsx` / `.js` / `.jsx` variants).
+/// Whether a path is a test file by convention.
+///
+/// Two recognized conventions:
+/// 1. `*.test.ts` / `*.spec.ts` naming (and `.tsx` / `.js` / `.jsx` variants) —
+///    the Jest/Vitest default.
+/// 2. A TypeScript/JavaScript source under a `test/`, `tests/`, or `__tests__/`
+///    **directory** with a feature name (no `.test`/`.spec` suffix) — the AVA /
+///    Mocha / node:test / tape convention (e.g. `test/body-size.ts`). Dogfood
+///    (sindresorhus/ky): without this, ripr never scans these files and reports
+///    a false `no_static_path` ("you have no tests") when a test exists.
+///
+/// The directory match is on an exact path component (not a substring), so
+/// `src/latest/foo.ts` and `test-utils/foo.ts` are NOT treated as tests. This is
+/// fail-closed: the test extractor only yields tests for files that actually
+/// contain `test()` / `it()` / `describe()` calls, so non-test helpers or
+/// fixtures under a `test/` directory produce no tests.
 pub(crate) fn is_test_file(path: &Path) -> bool {
     let file_name = path
         .file_name()
@@ -19,9 +33,25 @@ pub(crate) fn is_test_file(path: &Path) -> bool {
         ".spec.js",
         ".spec.jsx",
     ];
-    stem_extensions
+    if stem_extensions
         .iter()
         .any(|suffix| file_name.ends_with(suffix))
+    {
+        return true;
+    }
+
+    const TS_JS_EXTENSIONS: &[&str] = &["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"];
+    let has_ts_js_extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| TS_JS_EXTENSIONS.contains(&ext));
+    has_ts_js_extension
+        && path.components().any(|component| {
+            matches!(
+                component.as_os_str().to_str(),
+                Some("test") | Some("tests") | Some("__tests__")
+            )
+        })
 }
 
 pub(crate) fn collect_workspace_typescript_files(root: &Path) -> Vec<PathBuf> {

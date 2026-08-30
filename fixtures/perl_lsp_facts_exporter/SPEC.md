@@ -4,12 +4,13 @@ Spec: RIPR-SPEC-0064
 
 ## Given
 
-This fixture pins the first `perl-lsp` batch exporter handoff for the Perl
-repair-routing lane.
+This fixture pins the first compatibility-wrapper (`perl-lsp`) packet handoff
+for the Perl repair-routing lane. The canonical producer identity is
+`perl-ripr-facts`; `perllsp` and `perl-lsp` are compatibility wrappers only.
 
 It is exporter evidence only. RIPR consumes the expected
-`ripr-perl-facts-v1` JSON packet without launching `perl-lsp`, running Perl,
-installing modules, opening a live LSP session, or creating Perl repair
+`ripr-perl-facts-v1` JSON packet without launching a live LSP session, running
+Perl, installing modules, opening editor state, or creating Perl repair
 packets.
 
 ## When
@@ -31,7 +32,7 @@ fixtures/perl_lsp_facts_exporter/corpus.json
 
 The expected packet must keep:
 
-- `producer.name = "perl-lsp"`;
+- `producer.name = "perl-lsp"` for this compatibility-wrapper fixture;
 - `schema_version = "ripr-perl-facts-v1"`;
 - repo-relative paths with `/` separators;
 - source, test, oracle, runner, limitation, and provenance facts as packet

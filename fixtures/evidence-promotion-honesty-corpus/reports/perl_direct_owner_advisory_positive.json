@@ -1,0 +1,92 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": ".",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"perl","files":1},{"language":"rust","files":0}]},
+  "findings": [
+    {
+      "id": "probe:lib/Pricing.pm:6:return_value:perl",
+      "canonical_gap_id": "gap:perl:fd2eeee83aad9dfc",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:perl:fd2eeee83aad9dfc",
+        "language": "perl",
+        "file": "lib/Pricing.pm",
+        "owner": "discount",
+        "behavior_kind": "return_value",
+        "probe_kind": "exact_return_assertion",
+        "normalized_discriminator": "$amount == $threshold"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:lib/Pricing.pm:6:return_value:perl",
+        "family": "return_value",
+        "delta": "value",
+        "file": "lib/Pricing.pm",
+        "line": 6,
+        "expression": "return_value",
+        "owner": "perl:lib/Pricing.pm::discount"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Perl fact packet relation evidence"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Perl preview adapter does not model infection/propagation"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Perl preview adapter does not model infection/propagation"},
+        "observe": {"state":"yes","confidence":"medium","summary":"Perl fact packet relation evidence"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Missing discriminator from packet"}
+       },
+      "evidence_path": ["reach yes: Perl fact packet relation evidence", "infection unknown: Perl preview adapter does not model infection/propagation", "propagation unknown: Perl preview adapter does not model infection/propagation", "observation yes: Perl fact packet relation evidence", "discriminator weak: Missing discriminator from packet", "related test t/pricing.t:6 test_discount_threshold uses strong exact value oracle: is(Pricing::discount(100), 90, 'threshold')", "missing discriminator $amount == $threshold: changed Perl return_value at lib/Pricing.pm lacks a concrete discriminator"],
+      "flow_sinks": [
+      ],
+      "evidence": ["perl_repair_kind: add_exact_return_assertion", "perl_target_test_shape: exact_return_assertion", "perl_suggested_test_location: t/pricing.t::test_discount_threshold", "perl_suggested_assertion: return_value", "perl_verify_command: prove t/pricing.t"],
+      "missing": ["$amount == $threshold"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "$amount == $threshold",
+            "reason": "changed Perl return_value at lib/Pricing.pm lacks a concrete discriminator",
+            "flow_sink": null
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "$amount == $threshold",
+          "reason": "changed Perl return_value at lib/Pricing.pm lacks a concrete discriminator",
+          "flow_sink": null
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_discount_threshold",
+          "file": "t/pricing.t",
+          "line": 6,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "is(Pricing::discount(100), 90, 'threshold')",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add a focused Perl assertion that pins the changed behavior.",
+      "suggested_next_action": "Add a focused Perl assertion that pins the changed behavior.",
+      "language": "perl",
+      "language_status": "preview",
+      "changed_sink": "$amount == $threshold"
+    }
+  ]
+}

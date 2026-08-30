@@ -4,3 +4,11 @@ failure-output = "immediate-final"
 
 [profile.ci.junit]
 path = "junit.xml"
+
+# #2695: Fast iteration path for local development.
+# Skip slow server-spawning tests with:
+#   cargo nextest run --skip framed_lsp_ --skip editor_agent_loop_
+# Or run only the fast lib tests:
+#   cargo nextest run -p ripr --lib --skip framed_lsp_
+# The slow tests (framed_lsp_*, editor_agent_loop_*) spawn real ripr lsp --stdio
+# servers and take ~30s each. There are ~38 of them across the lib + integration tests.

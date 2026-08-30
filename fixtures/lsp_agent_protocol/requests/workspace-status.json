@@ -1,0 +1,9 @@
+{
+  "protocol_version": "0.1",
+  "schema_version": "0.1",
+  "request": "ripr/workspaceStatus",
+  "mode": "read_only",
+  "profile": null,
+  "snapshot_id": null,
+  "continuation_id": null
+}

@@ -115,6 +115,17 @@ schema compatibility, but their content reads as actionable when flipped:
 `repair_route` is the repair action, `evidence_needed_to_promote` is the empty
 string, and `why_not_actionable` is the actionable confirmation.
 
+The JSON `evidence` array is also a user-facing projection. When the shared
+validator flips the finding to packet-ready, the rendered evidence array must
+replace the pre-flip blocked actionability strings with actionable-reading
+strings (`gap_state: actionable`,
+`actionability_category: complete_repair_packet`, `why_actionable:`, and
+`repair_action:`) while preserving non-actionability evidence and raw evidence
+refs. It must not retain the blocked `gap_state: advisory`,
+`actionability_category: incomplete_repair_packet`, `why_not_actionable:`,
+`repair_route:`, `missing_actionability_fields:`, or non-empty
+`evidence_needed_to_promote:` lines for that packet-ready finding.
+
 ### Human output (explain + check human)
 
 For an **actionable** TypeScript finding (`repair_packet_ready: true`):

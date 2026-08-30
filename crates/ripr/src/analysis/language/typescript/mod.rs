@@ -15,6 +15,10 @@ pub(crate) use super::{
     LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route,
 };
 pub(super) use crate::analysis::probes;
+pub(crate) use crate::analysis_outcome::{
+    AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
+    AnalysisStage,
+};
 pub(crate) use crate::config::OraclePolicy;
 pub(crate) use crate::domain::{
     ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding,
@@ -41,6 +45,7 @@ mod discovery;
 mod oracle;
 mod owners;
 mod package;
+pub(crate) use package::detect_framework_for_root;
 mod parse;
 mod paths;
 mod probe_shape;
@@ -102,6 +107,10 @@ impl LanguageAdapter for TypeScriptAdapter {
         // so we can find related tests for any owner regardless of whether
         // the test file itself changed in this diff.
         let workspace_files = collect_workspace_typescript_files(&options.root);
+        let changed_paths = changed_files
+            .iter()
+            .map(|changed| normalized_path(&changed.path))
+            .collect::<Vec<_>>();
         let mut all_owners: Vec<TypeScriptOwner> = Vec::new();
         let mut all_tests: Vec<TypeScriptTest> = Vec::new();
         let mut parse_limits: Vec<TypeScriptParseLimit> = Vec::new();
@@ -111,7 +120,11 @@ impl LanguageAdapter for TypeScriptAdapter {
                 continue;
             };
             if let Some(reason) = parse_error_reason(relative, &source) {
-                if !is_test_file(relative) {
+                if !is_test_file(relative)
+                    && changed_paths
+                        .iter()
+                        .any(|changed| changed == &normalized_path(relative))
+                {
                     parse_limits.push(TypeScriptParseLimit {
                         file: relative.clone(),
                         reason,
@@ -145,6 +158,11 @@ impl LanguageAdapter for TypeScriptAdapter {
         // line that falls inside an owner.
         let mut findings: Vec<Finding> = Vec::new();
         let mut changed_count: usize = 0;
+        // Per-output-language tally (#2103 review): this adapter covers both
+        // typescript (.ts/.tsx) and javascript (.js/.jsx), so the summary
+        // must not attribute JS files to typescript.
+        let mut changed_typescript: usize = 0;
+        let mut changed_javascript: usize = 0;
         for changed in changed_files {
             for added in &changed.added_lines {
                 if let Some(finding) = bun_cross_language_finding_for_changed_rust_line(
@@ -160,6 +178,10 @@ impl LanguageAdapter for TypeScriptAdapter {
                 continue;
             }
             changed_count += 1;
+            match output_language_for(&changed.path) {
+                DomainLanguageId::JavaScript => changed_javascript += 1,
+                _ => changed_typescript += 1,
+            }
             // Skip test-file changes for finding generation; classifier
             // operates on production owners. Test file edits are still
             // counted in the file tally.
@@ -245,9 +267,37 @@ impl LanguageAdapter for TypeScriptAdapter {
                 }
             }
         }
+        let mut changed_files_by_language = Vec::new();
+        if changed_typescript > 0 {
+            changed_files_by_language.push((LanguageId::TypeScript, changed_typescript));
+        }
+        if changed_javascript > 0 {
+            changed_files_by_language.push((LanguageId::JavaScript, changed_javascript));
+        }
+        let limitations = parse_limits
+            .iter()
+            .map(|limit| {
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::LanguageScopeUnsupported,
+                    AnalysisStage::LanguageAdapter,
+                    AnalysisRecovery::new(
+                        AnalysisRecoveryKind::Retry,
+                        "Fix the TypeScript or JavaScript parse error, then re-run the analysis.",
+                    )?,
+                )
+                .with_path(limit.file.to_string_lossy())?
+                .with_affected_items(1)?
+                .with_detail(limit.reason.clone())
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         Ok(LanguageDiffResult {
             findings,
             changed_files: changed_count,
+            candidate_line_count: 0,
+            changed_files_by_language,
+            partial_scope: None,
+            skipped_files: 0,
+            limitations,
         })
     }
 
@@ -258,9 +308,18 @@ impl LanguageAdapter for TypeScriptAdapter {
     ) -> Result<LanguageRepoResult, String> {
         // Repo-mode preview output lands in a follow-up. The current
         // sub-slice scopes to diff-mode for the smallest useful fixture.
+        // This stub returns an empty result; callers that consume
+        // repo-scoped formats on a TypeScript-only workspace get zero
+        // seams from this adapter. Note that repo_exposure.rs emits a
+        // `typescript_diff_first` limitation entry for TS/JS-only
+        // workspaces, so a TypeScript-only run is not entirely warning-
+        // free — but the empty adapter result itself is silent. See
+        // docs/LANGUAGE_ADAPTER_PREVIEW.md § "Repo-Mode Analysis Is
+        // Rust-Only" for the limitation contract.
         Ok(LanguageRepoResult {
             findings: Vec::new(),
             production_files: 0,
+            skipped_files: 0,
         })
     }
 }
