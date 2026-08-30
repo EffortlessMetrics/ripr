@@ -11,25 +11,23 @@ permissions:
   actions: read
   contents: read
 
-# Concurrency is a deliberate disposition, not inherited behaviour (ripr#1446).
+# Concurrency contract (ripr#1446).
 #
-# Only a pull request's newest head can be merged, so a proof still running for a
-# superseded head cannot contribute to any merge decision. Cancelling it on
-# `synchronize` therefore discards no usable evidence, and now that every source
-# pull request runs on GitHub-hosted compute it also stops superseded heads from
-# consuming hosted minutes that the newest head needs.
+# A shared group with `cancel-in-progress: false` keeps at most one running and
+# one pending run: a newer arrival supersedes the older *pending* run without
+# touching the one already executing. That is the behaviour we want:
 #
-# Cancellation is deliberately scoped to `synchronize`: pushes, merge-group
-# subjects and reruns are not cancelled, because those subjects are not replaced
-# by a newer head in the same way.
+#   - the useful in-progress proof completes rather than being discarded;
+#   - at most one newer head waits;
+#   - a newer queued head supersedes the older pending head;
+#   - no in-progress hosted compute is thrown away;
+#   - every completed run remains evidence for the exact head it names.
 #
-# GitHub Actions cannot express "finish the current run and keep only the newest
-# queued run" for this workflow, so that stronger semantic is not claimed. A
-# cancelled run resolves to the explicit `cancelled` state in the aggregate and
-# never counts as a pass.
+# Cancelling on `synchronize` would destroy a nearly finished proof every time a
+# branch is pushed, which is the opposite of the repository's CI economics rule.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -48,6 +46,12 @@ jobs:
       self_hosted_selection_attempted: ${{ steps.plan.outputs.self_hosted_selection_attempted }}
       private_runner_secret_requested: ${{ steps.plan.outputs.private_runner_secret_requested }}
       org_runner_query_attempted: ${{ steps.plan.outputs.org_runner_query_attempted }}
+      plan_version: ${{ steps.plan.outputs.plan_version }}
+      subject_event: ${{ steps.plan.outputs.subject_event }}
+      base_sha: ${{ steps.plan.outputs.base_sha }}
+      pr_head_sha: ${{ steps.plan.outputs.pr_head_sha }}
+      subject_sha: ${{ steps.plan.outputs.subject_sha }}
+      subject_trust_class: ${{ steps.plan.outputs.subject_trust_class }}
     steps:
       # The source repository proves its own pull requests on GitHub-hosted
       # runners. Self-hosted capacity is swarm-owned authority, so this route
@@ -61,15 +65,25 @@ jobs:
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          # The pull-request branch head, which is proposed but not what a
+          # default checkout compiles.
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          # The object a default `actions/checkout` materializes. On
+          # `pull_request` this is GitHub's synthetic merge commit, not the
+          # branch head, and it is the subject the product proof actually tests.
+          SUBJECT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           route=github_hosted_rust
+          trust_class=internal
           case "$EVENT_NAME" in
             pull_request)
               if [ "$HEAD_REPO" = "$REPOSITORY" ]; then
                 route_reason=maintainer_pull_request
               else
                 route_reason=fork_pull_request
+                trust_class=untrusted_fork
               fi
               ;;
             push) route_reason=protected_branch_push ;;
@@ -85,6 +99,12 @@ jobs:
             echo "self_hosted_selection_attempted=false"
             echo "private_runner_secret_requested=false"
             echo "org_runner_query_attempted=false"
+            echo "plan_version=1"
+            echo "subject_event=$EVENT_NAME"
+            echo "base_sha=$BASE_SHA"
+            echo "pr_head_sha=$PR_HEAD_SHA"
+            echo "subject_sha=$SUBJECT_SHA"
+            echo "subject_trust_class=$trust_class"
           } >> "$GITHUB_OUTPUT"
           {
             echo "### Ripr Rust Small Route"
@@ -109,25 +129,42 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Check whether every changed file is docs/spec/markdown
+          persist-credentials: false
+      # Cheap conservative scheduler. This job has no toolchain and no Rust
+      # cache, so building xtask here would add a cold Rust build (measured
+      # 135-186s in this repository) to every pull request merely to decide
+      # which job to start.
+      #
+      # It therefore only schedules, and is deliberately stricter than the
+      # authority: it accepts only `docs/**.md`, so it may route a documentation
+      # change to the full proof, but it cannot route a source change to the
+      # docs-only lane. The selected job re-decides with the typed rule
+      # (`cargo xtask ci-docs-only --expect ...`) and fails if this scheduling
+      # decision was wrong, so the cheap path is never the authority.
+      - name: Schedule docs-only or full proof
         id: check
         env:
-          EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
+          set -uo pipefail
           docs_only=false
-          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$BASE_SHA" ]; then
-            changed="$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || true)"
+          if [ -n "${BASE_SHA:-}" ]; then
+            changed="$(git diff --name-only -z "$BASE_SHA...HEAD" | tr '\0' '\n')"
             if [ -n "$changed" ]; then
-              non_docs="$(printf '%s\n' "$changed" | grep -Ev '(^docs/specs/|^docs/handoffs/|\.md$)' || true)"
-              release_surface="$(printf '%s\n' "$changed" | grep -E '^(CHANGELOG\.md|Cargo\.toml|Cargo\.lock|crates/ripr/Cargo\.toml|docs/OUTPUT_SCHEMA\.md)$' || true)"
-              if [ -z "$non_docs" ] && [ -z "$release_surface" ]; then
+              suspicious="$(printf '%s\n' "$changed" | grep -Ev '^docs/[^[:cntrl:]]*[.]md$' || true)"
+              reserved="$(printf '%s\n' "$changed" | grep -E '^(CHANGELOG[.]md|docs/OUTPUT_SCHEMA[.]md)$' || true)"
+              if [ -z "$suspicious" ] && [ -z "$reserved" ]; then
                 docs_only=true
               fi
             fi
           fi
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
-          { echo "### Docs-Only Surface Detection"; echo ""; echo "- docs_only: \`$docs_only\`"; } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Docs-Only Scheduling"
+            echo ""
+            echo "- scheduled docs_only: \`$docs_only\`"
+            echo "- authority: the selected job re-decides with \`cargo xtask ci-docs-only\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   rust-github:
     name: Ripr Rust Small on GitHub Hosted
@@ -140,10 +177,42 @@ jobs:
       needs.detect-docs-only.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    outputs:
+      observed_subject_sha: ${{ steps.subject.outputs.observed_subject_sha }}
+      observed_subject_tree: ${{ steps.subject.outputs.observed_subject_tree }}
     steps:
+      # Candidate-controlled code is compiled and executed in this job, so the
+      # repository credential is not persisted into the working tree. `v6` still
+      # persists it by default, now via $RUNNER_TEMP, so later git commands would
+      # otherwise keep authenticating. The workflow is read-only, but a
+      # read-only persisted credential is still a credential.
+      #
+      # `ref` pins the tested subject explicitly rather than relying on the
+      # default, so the object under proof is a stated input.
       - uses: actions/checkout@v6
         with:
+          ref: ${{ needs.route.outputs.subject_sha }}
           fetch-depth: 0
+          persist-credentials: false
+      # Prove which object this job actually materialized. The plan names a
+      # subject; only the checkout can say what was compiled, and a proof run
+      # against a different subject establishes nothing about this one.
+      - name: Bind the tested subject
+        id: subject
+        env:
+          PLANNED_SUBJECT_SHA: ${{ needs.route.outputs.subject_sha }}
+        run: |
+          set -euo pipefail
+          observed_sha="$(git rev-parse HEAD)"
+          observed_tree="$(git rev-parse 'HEAD^{tree}')"
+          if [ "$observed_sha" != "$PLANNED_SUBJECT_SHA" ]; then
+            echo "planned subject $PLANNED_SUBJECT_SHA but checked out $observed_sha" >&2
+            exit 1
+          fi
+          {
+            echo "observed_subject_sha=$observed_sha"
+            echo "observed_subject_tree=$observed_tree"
+          } >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: 1.95.0
@@ -229,12 +298,20 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: 1.95.0
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ripr-docs-gate
+      # Authority: the cheap scheduler decided this is documentation; the typed
+      # rule re-decides and fails if that decision was wrong, so a mis-schedule
+      # cannot silently skip the Rust proof.
+      - name: Confirm the docs-only classification
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: cargo xtask ci-docs-only --base "$BASE_SHA" --expect docs_only
       - name: Doc/spec gates (full precommit table)
         run: |
           cargo xtask precommit
@@ -267,6 +344,11 @@ jobs:
           PRIVATE_SECRET_REQUESTED: ${{ needs.route.outputs.private_runner_secret_requested }}
           ORG_QUERY_ATTEMPTED: ${{ needs.route.outputs.org_runner_query_attempted }}
           GITHUB_RESULT: ${{ needs.rust-github.result }}
+          PLAN_SUBJECT: ${{ needs.route.outputs.subject_sha }}
+          PLAN_VERSION: ${{ needs.route.outputs.plan_version }}
+          LIVE_SUBJECT: ${{ github.sha }}
+          OBSERVED_SUBJECT: ${{ needs.rust-github.outputs.observed_subject_sha }}
+          OBSERVED_TREE: ${{ needs.rust-github.outputs.observed_subject_tree }}
           EVENT_NAME: ${{ github.event_name }}
           DOCS_DETECT_RESULT: ${{ needs.detect-docs-only.result }}
           DOCS_ONLY: ${{ needs.detect-docs-only.outputs.docs_only }}
@@ -313,6 +395,21 @@ jobs:
               status=failed
               message="github-hosted rust proof resolved to $rust_state"
             fi
+          fi
+
+          # The plan must describe this exact head. A receipt produced for a
+          # different head proves nothing about the subject being merged, so a
+          # stale or missing binding fails closed rather than inheriting the
+          # conclusion of whatever job graph happened to run.
+          if [ -z "$PLAN_SUBJECT" ] || [ -z "$PLAN_VERSION" ]; then
+            status=failed
+            message="route plan published no subject identity; cannot bind the result to a subject"
+          elif [ "$PLAN_SUBJECT" != "$LIVE_SUBJECT" ]; then
+            status=failed
+            message="route plan bound subject $PLAN_SUBJECT but this run proves $LIVE_SUBJECT"
+          elif [ "$rust_state" = "passed" ] && [ "$OBSERVED_SUBJECT" != "$PLAN_SUBJECT" ]; then
+            status=failed
+            message="stale_or_wrong_subject: rust proof observed $OBSERVED_SUBJECT, plan named $PLAN_SUBJECT"
           fi
 
           # The source route must never silently acquire swarm runner authority.

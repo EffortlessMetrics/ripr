@@ -9116,6 +9116,9 @@ jobs:
           echo "self_hosted_selection_attempted=false"
           echo "private_runner_secret_requested=false"
           echo "org_runner_query_attempted=false"
+          echo "plan_version=1"
+          echo "subject_sha=$SUBJECT_SHA"
+          echo "pr_head_sha=$PR_HEAD_SHA"
   detect-docs-only:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -9125,10 +9128,18 @@ jobs:
     name: Ripr Rust Small on GitHub Hosted
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.route.outputs.subject_sha }}
+          persist-credentials: false
     if: always() && needs.route.result == 'success' &&
       needs.route.outputs.route == 'github_hosted_rust' &&
       needs.detect-docs-only.result == 'success' &&
       needs.detect-docs-only.outputs.docs_only != 'true'
+    outputs:
+      observed_subject_sha: ${{ steps.subject.outputs.observed_subject_sha }}
+      observed_subject_tree: ${{ steps.subject.outputs.observed_subject_tree }}
     steps:
       - run: cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
   docs-gate:
@@ -9143,6 +9154,13 @@ jobs:
     steps:
       - run: |
           message="docs-surface detection resolved to failed"
+          if [ -z "$PLAN_SUBJECT" ]; then
+            message="route plan published no subject identity"
+          elif [ "$PLAN_SUBJECT" != "$LIVE_SUBJECT" ]; then
+            message="route plan bound subject $PLAN_SUBJECT but this run proves $LIVE_SUBJECT"
+          elif [ "$OBSERVED_SUBJECT" != "$PLAN_SUBJECT" ]; then
+            message="stale_or_wrong_subject: observed $OBSERVED_SUBJECT"
+          fi
           [ "$status" = "passed" ]
 "#;
     let settings = r#"
@@ -46288,6 +46306,211 @@ fn routed_rust_docs_gate_runs_full_precommit_table() -> Result<(), String> {
 /// a line-count argument. This binds `docs/ci/routed-rust-command-disposition.md`
 /// to the workflow it describes: a retained command must still be present, and a
 /// command recorded as removed must actually be gone.
+/// ripr#1446: the docs-only lane skips the Rust proof, so it is the easiest
+/// place for the routed workflow to become fail-open. Each case names the
+/// property being challenged rather than only the expected boolean.
+/// ripr#1446: the cheap scheduler must be a strict under-approximation of the
+/// typed authority.
+///
+/// The unsafe direction is a change the authority would refuse being sent down
+/// the docs-only lane, because that skips the Rust proof entirely. The safe
+/// direction — the scheduler over-proving a documentation change — costs compute
+/// and nothing else, so this asserts implication rather than equality.
+#[test]
+fn scheduler_never_schedules_docs_only_for_authority_non_docs() -> Result<(), String> {
+    let corpus: Vec<Vec<String>> = vec![
+        vec!["docs/foo.md".into()],
+        vec!["docs/specs/RIPR-SPEC-0001-x.md".into()],
+        vec!["docs/handoffs/2026-01-01-x.md".into()],
+        vec!["docs/a.md".into(), "docs/specs/b.md".into()],
+        vec!["CHANGELOG.md".into()],
+        vec!["docs/OUTPUT_SCHEMA.md".into()],
+        vec!["Cargo.toml".into()],
+        vec!["Cargo.lock".into()],
+        vec!["crates/ripr/Cargo.toml".into()],
+        vec![".github/workflows/ci.yml".into()],
+        vec![".github/workflows/routed-rust.yml".into()],
+        vec!["crates/ripr/src/lib.rs".into()],
+        vec!["xtask/src/main.rs".into()],
+        vec!["policy/workflow_allowlist.txt".into()],
+        vec!["docs/a.md".into(), "crates/ripr/src/lib.rs".into()],
+        vec!["docs/a.md".into(), "CHANGELOG.md".into()],
+        vec!["README.md".into()],
+        vec!["editors/vscode/package.json".into()],
+        vec![],
+        vec!["".into(), "   ".into()],
+        // Control-character smuggling: a source-shaped prefix hidden behind a
+        // trailing `.md`.
+        vec![format!("src/evil{}docs/x.md", '\n')],
+        vec![format!("docs/a{}../../src/evil.rs", '\r')],
+    ];
+
+    for paths in &corpus {
+        let scheduled = crate::scheduler_schedules_docs_only(paths);
+        let authoritative = crate::changed_paths_are_docs_only(paths);
+        if scheduled && !authoritative {
+            return Err(format!(
+                "scheduler would route {paths:?} to the docs-only lane but the authority refuses it; \
+                 the cheap path must never skip the Rust proof for an authority-non-doc change"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The asymmetry is intentional and must actually exist: at least one change set
+/// is over-proved by the scheduler. Without this the implication test could pass
+/// trivially by the two rules being identical, which would defeat the point of
+/// keeping a cheap scheduler at all.
+#[test]
+fn scheduler_is_strictly_more_conservative_than_the_authority() -> Result<(), String> {
+    // `README.md` is documentation-shaped to the authority but is not under
+    // `docs/`, so the scheduler sends it to the full proof.
+    let readme = vec!["README.md".to_string()];
+    if crate::scheduler_schedules_docs_only(&readme) {
+        return Err("scheduler should not accept README.md".to_string());
+    }
+    if !crate::changed_paths_are_docs_only(&readme) {
+        return Err("authority should accept README.md as documentation".to_string());
+    }
+    Ok(())
+}
+
+/// The mirrored Rust rule must stay aligned with the shell rule that actually
+/// schedules, otherwise the implication is proved about the wrong predicate.
+#[test]
+fn routed_rust_scheduler_rule_matches_workflow() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    for required in [
+        "^docs/[^[:cntrl:]]*[.]md$",
+        "^(CHANGELOG[.]md|docs/OUTPUT_SCHEMA[.]md)$",
+        "--expect docs_only",
+    ] {
+        if !workflow.contains(required) {
+            return Err(format!(
+                "routed-rust.yml must contain the scheduler/authority contract `{required}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn docs_only_route_is_hostile_to_non_documentation_change_sets() -> Result<(), String> {
+    let cases: [(&str, &[&str], bool); 14] = [
+        ("plain documentation", &["docs/foo.md"], true),
+        (
+            "spec documentation",
+            &["docs/specs/RIPR-SPEC-0001-x.md"],
+            true,
+        ),
+        (
+            "handoff documentation",
+            &["docs/handoffs/2026-01-01-x.md"],
+            true,
+        ),
+        (
+            "several documentation files",
+            &["docs/a.md", "docs/specs/b.md"],
+            true,
+        ),
+        // Release-facing markdown must not reach the reduced route.
+        ("changelog is release metadata", &["CHANGELOG.md"], false),
+        (
+            "output schema is a contract",
+            &["docs/OUTPUT_SCHEMA.md"],
+            false,
+        ),
+        // Manifests and lockfiles change what ships.
+        ("workspace manifest", &["Cargo.toml"], false),
+        ("lockfile", &["Cargo.lock"], false),
+        ("crate manifest", &["crates/ripr/Cargo.toml"], false),
+        // CI definitions decide how everything else is proven.
+        ("workflow definition", &[".github/workflows/ci.yml"], false),
+        // Source is never documentation.
+        ("rust source", &["crates/ripr/src/lib.rs"], false),
+        (
+            "mixed documentation and source",
+            &["docs/a.md", "crates/ripr/src/lib.rs"],
+            false,
+        ),
+        // "We observed nothing" is not "the change is documentation". A failed
+        // or empty changed-path observation must take the full route.
+        ("empty observation", &[], false),
+        ("blank observation entries", &["", "   "], false),
+    ];
+
+    for (property, paths, expected) in cases {
+        let owned: Vec<String> = paths.iter().map(|path| (*path).to_string()).collect();
+        let actual = crate::changed_paths_are_docs_only(&owned);
+        if actual != expected {
+            return Err(format!(
+                "docs-only route mis-classified {property}: paths {paths:?} gave {actual}, expected {expected}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A single non-documentation path must defeat any number of documentation
+/// paths; the route is all-or-nothing rather than majority-based.
+/// A fork controls its own filenames. If the changed-path inventory were split
+/// on newlines, a file whose name literally contains a newline followed by
+/// `docs/looks-like-docs.md` would be read as two paths, one of which looks like
+/// documentation. NUL-delimited collection keeps it a single path, and a single
+/// path that is not documentation forces the full proof.
+#[test]
+fn docs_only_route_treats_a_newline_bearing_filename_as_one_path() -> Result<(), String> {
+    let hostile = format!("src/evil{}docs/looks-like-docs.md", '\n');
+    if crate::changed_paths_are_docs_only(&[hostile.clone()]) {
+        return Err(
+            "a single path containing a newline must not be read as documentation".to_string(),
+        );
+    }
+    // Line-splitting the same bytes would have produced a docs-only verdict for
+    // the trailing fragment, which is the failure this transport choice prevents.
+    let split: Vec<String> = hostile.split('\n').map(str::to_string).collect();
+    if split.len() != 2 {
+        return Err("fixture should split into two line-shaped paths".to_string());
+    }
+    if !crate::changed_paths_are_docs_only(&[split[1].clone()]) {
+        return Err("the second line-shaped fragment should look like documentation".to_string());
+    }
+    Ok(())
+}
+
+/// The digest covers the exact path bytes the predicate consumed, including the
+/// delimiter, so two different inventories cannot collide into one identity.
+#[test]
+fn changed_paths_digest_distinguishes_inventories() -> Result<(), String> {
+    let two_paths = vec!["docs/a.md".to_string(), "docs/b.md".to_string()];
+    let concatenated = vec!["docs/a.mddocs/b.md".to_string()];
+    if crate::changed_paths_digest(&two_paths) == crate::changed_paths_digest(&concatenated) {
+        return Err("concatenated paths must not digest identically to two paths".to_string());
+    }
+    if crate::changed_paths_digest(&two_paths) != crate::changed_paths_digest(&two_paths.clone()) {
+        return Err("digest must be stable for the same inventory".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn docs_only_route_requires_every_path_to_be_documentation() -> Result<(), String> {
+    let mut paths: Vec<String> = (0..50)
+        .map(|index| format!("docs/note-{index}.md"))
+        .collect();
+    if !crate::changed_paths_are_docs_only(&paths) {
+        return Err("fifty documentation files should take the docs-only route".to_string());
+    }
+    paths.push("crates/ripr/src/main.rs".to_string());
+    if crate::changed_paths_are_docs_only(&paths) {
+        return Err(
+            "one source file among fifty documentation files must force the full route".to_string(),
+        );
+    }
+    Ok(())
+}
+
 #[test]
 fn routed_rust_command_disposition_is_complete() -> Result<(), String> {
     let workflow = routed_rust_workflow_text()?;

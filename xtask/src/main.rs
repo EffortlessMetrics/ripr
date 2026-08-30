@@ -4906,6 +4906,200 @@ fn optional_policy_text(path: &str) -> Result<Option<String>, String> {
 
 /// Routed-rust jobs that must each carry an explicit `timeout-minutes`
 /// deadline (issue #2230).
+/// Release-facing paths that are markdown or otherwise documentation-shaped but
+/// still change what the product ships or how it is released.
+///
+/// `CHANGELOG.md` and `docs/OUTPUT_SCHEMA.md` end in `.md`, so a naive
+/// extension rule would route a release-metadata edit down the docs-only lane and
+/// skip the Rust proof entirely.
+const DOCS_ONLY_RELEASE_SURFACE: [&str; 5] = [
+    "CHANGELOG.md",
+    "Cargo.toml",
+    "Cargo.lock",
+    "crates/ripr/Cargo.toml",
+    "docs/OUTPUT_SCHEMA.md",
+];
+
+/// Digest of the exact NUL-delimited changed-path inventory.
+///
+/// The digest covers the same bytes the predicate consumed, so a receipt can
+/// name the path set a decision was made from rather than a re-derivation of it.
+pub(crate) fn changed_paths_digest(paths: &[String]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    for path in paths {
+        hasher.update(path.as_bytes());
+        hasher.update([0u8]);
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+/// The cheap workflow scheduler's rule, mirrored in Rust so the implication
+/// `scheduler ⇒ authority` can be tested rather than argued.
+///
+/// The scheduler runs in a job with no toolchain and no Rust cache, so it cannot
+/// call the typed authority without adding a cold Rust build to every pull
+/// request. It is therefore deliberately a strict under-approximation: it accepts
+/// only `docs/**.md` with no control characters and never the reserved release
+/// surface. Anything else is scheduled as the full proof, which is safe.
+///
+/// This must stay byte-equivalent to the `grep -Ev` rule in
+/// `.github/workflows/routed-rust.yml`; `routed_rust_scheduler_rule_matches_workflow`
+/// pins that.
+pub(crate) fn scheduler_schedules_docs_only(paths: &[String]) -> bool {
+    let considered: Vec<&str> = paths
+        .iter()
+        .map(|path| path.trim())
+        .filter(|path| !path.is_empty())
+        .collect();
+    if considered.is_empty() {
+        return false;
+    }
+    considered.iter().all(|path| {
+        if path.chars().any(char::is_control) {
+            return false;
+        }
+        if !path.starts_with("docs/") || !path.ends_with(".md") {
+            return false;
+        }
+        // Reserved release surface never takes the reduced lane.
+        !matches!(*path, "CHANGELOG.md" | "docs/OUTPUT_SCHEMA.md")
+    })
+}
+
+/// Whether a changed-path set may take the docs-only route.
+///
+/// ripr#1446: the docs-only lane skips the Rust proof, so it is the easiest place
+/// for the routed workflow to become fail-open. This predicate is deliberately
+/// conservative:
+///
+/// - an empty observation is **not** docs-only, because "we saw no changes" and
+///   "the change is documentation" are different claims;
+/// - any path outside the documentation shapes forces the full route;
+/// - release-facing markdown is excluded by exact path even though it matches the
+///   markdown shape.
+pub(crate) fn changed_paths_are_docs_only(paths: &[String]) -> bool {
+    let considered: Vec<&str> = paths
+        .iter()
+        .map(|path| path.trim())
+        .filter(|path| !path.is_empty())
+        .collect();
+
+    // An unobserved or empty change set never earns the reduced route.
+    if considered.is_empty() {
+        return false;
+    }
+
+    considered.iter().all(|path| {
+        // A path is classified by suffix, so a control character inside a
+        // fork-controlled filename could hide a source file behind a trailing
+        // `.md` (for example `src/evil<newline>docs/x.md`). Such a name is never
+        // documentation; it forces the full proof.
+        if path.chars().any(char::is_control) {
+            return false;
+        }
+        let documentation_shaped = path.starts_with("docs/specs/")
+            || path.starts_with("docs/handoffs/")
+            || path.ends_with(".md");
+        let release_surface = DOCS_ONLY_RELEASE_SURFACE.contains(path);
+        documentation_shaped && !release_surface
+    })
+}
+
+/// Decide whether a pull request may take the reduced docs-only route.
+///
+/// The predicate lives in Rust and is exercised by hostile fixtures, so the
+/// workflow delegates rather than reimplementing the rule in shell where it
+/// cannot be tested. Emits `docs_only=<bool>` to `$GITHUB_OUTPUT` when present.
+pub(crate) fn ci_docs_only(args: &[String]) -> Result<(), String> {
+    let mut base = None;
+    let mut expect = None;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--base" => base = iter.next().cloned(),
+            other if other.starts_with("--base=") => {
+                base = Some(other.trim_start_matches("--base=").to_string());
+            }
+            "--expect" => expect = iter.next().cloned(),
+            other if other.starts_with("--expect=") => {
+                expect = Some(other.trim_start_matches("--expect=").to_string());
+            }
+            _ => {}
+        }
+    }
+
+    // No base means no observation. That is not a docs-only pass.
+    let docs_only = match base.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+        None => false,
+        Some(base) => {
+            let range = format!("{base}...HEAD");
+            // NUL-delimited so a fork-controlled filename containing a newline,
+            // quote, or non-ASCII byte cannot change how the path set is parsed.
+            // Git quotes such names in the default output, which would otherwise
+            // put path quoting inside the trust boundary.
+            let observed = crate::run::capture_output(
+                "git",
+                &["diff", "--name-only", "-z", range.as_str()],
+                "git diff --name-only -z",
+            )?;
+            if !observed.status.success() {
+                // A failed observation must take the full route rather than be
+                // read as "nothing changed".
+                eprintln!("ci-docs-only: changed-path observation failed; routing the full proof");
+                false
+            } else {
+                let paths: Vec<String> = observed
+                    .stdout
+                    .split(' ')
+                    .filter(|path| !path.is_empty())
+                    .map(str::to_string)
+                    .collect();
+                let digest = changed_paths_digest(&paths);
+                eprintln!(
+                    "ci-docs-only: changed_paths_sha256={digest} count={}",
+                    paths.len()
+                );
+                changed_paths_are_docs_only(&paths)
+            }
+        }
+    };
+
+    // The cheap workflow scheduler decides which job to start; this command is
+    // the authority on whether that decision was right. A job that was scheduled
+    // as docs-only must fail if the typed rule disagrees, otherwise a wrong
+    // scheduling decision would silently skip the Rust proof.
+    if let Some(expected) = expect.as_deref() {
+        let expected_docs_only = match expected {
+            "docs_only" => true,
+            "full" => false,
+            other => {
+                return Err(format!(
+                    "unknown --expect value `{other}`; use `docs_only` or `full`"
+                ));
+            }
+        };
+        if expected_docs_only != docs_only {
+            return Err(format!(
+                "scheduled route expected docs_only={expected_docs_only} but the changed-path rule resolved docs_only={docs_only}"
+            ));
+        }
+    }
+
+    if let Ok(output) = std::env::var("GITHUB_OUTPUT") {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&output)
+            .map_err(|err| format!("failed to open {output}: {err}"))?;
+        writeln!(file, "docs_only={docs_only}")
+            .map_err(|err| format!("failed to write {output}: {err}"))?;
+    }
+    println!("docs_only={docs_only}");
+    Ok(())
+}
+
 const ROUTED_RUST_DEADLINE_JOBS: [&str; 5] = [
     "route",
     "detect-docs-only",
@@ -4976,6 +5170,23 @@ fn routed_rust_workflow_contract_violations(
             "docs-surface detection resolved to",
         ),
         ("fail-closed aggregate", "[ \"$status\" = \"passed\" ]"),
+        // ripr#1446: the aggregate must bind the plan to the exact head it is
+        // reporting on. Without this it can only repeat the conclusion of
+        // whatever job graph ran, which is not a statement about this subject.
+        // The plan names the tested subject, which on `pull_request` is the
+        // synthetic merge commit rather than the branch head, and the child job
+        // reports what it actually checked out.
+        ("planned subject identity", "subject_sha"),
+        ("pull-request head identity", "pr_head_sha"),
+        ("observed subject identity", "observed_subject_sha"),
+        ("observed subject tree", "observed_subject_tree"),
+        ("plan version", "plan_version"),
+        ("stale plan rejection", "route plan bound subject"),
+        ("wrong-subject rejection", "stale_or_wrong_subject"),
+        (
+            "missing plan rejection",
+            "route plan published no subject identity",
+        ),
     ];
 
     for (label, snippet) in required_workflow_snippets {
@@ -5013,6 +5224,26 @@ fn routed_rust_workflow_contract_violations(
                 ".github/workflows/routed-rust.yml must not reference {label}: `{snippet}`; self-hosted runner authority belongs to ripr-swarm"
             ));
         }
+    }
+
+    // Candidate-controlled code is compiled and executed in these jobs, so no
+    // checkout may persist the repository credential. `actions/checkout` still
+    // persists it by default, so the opt-out has to be explicit on every
+    // checkout rather than assumed from the workflow's read-only permissions.
+    let checkouts = workflow.matches("uses: actions/checkout@").count();
+    let credential_optouts = workflow.matches("persist-credentials: false").count();
+    if checkouts != credential_optouts {
+        violations.push(format!(
+            ".github/workflows/routed-rust.yml must set `persist-credentials: false` on every checkout; found {checkouts} checkout(s) and {credential_optouts} opt-out(s)"
+        ));
+    }
+
+    // The Rust proof must check out the planned subject explicitly rather than
+    // relying on the default ref, so the object under proof is a stated input.
+    if !workflow.contains("ref: ${{ needs.route.outputs.subject_sha }}") {
+        violations.push(
+            ".github/workflows/routed-rust.yml must check out the planned subject explicitly via `ref: ${{ needs.route.outputs.subject_sha }}`".to_string(),
+        );
     }
 
     // Every job runs on a standard GitHub-hosted label.

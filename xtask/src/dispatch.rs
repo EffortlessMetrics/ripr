@@ -89,6 +89,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::SourcePromotion(args) => super::reports::source_promotion_verify(&args),
         XtaskCommand::BackSync(args) => super::reports::back_sync(&args),
         XtaskCommand::ReleaseScope(args) => super::reports::release_scope(&args),
+        XtaskCommand::CiDocsOnly(args) => super::ci_docs_only(&args),
         XtaskCommand::ReleaseServerArchive(args) => {
             super::reports::release_server::release_server_archive(&args)
         }
