@@ -9153,15 +9153,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - run: |
-          message="docs-surface detection resolved to failed"
-          if [ -z "$PLAN_SUBJECT" ]; then
-            message="route plan published no subject identity"
-          elif [ "$PLAN_SUBJECT" != "$LIVE_SUBJECT" ]; then
-            message="route plan bound subject $PLAN_SUBJECT but this run proves $LIVE_SUBJECT"
-          elif [ "$OBSERVED_SUBJECT" != "$PLAN_SUBJECT" ]; then
-            message="stale_or_wrong_subject: observed $OBSERVED_SUBJECT"
-          fi
-          [ "$status" = "passed" ]
+          cargo run --locked -p xtask -- ci-routed-rust-result             --planned-route "$planned"             --child-conclusion "$CHILD_CONCLUSION"             --receipt-state "$RECEIPT_STATE"             --planned-subject "$PLANNED_SUBJECT"             --observed-subject "$OBSERVED_SUBJECT"
 "#;
     let settings = r#"
 repository:
@@ -46231,9 +46223,19 @@ fn require_single_bare_precommit_line(lines: &[String], context: &str) -> Result
         .map(|line| line.trim())
         .filter(|trimmed| trimmed.contains("cargo xtask precommit"))
         .collect();
-    if mentions != ["cargo xtask precommit"] {
+    // The gate may be recorded so the child receipt carries a per-command state
+    // (ripr#1446), but it must still be exactly one unshielded invocation. A
+    // recorded line ends in `-- cargo xtask precommit`; a commented or
+    // `|| true`-shielded mention remains a contract violation.
+    let acceptable = |line: &str| {
+        if line.starts_with('#') || line.contains("|| true") {
+            return false;
+        }
+        line == "cargo xtask precommit" || line.ends_with("-- cargo xtask precommit")
+    };
+    if mentions.len() != 1 || !acceptable(mentions[0]) {
         return Err(format!(
-            "{context} must contain exactly one bare `cargo xtask precommit` invocation line (commented or decorated mentions do not count), found {mentions:?}"
+            "{context} must contain exactly one unshielded `cargo xtask precommit` invocation line, bare or recorded (commented or `|| true` mentions do not count), found {mentions:?}"
         ));
     }
     Ok(())
@@ -46271,7 +46273,13 @@ fn routed_rust_required_lanes_run_full_precommit_table() -> Result<(), String> {
             "cargo xtask goldens check",
             "cargo xtask fixtures",
         ] {
-            if !block.iter().any(|line| line.trim() == lane_only) {
+            // A gate may be recorded for per-command evidence (ripr#1446); it
+            // must still appear exactly once and unshielded.
+            if !block.iter().any(|line| {
+                let trimmed = line.trim();
+                !trimmed.contains("|| true")
+                    && (trimmed == lane_only || trimmed.ends_with(&format!("-- {lane_only}")))
+            }) {
                 return Err(format!(
                     "Required Rust gates step {} must keep lane-only gate `{lane_only}` enumerated",
                     index + 1
@@ -46309,6 +46317,201 @@ fn routed_rust_docs_gate_runs_full_precommit_table() -> Result<(), String> {
 /// ripr#1446: the docs-only lane skips the Rust proof, so it is the easiest
 /// place for the routed workflow to become fail-open. Each case names the
 /// property being challenged rather than only the expected boolean.
+/// ripr#1446: the aggregate decides from planned propositions and normalized
+/// receipts, never from GitHub's scheduling artefacts alone. Each row names the
+/// property under test, so a regression reports which invariant broke rather
+/// than only which tuple changed.
+#[test]
+fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
+    use crate::{
+        AggregateVerdict as V, ChildConclusion as C, PlannedRoute as P, ReceiptState as R,
+        routed_rust_aggregate_verdict as verdict,
+    };
+
+    let cases: &[(&str, P, C, R, bool, V)] = &[
+        (
+            "rust proof succeeded for this subject",
+            P::GithubHostedRust,
+            C::Success,
+            R::Passed,
+            true,
+            V::Passed,
+        ),
+        (
+            "required rust proof skipped is not a pass",
+            P::GithubHostedRust,
+            C::Skipped,
+            R::NotRun,
+            true,
+            V::NotProven,
+        ),
+        (
+            "required rust proof with no receipt proves nothing",
+            P::GithubHostedRust,
+            C::Success,
+            R::Missing,
+            true,
+            V::NotProven,
+        ),
+        (
+            "green proof against the wrong subject",
+            P::GithubHostedRust,
+            C::Success,
+            R::Passed,
+            false,
+            V::StaleOrWrongSubject,
+        ),
+        (
+            "cancelled is neither pass nor product failure",
+            P::GithubHostedRust,
+            C::Cancelled,
+            R::NotRun,
+            true,
+            V::Cancelled,
+        ),
+        (
+            "timeout is distinguishable from failure",
+            P::GithubHostedRust,
+            C::TimedOut,
+            R::NotRun,
+            true,
+            V::TimedOut,
+        ),
+        (
+            "rust proof failed",
+            P::GithubHostedRust,
+            C::Failure,
+            R::Failed,
+            true,
+            V::Failed,
+        ),
+        (
+            "instrument failure is not a product verdict",
+            P::GithubHostedRust,
+            C::Success,
+            R::InstrumentFailure,
+            true,
+            V::NotProven,
+        ),
+        (
+            "green tick with a failing receipt is contradictory",
+            P::GithubHostedRust,
+            C::Success,
+            R::Failed,
+            true,
+            V::ContradictoryEvidence,
+        ),
+        (
+            "failed tick with a passing receipt is contradictory",
+            P::GithubHostedRust,
+            C::Failure,
+            R::Passed,
+            true,
+            V::ContradictoryEvidence,
+        ),
+        (
+            "docs lane proved by the docs gate",
+            P::DocsOnly,
+            C::Success,
+            R::Passed,
+            true,
+            V::Passed,
+        ),
+        (
+            "docs gate failed",
+            P::DocsOnly,
+            C::Failure,
+            R::Failed,
+            true,
+            V::Failed,
+        ),
+        (
+            "docs gate absent proves nothing",
+            P::DocsOnly,
+            C::Skipped,
+            R::Missing,
+            true,
+            V::NotProven,
+        ),
+        (
+            "planning failure proves nothing",
+            P::PlanFailed,
+            C::Skipped,
+            R::Missing,
+            true,
+            V::NotProven,
+        ),
+        (
+            "unsupported subject needs an explicit disposition",
+            P::UnsupportedSubject,
+            C::Skipped,
+            R::Missing,
+            true,
+            V::NotProven,
+        ),
+    ];
+
+    for (property, planned, child, receipt, subject_agrees, expected) in cases {
+        let actual = verdict(*planned, *child, *receipt, *subject_agrees);
+        if actual != *expected {
+            return Err(format!(
+                "aggregate mis-decided {property}: got {actual:?}, expected {expected:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Exactly one verdict may publish a green required check. Everything else,
+/// including interruption and unproven work, must be non-green.
+#[test]
+fn only_passed_is_green() -> Result<(), String> {
+    use crate::AggregateVerdict as V;
+    let non_green = [
+        V::Failed,
+        V::NotProven,
+        V::StaleOrWrongSubject,
+        V::Cancelled,
+        V::TimedOut,
+        V::ContradictoryEvidence,
+    ];
+    if !V::Passed.is_green() {
+        return Err("passed must be green".to_string());
+    }
+    for verdict in non_green {
+        if verdict.is_green() {
+            return Err(format!("{} must not be green", verdict.as_str()));
+        }
+    }
+    Ok(())
+}
+
+/// A skipped child can only be green when the plan itself made that lane
+/// inapplicable. This is the invariant the earlier `vscode` required-check
+/// incident exposed, kept as a permanent source-CI property.
+#[test]
+fn skipping_is_never_read_as_irrelevance() -> Result<(), String> {
+    use crate::{
+        AggregateVerdict as V, ChildConclusion as C, PlannedRoute as P, ReceiptState as R,
+        routed_rust_aggregate_verdict as verdict,
+    };
+    for receipt in [R::Missing, R::NotRun] {
+        let required = verdict(P::GithubHostedRust, C::Skipped, receipt, true);
+        if required.is_green() {
+            return Err(format!(
+                "a skipped required rust lane must not be green, got {required:?}"
+            ));
+        }
+    }
+    // The docs lane is legitimately inapplicable when the plan says so, but the
+    // docs gate itself still has to have proved something.
+    let docs = verdict(P::DocsOnly, C::Success, R::Passed, true);
+    if !docs.is_green() {
+        return Err("a proved docs-only subject should be green".to_string());
+    }
+    Ok(())
+}
+
 /// ripr#1446: the cheap scheduler must be a strict under-approximation of the
 /// typed authority.
 ///

@@ -1644,7 +1644,27 @@ fn workflow_run_xtask_invocation(line: &str) -> Option<WorkflowXtaskInvocation> 
     if line.contains("|| true") {
         return None;
     }
-    let rest = line.strip_prefix("cargo xtask ")?;
+    // Both the `cargo xtask` alias and the explicit locked bootstrap count. The
+    // release and result paths use `cargo run --locked -p xtask --` deliberately:
+    // the alias resolves dependencies through an unlocked Cargo invocation, which
+    // would let Cargo act before the very command that exists to prove the run
+    // was locked.
+    // A recorded invocation still invokes the inner command, so the catalog must
+    // see through the wrapper. Otherwise wrapping a gate for evidence would make
+    // it look uninvoked and silently drop its ci_enforced obligation.
+    let line = match line
+        .split_once("ci-record-command --id ")
+        .or_else(|| line.split_once("$R "))
+    {
+        Some((_, rest)) => match rest.split_once(" -- ") {
+            Some((_, inner)) => inner,
+            None => line,
+        },
+        None => line,
+    };
+    let rest = line
+        .strip_prefix("cargo xtask ")
+        .or_else(|| line.strip_prefix("cargo run --locked -p xtask -- "))?;
     let mut tokens = rest.split_whitespace();
     let root = tokens.next()?.trim_matches('"');
     if root.is_empty() || root.starts_with('$') {
@@ -4934,6 +4954,408 @@ pub(crate) fn changed_paths_digest(paths: &[String]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+/// What the route planned for a subject.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PlannedRoute {
+    GithubHostedRust,
+    DocsOnly,
+    PlanFailed,
+    UnsupportedSubject,
+}
+
+/// GitHub's conclusion for the child job that was supposed to prove the subject.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ChildConclusion {
+    Success,
+    Failure,
+    Skipped,
+    Cancelled,
+    TimedOut,
+}
+
+/// What the child's own execution receipt says, independent of GitHub's tick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ReceiptState {
+    Passed,
+    Failed,
+    NotRun,
+    Cancelled,
+    TimedOut,
+    InstrumentFailure,
+    Missing,
+}
+
+/// The aggregate's normalized verdict.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AggregateVerdict {
+    Passed,
+    Failed,
+    NotProven,
+    StaleOrWrongSubject,
+    Cancelled,
+    TimedOut,
+    ContradictoryEvidence,
+}
+
+impl AggregateVerdict {
+    /// Only `Passed` may publish a green required check.
+    pub(crate) fn is_green(self) -> bool {
+        matches!(self, AggregateVerdict::Passed)
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            AggregateVerdict::Passed => "passed",
+            AggregateVerdict::Failed => "failed",
+            AggregateVerdict::NotProven => "not_proven",
+            AggregateVerdict::StaleOrWrongSubject => "stale_or_wrong_subject",
+            AggregateVerdict::Cancelled => "cancelled",
+            AggregateVerdict::TimedOut => "timed_out",
+            AggregateVerdict::ContradictoryEvidence => "contradictory_evidence",
+        }
+    }
+}
+
+/// Decide the routed-Rust aggregate from planned work and observed evidence.
+///
+/// ripr#1446: the aggregate must decide from planned propositions and their
+/// normalized receipts, never from GitHub's scheduling artefacts alone. A child
+/// that was required and did not run is `not_proven`, not a pass, and a green
+/// tick that disagrees with its own receipt is contradictory evidence rather
+/// than a success.
+pub(crate) fn routed_rust_aggregate_verdict(
+    planned: PlannedRoute,
+    child: ChildConclusion,
+    receipt: ReceiptState,
+    subject_agrees: bool,
+) -> AggregateVerdict {
+    // A plan that never produced a usable decision proves nothing about the
+    // subject, whatever the children happened to do.
+    if planned == PlannedRoute::PlanFailed {
+        return AggregateVerdict::NotProven;
+    }
+    // An unsupported subject needs an explicit approved disposition; silence is
+    // not approval.
+    if planned == PlannedRoute::UnsupportedSubject {
+        return AggregateVerdict::NotProven;
+    }
+
+    // Interruption is its own state. Reporting it as a product failure would
+    // blame the candidate for infrastructure, and reporting it as a pass would
+    // be worse.
+    if child == ChildConclusion::Cancelled || receipt == ReceiptState::Cancelled {
+        return AggregateVerdict::Cancelled;
+    }
+    if child == ChildConclusion::TimedOut || receipt == ReceiptState::TimedOut {
+        return AggregateVerdict::TimedOut;
+    }
+
+    // The receipt and the tick must agree. Either direction of disagreement is
+    // a contract violation: a fabricated pass, or a receipt that knows more than
+    // the tick does.
+    match (child, receipt) {
+        (ChildConclusion::Success, ReceiptState::Failed)
+        | (ChildConclusion::Failure, ReceiptState::Passed) => {
+            return AggregateVerdict::ContradictoryEvidence;
+        }
+        _ => {}
+    }
+
+    if receipt == ReceiptState::InstrumentFailure {
+        return AggregateVerdict::NotProven;
+    }
+
+    match planned {
+        PlannedRoute::DocsOnly => match (child, receipt) {
+            // The docs gate is the applicable proof; the Rust lane is planned
+            // `not_applicable` and its absence is expected.
+            (ChildConclusion::Success, ReceiptState::Passed) => AggregateVerdict::Passed,
+            (ChildConclusion::Failure, _) => AggregateVerdict::Failed,
+            (_, ReceiptState::Failed) => AggregateVerdict::Failed,
+            // A docs lane that did not run, or produced no receipt, has proved
+            // nothing even though the Rust lane was legitimately skipped.
+            _ => AggregateVerdict::NotProven,
+        },
+        PlannedRoute::GithubHostedRust => {
+            if receipt == ReceiptState::Missing {
+                return AggregateVerdict::NotProven;
+            }
+            match (child, receipt) {
+                (ChildConclusion::Success, ReceiptState::Passed) => {
+                    // A pass is only about this subject if the child proved this
+                    // subject.
+                    if subject_agrees {
+                        AggregateVerdict::Passed
+                    } else {
+                        AggregateVerdict::StaleOrWrongSubject
+                    }
+                }
+                (ChildConclusion::Failure, _) | (_, ReceiptState::Failed) => {
+                    AggregateVerdict::Failed
+                }
+                // Required work that was skipped is unproven, never green.
+                (ChildConclusion::Skipped, _) | (_, ReceiptState::NotRun) => {
+                    AggregateVerdict::NotProven
+                }
+                _ => AggregateVerdict::NotProven,
+            }
+        }
+        PlannedRoute::PlanFailed | PlannedRoute::UnsupportedSubject => AggregateVerdict::NotProven,
+    }
+}
+
+fn routed_rust_arg(args: &[String], name: &str) -> String {
+    let flag = format!("--{name}");
+    let inline = format!("--{name}=");
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == &flag {
+            return iter.next().cloned().unwrap_or_default();
+        }
+        if let Some(value) = arg.strip_prefix(&inline) {
+            return value.to_string();
+        }
+    }
+    String::new()
+}
+
+/// Publish the normalized routed-Rust verdict.
+///
+/// ripr#1446: the aggregate decides from planned propositions and normalized
+/// receipts, not from GitHub's scheduling artefacts. Keeping the transition
+/// table in Rust means the decision is exercised by
+/// `routed_rust_aggregate_transition_matrix` rather than being re-implemented in
+/// shell where it cannot be tested.
+pub(crate) fn ci_routed_rust_result(args: &[String]) -> Result<(), String> {
+    let planned = match routed_rust_arg(args, "planned-route").as_str() {
+        "github_hosted_rust" => PlannedRoute::GithubHostedRust,
+        "docs_only" => PlannedRoute::DocsOnly,
+        "unsupported_subject" => PlannedRoute::UnsupportedSubject,
+        // An absent or unreadable plan is a planning failure, never a pass.
+        _ => PlannedRoute::PlanFailed,
+    };
+    let child = match routed_rust_arg(args, "child-conclusion").as_str() {
+        "success" => ChildConclusion::Success,
+        "failure" => ChildConclusion::Failure,
+        "cancelled" => ChildConclusion::Cancelled,
+        "timed_out" => ChildConclusion::TimedOut,
+        _ => ChildConclusion::Skipped,
+    };
+    let receipt = match routed_rust_arg(args, "receipt-state").as_str() {
+        "passed" => ReceiptState::Passed,
+        "failed" => ReceiptState::Failed,
+        "not_run" => ReceiptState::NotRun,
+        "cancelled" => ReceiptState::Cancelled,
+        "timed_out" => ReceiptState::TimedOut,
+        "instrument_failure" => ReceiptState::InstrumentFailure,
+        _ => ReceiptState::Missing,
+    };
+
+    let planned_subject = routed_rust_arg(args, "planned-subject");
+    let observed_subject = routed_rust_arg(args, "observed-subject");
+    // A subject claim only agrees when both sides actually named one.
+    let subject_agrees = !planned_subject.is_empty()
+        && !observed_subject.is_empty()
+        && planned_subject == observed_subject;
+
+    let verdict = routed_rust_aggregate_verdict(planned, child, receipt, subject_agrees);
+
+    if let Ok(summary) = std::env::var("GITHUB_STEP_SUMMARY") {
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&summary)
+        {
+            let _ = writeln!(file, "### Ripr Rust Small Result\n");
+            for (label, value) in [
+                ("verdict", verdict.as_str()),
+                ("planned route", &format!("{planned:?}")),
+                ("child conclusion", &format!("{child:?}")),
+                ("receipt state", &format!("{receipt:?}")),
+                ("planned subject", planned_subject.as_str()),
+                ("observed subject", observed_subject.as_str()),
+            ] {
+                let _ = writeln!(file, "- {label}: `{value}`");
+            }
+        }
+    }
+
+    println!("verdict={}", verdict.as_str());
+    if verdict.is_green() {
+        Ok(())
+    } else {
+        Err(format!(
+            "routed Rust aggregate resolved to `{}`, which is not a pass",
+            verdict.as_str()
+        ))
+    }
+}
+
+/// Directory holding one child job's execution evidence.
+fn child_receipt_dir(root: &Path) -> PathBuf {
+    root.join("target")
+        .join("ripr")
+        .join("reports")
+        .join("routed-rust-child")
+}
+
+/// Run one planned proof command and record its terminal state.
+///
+/// ripr#1446: the aggregate must be able to contradict GitHub's tick. That is
+/// only possible if the child writes its own per-command evidence as it goes,
+/// rather than the result being re-derived from the job conclusion afterwards.
+/// Each row is appended before the exit code propagates, so a job killed part way
+/// through still leaves the commands that did complete.
+pub(crate) fn ci_record_command(args: &[String]) -> Result<(), String> {
+    let id = routed_rust_arg(args, "id");
+    if id.is_empty() {
+        return Err("ci-record-command requires --id".to_string());
+    }
+    let separator = args
+        .iter()
+        .position(|arg| arg == "--")
+        .ok_or_else(|| "ci-record-command requires `--` before the command".to_string())?;
+    let command: Vec<&str> = args[separator + 1..].iter().map(String::as_str).collect();
+    if command.is_empty() {
+        return Err("ci-record-command requires a command after `--`".to_string());
+    }
+
+    let root = std::env::current_dir()
+        .map_err(|err| format!("failed to resolve the working directory: {err}"))?;
+    let dir = child_receipt_dir(&root);
+    fs::create_dir_all(&dir).map_err(|err| format!("failed to create {}: {err}", dir.display()))?;
+
+    // Run through the repository's owning process helper rather than a raw
+    // `Command`, so this stays inside the single sanctioned spawn site that
+    // `check-process-policy` bounds.
+    let started = std::time::Instant::now();
+    let observed = crate::run::capture_output(command[0], &command[1..], &command.join(" "))?;
+    let duration_ms = started.elapsed().as_millis();
+    let exit_code = observed.status.code().unwrap_or(-1);
+    let state = if observed.status.success() {
+        "passed"
+    } else {
+        "failed"
+    };
+    // The wrapped command's own output still belongs in the job log.
+    print!("{}", observed.stdout);
+    eprint!("{}", observed.stderr);
+
+    let row = serde_json::json!({
+        "command_id": id,
+        "command": command.join(" "),
+        "state": state,
+        "exit_code": exit_code,
+        "duration_ms": duration_ms,
+    });
+    let path = dir.join("commands.jsonl");
+    let mut existing = fs::read_to_string(&path).unwrap_or_default();
+    existing.push_str(&serde_json::to_string(&row).map_err(|err| format!("render row: {err}"))?);
+    existing.push('\n');
+    fs::write(&path, existing)
+        .map_err(|err| format!("failed to write {}: {err}", path.display()))?;
+
+    if observed.status.success() {
+        Ok(())
+    } else {
+        Err(format!("{} failed with exit code {exit_code}", id))
+    }
+}
+
+/// Finalize one child job's execution receipt.
+///
+/// Runs under `if: always()`, so it must describe an interrupted job honestly:
+/// commands that completed keep their observed state, and every remaining
+/// planned command is `not_run` rather than being reported as a failure or
+/// quietly dropped.
+pub(crate) fn ci_child_receipt(args: &[String]) -> Result<(), String> {
+    let plan: Vec<String> = routed_rust_arg(args, "plan")
+        .split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
+        .collect();
+    if plan.is_empty() {
+        return Err("ci-child-receipt requires --plan with at least one command id".to_string());
+    }
+    let job_outcome = routed_rust_arg(args, "job-outcome");
+    let subject_sha = routed_rust_arg(args, "subject-sha");
+    let subject_tree = routed_rust_arg(args, "subject-tree");
+
+    let root = std::env::current_dir()
+        .map_err(|err| format!("failed to resolve the working directory: {err}"))?;
+    let dir = child_receipt_dir(&root);
+    fs::create_dir_all(&dir).map_err(|err| format!("failed to create {}: {err}", dir.display()))?;
+
+    let recorded = fs::read_to_string(dir.join("commands.jsonl")).unwrap_or_default();
+    let mut observed: Vec<serde_json::Value> = Vec::new();
+    for line in recorded.lines().filter(|line| !line.trim().is_empty()) {
+        observed.push(
+            serde_json::from_str(line)
+                .map_err(|err| format!("failed to parse a recorded command row: {err}"))?,
+        );
+    }
+
+    let mut commands = Vec::new();
+    let mut any_failed = false;
+    let mut any_not_run = false;
+    for id in &plan {
+        match observed
+            .iter()
+            .find(|row| row.get("command_id").and_then(|v| v.as_str()) == Some(id.as_str()))
+        {
+            Some(row) => {
+                if row.get("state").and_then(|v| v.as_str()) != Some("passed") {
+                    any_failed = true;
+                }
+                commands.push(row.clone());
+            }
+            None => {
+                any_not_run = true;
+                commands.push(serde_json::json!({
+                    "command_id": id,
+                    "state": "not_run",
+                    "exit_code": serde_json::Value::Null,
+                }));
+            }
+        }
+    }
+
+    // Interruption is not product failure, and an incomplete run is not a pass.
+    let state = match job_outcome.as_str() {
+        "cancelled" => "cancelled",
+        "timed_out" => "timed_out",
+        _ if any_failed => "failed",
+        _ if any_not_run => "not_run",
+        _ => "passed",
+    };
+
+    let receipt = serde_json::json!({
+        "schema": "ripr.routed_rust_child_receipt.v1",
+        "state": state,
+        "job_outcome": job_outcome,
+        "subject_sha": subject_sha,
+        "subject_tree": subject_tree,
+        "planned_command_count": plan.len(),
+        "observed_command_count": observed.len(),
+        "commands": commands,
+    });
+    let path = dir.join("child-receipt.json");
+    fs::write(
+        &path,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&receipt)
+                .map_err(|err| format!("render child receipt: {err}"))?
+        ),
+    )
+    .map_err(|err| format!("failed to write {}: {err}", path.display()))?;
+    eprintln!("wrote {}", path.display());
+    println!("child_receipt_state={state}");
+    Ok(())
+}
+
 /// The cheap workflow scheduler's rule, mirrored in Rust so the implication
 /// `scheduler ⇒ authority` can be tested rather than argued.
 ///
@@ -5055,6 +5477,16 @@ pub(crate) fn ci_docs_only(args: &[String]) -> Result<(), String> {
                     .filter(|path| !path.is_empty())
                     .map(str::to_string)
                     .collect();
+                // Defence in depth: the cheap scheduler must be a strict
+                // under-approximation of this rule. If it ever schedules the
+                // docs lane for a change this rule refuses, say so here rather
+                // than letting the reduced route stand.
+                if scheduler_schedules_docs_only(&paths) && !changed_paths_are_docs_only(&paths) {
+                    return Err(
+                        "scheduler routed a change to the docs-only lane that the typed rule refuses"
+                            .to_string(),
+                    );
+                }
                 let digest = changed_paths_digest(&paths);
                 eprintln!(
                     "ci-docs-only: changed_paths_sha256={digest} count={}",
@@ -5165,11 +5597,13 @@ fn routed_rust_workflow_contract_violations(
             "docs-detection guard",
             "needs.detect-docs-only.result == 'success'",
         ),
-        (
-            "normalized docs detection failure",
-            "docs-surface detection resolved to",
-        ),
-        ("fail-closed aggregate", "[ \"$status\" = \"passed\" ]"),
+        // The verdict is decided by `ci-routed-rust-result`, whose transition
+        // table is exercised by `routed_rust_aggregate_transition_matrix`.
+        // Requiring shell strings here would pin an implementation that no
+        // longer decides anything.
+        ("typed verdict delegation", "ci-routed-rust-result"),
+        ("verdict planned-route input", "--planned-route"),
+        ("verdict observed-subject input", "--observed-subject"),
         // ripr#1446: the aggregate must bind the plan to the exact head it is
         // reporting on. Without this it can only repeat the conclusion of
         // whatever job graph ran, which is not a statement about this subject.
@@ -5181,12 +5615,6 @@ fn routed_rust_workflow_contract_violations(
         ("observed subject identity", "observed_subject_sha"),
         ("observed subject tree", "observed_subject_tree"),
         ("plan version", "plan_version"),
-        ("stale plan rejection", "route plan bound subject"),
-        ("wrong-subject rejection", "stale_or_wrong_subject"),
-        (
-            "missing plan rejection",
-            "route plan published no subject identity",
-        ),
     ];
 
     for (label, snippet) in required_workflow_snippets {

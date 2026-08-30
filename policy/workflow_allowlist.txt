@@ -18,7 +18,7 @@
 .github/workflows/publish-extension.yml|20|Release workflow includes marketplace packaging and publishing orchestration.
 .github/workflows/release-server-binaries.yml|1|Release workflow delegates server archive packaging, manifest generation, and release upload branching to Rust xtask commands.
 .github/workflows/server-archive-qualification.yml|82|Exact measured largest run block after preserving curl transport status, bounded rate-limit tokens, response digests, and strict public ruleset shape diagnostics; credential-free, artifact-only qualification delegates packaging and manifest generation to Rust xtask commands.
-.github/workflows/routed-rust.yml|79|Source routed Rust workflow proves pull requests on GitHub-hosted runners only; the aggregate normalizes each planned proposition to an explicit state, requires the tested subject the child actually checked out to equal the planned subject, and fails closed rather than going green because a child check was skipped.
+.github/workflows/routed-rust.yml|44|Source routed Rust workflow proves pull requests on GitHub-hosted runners only; the normalized verdict is decided by the typed ci-routed-rust-result command rather than in shell, so the run blocks only gather inputs.
 .github/workflows/scratch-gc.yml|4|Scheduled scratch-GC lane reuses the existing inline cleanup (age-gated find + sccache trim + disk report + hard-fail guard) on a timer so disk recovery does not depend on PR traffic (#1028).
 .github/workflows/security.yml|1|Security workflow installs cargo-deny as a normal binary, then runs the standard cargo-deny command without requiring Docker.
 .github/workflows/source-of-truth.yml|10|Advisory source-of-truth workflow runs three xtask checks and writes a short advisory summary.

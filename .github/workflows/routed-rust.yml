@@ -180,6 +180,7 @@ jobs:
     outputs:
       observed_subject_sha: ${{ steps.subject.outputs.observed_subject_sha }}
       observed_subject_tree: ${{ steps.subject.outputs.observed_subject_tree }}
+      child_receipt_state: ${{ steps.child_receipt.outputs.child_receipt_state }}
     steps:
       # Candidate-controlled code is compiled and executed in this job, so the
       # repository credential is not persisted into the working tree. `v6` still
@@ -224,20 +225,50 @@ jobs:
         with:
           shared-key: ripr-swarm-rust-small-${{ runner.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Each planned command records its own terminal state before its exit code
+      # propagates, so an interrupted job still leaves evidence for the commands
+      # that did complete. Without per-command evidence the aggregate could only
+      # repeat GitHub's tick and could never contradict it.
       - name: Required Rust gates
         run: |
-          cargo fmt --check
-          cargo check --workspace --all-targets
-          cargo clippy --workspace --all-targets -- -D warnings
-          cargo nextest run --workspace
-          cargo xtask precommit
-          cargo xtask check-evidence-promotion-honesty
-          cargo xtask check-agent-skills
-          cargo xtask check-dependencies
-          cargo xtask check-process-policy
-          cargo xtask check-network-policy
-          cargo xtask goldens check
-          cargo xtask fixtures
+          set -euo pipefail
+          R="cargo run --locked -p xtask -- ci-record-command --id"
+          $R cargo_fmt -- cargo fmt --check
+          $R cargo_check -- cargo check --workspace --all-targets
+          $R cargo_clippy -- cargo clippy --workspace --all-targets -- -D warnings
+          $R cargo_nextest -- cargo nextest run --workspace
+          $R precommit -- cargo xtask precommit
+          $R check_evidence_promotion_honesty -- cargo xtask check-evidence-promotion-honesty
+          $R check_agent_skills -- cargo xtask check-agent-skills
+          $R check_dependencies -- cargo xtask check-dependencies
+          $R check_process_policy -- cargo xtask check-process-policy
+          $R check_network_policy -- cargo xtask check-network-policy
+          $R goldens_check -- cargo xtask goldens check
+          $R fixtures -- cargo xtask fixtures
+      # Runs even when a gate failed or the job was interrupted, so the receipt
+      # distinguishes failed, not_run, cancelled and timed_out rather than
+      # collapsing everything into one red tick.
+      - name: Finalize the child execution receipt
+        id: child_receipt
+        if: always()
+        env:
+          JOB_OUTCOME: ${{ job.status }}
+          SUBJECT_SHA: ${{ steps.subject.outputs.observed_subject_sha }}
+          SUBJECT_TREE: ${{ steps.subject.outputs.observed_subject_tree }}
+        run: |
+          set -uo pipefail
+          cargo run --locked -p xtask -- ci-child-receipt \
+            --plan "cargo_fmt,cargo_check,cargo_clippy,cargo_nextest,precommit,check_evidence_promotion_honesty,check_agent_skills,check_dependencies,check_process_policy,check_network_policy,goldens_check,fixtures" \
+            --job-outcome "$JOB_OUTCOME" \
+            --subject-sha "$SUBJECT_SHA" \
+            --subject-tree "$SUBJECT_TREE" >> "$GITHUB_OUTPUT"
+      - name: Upload child execution evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-routed-rust-child-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/ripr/reports/routed-rust-child/
+          if-no-files-found: warn
       - name: Advisory reports
         if: always()
         run: |
@@ -329,113 +360,46 @@ jobs:
     needs: [route, detect-docs-only, rust-github, docs-gate]
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      # Every planned proposition resolves to an explicit state. The aggregate
-      # goes green only for `passed` or an applicability that was planned as
-      # `not_applicable`; it never goes green because a child check vanished or
-      # because GitHub reported it as `skipped`.
-      - name: Summarize routed result
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-routed-rust-result
+      # The verdict lives in Rust, where `routed_rust_aggregate_transition_matrix`
+      # exercises every transition. Deciding here in shell would leave the
+      # tested table describing something other than what actually runs.
+      #
+      # Planned propositions and child receipts decide the outcome; GitHub's
+      # scheduling artefacts are inputs, not the answer. A required lane that was
+      # skipped is `not_proven`, never a pass, and a green tick that disagrees
+      # with its own receipt is `contradictory_evidence`.
+      - name: Publish the normalized routed result
         env:
-          ROUTE: ${{ needs.route.outputs.route }}
-          ROUTE_REASON: ${{ needs.route.outputs.route_reason }}
+          PLANNED_ROUTE: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && 'docs_only' || needs.route.outputs.route }}
+          CHILD_CONCLUSION: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.docs-gate.result || needs.rust-github.result }}
+          # The child's own receipt, not a re-derivation of GitHub's tick. When
+          # the two disagree the verdict is contradictory_evidence.
+          RECEIPT_STATE: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && (needs.docs-gate.result == 'success' && 'passed' || 'missing') || (needs.rust-github.outputs.child_receipt_state || 'missing') }}
+          PLANNED_SUBJECT: ${{ needs.route.outputs.subject_sha }}
+          OBSERVED_SUBJECT: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.route.outputs.subject_sha || needs.rust-github.outputs.observed_subject_sha }}
           ROUTE_RESULT: ${{ needs.route.result }}
-          SELF_HOSTED_ATTEMPTED: ${{ needs.route.outputs.self_hosted_selection_attempted }}
-          PRIVATE_SECRET_REQUESTED: ${{ needs.route.outputs.private_runner_secret_requested }}
-          ORG_QUERY_ATTEMPTED: ${{ needs.route.outputs.org_runner_query_attempted }}
-          GITHUB_RESULT: ${{ needs.rust-github.result }}
-          PLAN_SUBJECT: ${{ needs.route.outputs.subject_sha }}
-          PLAN_VERSION: ${{ needs.route.outputs.plan_version }}
-          LIVE_SUBJECT: ${{ github.sha }}
-          OBSERVED_SUBJECT: ${{ needs.rust-github.outputs.observed_subject_sha }}
-          OBSERVED_TREE: ${{ needs.rust-github.outputs.observed_subject_tree }}
-          EVENT_NAME: ${{ github.event_name }}
-          DOCS_DETECT_RESULT: ${{ needs.detect-docs-only.result }}
-          DOCS_ONLY: ${{ needs.detect-docs-only.outputs.docs_only }}
-          DOCS_GATE_RESULT: ${{ needs.docs-gate.result }}
         run: |
           set -uo pipefail
-          status=passed
-          rust_state=not_run
-          docs_state=not_run
-          message="github-hosted rust proof succeeded"
-
-          classify() {
-            case "$1" in
-              success) printf 'passed' ;;
-              failure) printf 'failed' ;;
-              cancelled) printf 'cancelled' ;;
-              skipped) printf 'not_run' ;;
-              *) printf 'unavailable' ;;
-            esac
-          }
-
-          if [ "$DOCS_DETECT_RESULT" != "success" ]; then
-            status=failed
-            message="docs-surface detection resolved to $(classify "$DOCS_DETECT_RESULT")"
-          elif [ "$DOCS_ONLY" = "true" ] && [ "$EVENT_NAME" = "pull_request" ]; then
-            rust_state=not_applicable
-            docs_state="$(classify "$DOCS_GATE_RESULT")"
-            if [ "$docs_state" = "passed" ]; then
-              message="docs-only subject; rust proof not applicable; docs gate passed"
-            else
-              status=failed
-              message="docs-only subject but docs gate resolved to $docs_state"
-            fi
-          elif [ "$ROUTE_RESULT" != "success" ]; then
-            status=failed
-            message="route job resolved to $(classify "$ROUTE_RESULT")"
-          elif [ "$ROUTE" != "github_hosted_rust" ]; then
-            status=failed
-            message="unsupported source route: $ROUTE"
-          else
-            docs_state=not_applicable
-            rust_state="$(classify "$GITHUB_RESULT")"
-            if [ "$rust_state" != "passed" ]; then
-              status=failed
-              message="github-hosted rust proof resolved to $rust_state"
-            fi
+          # A route job that did not succeed produced no usable plan.
+          planned="$PLANNED_ROUTE"
+          if [ "$ROUTE_RESULT" != "success" ]; then
+            planned=plan_failed
           fi
-
-          # The plan must describe this exact head. A receipt produced for a
-          # different head proves nothing about the subject being merged, so a
-          # stale or missing binding fails closed rather than inheriting the
-          # conclusion of whatever job graph happened to run.
-          if [ -z "$PLAN_SUBJECT" ] || [ -z "$PLAN_VERSION" ]; then
-            status=failed
-            message="route plan published no subject identity; cannot bind the result to a subject"
-          elif [ "$PLAN_SUBJECT" != "$LIVE_SUBJECT" ]; then
-            status=failed
-            message="route plan bound subject $PLAN_SUBJECT but this run proves $LIVE_SUBJECT"
-          elif [ "$rust_state" = "passed" ] && [ "$OBSERVED_SUBJECT" != "$PLAN_SUBJECT" ]; then
-            status=failed
-            message="stale_or_wrong_subject: rust proof observed $OBSERVED_SUBJECT, plan named $PLAN_SUBJECT"
-          fi
-
-          # The source route must never silently acquire swarm runner authority.
-          for guard in "self_hosted_selection_attempted:$SELF_HOSTED_ATTEMPTED" \
-                       "private_runner_secret_requested:$PRIVATE_SECRET_REQUESTED" \
-                       "org_runner_query_attempted:$ORG_QUERY_ATTEMPTED"; do
-            name="${guard%%:*}"
-            value="${guard#*:}"
-            if [ "$value" != "false" ]; then
-              status=failed
-              message="source route reported $name=$value; self-hosted authority belongs to ripr-swarm"
-            fi
-          done
-
-          {
-            echo "### Ripr Rust Small Result"
-            echo ""
-            for row in "route:$ROUTE" "reason:$ROUTE_REASON" "status:$status" "message:$message" \
-                       "rust proof:$rust_state" "docs gate:$docs_state" \
-                       "docs_detect:$DOCS_DETECT_RESULT" "docs_only:$DOCS_ONLY" \
-                       "route job:$ROUTE_RESULT" "github job:$GITHUB_RESULT" \
-                       "self-hosted selection attempted:$SELF_HOSTED_ATTEMPTED" \
-                       "private runner secret requested:$PRIVATE_SECRET_REQUESTED" \
-                       "org runner query attempted:$ORG_QUERY_ATTEMPTED"; do
-              echo "- ${row%%:*}: \`${row#*:}\`"
-            done
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          [ "$status" = "passed" ]
+          cargo run --locked -p xtask -- ci-routed-rust-result \
+            --planned-route "$planned" \
+            --child-conclusion "$CHILD_CONCLUSION" \
+            --receipt-state "$RECEIPT_STATE" \
+            --planned-subject "$PLANNED_SUBJECT" \
+            --observed-subject "$OBSERVED_SUBJECT"
