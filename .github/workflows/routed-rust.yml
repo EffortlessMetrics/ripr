@@ -11,6 +11,22 @@ permissions:
   actions: read
   contents: read
 
+# Concurrency is a deliberate disposition, not inherited behaviour (ripr#1446).
+#
+# Only a pull request's newest head can be merged, so a proof still running for a
+# superseded head cannot contribute to any merge decision. Cancelling it on
+# `synchronize` therefore discards no usable evidence, and now that every source
+# pull request runs on GitHub-hosted compute it also stops superseded heads from
+# consuming hosted minutes that the newest head needs.
+#
+# Cancellation is deliberately scoped to `synchronize`: pushes, merge-group
+# subjects and reruns are not cancelled, because those subjects are not replaced
+# by a newer head in the same way.
+#
+# GitHub Actions cannot express "finish the current run and keep only the newest
+# queued run" for this workflow, so that stronger semantic is not claimed. A
+# cancelled run resolves to the explicit `cancelled` state in the aggregate and
+# never counts as a pass.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}

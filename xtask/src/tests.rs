@@ -9163,7 +9163,10 @@ jobs = ["Ripr Rust Small Result"]
 "#;
 
     let violations = routed_rust_workflow_contract_violations(workflow, Some(settings), Some(lane));
-    assert!(violations.is_empty(), "unexpected violations: {violations:?}");
+    assert!(
+        violations.is_empty(),
+        "unexpected violations: {violations:?}"
+    );
 }
 
 #[test]
@@ -46277,6 +46280,75 @@ fn routed_rust_docs_gate_runs_full_precommit_table() -> Result<(), String> {
         &lines,
         "docs-gate job (docs-only PRs must run the full gate table)",
     )?;
+    Ok(())
+}
+
+/// ripr#1446: the routed Rust migration deleted roughly four hundred lines of
+/// workflow, so every removed command needs an explicit disposition rather than
+/// a line-count argument. This binds `docs/ci/routed-rust-command-disposition.md`
+/// to the workflow it describes: a retained command must still be present, and a
+/// command recorded as removed must actually be gone.
+#[test]
+fn routed_rust_command_disposition_is_complete() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    let disposition =
+        fs::read_to_string(repo_root()?.join("docs/ci/routed-rust-command-disposition.md"))
+            .map_err(|err| format!("read routed-rust command disposition: {err}"))?;
+
+    // Commands the table records as still required must appear in the workflow.
+    for retained in [
+        "cargo fmt",
+        "cargo clippy",
+        "cargo nextest",
+        "cargo xtask precommit",
+        "cargo xtask goldens check",
+        "cargo xtask fixtures",
+        "cargo xtask proof route",
+    ] {
+        if !disposition.contains(retained) {
+            return Err(format!("disposition table must record `{retained}`"));
+        }
+        if !workflow.contains(retained) {
+            return Err(format!(
+                "`{retained}` is recorded as retained_required but is absent from routed-rust.yml"
+            ));
+        }
+    }
+
+    // Commands the table records as removed must be absent, so a silent
+    // reintroduction cannot hide behind a stale table.
+    for (removed, reason) in [
+        ("sccache", "not_applicable_ephemeral_host"),
+        ("ci-disk-guard", "not_applicable_ephemeral_host"),
+        ("Select runner", "removed_wrong_architecture"),
+        ("Prepare toolchain temp", "not_applicable_ephemeral_host"),
+        ("Clean scratch", "not_applicable_ephemeral_host"),
+    ] {
+        if !disposition.contains(removed) {
+            return Err(format!(
+                "disposition table must record removed command `{removed}`"
+            ));
+        }
+        if !disposition.contains(reason) {
+            return Err(format!(
+                "disposition table must record `{reason}` as a disposition value"
+            ));
+        }
+        if workflow.contains(removed) {
+            return Err(format!(
+                "`{removed}` is recorded as removed but still appears in routed-rust.yml"
+            ));
+        }
+    }
+
+    // The table must state that no proof command was removed, which is the
+    // claim the whole deletion rests on.
+    if !disposition.contains("proof commands removed          0") {
+        return Err(
+            "disposition table must state that zero proof commands were removed".to_string(),
+        );
+    }
+
     Ok(())
 }
 

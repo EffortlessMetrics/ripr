@@ -4975,10 +4975,7 @@ fn routed_rust_workflow_contract_violations(
             "normalized docs detection failure",
             "docs-surface detection resolved to",
         ),
-        (
-            "fail-closed aggregate",
-            "[ \"$status\" = \"passed\" ]",
-        ),
+        ("fail-closed aggregate", "[ \"$status\" = \"passed\" ]"),
     ];
 
     for (label, snippet) in required_workflow_snippets {
@@ -5007,10 +5004,7 @@ fn routed_rust_workflow_contract_violations(
         ("swarm disk guard", "ci-disk-guard"),
         ("runner API failure route state", "runner_api_failed"),
         ("no-idle-runner route state", "no_idle_runner"),
-        (
-            "runner capacity route state",
-            "runner_capacity_unavailable",
-        ),
+        ("runner capacity route state", "runner_capacity_unavailable"),
     ];
 
     for (label, snippet) in forbidden_runner_surface {
