@@ -1451,9 +1451,28 @@ mod tests {
         Ok(())
     }
 
+    /// Absolute path to a source-promotion fixture.
+    ///
+    /// `CARGO_MANIFEST_DIR` is fixed at compile time, so this is immune to a
+    /// concurrently running test changing the process working directory.
+    fn source_promotion_fixture(name: &str) -> std::path::PathBuf {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let repo_root = match manifest.parent() {
+            Some(parent) => parent,
+            None => manifest,
+        };
+        repo_root
+            .join("fixtures")
+            .join("source_promotion")
+            .join(name)
+    }
+
     #[test]
     fn fixture_points_to_source_promotion_spec() -> Result<(), String> {
-        let text = fs::read_to_string("../fixtures/source_promotion/SPEC.md")
+        // Resolved from the crate root rather than the process working
+        // directory: other tests in this binary change the cwd, so a relative
+        // read races them and fails intermittently.
+        let text = fs::read_to_string(source_promotion_fixture("SPEC.md"))
             .map_err(|error| format!("failed to read source-promotion fixture: {error}"))?;
         if !text
             .lines()
@@ -1569,7 +1588,7 @@ mod tests {
 
     #[test]
     fn fixture_receipt_contract_is_discriminating() -> Result<(), String> {
-        let text = fs::read_to_string("../fixtures/source_promotion/diverged-conflict.json")
+        let text = fs::read_to_string(source_promotion_fixture("diverged-conflict.json"))
             .map_err(|error| format!("failed to read source-promotion fixture: {error}"))?;
         let value: serde_json::Value = serde_json::from_str(&text)
             .map_err(|error| format!("failed to parse source-promotion fixture: {error}"))?;

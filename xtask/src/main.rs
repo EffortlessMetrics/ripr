@@ -5356,6 +5356,121 @@ pub(crate) fn ci_child_receipt(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Emit the durable routed-Rust plan packet.
+///
+/// ripr#1446: job outputs schedule work; receipt bytes prove it. The cheap route
+/// job cannot produce this because it has no toolchain, so the packet is written
+/// inside whichever job was selected — those already build Rust, so it costs
+/// nothing extra — and it independently rederives every identity rather than
+/// restating the scheduler's claims.
+pub(crate) fn ci_routed_rust_plan(args: &[String]) -> Result<(), String> {
+    let scheduled_route = routed_rust_arg(args, "scheduled-route");
+    let base_sha = routed_rust_arg(args, "base");
+    let pr_head_sha = routed_rust_arg(args, "pr-head");
+    let planned_subject = routed_rust_arg(args, "subject");
+    let event = routed_rust_arg(args, "event");
+    let trust_class = routed_rust_arg(args, "trust-class");
+
+    let root = std::env::current_dir()
+        .map_err(|err| format!("failed to resolve the working directory: {err}"))?;
+
+    // Rederive the subject from the checkout rather than trusting the plan.
+    let rev_parse = |args: &[&str]| -> Result<String, String> {
+        let out = crate::run::capture_output("git", args, "git rev-parse")?;
+        if !out.status.success() {
+            return Err(format!("git {args:?} failed: {}", out.stderr.trim()));
+        }
+        Ok(out.stdout.trim().to_string())
+    };
+    let subject_sha = rev_parse(&["rev-parse", "HEAD"])?;
+    let subject_tree = rev_parse(&["rev-parse", "HEAD^{tree}"])?;
+    if !planned_subject.is_empty() && planned_subject != subject_sha {
+        return Err(format!(
+            "planned subject {planned_subject} does not match the checked-out subject {subject_sha}"
+        ));
+    }
+
+    // Rederive the changed-path inventory NUL-delimited so path quoting stays
+    // outside the trust boundary.
+    let mut changed_paths: Vec<String> = Vec::new();
+    if !base_sha.is_empty() {
+        let range = format!("{base_sha}...{subject_sha}");
+        let observed = crate::run::capture_output(
+            "git",
+            &["diff", "--name-only", "-z", range.as_str()],
+            "git diff --name-only -z",
+        )?;
+        if observed.status.success() {
+            changed_paths = observed
+                .stdout
+                .split('\0')
+                .filter(|path| !path.is_empty())
+                .map(str::to_string)
+                .collect();
+        }
+    }
+    let changed_paths_sha256 = changed_paths_digest(&changed_paths);
+    let authoritative_docs_only = changed_paths_are_docs_only(&changed_paths);
+
+    // A change scheduled to the reduced lane that the typed rule refuses is a
+    // mis-schedule, not an over-proof, and must not stand.
+    if scheduled_route == "docs_only" && !authoritative_docs_only {
+        return Err("scheduled the docs-only lane for a change the typed rule refuses".to_string());
+    }
+    let conservative_overproof = scheduled_route == "github_hosted_rust" && authoritative_docs_only;
+
+    let plan = serde_json::json!({
+        "schema": "ripr.routed_rust_plan.v1",
+        "plan_version": 1,
+        "event": event,
+        "trust_class": trust_class,
+        "base_sha": base_sha,
+        "pr_head_sha": pr_head_sha,
+        "subject_sha": subject_sha,
+        "subject_tree": subject_tree,
+        "changed_paths_sha256": changed_paths_sha256,
+        "changed_path_count": changed_paths.len(),
+        "scheduled_route": scheduled_route,
+        "authoritative_applicability": if authoritative_docs_only { "docs_only" } else { "github_hosted_rust" },
+        "conservative_overproof": conservative_overproof,
+        "self_hosted_selection_attempted": false,
+        "private_runner_secret_requested": false,
+        "org_runner_query_attempted": false,
+        "state": "planned",
+        "failure_reason": serde_json::Value::Null,
+    });
+
+    let dir = root.join("target").join("ripr").join("reports");
+    fs::create_dir_all(&dir).map_err(|err| format!("failed to create {}: {err}", dir.display()))?;
+    let json_path = dir.join("routed-rust-plan.json");
+    fs::write(
+        &json_path,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&plan)
+                .map_err(|err| format!("render routed-rust plan: {err}"))?
+        ),
+    )
+    .map_err(|err| format!("failed to write {}: {err}", json_path.display()))?;
+
+    let md_path = dir.join("routed-rust-plan.md");
+    let markdown = format!(
+        "# Routed Rust plan\n\n- event: `{event}`\n- trust class: `{trust_class}`\n- base: `{base_sha}`\n- pull-request head: `{pr_head_sha}`\n- tested subject: `{subject_sha}`\n- tested subject tree: `{subject_tree}`\n- changed paths: `{}` (sha256 `{changed_paths_sha256}`)\n- scheduled route: `{scheduled_route}`\n- authoritative applicability: `{}`\n- conservative over-proof: `{conservative_overproof}`\n",
+        changed_paths.len(),
+        if authoritative_docs_only {
+            "docs_only"
+        } else {
+            "github_hosted_rust"
+        }
+    );
+    fs::write(&md_path, markdown)
+        .map_err(|err| format!("failed to write {}: {err}", md_path.display()))?;
+
+    eprintln!("wrote {}", json_path.display());
+    eprintln!("wrote {}", md_path.display());
+    Ok(())
+}
+
 /// The cheap workflow scheduler's rule, mirrored in Rust so the implication
 /// `scheduler ⇒ authority` can be tested rather than argued.
 ///
@@ -5604,6 +5719,9 @@ fn routed_rust_workflow_contract_violations(
         ("typed verdict delegation", "ci-routed-rust-result"),
         ("verdict planned-route input", "--planned-route"),
         ("verdict observed-subject input", "--observed-subject"),
+        // Job outputs schedule work; the plan packet proves it.
+        ("durable plan packet", "ci-routed-rust-plan"),
+        ("plan packet artifact", "routed-rust-plan.json"),
         // ripr#1446: the aggregate must bind the plan to the exact head it is
         // reporting on. Without this it can only repeat the conclusion of
         // whatever job graph ran, which is not a statement about this subject.

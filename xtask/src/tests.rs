@@ -9141,6 +9141,10 @@ jobs:
       observed_subject_sha: ${{ steps.subject.outputs.observed_subject_sha }}
       observed_subject_tree: ${{ steps.subject.outputs.observed_subject_tree }}
     steps:
+      - run: cargo run --locked -p xtask -- ci-routed-rust-plan --scheduled-route github_hosted_rust
+      - uses: actions/upload-artifact@v7
+        with:
+          path: target/ripr/reports/routed-rust-plan.json
       - run: cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
   docs-gate:
     runs-on: ubuntu-latest
@@ -46492,7 +46496,7 @@ fn only_passed_is_green() -> Result<(), String> {
 #[test]
 fn skipping_is_never_read_as_irrelevance() -> Result<(), String> {
     use crate::{
-        AggregateVerdict as V, ChildConclusion as C, PlannedRoute as P, ReceiptState as R,
+        ChildConclusion as C, PlannedRoute as P, ReceiptState as R,
         routed_rust_aggregate_verdict as verdict,
     };
     for receipt in [R::Missing, R::NotRun] {
@@ -46665,7 +46669,7 @@ fn docs_only_route_is_hostile_to_non_documentation_change_sets() -> Result<(), S
 #[test]
 fn docs_only_route_treats_a_newline_bearing_filename_as_one_path() -> Result<(), String> {
     let hostile = format!("src/evil{}docs/looks-like-docs.md", '\n');
-    if crate::changed_paths_are_docs_only(&[hostile.clone()]) {
+    if crate::changed_paths_are_docs_only(std::slice::from_ref(&hostile)) {
         return Err(
             "a single path containing a newline must not be read as documentation".to_string(),
         );
