@@ -4970,7 +4970,6 @@ pub(crate) enum ChildConclusion {
     Failure,
     Skipped,
     Cancelled,
-    TimedOut,
 }
 
 /// What the child's own execution receipt says, independent of GitHub's tick.
@@ -4980,7 +4979,6 @@ pub(crate) enum ReceiptState {
     Failed,
     NotRun,
     Cancelled,
-    TimedOut,
     InstrumentFailure,
     Missing,
 }
@@ -4993,7 +4991,6 @@ pub(crate) enum AggregateVerdict {
     NotProven,
     StaleOrWrongSubject,
     Cancelled,
-    TimedOut,
     ContradictoryEvidence,
 }
 
@@ -5010,7 +5007,6 @@ impl AggregateVerdict {
             AggregateVerdict::NotProven => "not_proven",
             AggregateVerdict::StaleOrWrongSubject => "stale_or_wrong_subject",
             AggregateVerdict::Cancelled => "cancelled",
-            AggregateVerdict::TimedOut => "timed_out",
             AggregateVerdict::ContradictoryEvidence => "contradictory_evidence",
         }
     }
@@ -5027,7 +5023,9 @@ pub(crate) fn routed_rust_aggregate_verdict(
     planned: PlannedRoute,
     child: ChildConclusion,
     receipt: ReceiptState,
+    subject_observed: bool,
     subject_agrees: bool,
+    route_assertions_hold: bool,
 ) -> AggregateVerdict {
     // A plan that never produced a usable decision proves nothing about the
     // subject, whatever the children happened to do.
@@ -5039,6 +5037,31 @@ pub(crate) fn routed_rust_aggregate_verdict(
     if planned == PlannedRoute::UnsupportedSubject {
         return AggregateVerdict::NotProven;
     }
+    // The source route is GitHub-hosted by construction. Any attempted
+    // self-hosted selection, private runner secret, or organization runner
+    // query invalidates the plan before child evidence can be credited.
+    if !route_assertions_hold {
+        return AggregateVerdict::NotProven;
+    }
+
+    // Without a materialized object, no child conclusion can be attributed to
+    // the planned candidate. Checkout/instrument failure is therefore unproven,
+    // not product failure.
+    if matches!(
+        planned,
+        PlannedRoute::DocsOnly | PlannedRoute::GithubHostedRust
+    ) && !subject_observed
+    {
+        return AggregateVerdict::NotProven;
+    }
+
+    // A materialized object that differs from the planned object is not a
+    // product failure: the candidate was never tested. This must precede the
+    // child/receipt failure mapping because the binding step deliberately
+    // fails the job after publishing the observed identity.
+    if subject_observed && !subject_agrees {
+        return AggregateVerdict::StaleOrWrongSubject;
+    }
 
     // Interruption is its own state. Reporting it as a product failure would
     // blame the candidate for infrastructure, and reporting it as a pass would
@@ -5046,10 +5069,6 @@ pub(crate) fn routed_rust_aggregate_verdict(
     if child == ChildConclusion::Cancelled || receipt == ReceiptState::Cancelled {
         return AggregateVerdict::Cancelled;
     }
-    if child == ChildConclusion::TimedOut || receipt == ReceiptState::TimedOut {
-        return AggregateVerdict::TimedOut;
-    }
-
     // The receipt and the tick must agree. Either direction of disagreement is
     // a contract violation: a fabricated pass, or a receipt that knows more than
     // the tick does.
@@ -5069,7 +5088,13 @@ pub(crate) fn routed_rust_aggregate_verdict(
         PlannedRoute::DocsOnly => match (child, receipt) {
             // The docs gate is the applicable proof; the Rust lane is planned
             // `not_applicable` and its absence is expected.
-            (ChildConclusion::Success, ReceiptState::Passed) => AggregateVerdict::Passed,
+            (ChildConclusion::Success, ReceiptState::Passed) => {
+                if subject_observed && subject_agrees {
+                    AggregateVerdict::Passed
+                } else {
+                    AggregateVerdict::NotProven
+                }
+            }
             (ChildConclusion::Failure, _) => AggregateVerdict::Failed,
             (_, ReceiptState::Failed) => AggregateVerdict::Failed,
             // A docs lane that did not run, or produced no receipt, has proved
@@ -5084,10 +5109,10 @@ pub(crate) fn routed_rust_aggregate_verdict(
                 (ChildConclusion::Success, ReceiptState::Passed) => {
                     // A pass is only about this subject if the child proved this
                     // subject.
-                    if subject_agrees {
+                    if subject_observed && subject_agrees {
                         AggregateVerdict::Passed
                     } else {
-                        AggregateVerdict::StaleOrWrongSubject
+                        AggregateVerdict::NotProven
                     }
                 }
                 (ChildConclusion::Failure, _) | (_, ReceiptState::Failed) => {
@@ -5138,7 +5163,6 @@ pub(crate) fn ci_routed_rust_result(args: &[String]) -> Result<(), String> {
         "success" => ChildConclusion::Success,
         "failure" => ChildConclusion::Failure,
         "cancelled" => ChildConclusion::Cancelled,
-        "timed_out" => ChildConclusion::TimedOut,
         _ => ChildConclusion::Skipped,
     };
     let receipt = match routed_rust_arg(args, "receipt-state").as_str() {
@@ -5146,19 +5170,32 @@ pub(crate) fn ci_routed_rust_result(args: &[String]) -> Result<(), String> {
         "failed" => ReceiptState::Failed,
         "not_run" => ReceiptState::NotRun,
         "cancelled" => ReceiptState::Cancelled,
-        "timed_out" => ReceiptState::TimedOut,
         "instrument_failure" => ReceiptState::InstrumentFailure,
         _ => ReceiptState::Missing,
     };
 
     let planned_subject = routed_rust_arg(args, "planned-subject");
     let observed_subject = routed_rust_arg(args, "observed-subject");
+    let subject_observed = !observed_subject.is_empty();
     // A subject claim only agrees when both sides actually named one.
     let subject_agrees = !planned_subject.is_empty()
         && !observed_subject.is_empty()
         && planned_subject == observed_subject;
+    let self_hosted_selection_attempted = routed_rust_arg(args, "self-hosted-selection-attempted");
+    let private_runner_secret_requested = routed_rust_arg(args, "private-runner-secret-requested");
+    let org_runner_query_attempted = routed_rust_arg(args, "org-runner-query-attempted");
+    let route_assertions_hold = self_hosted_selection_attempted == "false"
+        && private_runner_secret_requested == "false"
+        && org_runner_query_attempted == "false";
 
-    let verdict = routed_rust_aggregate_verdict(planned, child, receipt, subject_agrees);
+    let verdict = routed_rust_aggregate_verdict(
+        planned,
+        child,
+        receipt,
+        subject_observed,
+        subject_agrees,
+        route_assertions_hold,
+    );
 
     if let Ok(summary) = std::env::var("GITHUB_STEP_SUMMARY") {
         use std::io::Write;
@@ -5175,6 +5212,18 @@ pub(crate) fn ci_routed_rust_result(args: &[String]) -> Result<(), String> {
                 ("receipt state", &format!("{receipt:?}")),
                 ("planned subject", planned_subject.as_str()),
                 ("observed subject", observed_subject.as_str()),
+                (
+                    "self-hosted selection attempted",
+                    self_hosted_selection_attempted.as_str(),
+                ),
+                (
+                    "private runner secret requested",
+                    private_runner_secret_requested.as_str(),
+                ),
+                (
+                    "organization runner query attempted",
+                    org_runner_query_attempted.as_str(),
+                ),
             ] {
                 let _ = writeln!(file, "- {label}: `{value}`");
             }
@@ -5270,6 +5319,12 @@ pub(crate) fn ci_record_command(args: &[String]) -> Result<(), String> {
 /// planned command is `not_run` rather than being reported as a failure or
 /// quietly dropped.
 pub(crate) fn ci_child_receipt(args: &[String]) -> Result<(), String> {
+    let root = std::env::current_dir()
+        .map_err(|err| format!("failed to resolve the working directory: {err}"))?;
+    ci_child_receipt_at(&root, args)
+}
+
+pub(crate) fn ci_child_receipt_at(root: &Path, args: &[String]) -> Result<(), String> {
     let plan: Vec<String> = routed_rust_arg(args, "plan")
         .split(',')
         .map(str::trim)
@@ -5283,9 +5338,7 @@ pub(crate) fn ci_child_receipt(args: &[String]) -> Result<(), String> {
     let subject_sha = routed_rust_arg(args, "subject-sha");
     let subject_tree = routed_rust_arg(args, "subject-tree");
 
-    let root = std::env::current_dir()
-        .map_err(|err| format!("failed to resolve the working directory: {err}"))?;
-    let dir = child_receipt_dir(&root);
+    let dir = child_receipt_dir(root);
     fs::create_dir_all(&dir).map_err(|err| format!("failed to create {}: {err}", dir.display()))?;
 
     let recorded = fs::read_to_string(dir.join("commands.jsonl")).unwrap_or_default();
@@ -5325,7 +5378,7 @@ pub(crate) fn ci_child_receipt(args: &[String]) -> Result<(), String> {
     // Interruption is not product failure, and an incomplete run is not a pass.
     let state = match job_outcome.as_str() {
         "cancelled" => "cancelled",
-        "timed_out" => "timed_out",
+        _ if subject_sha.is_empty() || subject_tree.is_empty() => "instrument_failure",
         _ if any_failed => "failed",
         _ if any_not_run => "not_run",
         _ => "passed",
@@ -5588,7 +5641,7 @@ pub(crate) fn ci_docs_only(args: &[String]) -> Result<(), String> {
             } else {
                 let paths: Vec<String> = observed
                     .stdout
-                    .split(' ')
+                    .split('\0')
                     .filter(|path| !path.is_empty())
                     .map(str::to_string)
                     .collect();
@@ -5719,6 +5772,23 @@ fn routed_rust_workflow_contract_violations(
         ("typed verdict delegation", "ci-routed-rust-result"),
         ("verdict planned-route input", "--planned-route"),
         ("verdict observed-subject input", "--observed-subject"),
+        (
+            "verdict self-hosted assertion input",
+            "--self-hosted-selection-attempted",
+        ),
+        (
+            "verdict private-secret assertion input",
+            "--private-runner-secret-requested",
+        ),
+        (
+            "verdict organization-query assertion input",
+            "--org-runner-query-attempted",
+        ),
+        ("child execution receipt", "ci-child-receipt"),
+        (
+            "docs child receipt consumption",
+            "needs.docs-gate.outputs.child_receipt_state",
+        ),
         // Job outputs schedule work; the plan packet proves it.
         ("durable plan packet", "ci-routed-rust-plan"),
         ("plan packet artifact", "routed-rust-plan.json"),

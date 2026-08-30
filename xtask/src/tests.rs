@@ -9102,63 +9102,12 @@ jobs:
 }
 
 #[test]
-fn routed_rust_workflow_contract_accepts_github_hosted_shape() {
-    let workflow = r#"
-jobs:
-  route:
-    name: Route Ripr Rust Small
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Plan the source route
-        run: |
-          route=github_hosted_rust
-          echo "self_hosted_selection_attempted=false"
-          echo "private_runner_secret_requested=false"
-          echo "org_runner_query_attempted=false"
-          echo "plan_version=1"
-          echo "subject_sha=$SUBJECT_SHA"
-          echo "pr_head_sha=$PR_HEAD_SHA"
-  detect-docs-only:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - run: echo detect
-  rust-github:
-    name: Ripr Rust Small on GitHub Hosted
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.route.outputs.subject_sha }}
-          persist-credentials: false
-    if: always() && needs.route.result == 'success' &&
-      needs.route.outputs.route == 'github_hosted_rust' &&
-      needs.detect-docs-only.result == 'success' &&
-      needs.detect-docs-only.outputs.docs_only != 'true'
-    outputs:
-      observed_subject_sha: ${{ steps.subject.outputs.observed_subject_sha }}
-      observed_subject_tree: ${{ steps.subject.outputs.observed_subject_tree }}
-    steps:
-      - run: cargo run --locked -p xtask -- ci-routed-rust-plan --scheduled-route github_hosted_rust
-      - uses: actions/upload-artifact@v7
-        with:
-          path: target/ripr/reports/routed-rust-plan.json
-      - run: cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
-  docs-gate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - run: cargo xtask precommit
-  result:
-    name: Ripr Rust Small Result
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - run: |
-          cargo run --locked -p xtask -- ci-routed-rust-result             --planned-route "$planned"             --child-conclusion "$CHILD_CONCLUSION"             --receipt-state "$RECEIPT_STATE"             --planned-subject "$PLANNED_SUBJECT"             --observed-subject "$OBSERVED_SUBJECT"
-"#;
+fn routed_rust_workflow_contract_accepts_github_hosted_shape() -> Result<(), String> {
+    // Use the actual actionlint-checked workflow as the positive oracle. The
+    // former partial string referenced undefined jobs and steps and omitted
+    // receipt and route-assertion inputs, so acceptance did not prove the live
+    // contract was complete.
+    let workflow = routed_rust_workflow_text()?;
     let settings = r#"
 repository:
   name: ripr-swarm
@@ -9176,11 +9125,45 @@ workflow = ".github/workflows/routed-rust.yml"
 jobs = ["Ripr Rust Small Result"]
 "#;
 
-    let violations = routed_rust_workflow_contract_violations(workflow, Some(settings), Some(lane));
-    assert!(
-        violations.is_empty(),
-        "unexpected violations: {violations:?}"
-    );
+    let violations =
+        routed_rust_workflow_contract_violations(&workflow, Some(settings), Some(lane));
+    if !violations.is_empty() {
+        return Err(format!("unexpected violations: {violations:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_workflow_contract_rejects_missing_receipt_or_route_assertion() -> Result<(), String>
+{
+    let workflow = routed_rust_workflow_text()?;
+    for (label, snippet) in [
+        (
+            "verdict self-hosted assertion input",
+            "--self-hosted-selection-attempted",
+        ),
+        (
+            "verdict private-secret assertion input",
+            "--private-runner-secret-requested",
+        ),
+        (
+            "verdict organization-query assertion input",
+            "--org-runner-query-attempted",
+        ),
+        (
+            "docs child receipt consumption",
+            "needs.docs-gate.outputs.child_receipt_state",
+        ),
+    ] {
+        let mutated = workflow.replacen(snippet, "", 1);
+        let violations = routed_rust_workflow_contract_violations(&mutated, None, None);
+        if !violations.iter().any(|violation| violation.contains(label)) {
+            return Err(format!(
+                "contract did not reject removal of {label}: {violations:?}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[test]
@@ -46329,15 +46312,25 @@ fn routed_rust_docs_gate_runs_full_precommit_table() -> Result<(), String> {
 fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
     use crate::{
         AggregateVerdict as V, ChildConclusion as C, PlannedRoute as P, ReceiptState as R,
-        routed_rust_aggregate_verdict as verdict,
+    };
+    let verdict = |planned, child, receipt, subject_observed, subject_agrees| {
+        crate::routed_rust_aggregate_verdict(
+            planned,
+            child,
+            receipt,
+            subject_observed,
+            subject_agrees,
+            true,
+        )
     };
 
-    let cases: &[(&str, P, C, R, bool, V)] = &[
+    let cases: &[(&str, P, C, R, bool, bool, V)] = &[
         (
             "rust proof succeeded for this subject",
             P::GithubHostedRust,
             C::Success,
             R::Passed,
+            true,
             true,
             V::Passed,
         ),
@@ -46347,6 +46340,7 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             C::Skipped,
             R::NotRun,
             true,
+            true,
             V::NotProven,
         ),
         (
@@ -46355,6 +46349,7 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             C::Success,
             R::Missing,
             true,
+            true,
             V::NotProven,
         ),
         (
@@ -46362,8 +46357,27 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             P::GithubHostedRust,
             C::Success,
             R::Passed,
+            true,
             false,
             V::StaleOrWrongSubject,
+        ),
+        (
+            "rust binding failure after observing the wrong subject",
+            P::GithubHostedRust,
+            C::Failure,
+            R::NotRun,
+            true,
+            false,
+            V::StaleOrWrongSubject,
+        ),
+        (
+            "rust checkout failure before observing a subject proves nothing",
+            P::GithubHostedRust,
+            C::Failure,
+            R::NotRun,
+            false,
+            false,
+            V::NotProven,
         ),
         (
             "cancelled is neither pass nor product failure",
@@ -46371,21 +46385,15 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             C::Cancelled,
             R::NotRun,
             true,
-            V::Cancelled,
-        ),
-        (
-            "timeout is distinguishable from failure",
-            P::GithubHostedRust,
-            C::TimedOut,
-            R::NotRun,
             true,
-            V::TimedOut,
+            V::Cancelled,
         ),
         (
             "rust proof failed",
             P::GithubHostedRust,
             C::Failure,
             R::Failed,
+            true,
             true,
             V::Failed,
         ),
@@ -46395,6 +46403,7 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             C::Success,
             R::InstrumentFailure,
             true,
+            true,
             V::NotProven,
         ),
         (
@@ -46402,6 +46411,7 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             P::GithubHostedRust,
             C::Success,
             R::Failed,
+            true,
             true,
             V::ContradictoryEvidence,
         ),
@@ -46411,6 +46421,7 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             C::Failure,
             R::Passed,
             true,
+            true,
             V::ContradictoryEvidence,
         ),
         (
@@ -46419,13 +46430,42 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             C::Success,
             R::Passed,
             true,
+            true,
             V::Passed,
+        ),
+        (
+            "docs proof against the wrong subject",
+            P::DocsOnly,
+            C::Success,
+            R::Passed,
+            true,
+            false,
+            V::StaleOrWrongSubject,
+        ),
+        (
+            "docs binding failure after observing the wrong subject",
+            P::DocsOnly,
+            C::Failure,
+            R::NotRun,
+            true,
+            false,
+            V::StaleOrWrongSubject,
+        ),
+        (
+            "docs checkout failure before observing a subject proves nothing",
+            P::DocsOnly,
+            C::Failure,
+            R::NotRun,
+            false,
+            false,
+            V::NotProven,
         ),
         (
             "docs gate failed",
             P::DocsOnly,
             C::Failure,
             R::Failed,
+            true,
             true,
             V::Failed,
         ),
@@ -46434,6 +46474,7 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             P::DocsOnly,
             C::Skipped,
             R::Missing,
+            false,
             true,
             V::NotProven,
         ),
@@ -46442,6 +46483,7 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             P::PlanFailed,
             C::Skipped,
             R::Missing,
+            false,
             true,
             V::NotProven,
         ),
@@ -46450,18 +46492,412 @@ fn routed_rust_aggregate_transition_matrix() -> Result<(), String> {
             P::UnsupportedSubject,
             C::Skipped,
             R::Missing,
+            false,
             true,
             V::NotProven,
         ),
     ];
 
-    for (property, planned, child, receipt, subject_agrees, expected) in cases {
-        let actual = verdict(*planned, *child, *receipt, *subject_agrees);
+    for (property, planned, child, receipt, subject_observed, subject_agrees, expected) in cases {
+        let actual = verdict(
+            *planned,
+            *child,
+            *receipt,
+            *subject_observed,
+            *subject_agrees,
+        );
         if actual != *expected {
             return Err(format!(
                 "aggregate mis-decided {property}: got {actual:?}, expected {expected:?}"
             ));
         }
+    }
+    let forbidden_route = crate::routed_rust_aggregate_verdict(
+        P::GithubHostedRust,
+        C::Success,
+        R::Passed,
+        true,
+        true,
+        false,
+    );
+    if forbidden_route != V::NotProven {
+        return Err(format!(
+            "a forbidden route attempt must invalidate an otherwise passing child, got {forbidden_route:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_docs_lane_retains_subject_bound_child_evidence() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    let docs_gate = workflow
+        .split("\n  docs-gate:")
+        .nth(1)
+        .and_then(|tail| tail.split("\n  result:").next())
+        .ok_or("routed-rust.yml must contain docs-gate before result")?;
+    for required in [
+        "observed_subject_sha: ${{ steps.subject.outputs.observed_subject_sha }}",
+        "child_receipt_state: ${{ steps.child_receipt.outputs.child_receipt_state }}",
+        "ci-child-receipt",
+    ] {
+        if !docs_gate.contains(required) {
+            return Err(format!(
+                "docs-gate must retain subject-bound evidence containing `{required}`"
+            ));
+        }
+    }
+
+    let result = workflow
+        .split("\n  result:")
+        .nth(1)
+        .ok_or("routed-rust.yml must contain result")?;
+    for required in [
+        "needs.docs-gate.outputs.child_receipt_state",
+        "needs.docs-gate.outputs.observed_subject_sha",
+    ] {
+        if !result.contains(required) {
+            return Err(format!(
+                "result must consume docs-gate evidence containing `{required}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_subject_binding_publishes_identity_before_rejection() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    for (job, tail) in [("rust-github", "docs-gate"), ("docs-gate", "result")] {
+        let block = workflow
+            .split(&format!("\n  {job}:"))
+            .nth(1)
+            .and_then(|value| value.split(&format!("\n  {tail}:")).next())
+            .ok_or_else(|| format!("could not isolate {job}"))?;
+        let output = block
+            .find("observed_subject_sha=$observed_sha")
+            .ok_or_else(|| format!("{job} must publish the observed subject"))?;
+        let rejection = block
+            .find("if [ \"$observed_sha\" != \"$PLANNED_SUBJECT_SHA\" ]")
+            .ok_or_else(|| format!("{job} must reject a wrong observed subject"))?;
+        if output > rejection {
+            return Err(format!(
+                "{job} must publish observed identity before rejecting a mismatch"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_child_receipt_preserves_state_commands_and_subject() -> Result<(), String> {
+    let root = temp_dir("routed-rust-child-receipt");
+    let dir = crate::child_receipt_dir(&root);
+    fs::create_dir_all(&dir).map_err(|err| format!("create receipt fixture: {err}"))?;
+
+    let cases = [
+        (
+            "passed",
+            "success",
+            concat!(
+                "{\"command_id\":\"one\",\"state\":\"passed\",\"exit_code\":0}\n",
+                "{\"command_id\":\"two\",\"state\":\"passed\",\"exit_code\":0}\n"
+            ),
+            "subject-a",
+            "tree-a",
+            ["passed", "passed"],
+        ),
+        (
+            "failed",
+            "failure",
+            "{\"command_id\":\"one\",\"state\":\"failed\",\"exit_code\":1}\n",
+            "subject-a",
+            "tree-a",
+            ["failed", "not_run"],
+        ),
+        (
+            "not_run",
+            "failure",
+            "",
+            "subject-a",
+            "tree-a",
+            ["not_run", "not_run"],
+        ),
+        (
+            "cancelled",
+            "cancelled",
+            "",
+            "subject-a",
+            "tree-a",
+            ["not_run", "not_run"],
+        ),
+        (
+            "instrument_failure",
+            "success",
+            concat!(
+                "{\"command_id\":\"one\",\"state\":\"passed\",\"exit_code\":0}\n",
+                "{\"command_id\":\"two\",\"state\":\"passed\",\"exit_code\":0}\n"
+            ),
+            "",
+            "tree-a",
+            ["passed", "passed"],
+        ),
+        (
+            "instrument_failure",
+            "success",
+            concat!(
+                "{\"command_id\":\"one\",\"state\":\"passed\",\"exit_code\":0}\n",
+                "{\"command_id\":\"two\",\"state\":\"passed\",\"exit_code\":0}\n"
+            ),
+            "subject-a",
+            "",
+            ["passed", "passed"],
+        ),
+        ("cancelled", "cancelled", "", "", "", ["not_run", "not_run"]),
+    ];
+
+    for (expected_state, outcome, recorded, subject, subject_tree, expected_commands) in cases {
+        fs::write(dir.join("commands.jsonl"), recorded)
+            .map_err(|err| format!("write command fixture: {err}"))?;
+        let args = vec![
+            "--plan".to_string(),
+            "one,two".to_string(),
+            "--job-outcome".to_string(),
+            outcome.to_string(),
+            "--subject-sha".to_string(),
+            subject.to_string(),
+            "--subject-tree".to_string(),
+            subject_tree.to_string(),
+        ];
+        crate::ci_child_receipt_at(&root, &args)?;
+        let receipt: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(dir.join("child-receipt.json"))
+                .map_err(|err| format!("read child receipt: {err}"))?,
+        )
+        .map_err(|err| format!("parse child receipt: {err}"))?;
+        let command_states: Vec<&str> = receipt["commands"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|command| command["state"].as_str())
+            .collect();
+        if receipt["state"] != expected_state
+            || receipt["subject_sha"] != subject
+            || receipt["subject_tree"] != subject_tree
+            || receipt["planned_command_count"] != 2
+            || command_states != expected_commands
+        {
+            return Err(format!(
+                "child receipt did not preserve the {expected_state} case: {receipt}"
+            ));
+        }
+    }
+
+    fs::remove_dir_all(&root).map_err(|err| format!("remove receipt fixture: {err}"))?;
+    Ok(())
+}
+
+#[test]
+fn routed_rust_result_enforces_all_route_assertions() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    let result = workflow
+        .split("\n  result:")
+        .nth(1)
+        .ok_or("routed-rust.yml must contain result")?;
+    for assertion in [
+        "self-hosted-selection-attempted",
+        "private-runner-secret-requested",
+        "org-runner-query-attempted",
+    ] {
+        if !result.contains(assertion) {
+            return Err(format!(
+                "protected result must consume route assertion `--{assertion}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_result_rejects_each_forbidden_route_attempt() -> Result<(), String> {
+    let assertions = [
+        "self-hosted-selection-attempted",
+        "private-runner-secret-requested",
+        "org-runner-query-attempted",
+    ];
+    for forbidden in assertions {
+        let mut args: Vec<String> = [
+            "--planned-route",
+            "github_hosted_rust",
+            "--child-conclusion",
+            "success",
+            "--receipt-state",
+            "passed",
+            "--planned-subject",
+            "subject",
+            "--observed-subject",
+            "subject",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+        for assertion in assertions {
+            args.push(format!("--{assertion}"));
+            args.push(
+                if assertion == forbidden {
+                    "true"
+                } else {
+                    "false"
+                }
+                .to_string(),
+            );
+        }
+        if crate::ci_routed_rust_result(&args).is_ok() {
+            return Err(format!(
+                "protected result accepted forbidden route assertion `{forbidden}=true`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_caches_are_partitioned_by_trust_and_save_only_protected_pushes() -> Result<(), String>
+{
+    let workflow = routed_rust_workflow_text()?;
+    let protected_save =
+        "save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}";
+    let lines: Vec<&str> = workflow.lines().collect();
+    let mut cache_count = 0;
+    for (index, line) in lines.iter().enumerate() {
+        if !line.contains("uses: Swatinem/rust-cache@") {
+            continue;
+        }
+        cache_count += 1;
+        let end = (index + 6).min(lines.len());
+        let block = lines[index..end].join("\n");
+        if !block.contains("${{ needs.route.outputs.subject_trust_class }}")
+            || !block.contains(protected_save)
+        {
+            return Err(format!(
+                "routed cache at line {} must use a trust-class key and protected-push-only save policy",
+                index + 1
+            ));
+        }
+    }
+    if cache_count == 0 {
+        return Err("routed-rust.yml must declare at least one Rust cache".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_restores_cache_before_first_cargo_call() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    let rust_job = workflow
+        .split("\n  rust-github:")
+        .nth(1)
+        .and_then(|tail| tail.split("\n  docs-gate:").next())
+        .ok_or("routed-rust.yml must contain rust-github before docs-gate")?;
+    let cache = rust_job
+        .find("uses: Swatinem/rust-cache@")
+        .ok_or("rust-github must restore a Rust cache")?;
+    let cargo = rust_job
+        .find("cargo run --locked -p xtask -- ci-routed-rust-plan")
+        .ok_or("rust-github must emit its plan")?;
+    if cache > cargo {
+        return Err("rust-github must restore its cache before the first Cargo call".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_third_party_actions_are_immutable() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    validate_routed_rust_action_pins(&workflow)
+}
+
+#[test]
+fn routed_rust_action_pin_oracle_rejects_a_mutable_ref() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    let mutated = workflow.replacen(
+        "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+        "actions/checkout@v6",
+        1,
+    );
+    if validate_routed_rust_action_pins(&mutated).is_ok() {
+        return Err("the action-pin oracle accepted a mutable checkout ref".to_string());
+    }
+    Ok(())
+}
+
+fn validate_routed_rust_action_pins(workflow: &str) -> Result<(), String> {
+    let mut inspected = Vec::new();
+    for line in workflow.lines().map(str::trim) {
+        let action = line
+            .strip_prefix("- uses: ")
+            .or_else(|| line.strip_prefix("uses: "));
+        let Some(action) = action else {
+            continue;
+        };
+        if action.starts_with("./") {
+            continue;
+        }
+        inspected.push(action.to_string());
+        let (_, revision) = action
+            .split_once('@')
+            .ok_or_else(|| format!("third-party action `{action}` has no revision"))?;
+        let revision = revision.split_whitespace().next().unwrap_or_default();
+        if revision.len() != 40 || !revision.chars().all(|ch| ch.is_ascii_hexdigit()) {
+            return Err(format!(
+                "third-party action `{action}` must use a reviewed immutable 40-hex commit"
+            ));
+        }
+    }
+    if inspected.is_empty() {
+        return Err("the immutable-action oracle inspected zero third-party actions".to_string());
+    }
+    for required in [
+        "actions/checkout@",
+        "actions/upload-artifact@",
+        "dtolnay/rust-toolchain@",
+        "Swatinem/rust-cache@",
+        "taiki-e/install-action@",
+    ] {
+        if !inspected.iter().any(|action| action.starts_with(required)) {
+            return Err(format!(
+                "the routed workflow must retain a reviewed pin for `{required}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_scheduler_preserves_nul_framing() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    if workflow.contains("tr '\\0' '\\n'") || !workflow.contains("read -r -d ''") {
+        return Err(
+            "the docs scheduler must consume `git diff --name-only -z` records without line conversion"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_state_model_does_not_claim_unobservable_timeouts() -> Result<(), String> {
+    let source = include_str!("main.rs");
+    let routed_state_model = source
+        .split("pub(crate) enum ChildConclusion")
+        .nth(1)
+        .and_then(|tail| tail.split("fn routed_rust_arg").next())
+        .ok_or("could not isolate the routed Rust state model")?;
+    if routed_state_model.contains("TimedOut") || routed_state_model.contains("timed_out") {
+        return Err(
+            "the routed Rust state model claims a timeout state that GitHub job.status cannot emit"
+                .to_string(),
+        );
     }
     Ok(())
 }
@@ -46476,7 +46912,6 @@ fn only_passed_is_green() -> Result<(), String> {
         V::NotProven,
         V::StaleOrWrongSubject,
         V::Cancelled,
-        V::TimedOut,
         V::ContradictoryEvidence,
     ];
     if !V::Passed.is_green() {
@@ -46495,9 +46930,9 @@ fn only_passed_is_green() -> Result<(), String> {
 /// incident exposed, kept as a permanent source-CI property.
 #[test]
 fn skipping_is_never_read_as_irrelevance() -> Result<(), String> {
-    use crate::{
-        ChildConclusion as C, PlannedRoute as P, ReceiptState as R,
-        routed_rust_aggregate_verdict as verdict,
+    use crate::{ChildConclusion as C, PlannedRoute as P, ReceiptState as R};
+    let verdict = |planned, child, receipt, subject_agrees| {
+        crate::routed_rust_aggregate_verdict(planned, child, receipt, true, subject_agrees, true)
     };
     for receipt in [R::Missing, R::NotRun] {
         let required = verdict(P::GithubHostedRust, C::Skipped, receipt, true);
@@ -46725,14 +47160,32 @@ fn routed_rust_command_disposition_is_complete() -> Result<(), String> {
         fs::read_to_string(repo_root()?.join("docs/ci/routed-rust-command-disposition.md"))
             .map_err(|err| format!("read routed-rust command disposition: {err}"))?;
 
-    // Commands the table records as still required must appear in the workflow.
+    // Exact pre-#1446 Cargo/xtask command inventory. Every command family must
+    // have a disposition and remain in the current workflow; this is the
+    // mechanical basis for the zero-proof-command-removal claim.
     for retained in [
         "cargo fmt",
+        "cargo check",
         "cargo clippy",
         "cargo nextest",
         "cargo xtask precommit",
+        "cargo xtask check-evidence-promotion-honesty",
+        "cargo xtask check-agent-skills",
+        "cargo xtask check-dependencies",
+        "cargo xtask check-process-policy",
+        "cargo xtask check-network-policy",
         "cargo xtask goldens check",
         "cargo xtask fixtures",
+        "cargo xtask test-efficiency-report",
+        "cargo xtask badge-artifacts",
+        "cargo xtask pr-summary",
+        "cargo xtask receipts",
+        "cargo xtask reports index",
+        "cargo xtask ripr-pr",
+        "cargo xtask ripr-review-comments",
+        "cargo xtask impacted-evidence",
+        "cargo xtask ripr-pr-summary",
+        "cargo xtask ripr-annotations",
         "cargo xtask proof route",
     ] {
         if !disposition.contains(retained) {
@@ -46748,8 +47201,13 @@ fn routed_rust_command_disposition_is_complete() -> Result<(), String> {
     // Commands the table records as removed must be absent, so a silent
     // reintroduction cannot hide behind a stale table.
     for (removed, reason) in [
+        ("cargo clean", "not_applicable_ephemeral_host"),
         ("sccache", "not_applicable_ephemeral_host"),
         ("ci-disk-guard", "not_applicable_ephemeral_host"),
+        (
+            "gh api orgs/.../actions/runners",
+            "removed_wrong_architecture",
+        ),
         ("Select runner", "removed_wrong_architecture"),
         ("Prepare toolchain temp", "not_applicable_ephemeral_host"),
         ("Clean scratch", "not_applicable_ephemeral_host"),

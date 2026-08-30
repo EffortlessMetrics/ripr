@@ -76,18 +76,17 @@ jobs:
         run: |
           set -euo pipefail
           route=github_hosted_rust
-          trust_class=internal
+          trust_class=manual_subject
           case "$EVENT_NAME" in
             pull_request)
               if [ "$HEAD_REPO" = "$REPOSITORY" ]; then
-                route_reason=maintainer_pull_request
+                route_reason=maintainer_pull_request; trust_class=maintainer_candidate
               else
-                route_reason=fork_pull_request
-                trust_class=untrusted_fork
+                route_reason=fork_pull_request; trust_class=untrusted_fork
               fi
               ;;
-            push) route_reason=protected_branch_push ;;
-            merge_group) route_reason=merge_group_subject ;;
+            push) route_reason=protected_branch_push; trust_class=protected_branch ;;
+            merge_group) route_reason=merge_group_subject; trust_class=merge_group ;;
             *) route_reason=supported_subject ;;
           esac
           {
@@ -126,7 +125,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.check.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -149,14 +148,22 @@ jobs:
           set -uo pipefail
           docs_only=false
           if [ -n "${BASE_SHA:-}" ]; then
-            changed="$(git diff --name-only -z "$BASE_SHA...HEAD" | tr '\0' '\n')"
-            if [ -n "$changed" ]; then
-              suspicious="$(printf '%s\n' "$changed" | grep -Ev '^docs/[^[:cntrl:]]*[.]md$' || true)"
-              reserved="$(printf '%s\n' "$changed" | grep -E '^(CHANGELOG[.]md|docs/OUTPUT_SCHEMA[.]md)$' || true)"
-              if [ -z "$suspicious" ] && [ -z "$reserved" ]; then
+            changed_file="$RUNNER_TEMP/ripr-changed-paths.z"
+            if git diff --name-only -z "$BASE_SHA...HEAD" > "$changed_file"; then
+              changed_count=0
+              rejected=false
+              while IFS= read -r -d '' path; do
+                changed_count=$((changed_count + 1))
+                if [[ ! "$path" =~ ^docs/[^[:cntrl:]]*[.]md$ ]] || \
+                   [[ "$path" =~ ^(CHANGELOG[.]md|docs/OUTPUT_SCHEMA[.]md)$ ]]; then
+                  rejected=true
+                fi
+              done < "$changed_file"
+              if [ "$changed_count" -gt 0 ] && [ "$rejected" = false ]; then
                 docs_only=true
               fi
             fi
+            rm -f "$changed_file"
           fi
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
           {
@@ -190,7 +197,7 @@ jobs:
       #
       # `ref` pins the tested subject explicitly rather than relying on the
       # default, so the object under proof is a stated input.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.route.outputs.subject_sha }}
           fetch-depth: 0
@@ -206,17 +213,21 @@ jobs:
           set -euo pipefail
           observed_sha="$(git rev-parse HEAD)"
           observed_tree="$(git rev-parse 'HEAD^{tree}')"
-          if [ "$observed_sha" != "$PLANNED_SUBJECT_SHA" ]; then
-            echo "planned subject $PLANNED_SUBJECT_SHA but checked out $observed_sha" >&2
-            exit 1
-          fi
           {
             echo "observed_subject_sha=$observed_sha"
             echo "observed_subject_tree=$observed_tree"
           } >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@v1
+          if [ "$observed_sha" != "$PLANNED_SUBJECT_SHA" ]; then
+            echo "planned subject $PLANNED_SUBJECT_SHA but checked out $observed_sha" >&2
+            exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: 1.95.0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: ripr-rust-small-${{ runner.os }}-${{ needs.route.outputs.subject_trust_class }}
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       # Job outputs schedule work; this packet proves it. Written here because the
       # route job has no toolchain, and this job already builds Rust. It
       # rederives the subject and changed-path identity rather than restating the
@@ -232,13 +243,9 @@ jobs:
         run: |
           cargo run --locked -p xtask -- ci-routed-rust-plan             --scheduled-route "$SCHEDULED_ROUTE"             --base "$BASE_SHA"             --pr-head "$PR_HEAD_SHA"             --subject "$SUBJECT_SHA"             --event "$EVENT"             --trust-class "$TRUST_CLASS"
       - name: Install nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2
         with:
           tool: nextest
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ripr-swarm-rust-small-${{ runner.os }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
       # Each planned command records its own terminal state before its exit code
       # propagates, so an interrupted job still leaves evidence for the commands
       # that did complete. Without per-command evidence the aggregate could only
@@ -260,7 +267,7 @@ jobs:
           $R goldens_check -- cargo xtask goldens check
           $R fixtures -- cargo xtask fixtures
       # Runs even when a gate failed or the job was interrupted, so the receipt
-      # distinguishes failed, not_run, cancelled and timed_out rather than
+      # distinguishes failed, not_run and cancelled rather than
       # collapsing everything into one red tick.
       - name: Finalize the child execution receipt
         id: child_receipt
@@ -278,7 +285,7 @@ jobs:
             --subject-tree "$SUBJECT_TREE" >> "$GITHUB_OUTPUT"
       - name: Upload child execution evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ripr-routed-rust-child-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -325,7 +332,7 @@ jobs:
         run: rm -rf target/ripr/cache
       - name: Upload ripr reports
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ripr-rust-small-github
           path: |
@@ -342,17 +349,39 @@ jobs:
     if: github.event_name == 'pull_request' && needs.detect-docs-only.outputs.docs_only == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      observed_subject_sha: ${{ steps.subject.outputs.observed_subject_sha }}
+      observed_subject_tree: ${{ steps.subject.outputs.observed_subject_tree }}
+      child_receipt_state: ${{ steps.child_receipt.outputs.child_receipt_state }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ needs.route.outputs.subject_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@v1
+      - name: Bind the tested subject
+        id: subject
+        env:
+          PLANNED_SUBJECT_SHA: ${{ needs.route.outputs.subject_sha }}
+        run: |
+          set -euo pipefail
+          observed_sha="$(git rev-parse HEAD)"
+          observed_tree="$(git rev-parse 'HEAD^{tree}')"
+          {
+            echo "observed_subject_sha=$observed_sha"
+            echo "observed_subject_tree=$observed_tree"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$observed_sha" != "$PLANNED_SUBJECT_SHA" ]; then
+            echo "planned subject $PLANNED_SUBJECT_SHA but checked out $observed_sha" >&2
+            exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: 1.95.0
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          shared-key: ripr-docs-gate
+          shared-key: ripr-docs-gate-${{ needs.route.outputs.subject_trust_class }}
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       # Job outputs schedule work; this packet proves it. Written here because the
       # route job has no toolchain, and this job already builds Rust. It
       # rederives the subject and changed-path identity rather than restating the
@@ -376,15 +405,35 @@ jobs:
         run: cargo xtask ci-docs-only --base "$BASE_SHA" --expect docs_only
       - name: Doc/spec gates (full precommit table)
         run: |
-          cargo xtask precommit
-          cargo xtask check-agent-skills
+          set -euo pipefail
+          R="cargo run --locked -p xtask -- ci-record-command --id"
+          $R precommit -- cargo xtask precommit
+          $R check_agent_skills -- cargo xtask check-agent-skills
+      - name: Finalize the docs execution receipt
+        id: child_receipt
+        if: always()
+        env:
+          JOB_OUTCOME: ${{ job.status }}
+          SUBJECT_SHA: ${{ steps.subject.outputs.observed_subject_sha }}
+          SUBJECT_TREE: ${{ steps.subject.outputs.observed_subject_tree }}
+        run: |
+          set -uo pipefail
+          cargo run --locked -p xtask -- ci-child-receipt \
+            --plan "precommit,check_agent_skills" \
+            --job-outcome "$JOB_OUTCOME" \
+            --subject-sha "$SUBJECT_SHA" \
+            --subject-tree "$SUBJECT_TREE" >> "$GITHUB_OUTPUT"
       - name: Upload docs-gate reports
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ripr-docs-gate
-          path: target/ripr/reports/
-          if-no-files-found: ignore
+          path: |
+            target/ripr/reports/routed-rust-child/
+            target/ripr/reports/routed-rust-plan.json
+            target/ripr/reports/routed-rust-plan.md
+            target/ripr/reports/
+          if-no-files-found: warn
 
   result:
     name: Ripr Rust Small Result
@@ -393,16 +442,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@v1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: 1.95.0
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          shared-key: ripr-routed-rust-result
+          shared-key: ripr-routed-rust-result-${{ needs.route.outputs.subject_trust_class }}
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       # The verdict lives in Rust, where `routed_rust_aggregate_transition_matrix`
       # exercises every transition. Deciding here in shell would leave the
       # tested table describing something other than what actually runs.
@@ -417,9 +467,12 @@ jobs:
           CHILD_CONCLUSION: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.docs-gate.result || needs.rust-github.result }}
           # The child's own receipt, not a re-derivation of GitHub's tick. When
           # the two disagree the verdict is contradictory_evidence.
-          RECEIPT_STATE: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && (needs.docs-gate.result == 'success' && 'passed' || 'missing') || (needs.rust-github.outputs.child_receipt_state || 'missing') }}
+          RECEIPT_STATE: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && (needs.docs-gate.outputs.child_receipt_state || 'missing') || (needs.rust-github.outputs.child_receipt_state || 'missing') }}
           PLANNED_SUBJECT: ${{ needs.route.outputs.subject_sha }}
-          OBSERVED_SUBJECT: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.route.outputs.subject_sha || needs.rust-github.outputs.observed_subject_sha }}
+          OBSERVED_SUBJECT: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && needs.docs-gate.outputs.observed_subject_sha || needs.rust-github.outputs.observed_subject_sha }}
+          SELF_HOSTED_SELECTION_ATTEMPTED: ${{ needs.route.outputs.self_hosted_selection_attempted }}
+          PRIVATE_RUNNER_SECRET_REQUESTED: ${{ needs.route.outputs.private_runner_secret_requested }}
+          ORG_RUNNER_QUERY_ATTEMPTED: ${{ needs.route.outputs.org_runner_query_attempted }}
           ROUTE_RESULT: ${{ needs.route.result }}
         run: |
           set -uo pipefail
@@ -433,4 +486,7 @@ jobs:
             --child-conclusion "$CHILD_CONCLUSION" \
             --receipt-state "$RECEIPT_STATE" \
             --planned-subject "$PLANNED_SUBJECT" \
-            --observed-subject "$OBSERVED_SUBJECT"
+            --observed-subject "$OBSERVED_SUBJECT" \
+            --self-hosted-selection-attempted "$SELF_HOSTED_SELECTION_ATTEMPTED" \
+            --private-runner-secret-requested "$PRIVATE_RUNNER_SECRET_REQUESTED" \
+            --org-runner-query-attempted "$ORG_RUNNER_QUERY_ATTEMPTED"
