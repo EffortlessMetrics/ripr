@@ -4906,12 +4906,9 @@ fn optional_policy_text(path: &str) -> Result<Option<String>, String> {
 
 /// Routed-rust jobs that must each carry an explicit `timeout-minutes`
 /// deadline (issue #2230).
-const ROUTED_RUST_DEADLINE_JOBS: [&str; 8] = [
+const ROUTED_RUST_DEADLINE_JOBS: [&str; 5] = [
     "route",
     "detect-docs-only",
-    "rust-cx43",
-    "rust-cpx42",
-    "rust-cx53",
     "rust-github",
     "docs-gate",
     "result",
@@ -4945,85 +4942,42 @@ fn routed_rust_workflow_contract_violations(
     lane_whitelist: Option<&str>,
 ) -> Vec<String> {
     let mut violations = Vec::new();
+
+    // ripr#1446: the source repository proves its own pull requests on
+    // GitHub-hosted runners. Self-hosted capacity is `ripr-swarm` authority. This
+    // contract previously *required* org runner discovery and three self-hosted
+    // implementation jobs; it now requires their absence, so the architecture
+    // cannot be reintroduced by editing the workflow alone.
     let required_workflow_snippets = [
+        ("github-hosted source route", "route=github_hosted_rust"),
         (
-            "org runner discovery",
-            "orgs/EffortlessMetrics/actions/runners",
+            "self-hosted selection negative assertion",
+            "self_hosted_selection_attempted=false",
         ),
         (
-            "runner read token fallback",
-            "secrets.EM_RUNNER_READ_TOKEN || github.token",
+            "private runner secret negative assertion",
+            "private_runner_secret_requested=false",
         ),
-        ("slurped idle runner query", "jq -s -e --arg model"),
-        ("trusted fork fallback reason", "fork_or_untrusted_pr"),
-        ("runner API fallback reason", "runner_api_failed"),
-        ("no-idle fallback reason", "no_idle_runner"),
         (
-            "runner capacity fallback reason",
-            "runner_capacity_unavailable",
+            "org runner query negative assertion",
+            "org_runner_query_attempted=false",
         ),
-        ("CX43 idle route reason", "cx43_idle"),
-        ("CPX42 idle route reason", "cpx42_idle"),
-        ("CX53 idle route reason", "cx53_idle"),
-        ("CX43 capacity label", "rust-medium"),
-        ("CPX42 capacity label", "rust-16gb"),
-        ("CX53 capacity label", "rust-large"),
         ("normalized result job", "name: Ripr Rust Small Result"),
         (
-            "CX43 conditional implementation job",
-            "if: needs.route.outputs.router_target == 'cx43'",
+            "hosted rust route predicate",
+            "needs.route.outputs.route == 'github_hosted_rust'",
         ),
         (
-            "CPX42 conditional implementation job",
-            "if: needs.route.outputs.router_target == 'cpx42'",
-        ),
-        (
-            "CX53 conditional implementation job",
-            "if: needs.route.outputs.router_target == 'cx53'",
-        ),
-        (
-            "hosted fallback conditional job",
-            "needs.route.outputs.router_target == 'github'",
-        ),
-        (
-            "hosted fallback docs-detection guard",
+            "docs-detection guard",
             "needs.detect-docs-only.result == 'success'",
         ),
         (
-            "self-hosted scratch tempfail output",
-            "scratch_status: ${{ steps.scratch.outputs.status }}",
-        ),
-        (
-            "CX43 tempfail fallback predicate",
-            "needs.rust-cx43.outputs.scratch_status == 'tempfail'",
-        ),
-        (
-            "CPX42 tempfail fallback predicate",
-            "needs.rust-cpx42.outputs.scratch_status == 'tempfail'",
-        ),
-        (
-            "CX53 tempfail fallback predicate",
-            "needs.rust-cx53.outputs.scratch_status == 'tempfail'",
-        ),
-        (
-            "normalized tempfail fallback result",
-            "disk-guard tempfailed; GitHub-hosted fallback succeeded",
-        ),
-        (
             "normalized docs detection failure",
-            "docs-surface detection result was $DOCS_DETECT_RESULT",
+            "docs-surface detection resolved to",
         ),
         (
-            "CX43 scratch free-space floor",
-            "ci-disk-guard /mnt/ci-scratch 35",
-        ),
-        (
-            "CPX42 scratch free-space floor",
-            "ci-disk-guard /mnt/ci-scratch 35",
-        ),
-        (
-            "CX53 scratch free-space floor",
-            "ci-disk-guard /mnt/ci-scratch 50",
+            "fail-closed aggregate",
+            "[ \"$status\" = \"passed\" ]",
         ),
     ];
 
@@ -5035,78 +4989,72 @@ fn routed_rust_workflow_contract_violations(
         }
     }
 
-    let toolchain_temp_steps = workflow.matches("name: Prepare toolchain temp").count();
-    let toolchain_temp_mkdirs = workflow.matches("run: mkdir -p \"$TMPDIR\"").count();
-    if toolchain_temp_steps < 3 || toolchain_temp_mkdirs < 3 {
-        violations.push(format!(
-            ".github/workflows/routed-rust.yml must include `Prepare toolchain temp` before setup for all three self-hosted implementation jobs; found {toolchain_temp_steps} step(s) and {toolchain_temp_mkdirs} mkdir command(s)"
-        ));
+    // Swarm-owned runner authority must not reappear in the source route. Each
+    // token is rejected on sight rather than being tolerated as an unused
+    // leftover, because a dormant self-hosted branch is one edit away from
+    // selecting private capacity from the public repository.
+    let forbidden_runner_surface = [
+        ("org runner discovery", "actions/runners"),
+        ("private runner secret", "EM_RUNNER_READ_TOKEN"),
+        ("self-hosted runner label", "runs-on: self-hosted"),
+        ("swarm runner label", "em-ci"),
+        ("trusted-pr runner label", "trusted-pr"),
+        ("cx43 self-hosted lane", "cx43"),
+        ("cpx42 self-hosted lane", "cpx42"),
+        ("cx53 self-hosted lane", "cx53"),
+        ("swarm scratch mount", "/mnt/ci-scratch"),
+        ("swarm cache mount", "/mnt/ci-cache"),
+        ("swarm disk guard", "ci-disk-guard"),
+        ("runner API failure route state", "runner_api_failed"),
+        ("no-idle-runner route state", "no_idle_runner"),
+        (
+            "runner capacity route state",
+            "runner_capacity_unavailable",
+        ),
+    ];
+
+    for (label, snippet) in forbidden_runner_surface {
+        if workflow.contains(snippet) {
+            violations.push(format!(
+                ".github/workflows/routed-rust.yml must not reference {label}: `{snippet}`; self-hosted runner authority belongs to ripr-swarm"
+            ));
+        }
     }
 
-    let scratch_cargo_home =
-        "CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}";
-    let scratch_cargo_homes = workflow.matches(scratch_cargo_home).count();
-    let scratch_cargo_home_cleanups = workflow
-        .matches("rm -rf \"$CARGO_HOME\" \"$CARGO_TARGET_DIR\" \"$TMPDIR\"")
-        .count();
-    if scratch_cargo_homes < 3 || scratch_cargo_home_cleanups < 3 {
-        violations.push(format!(
-            ".github/workflows/routed-rust.yml must use scratch CARGO_HOME and clean it for all three self-hosted implementation jobs; found {scratch_cargo_homes} scratch home(s) and {scratch_cargo_home_cleanups} cleanup command(s)"
-        ));
+    // Every job runs on a standard GitHub-hosted label.
+    for line in workflow.lines() {
+        let trimmed = line.trim();
+        if let Some(label) = trimmed.strip_prefix("runs-on:")
+            && !label.trim().starts_with("ubuntu-")
+            && !label.trim().starts_with("windows-")
+            && !label.trim().starts_with("macos-")
+        {
+            violations.push(format!(
+                ".github/workflows/routed-rust.yml must use standard GitHub-hosted runner labels; found `runs-on:{label}`"
+            ));
+        }
     }
 
-    // Proof-routing slice 6 (docs/PROOF_ROUTING.md): every PR-evidence path must
-    // emit the proof route as an advisory dry-run artifact. The command is
-    // appended with `|| true` so a route-computation failure never fails the
-    // lane, and it runs on all three self-hosted jobs and the hosted fallback so
-    // the artifact cannot silently regress. No lane is skipped or gated by it.
+    // Proof-routing slice 6 (docs/PROOF_ROUTING.md): the PR-evidence path emits
+    // the proof route as an advisory dry-run artifact, appended with `|| true` so
+    // a route-computation failure never fails the lane. With one hosted
+    // implementation job there is exactly one such path.
     let proof_route_dry_runs = workflow
         .matches("cargo xtask proof route --base \"$BASE_SHA\" --head \"$HEAD_SHA\" || true")
         .count();
-    if proof_route_dry_runs < 4 {
+    if proof_route_dry_runs < 1 {
         violations.push(format!(
-            ".github/workflows/routed-rust.yml must emit the advisory proof-route dry-run artifact (`cargo xtask proof route --base \"$BASE_SHA\" --head \"$HEAD_SHA\" || true`) on the PR-evidence path of all three self-hosted jobs and the hosted fallback; found {proof_route_dry_runs} occurrence(s)"
+            ".github/workflows/routed-rust.yml must emit the advisory proof-route dry-run artifact (`cargo xtask proof route --base \"$BASE_SHA\" --head \"$HEAD_SHA\" || true`) on the PR-evidence path; found {proof_route_dry_runs} occurrence(s)"
         ));
     }
 
     // Issue #2230 (PR #2228 hang): every routed-rust job carries an explicit
     // job deadline so a hung step fails the job in bounded time instead of
-    // holding the required aggregate check open indefinitely. The check is
-    // anchored to each named job block, not a global occurrence count: a
-    // duplicate or stray `timeout-minutes:` token elsewhere cannot stand in
-    // for a job that lost its deadline.
+    // holding the required aggregate check open indefinitely.
     for job in ROUTED_RUST_DEADLINE_JOBS {
         if !routed_rust_job_block_has_deadline(workflow, job) {
             violations.push(format!(
                 ".github/workflows/routed-rust.yml job `{job}` must set an explicit `timeout-minutes` job deadline so a hung step fails in bounded time"
-            ));
-        }
-    }
-
-    if workflow.contains("repos/${REPOSITORY}/actions/runners")
-        || workflow.contains("repos/$REPOSITORY/actions/runners")
-        || workflow.contains("repos/EffortlessMetrics/ripr-swarm/actions/runners")
-    {
-        violations.push(
-            ".github/workflows/routed-rust.yml must use organization runner discovery, not repo-local runner discovery".to_string(),
-        );
-    }
-
-    if !(workflow.contains("[ \"$EVENT_NAME\" = \"pull_request\" ]")
-        && workflow.contains("[ \"$HEAD_REPO\" != \"$REPOSITORY\" ]"))
-    {
-        violations.push(
-            ".github/workflows/routed-rust.yml must guard pull_request events from forks before selecting self-hosted runners".to_string(),
-        );
-    }
-
-    for forbidden in [
-        "github.event.pull_request.head.repo.full_name == github.repository",
-        "github.event.pull_request.head.repo.full_name != github.repository",
-    ] {
-        if workflow.contains(forbidden) {
-            violations.push(format!(
-                ".github/workflows/routed-rust.yml must keep fork routing in the route job, not on self-hosted implementation job condition `{forbidden}`"
             ));
         }
     }

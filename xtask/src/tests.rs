@@ -9102,103 +9102,48 @@ jobs:
 }
 
 #[test]
-fn routed_rust_workflow_contract_accepts_swarm_shape() {
+fn routed_rust_workflow_contract_accepts_github_hosted_shape() {
     let workflow = r#"
 jobs:
   route:
     name: Route Ripr Rust Small
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Select runner
-        env:
-          GH_TOKEN: ${{ secrets.EM_RUNNER_READ_TOKEN || github.token }}
+      - name: Plan the source route
         run: |
-          if [ "$EVENT_NAME" = "pull_request" ] && [ "$HEAD_REPO" != "$REPOSITORY" ]; then
-            reason=fork_or_untrusted_pr
-          fi
-          idle() { printf '%s' "$runners" | jq -s -e --arg model "$1" --arg cap "$2" '[.[].runners[]?] | length > 0'; }
-          gh api --paginate orgs/EffortlessMetrics/actions/runners
-          reason=runner_api_failed
-          reason=no_idle_runner
-          reason=runner_capacity_unavailable
-          reason=cx43_idle
-          reason=cpx42_idle
-          reason=cx53_idle
-          echo rust-medium rust-16gb rust-large
+          route=github_hosted_rust
+          echo "self_hosted_selection_attempted=false"
+          echo "private_runner_secret_requested=false"
+          echo "org_runner_query_attempted=false"
   detect-docs-only:
-    name: Detect Docs-Only Surface
+    runs-on: ubuntu-latest
     timeout-minutes: 10
-  rust-cx43:
-    if: needs.route.outputs.router_target == 'cx43'
-    timeout-minutes: 60
-    outputs:
-      scratch_status: ${{ steps.scratch.outputs.status }}
-    env:
-      CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - name: Prepare toolchain temp
-        run: mkdir -p "$TMPDIR"
-      - name: Prepare scratch
-        run: ci-disk-guard /mnt/ci-scratch 35
-      - name: Proof route dry-run (advisory)
-        run: cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
-      - name: Clean scratch
-        run: rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
-  rust-cpx42:
-    if: needs.route.outputs.router_target == 'cpx42'
-    timeout-minutes: 60
-    outputs:
-      scratch_status: ${{ steps.scratch.outputs.status }}
-    env:
-      CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
-    steps:
-      - name: Prepare toolchain temp
-        run: mkdir -p "$TMPDIR"
-      - name: Prepare CPX42 scratch
-        run: ci-disk-guard /mnt/ci-scratch 35
-      - name: Proof route dry-run (advisory)
-        run: cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
-      - name: Clean scratch
-        run: rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
-  rust-cx53:
-    if: needs.route.outputs.router_target == 'cx53'
-    timeout-minutes: 60
-    outputs:
-      scratch_status: ${{ steps.scratch.outputs.status }}
-    env:
-      CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
-    steps:
-      - name: Prepare toolchain temp
-        run: mkdir -p "$TMPDIR"
-      - name: Prepare scratch
-        run: ci-disk-guard /mnt/ci-scratch 50
-      - name: Proof route dry-run (advisory)
-        run: cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
-      - name: Clean scratch
-        run: rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
+      - run: echo detect
   rust-github:
-    if: >-
-      needs.detect-docs-only.result == 'success' &&
-      needs.route.outputs.router_target == 'github' ||
-      needs.rust-cx43.outputs.scratch_status == 'tempfail' ||
-      needs.rust-cpx42.outputs.scratch_status == 'tempfail' ||
-      needs.rust-cx53.outputs.scratch_status == 'tempfail'
+    name: Ripr Rust Small on GitHub Hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 90
+    if: always() && needs.route.result == 'success' &&
+      needs.route.outputs.route == 'github_hosted_rust' &&
+      needs.detect-docs-only.result == 'success' &&
+      needs.detect-docs-only.outputs.docs_only != 'true'
     steps:
-      - name: Proof route dry-run (advisory)
-        run: cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
+      - run: cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
   docs-gate:
-    name: Ripr Docs Gate
-    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - run: cargo xtask precommit
   result:
     name: Ripr Rust Small Result
+    runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      DOCS_DETECT_RESULT: ${{ needs.detect-docs-only.result }}
-      CX43_SCRATCH_STATUS: ${{ needs.rust-cx43.outputs.scratch_status }}
     steps:
-      - run: echo "disk-guard tempfailed; GitHub-hosted fallback succeeded"
-      - run: echo "docs-surface detection result was $DOCS_DETECT_RESULT"
+      - run: |
+          message="docs-surface detection resolved to failed"
+          [ "$status" = "passed" ]
 "#;
     let settings = r#"
 repository:
@@ -9217,24 +9162,46 @@ workflow = ".github/workflows/routed-rust.yml"
 jobs = ["Ripr Rust Small Result"]
 "#;
 
-    assert!(
-        routed_rust_workflow_contract_violations(workflow, Some(settings), Some(lane),).is_empty()
-    );
+    let violations = routed_rust_workflow_contract_violations(workflow, Some(settings), Some(lane));
+    assert!(violations.is_empty(), "unexpected violations: {violations:?}");
 }
 
 #[test]
-fn routed_rust_workflow_contract_rejects_unsafe_drift() {
+fn routed_rust_workflow_contract_rejects_self_hosted_reintroduction() {
+    // ripr#1446: self-hosted runner authority belongs to ripr-swarm. The source
+    // contract must reject any attempt to bring it back, including a lane that is
+    // merely declared and never selected.
     let workflow = r#"
 jobs:
   route:
+    name: Route Ripr Rust Small
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - run: |
-          gh api repos/$REPOSITORY/actions/runners
-          reason=no_idle_runner
+      - name: Select runner
+        env:
+          GH_TOKEN: ${{ secrets.EM_RUNNER_READ_TOKEN || github.token }}
+        run: |
+          gh api --paginate orgs/EffortlessMetrics/actions/runners
+          reason=runner_api_failed
+  detect-docs-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo detect
   rust-cx53:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
+    timeout-minutes: 90
+    env:
+      CARGO_HOME: /mnt/ci-scratch/cargo-home
+    steps:
+      - run: ci-disk-guard /mnt/ci-scratch 50
   result:
     name: Ripr Rust Small Result
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo done
 "#;
     let settings = r#"
 repository:
@@ -9256,76 +9223,39 @@ jobs = ["Ripr Rust Small Result", "Ripr Rust Small on CX53"]
 
     let violations = routed_rust_workflow_contract_violations(workflow, Some(settings), Some(lane));
 
-    assert!(violations.iter().any(|violation| {
-        violation.contains("organization runner discovery")
-            || violation.contains("repo-local runner discovery")
-    }));
+    for expected in [
+        "actions/runners",
+        "EM_RUNNER_READ_TOKEN",
+        "runs-on: self-hosted",
+        "cx53",
+        "/mnt/ci-scratch",
+        "ci-disk-guard",
+        "runner_api_failed",
+    ] {
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains(expected)),
+            "contract must reject `{expected}`; violations were {violations:?}"
+        );
+    }
+
+    // The GitHub-hosted route requirements are absent, so those must be reported
+    // as missing rather than passing vacuously.
     assert!(
         violations
             .iter()
-            .any(|violation| { violation.contains("slurped idle runner query") })
+            .any(|violation| violation.contains("route=github_hosted_rust")),
+        "contract must require the github-hosted route: {violations:?}"
     );
+
+    // Branch protection must not require a conditional implementation job.
     assert!(
         violations
             .iter()
-            .any(|violation| { violation.contains("hosted fallback docs-detection guard") })
+            .any(|violation| violation.contains("Ripr Rust Small on CX53")),
+        "contract must reject requiring a conditional implementation job: {violations:?}"
     );
-    assert!(
-        violations
-            .iter()
-            .any(|violation| { violation.contains("self-hosted scratch tempfail output") })
-    );
-    assert!(
-        violations
-            .iter()
-            .any(|violation| { violation.contains("CX43 tempfail fallback predicate") })
-    );
-    assert!(
-        violations
-            .iter()
-            .any(|violation| { violation.contains("CPX42 tempfail fallback predicate") })
-    );
-    assert!(
-        violations
-            .iter()
-            .any(|violation| { violation.contains("CX53 tempfail fallback predicate") })
-    );
-    assert!(
-        violations
-            .iter()
-            .any(|violation| { violation.contains("normalized tempfail fallback result") })
-    );
-    assert!(
-        violations
-            .iter()
-            .any(|violation| { violation.contains("normalized docs detection failure") })
-    );
-    assert!(
-        violations
-            .iter()
-            .any(|violation| { violation.contains("Prepare toolchain temp") })
-    );
-    assert!(
-        violations
-            .iter()
-            .any(|violation| { violation.contains("scratch CARGO_HOME") })
-    );
-    assert!(
-        violations
-            .iter()
-            .any(|violation| { violation.contains("guard pull_request events from forks") })
-    );
-    assert!(violations.iter().any(|violation| {
-        violation.contains("must not require conditional implementation job")
-    }));
-    assert!(
-        violations
-            .iter()
-            .any(|violation| { violation.contains("must list only `Ripr Rust Small Result`") })
-    );
-    assert!(violations.iter().any(|violation| {
-        violation.contains("must set an explicit `timeout-minutes` job deadline")
-    }));
 }
 
 #[test]
@@ -46292,9 +46222,12 @@ fn require_single_bare_precommit_line(lines: &[String], context: &str) -> Result
 fn routed_rust_required_lanes_run_full_precommit_table() -> Result<(), String> {
     let workflow = routed_rust_workflow_text()?;
     let blocks = routed_rust_step_run_blocks(&workflow, "Required Rust gates");
-    if blocks.len() != 4 {
+    // ripr#1446: the source repository proves pull requests on one GitHub-hosted
+    // lane, so there is exactly one required gate step rather than one per
+    // self-hosted runner class.
+    if blocks.len() != 1 {
         return Err(format!(
-            "routed-rust.yml must have exactly 4 `Required Rust gates` steps, found {}",
+            "routed-rust.yml must have exactly 1 `Required Rust gates` step, found {}",
             blocks.len()
         ));
     }
@@ -46348,12 +46281,13 @@ fn routed_rust_docs_gate_runs_full_precommit_table() -> Result<(), String> {
 }
 
 #[test]
-fn routed_rust_precommit_invocation_count_is_five() -> Result<(), String> {
+fn routed_rust_precommit_invocation_count_is_two() -> Result<(), String> {
     let workflow = routed_rust_workflow_text()?;
     let count = workflow.matches("cargo xtask precommit").count();
-    if count != 5 {
+    // One GitHub-hosted required lane plus the docs-gate lane.
+    if count != 2 {
         return Err(format!(
-            "routed-rust.yml must invoke `cargo xtask precommit` exactly 5 times (4 required lanes + docs-gate), found {count}"
+            "routed-rust.yml must invoke `cargo xtask precommit` exactly 2 times (1 required lane + docs-gate), found {count}"
         ));
     }
     Ok(())
