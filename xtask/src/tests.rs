@@ -47088,6 +47088,7 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
         for case in [
             "valid",
             "valid_cache_miss",
+            "valid_cache_false_miss",
             "valid_cache_partial",
             "digest",
             "subject",
@@ -47097,7 +47098,7 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
             "plan_applicability",
             "cache_hit_identity",
             "cache_false_primary",
-            "cache_observation",
+            "cache_empty_with_match",
             "runner_identity",
             "propositions",
             "wrong_command",
@@ -47132,6 +47133,10 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
                 plan["cache_matched_identity"] = serde_json::json!("different-cache-key");
             }
             if case == "valid_cache_miss" {
+                plan["cache_hit"] = serde_json::json!("");
+                plan["cache_matched_identity"] = serde_json::json!("");
+            }
+            if case == "valid_cache_false_miss" {
                 plan["cache_hit"] = serde_json::json!("false");
                 plan["cache_matched_identity"] = serde_json::json!("");
             }
@@ -47142,9 +47147,9 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
             if case == "cache_false_primary" {
                 plan["cache_hit"] = serde_json::json!("false");
             }
-            if case == "cache_observation" {
+            if case == "cache_empty_with_match" {
                 plan["cache_hit"] = serde_json::json!("");
-                plan["cache_matched_identity"] = serde_json::json!("");
+                plan["cache_matched_identity"] = serde_json::json!("unexpected-cache-key");
             }
             if case == "runner_identity" {
                 plan["runner_identity"]["os"] = serde_json::json!("Windows");
@@ -47264,8 +47269,10 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
                 expected_cache_hit,
                 expected_cache_matched_identity,
             )?);
-            let expected_valid =
-                matches!(case, "valid" | "valid_cache_miss" | "valid_cache_partial");
+            let expected_valid = matches!(
+                case,
+                "valid" | "valid_cache_miss" | "valid_cache_false_miss" | "valid_cache_partial"
+            );
             if expected_valid && result.is_err() {
                 return Err(format!("exact packet pair did not pass: {result:?}"));
             }

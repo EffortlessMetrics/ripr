@@ -5428,7 +5428,7 @@ pub(crate) fn ci_routed_rust_result(args: &[String]) -> Result<(), String> {
     let cache_identity = plan["cache_identity"].as_str().unwrap_or_default();
     let cache_matched_identity = plan["cache_matched_identity"].as_str().unwrap_or_default();
     let cache_hit = plan["cache_hit"].as_str();
-    if !matches!(cache_hit, Some("true" | "false")) {
+    if !matches!(cache_hit, Some("" | "true" | "false")) {
         invalidations.push("plan_cache_hit_invalid".to_string());
     }
     if matches!(cache_hit, Some("true")) && cache_matched_identity != cache_identity {
@@ -5439,6 +5439,9 @@ pub(crate) fn ci_routed_rust_result(args: &[String]) -> Result<(), String> {
         && cache_matched_identity == cache_identity
     {
         invalidations.push("plan_cache_partial_hit_identity_mismatch".to_string());
+    }
+    if matches!(cache_hit, Some("")) && !cache_matched_identity.is_empty() {
+        invalidations.push("plan_cache_miss_has_matched_identity".to_string());
     }
     for (argument, observed) in [
         ("expected-cache-hit", cache_hit.unwrap_or_default()),
