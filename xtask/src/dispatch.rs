@@ -89,6 +89,11 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::SourcePromotion(args) => super::reports::source_promotion_verify(&args),
         XtaskCommand::BackSync(args) => super::reports::back_sync(&args),
         XtaskCommand::ReleaseScope(args) => super::reports::release_scope(&args),
+        XtaskCommand::CiDocsOnly(args) => super::ci_docs_only(&args),
+        XtaskCommand::CiRoutedRustPlan(args) => super::ci_routed_rust_plan(&args),
+        XtaskCommand::CiRecordCommand(args) => super::ci_record_command(&args),
+        XtaskCommand::CiChildReceipt(args) => super::ci_child_receipt(&args),
+        XtaskCommand::CiRoutedRustResult(args) => super::ci_routed_rust_result(&args),
         XtaskCommand::ReleaseServerArchive(args) => {
             super::reports::release_server::release_server_archive(&args)
         }

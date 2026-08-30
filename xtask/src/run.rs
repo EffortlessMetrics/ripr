@@ -29,6 +29,12 @@ pub(crate) struct CapturedOutput {
     pub(crate) stderr: String,
 }
 
+pub(crate) struct CapturedBytes {
+    pub(crate) status: ExitStatus,
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) stderr: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ProcessErrorKind {
     Launch,
@@ -366,6 +372,22 @@ pub(crate) fn capture_output(
         status: output.status,
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
+pub(crate) fn capture_output_bytes(
+    program: &str,
+    args: &[&str],
+    error_context: &str,
+) -> Result<CapturedBytes, String> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    Ok(CapturedBytes {
+        status: output.status,
+        stdout: output.stdout,
+        stderr: output.stderr,
     })
 }
 

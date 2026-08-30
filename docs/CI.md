@@ -102,16 +102,17 @@ lane:
 Full CI is opt-in by policy trigger (label/manual dispatch/main push/release/
 schedule/merge queue), not the default PR path.
 
-### 4) Hosted fallback boundary
+### 4) GitHub-hosted source route boundary
 
-- Do **not** remove, narrow, or relabel the current protected GitHub-hosted
-  Rust-small fallback without updating the routed-runner docs, active-goal
-  state, and branch-protection contract in the same PR.
-- The current routed Rust-small workflow may select GitHub-hosted when a PR is
-  untrusted, runner state cannot be read, or no idle image-ready CX53/CX43
-  runner is available. That result remains a valid protected-path success while
-  the CX53/CX43 proof closeout is blocked.
-- Do **not** replace a targeted Rust-small fallback with broader hosted full CI
+- Do **not** remove, narrow, or relabel the protected GitHub-hosted Rust-small
+  route without updating the routed docs and branch-protection contract in the
+  same PR.
+- GitHub-hosted execution is the source repository's intentional, fully
+  supported route, not a fallback (ripr#1446). Do **not** reintroduce
+  organization runner discovery, a private runner-read secret, or self-hosted
+  labels into the source workflow; that authority belongs to `ripr-swarm`, and
+  `check-workflows` rejects those tokens.
+- Do **not** replace the targeted Rust-small route with broader hosted full CI
   unless the PR names the cost, proof obligation, and explicit trigger such as
   `full-ci`, `release-check`, or `ci-budget-ack`.
 
@@ -388,58 +389,89 @@ and should usually be split.
 
 ## Current Workflows
 
-### Swarm Routed Rust
+### Routed Rust
 
-`ripr-swarm` adds `.github/workflows/routed-rust.yml` as the development-trunk
-Rust gate. It exposes one branch-protection-facing check:
+`.github/workflows/routed-rust.yml` is the source repository's Rust gate. It
+exposes one branch-protection-facing check:
 
 ```text
 Ripr Rust Small Result
 ```
 
-The implementation jobs are conditional and should not be required directly:
+The implementation jobs are conditional and must not be required directly:
 
 ```text
 Route Ripr Rust Small
-Ripr Rust Small on CX53
-Ripr Rust Small on CX43
 Ripr Rust Small on GitHub Hosted
+Ripr Docs Gate
 ```
 
 Routing policy:
 
 ```text
-trusted same-repo PR or push:
-  CX43 if idle
-  CPX42 if idle
-  CX53 if idle
-  GitHub-hosted otherwise
+every supported source subject:
+  GitHub-hosted Rust proof
 
-fork or otherwise untrusted PR:
-  GitHub-hosted only
+docs-only pull request:
+  docs gate; the Rust proof is not applicable
 ```
 
-The router uses the repository or organization `EM_RUNNER_READ_TOKEN` secret
-when available. It selects a self-hosted runner only when the runner is idle and
-has both the host label (`CX43`, `CPX42`, or `CX53`) and the `em-ci-rust-1.95`
-runner-image/toolchain readiness label. If runner state cannot be read, or a
-runner is idle but not image-ready, the workflow fails closed to GitHub-hosted
-rather than selecting a self-hosted runner by guesswork.
+The source repository proves its own pull requests on GitHub-hosted runners.
+Self-hosted runner capacity is `ripr-swarm` authority, so the source route
+performs no organization runner discovery, requests no private runner secret,
+and does not treat GitHub-hosted execution as a degraded fallback (ripr#1446).
+The route job emits three negative assertions that the normalized result job
+re-checks and fails closed on:
 
-The route job and protected result summaries include count-only runner
-diagnostics so operators can separate missing host runners, busy runners, and
-missing `em-ci-rust-1.95` readiness labels without exposing runner names,
-registration tokens, secrets, or full label inventories. The protected result
-job also receives those values as environment variables, so downloaded result
-logs are sufficient for issue proof.
+```text
+self_hosted_selection_attempted=false
+private_runner_secret_requested=false
+org_runner_query_attempted=false
+```
 
-The copyable self-hosted proof runbook is in
-[`docs/swarm-development.md`](swarm-development.md#self-hosted-proof-runbook).
-Use it to record CX43 primary proof, CPX42/CX53 fallback proof, or the bounded
-runner availability blocker without exposing runner tokens or secrets.
+The selected child and result job retain three byte-owned JSON packets plus the
+human-readable plan under `target/ripr/reports/`:
+
+```text
+routed-rust-plan.json
+routed-rust-plan.md
+routed-rust-execution.json
+routed-rust-result.json
+```
+
+The plan owns the exact subject/tree, changed-path inventory digest, typed
+applicability, runner/toolchain/Cargo/lock/cache/artifact identities, and ordered
+required-proposition set. The execution packet binds to the SHA-256 of those
+exact plan bytes and records each required proposition as `passed`, `failed`, or
+`not_run`; every observed command row names the exact retained command and the
+SHA-256 of its uploaded log bytes. Its aggregate state may additionally be
+`cancelled` or `instrument_failure`. The result job independently observes the
+current subject, paths, typed applicability, environment identities, cache
+outputs, and artifact name, then validates the downloaded packet pair and log
+bytes together with the GitHub conclusion and all three route assertions before
+writing its own packet. Job outputs schedule work and cross-check observations;
+they are not durable proof by themselves.
+
+This workflow is restore-only for every event. It never writes a cache after
+executing candidate or manually selected code; trusted cache production belongs
+to a separately protected control path.
+
+The aggregate goes green only for an exact, complete `passed` packet pair. A
+missing proposition, unavailable or malformed packet, setup/instrument failure,
+subject mismatch, plan-digest mismatch, or contradiction with GitHub's child
+conclusion stays non-green.
+
+Workflow code does not make a check protected by itself. Repository protection
+must separately require `Ripr Rust Small Result`; until live protection does so,
+this job is normalized evidence but not merge authority.
+
+`ripr-swarm` keeps its own self-hosted routed lane; the copyable self-hosted
+proof runbook lives in
+[`docs/swarm-development.md`](swarm-development.md#self-hosted-proof-runbook)
+and applies to that repository, not to source pull requests.
 
 The routed lane runs the existing Rust/product command surface without release
-package or publish dry-run steps. Each required lane invokes the shared
+package or publish dry-run steps. The required lane invokes the shared
 `cargo xtask precommit` gate table after the cargo build/test steps and keeps
 only the lane-only gates enumerated (`check-evidence-promotion-honesty`,
 `check-dependencies`, `check-process-policy`, `check-network-policy`,
@@ -507,8 +539,8 @@ toolchain, while the MSRV job proves the declared workspace baseline.
 The legacy Rust workflow's `rust` and `msrv` jobs run on `ubuntu-latest`. These
 jobs are release-surface proof on main and manual dispatches; they must not
 depend on self-hosted runner capacity when preparing a source release. The
-routed Rust-small workflow remains the swarm development lane that selects
-self-hosted runners when available and falls back to hosted capacity.
+routed Rust-small workflow is also GitHub-hosted by construction; it neither
+selects self-hosted runners nor treats hosted execution as fallback capacity.
 
 Local shaping commands are intentionally separate from CI because they mutate
 the worktree:
@@ -711,11 +743,17 @@ skip the Codecov test-results upload because repository secrets are unavailable.
 
 ### Self-Hosted Runner Placement
 
-The everyday required Rust gate routes through `routed-rust.yml`
-(`CX43 -> CPX42 -> CX53 -> GitHub-hosted` fallback, shared `/mnt/ci-cache`, disk guards,
-and scratch cleanup) and exposes the single branch-protection check
-`Ripr Rust Small Result`. That lane is the migrated reference and is not changed
-by routine runner-placement edits.
+The everyday required Rust gate routes through `routed-rust.yml`, which runs on
+GitHub-hosted runners only and exposes the single branch-protection check
+`Ripr Rust Small Result`. It requests no self-hosted capacity, no organization
+runner discovery, and no private runner secret (ripr#1446), so runner-placement
+edits do not apply to it.
+
+Self-hosted capacity remains in use by the advisory bot lanes
+(`droid.yml`, `droid-review.yml`, `droid-security-scan.yml`, group
+`em-ci-review`) and by `scratch-gc.yml`, which garbage-collects the scratch
+mounts those runners share. None of those lanes gate the required source PR
+proof.
 
 The remaining (non-required) self-hosted lanes route to the smallest safe EM
 shared self-hosted tier by actual workload, each with explicit
