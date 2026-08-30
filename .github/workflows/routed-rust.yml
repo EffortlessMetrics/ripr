@@ -231,8 +231,8 @@ jobs:
         with:
           toolchain: 1.95.0
       # Restore-only is safe for candidate-controlled subjects: this action has
-      # no cache write path. The matching save action exists only on an exact
-      # protected-main push below.
+      # no cache write path. Cache population is owned outside this candidate
+      # workflow by a separately protected producer.
       - id: rust_cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
@@ -571,34 +571,14 @@ jobs:
             echo "scheduled subject $SCHEDULED_SUBJECT_SHA but result checked out $observed_sha" >&2
             exit 1
           fi
-          range_head="${PR_HEAD_SHA:-$observed_sha}"
           pr_head_tree=""
           if [ -n "$PR_HEAD_SHA" ]; then
             pr_head_tree="$(git rev-parse "$PR_HEAD_SHA^{tree}")"
-          fi
-          changed_file="$RUNNER_TEMP/ripr-result-changed-paths.z"
-          if [ -n "$BASE_SHA" ]; then
-            git diff --name-only -z "$BASE_SHA...$range_head" > "$changed_file"
-          else
-            : > "$changed_file"
-          fi
-          changed_digest="$(sha256sum "$changed_file" | cut -d ' ' -f 1)"
-          changed_count=0
-          while IFS= read -r -d '' _path; do
-            changed_count=$((changed_count + 1))
-          done < "$changed_file"
-          if python3 -c 'import pathlib,sys; pathlib.Path(sys.argv[1]).read_bytes().decode("utf-8")' "$changed_file"; then
-            changed_utf8=true
-          else
-            changed_utf8=false
           fi
           {
             echo "subject_sha=$observed_sha"
             echo "subject_tree=$observed_tree"
             echo "pr_head_tree=$pr_head_tree"
-            echo "changed_paths_sha256=$changed_digest"
-            echo "changed_path_count=$changed_count"
-            echo "changed_paths_utf8=$changed_utf8"
             echo "cargo_lock_sha256=$(sha256sum Cargo.lock | cut -d ' ' -f 1)"
             echo "rustc_identity=$(rustc -Vv | sha256sum | cut -d ' ' -f 1)"
             echo "cargo_identity=$(cargo -Vv | sha256sum | cut -d ' ' -f 1)"
@@ -656,9 +636,9 @@ jobs:
           EXPECTED_ROUTE: ${{ needs.detect-docs-only.outputs.docs_only == 'true' && 'docs_only' || needs.route.outputs.route }}
           EXPECTED_SUBJECT: ${{ steps.result_identity.outputs.subject_sha }}
           EXPECTED_SUBJECT_TREE: ${{ steps.result_identity.outputs.subject_tree }}
-          EXPECTED_CHANGED_PATHS_SHA256: ${{ steps.result_identity.outputs.changed_paths_sha256 }}
-          EXPECTED_CHANGED_PATH_COUNT: ${{ steps.result_identity.outputs.changed_path_count }}
-          EXPECTED_CHANGED_PATHS_UTF8: ${{ steps.result_identity.outputs.changed_paths_utf8 }}
+          EXPECTED_CHANGED_PATHS_SHA256: ${{ steps.result_applicability.outputs.changed_paths_sha256 }}
+          EXPECTED_CHANGED_PATH_COUNT: ${{ steps.result_applicability.outputs.changed_path_count }}
+          EXPECTED_CHANGED_PATHS_UTF8: ${{ steps.result_applicability.outputs.changed_paths_utf8 }}
           EXPECTED_TOOLCHAIN_IDENTITY: ${{ steps.result_identity.outputs.rustc_identity }}
           EXPECTED_CARGO_IDENTITY: ${{ steps.result_identity.outputs.cargo_identity }}
           EXPECTED_CARGO_LOCK_SHA256: ${{ steps.result_identity.outputs.cargo_lock_sha256 }}

@@ -5428,19 +5428,17 @@ pub(crate) fn ci_routed_rust_result(args: &[String]) -> Result<(), String> {
     let cache_identity = plan["cache_identity"].as_str().unwrap_or_default();
     let cache_matched_identity = plan["cache_matched_identity"].as_str().unwrap_or_default();
     let cache_hit = plan["cache_hit"].as_str();
-    if !matches!(cache_hit, Some("" | "true" | "false")) {
+    if !matches!(cache_hit, Some("true" | "false")) {
         invalidations.push("plan_cache_hit_invalid".to_string());
     }
     if matches!(cache_hit, Some("true")) && cache_matched_identity != cache_identity {
         invalidations.push("plan_cache_exact_hit_identity_mismatch".to_string());
     }
     if matches!(cache_hit, Some("false"))
-        && (cache_matched_identity.is_empty() || cache_matched_identity == cache_identity)
+        && !cache_matched_identity.is_empty()
+        && cache_matched_identity == cache_identity
     {
         invalidations.push("plan_cache_partial_hit_identity_mismatch".to_string());
-    }
-    if matches!(cache_hit, Some("")) && !cache_matched_identity.is_empty() {
-        invalidations.push("plan_cache_miss_has_matched_identity".to_string());
     }
     for (argument, observed) in [
         ("expected-cache-hit", cache_hit.unwrap_or_default()),
@@ -6393,11 +6391,33 @@ pub(crate) fn changed_paths_are_docs_only(paths: &[String]) -> bool {
     })
 }
 
+fn routed_rust_changed_path_identity(bytes: &[u8]) -> (String, usize, bool) {
+    let digest = routed_rust_bytes_digest(bytes);
+    let count = bytes
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+        .count();
+    let utf8 = routed_rust_decode_changed_paths(bytes).is_ok();
+    (digest, count, utf8)
+}
+
+fn routed_rust_changed_path_outputs(
+    docs_only: bool,
+    changed_paths_sha256: &str,
+    changed_path_count: usize,
+    changed_paths_utf8: bool,
+) -> String {
+    format!(
+        "docs_only={docs_only}\nchanged_paths_sha256={changed_paths_sha256}\nchanged_path_count={changed_path_count}\nchanged_paths_utf8={changed_paths_utf8}\n"
+    )
+}
+
 /// Decide whether a pull request may take the reduced docs-only route.
 ///
 /// The predicate lives in Rust and is exercised by hostile fixtures, so the
 /// workflow delegates rather than reimplementing the rule in shell where it
-/// cannot be tested. Emits `docs_only=<bool>` to `$GITHUB_OUTPUT` when present.
+/// cannot be tested. Emits the route decision and exact changed-path identity to
+/// `$GITHUB_OUTPUT` when present.
 pub(crate) fn ci_docs_only(args: &[String]) -> Result<(), String> {
     let mut base = None;
     let mut head = None;
@@ -6421,6 +6441,9 @@ pub(crate) fn ci_docs_only(args: &[String]) -> Result<(), String> {
         }
     }
 
+    let (mut changed_paths_sha256, mut changed_path_count, mut changed_paths_utf8) =
+        routed_rust_changed_path_identity(&[]);
+
     // No base means no observation. That is not a docs-only pass.
     let docs_only = match base.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
         None => false,
@@ -6441,11 +6464,13 @@ pub(crate) fn ci_docs_only(args: &[String]) -> Result<(), String> {
                 "git diff --name-only -z",
             )?;
             if !observed.status.success() {
-                // A failed observation must take the full route rather than be
-                // read as "nothing changed".
-                eprintln!("ci-docs-only: changed-path observation failed; routing the full proof");
-                false
+                return Err(format!(
+                    "ci-docs-only: changed-path observation failed: {}",
+                    String::from_utf8_lossy(&observed.stderr).trim()
+                ));
             } else {
+                (changed_paths_sha256, changed_path_count, changed_paths_utf8) =
+                    routed_rust_changed_path_identity(&observed.stdout);
                 match routed_rust_decode_changed_paths(&observed.stdout) {
                     Err(_) => {
                         eprintln!(
@@ -6466,9 +6491,8 @@ pub(crate) fn ci_docs_only(args: &[String]) -> Result<(), String> {
                                     .to_string(),
                             );
                         }
-                        let digest = routed_rust_bytes_digest(&observed.stdout);
                         eprintln!(
-                            "ci-docs-only: changed_paths_sha256={digest} count={}",
+                            "ci-docs-only: changed_paths_sha256={changed_paths_sha256} count={}",
                             paths.len()
                         );
                         changed_paths_are_docs_only(&paths)
@@ -6506,8 +6530,16 @@ pub(crate) fn ci_docs_only(args: &[String]) -> Result<(), String> {
             .create(true)
             .open(&output)
             .map_err(|err| format!("failed to open {output}: {err}"))?;
-        writeln!(file, "docs_only={docs_only}")
-            .map_err(|err| format!("failed to write {output}: {err}"))?;
+        file.write_all(
+            routed_rust_changed_path_outputs(
+                docs_only,
+                &changed_paths_sha256,
+                changed_path_count,
+                changed_paths_utf8,
+            )
+            .as_bytes(),
+        )
+        .map_err(|err| format!("failed to write {output}: {err}"))?;
     }
     println!("docs_only={docs_only}");
     Ok(())

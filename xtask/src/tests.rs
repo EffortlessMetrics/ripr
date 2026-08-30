@@ -47009,7 +47009,10 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
         let execution_path = dir.join("routed-rust-execution.json");
         let required = crate::routed_rust_required_ids("docs_only", "pull_request");
         let base_plan = routed_rust_test_plan("docs_only", &required);
-        let make_args = |child: &str| -> Result<Vec<String>, String> {
+        let make_args = |child: &str,
+                         expected_cache_hit: &str,
+                         expected_cache_matched_identity: &str|
+         -> Result<Vec<String>, String> {
             Ok(vec![
                 "--plan-path".to_string(),
                 plan_path.to_str().ok_or("non-UTF-8 plan path")?.to_string(),
@@ -47048,9 +47051,9 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
                 "--expected-cache-identity".to_string(),
                 "ripr-routed-rust-Linux-cache-action-digest".to_string(),
                 "--expected-cache-hit".to_string(),
-                "true".to_string(),
+                expected_cache_hit.to_string(),
                 "--expected-cache-matched-identity".to_string(),
-                "ripr-routed-rust-Linux-cache-action-digest".to_string(),
+                expected_cache_matched_identity.to_string(),
                 "--expected-runner-os".to_string(),
                 "Linux".to_string(),
                 "--expected-runner-arch".to_string(),
@@ -47084,6 +47087,8 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
 
         for case in [
             "valid",
+            "valid_cache_miss",
+            "valid_cache_partial",
             "digest",
             "subject",
             "stale_pair",
@@ -47091,6 +47096,7 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
             "plan_identity",
             "plan_applicability",
             "cache_hit_identity",
+            "cache_false_primary",
             "cache_observation",
             "runner_identity",
             "propositions",
@@ -47124,6 +47130,17 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
             }
             if case == "cache_hit_identity" {
                 plan["cache_matched_identity"] = serde_json::json!("different-cache-key");
+            }
+            if case == "valid_cache_miss" {
+                plan["cache_hit"] = serde_json::json!("false");
+                plan["cache_matched_identity"] = serde_json::json!("");
+            }
+            if case == "valid_cache_partial" {
+                plan["cache_hit"] = serde_json::json!("false");
+                plan["cache_matched_identity"] = serde_json::json!("different-cache-key");
+            }
+            if case == "cache_false_primary" {
+                plan["cache_hit"] = serde_json::json!("false");
             }
             if case == "cache_observation" {
                 plan["cache_hit"] = serde_json::json!("");
@@ -47239,11 +47256,20 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
                 ),
             )
             .map_err(|err| format!("write execution: {err}"))?;
-            let result = crate::ci_routed_rust_result(&make_args(child)?);
-            if case == "valid" && result.is_err() {
+            let expected_cache_hit = plan["cache_hit"].as_str().unwrap_or_default();
+            let expected_cache_matched_identity =
+                plan["cache_matched_identity"].as_str().unwrap_or_default();
+            let result = crate::ci_routed_rust_result(&make_args(
+                child,
+                expected_cache_hit,
+                expected_cache_matched_identity,
+            )?);
+            let expected_valid =
+                matches!(case, "valid" | "valid_cache_miss" | "valid_cache_partial");
+            if expected_valid && result.is_err() {
                 return Err(format!("exact packet pair did not pass: {result:?}"));
             }
-            if case != "valid" && result.is_ok() {
+            if !expected_valid && result.is_ok() {
                 return Err(format!("result accepted invalid packet case `{case}`"));
             }
             let packet: serde_json::Value = serde_json::from_str(
@@ -47295,7 +47321,11 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
             }
         }
 
-        let mut failed_download_args = make_args("success")?;
+        let mut failed_download_args = make_args(
+            "success",
+            "true",
+            "ripr-routed-rust-Linux-cache-action-digest",
+        )?;
         let outcome = failed_download_args
             .iter()
             .position(|value| value == "--download-outcome")
@@ -47325,7 +47355,13 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
         }
 
         fs::remove_file(&execution_path).map_err(|err| format!("remove execution: {err}"))?;
-        if crate::ci_routed_rust_result(&make_args("success")?).is_ok() {
+        if crate::ci_routed_rust_result(&make_args(
+            "success",
+            "true",
+            "ripr-routed-rust-Linux-cache-action-digest",
+        )?)
+        .is_ok()
+        {
             return Err("result accepted missing execution bytes".to_string());
         }
         let result: serde_json::Value = serde_json::from_str(
@@ -47362,6 +47398,9 @@ fn routed_rust_cache_boundary_oracle_rejects_a_candidate_save() -> Result<(), St
         ),
         1,
     );
+    if mutated == workflow {
+        return Err("cache-save mutation did not alter the workflow fixture".to_string());
+    }
     if validate_routed_rust_cache_boundary(&mutated).is_ok() {
         return Err("cache oracle accepted a save outside protected main".to_string());
     }
@@ -47372,6 +47411,9 @@ fn routed_rust_cache_boundary_oracle_rejects_a_candidate_save() -> Result<(), St
 fn routed_rust_cache_boundary_oracle_rejects_cached_evidence() -> Result<(), String> {
     let workflow = routed_rust_workflow_text()?;
     let mutated = workflow.replacen("            !target/ripr/**\n", "", 1);
+    if mutated == workflow {
+        return Err("cached-evidence mutation did not alter the workflow fixture".to_string());
+    }
     if validate_routed_rust_cache_boundary(&mutated).is_ok() {
         return Err("cache oracle accepted a restore that can contain stale evidence".to_string());
     }
@@ -47390,7 +47432,10 @@ fn validate_routed_rust_cache_boundary(workflow: &str) -> Result<(), String> {
     for (index, line) in lines.iter().enumerate() {
         if line.contains("uses: actions/cache/restore@") {
             restore_count += 1;
-            let end = (index + 12).min(lines.len());
+            let end = lines[index + 1..]
+                .iter()
+                .position(|candidate| candidate.starts_with("      - "))
+                .map_or(lines.len(), |offset| index + 1 + offset);
             let block = lines[index..end].join("\n");
             if !block.contains(
                 "key: ripr-routed-rust-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}",
@@ -47470,6 +47515,9 @@ fn routed_rust_action_pin_oracle_rejects_a_mutable_ref() -> Result<(), String> {
         "actions/checkout@v6",
         1,
     );
+    if mutated == workflow {
+        return Err("mutable-action mutation did not alter the workflow fixture".to_string());
+    }
     if validate_routed_rust_action_pins(&mutated).is_ok() {
         return Err("the action-pin oracle accepted a mutable checkout ref".to_string());
     }
@@ -47542,6 +47590,93 @@ fn routed_rust_changed_path_decoder_rejects_non_utf8_without_lossy_replacement()
         .map_err(|err| format!("valid NUL inventory was rejected: {err}"))?;
     if valid != ["docs/a.md", "docs/line\nname.md"] {
         return Err(format!("NUL records were not preserved exactly: {valid:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_changed_path_outputs_bind_exact_raw_bytes() -> Result<(), String> {
+    let valid = b"docs/guide.md\0docs/reference.md\0";
+    let (valid_digest, valid_count, valid_utf8) = crate::routed_rust_changed_path_identity(valid);
+    if valid_digest != crate::routed_rust_bytes_digest(valid) || valid_count != 2 || !valid_utf8 {
+        return Err("valid NUL-delimited paths lost their exact identity".to_string());
+    }
+    let valid_outputs =
+        crate::routed_rust_changed_path_outputs(true, &valid_digest, valid_count, valid_utf8);
+    for expected in [
+        "docs_only=true\n".to_string(),
+        format!("changed_paths_sha256={valid_digest}\n"),
+        "changed_path_count=2\n".to_string(),
+        "changed_paths_utf8=true\n".to_string(),
+    ] {
+        if !valid_outputs.contains(&expected) {
+            return Err(format!("changed-path outputs omitted `{expected}`"));
+        }
+    }
+
+    let hostile = b"docs/guide-\xff.md\0";
+    let (hostile_digest, hostile_count, hostile_utf8) =
+        crate::routed_rust_changed_path_identity(hostile);
+    if hostile_digest != crate::routed_rust_bytes_digest(hostile)
+        || hostile_count != 1
+        || hostile_utf8
+    {
+        return Err("non-UTF-8 paths did not retain raw-byte identity".to_string());
+    }
+    let hostile_outputs = crate::routed_rust_changed_path_outputs(
+        false,
+        &hostile_digest,
+        hostile_count,
+        hostile_utf8,
+    );
+    if !hostile_outputs.contains("docs_only=false\n")
+        || !hostile_outputs.contains("changed_path_count=1\n")
+        || !hostile_outputs.contains("changed_paths_utf8=false\n")
+    {
+        return Err("non-UTF-8 changed-path outputs were incomplete".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_changed_path_observation_failure_is_not_evidence() -> Result<(), String> {
+    let result = crate::ci_docs_only(&[
+        "--base".to_string(),
+        "not-a-git-object".to_string(),
+        "--head".to_string(),
+        "HEAD".to_string(),
+    ]);
+    let error = match result {
+        Ok(()) => return Err("failed git diff observation emitted current evidence".to_string()),
+        Err(error) => error,
+    };
+    if !error.contains("changed-path observation failed") {
+        return Err(format!("unexpected observation failure: {error}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_workflow_consumes_xtask_changed_path_outputs() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    for output in [
+        "steps.result_applicability.outputs.changed_paths_sha256",
+        "steps.result_applicability.outputs.changed_path_count",
+        "steps.result_applicability.outputs.changed_paths_utf8",
+    ] {
+        if !workflow.contains(output) {
+            return Err(format!("result does not consume authoritative `{output}`"));
+        }
+    }
+    for duplicate in [
+        "steps.result_identity.outputs.changed_paths_sha256",
+        "python3 -c 'import pathlib,sys;",
+    ] {
+        if workflow.contains(duplicate) {
+            return Err(format!(
+                "workflow reintroduced changed-path ownership `{duplicate}`"
+            ));
+        }
     }
     Ok(())
 }
