@@ -11,9 +11,9 @@ SOURCE_PARENT   = ad291d1bc936d00847d9712d2adf9ea56ca19533
 SWARM_PARENT    = 83217e97ec6847db41d757f57279a8b1ca433fe6
 SWARM_REF       = refs/tags/ripr-release-0.11.0-83217e97ec6847db41d757f57279a8b1ca433fe6
 MERGE_BASE      = 36909460db013ed3a3238ee8b2fc3ccda1135c15
-JOIN_TREE       = 4ab6e86179f35858c4048a29d0f5cf4a3dabc33a
-P1_SHA256       = 1697c57a493baa78dd3e43a58d4ddb82538615203533b46e157c17017e54558d
-MANIFEST_SHA256 = 5116aa0757b1787d0cf0a883261c023e8eeb423e705d9a5c3e08bb65159b05eb
+JOIN_TREE       = 3c76c659bc311986c10e74c63373dd3350cd972b
+P1_SHA256       = aada8701c2b308414a1c37e222e2cbdcde883bf8d539e693e6d9da875a72bd84
+MANIFEST_SHA256 = 07b5cbf5ea86320a3d509e5ec41ee1a59e4fd388fd67a539a2f9438ca71878e3
 ```
 
 `P1_SHA256` is the SHA-256 of `source-promotion-preflight.json`, the finalized
@@ -38,7 +38,7 @@ survivors, 56 swarm-authority candidates).
 
 ```bash
 # 1. Materialize the reviewed tree and confirm its identity.
-git cat-file -t 4ab6e86179f35858c4048a29d0f5cf4a3dabc33a   # tree
+git cat-file -t 3c76c659bc311986c10e74c63373dd3350cd972b   # tree
 
 # 2. Regenerate P1 with the frozen W7 producer checked out at SWARM_PARENT.
 cargo xtask source-promotion preflight \
@@ -48,7 +48,7 @@ cargo xtask source-promotion preflight \
   --source-repo <ripr checkout at SOURCE_PARENT> \
   --swarm-repo <ripr-swarm checkout> \
   --version 0.11.0 \
-  --resolved-tree 4ab6e86179f35858c4048a29d0f5cf4a3dabc33a \
+  --resolved-tree 3c76c659bc311986c10e74c63373dd3350cd972b \
   --out <dir>
 
 # 3. Re-run the source-trusted validator from a ripr checkout whose HEAD is
@@ -56,11 +56,11 @@ cargo xtask source-promotion preflight \
 cargo xtask source-promotion validate-resolved-tree \
   --source-parent ad291d1bc936d00847d9712d2adf9ea56ca19533 \
   --swarm-parent 83217e97ec6847db41d757f57279a8b1ca433fe6 \
-  --reviewed-tree 4ab6e86179f35858c4048a29d0f5cf4a3dabc33a \
+  --reviewed-tree 3c76c659bc311986c10e74c63373dd3350cd972b \
   --preflight <dir>/source-promotion-preflight.json \
-  --preflight-sha256 1697c57a493baa78dd3e43a58d4ddb82538615203533b46e157c17017e54558d \
+  --preflight-sha256 aada8701c2b308414a1c37e222e2cbdcde883bf8d539e693e6d9da875a72bd84 \
   --resolution-manifest resolution-manifest.json \
-  --resolution-sha256 5116aa0757b1787d0cf0a883261c023e8eeb423e705d9a5c3e08bb65159b05eb \
+  --resolution-sha256 07b5cbf5ea86320a3d509e5ec41ee1a59e4fd388fd67a539a2f9438ca71878e3 \
   --out <dir>/validation
 ```
 

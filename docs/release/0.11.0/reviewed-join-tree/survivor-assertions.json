@@ -1,0 +1,568 @@
+{
+  "schema": "ripr.source_promotion_tree_survivor_assertions.v1",
+  "source_parent": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
+  "swarm_parent": "83217e97ec6847db41d757f57279a8b1ca433fe6",
+  "reviewed_tree": "3c76c659bc311986c10e74c63373dd3350cd972b",
+  "status": "pass",
+  "counts": {
+    "total": 54,
+    "passed": 54,
+    "failed": 0
+  },
+  "assertions": [
+    {
+      "group": "source_survivor",
+      "claim": "source-only bounded subprocess adapter recognition is wired into the retained W7 probe pipeline",
+      "path": "crates/ripr/src/analysis/probes/diff.rs",
+      "needle": "bounded_subprocess_family(index, &changed.path, added.new_side_line, text)",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "bounded subprocess adapter recognizer survives byte-identical to the source parent",
+      "path": "crates/ripr/src/analysis/probes/subprocess.rs",
+      "join_blob": "32fa6f026aee5f9b62bae389945191d7b8ef23b4",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "32fa6f026aee5f9b62bae389945191d7b8ef23b4",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "bounded subprocess adapter spec survives (renumbered to RIPR-SPEC-0151 for identifier collision)",
+      "path": "docs/specs/RIPR-SPEC-0151-bounded-subprocess-adapter-boundary.md",
+      "join_blob": "24d887dc7f5ad924c438aa4a9b9c928939da3303",
+      "present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_validate_resolved_tree/validation.rs",
+      "join_blob": "923eed5cd994a777f84131d2a9660194541ff8c1",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "923eed5cd994a777f84131d2a9660194541ff8c1",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_validate_resolved_tree/materialization.rs",
+      "join_blob": "8b100d4802402d2d662dd08e13e7cdaf46f847cb",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "8b100d4802402d2d662dd08e13e7cdaf46f847cb",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_control/admission.rs",
+      "join_blob": "4e2dbb56288ff00bfb5efb2d70b4443d2b0285a9",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "4e2dbb56288ff00bfb5efb2d70b4443d2b0285a9",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_control/construction.rs",
+      "join_blob": "c3cb00ff76ef37d51ef8f200e66f2be075e7f486",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "c3cb00ff76ef37d51ef8f200e66f2be075e7f486",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_control/publication.rs",
+      "join_blob": "3b90a184c964770794be4d7a2bc907ed87a6a5ff",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "3b90a184c964770794be4d7a2bc907ed87a6a5ff",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_admission_workflow.rs",
+      "join_blob": "a30c130c0970478832a6dd66c5fa3106335c1123",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "a30c130c0970478832a6dd66c5fa3106335c1123",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned promotion validator/controller survives",
+      "path": "xtask/src/reports/source_promotion_verify.rs",
+      "join_blob": "851834903c28d175c81d445113bfe797266727c0",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "851834903c28d175c81d445113bfe797266727c0",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned hosted admission contract survives",
+      "path": ".github/workflows/source-promotion-admission.yml",
+      "join_blob": "a4af19c9fa634648e4922a0a637257e83a4f7e77",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "a4af19c9fa634648e4922a0a637257e83a4f7e77",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source-owned hosted admission contract survives",
+      "path": ".github/workflows/source-promotion-contract.yml",
+      "join_blob": "1bc3f13f1053262acbcf967a299fe1f69b3b867f",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "1bc3f13f1053262acbcf967a299fe1f69b3b867f",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source structured review-warning behavior survives as the schema-conformant warning producer",
+      "path": "crates/ripr/src/output/review_comments.rs",
+      "needle": "review_warnings_json(&warnings)",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source release/publication workflow authority survives",
+      "path": ".github/workflows/publish-extension.yml",
+      "join_blob": "f67d782c661d9f319151671003f5f445cef2e533",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "f67d782c661d9f319151671003f5f445cef2e533",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source release/publication workflow authority survives",
+      "path": ".github/workflows/release-server-binaries.yml",
+      "join_blob": "2fadb1b79c021f40e1cd6f65ccff1179b8b6dafc",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "2fadb1b79c021f40e1cd6f65ccff1179b8b6dafc",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source audit/runbook history survives",
+      "path": "docs/SOURCE_PROMOTION.md",
+      "join_blob": "6952a923819983c80258a34cf0452e65456c4fec",
+      "present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source audit/runbook history survives",
+      "path": "docs/RELEASE_TRANSACTION.md",
+      "join_blob": "c99e42ebb54f5441635ed47769576d0d2198722f",
+      "present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "source audit/runbook history survives",
+      "path": "docs/swarm-development.md",
+      "join_blob": "1fd30e7da3250ab4e4c11281c2e2bb951c260de5",
+      "present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "staged source crate version stays pre-0.11",
+      "path": "crates/ripr/Cargo.toml",
+      "needle": "version = \"0.10.1\"",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "staged source changelog section stays pre-0.11",
+      "path": "CHANGELOG.md",
+      "needle": "## 0.10.1 - Bounded subprocess adapter analysis",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "source_survivor",
+      "claim": "no 0.11.0 release heading is introduced",
+      "path": "CHANGELOG.md",
+      "needle": "## 0.11.0",
+      "expect_present": false,
+      "observed_present": false,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/analysis/facts/build.rs",
+      "join_blob": "ea1fb2e8261e05b6ae102a97e3faa9fadcb045a2",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "ea1fb2e8261e05b6ae102a97e3faa9fadcb045a2",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/lsp/backend.rs",
+      "join_blob": "fdd76ad59580d2610ac033c1fe229afc00f003d8",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "fdd76ad59580d2610ac033c1fe229afc00f003d8",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/output/human.rs",
+      "join_blob": "0456947801c77b9eaf541ad396ee11aab88a7ed8",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "0456947801c77b9eaf541ad396ee11aab88a7ed8",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/output/json/report.rs",
+      "join_blob": "b10e33b494b6aeb2dd4dcfb00333311673db5534",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "b10e33b494b6aeb2dd4dcfb00333311673db5534",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/agent/artifact.rs",
+      "join_blob": "dd7b220dd1296e35f248f2b98864b3fd3db3f5d0",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "dd7b220dd1296e35f248f2b98864b3fd3db3f5d0",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/cli/commands/check.rs",
+      "join_blob": "ee3da015aec15a34d8b4809d08df4c80bc06cb08",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "ee3da015aec15a34d8b4809d08df4c80bc06cb08",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "crates/ripr/src/cli/commands/doctor.rs",
+      "join_blob": "f03dcccec46dcdc8cf6dc4537f0f30b340787231",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "f03dcccec46dcdc8cf6dc4537f0f30b340787231",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "editors/vscode/src/downloader.ts",
+      "join_blob": "5ea33e7251eddc5d2ea1973c78325a8d944b758f",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "5ea33e7251eddc5d2ea1973c78325a8d944b758f",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "frozen W7 analyzer/CLI/editor surface survives",
+      "path": "editors/vscode/src/extension.ts",
+      "join_blob": "ef7b758122164191c036068a561290758e6248d2",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "ef7b758122164191c036068a561290758e6248d2",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 parser-shape probe pipeline survives",
+      "path": "crates/ripr/src/analysis/probes/diff.rs",
+      "needle": "parser_probe_shapes_for_changed_line(index, &changed.path, added.new_side_line, text)",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 transitive public-API surface recording survives",
+      "path": "policy/public_api_surface.txt",
+      "needle": "pub const ripr::lsp::diagnostic_budget::DIAGNOSTIC_BUDGET_SCHEMA_VERSION",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 product policy ledger survives",
+      "path": "policy/dependency_allowlist.txt",
+      "join_blob": "a74c3f542711a0b8c54a957feab9314cf1a403b9",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "a74c3f542711a0b8c54a957feab9314cf1a403b9",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 product policy ledger survives",
+      "path": "policy/workspace_shape.txt",
+      "join_blob": "35a63bb3b7e4ad78f47b5a798d20f8928c6e97e7",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "35a63bb3b7e4ad78f47b5a798d20f8928c6e97e7",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 product policy ledger survives",
+      "path": "policy/no-panic-allowlist.toml",
+      "join_blob": "a389433d34b2971e5dad146b446aab40631162b9",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "a389433d34b2971e5dad146b446aab40631162b9",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 product policy ledger survives",
+      "path": "policy/clippy-exceptions.toml",
+      "join_blob": "f71298fd4ac9a5cd5471a339086101d9a5dab021",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "f71298fd4ac9a5cd5471a339086101d9a5dab021",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 product policy ledger survives",
+      "path": ".ripr/static-language-allowlist.toml",
+      "join_blob": "e421caf2dca55b3de0336d52243fba142ae04e28",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "e421caf2dca55b3de0336d52243fba142ae04e28",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 product policy ledger survives",
+      "path": ".ripr/allow-attributes.txt",
+      "join_blob": "55a998078c1e91cbcdd545e9cd9a011238134d13",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "55a998078c1e91cbcdd545e9cd9a011238134d13",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 command catalog shape survives with the #1557 repair (integrated blob)",
+      "path": "xtask/src/command.rs",
+      "join_blob": "4a1140465a9c65a9d0e80d5cb7b448bb84f0b98b",
+      "present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 fixture-contract implementation is the retained one",
+      "path": "xtask/src/dispatch.rs",
+      "needle": "XtaskCommand::CheckFixtureContracts => super::check_fixture_contracts(),",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 module-level test organisation survives",
+      "path": "xtask/src/main.rs",
+      "needle": "mod tests;",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI survives as an integrated blob: the ripr-review-comments cross-check that named an artifact its own job deletes is removed, matching the source parent's working invocation (see ripr#1623 for the producer-backed restoration)",
+      "path": ".github/workflows/ci.yml",
+      "needle": "--check-output target/ripr/pr/check.json",
+      "expect_present": false,
+      "observed_present": false,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI otherwise survives: the review-guidance step still runs",
+      "path": ".github/workflows/ci.yml",
+      "needle": "cargo xtask ripr-review-comments",
+      "expect_present": true,
+      "observed_present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI/qualification surface the retained governance commands enforce survives",
+      "path": ".github/workflows/routed-rust.yml",
+      "join_blob": "2bbedda399050b984c6fd9c05dc0864555e1821d",
+      "present": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI/qualification surface the retained governance commands enforce survives",
+      "path": ".github/workflows/windows-advisory.yml",
+      "join_blob": "36ee1c40f2eb9ff682f555b845b1f58eb5ba0455",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "36ee1c40f2eb9ff682f555b845b1f58eb5ba0455",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI/qualification surface the retained governance commands enforce survives",
+      "path": ".github/workflows/windows-packaged-qualification.yml",
+      "join_blob": "4257d4730d15f8d468533bddbf3f41e525f7b998",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "4257d4730d15f8d468533bddbf3f41e525f7b998",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI/qualification surface the retained governance commands enforce survives",
+      "path": ".github/workflows/server-archive-qualification.yml",
+      "join_blob": "54d14b49bde1dbd808e4422b523d3da13afe6a3c",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "54d14b49bde1dbd808e4422b523d3da13afe6a3c",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "w7_product",
+      "claim": "W7 CI/qualification surface the retained governance commands enforce survives",
+      "path": ".github/actions/ripr-check/action.yml",
+      "join_blob": "1918ed0a79820bcddbf61b6920ed986f228694dc",
+      "present": true,
+      "expected_parent": "swarm",
+      "parent_blob": "1918ed0a79820bcddbf61b6920ed986f228694dc",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "exclusion",
+      "claim": "swarm repository authority did not enter the join",
+      "path": ".ripr/goals/active.toml",
+      "join_blob": "15cf3b2ebc691facf69e8a2ae4e7183cab2c7183",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "15cf3b2ebc691facf69e8a2ae4e7183cab2c7183",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "exclusion",
+      "claim": "swarm repository authority did not enter the join",
+      "path": "policy/ci-budget.toml",
+      "join_blob": "615b2b54bf8b1206f55054a92e7a8c74a2e0242d",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "615b2b54bf8b1206f55054a92e7a8c74a2e0242d",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "exclusion",
+      "claim": "swarm repository authority did not enter the join",
+      "path": "policy/ci-lane-whitelist.toml",
+      "join_blob": "17b11244a905b65729630f98a71a6029e43c428f",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "17b11244a905b65729630f98a71a6029e43c428f",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "exclusion",
+      "claim": "swarm repository authority did not enter the join",
+      "path": ".github/settings.yml",
+      "join_blob": "84fc3cddfc2f74cd34632bb02a518f9e80a68218",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "84fc3cddfc2f74cd34632bb02a518f9e80a68218",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "exclusion",
+      "claim": "swarm repository authority did not enter the join",
+      "path": ".github/workflows/pr-plan.yml",
+      "join_blob": "e1dcade91f4ff775df1421ca67596bee45c1cd79",
+      "present": true,
+      "expected_parent": "source",
+      "parent_blob": "e1dcade91f4ff775df1421ca67596bee45c1cd79",
+      "matches_parent": true,
+      "result": "pass"
+    },
+    {
+      "group": "exclusion",
+      "claim": "swarm-only repository workflow is absent from the join",
+      "path": ".github/workflows/ub-review.yml",
+      "join_blob": null,
+      "result": "pass"
+    }
+  ],
+  "non_claims": [
+    "This receipt asserts object-level survival and exclusion properties of one exact tree.",
+    "It does not run the product, qualify the editor, prove runtime behavior, or authorize any release."
+  ]
+}
