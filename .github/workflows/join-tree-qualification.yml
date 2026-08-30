@@ -27,27 +27,27 @@ on:
       reviewed_tree:
         description: Exact 40-character reviewed tree object accepted by ripr#1478
         required: false
-        default: 4ab6e86179f35858c4048a29d0f5cf4a3dabc33a
+        default: 3c76c659bc311986c10e74c63373dd3350cd972b
         type: string
       reviewed_tree_ref:
         description: Repository ref that points directly at the reviewed tree object
         required: false
-        default: refs/qualify/join-tree-4ab6e861
+        default: refs/qualify/join-tree-3c76c659
         type: string
       preflight_sha256:
         description: Bare 64-hex digest of the finalized P1 preflight receipt
         required: false
-        default: 1697c57a493baa78dd3e43a58d4ddb82538615203533b46e157c17017e54558d
+        default: aada8701c2b308414a1c37e222e2cbdcde883bf8d539e693e6d9da875a72bd84
         type: string
       resolution_manifest_sha256:
         description: Bare 64-hex digest of the accepted resolution manifest
         required: false
-        default: 5116aa0757b1787d0cf0a883261c023e8eeb423e705d9a5c3e08bb65159b05eb
+        default: 07b5cbf5ea86320a3d509e5ec41ee1a59e4fd388fd67a539a2f9438ca71878e3
         type: string
       validation_receipt_sha256:
         description: Bare 64-hex digest of the terminal-green resolved-tree validation receipt
         required: false
-        default: f6298ff67ec6861692b4318cc210f34609d1e202ab559126c47a9ee034f1ef06
+        default: e89298fa74237a90c090a65bf18dfa412fc8ee8a0b09d8e9025b3a1611279e1e
         type: string
 
 permissions:
@@ -62,11 +62,11 @@ concurrency:
 env:
   SOURCE_PARENT: ${{ inputs.source_parent || 'ad291d1bc936d00847d9712d2adf9ea56ca19533' }}
   SWARM_PARENT: ${{ inputs.swarm_parent || '83217e97ec6847db41d757f57279a8b1ca433fe6' }}
-  REVIEWED_TREE: ${{ inputs.reviewed_tree || '4ab6e86179f35858c4048a29d0f5cf4a3dabc33a' }}
-  REVIEWED_TREE_REF: ${{ inputs.reviewed_tree_ref || 'refs/qualify/join-tree-4ab6e861' }}
-  PREFLIGHT_SHA256: ${{ inputs.preflight_sha256 || '1697c57a493baa78dd3e43a58d4ddb82538615203533b46e157c17017e54558d' }}
-  RESOLUTION_MANIFEST_SHA256: ${{ inputs.resolution_manifest_sha256 || '5116aa0757b1787d0cf0a883261c023e8eeb423e705d9a5c3e08bb65159b05eb' }}
-  VALIDATION_RECEIPT_SHA256: ${{ inputs.validation_receipt_sha256 || 'f6298ff67ec6861692b4318cc210f34609d1e202ab559126c47a9ee034f1ef06' }}
+  REVIEWED_TREE: ${{ inputs.reviewed_tree || '3c76c659bc311986c10e74c63373dd3350cd972b' }}
+  REVIEWED_TREE_REF: ${{ inputs.reviewed_tree_ref || 'refs/qualify/join-tree-3c76c659' }}
+  PREFLIGHT_SHA256: ${{ inputs.preflight_sha256 || 'aada8701c2b308414a1c37e222e2cbdcde883bf8d539e693e6d9da875a72bd84' }}
+  RESOLUTION_MANIFEST_SHA256: ${{ inputs.resolution_manifest_sha256 || '07b5cbf5ea86320a3d509e5ec41ee1a59e4fd388fd67a539a2f9438ca71878e3' }}
+  VALIDATION_RECEIPT_SHA256: ${{ inputs.validation_receipt_sha256 || 'e89298fa74237a90c090a65bf18dfa412fc8ee8a0b09d8e9025b3a1611279e1e' }}
   CARGO_TERM_COLOR: never
 
 jobs:
