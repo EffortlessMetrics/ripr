@@ -1,0 +1,13 @@
+{
+  "schema": "ripr.source_promotion_ci_inputs.v2",
+  "source_main": "ad291d1bc936d00847d9712d2adf9ea56ca19533",
+  "join_head": "184638f9d23e20996b75db899b48945adf6eef1f",
+  "preflight": "docs/release/source-promotion/preflight.json",
+  "resolution_manifest": "docs/release/source-promotion/resolution-manifest.json",
+  "preflight_sha256": "aada8701c2b308414a1c37e222e2cbdcde883bf8d539e693e6d9da875a72bd84",
+  "resolution_manifest_sha256": "55b3e0642bc7048cc52d1ee3906fcc94e2ebcff449606323939205f01d6d57bb",
+  "resolved_tree_validation": "docs/release/source-promotion/resolved-tree-validation.json",
+  "resolved_tree_validation_sha256": "782af22192e70011eb1f9b861b509074e0fbc8426a8f5c35b49e5e07e7cd4275",
+  "tree_qualification": "docs/release/source-promotion/tree-qualification.json",
+  "tree_qualification_sha256": "8f3eaff882ae308be954a73e19918b0335aeb0f8e817af18ba8ca367b5cc096c"
+}
