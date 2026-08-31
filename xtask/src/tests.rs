@@ -46262,6 +46262,30 @@ fn review_comments_cross_check_oracle_rejects_contract_drift() -> Result<(), Str
                 1,
             ),
         ),
+        (
+            "shell no-op shielding",
+            valid.replacen(
+                "cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\"",
+                "cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\" || :",
+                1,
+            ),
+        ),
+        (
+            "step continue-on-error shielding",
+            valid.replacen(
+                "      - run: |",
+                "      - continue-on-error: true\n        run: |",
+                1,
+            ),
+        ),
+        (
+            "echoed producer",
+            valid.replacen(
+                "cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\"",
+                "echo cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\"",
+                1,
+            ),
+        ),
     ];
     for (name, mutated) in cases {
         if mutated == valid {

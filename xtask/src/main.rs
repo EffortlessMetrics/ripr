@@ -4770,23 +4770,31 @@ fn workflow_review_comments_cross_check_violations(path: &str, text: &str) -> Ve
     let mut job = "unknown";
     let mut producer: Option<(String, String)> = None;
     let mut producer_checked = false;
+    let mut step_continue_on_error = false;
 
     for (index, line) in text.lines().enumerate() {
         if let Some(name) = workflow_job_name(line) {
             job = name;
             producer = None;
             producer_checked = false;
+            step_continue_on_error = false;
             continue;
+        }
+        if line.starts_with("      - ") {
+            step_continue_on_error = false;
         }
         let command = line.trim();
         if command.starts_with('#') {
             continue;
         }
-        if command.contains("cargo xtask ripr-pr ")
-            && !command.contains("cargo xtask ripr-review-comments ")
-        {
+        let step_property = command.strip_prefix("- ").unwrap_or(command);
+        if step_property == "continue-on-error: true" {
+            step_continue_on_error = true;
+            continue;
+        }
+        if workflow_xtask_invocation(command, "ripr-pr") {
             let identity = workflow_command_subject(command);
-            if command.contains("|| true") {
+            if step_continue_on_error || workflow_command_failure_shielded(command) {
                 violations.push(format!(
                     "{path}:{} {job}: pr-evidence producer must not be failure-shielded",
                     index + 1
@@ -4808,10 +4816,10 @@ fn workflow_review_comments_cross_check_violations(path: &str, text: &str) -> Ve
             }
             continue;
         }
-        if !command.contains("cargo xtask ripr-review-comments ") {
+        if !workflow_xtask_invocation(command, "ripr-review-comments") {
             continue;
         }
-        if command.contains("|| true") {
+        if step_continue_on_error || workflow_command_failure_shielded(command) {
             violations.push(format!(
                 "{path}:{} {job}: review-comments consumer must not be failure-shielded",
                 index + 1
@@ -4832,6 +4840,20 @@ fn workflow_review_comments_cross_check_violations(path: &str, text: &str) -> Ve
         }
     }
     violations
+}
+
+fn workflow_command_failure_shielded(command: &str) -> bool {
+    command.contains("|| true") || command.contains("|| :")
+}
+
+fn workflow_xtask_invocation(command: &str, subcommand: &str) -> bool {
+    let invocation = format!("cargo xtask {subcommand} ");
+    if command.starts_with(&invocation) {
+        return true;
+    }
+    command.split_once(" -- ").is_some_and(|(recorder, tail)| {
+        recorder.trim_start().starts_with("$R ") && tail.starts_with(&invocation)
+    })
 }
 
 fn workflow_job_name(line: &str) -> Option<&str> {

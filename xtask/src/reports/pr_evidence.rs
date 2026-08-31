@@ -287,7 +287,10 @@ fn changed_files(repo: &Path, options: &PrEvidenceOptions) -> Result<Vec<String>
 fn write_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
     let out = repo.join(PR_DIFF);
     let range = format!("{}...{}", options.base, options.head);
-    let diff = run_git_output(repo, &["diff", "--binary", "--no-ext-diff", range.as_str()])?;
+    let diff = run_git_output(
+        repo,
+        &["diff", "--unified=0", "--no-ext-diff", range.as_str()],
+    )?;
     write_parented_file(&out, PR_DIFF, diff)
 }
 
@@ -1202,6 +1205,39 @@ mod tests {
             check_value["analysis_outcome"]["outcome"]["kind"],
             "no_behavioral_candidates"
         );
+
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn pr_evidence_diff_matches_review_comments_input_contract() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-diff-contract")?;
+        run_git(&repo, &["init"])?;
+        run_git(&repo, &["config", "user.email", "ripr-pr@example.invalid"])?;
+        run_git(&repo, &["config", "user.name", "RIPR PR Test"])?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 1 }\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 2 }\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "change value"])?;
+
+        let options = PrEvidenceOptions {
+            base: "HEAD~1".to_string(),
+            head: "HEAD".to_string(),
+            ..options()
+        };
+        write_diff(&repo, &options)?;
+
+        let actual = fs::read_to_string(repo.join(PR_DIFF))
+            .map_err(|err| format!("read produced diff: {err}"))?;
+        let expected = run_git_output(
+            &repo,
+            &["diff", "--unified=0", "--no-ext-diff", "HEAD~1...HEAD"],
+        )?;
+        assert!(!actual.is_empty());
+        assert_eq!(actual, expected);
 
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())

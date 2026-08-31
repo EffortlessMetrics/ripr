@@ -26,6 +26,7 @@ fn load_review_comments_analysis_outcome(
     path: Option<&Path>,
     root: &Path,
     base: &str,
+    mode: &Mode,
     diff_text: &str,
 ) -> Result<Option<crate::analysis_outcome::AnalysisOutcome>, String> {
     let Some(path) = path else {
@@ -88,6 +89,12 @@ fn load_review_comments_analysis_outcome(
     if value.get("base").and_then(serde_json::Value::as_str) != Some(base) {
         return Err(format!(
             "review-comments --check-output {} is invalid: producer base does not match requested base",
+            path.display()
+        ));
+    }
+    if value.get("mode").and_then(serde_json::Value::as_str) != Some(mode.as_str()) {
+        return Err(format!(
+            "review-comments --check-output {} is invalid: producer mode does not match requested mode",
             path.display()
         ));
     }
@@ -1387,6 +1394,7 @@ fn review_comments_with_diff_loader(
         options.check_output.as_deref(),
         &input.root,
         &options.base,
+        &input.mode,
         &diff_text,
     )?;
     let render_context = output::review_comments::ReviewCommentsRenderContext {
@@ -4496,9 +4504,14 @@ mod tests {
             serde_json::to_vec(&artifact).map_err(|err| err.to_string())?,
         )
         .map_err(|err| format!("write check artifact: {err}"))?;
-        let outcome =
-            load_review_comments_analysis_outcome(Some(&path), Path::new("."), "main", diff_text)?
-                .ok_or_else(|| "expected typed outcome".to_string())?;
+        let outcome = load_review_comments_analysis_outcome(
+            Some(&path),
+            Path::new("."),
+            "main",
+            &Mode::Draft,
+            diff_text,
+        )?
+        .ok_or_else(|| "expected typed outcome".to_string())?;
         assert_eq!(outcome.kind.as_str(), "partial_with_limitations");
         assert_eq!(outcome.limitations[0].recovery.kind.as_str(), "retry");
         artifact["schema_version"] = serde_json::json!("9.9");
@@ -4507,12 +4520,34 @@ mod tests {
             serde_json::to_vec(&artifact).map_err(|err| err.to_string())?,
         )
         .map_err(|err| format!("rewrite wrong-schema check artifact: {err}"))?;
-        let schema_error =
-            load_review_comments_analysis_outcome(Some(&path), Path::new("."), "main", diff_text)
-                .err()
-                .ok_or_else(|| "wrong producer schema must fail closed".to_string())?;
+        let schema_error = load_review_comments_analysis_outcome(
+            Some(&path),
+            Path::new("."),
+            "main",
+            &Mode::Draft,
+            diff_text,
+        )
+        .err()
+        .ok_or_else(|| "wrong producer schema must fail closed".to_string())?;
         assert!(schema_error.contains("schema_version must be 0.2"));
         artifact["schema_version"] = serde_json::json!("0.2");
+        artifact["mode"] = serde_json::json!("ready");
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&artifact).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| format!("rewrite wrong-mode check artifact: {err}"))?;
+        let mode_error = load_review_comments_analysis_outcome(
+            Some(&path),
+            Path::new("."),
+            "main",
+            &Mode::Draft,
+            diff_text,
+        )
+        .err()
+        .ok_or_else(|| "wrong producer mode must fail closed".to_string())?;
+        assert!(mode_error.contains("producer mode does not match requested mode"));
+        artifact["mode"] = serde_json::json!("draft");
         artifact["analysis_outcome"]["analysis_complete"] = serde_json::json!(true);
         std::fs::write(
             &path,
@@ -4523,6 +4558,7 @@ mod tests {
             Some(&path),
             Path::new("."),
             "main",
+            &Mode::Draft,
             diff_text,
         ) {
             Ok(_) => return Err("mismatched completeness must fail closed".to_string()),
