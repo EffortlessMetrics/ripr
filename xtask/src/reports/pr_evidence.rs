@@ -285,7 +285,7 @@ fn producer_review_input(
             }))
         })
         .collect::<Vec<_>>();
-    projected.sort_by(|left, right| projection_order(left).cmp(&projection_order(right)));
+    projected.sort_by_key(projection_order);
     projected.truncate(REVIEW_INPUT_PROJECTION_LIMIT);
     let projected_count = projected.len();
     let total_finding_count = findings.len();
