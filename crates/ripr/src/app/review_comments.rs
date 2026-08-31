@@ -363,4 +363,74 @@ mod tests {
             .map_err(|error| format!("remove malformed producer: {error}"))?;
         Ok(())
     }
+
+    #[test]
+    fn admission_helper_identity_functions_are_deterministic() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let repository = repository_identity(&root);
+        if !repository.starts_with("sha256:") {
+            return Err(format!("unexpected repository identity: {repository}"));
+        }
+        let logical = logical_path(Path::new("target\\ripr\\check.json"));
+        if logical != "target/ripr/check.json" {
+            return Err(format!("unexpected logical path: {logical}"));
+        }
+        let first = digest_bytes(b"identity");
+        let second = digest_bytes(b"identity");
+        if first != second || !first.starts_with("sha256:") {
+            return Err("digest identity was not stable".to_string());
+        }
+        if required_string(&serde_json::json!({"field": "value"}), "field")
+            .map_err(|error| error.message)?
+            != "value"
+        {
+            return Err("required string did not return its value".to_string());
+        }
+        if required_string(&serde_json::json!({"field": ""}), "field").is_ok()
+            || required_string(&serde_json::json!({}), "field").is_ok()
+        {
+            return Err("empty or missing strings must fail closed".to_string());
+        }
+        if require_equal("field", "same", "same").is_err()
+            || require_equal("field", "actual", "expected").is_ok()
+        {
+            return Err("identity equality helper violated its contract".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn admission_rejects_missing_required_fields_as_malformed() -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "ripr-review-required-fields-{}.json",
+            std::process::id()
+        ));
+        for producer in [
+            serde_json::json!({}),
+            serde_json::json!({"schema_version": "0.2"}),
+            serde_json::json!({"schema_version": "0.2", "tool": "ripr"}),
+            serde_json::json!({"schema_version": "0.2", "tool": "ripr", "mode": "draft"}),
+        ] {
+            std::fs::write(
+                &path,
+                serde_json::to_vec(&producer).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| format!("write producer fixture: {error}"))?;
+            let error = admit_producer_evidence(
+                &path,
+                &CheckInput::default(),
+                &RiprConfig::default(),
+                "main",
+                "HEAD",
+                "fixture diff",
+            )
+            .err()
+            .ok_or_else(|| "missing required field must fail".to_string())?;
+            if error.category != "malformed_producer" {
+                return Err(format!("unexpected category: {}", error.category));
+            }
+        }
+        std::fs::remove_file(&path).map_err(|error| format!("remove producer fixture: {error}"))?;
+        Ok(())
+    }
 }
