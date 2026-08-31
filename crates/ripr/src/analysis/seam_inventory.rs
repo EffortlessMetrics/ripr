@@ -1455,6 +1455,42 @@ pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
     }
 
     #[test]
+    fn owner_scoped_inventory_excludes_unrelated_functions_in_selected_files()
+    -> Result<(), String> {
+        let path = PathBuf::from("src/pricing.rs");
+        let source = r#"
+pub fn changed_total(amount: i32) -> i32 {
+    if amount >= 10 { amount - 1 } else { amount }
+}
+
+pub fn unrelated_total(amount: i32) -> i32 {
+    if amount >= 100 { amount - 2 } else { amount }
+}
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let changed_owner = index
+            .functions
+            .iter()
+            .find(|function| function.name == "changed_total")
+            .map(|function| function.id.0.replace('\\', "/"))
+            .ok_or_else(|| "changed owner was not indexed".to_string())?;
+        let owners = [changed_owner].into_iter().collect::<BTreeSet<_>>();
+        let all = inventory_seams_from_index(&[path.clone()], &index);
+        let scoped = inventory_seams_from_index_filtered(&[path], &index, Some(&owners));
+        if scoped.is_empty() || scoped.len() >= all.len() {
+            return Err(format!(
+                "owner scope should retain changed seams and exclude unrelated seams: {} of {}",
+                scoped.len(),
+                all.len()
+            ));
+        }
+        if scoped.iter().any(|seam| !owners.contains(seam.owner())) {
+            return Err("owner-scoped inventory emitted an unrelated owner".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn given_test_file_predicate_shape_when_repo_inventory_runs_then_no_production_seam_is_emitted()
     -> Result<(), String> {
         let prod = PathBuf::from("src/lib.rs");
