@@ -21,7 +21,7 @@ use crate::cli::commands_agent_support::{
 use crate::cli::commands_options::*;
 use crate::cli::commands_timestamps::generated_at_unix_ms;
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
 
@@ -1535,6 +1535,7 @@ fn run_review_comments_analysis_with_timeout<T>(
     let token = analysis::cancellation::AnalysisCancellationToken::new();
     let (finished_sender, finished_receiver) = mpsc::sync_channel(1);
     std::thread::scope(|scope| {
+        let started = Instant::now();
         let timer_token = token.clone();
         scope.spawn(move || {
             if finished_receiver
@@ -1547,7 +1548,12 @@ fn run_review_comments_analysis_with_timeout<T>(
         });
 
         let result = analysis::cancellation::with_token(&token, work);
-        let deadline = analysis::cancellation::checkpoint();
+        let deadline = if started.elapsed() >= Duration::from_millis(timeout_ms) {
+            let _ = token.cancel(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
+            Err("analysis cancelled: DeadlineExceeded".to_string())
+        } else {
+            token.checkpoint().map_err(|error| error.to_string())
+        };
         let _ = finished_sender.send(());
         result.and_then(|value| deadline.map(|_| value))
     })
