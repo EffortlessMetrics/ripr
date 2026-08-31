@@ -516,6 +516,40 @@ mod tests {
         {
             return Err("admitted identity did not retain the exact subject".to_string());
         }
+        std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
+        let missing_subject = admit_producer_evidence(
+            &check_path,
+            &CheckInput::default(),
+            &RiprConfig::default(),
+            base,
+            head,
+            diff_text,
+        )
+        .err()
+        .ok_or_else(|| "missing subject receipt must fail closed".to_string())?;
+        if missing_subject.category != "malformed_producer" {
+            return Err(format!(
+                "unexpected missing-subject category: {}",
+                missing_subject.category
+            ));
+        }
+        std::fs::write(&subject_path, b"{").map_err(|error| error.to_string())?;
+        let malformed_subject = admit_producer_evidence(
+            &check_path,
+            &CheckInput::default(),
+            &RiprConfig::default(),
+            base,
+            head,
+            diff_text,
+        )
+        .err()
+        .ok_or_else(|| "malformed subject receipt must fail closed".to_string())?;
+        if malformed_subject.category != "malformed_producer" {
+            return Err(format!(
+                "unexpected malformed-subject category: {}",
+                malformed_subject.category
+            ));
+        }
         std::fs::remove_file(&check_path).map_err(|error| error.to_string())?;
         std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
         Ok(())
