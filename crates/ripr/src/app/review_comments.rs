@@ -433,4 +433,95 @@ mod tests {
         std::fs::remove_file(&path).map_err(|error| format!("remove producer fixture: {error}"))?;
         Ok(())
     }
+
+    #[test]
+    fn complete_producer_is_admitted_with_exact_subject_identity() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let base = "HEAD~1";
+        let head = "HEAD";
+        let diff = std::process::Command::new("git")
+            .args(["diff", "--no-ext-diff", base, head])
+            .output()
+            .map_err(|error| format!("load fixture diff: {error}"))?;
+        if !diff.status.success() {
+            return Err("fixture diff command failed".to_string());
+        }
+        let diff_text = String::from_utf8(diff.stdout).map_err(|error| error.to_string())?;
+        let outcome = AnalysisOutcome::new(
+            crate::analysis_outcome::AnalysisOutcomeKind::NoScope,
+            crate::analysis_outcome::AnalysisIdentity {
+                base_revision: Some(base.to_string()),
+                input_identity: Some(digest_bytes(diff_text.as_bytes())),
+                ..Default::default()
+            },
+            Default::default(),
+            Vec::new(),
+        )
+        .map_err(|error| format!("build fixture outcome: {error}"))?;
+        let check_path = root.join(format!(
+            "target/ripr-review-admission-{}.json",
+            std::process::id()
+        ));
+        let subject_path = check_path.with_extension("subject.json");
+        let producer = serde_json::json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "draft",
+            "root": ".",
+            "base": base,
+            "summary": {},
+            "findings": [],
+            "analysis_outcome": {
+                "analysis_complete": true,
+                "outcome": outcome,
+            },
+        });
+        let check_bytes = serde_json::to_vec(&producer).map_err(|error| error.to_string())?;
+        std::fs::create_dir_all(
+            check_path
+                .parent()
+                .ok_or_else(|| "fixture parent missing".to_string())?,
+        )
+        .map_err(|error| format!("create fixture parent: {error}"))?;
+        std::fs::write(&check_path, &check_bytes)
+            .map_err(|error| format!("write producer fixture: {error}"))?;
+        let base_sha =
+            resolve_revision(&root, base, "commit").map_err(|error| error.message.clone())?;
+        let head_sha =
+            resolve_revision(&root, head, "commit").map_err(|error| error.message.clone())?;
+        let head_tree =
+            resolve_revision(&root, head, "tree").map_err(|error| error.message.clone())?;
+        let subject = serde_json::json!({
+            "schema_version": "ripr.pr_check_subject.v1",
+            "base_sha": base_sha,
+            "head_sha": head_sha,
+            "head_tree": head_tree,
+            "check_sha256": digest_bytes(&check_bytes),
+        });
+        std::fs::write(
+            &subject_path,
+            serde_json::to_vec(&subject).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| format!("write subject fixture: {error}"))?;
+
+        let admitted = admit_producer_evidence(
+            &check_path,
+            &CheckInput::default(),
+            &RiprConfig::default(),
+            base,
+            head,
+            &diff_text,
+        )
+        .map_err(|error| error.message)?;
+        if admitted.identity.mode != "draft"
+            || admitted.identity.base_sha != base_sha
+            || admitted.identity.head_sha != head_sha
+            || admitted.identity.head_tree != head_tree
+        {
+            return Err("admitted identity did not retain the exact subject".to_string());
+        }
+        std::fs::remove_file(&check_path).map_err(|error| error.to_string())?;
+        std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
+        Ok(())
+    }
 }
