@@ -286,6 +286,8 @@ fn producer_review_input(
     let findings_value = Value::Array(projected);
     let projection_bytes = serde_json::to_vec(&findings_value)
         .map_err(|err| format!("serialize producer review input digest: {err}"))?;
+    let canonical_diff = fs::read(repo.join(PR_DIFF))
+        .map_err(|err| format!("read canonical diff for review input binding: {err}"))?;
     if projection_bytes.len() > REVIEW_INPUT_MAX_BYTES {
         return Err(format!(
             "producer review input exceeds {REVIEW_INPUT_MAX_BYTES} byte limit"
@@ -298,11 +300,7 @@ fn producer_review_input(
         "head_sha": subject["head_sha"],
         "head_tree": subject["head_tree"],
         "check_sha256": subject["check_sha256"],
-        "canonical_diff_sha256": check
-            .get("analysis_outcome")
-            .and_then(|value| value.get("outcome"))
-            .and_then(|value| value.get("identity"))
-            .and_then(|value| value.get("input_identity")),
+        "canonical_diff_sha256": format!("sha256:{:x}", Sha256::digest(canonical_diff)),
         "reviewed_count": findings_value.as_array().map_or(0, Vec::len),
         "projection_sha256": format!("sha256:{:x}", Sha256::digest(&projection_bytes)),
         "findings": findings_value,
@@ -1419,6 +1417,16 @@ mod tests {
         assert_eq!(
             check_value["analysis_outcome"]["outcome"]["kind"],
             "no_behavioral_candidates"
+        );
+        let review_input_text = fs::read_to_string(repo.join(PR_REVIEW_INPUT_JSON))
+            .map_err(|err| format!("read review input: {err}"))?;
+        let review_input: Value = serde_json::from_str(&review_input_text)
+            .map_err(|err| format!("parse review input: {err}"))?;
+        let diff_bytes =
+            fs::read(repo.join(PR_DIFF)).map_err(|err| format!("read canonical diff: {err}"))?;
+        assert_eq!(
+            review_input["canonical_diff_sha256"],
+            format!("sha256:{:x}", Sha256::digest(diff_bytes))
         );
 
         run_git(
