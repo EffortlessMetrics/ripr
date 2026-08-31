@@ -749,13 +749,23 @@ fn run_ripr_review_comments(
                     .and_then(Value::as_str)
                     .map(str::to_owned)
             });
-        let detail = receipt_detail.unwrap_or_default();
+        let detail = receipt_detail
+            .filter(|detail| detail != "ripr review-comments failed")
+            .or_else(|| {
+                output
+                    .stderr
+                    .lines()
+                    .find(|line| !line.trim().is_empty())
+                    .map(str::trim)
+                    .map(str::to_owned)
+            })
+            .unwrap_or_default();
         Err(ReviewCommentsRunError::from(format!(
             "ripr review-comments failed{}\nstdout:\n{}\nstderr:\n{}",
             if detail.is_empty() {
                 String::new()
             } else {
-                format!("\nchild diagnostic: {detail}")
+                format!(": child diagnostic: {}", detail.replace(['\r', '\n'], " "))
             },
             output.stdout.trim(),
             output.stderr.trim()
