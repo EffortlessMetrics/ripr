@@ -35,6 +35,12 @@ pub(crate) struct AdmittedReviewAnalysis {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AdmittedReviewInput {
+    pub(crate) projection_sha256: String,
+    pub(crate) reviewed_count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ProducerAdmissionError {
     pub(crate) category: &'static str,
     pub(crate) message: String,
@@ -216,6 +222,82 @@ pub(crate) fn admit_producer_evidence(
             check_sha256,
         },
         outcome,
+    })
+}
+
+pub(crate) fn admit_review_input(
+    review_input_path: &Path,
+    root: &Path,
+    identity: &ReviewAnalysisIdentity,
+) -> Result<AdmittedReviewInput, ProducerAdmissionError> {
+    let bytes = std::fs::read(review_input_path).map_err(|error| {
+        ProducerAdmissionError::malformed(format!(
+            "producer review input {} is unreadable: {error}",
+            review_input_path.display()
+        ))
+    })?;
+    let value: Value = serde_json::from_slice(&bytes).map_err(|error| {
+        ProducerAdmissionError::malformed(format!(
+            "producer review input {} is invalid JSON: {error}",
+            review_input_path.display()
+        ))
+    })?;
+    require_equal(
+        "review_input_schema_version",
+        required_string(&value, "schema_version")?,
+        "ripr.review_input.v1",
+    )?;
+    let root_identity = root.canonicalize().map_err(|error| {
+        ProducerAdmissionError::malformed(format!("resolve review input root failed: {error}"))
+    })?;
+    require_equal(
+        "root_identity",
+        required_string(&value, "root_identity")?,
+        &root_identity.display().to_string().replace('\\', "/"),
+    )?;
+    for (field, expected) in [
+        ("base_sha", identity.base_sha.as_str()),
+        ("head_sha", identity.head_sha.as_str()),
+        ("head_tree", identity.head_tree.as_str()),
+        ("check_sha256", identity.check_sha256.as_str()),
+        (
+            "canonical_diff_sha256",
+            identity.canonical_diff_sha256.as_str(),
+        ),
+        ("mode", identity.mode.as_str()),
+    ] {
+        require_equal(field, required_string(&value, field)?, expected)?;
+    }
+    let findings = value
+        .get("findings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input findings must be an array")
+        })?;
+    let reviewed_count = value
+        .get("reviewed_count")
+        .and_then(Value::as_u64)
+        .and_then(|count| usize::try_from(count).ok())
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input reviewed_count is invalid")
+        })?;
+    if reviewed_count != findings.len() {
+        return Err(ProducerAdmissionError::malformed(
+            "review input reviewed_count contradicts its findings payload",
+        ));
+    }
+    let projection_sha256 = required_string(&value, "projection_sha256")?;
+    let projection_bytes = serde_json::to_vec(findings).map_err(|error| {
+        ProducerAdmissionError::malformed(format!("serialize review input digest: {error}"))
+    })?;
+    require_equal(
+        "projection_sha256",
+        projection_sha256,
+        &digest_bytes(&projection_bytes),
+    )?;
+    Ok(AdmittedReviewInput {
+        projection_sha256: projection_sha256.to_string(),
+        reviewed_count,
     })
 }
 

@@ -1422,6 +1422,24 @@ fn review_comments_with_diff_loader(
     };
     if let Some(admitted) = &admitted {
         receipt.admit_identity(admitted.identity.clone());
+        if let Some(check_output) = options.check_output.as_deref() {
+            let review_input_path = check_output.with_file_name("review-input.json");
+            if review_input_path.exists()
+                && let Err(error) = app::review_comments::admit_review_input(
+                    &review_input_path,
+                    &input.root,
+                    &admitted.identity,
+                )
+            {
+                receipt.fail(
+                    "producer_evidence_admission",
+                    error.category,
+                    &error.message,
+                );
+                receipt.write_atomic(&receipt_path)?;
+                return Err(format!("{}: {}", error.category, error.message));
+            }
+        }
     }
     receipt.phase("producer_evidence_admission", "language_facts");
     receipt.write_atomic(&receipt_path)?;
