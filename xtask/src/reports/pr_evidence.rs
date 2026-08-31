@@ -499,8 +499,6 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
         options.base.clone(),
         "--diff".to_string(),
         diff_arg,
-        "--mode".to_string(),
-        "instant".to_string(),
         "--no-unchanged-tests".to_string(),
         "--format".to_string(),
         "json".to_string(),
