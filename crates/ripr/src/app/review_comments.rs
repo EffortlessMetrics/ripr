@@ -543,6 +543,7 @@ mod tests {
         let base = "HEAD";
         let head = "HEAD";
         let diff_text = "fixture diff";
+        let root_identity = logical_path(&root);
         let outcome = AnalysisOutcome::new(
             crate::analysis_outcome::AnalysisOutcomeKind::NoScope,
             crate::analysis_outcome::AnalysisIdentity {
@@ -563,7 +564,7 @@ mod tests {
             "schema_version": "0.2",
             "tool": "ripr",
             "mode": "draft",
-            "root": ".",
+            "root": root_identity,
             "base": base,
             "summary": {},
             "findings": [],
