@@ -302,6 +302,106 @@ pub(crate) fn render_review_comments_json_with_scope(
     super::json::render_pretty(&value, "review comments")
 }
 
+pub(crate) fn render_review_comments_json_from_projection(
+    context: &ReviewCommentsRenderContext<'_>,
+    working_set: &AgentBriefResolvedWorkingSet,
+    analysis_scope: &ReviewCommentsAnalysisScope,
+    projection: &Value,
+    analysis_outcome: Option<&AnalysisOutcome>,
+) -> Result<String, String> {
+    let findings = projection
+        .get("findings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "producer review input findings must be an array".to_string())?;
+    let mut comments = Vec::new();
+    let mut summary_only = Vec::new();
+    for finding in findings.iter().take(DEFAULT_REVIEW_MAX_SUMMARY_ITEMS) {
+        let stable_id = projection_string(finding, "stable_id")?;
+        let file = projection_string(finding, "file")?;
+        let line = finding
+            .get("line")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| format!("producer review input finding {stable_id} has invalid line"))?;
+        let severity = projection_string(finding, "severity")?;
+        let finding_class = projection_string(finding, "finding_class")?;
+        let summary = projection_string(finding, "summary")?;
+        let card = json!({
+            "id": format!("ripr-review-{stable_id}"),
+            "seam_id": stable_id,
+            "canonical_gap_id": null,
+            "dedupe_key": format!("ripr:{file}:{line}"),
+            "kind": finding_class,
+            "grip_class": finding_class,
+            "gap_state": "unknown",
+            "oracle_kind": "unknown",
+            "oracle_strength": "none",
+            "severity": severity,
+            "owner": "producer_review_projection",
+            "seam": {"file": file, "line": line, "expression": summary},
+            "source_location": {"status": "resolved", "file": file, "line": line, "span": null, "limitation": null, "repair_route": null},
+            "reason": summary,
+            "missing_discriminator": null,
+            "suggested_test": {"intent": "Inspect the producer-owned review finding.", "candidate_values": [], "assertion_shape": null, "assertion_kind": null, "recommended_file": "not_applicable", "recommended_name": "not_applicable"},
+            "llm_guidance": {"prompt": summary, "command": "ripr review-comments --help"}
+        });
+        let placement = working_set
+            .changed_lines
+            .iter()
+            .find(|changed| display_path(&changed.file) == file && changed.line == line)
+            .map(|changed| json!({"path": display_path(&changed.file), "line": changed.line, "side": "RIGHT", "mode": "exact_seam_line"}));
+        if let Some(placement) = placement {
+            if comments.len() < DEFAULT_REVIEW_MAX_INLINE_COMMENTS {
+                let mut card = card;
+                card["placement"] = placement;
+                comments.push(card);
+            } else {
+                let mut card = card;
+                card["placement"] = placement;
+                card["summary_reason"] = json!(SUMMARY_REASON_INLINE_CAP_REACHED);
+                summary_only.push(card);
+            }
+        } else {
+            let mut card = card;
+            card["placement"] = Value::Null;
+            card["summary_reason"] = json!(SUMMARY_REASON_NO_SAFE_PLACEMENT);
+            summary_only.push(card);
+        }
+    }
+    let value = json!({
+        "schema_version": REVIEW_COMMENTS_SCHEMA_VERSION,
+        "tool": "ripr",
+        "status": "advisory",
+        "root": display_path(context.root),
+        "base": context.base,
+        "head": context.head,
+        "mode": context.mode.as_str(),
+        "analysis_scope": analysis_scope_json(analysis_scope),
+        "rendering_limits": {"max_inline_comments": DEFAULT_REVIEW_MAX_INLINE_COMMENTS, "max_summary_items": DEFAULT_REVIEW_MAX_SUMMARY_ITEMS},
+        "summary": {"comments": comments.len(), "summary_only": summary_only.len(), "suppressed": 0, "unchanged_tests": false},
+        "comments": comments,
+        "summary_only": summary_only,
+        "suppressed": [],
+        "warnings": [],
+        "limits_note": "Advisory static evidence only; producer-owned compact review projection; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
+        "review_input": projection,
+    });
+    let mut value = value;
+    if let Some(outcome) = analysis_outcome {
+        value["analysis_outcome"] = json!({"analysis_complete": true, "outcome": outcome});
+    }
+    super::json::render_pretty(&value, "review comments")
+}
+
+fn projection_string(value: &Value, field: &str) -> Result<String, String> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| format!("producer review input field {field} is missing"))
+}
+
 /// Render free-text selection warnings as schema-conformant warning objects.
 ///
 /// The review-comments schema (`schemas/ripr/review-comments.schema.json`)
@@ -460,6 +560,19 @@ pub(crate) fn render_review_comments_markdown_with_scope(
         context.mode,
         &value,
     )
+}
+
+pub(crate) fn render_review_comments_markdown_from_json(
+    root: &Path,
+    base: &str,
+    head: &str,
+    mode: &Mode,
+    rendered_json: &str,
+) -> String {
+    let Ok(value) = serde_json::from_str::<Value>(rendered_json) else {
+        return "# RIPR PR Guidance\n\nUnable to parse rendered PR guidance.\n".to_string();
+    };
+    render_review_comments_markdown_value(root, base, head, mode, &value)
 }
 
 pub(crate) fn render_gap_record_review_comments_markdown(

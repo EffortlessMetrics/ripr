@@ -1420,24 +1420,28 @@ fn review_comments_with_diff_loader(
     } else {
         None
     };
+    let mut admitted_review_input = None;
     if let Some(admitted) = &admitted {
         receipt.admit_identity(admitted.identity.clone());
         if let Some(check_output) = options.check_output.as_deref() {
             let review_input_path = check_output.with_file_name("review-input.json");
-            if review_input_path.exists()
-                && let Err(error) = app::review_comments::admit_review_input(
+            if review_input_path.exists() {
+                match app::review_comments::admit_review_input(
                     &review_input_path,
                     &input.root,
                     &admitted.identity,
-                )
-            {
-                receipt.fail(
-                    "producer_evidence_admission",
-                    error.category,
-                    &error.message,
-                );
-                receipt.write_atomic(&receipt_path)?;
-                return Err(format!("{}: {}", error.category, error.message));
+                ) {
+                    Ok(review_input) => admitted_review_input = Some(review_input),
+                    Err(error) => {
+                        receipt.fail(
+                            "producer_evidence_admission",
+                            error.category,
+                            &error.message,
+                        );
+                        receipt.write_atomic(&receipt_path)?;
+                        return Err(format!("{}: {}", error.category, error.message));
+                    }
+                }
             }
         }
     }
@@ -1459,6 +1463,56 @@ fn review_comments_with_diff_loader(
         .iter()
         .map(|line| (line.file.clone(), line.line))
         .collect::<Vec<_>>();
+    if let Some(review_input) = admitted_review_input {
+        let analysis_scope =
+            output::review_comments::ReviewCommentsAnalysisScope::producer_projection(
+                &working_set,
+                review_input.reviewed_count,
+            );
+        receipt.measured_phase(
+            "canonical_analysis",
+            "route_construction",
+            true,
+            Some(review_input.reviewed_count),
+            Some(review_input.projection_sha256),
+        );
+        receipt.write_atomic(&receipt_path)?;
+        let render_context = output::review_comments::ReviewCommentsRenderContext {
+            root: &input.root,
+            base: &options.base,
+            head: &options.head,
+            mode: &input.mode,
+            config: &config,
+        };
+        let rendered_json = output::review_comments::render_review_comments_json_from_projection(
+            &render_context,
+            &working_set,
+            &analysis_scope,
+            &review_input.projection,
+            admitted.as_ref().map(|value| &value.outcome),
+        )?;
+        let rendered_md = output::review_comments::render_review_comments_markdown_from_json(
+            &input.root,
+            &options.base,
+            &options.head,
+            &input.mode,
+            &rendered_json,
+        );
+        receipt.phase("route_construction", "artifact_io");
+        receipt.write_atomic(&receipt_path)?;
+        let rendered_json =
+            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
+        write_text_file(&options.out, &rendered_json)?;
+        write_text_file(&markdown_path, &rendered_md)?;
+        receipt.complete(&artifacts);
+        let rendered_json =
+            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
+        write_text_file(&options.out, &rendered_json)?;
+        receipt.write_atomic(&receipt_path)?;
+        println!("Wrote {}", options.out.display());
+        println!("Wrote {}", markdown_path.display());
+        return Ok(());
+    }
     let inventory = match run_review_comments_analysis_with_timeout(options.timeout_ms, || {
         analysis::inventory_diff_scoped_classified_seams_at_with_config_and_lines(
             &input.root,

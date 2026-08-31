@@ -38,6 +38,7 @@ pub(crate) struct AdmittedReviewAnalysis {
 pub(crate) struct AdmittedReviewInput {
     pub(crate) projection_sha256: String,
     pub(crate) reviewed_count: usize,
+    pub(crate) projection: Value,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -298,6 +299,7 @@ pub(crate) fn admit_review_input(
     Ok(AdmittedReviewInput {
         projection_sha256: projection_sha256.to_string(),
         reviewed_count,
+        projection: value,
     })
 }
 
