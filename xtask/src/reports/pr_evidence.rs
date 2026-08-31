@@ -23,6 +23,9 @@ const PR_REVIEW_INPUT_JSON: &str = "target/ripr/pr/review-input.json";
 const PR_DIFF: &str = "target/ripr/pr/pr.diff";
 const REVIEW_INPUT_SCHEMA_VERSION: &str = "ripr.review_input.v1";
 const REVIEW_INPUT_MAX_BYTES: usize = 128 * 1024;
+const REVIEW_INPUT_PROJECTION_LIMIT: usize = 10;
+const REVIEW_INPUT_SELECTION_POLICY: &str = "severity_actionability_stable_id_path_line";
+const REVIEW_INPUT_SELECTION_POLICY_VERSION: &str = "v1";
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
 const PR_EVIDENCE_TIMEOUT_ENV: &str = "RIPR_PR_EVIDENCE_TIMEOUT_SECS";
 
@@ -237,7 +240,7 @@ fn producer_review_input(
         .join(&options.root)
         .canonicalize()
         .map_err(|err| format!("resolve review input root failed: {err}"))?;
-    let projected = findings
+    let mut projected = findings
         .iter()
         .filter_map(|finding| {
             let probe = finding.get("probe")?;
@@ -281,8 +284,17 @@ fn producer_review_input(
                 "related_test": related_test,
             }))
         })
-        .take(10)
         .collect::<Vec<_>>();
+    projected.sort_by(|left, right| projection_order(left).cmp(&projection_order(right)));
+    projected.truncate(REVIEW_INPUT_PROJECTION_LIMIT);
+    let projected_count = projected.len();
+    let total_finding_count = findings.len();
+    let analysis_complete = check
+        .get("analysis_outcome")
+        .and_then(|outcome| outcome.get("analysis_complete"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let projection_truncated = projected_count < total_finding_count;
     let findings_value = Value::Array(projected);
     let projection_bytes = serde_json::to_vec(&findings_value)
         .map_err(|err| format!("serialize producer review input digest: {err}"))?;
@@ -301,10 +313,47 @@ fn producer_review_input(
         "head_tree": subject["head_tree"],
         "check_sha256": subject["check_sha256"],
         "canonical_diff_sha256": format!("sha256:{:x}", Sha256::digest(canonical_diff)),
-        "reviewed_count": findings_value.as_array().map_or(0, Vec::len),
+        "analysis_complete": analysis_complete,
+        "total_finding_count": total_finding_count,
+        "projected_finding_count": projected_count,
+        "projection_limit": REVIEW_INPUT_PROJECTION_LIMIT,
+        "projection_truncated": projection_truncated,
+        "projection_selection_policy": REVIEW_INPUT_SELECTION_POLICY,
+        "projection_selection_policy_version": REVIEW_INPUT_SELECTION_POLICY_VERSION,
+        "reviewed_count": projected_count,
         "projection_sha256": format!("sha256:{:x}", Sha256::digest(&projection_bytes)),
         "findings": findings_value,
     }))
+}
+
+fn projection_order(value: &Value) -> (u8, u8, String, String, u64) {
+    let severity = match value.get("severity").and_then(Value::as_str) {
+        Some("critical") => 0,
+        Some("error") => 1,
+        Some("warning") => 2,
+        Some("note") => 3,
+        _ => 4,
+    };
+    let actionability = match value.get("finding_class").and_then(Value::as_str) {
+        Some("exposed") => 0,
+        Some("weakly_exposed") => 1,
+        _ => 2,
+    };
+    let stable_id = value
+        .get("stable_id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let path = value
+        .get("file")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let line = value
+        .get("line")
+        .and_then(Value::as_u64)
+        .unwrap_or(u64::MAX);
+    (severity, actionability, stable_id, path, line)
 }
 
 fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {

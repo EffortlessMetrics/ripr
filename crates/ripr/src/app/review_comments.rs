@@ -228,6 +228,7 @@ pub(crate) fn admit_review_input(
     review_input_path: &Path,
     root: &Path,
     identity: &ReviewAnalysisIdentity,
+    producer_finding_count: u64,
 ) -> Result<AdmittedReviewInput, ProducerAdmissionError> {
     let bytes = std::fs::read(review_input_path).map_err(|error| {
         ProducerAdmissionError::malformed(format!(
@@ -285,6 +286,62 @@ pub(crate) fn admit_review_input(
             "review input reviewed_count contradicts its findings payload",
         ));
     }
+    let analysis_complete = value
+        .get("analysis_complete")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input analysis_complete is invalid")
+        })?;
+    if !analysis_complete {
+        return Err(ProducerAdmissionError::malformed(
+            "review input analysis_complete must be true",
+        ));
+    }
+    let total_finding_count = value
+        .get("total_finding_count")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input total_finding_count is invalid")
+        })?;
+    let projected_finding_count = value
+        .get("projected_finding_count")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input projected_finding_count is invalid")
+        })?;
+    let projection_limit = value
+        .get("projection_limit")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input projection_limit is invalid")
+        })?;
+    let projection_truncated = value
+        .get("projection_truncated")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input projection_truncated is invalid")
+        })?;
+    if total_finding_count != producer_finding_count
+        || projected_finding_count != reviewed_count as u64
+        || projected_finding_count != findings.len() as u64
+        || projection_limit != 10
+        || projection_truncated != (total_finding_count > projected_finding_count)
+        || total_finding_count < projected_finding_count
+    {
+        return Err(ProducerAdmissionError::malformed(
+            "review input projection bounds contradict its findings payload",
+        ));
+    }
+    require_equal(
+        "projection_selection_policy",
+        required_string(&value, "projection_selection_policy")?,
+        "severity_actionability_stable_id_path_line",
+    )?;
+    require_equal(
+        "projection_selection_policy_version",
+        required_string(&value, "projection_selection_policy_version")?,
+        "v1",
+    )?;
     let projection_sha256 = required_string(&value, "projection_sha256")?;
     let projection_bytes = serde_json::to_vec(findings).map_err(|error| {
         ProducerAdmissionError::malformed(format!("serialize review input digest: {error}"))
