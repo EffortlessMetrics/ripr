@@ -305,7 +305,7 @@ mod tests {
             "ripr-review-mode-mismatch-{}.json",
             std::process::id()
         ));
-        let producer = serde_json::json!({
+        let mut producer = serde_json::json!({
             "schema_version": "0.2",
             "tool": "ripr",
             "mode": "fast",
@@ -516,6 +516,34 @@ mod tests {
         {
             return Err("admitted identity did not retain the exact subject".to_string());
         }
+        producer["analysis_outcome"]["analysis_complete"] = serde_json::json!(false);
+        std::fs::write(
+            &check_path,
+            serde_json::to_vec(&producer).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| format!("write incomplete producer fixture: {error}"))?;
+        let incomplete = admit_producer_evidence(
+            &check_path,
+            &CheckInput::default(),
+            &RiprConfig::default(),
+            base,
+            head,
+            diff_text,
+        )
+        .err()
+        .ok_or_else(|| "incomplete producer must fail closed".to_string())?;
+        if incomplete.category != "incomplete_producer" {
+            return Err(format!(
+                "unexpected incomplete-producer category: {}",
+                incomplete.category
+            ));
+        }
+        producer["analysis_outcome"]["analysis_complete"] = serde_json::json!(true);
+        std::fs::write(
+            &check_path,
+            serde_json::to_vec(&producer).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| format!("restore producer fixture: {error}"))?;
         std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
         let missing_subject = admit_producer_evidence(
             &check_path,
