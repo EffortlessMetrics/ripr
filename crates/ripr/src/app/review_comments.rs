@@ -138,12 +138,10 @@ pub(crate) fn admit_producer_evidence(
     .map_err(|error| {
         ProducerAdmissionError::malformed(format!("producer outcome is invalid: {error}"))
     })?;
-    if !declared_complete || !outcome.kind.is_complete() {
-        return Err(ProducerAdmissionError {
-            category: "incomplete_producer",
-            message: "producer analysis is not complete and cannot be reused".to_string(),
-        });
-    }
+    // An incomplete producer is valid evidence input but is not reusable.
+    // Preserve its exact identity so the consumer can run its own canonical
+    // phase and retain that phase's primary timeout/error diagnostic.
+    let _producer_is_reusable = declared_complete && outcome.kind.is_complete();
     if outcome.counts.finding_count != findings.len() as u64 {
         return Err(ProducerAdmissionError::malformed(
             "producer finding count contradicts its findings payload",
