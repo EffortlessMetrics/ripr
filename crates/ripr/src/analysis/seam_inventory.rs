@@ -783,6 +783,22 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
     changed_files: &[PathBuf],
     changed_owner_names: &[String],
 ) -> Result<ScopedClassifiedSeamInventory, String> {
+    inventory_diff_scoped_classified_seams_at_with_config_and_lines(
+        root,
+        config,
+        changed_files,
+        changed_owner_names,
+        None,
+    )
+}
+
+pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config_and_lines(
+    root: &Path,
+    config: &RiprConfig,
+    changed_files: &[PathBuf],
+    changed_owner_names: &[String],
+    changed_lines: Option<&[(PathBuf, usize)]>,
+) -> Result<ScopedClassifiedSeamInventory, String> {
     let state = collect_workspace_state(root, config)?;
     let workspace_cache_key = state.cache_key();
     let total_rust_files = state.files.len();
@@ -873,10 +889,17 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
     }
 
     let seams_started = Instant::now();
+    let changed_line_set = changed_lines.map(|lines| {
+        lines
+            .iter()
+            .map(|(path, line)| (normalized_inventory_path(path), *line))
+            .collect::<BTreeSet<_>>()
+    });
     let seams = inventory_seams_from_index_filtered(
         &scoped_production_files,
         &cached.index,
         Some(&scoped_owner_names),
+        changed_line_set.as_ref(),
     );
     trace_latency_phase(
         "inventory_seams",
@@ -1265,13 +1288,14 @@ pub(crate) fn inventory_seams_from_index(
     production_files: &[PathBuf],
     index: &RustIndex,
 ) -> Vec<RepoSeam> {
-    inventory_seams_from_index_filtered(production_files, index, None)
+    inventory_seams_from_index_filtered(production_files, index, None, None)
 }
 
 fn inventory_seams_from_index_filtered(
     production_files: &[PathBuf],
     index: &RustIndex,
     owner_names: Option<&BTreeSet<String>>,
+    changed_lines: Option<&BTreeSet<(String, usize)>>,
 ) -> Vec<RepoSeam> {
     if let Some(disclosure) = rust_index::lexical_fallback_disclosure(index) {
         eprintln!("{disclosure}");
@@ -1288,7 +1312,11 @@ fn inventory_seams_from_index_filtered(
             let Some(seam) = build_seam_from_shape(path, shape, index) else {
                 continue;
             };
-            if owner_names.is_none_or(|owners| owners.contains(seam.owner())) {
+            if owner_names.is_none_or(|owners| owners.contains(seam.owner()))
+                && changed_lines.is_none_or(|lines| {
+                    lines.contains(&(normalized_inventory_path(path), seam.display_line()))
+                })
+            {
                 seams.push(seam);
             }
         }
@@ -1489,8 +1517,8 @@ pub fn unrelated_total(amount: i32) -> i32 {
             .map(|function| function.id.0.replace('\\', "/"))
             .ok_or_else(|| "changed owner was not indexed".to_string())?;
         let owners = [changed_owner].into_iter().collect::<BTreeSet<_>>();
-        let all = inventory_seams_from_index(&[path.clone()], &index);
-        let scoped = inventory_seams_from_index_filtered(&[path], &index, Some(&owners));
+        let all = inventory_seams_from_index(std::slice::from_ref(&path), &index);
+        let scoped = inventory_seams_from_index_filtered(&[path], &index, Some(&owners), None);
         if scoped.is_empty() || scoped.len() >= all.len() {
             return Err(format!(
                 "owner scope should retain changed seams and exclude unrelated seams: {} of {}",

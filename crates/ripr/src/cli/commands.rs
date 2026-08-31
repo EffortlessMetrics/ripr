@@ -1434,11 +1434,17 @@ fn review_comments_with_diff_loader(
         .iter()
         .map(|owner| owner.owner.clone())
         .collect::<Vec<_>>();
-    let inventory = analysis::inventory_diff_scoped_classified_seams_at_with_config(
+    let changed_line_inputs = working_set
+        .changed_lines
+        .iter()
+        .map(|line| (line.file.clone(), line.line))
+        .collect::<Vec<_>>();
+    let inventory = analysis::inventory_diff_scoped_classified_seams_at_with_config_and_lines(
         &input.root,
         &config,
         &working_set.files,
         &changed_owner_names,
+        Some(&changed_line_inputs),
     )?;
     let analysis_scope = output::review_comments::ReviewCommentsAnalysisScope::limited_diff_scope(
         &working_set,
