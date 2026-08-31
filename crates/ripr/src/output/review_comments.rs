@@ -2010,6 +2010,29 @@ mod tests {
     }
 
     #[test]
+    fn review_input_projection_is_compact_and_fails_closed_at_byte_limit() -> Result<(), String> {
+        let mut entry = classified(88);
+        entry.evidence.related_tests.clear();
+        let config = RiprConfig::default();
+        let value = review_input_projection(Path::new("."), &config, &selection(&[entry]))?;
+        assert_eq!(value["reviewed_count"], 1);
+        assert!(value["findings"][0]["related_test"].is_null());
+
+        let mut oversized = Vec::new();
+        for line in 1..=10 {
+            oversized.push(classified(line));
+        }
+        let mut oversized_selection = selection(&oversized);
+        for selected in &mut oversized_selection.top_seams {
+            selected.why_now.evidence = "x".repeat(20_000);
+        }
+        let error = review_input_projection(Path::new("."), &config, &oversized_selection)
+            .expect_err("oversized renderer input must fail closed");
+        assert!(error.contains("byte limit"), "{error}");
+        Ok(())
+    }
+
+    #[test]
     fn review_comments_places_owner_function_changed_line() -> Result<(), String> {
         let seams = [classified(88)];
         let working_set = AgentBriefResolvedWorkingSet::base(
