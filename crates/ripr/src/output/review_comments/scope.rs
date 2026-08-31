@@ -61,8 +61,8 @@ impl ReviewCommentsAnalysisScope {
         reviewed_count: usize,
     ) -> Self {
         Self {
-            scope: "producer_review_projection",
-            run_status: "producer_projection",
+            scope: "diff_scoped_changed_files",
+            run_status: "limited_diff_scope",
             basis: "producer_check_projection",
             changed_files: display_paths(&working_set.files),
             changed_lines: working_set.changed_lines.len(),

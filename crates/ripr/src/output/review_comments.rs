@@ -384,7 +384,6 @@ pub(crate) fn render_review_comments_json_from_projection(
         "suppressed": [],
         "warnings": [],
         "limits_note": "Advisory static evidence only; producer-owned compact review projection; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
-        "review_input": projection,
     });
     let mut value = value;
     if let Some(outcome) = analysis_outcome {
