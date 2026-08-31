@@ -107,11 +107,9 @@ pub(crate) fn admit_producer_evidence(
         required_string(&producer, "mode")?,
         input.mode.as_str(),
     )?;
-    require_equal(
-        "root",
-        required_string(&producer, "root")?,
-        &logical_path(&input.root),
-    )?;
+    let producer_root = required_string(&producer, "root")?;
+    let producer_root = logical_path(Path::new(producer_root));
+    require_equal("root", &producer_root, &logical_path(&input.root))?;
     require_equal("base", required_string(&producer, "base")?, base)?;
     if !producer.get("summary").is_some_and(Value::is_object) {
         return Err(ProducerAdmissionError::malformed(
@@ -372,10 +370,12 @@ fn repository_identity(root: &Path) -> String {
 }
 
 fn logical_path(path: &Path) -> String {
-    path.canonicalize()
+    let display = path
+        .canonicalize()
         .map(|canonical| crate::output::outcome::display_path(&canonical))
         .unwrap_or_else(|_| crate::output::outcome::display_path(path))
-        .replace('\\', "/")
+        .replace('\\', "/");
+    display.strip_prefix("//?/").unwrap_or(&display).to_string()
 }
 
 fn digest_bytes(bytes: &[u8]) -> String {
