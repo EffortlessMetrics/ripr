@@ -20,6 +20,7 @@ use crate::output::evidence_record::{
 };
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -32,6 +33,84 @@ use scope::ReviewPlacement;
 pub(crate) const REVIEW_COMMENTS_SCHEMA_VERSION: &str = "0.1";
 pub(crate) const DEFAULT_REVIEW_MAX_INLINE_COMMENTS: usize = 3;
 pub(crate) const DEFAULT_REVIEW_MAX_SUMMARY_ITEMS: usize = 10;
+pub(crate) const REVIEW_INPUT_SCHEMA_VERSION: &str = "ripr.review_input.v1";
+pub(crate) const REVIEW_INPUT_MAX_BYTES: usize = 128 * 1024;
+
+/// Renderer-owned facts retained after canonical analysis.  This is deliberately
+/// smaller than `ClassifiedSeam`: consumers need navigation and recommendation
+/// identity, not ASTs, source buffers, parser state, or the seam inventory.
+#[derive(Clone, Debug, serde::Serialize)]
+pub(crate) struct ReviewFindingProjection {
+    pub(crate) stable_id: String,
+    pub(crate) file: String,
+    pub(crate) line: Option<usize>,
+    pub(crate) severity: String,
+    pub(crate) finding_class: String,
+    pub(crate) summary: String,
+    pub(crate) evidence_digest: String,
+    pub(crate) related_test: Option<ReviewRelatedTestProjection>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub(crate) struct ReviewRelatedTestProjection {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) line: usize,
+}
+
+pub(crate) fn review_input_projection(
+    root: &Path,
+    config: &RiprConfig,
+    selection: &AgentBriefSelection<'_>,
+) -> Result<Value, String> {
+    let entries = selection
+        .top_seams
+        .iter()
+        .map(|selected| {
+            let seam = &selected.seam.seam;
+            let evidence_bytes = serde_json::to_vec(&selected.seam.evidence)
+                .map_err(|err| format!("serialize review evidence digest input: {err}"))?;
+            let related_test = selected.seam.evidence.related_tests.first().map(|test| {
+                ReviewRelatedTestProjection {
+                    name: test.test_name.clone(),
+                    file: display_path(&test.file),
+                    line: test.line,
+                }
+            });
+            Ok(ReviewFindingProjection {
+                stable_id: seam.id().as_str().to_string(),
+                file: display_path(seam.file()),
+                line: Some(seam.display_line()),
+                severity: config
+                    .severity()
+                    .for_seam(selected.seam.class)
+                    .as_str()
+                    .to_string(),
+                finding_class: selected.seam.class.as_str().to_string(),
+                summary: selected.why_now.evidence.clone(),
+                evidence_digest: format!("sha256:{:x}", Sha256::digest(evidence_bytes)),
+                related_test,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let entries_value = serde_json::to_value(entries)
+        .map_err(|err| format!("serialize review input projection: {err}"))?;
+    let bytes = serde_json::to_vec(&entries_value)
+        .map_err(|err| format!("serialize review input digest input: {err}"))?;
+    if bytes.len() > REVIEW_INPUT_MAX_BYTES {
+        return Err(format!(
+            "review input projection exceeds {} byte limit",
+            REVIEW_INPUT_MAX_BYTES
+        ));
+    }
+    Ok(json!({
+        "schema_version": REVIEW_INPUT_SCHEMA_VERSION,
+        "root": display_path(root),
+        "reviewed_count": entries_value.as_array().map_or(0, Vec::len),
+        "projection_sha256": format!("sha256:{:x}", Sha256::digest(&bytes)),
+        "findings": entries_value,
+    }))
+}
 
 // Closed selection-reason vocabulary (SPEC-0068). No free-text reason outside this set
 // may ship on the working-set selection path without amending the spec.
@@ -111,6 +190,7 @@ pub(crate) fn render_review_comments_json_with_scope(
         warning_messages.push(warning);
     }
     let warnings = warning_messages;
+    let review_input = review_input_projection(context.root, context.config, selection)?;
 
     for selected in actionable.iter().take(DEFAULT_REVIEW_MAX_SUMMARY_ITEMS) {
         let recommendation = review_recommendation_json(
@@ -184,6 +264,7 @@ pub(crate) fn render_review_comments_json_with_scope(
         "head": context.head,
         "mode": context.mode.as_str(),
         "analysis_scope": analysis_scope_json(analysis_scope),
+        "review_input": review_input,
         "rendering_limits": {
             "max_inline_comments": DEFAULT_REVIEW_MAX_INLINE_COMMENTS,
             "max_summary_items": DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
@@ -1891,6 +1972,25 @@ mod tests {
         let value = render_value(&working_set, &seams)?;
         assert_eq!(value["summary"]["comments"], 1);
         assert_eq!(value["comments"][0]["placement"]["mode"], "exact_seam_line");
+        assert_eq!(
+            value["review_input"]["schema_version"],
+            REVIEW_INPUT_SCHEMA_VERSION
+        );
+        assert_eq!(value["review_input"]["reviewed_count"], 1);
+        assert!(
+            value["review_input"]["projection_sha256"]
+                .as_str()
+                .is_some_and(|digest| digest.starts_with("sha256:"))
+        );
+        assert_eq!(
+            value["review_input"]["findings"][0]["stable_id"],
+            "8f7fa8644fd12280"
+        );
+        assert_eq!(
+            value["review_input"]["findings"][0]["file"],
+            "src/pricing.rs"
+        );
+        assert_eq!(value["review_input"]["findings"][0]["line"], 88);
         assert_eq!(
             value["comments"][0]["source_location"],
             serde_json::json!({
