@@ -2026,8 +2026,10 @@ mod tests {
         for selected in &mut oversized_selection.top_seams {
             selected.why_now.evidence = "x".repeat(20_000);
         }
-        let error = review_input_projection(Path::new("."), &config, &oversized_selection)
-            .expect_err("oversized renderer input must fail closed");
+        let error = match review_input_projection(Path::new("."), &config, &oversized_selection) {
+            Ok(_) => return Err("oversized renderer input must fail closed".to_string()),
+            Err(error) => error,
+        };
         assert!(error.contains("byte limit"), "{error}");
         Ok(())
     }
