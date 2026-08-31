@@ -277,7 +277,7 @@ fn producer_review_input(
                 "line": line,
                 "severity": finding.get("severity")?.as_str()?,
                 "finding_class": finding.get("classification")?.as_str()?,
-                "summary": finding.get("suggested_next_action")?.as_str()?,
+                "summary": projection_summary(finding),
                 "evidence_digest": format!("sha256:{:x}", Sha256::digest(
                     serde_json::to_vec(finding).ok()?.as_slice()
                 )),
@@ -325,6 +325,20 @@ fn producer_review_input(
         "projection_sha256": format!("sha256:{:x}", Sha256::digest(&projection_bytes)),
         "findings": findings_value,
     }))
+}
+
+fn projection_summary(finding: &Value) -> &str {
+    finding
+        .get("suggested_next_action")
+        .and_then(Value::as_str)
+        .filter(|summary| !summary.trim().is_empty())
+        .or_else(|| {
+            finding
+                .get("recommended_next_step")
+                .and_then(Value::as_str)
+                .filter(|summary| !summary.trim().is_empty())
+        })
+        .unwrap_or("Inspect the producer-owned review finding.")
 }
 
 fn projection_order(value: &Value) -> (u8, u8, String, String, u64) {
@@ -1092,6 +1106,25 @@ mod tests {
             head: "HEAD".to_string(),
             check: false,
         }
+    }
+
+    #[test]
+    fn projection_summary_is_non_empty_for_renderer_admission() {
+        assert_eq!(
+            projection_summary(&json!({"suggested_next_action": "  "})),
+            "Inspect the producer-owned review finding."
+        );
+        assert_eq!(
+            projection_summary(&json!({
+                "suggested_next_action": "",
+                "recommended_next_step": "Strengthen the assertion."
+            })),
+            "Strengthen the assertion."
+        );
+        assert_eq!(
+            projection_summary(&json!({"suggested_next_action": "Escalate."})),
+            "Escalate."
+        );
     }
 
     #[test]
