@@ -506,7 +506,7 @@ mod tests {
             &RiprConfig::default(),
             base,
             head,
-            &diff_text,
+            diff_text,
         )
         .map_err(|error| error.message)?;
         if admitted.identity.mode != "draft"
