@@ -307,6 +307,7 @@ fn producer_review_input(
     }
     Ok(json!({
         "schema_version": REVIEW_INPUT_SCHEMA_VERSION,
+        "mode": check["mode"],
         "root_identity": root.display().to_string().replace('\\', "/"),
         "base_sha": subject["base_sha"],
         "head_sha": subject["head_sha"],
@@ -1477,6 +1478,7 @@ mod tests {
             review_input["canonical_diff_sha256"],
             format!("sha256:{:x}", Sha256::digest(diff_bytes))
         );
+        assert_eq!(review_input["mode"], "draft");
 
         run_git(
             &repo,
