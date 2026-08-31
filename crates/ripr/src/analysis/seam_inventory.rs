@@ -847,12 +847,26 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
     // them defeats the bounded review denominator.  Keep changed owners and
     // every owner in the explicitly selected immediate-caller files, while
     // retaining file scope as the outer bound.
-    let mut scoped_owner_names = changed_owner_names.iter().cloned().collect::<BTreeSet<_>>();
+    let mut scoped_owner_names = changed_owner_names
+        .iter()
+        .map(|owner| owner.replace('\\', "/"))
+        .collect::<BTreeSet<_>>();
+    let owner_call_names = changed_owner_names
+        .iter()
+        .filter_map(|owner| owner.rsplit("::").next())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
     for function in &cached.index.functions {
         if immediate_caller_files
             .iter()
             .any(|path| path == &function.file)
             && !function.is_test
+            && function
+                .calls
+                .iter()
+                .any(|call| owner_call_names.contains(&call.name))
         {
             scoped_owner_names.insert(function.id.0.replace('\\', "/"));
         }
@@ -1455,8 +1469,8 @@ pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
     }
 
     #[test]
-    fn owner_scoped_inventory_excludes_unrelated_functions_in_selected_files()
-    -> Result<(), String> {
+    fn owner_scoped_inventory_excludes_unrelated_functions_in_selected_files() -> Result<(), String>
+    {
         let path = PathBuf::from("src/pricing.rs");
         let source = r#"
 pub fn changed_total(amount: i32) -> i32 {
