@@ -5,6 +5,7 @@ use crate::run::{
     tool_build_timeout,
 };
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
@@ -17,6 +18,7 @@ const DEFAULT_HEAD: &str = "HEAD";
 const PR_EVIDENCE_JSON: &str = "target/ripr/pr/repo-exposure.json";
 const PR_EVIDENCE_MD: &str = "target/ripr/pr/repo-exposure.md";
 const PR_CHECK_JSON: &str = "target/ripr/pr/check.json";
+const PR_CHECK_SUBJECT_JSON: &str = "target/ripr/pr/check.subject.json";
 const PR_DIFF: &str = "target/ripr/pr/pr.diff";
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
 const PR_EVIDENCE_TIMEOUT_ENV: &str = "RIPR_PR_EVIDENCE_TIMEOUT_SECS";
@@ -152,17 +154,36 @@ fn write_pr_evidence_packet(
 ) -> Result<(), String> {
     let check_value: Value = serde_json::from_str(check_json)
         .map_err(|err| format!("ripr check output was not valid JSON: {err}"))?;
+    if !check_value.is_object() {
+        return Err("ripr check output must be a JSON object".to_string());
+    }
     let packet = pr_evidence_packet(options, changed_files, &check_value);
     let json_text = serde_json::to_string_pretty(&packet)
         .map_err(|err| format!("serialize PR evidence packet: {err}"))?;
     let markdown = render_pr_evidence_markdown(&packet);
-    let check_json_text = serde_json::to_string_pretty(&check_value)
-        .map_err(|err| format!("serialize canonical check output: {err}"))?;
+    let check_json_text = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&check_value)
+            .map_err(|err| format!("serialize canonical check output: {err}"))?
+    );
+    let subject = json!({
+        "schema_version": "ripr.pr_check_subject.v1",
+        "base_sha": resolve_revision(repo, &options.base, "commit")?,
+        "head_sha": resolve_revision(repo, &options.head, "commit")?,
+        "head_tree": resolve_revision(repo, &options.head, "tree")?,
+        "check_sha256": format!("sha256:{:x}", Sha256::digest(check_json_text.as_bytes())),
+    });
+    let subject_text = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&subject)
+            .map_err(|err| format!("serialize check subject receipt: {err}"))?
+    );
 
+    write_parented_file(&repo.join(PR_CHECK_JSON), PR_CHECK_JSON, check_json_text)?;
     write_parented_file(
-        &repo.join(PR_CHECK_JSON),
-        PR_CHECK_JSON,
-        format!("{check_json_text}\n"),
+        &repo.join(PR_CHECK_SUBJECT_JSON),
+        PR_CHECK_SUBJECT_JSON,
+        subject_text,
     )?;
 
     write_parented_file(
@@ -190,11 +211,14 @@ fn write_pr_evidence_packet(
 }
 
 fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
-    match fs::remove_file(repo.join(PR_CHECK_JSON)) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(format!("remove stale {PR_CHECK_JSON} failed: {error}")),
+    for relative in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON] {
+        match fs::remove_file(repo.join(relative)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("remove stale {relative} failed: {error}")),
+        }
     }
+    Ok(())
 }
 
 fn write_pr_evidence_error_packet(
@@ -242,12 +266,15 @@ fn check_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), Str
         .map_err(|err| format!("missing or unreadable {PR_EVIDENCE_JSON}: {err}"))?;
     let packet: Value = serde_json::from_str(&text)
         .map_err(|err| format!("{PR_EVIDENCE_JSON} is not valid JSON: {err}"))?;
-    let violations = validate_packet_value(
+    let mut violations = validate_packet_value(
         &packet,
         options,
         changed_files.len(),
         markdown_path.exists(),
     );
+    if packet.get("status").and_then(Value::as_str) != Some("error") {
+        violations.extend(check_subject_violations(repo, options));
+    }
     if violations.is_empty() {
         println!("PR evidence contract ok: {PR_EVIDENCE_JSON}");
         return Ok(());
@@ -263,11 +290,78 @@ fn check_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), Str
     ))
 }
 
+fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<String> {
+    let check_bytes = match fs::read(repo.join(PR_CHECK_JSON)) {
+        Ok(bytes) => bytes,
+        Err(error) => return vec![format!("missing or unreadable {PR_CHECK_JSON}: {error}")],
+    };
+    let subject_text = match fs::read_to_string(repo.join(PR_CHECK_SUBJECT_JSON)) {
+        Ok(text) => text,
+        Err(error) => {
+            return vec![format!(
+                "missing or unreadable {PR_CHECK_SUBJECT_JSON}: {error}"
+            )];
+        }
+    };
+    let subject: Value = match serde_json::from_str(&subject_text) {
+        Ok(value) => value,
+        Err(error) => {
+            return vec![format!(
+                "{PR_CHECK_SUBJECT_JSON} is not valid JSON: {error}"
+            )];
+        }
+    };
+    let expected = [
+        ("schema_version", "ripr.pr_check_subject.v1".to_string()),
+        (
+            "base_sha",
+            resolve_revision(repo, &options.base, "commit").unwrap_or_default(),
+        ),
+        (
+            "head_sha",
+            resolve_revision(repo, &options.head, "commit").unwrap_or_default(),
+        ),
+        (
+            "head_tree",
+            resolve_revision(repo, &options.head, "tree").unwrap_or_default(),
+        ),
+        (
+            "check_sha256",
+            format!("sha256:{:x}", Sha256::digest(&check_bytes)),
+        ),
+    ];
+    expected
+        .into_iter()
+        .filter_map(|(field, expected)| {
+            (subject.get(field).and_then(Value::as_str) != Some(expected.as_str())).then(|| {
+                format!(
+                    "{PR_CHECK_SUBJECT_JSON} {field} does not match the current PR evidence subject"
+                )
+            })
+        })
+        .collect()
+}
+
 fn verify_revision(repo: &Path, rev: &str) -> Result<(), String> {
     let commit = format!("{rev}^{{commit}}");
     run_git_output(repo, &["rev-parse", "--verify", commit.as_str()])
         .map(|_| ())
         .map_err(|err| format!("bad base/head revision {rev:?}: {err}"))
+}
+
+fn resolve_revision(repo: &Path, rev: &str, object_kind: &str) -> Result<String, String> {
+    let object = format!("{rev}^{{{object_kind}}}");
+    run_git_output(repo, &["rev-parse", "--verify", object.as_str()])
+        .map(|value| value.trim().to_string())
+        .and_then(|value| {
+            if value.is_empty() {
+                Err(format!(
+                    "resolved {object_kind} identity for {rev:?} is empty"
+                ))
+            } else {
+                Ok(value)
+            }
+        })
 }
 
 fn changed_files(repo: &Path, options: &PrEvidenceOptions) -> Result<Vec<String>, String> {
@@ -1199,12 +1293,48 @@ mod tests {
         assert_eq!(check_value["mode"], "draft");
         assert_eq!(check_value["root"], ".");
         assert_eq!(check_value["base"], "HEAD~1");
+        let subject_text = fs::read_to_string(repo.join(PR_CHECK_SUBJECT_JSON))
+            .map_err(|err| format!("read check subject receipt: {err}"))?;
+        let subject: Value = serde_json::from_str(&subject_text)
+            .map_err(|err| format!("parse check subject receipt: {err}"))?;
+        assert_eq!(subject["schema_version"], "ripr.pr_check_subject.v1");
+        assert_eq!(
+            subject["base_sha"],
+            resolve_revision(&repo, "HEAD~1", "commit")?
+        );
+        assert_eq!(
+            subject["head_sha"],
+            resolve_revision(&repo, "HEAD", "commit")?
+        );
+        assert_eq!(
+            subject["head_tree"],
+            resolve_revision(&repo, "HEAD", "tree")?
+        );
+        assert_eq!(
+            subject["check_sha256"],
+            format!("sha256:{:x}", Sha256::digest(check_text.as_bytes()))
+        );
         assert!(check_value["findings"].is_array());
         assert_eq!(check_value["analysis_outcome"]["analysis_complete"], true);
         assert_eq!(
             check_value["analysis_outcome"]["outcome"]["kind"],
             "no_behavioral_candidates"
         );
+
+        run_git(
+            &repo,
+            &[
+                "commit",
+                "--amend",
+                "--no-gpg-sign",
+                "-m",
+                "amended same tree",
+            ],
+        )?;
+        let stale_error = check_pr_evidence(&repo, &options)
+            .err()
+            .ok_or_else(|| "same-tree amended head must reject stale evidence".to_string())?;
+        assert!(stale_error.contains("head_sha does not match"));
 
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())

@@ -20,6 +20,7 @@ const REVIEW_COMMENTS_MD: &str = "target/ripr/review/comments.md";
 const REVIEW_COMMENTS_RECEIPT: &str = "target/ripr/review/run-receipt.json";
 const REVIEW_COMMENTS_SCHEMA: &str = "schemas/ripr/review-comments.schema.json";
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
+const DEFAULT_REVIEW_MODE: &str = "draft";
 
 #[derive(Debug)]
 struct ReviewCommentsRunError {
@@ -142,6 +143,7 @@ where
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
     remove_stale_review_artifacts(repo)?;
+    let mut primary_failure: Option<(String, String)> = None;
     if !has_changed_paths(repo, &options.base, &options.head)? && options.check_output.is_none() {
         write_empty_review_comments(repo, options)?;
     } else {
@@ -154,15 +156,43 @@ where
                     "failed"
                 };
                 let receipt = review_comments_receipt(repo, options, status, Some(&err.message));
-                write_receipt_file(repo, &receipt)?;
-                write_error_review_comments(repo, options, &err.message, &receipt)?;
+                if let Err(secondary) = write_receipt_file(repo, &receipt) {
+                    return Err(primary_and_secondary(status, &err.message, &secondary));
+                }
+                if let Err(secondary) =
+                    write_error_review_comments(repo, options, &err.message, &receipt)
+                {
+                    return Err(primary_and_secondary(status, &err.message, &secondary));
+                }
+                primary_failure = Some((status.to_string(), err.message));
             }
         }
     }
-    validate_review_comments(repo, options, true)?;
+    if let Err(secondary) = validate_review_comments(repo, options, true) {
+        if let Some((status, message)) = primary_failure {
+            let retained = append_secondary_diagnostic(repo, &secondary)
+                .err()
+                .map_or_else(String::new, |error| {
+                    format!("; diagnostic retention failed: {error}")
+                });
+            return Err(format!(
+                "{}{}",
+                primary_and_secondary(&status, &message, &secondary),
+                retained
+            ));
+        }
+        return Err(secondary);
+    }
     println!("Wrote {REVIEW_COMMENTS_JSON}");
     println!("Wrote {REVIEW_COMMENTS_MD}");
     Ok(())
+}
+
+fn primary_and_secondary(status: &str, primary: &str, secondary: &str) -> String {
+    format!(
+        "primary review-comments failure: {status}: {}; secondary packet diagnostic: {secondary}",
+        first_line(primary)
+    )
 }
 
 fn check_review_comments(repo: &Path, options: &ReviewCommentsOptions) -> Result<(), String> {
@@ -188,10 +218,19 @@ fn validate_review_health(repo: &Path) -> Result<(), String> {
     if status == Some("advisory") && receipt_status == Some("complete") {
         return Ok(());
     }
+    let primary = packet
+        .pointer("/run_receipt/primary_failure")
+        .and_then(|value| {
+            let phase = value.get("phase")?.as_str()?;
+            let category = value.get("category")?.as_str()?;
+            Some(format!("; primary={phase}/{category}"))
+        })
+        .unwrap_or_default();
     Err(format!(
-        "review guidance is not healthy: status={}, run_receipt.status={}",
+        "review guidance is not healthy: status={}, run_receipt.status={}{}",
         status.unwrap_or("missing"),
-        receipt_status.unwrap_or("missing")
+        receipt_status.unwrap_or("missing"),
+        primary
     ))
 }
 
@@ -311,6 +350,55 @@ fn validate_check_output_against_packet(
             return;
         }
     };
+    let subject_path = path.with_extension("subject.json");
+    let subject_text = match fs::read_to_string(&subject_path) {
+        Ok(text) => text,
+        Err(error) => {
+            violations.push(format!(
+                "--check-output subject receipt {} is unreadable: {error}",
+                subject_path.display()
+            ));
+            return;
+        }
+    };
+    let subject: Value = match serde_json::from_str(&subject_text) {
+        Ok(value) => value,
+        Err(error) => {
+            violations.push(format!(
+                "--check-output subject receipt {} is invalid JSON: {error}",
+                subject_path.display()
+            ));
+            return;
+        }
+    };
+    let receipt_root = PathBuf::from(command_root_arg(repo, &options.root));
+    let expected_subject = [
+        ("schema_version", "ripr.pr_check_subject.v1".to_string()),
+        (
+            "base_sha",
+            resolve_revision_identity(&receipt_root, &options.base),
+        ),
+        (
+            "head_sha",
+            resolve_revision_identity(&receipt_root, &options.head),
+        ),
+        (
+            "head_tree",
+            resolve_tree_identity(&receipt_root, &options.head),
+        ),
+        (
+            "check_sha256",
+            format!("sha256:{:x}", Sha256::digest(text.as_bytes())),
+        ),
+    ];
+    for (field, expected) in expected_subject {
+        if subject.get(field).and_then(Value::as_str) != Some(expected.as_str()) {
+            violations.push(format!(
+                "--check-output subject receipt {} {field} does not match the current subject or check bytes",
+                subject_path.display()
+            ));
+        }
+    }
     for field in ["schema_version", "tool", "mode", "root", "base"] {
         if producer
             .get(field)
@@ -440,6 +528,10 @@ fn validate_run_receipt(
         "root_identity",
         "base_sha",
         "head_sha",
+        "requested_mode",
+        "analysis_identity",
+        "phase_evidence",
+        "primary_failure",
         "last_completed_phase",
         "active_phase",
         "reusable_cache_identity",
@@ -451,7 +543,7 @@ fn validate_run_receipt(
     }
     expect_string_value(
         receipt.get("schema_version"),
-        "0.1",
+        "0.2",
         "run_receipt.schema_version",
         violations,
     );
@@ -489,6 +581,7 @@ fn validate_run_receipt(
         "missing_artifacts",
         "limitations",
         "non_claims",
+        "phase_evidence",
     ] {
         if !receipt.get(key).is_some_and(Value::is_array) {
             violations.push(format!("run_receipt.{key} is missing or not an array"));
@@ -755,6 +848,13 @@ fn error_review_comments_packet(
     error: &str,
     receipt: &Value,
 ) -> Value {
+    let mode = receipt
+        .get("analysis_identity")
+        .and_then(|identity| identity.get("mode"))
+        .and_then(Value::as_str)
+        .or_else(|| receipt.get("requested_mode").and_then(Value::as_str))
+        .map(str::to_string)
+        .unwrap_or_default();
     let mut packet = serde_json::json!({
         "schema_version": "0.1",
         "tool": "ripr",
@@ -762,7 +862,7 @@ fn error_review_comments_packet(
         "root": normalize_path_text(&command_root_arg(repo, &options.root)),
         "base": options.base,
         "head": options.head,
-        "mode": "fast",
+        "mode": mode,
         "rendering_limits": {
             "max_inline_comments": 0,
             "max_summary_items": 0
@@ -910,6 +1010,37 @@ fn write_receipt_file(repo: &Path, receipt: &Value) -> Result<(), String> {
     write_parented_file(&path, REVIEW_COMMENTS_RECEIPT, format!("{rendered}\n"))
 }
 
+fn append_secondary_diagnostic(repo: &Path, diagnostic: &str) -> Result<(), String> {
+    let receipt_path = repo.join(REVIEW_COMMENTS_RECEIPT);
+    let mut receipt: Value = serde_json::from_str(
+        &fs::read_to_string(&receipt_path)
+            .map_err(|error| format!("read {REVIEW_COMMENTS_RECEIPT}: {error}"))?,
+    )
+    .map_err(|error| format!("parse {REVIEW_COMMENTS_RECEIPT}: {error}"))?;
+    let diagnostics = receipt
+        .pointer_mut("/primary_failure/secondary_diagnostics")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| "primary failure has no secondary diagnostics array".to_string())?;
+    if !diagnostics
+        .iter()
+        .any(|value| value.as_str() == Some(diagnostic))
+    {
+        diagnostics.push(Value::String(diagnostic.to_string()));
+    }
+    write_receipt_file(repo, &receipt)?;
+
+    let packet_path = repo.join(REVIEW_COMMENTS_JSON);
+    let mut packet: Value = serde_json::from_str(
+        &fs::read_to_string(&packet_path)
+            .map_err(|error| format!("read {REVIEW_COMMENTS_JSON}: {error}"))?,
+    )
+    .map_err(|error| format!("parse {REVIEW_COMMENTS_JSON}: {error}"))?;
+    packet["run_receipt"] = receipt;
+    let rendered = serde_json::to_string_pretty(&packet)
+        .map_err(|error| format!("serialize {REVIEW_COMMENTS_JSON}: {error}"))?;
+    write_parented_file(&packet_path, REVIEW_COMMENTS_JSON, format!("{rendered}\n"))
+}
+
 fn review_comments_receipt(
     repo: &Path,
     options: &ReviewCommentsOptions,
@@ -926,15 +1057,20 @@ fn review_comments_receipt(
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
         .filter(|receipt| {
-            receipt.get("base_sha").and_then(Value::as_str) == Some(base_sha.as_str())
+            receipt.get("schema_version").and_then(Value::as_str) == Some("0.2")
+                && receipt.get("base_sha").and_then(Value::as_str) == Some(base_sha.as_str())
                 && receipt.get("head_sha").and_then(Value::as_str) == Some(head_sha.as_str())
         });
     let mut receipt = existing_receipt.unwrap_or_else(|| {
         serde_json::json!({
-            "schema_version": "0.1",
+            "schema_version": "0.2",
             "root_identity": root_identity,
             "base_sha": base_sha,
             "head_sha": head_sha,
+            "requested_mode": requested_review_mode(repo, options),
+            "analysis_identity": Value::Null,
+            "phase_evidence": [],
+            "primary_failure": Value::Null,
             "configured_timeout_ms": review_comments_timeout_ms().unwrap_or(120_000),
             "last_completed_phase": Value::Null,
             "active_phase": "review_comments_process",
@@ -947,6 +1083,12 @@ fn review_comments_receipt(
         })
     });
     if let Some(object) = receipt.as_object_mut() {
+        if !object.contains_key("requested_mode") {
+            object.insert(
+                "requested_mode".to_string(),
+                Value::String(requested_review_mode(repo, options)),
+            );
+        }
         object.insert("status".to_string(), Value::String(status.to_string()));
         if status == "complete" {
             object.insert(
@@ -960,12 +1102,25 @@ fn review_comments_receipt(
             );
             object.insert("missing_artifacts".to_string(), serde_json::json!([]));
         } else if status == "limited_timeout" {
+            let phase = object
+                .get("active_phase")
+                .and_then(Value::as_str)
+                .filter(|phase| !phase.trim().is_empty())
+                .unwrap_or("review_comments_process")
+                .to_string();
             object.insert(
-                "active_phase".to_string(),
-                object
-                    .get("active_phase")
-                    .cloned()
-                    .unwrap_or_else(|| Value::String("review_comments_process".to_string())),
+                "primary_failure".to_string(),
+                serde_json::json!({
+                    "phase": phase,
+                    "category": "limited_timeout",
+                    "message": first_line(error.unwrap_or("review-comments timed out")),
+                    "secondary_diagnostics": []
+                }),
+            );
+            object.insert("active_phase".to_string(), Value::String(phase));
+            object.insert(
+                "missing_artifacts".to_string(),
+                serde_json::json!([REVIEW_COMMENTS_JSON, REVIEW_COMMENTS_MD]),
             );
             object.insert(
                 "limitations".to_string(),
@@ -979,6 +1134,26 @@ fn review_comments_receipt(
                 serde_json::json!(["no complete route inventory", "no all-clear"]),
             );
         } else if status == "failed" {
+            let phase = object
+                .get("active_phase")
+                .and_then(Value::as_str)
+                .filter(|phase| !phase.trim().is_empty())
+                .unwrap_or("review_comments_process")
+                .to_string();
+            object.insert("active_phase".to_string(), Value::String(phase.clone()));
+            object.insert(
+                "missing_artifacts".to_string(),
+                serde_json::json!([REVIEW_COMMENTS_JSON, REVIEW_COMMENTS_MD]),
+            );
+            object.insert(
+                "primary_failure".to_string(),
+                serde_json::json!({
+                    "phase": phase,
+                    "category": "instrument_failure",
+                    "message": first_line(error.unwrap_or("review-comments failed")),
+                    "secondary_diagnostics": []
+                }),
+            );
             object.insert(
                 "limitations".to_string(),
                 serde_json::json!([{
@@ -996,6 +1171,24 @@ fn review_comments_receipt(
         }
     }
     receipt
+}
+
+fn requested_review_mode(repo: &Path, options: &ReviewCommentsOptions) -> String {
+    let root = PathBuf::from(command_root_arg(repo, &options.root));
+    let configured = root.ancestors().find_map(|ancestor| {
+        let path = ancestor.join("ripr.toml");
+        let text = fs::read_to_string(path).ok()?;
+        let value: toml::Value = toml::from_str(&text).ok()?;
+        value
+            .get("analysis")?
+            .get("mode")?
+            .as_str()
+            .map(str::to_string)
+    });
+    match configured.as_deref() {
+        Some(mode @ ("instant" | "draft" | "fast" | "deep" | "ready")) => mode.to_string(),
+        _ => DEFAULT_REVIEW_MODE.to_string(),
+    }
 }
 
 fn canonical_root_identity(root: &Path) -> String {
@@ -1085,6 +1278,15 @@ fn run_git_output(repo: &Path, args: &[&str]) -> Result<String, String> {
 
 fn resolve_revision_identity(repo: &Path, revision: &str) -> String {
     let object = format!("{revision}^{{commit}}");
+    run_git_output(repo, &["rev-parse", "--verify", object.as_str()])
+        .map(|value| value.trim().to_string())
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| revision.to_string())
+}
+
+fn resolve_tree_identity(repo: &Path, revision: &str) -> String {
+    let object = format!("{revision}^{{tree}}");
     run_git_output(repo, &["rev-parse", "--verify", object.as_str()])
         .map(|value| value.trim().to_string())
         .ok()
@@ -1268,7 +1470,7 @@ mod tests {
         let producer = json!({
             "schema_version": "0.2",
             "tool": "ripr",
-            "mode": "fast",
+            "mode": "draft",
             "root": repo.display().to_string(),
             "base": options.base.clone(),
             "summary": {},
@@ -1276,11 +1478,7 @@ mod tests {
             "analysis_outcome": {"analysis_complete": true}
         });
         fs::create_dir_all(repo.join("target")).map_err(|err| format!("create target: {err}"))?;
-        fs::write(
-            repo.join("target/check-output.json"),
-            serde_json::to_string(&producer).map_err(|err| format!("serialize: {err}"))?,
-        )
-        .map_err(|err| format!("write producer: {err}"))?;
+        write_check_output(&repo, &options, &producer)?;
         let violations = validate_packet_value(
             &packet,
             &repo,
@@ -1324,11 +1522,7 @@ mod tests {
         ] {
             let mut mutated = producer.clone();
             mutated[field] = json!(wrong);
-            fs::write(
-                repo.join("target/check-output.json"),
-                serde_json::to_string(&mutated).map_err(|err| format!("serialize: {err}"))?,
-            )
-            .map_err(|err| format!("write producer: {err}"))?;
+            write_check_output(&repo, &options, &mutated)?;
             let violations = validate_packet_value(
                 &packet,
                 &repo,
@@ -1343,18 +1537,47 @@ mod tests {
                 "{field}: {violations:#?}"
             );
         }
+        write_check_output(&repo, &options, &producer)?;
+        let subject_path = repo.join("target/check-output.subject.json");
+        for field in ["head_sha", "head_tree", "check_sha256"] {
+            let mut subject: Value = serde_json::from_slice(
+                &fs::read(&subject_path).map_err(|err| format!("read subject: {err}"))?,
+            )
+            .map_err(|err| format!("parse subject: {err}"))?;
+            subject[field] = json!("wrong");
+            fs::write(
+                &subject_path,
+                serde_json::to_vec(&subject).map_err(|err| format!("serialize subject: {err}"))?,
+            )
+            .map_err(|err| format!("write subject mutation: {err}"))?;
+            let violations = validate_packet_value(
+                &packet,
+                &repo,
+                &options,
+                false,
+                Path::new(REVIEW_COMMENTS_MD),
+            );
+            assert!(
+                violations.iter().any(|violation| {
+                    violation.contains("subject receipt") && violation.contains(field)
+                }),
+                "{field}: {violations:#?}"
+            );
+            write_check_output(&repo, &options, &producer)?;
+        }
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
 
     #[test]
     fn error_packet_is_contract_valid() {
-        let receipt = review_comments_receipt(
+        let mut receipt = review_comments_receipt(
             &repo_root_for_display(),
             &options(),
             "failed",
             Some("synthetic failure"),
         );
+        receipt["requested_mode"] = json!("fast");
         let packet = error_review_comments_packet(
             &repo_root_for_display(),
             &options(),
@@ -1374,6 +1597,37 @@ mod tests {
     }
 
     #[test]
+    fn timeout_packet_retains_resolved_draft_and_fast_identity() {
+        for mode in ["draft", "fast"] {
+            let receipt = json!({
+                "requested_mode": mode,
+                "analysis_identity": { "mode": mode },
+                "primary_failure": {
+                    "phase": "canonical_analysis",
+                    "category": "limited_timeout",
+                    "message": "timed out",
+                    "secondary_diagnostics": []
+                }
+            });
+            let packet = error_review_comments_packet(
+                &repo_root_for_display(),
+                &options(),
+                "timed out",
+                &receipt,
+            );
+            assert_eq!(packet["mode"], mode);
+            assert_eq!(
+                packet["run_receipt"]["primary_failure"]["phase"],
+                "canonical_analysis"
+            );
+            assert_eq!(
+                packet["run_receipt"]["primary_failure"]["category"],
+                "limited_timeout"
+            );
+        }
+    }
+
+    #[test]
     fn error_packet_retains_check_output_analysis_outcome() -> Result<(), String> {
         let repo = temp_repo("ripr-review-comments-error-outcome")?;
         let mut options = options();
@@ -1381,7 +1635,7 @@ mod tests {
         let producer = json!({
             "schema_version": "0.2",
             "tool": "ripr",
-            "mode": "fast",
+            "mode": "draft",
             "root": normalize_path_text(&command_root_arg(&repo, &options.root)),
             "base": options.base.clone(),
             "summary": {},
@@ -1412,11 +1666,7 @@ mod tests {
             }
         });
         fs::create_dir_all(repo.join("target")).map_err(|err| format!("create target: {err}"))?;
-        fs::write(
-            repo.join("target/check-output.json"),
-            serde_json::to_string(&producer).map_err(|err| format!("serialize: {err}"))?,
-        )
-        .map_err(|err| format!("write producer: {err}"))?;
+        write_check_output(&repo, &options, &producer)?;
 
         let receipt = review_comments_receipt(
             &repo,
@@ -1489,7 +1739,8 @@ mod tests {
     #[test]
     fn write_wrapper_converts_producer_failure_to_error_packet() -> Result<(), String> {
         let (repo, options) = prepared_review_repo("ripr-review-comments-error")?;
-        write_review_comments_with_runner(&repo, &options, |_repo, _options| {
+        write_review_comments_with_runner(&repo, &options, |repo, options| {
+            write_active_test_receipt(repo, options, "draft", "input_validation")?;
             Err(ReviewCommentsRunError::from(
                 "synthetic producer failure\nsecond line".to_string(),
             ))
@@ -1517,7 +1768,8 @@ mod tests {
     #[test]
     fn write_wrapper_does_not_infer_timeout_from_error_text() -> Result<(), String> {
         let (repo, options) = prepared_review_repo("ripr-review-comments-text-timeout")?;
-        write_review_comments_with_runner(&repo, &options, |_repo, _options| {
+        write_review_comments_with_runner(&repo, &options, |repo, options| {
+            write_active_test_receipt(repo, options, "draft", "input_validation")?;
             Err("a non-timeout failure mentions timed out in its context".to_string())
         })?;
 
@@ -1530,7 +1782,8 @@ mod tests {
     #[test]
     fn write_wrapper_preserves_typed_timeout_receipt() -> Result<(), String> {
         let (repo, options) = prepared_review_repo("ripr-review-comments-timeout")?;
-        write_review_comments_with_runner(&repo, &options, |_repo, _options| {
+        write_review_comments_with_runner(&repo, &options, |repo, options| {
+            write_active_test_receipt(repo, options, "draft", "canonical_analysis")?;
             Err(ReviewCommentsRunError::timed_out(
                 "ripr review-comments timed out after 1 seconds".to_string(),
             ))
@@ -1547,6 +1800,30 @@ mod tests {
         let standalone: Value = serde_json::from_str(&standalone)
             .map_err(|err| format!("parse timeout receipt: {err}"))?;
         assert_eq!(standalone["status"], "limited_timeout");
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn secondary_packet_defect_does_not_replace_primary_timeout() -> Result<(), String> {
+        let (repo, options) = prepared_review_repo("ripr-review-comments-secondary")?;
+        let error = write_review_comments_with_runner(&repo, &options, |repo, options| {
+            write_active_test_receipt(repo, options, "invalid-mode", "canonical_analysis")?;
+            Err(ReviewCommentsRunError::timed_out(
+                "ripr review-comments timed out after 1 seconds".to_string(),
+            ))
+        })
+        .err()
+        .ok_or_else(|| "secondary packet defect must remain non-green".to_string())?;
+        assert!(error.starts_with("primary review-comments failure: limited_timeout"));
+        assert!(error.contains("secondary packet diagnostic"));
+        let receipt: Value = serde_json::from_str(
+            &fs::read_to_string(repo.join(REVIEW_COMMENTS_RECEIPT))
+                .map_err(|err| format!("read timeout receipt: {err}"))?,
+        )
+        .map_err(|err| format!("parse timeout receipt: {err}"))?;
+        assert_eq!(receipt["primary_failure"]["phase"], "canonical_analysis");
+        assert_eq!(receipt["primary_failure"]["category"], "limited_timeout");
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
@@ -1668,7 +1945,7 @@ mod tests {
             "root": normalize_path_text(&command_root_arg(repo, &options.root)),
             "base": options.base,
             "head": options.head,
-            "mode": "fast",
+            "mode": "draft",
             "rendering_limits": {
                 "max_inline_comments": 3,
                 "max_summary_items": 10
@@ -1685,11 +1962,15 @@ mod tests {
             "warnings": [],
             "limits_note": "Comments are capped and advisory; summary-only items never annotate.",
             "run_receipt": {
-                "schema_version": "0.1",
+                "schema_version": "0.2",
                 "status": "complete",
                 "root_identity": normalize_path_text(&command_root_arg(repo, &options.root)),
                 "base_sha": resolve_revision_identity(&receipt_root, &options.base),
                 "head_sha": resolve_revision_identity(&receipt_root, &options.head),
+                "requested_mode": "draft",
+                "analysis_identity": null,
+                "phase_evidence": [],
+                "primary_failure": null,
                 "configured_timeout_ms": 120000,
                 "last_completed_phase": "artifact_io",
                 "active_phase": null,
@@ -1732,6 +2013,29 @@ mod tests {
         ))
     }
 
+    fn write_check_output(
+        repo: &Path,
+        options: &ReviewCommentsOptions,
+        producer: &Value,
+    ) -> Result<(), String> {
+        let path = repo.join("target/check-output.json");
+        let bytes = serde_json::to_vec(producer).map_err(|err| format!("serialize: {err}"))?;
+        fs::create_dir_all(repo.join("target")).map_err(|err| format!("create target: {err}"))?;
+        fs::write(&path, &bytes).map_err(|err| format!("write producer: {err}"))?;
+        let subject = json!({
+            "schema_version": "ripr.pr_check_subject.v1",
+            "base_sha": resolve_revision_identity(repo, &options.base),
+            "head_sha": resolve_revision_identity(repo, &options.head),
+            "head_tree": resolve_tree_identity(repo, &options.head),
+            "check_sha256": format!("sha256:{:x}", Sha256::digest(&bytes)),
+        });
+        fs::write(
+            path.with_extension("subject.json"),
+            serde_json::to_vec(&subject).map_err(|err| format!("serialize subject: {err}"))?,
+        )
+        .map_err(|err| format!("write check subject receipt: {err}"))
+    }
+
     fn copy_review_comments_schema(repo: &Path) -> Result<(), String> {
         let schema_path = repo.join(REVIEW_COMMENTS_SCHEMA);
         fs::create_dir_all(
@@ -1752,6 +2056,27 @@ mod tests {
         let text = fs::read_to_string(repo.join(REVIEW_COMMENTS_JSON))
             .map_err(|err| format!("read packet: {err}"))?;
         serde_json::from_str(&text).map_err(|err| format!("parse packet: {err}"))
+    }
+
+    fn write_active_test_receipt(
+        repo: &Path,
+        options: &ReviewCommentsOptions,
+        mode: &str,
+        phase: &str,
+    ) -> Result<(), String> {
+        let mut receipt = review_comments_receipt(
+            repo,
+            options,
+            "failed",
+            Some("synthetic pre-output failure"),
+        );
+        receipt["status"] = json!("in_progress");
+        receipt["requested_mode"] = json!(mode);
+        receipt["active_phase"] = json!(phase);
+        receipt
+            .as_object_mut()
+            .map(|object| object.remove("primary_failure"));
+        write_receipt_file(repo, &receipt)
     }
 
     fn temp_repo(name: &str) -> Result<PathBuf, String> {

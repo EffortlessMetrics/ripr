@@ -18,6 +18,7 @@ pub(crate) mod pr_evidence;
 /// compatibility `xtask` route.
 pub mod pr_summary;
 pub(crate) mod receipt;
+pub(crate) mod review_comments;
 pub(crate) mod ripr_plus;
 mod selector;
 pub(crate) mod temp_diff;

@@ -4770,31 +4770,24 @@ fn workflow_review_comments_cross_check_violations(path: &str, text: &str) -> Ve
     let mut job = "unknown";
     let mut producer: Option<(String, String)> = None;
     let mut producer_checked = false;
-    let mut step_continue_on_error = false;
+    let lines = text.lines().collect::<Vec<_>>();
 
-    for (index, line) in text.lines().enumerate() {
+    for (index, line) in lines.iter().copied().enumerate() {
         if let Some(name) = workflow_job_name(line) {
             job = name;
             producer = None;
             producer_checked = false;
-            step_continue_on_error = false;
             continue;
-        }
-        if line.starts_with("      - ") {
-            step_continue_on_error = false;
         }
         let command = line.trim();
         if command.starts_with('#') {
             continue;
         }
-        let step_property = command.strip_prefix("- ").unwrap_or(command);
-        if step_property == "continue-on-error: true" {
-            step_continue_on_error = true;
-            continue;
-        }
         if workflow_xtask_invocation(command, "ripr-pr") {
             let identity = workflow_command_subject(command);
-            if step_continue_on_error || workflow_command_failure_shielded(command) {
+            if workflow_step_disabled_or_shielded(&lines, index)
+                || workflow_command_failure_shielded(command)
+            {
                 violations.push(format!(
                     "{path}:{} {job}: pr-evidence producer must not be failure-shielded",
                     index + 1
@@ -4819,7 +4812,9 @@ fn workflow_review_comments_cross_check_violations(path: &str, text: &str) -> Ve
         if !workflow_xtask_invocation(command, "ripr-review-comments") {
             continue;
         }
-        if step_continue_on_error || workflow_command_failure_shielded(command) {
+        if workflow_step_disabled_or_shielded(&lines, index)
+            || workflow_command_failure_shielded(command)
+        {
             violations.push(format!(
                 "{path}:{} {job}: review-comments consumer must not be failure-shielded",
                 index + 1
@@ -4840,6 +4835,24 @@ fn workflow_review_comments_cross_check_violations(path: &str, text: &str) -> Ve
         }
     }
     violations
+}
+
+fn workflow_step_disabled_or_shielded(lines: &[&str], command_index: usize) -> bool {
+    let start = (0..=command_index)
+        .rev()
+        .find(|index| lines[*index].starts_with("      - "))
+        .unwrap_or(command_index);
+    let end = ((command_index + 1)..lines.len())
+        .find(|index| {
+            lines[*index].starts_with("      - ") || workflow_job_name(lines[*index]).is_some()
+        })
+        .unwrap_or(lines.len());
+    lines[start..end].iter().any(|line| {
+        let property = line.trim().strip_prefix("- ").unwrap_or(line.trim());
+        property == "continue-on-error: true"
+            || property == "if: false"
+            || property == "if: ${{ false }}"
+    })
 }
 
 fn workflow_command_failure_shielded(command: &str) -> bool {

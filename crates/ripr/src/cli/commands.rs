@@ -11,6 +11,7 @@ use crate::cli::suggest::unknown_argument;
 use crate::config::CONFIG_FILE_NAME;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
 use crate::output;
+#[cfg(test)]
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
@@ -22,13 +23,16 @@ use crate::cli::commands_timestamps::generated_at_unix_ms;
 
 const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
 
+#[cfg(test)]
 fn load_review_comments_analysis_outcome(
     path: Option<&Path>,
     root: &Path,
     base: &str,
     mode: &Mode,
+    expected_subject: (&str, &str, &str),
     diff_text: &str,
 ) -> Result<Option<crate::analysis_outcome::AnalysisOutcome>, String> {
+    let (expected_base_sha, expected_head_sha, expected_head_tree) = expected_subject;
     let Some(path) = path else {
         return Ok(None);
     };
@@ -96,6 +100,37 @@ fn load_review_comments_analysis_outcome(
         return Err(format!(
             "review-comments --check-output {} is invalid: producer mode does not match requested mode",
             path.display()
+        ));
+    }
+    let subject_path = path.with_extension("subject.json");
+    let subject_text = std::fs::read_to_string(&subject_path).map_err(|error| {
+        format!(
+            "review-comments --check-output subject receipt {} is invalid: read failed: {error}",
+            subject_path.display()
+        )
+    })?;
+    let subject: serde_json::Value = serde_json::from_str(&subject_text).map_err(|error| {
+        format!(
+            "review-comments --check-output subject receipt {} is invalid: JSON parse failed: {error}",
+            subject_path.display()
+        )
+    })?;
+    let check_sha256 = format!("sha256:{:x}", Sha256::digest(text.as_bytes()));
+    if subject
+        .get("schema_version")
+        .and_then(serde_json::Value::as_str)
+        != Some("ripr.pr_check_subject.v1")
+        || subject.get("base_sha").and_then(serde_json::Value::as_str) != Some(expected_base_sha)
+        || subject.get("head_sha").and_then(serde_json::Value::as_str) != Some(expected_head_sha)
+        || subject.get("head_tree").and_then(serde_json::Value::as_str) != Some(expected_head_tree)
+        || subject
+            .get("check_sha256")
+            .and_then(serde_json::Value::as_str)
+            != Some(check_sha256.as_str())
+    {
+        return Err(format!(
+            "review-comments --check-output subject receipt {} does not match the requested subject or check bytes",
+            subject_path.display()
         ));
     }
     if !value
@@ -1286,6 +1321,7 @@ fn review_comments_with_diff_loader(
         &input.root,
         &options.base,
         &options.head,
+        &input.mode,
         options.timeout_ms,
         &artifacts,
     );
@@ -1357,7 +1393,35 @@ fn review_comments_with_diff_loader(
             options.base, options.head
         );
     }
-    receipt.phase("diff_discovery", "language_facts");
+    receipt.phase("diff_discovery", "producer_evidence_admission");
+    receipt.write_atomic(&receipt_path)?;
+    let admitted = if let Some(path) = options.check_output.as_deref() {
+        match app::review_comments::admit_producer_evidence(
+            path,
+            &input,
+            &config,
+            &options.base,
+            &options.head,
+            &diff_text,
+        ) {
+            Ok(admitted) => Some(admitted),
+            Err(error) => {
+                receipt.fail(
+                    "producer_evidence_admission",
+                    error.category,
+                    &error.message,
+                );
+                receipt.write_atomic(&receipt_path)?;
+                return Err(format!("{}: {}", error.category, error.message));
+            }
+        }
+    } else {
+        None
+    };
+    if let Some(admitted) = &admitted {
+        receipt.admit_identity(admitted.identity.clone());
+    }
+    receipt.phase("producer_evidence_admission", "language_facts");
     receipt.write_atomic(&receipt_path)?;
     let changed_lines = agent_brief_lines_from_diff(&input.root, &diff_text);
     let changed_owners = agent_brief_owners_for_lines(&input.root, &changed_lines);
@@ -1370,33 +1434,36 @@ fn review_comments_with_diff_loader(
         .iter()
         .map(|owner| owner.owner.clone())
         .collect::<Vec<_>>();
-    let scoped_inventory = analysis::inventory_diff_scoped_classified_seams_at_with_config(
+    let inventory = analysis::inventory_diff_scoped_classified_seams_at_with_config(
         &input.root,
         &config,
         &working_set.files,
         &changed_owner_names,
     )?;
-    receipt.phase("canonical_analysis", "route_construction");
+    let analysis_scope = output::review_comments::ReviewCommentsAnalysisScope::limited_diff_scope(
+        &working_set,
+        &inventory,
+    );
+    let classified = inventory.classified;
+    receipt.measured_phase(
+        "canonical_analysis",
+        "route_construction",
+        false,
+        Some(classified.len()),
+        admitted
+            .as_ref()
+            .map(|value| value.identity.canonical_diff_sha256.clone()),
+    );
     receipt.write_atomic(&receipt_path)?;
     let selection = select_agent_brief_seams(
-        &scoped_inventory.classified,
+        &classified,
         &working_set,
         output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
         AgentBriefPolicy::from_config(&config),
     );
     receipt.phase("route_construction", "static_rendering");
     receipt.write_atomic(&receipt_path)?;
-    let analysis_scope = output::review_comments::ReviewCommentsAnalysisScope::limited_diff_scope(
-        &working_set,
-        &scoped_inventory,
-    );
-    let analysis_outcome = load_review_comments_analysis_outcome(
-        options.check_output.as_deref(),
-        &input.root,
-        &options.base,
-        &input.mode,
-        &diff_text,
-    )?;
+    let analysis_outcome = admitted.as_ref().map(|value| value.outcome.clone());
     let render_context = output::review_comments::ReviewCommentsRenderContext {
         root: &input.root,
         base: &options.base,
@@ -4499,32 +4566,68 @@ mod tests {
                 }
             }
         });
-        std::fs::write(
-            &path,
-            serde_json::to_vec(&artifact).map_err(|err| err.to_string())?,
-        )
-        .map_err(|err| format!("write check artifact: {err}"))?;
+        let write_artifact = |artifact: &serde_json::Value| -> Result<(), String> {
+            let bytes = serde_json::to_vec(artifact).map_err(|err| err.to_string())?;
+            std::fs::write(&path, &bytes).map_err(|err| format!("write check artifact: {err}"))?;
+            let subject = serde_json::json!({
+                "schema_version": "ripr.pr_check_subject.v1",
+                "base_sha": "base-sha",
+                "head_sha": "head-sha",
+                "head_tree": "head-tree",
+                "check_sha256": format!("sha256:{:x}", Sha256::digest(&bytes)),
+            });
+            std::fs::write(
+                path.with_extension("subject.json"),
+                serde_json::to_vec(&subject).map_err(|err| err.to_string())?,
+            )
+            .map_err(|err| format!("write check subject receipt: {err}"))
+        };
+        write_artifact(&artifact)?;
         let outcome = load_review_comments_analysis_outcome(
             Some(&path),
             Path::new("."),
             "main",
             &Mode::Draft,
+            ("base-sha", "head-sha", "head-tree"),
             diff_text,
         )?
         .ok_or_else(|| "expected typed outcome".to_string())?;
         assert_eq!(outcome.kind.as_str(), "partial_with_limitations");
         assert_eq!(outcome.limitations[0].recovery.kind.as_str(), "retry");
+        let subject_path = path.with_extension("subject.json");
+        for field in ["head_sha", "head_tree", "check_sha256"] {
+            let mut subject: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(&subject_path)
+                    .map_err(|err| format!("read check subject receipt: {err}"))?,
+            )
+            .map_err(|err| format!("parse check subject receipt: {err}"))?;
+            subject[field] = serde_json::json!("wrong");
+            std::fs::write(
+                &subject_path,
+                serde_json::to_vec(&subject).map_err(|err| err.to_string())?,
+            )
+            .map_err(|err| format!("mutate check subject receipt: {err}"))?;
+            let subject_error = load_review_comments_analysis_outcome(
+                Some(&path),
+                Path::new("."),
+                "main",
+                &Mode::Draft,
+                ("base-sha", "head-sha", "head-tree"),
+                diff_text,
+            )
+            .err()
+            .ok_or_else(|| format!("wrong {field} must fail closed"))?;
+            assert!(subject_error.contains("does not match the requested subject or check bytes"));
+            write_artifact(&artifact)?;
+        }
         artifact["schema_version"] = serde_json::json!("9.9");
-        std::fs::write(
-            &path,
-            serde_json::to_vec(&artifact).map_err(|err| err.to_string())?,
-        )
-        .map_err(|err| format!("rewrite wrong-schema check artifact: {err}"))?;
+        write_artifact(&artifact)?;
         let schema_error = load_review_comments_analysis_outcome(
             Some(&path),
             Path::new("."),
             "main",
             &Mode::Draft,
+            ("base-sha", "head-sha", "head-tree"),
             diff_text,
         )
         .err()
@@ -4532,16 +4635,13 @@ mod tests {
         assert!(schema_error.contains("schema_version must be 0.2"));
         artifact["schema_version"] = serde_json::json!("0.2");
         artifact["mode"] = serde_json::json!("ready");
-        std::fs::write(
-            &path,
-            serde_json::to_vec(&artifact).map_err(|err| err.to_string())?,
-        )
-        .map_err(|err| format!("rewrite wrong-mode check artifact: {err}"))?;
+        write_artifact(&artifact)?;
         let mode_error = load_review_comments_analysis_outcome(
             Some(&path),
             Path::new("."),
             "main",
             &Mode::Draft,
+            ("base-sha", "head-sha", "head-tree"),
             diff_text,
         )
         .err()
@@ -4549,16 +4649,13 @@ mod tests {
         assert!(mode_error.contains("producer mode does not match requested mode"));
         artifact["mode"] = serde_json::json!("draft");
         artifact["analysis_outcome"]["analysis_complete"] = serde_json::json!(true);
-        std::fs::write(
-            &path,
-            serde_json::to_vec(&artifact).map_err(|err| err.to_string())?,
-        )
-        .map_err(|err| format!("rewrite mismatched check artifact: {err}"))?;
+        write_artifact(&artifact)?;
         let mismatch = match load_review_comments_analysis_outcome(
             Some(&path),
             Path::new("."),
             "main",
             &Mode::Draft,
+            ("base-sha", "head-sha", "head-tree"),
             diff_text,
         ) {
             Ok(_) => return Err("mismatched completeness must fail closed".to_string()),

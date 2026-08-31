@@ -46279,6 +46279,22 @@ fn review_comments_cross_check_oracle_rejects_contract_drift() -> Result<(), Str
             ),
         ),
         (
+            "step continue-on-error after run",
+            valid.replacen(
+                "cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\"",
+                "cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\"\n        continue-on-error: true",
+                1,
+            ),
+        ),
+        (
+            "statically disabled producer",
+            valid.replacen(
+                "      - run: |",
+                "      - if: ${{ false }}\n        run: |",
+                1,
+            ),
+        ),
+        (
             "echoed producer",
             valid.replacen(
                 "cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\"",

@@ -612,6 +612,10 @@
         "root_identity",
         "base_sha",
         "head_sha",
+        "requested_mode",
+        "analysis_identity",
+        "phase_evidence",
+        "primary_failure",
         "configured_timeout_ms",
         "last_completed_phase",
         "active_phase",
@@ -624,7 +628,7 @@
       ],
       "properties": {
         "schema_version": {
-          "const": "0.1"
+          "const": "0.2"
         },
         "status": {
           "enum": [
@@ -645,6 +649,42 @@
         "head_sha": {
           "type": "string",
           "minLength": 1
+        },
+        "requested_mode": {
+          "enum": ["instant", "draft", "fast", "deep", "ready"]
+        },
+        "analysis_identity": {
+          "type": ["object", "null"]
+        },
+        "phase_evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["phase", "duration_ms", "reused", "subject_count", "stop_reason", "input_identity_digest"],
+            "properties": {
+              "phase": { "type": "string", "minLength": 1 },
+              "duration_ms": { "type": "integer", "minimum": 0 },
+              "reused": { "type": "boolean" },
+              "subject_count": { "type": ["integer", "null"], "minimum": 0 },
+              "stop_reason": { "type": "string", "minLength": 1 },
+              "input_identity_digest": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "primary_failure": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["phase", "category", "message", "secondary_diagnostics"],
+          "properties": {
+            "phase": { "type": "string", "minLength": 1 },
+            "category": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 },
+            "secondary_diagnostics": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
         },
         "configured_timeout_ms": {
           "type": "integer",
@@ -737,7 +777,8 @@
               "active_phase": { "type": "string", "minLength": 1 },
               "limitations": { "minItems": 1 },
               "non_claims": { "minItems": 1 },
-              "missing_artifacts": { "minItems": 1 }
+              "missing_artifacts": { "minItems": 1 },
+              "primary_failure": { "type": "object" }
             }
           }
         },
@@ -752,7 +793,8 @@
             "properties": {
               "limitations": { "minItems": 1 },
               "non_claims": { "minItems": 1 },
-              "missing_artifacts": { "minItems": 1 }
+              "missing_artifacts": { "minItems": 1 },
+              "primary_failure": { "type": "object" }
             }
           }
         }
