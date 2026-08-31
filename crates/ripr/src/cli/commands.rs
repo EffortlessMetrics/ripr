@@ -20,6 +20,8 @@ use crate::cli::commands_agent_support::{
 };
 use crate::cli::commands_options::*;
 use crate::cli::commands_timestamps::generated_at_unix_ms;
+use std::sync::mpsc;
+use std::time::Duration;
 
 const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
 
@@ -1439,13 +1441,27 @@ fn review_comments_with_diff_loader(
         .iter()
         .map(|line| (line.file.clone(), line.line))
         .collect::<Vec<_>>();
-    let inventory = analysis::inventory_diff_scoped_classified_seams_at_with_config_and_lines(
-        &input.root,
-        &config,
-        &working_set.files,
-        &changed_owner_names,
-        Some(&changed_line_inputs),
-    )?;
+    let inventory = match run_review_comments_analysis_with_timeout(options.timeout_ms, || {
+        analysis::inventory_diff_scoped_classified_seams_at_with_config_and_lines(
+            &input.root,
+            &config,
+            &working_set.files,
+            &changed_owner_names,
+            Some(&changed_line_inputs),
+        )
+    }) {
+        Ok(inventory) => inventory,
+        Err(error) if analysis::cancellation::is_cancellation_error(&error) => {
+            let message = format!(
+                "canonical review analysis exceeded the configured {}ms deadline: {error}",
+                options.timeout_ms
+            );
+            receipt.fail("canonical_analysis", "limited_timeout", &message);
+            receipt.write_atomic(&receipt_path)?;
+            return Err(format!("limited_timeout: {message}"));
+        }
+        Err(error) => return Err(error),
+    };
     let analysis_scope = output::review_comments::ReviewCommentsAnalysisScope::limited_diff_scope(
         &working_set,
         &inventory,
@@ -1510,6 +1526,31 @@ fn review_comments_with_diff_loader(
     println!("Wrote {}", options.out.display());
     println!("Wrote {}", markdown_path.display());
     Ok(())
+}
+
+fn run_review_comments_analysis_with_timeout<T>(
+    timeout_ms: u64,
+    work: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let token = analysis::cancellation::AnalysisCancellationToken::new();
+    let (finished_sender, finished_receiver) = mpsc::sync_channel(1);
+    std::thread::scope(|scope| {
+        let timer_token = token.clone();
+        scope.spawn(move || {
+            if finished_receiver
+                .recv_timeout(Duration::from_millis(timeout_ms))
+                .is_err()
+            {
+                let _ =
+                    timer_token.cancel(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
+            }
+        });
+
+        let result = analysis::cancellation::with_token(&token, work);
+        let deadline = analysis::cancellation::checkpoint();
+        let _ = finished_sender.send(());
+        result.and_then(|value| deadline.map(|_| value))
+    })
 }
 
 pub(super) fn calibrate(args: &[String]) -> Result<(), String> {
@@ -6310,6 +6351,30 @@ language = "rust"
             Err(err) => err,
         };
         assert!(err.contains("is not a directory"));
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_analysis_timeout_is_typed_and_fail_closed() -> Result<(), String> {
+        let result = run_review_comments_analysis_with_timeout(10, || {
+            std::thread::sleep(Duration::from_millis(100));
+            analysis::cancellation::checkpoint().map(|_| ())
+        });
+
+        let error = match result {
+            Ok(()) => {
+                return Err(
+                    "analysis that exceeded its deadline must not complete successfully"
+                        .to_string(),
+                );
+            }
+            Err(error) => error,
+        };
+        if !analysis::cancellation::is_cancellation_error(&error)
+            || !error.contains("DeadlineExceeded")
+        {
+            return Err(format!("expected typed deadline cancellation, got {error}"));
+        }
         Ok(())
     }
 
