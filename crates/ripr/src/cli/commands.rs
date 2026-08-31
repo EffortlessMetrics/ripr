@@ -1463,7 +1463,14 @@ fn review_comments_with_diff_loader(
     );
     receipt.phase("route_construction", "static_rendering");
     receipt.write_atomic(&receipt_path)?;
-    let analysis_outcome = admitted.as_ref().map(|value| value.outcome.clone());
+    // An incomplete producer is admitted for identity and diagnostic
+    // continuity, but it is not the consumer's analysis result.  Rendering it
+    // as the final outcome would make a successful consumer run unhealthy;
+    // the consumer's canonical phase owns its own success or timeout result.
+    let analysis_outcome = admitted
+        .as_ref()
+        .filter(|value| value.outcome.kind.is_complete())
+        .map(|value| value.outcome.clone());
     let render_context = output::review_comments::ReviewCommentsRenderContext {
         root: &input.root,
         base: &options.base,
