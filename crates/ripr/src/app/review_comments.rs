@@ -372,7 +372,10 @@ fn repository_identity(root: &Path) -> String {
 }
 
 fn logical_path(path: &Path) -> String {
-    crate::output::outcome::display_path(path).replace('\\', "/")
+    path.canonicalize()
+        .map(|canonical| crate::output::outcome::display_path(&canonical))
+        .unwrap_or_else(|_| crate::output::outcome::display_path(path))
+        .replace('\\', "/")
 }
 
 fn digest_bytes(bytes: &[u8]) -> String {
@@ -479,6 +482,19 @@ mod tests {
             || require_equal("field", "actual", "expected").is_ok()
         {
             return Err("identity equality helper violated its contract".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn logical_path_canonicalizes_existing_root_identity() -> Result<(), String> {
+        let current = std::env::current_dir().map_err(|error| error.to_string())?;
+        let expected = current.display().to_string().replace('\\', "/");
+        let actual = logical_path(Path::new("."));
+        if actual != expected {
+            return Err(format!(
+                "existing root identity was not canonicalized: expected {expected:?}, got {actual:?}"
+            ));
         }
         Ok(())
     }
