@@ -370,12 +370,18 @@ fn repository_identity(root: &Path) -> String {
 }
 
 fn logical_path(path: &Path) -> String {
+    let textual = crate::output::outcome::display_path(path).replace('\\', "/");
+    let textual = textual.strip_prefix("//?/").unwrap_or(&textual);
+    if Path::new(textual).is_absolute() {
+        return textual.strip_suffix("/.").unwrap_or(textual).to_string();
+    }
     let display = path
         .canonicalize()
         .map(|canonical| crate::output::outcome::display_path(&canonical))
         .unwrap_or_else(|_| crate::output::outcome::display_path(path))
         .replace('\\', "/");
-    display.strip_prefix("//?/").unwrap_or(&display).to_string()
+    let display = display.strip_prefix("//?/").unwrap_or(&display);
+    display.strip_suffix("/.").unwrap_or(display).to_string()
 }
 
 fn digest_bytes(bytes: &[u8]) -> String {
