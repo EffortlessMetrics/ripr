@@ -247,13 +247,11 @@ pub(crate) fn admit_review_input(
         required_string(&value, "schema_version")?,
         "ripr.review_input.v1",
     )?;
-    let root_identity = root.canonicalize().map_err(|error| {
-        ProducerAdmissionError::malformed(format!("resolve review input root failed: {error}"))
-    })?;
+    let root_identity = logical_path(root);
     require_equal(
         "root_identity",
         required_string(&value, "root_identity")?,
-        &root_identity.display().to_string().replace('\\', "/"),
+        &root_identity,
     )?;
     for (field, expected) in [
         ("base_sha", identity.base_sha.as_str()),
