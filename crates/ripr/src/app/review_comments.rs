@@ -305,7 +305,7 @@ mod tests {
             "ripr-review-mode-mismatch-{}.json",
             std::process::id()
         ));
-        let mut producer = serde_json::json!({
+        let producer = serde_json::json!({
             "schema_version": "0.2",
             "tool": "ripr",
             "mode": "fast",
@@ -459,7 +459,7 @@ mod tests {
             std::process::id()
         ));
         let subject_path = check_path.with_extension("subject.json");
-        let producer = serde_json::json!({
+        let mut producer = serde_json::json!({
             "schema_version": "0.2",
             "tool": "ripr",
             "mode": "draft",
