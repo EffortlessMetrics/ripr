@@ -842,8 +842,28 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
         .cloned()
         .collect::<Vec<_>>();
 
+    // The review scope is owner-based, not merely file-based.  A changed file
+    // can contain thousands of unrelated probe shapes; materializing all of
+    // them defeats the bounded review denominator.  Keep changed owners and
+    // every owner in the explicitly selected immediate-caller files, while
+    // retaining file scope as the outer bound.
+    let mut scoped_owner_names = changed_owner_names.iter().cloned().collect::<BTreeSet<_>>();
+    for function in &cached.index.functions {
+        if immediate_caller_files
+            .iter()
+            .any(|path| path == &function.file)
+            && !function.is_test
+        {
+            scoped_owner_names.insert(function.id.0.replace('\\', "/"));
+        }
+    }
+
     let seams_started = Instant::now();
-    let seams = inventory_seams_from_index(&scoped_production_files, &cached.index);
+    let seams = inventory_seams_from_index_filtered(
+        &scoped_production_files,
+        &cached.index,
+        Some(&scoped_owner_names),
+    );
     trace_latency_phase(
         "inventory_seams",
         "review_scope_ok",
@@ -1231,6 +1251,14 @@ pub(crate) fn inventory_seams_from_index(
     production_files: &[PathBuf],
     index: &RustIndex,
 ) -> Vec<RepoSeam> {
+    inventory_seams_from_index_filtered(production_files, index, None)
+}
+
+fn inventory_seams_from_index_filtered(
+    production_files: &[PathBuf],
+    index: &RustIndex,
+    owner_names: Option<&BTreeSet<String>>,
+) -> Vec<RepoSeam> {
     if let Some(disclosure) = rust_index::lexical_fallback_disclosure(index) {
         eprintln!("{disclosure}");
     }
@@ -1246,7 +1274,9 @@ pub(crate) fn inventory_seams_from_index(
             let Some(seam) = build_seam_from_shape(path, shape, index) else {
                 continue;
             };
-            seams.push(seam);
+            if owner_names.is_none_or(|owners| owners.contains(seam.owner())) {
+                seams.push(seam);
+            }
         }
     }
 
