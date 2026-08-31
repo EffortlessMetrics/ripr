@@ -43,7 +43,7 @@ fn load_review_comments_analysis_outcome(
             path.display()
         )
     })?;
-    let _producer_schema_version = value
+    let producer_schema_version = value
         .get("schema_version")
         .and_then(serde_json::Value::as_str)
         .filter(|version| !version.trim().is_empty())
@@ -53,6 +53,12 @@ fn load_review_comments_analysis_outcome(
                 path.display()
             )
         })?;
+    if producer_schema_version != "0.2" {
+        return Err(format!(
+            "review-comments --check-output {} is invalid: producer schema_version must be 0.2",
+            path.display()
+        ));
+    }
     if value.get("tool").and_then(serde_json::Value::as_str) != Some("ripr") {
         return Err(format!(
             "review-comments --check-output {} is invalid: producer tool must be ripr",
@@ -4495,6 +4501,18 @@ mod tests {
                 .ok_or_else(|| "expected typed outcome".to_string())?;
         assert_eq!(outcome.kind.as_str(), "partial_with_limitations");
         assert_eq!(outcome.limitations[0].recovery.kind.as_str(), "retry");
+        artifact["schema_version"] = serde_json::json!("9.9");
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&artifact).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| format!("rewrite wrong-schema check artifact: {err}"))?;
+        let schema_error =
+            load_review_comments_analysis_outcome(Some(&path), Path::new("."), "main", diff_text)
+                .err()
+                .ok_or_else(|| "wrong producer schema must fail closed".to_string())?;
+        assert!(schema_error.contains("schema_version must be 0.2"));
+        artifact["schema_version"] = serde_json::json!("0.2");
         artifact["analysis_outcome"]["analysis_complete"] = serde_json::json!(true);
         std::fs::write(
             &path,

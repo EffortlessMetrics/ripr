@@ -4690,6 +4690,10 @@ fn check_workflows_impl() -> Result<(), String> {
         ));
         violations.extend(workflow_bare_self_hosted_violations(&normalized, &text));
         violations.extend(workflow_plain_scalar_comment_violations(&normalized, &text));
+        violations.extend(workflow_review_comments_cross_check_violations(
+            &normalized,
+            &text,
+        ));
         for block in extract_workflow_run_blocks(&text) {
             if block.non_empty_lines > budget.max_non_empty_lines {
                 violations.push(format!(
@@ -4756,6 +4760,100 @@ fn workflow_review_thread_mutation_violations(path: &str, text: &str) -> Vec<Str
         )];
     }
     Vec::new()
+}
+
+/// Every live review-comments cross-check must consume a current producer from
+/// the same job path. This keeps workflow orchestration from silently dropping
+/// the producer, moving it after consumption, or checking a different subject.
+fn workflow_review_comments_cross_check_violations(path: &str, text: &str) -> Vec<String> {
+    let mut violations = Vec::new();
+    let mut job = "unknown";
+    let mut producer: Option<(String, String)> = None;
+    let mut producer_checked = false;
+
+    for (index, line) in text.lines().enumerate() {
+        if let Some(name) = workflow_job_name(line) {
+            job = name;
+            producer = None;
+            producer_checked = false;
+            continue;
+        }
+        let command = line.trim();
+        if command.starts_with('#') {
+            continue;
+        }
+        if command.contains("cargo xtask ripr-pr ")
+            && !command.contains("cargo xtask ripr-review-comments ")
+        {
+            let identity = workflow_command_subject(command);
+            if command.contains("|| true") {
+                violations.push(format!(
+                    "{path}:{} {job}: pr-evidence producer must not be failure-shielded",
+                    index + 1
+                ));
+                continue;
+            }
+            if command.split_whitespace().any(|token| token == "--check") {
+                if identity.is_none() || identity != producer {
+                    violations.push(format!(
+                        "{path}:{} {job}: pr-evidence check must follow the same base/head producer",
+                        index + 1
+                    ));
+                } else {
+                    producer_checked = true;
+                }
+            } else {
+                producer = identity;
+                producer_checked = false;
+            }
+            continue;
+        }
+        if !command.contains("cargo xtask ripr-review-comments ") {
+            continue;
+        }
+        if command.contains("|| true") {
+            violations.push(format!(
+                "{path}:{} {job}: review-comments consumer must not be failure-shielded",
+                index + 1
+            ));
+        }
+        if !command.contains("--check-output target/ripr/pr/check.json") {
+            violations.push(format!(
+                "{path}:{} {job}: review-comments consumer must use --check-output target/ripr/pr/check.json",
+                index + 1
+            ));
+        }
+        let consumer = workflow_command_subject(command);
+        if producer.is_none() || consumer.is_none() || consumer != producer || !producer_checked {
+            violations.push(format!(
+                "{path}:{} {job}: review-comments consumer requires a preceding checked pr-evidence producer for the same base/head",
+                index + 1
+            ));
+        }
+    }
+    violations
+}
+
+fn workflow_job_name(line: &str) -> Option<&str> {
+    if !line.starts_with("  ") || line.starts_with("   ") {
+        return None;
+    }
+    line.trim().strip_suffix(':')
+}
+
+fn workflow_command_subject(command: &str) -> Option<(String, String)> {
+    Some((
+        workflow_shell_flag_value(command, "--base")?,
+        workflow_shell_flag_value(command, "--head")?,
+    ))
+}
+
+fn workflow_shell_flag_value(command: &str, flag: &str) -> Option<String> {
+    let tail = command.split_once(&format!("{flag} "))?.1.trim_start();
+    if let Some(quoted) = tail.strip_prefix('"') {
+        return quoted.split_once('"').map(|(value, _)| value.to_string());
+    }
+    tail.split_whitespace().next().map(str::to_string)
 }
 
 fn review_thread_mutation_line(line: &str) -> bool {
@@ -5030,10 +5128,14 @@ fn routed_rust_expected_command(id: &str, base: &str, pr_head: &str) -> Option<S
             format!("cargo xtask ripr-pr --base {base} --head {pr_head} --check")
         }
         "ripr_review_comments" => {
-            format!("cargo xtask ripr-review-comments --base {base} --head {pr_head}")
+            format!(
+                "cargo xtask ripr-review-comments --base {base} --head {pr_head} --check-output target/ripr/pr/check.json"
+            )
         }
         "ripr_review_comments_check" => {
-            format!("cargo xtask ripr-review-comments --base {base} --head {pr_head} --check")
+            format!(
+                "cargo xtask ripr-review-comments --base {base} --head {pr_head} --check-output target/ripr/pr/check.json --check"
+            )
         }
         "impacted_evidence" => "cargo xtask impacted-evidence".to_string(),
         "impacted_evidence_check" => "cargo xtask impacted-evidence --check".to_string(),

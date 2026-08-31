@@ -113,8 +113,8 @@ jobs:
         env:
           RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
         run: |
-          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}"
-          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check
+          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check-output target/ripr/pr/check.json
+          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check-output target/ripr/pr/check.json --check
       - name: Generate impacted evidence
         if: github.event_name == 'pull_request'
         env:

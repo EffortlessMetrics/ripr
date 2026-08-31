@@ -169,8 +169,30 @@ fn check_review_comments(repo: &Path, options: &ReviewCommentsOptions) -> Result
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
     validate_review_comments(repo, options, true)?;
+    validate_review_health(repo)?;
     println!("Review comments contract ok: {REVIEW_COMMENTS_JSON}");
     Ok(())
+}
+
+fn validate_review_health(repo: &Path) -> Result<(), String> {
+    let path = repo.join(REVIEW_COMMENTS_JSON);
+    let text = fs::read_to_string(&path)
+        .map_err(|err| format!("missing or unreadable {REVIEW_COMMENTS_JSON}: {err}"))?;
+    let packet: Value = serde_json::from_str(&text)
+        .map_err(|err| format!("{REVIEW_COMMENTS_JSON} is not valid JSON: {err}"))?;
+    let status = packet.get("status").and_then(Value::as_str);
+    let receipt_status = packet
+        .get("run_receipt")
+        .and_then(|receipt| receipt.get("status"))
+        .and_then(Value::as_str);
+    if status == Some("advisory") && receipt_status == Some("complete") {
+        return Ok(());
+    }
+    Err(format!(
+        "review guidance is not healthy: status={}, run_receipt.status={}",
+        status.unwrap_or("missing"),
+        receipt_status.unwrap_or("missing")
+    ))
 }
 
 fn validate_review_comments(
@@ -306,17 +328,57 @@ fn validate_check_output_against_packet(
             path.display()
         ));
     }
+    expect_producer_string(&producer, "schema_version", "0.2", &path, violations);
+    expect_producer_string(
+        &producer,
+        "root",
+        packet.get("root").and_then(Value::as_str).unwrap_or(""),
+        &path,
+        violations,
+    );
+    expect_producer_string(
+        &producer,
+        "base",
+        packet.get("base").and_then(Value::as_str).unwrap_or(""),
+        &path,
+        violations,
+    );
+    expect_producer_string(
+        &producer,
+        "mode",
+        packet.get("mode").and_then(Value::as_str).unwrap_or(""),
+        &path,
+        violations,
+    );
     if !producer.get("summary").is_some_and(Value::is_object)
         || !producer.get("findings").is_some_and(Value::is_array)
+        || !producer
+            .get("analysis_outcome")
+            .is_some_and(Value::is_object)
     {
         violations.push(format!(
-            "--check-output {} requires producer summary and findings",
+            "--check-output {} requires producer summary, findings and analysis_outcome",
             path.display()
         ));
     }
     if producer.get("analysis_outcome") != packet.get("analysis_outcome") {
         violations.push(format!(
             "--check-output {} analysis_outcome does not match rendered review packet",
+            path.display()
+        ));
+    }
+}
+
+fn expect_producer_string(
+    producer: &Value,
+    field: &str,
+    expected: &str,
+    path: &Path,
+    violations: &mut Vec<String>,
+) {
+    if producer.get(field).and_then(Value::as_str) != Some(expected) {
+        violations.push(format!(
+            "--check-output {} producer {field} does not match expected {expected:?}",
             path.display()
         ));
     }
@@ -1206,7 +1268,7 @@ mod tests {
         let producer = json!({
             "schema_version": "0.2",
             "tool": "ripr",
-            "mode": "draft",
+            "mode": "fast",
             "root": repo.display().to_string(),
             "base": options.base.clone(),
             "summary": {},
@@ -1232,6 +1294,55 @@ mod tests {
                 .any(|violation| violation.contains("does not match rendered review packet")),
             "{violations:#?}"
         );
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_identity_mismatches_are_not_accepted() -> Result<(), String> {
+        let repo = temp_repo("ripr-review-comments-check-identity")?;
+        let mut options = options();
+        options.check_output = Some("target/check-output.json".to_string());
+        let mut packet = valid_packet_for_repo(&repo, &options);
+        packet["analysis_outcome"] = json!({"analysis_complete": true});
+        let producer = json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": packet["mode"].clone(),
+            "root": packet["root"].clone(),
+            "base": packet["base"].clone(),
+            "summary": {},
+            "findings": [],
+            "analysis_outcome": packet["analysis_outcome"].clone()
+        });
+        fs::create_dir_all(repo.join("target")).map_err(|err| format!("create target: {err}"))?;
+        for (field, wrong) in [
+            ("schema_version", "9.9"),
+            ("mode", "ready"),
+            ("root", "wrong-root"),
+            ("base", "wrong-base"),
+        ] {
+            let mut mutated = producer.clone();
+            mutated[field] = json!(wrong);
+            fs::write(
+                repo.join("target/check-output.json"),
+                serde_json::to_string(&mutated).map_err(|err| format!("serialize: {err}"))?,
+            )
+            .map_err(|err| format!("write producer: {err}"))?;
+            let violations = validate_packet_value(
+                &packet,
+                &repo,
+                &options,
+                false,
+                Path::new(REVIEW_COMMENTS_MD),
+            );
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains(&format!("producer {field}"))),
+                "{field}: {violations:#?}"
+            );
+        }
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
@@ -1270,8 +1381,8 @@ mod tests {
         let producer = json!({
             "schema_version": "0.2",
             "tool": "ripr",
-            "mode": "draft",
-            "root": repo.display().to_string(),
+            "mode": "fast",
+            "root": normalize_path_text(&command_root_arg(&repo, &options.root)),
             "base": options.base.clone(),
             "summary": {},
             "findings": [],
@@ -1395,6 +1506,10 @@ mod tests {
         let markdown = fs::read_to_string(repo.join(REVIEW_COMMENTS_MD))
             .map_err(|err| format!("read error Markdown: {err}"))?;
         assert!(markdown.contains("No review guidance was generated."));
+        let health_error = check_review_comments(&repo, &options)
+            .err()
+            .ok_or_else(|| "status:error review guidance must not pass --check".to_string())?;
+        assert!(health_error.contains("review guidance is not healthy"));
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
