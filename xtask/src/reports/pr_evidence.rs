@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -408,8 +409,9 @@ fn check_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), Str
 }
 
 fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<String> {
-    let check_bytes = match fs::read(repo.join(PR_CHECK_JSON)) {
-        Ok(bytes) => bytes,
+    let check_path = repo.join(PR_CHECK_JSON);
+    let (check_sha256, check_byte_count) = match digest_file(&check_path) {
+        Ok(identity) => identity,
         Err(error) => return vec![format!("missing or unreadable {PR_CHECK_JSON}: {error}")],
     };
     let subject_text = match fs::read_to_string(repo.join(PR_CHECK_SUBJECT_JSON)) {
@@ -442,10 +444,7 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
             "head_tree",
             resolve_revision(repo, &options.head, "tree").unwrap_or_default(),
         ),
-        (
-            "check_sha256",
-            format!("sha256:{:x}", Sha256::digest(&check_bytes)),
-        ),
+        ("check_sha256", check_sha256),
     ];
     let mut violations: Vec<String> = expected
         .into_iter()
@@ -457,7 +456,7 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
             })
         })
         .collect();
-    if subject.get("check_byte_count").and_then(Value::as_u64) != Some(check_bytes.len() as u64) {
+    if subject.get("check_byte_count").and_then(Value::as_u64) != Some(check_byte_count) {
         violations.push(format!(
             "{PR_CHECK_SUBJECT_JSON} check_byte_count does not match check.json"
         ));
@@ -531,6 +530,27 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
         )),
     }
     violations
+}
+
+fn digest_file(path: &Path) -> Result<(String, u64), String> {
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut reader = BufReader::new(file);
+    let mut digest = Sha256::new();
+    let mut byte_count = 0u64;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|error| format!("read {} failed: {error}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+        byte_count = byte_count
+            .checked_add(read as u64)
+            .ok_or_else(|| format!("byte count overflow for {}", path.display()))?;
+    }
+    Ok((format!("sha256:{:x}", digest.finalize()), byte_count))
 }
 
 fn verify_revision(repo: &Path, rev: &str) -> Result<(), String> {
