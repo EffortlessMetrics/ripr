@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::path::Path;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 pub(crate) const REVIEW_ANALYSIS_IDENTITY_SCHEMA: &str = "ripr.review_analysis_identity.v1";
 const REVIEW_ANALYZER_GENERATION: &str = "diff_scoped_classified_seams.v1";
@@ -47,6 +49,38 @@ pub(crate) struct AdmittedReviewInput {
 pub(crate) struct ProducerAdmissionError {
     pub(crate) category: &'static str,
     pub(crate) message: String,
+}
+
+pub(crate) fn run_analysis_with_timeout<T>(
+    timeout_ms: u64,
+    work: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let token = crate::analysis::cancellation::AnalysisCancellationToken::new();
+    let (finished_sender, finished_receiver) = mpsc::sync_channel(1);
+    std::thread::scope(|scope| {
+        let started = Instant::now();
+        let timer_token = token.clone();
+        scope.spawn(move || {
+            if finished_receiver
+                .recv_timeout(Duration::from_millis(timeout_ms))
+                .is_err()
+            {
+                let _ = timer_token
+                    .cancel(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
+            }
+        });
+
+        let result = crate::analysis::cancellation::with_token(&token, work);
+        let deadline = if started.elapsed() >= Duration::from_millis(timeout_ms) {
+            let _ =
+                token.cancel(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
+            Err("analysis cancelled: DeadlineExceeded".to_string())
+        } else {
+            token.checkpoint().map_err(|error| error.to_string())
+        };
+        let _ = finished_sender.send(());
+        result.and_then(|value| deadline.map(|_| value))
+    })
 }
 
 impl ProducerAdmissionError {
