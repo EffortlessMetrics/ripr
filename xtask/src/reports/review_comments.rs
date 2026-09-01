@@ -1117,6 +1117,23 @@ fn review_comments_receipt(
         }
         object.insert("status".to_string(), Value::String(status.to_string()));
         if status == "complete" {
+            if object
+                .get("phase_evidence")
+                .and_then(Value::as_array)
+                .is_none_or(Vec::is_empty)
+            {
+                object.insert(
+                    "phase_evidence".to_string(),
+                    serde_json::json!([{
+                        "phase": "canonical_diff",
+                        "duration_ms": 0,
+                        "reused": false,
+                        "subject_count": 0,
+                        "stop_reason": "no_changed_paths",
+                        "input_identity_digest": null
+                    }]),
+                );
+            }
             object.insert(
                 "last_completed_phase".to_string(),
                 Value::String("artifact_io".to_string()),
@@ -1995,7 +2012,14 @@ mod tests {
                 "head_sha": resolve_revision_identity(&receipt_root, &options.head),
                 "requested_mode": "draft",
                 "analysis_identity": null,
-                "phase_evidence": [],
+                "phase_evidence": [{
+                    "phase": "artifact_io",
+                    "duration_ms": 0,
+                    "reused": false,
+                    "subject_count": null,
+                    "stop_reason": "complete",
+                    "input_identity_digest": null
+                }],
                 "primary_failure": null,
                 "configured_timeout_ms": 120000,
                 "last_completed_phase": "artifact_io",
