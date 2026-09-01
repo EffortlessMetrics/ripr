@@ -746,16 +746,16 @@ mod tests {
     }
 
     #[test]
-    fn review_input_admission_rejects_stale_incomplete_and_malformed_packets() -> Result<(), String> {
+    fn review_input_admission_rejects_stale_incomplete_and_malformed_packets() -> Result<(), String>
+    {
         let path = std::env::temp_dir().join(format!(
             "ripr-review-input-admission-{}.json",
             std::process::id()
         ));
         let root = std::env::current_dir().map_err(|error| error.to_string())?;
         let findings = serde_json::json!([{"stable_id": "finding-1"}]);
-        let projection_sha256 = digest_bytes(
-            &serde_json::to_vec(&findings).map_err(|error| error.to_string())?,
-        );
+        let projection_sha256 =
+            digest_bytes(&serde_json::to_vec(&findings).map_err(|error| error.to_string())?);
         let identity = ReviewAnalysisIdentity {
             schema_version: REVIEW_ANALYSIS_IDENTITY_SCHEMA.to_string(),
             repository_identity: "repository".to_string(),
@@ -790,8 +790,11 @@ mod tests {
             "projection_selection_policy_version": "v1",
             "projection_sha256": projection_sha256,
         });
-        std::fs::write(&path, serde_json::to_vec(&valid).map_err(|error| error.to_string())?)
-            .map_err(|error| format!("write valid review input: {error}"))?;
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&valid).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| format!("write valid review input: {error}"))?;
         let admitted = admit_review_input(&path, &root, &identity, 1)
             .map_err(|error| error.message.clone())?;
         if admitted.reviewed_count != 1 || admitted.projection_sha256 != projection_sha256 {
@@ -799,11 +802,7 @@ mod tests {
         }
 
         let mut cases = Vec::new();
-        cases.push((
-            "not-json",
-            serde_json::json!("{"),
-            "malformed_producer",
-        ));
+        cases.push(("not-json", serde_json::json!("{"), "malformed_producer"));
         cases.push((
             "wrong-schema",
             serde_json::json!({"schema_version": "wrong"}),
@@ -836,14 +835,38 @@ mod tests {
 
         let mut mutations = Vec::new();
         for (field, value, expected_category) in [
-            ("base_sha", serde_json::json!("other"), "producer_identity_mismatch"),
+            (
+                "base_sha",
+                serde_json::json!("other"),
+                "producer_identity_mismatch",
+            ),
             ("mode", serde_json::json!("fast"), "producer_mode_mismatch"),
             ("reviewed_count", serde_json::json!(2), "malformed_producer"),
-            ("analysis_complete", serde_json::json!(false), "malformed_producer"),
-            ("total_finding_count", serde_json::json!(2), "malformed_producer"),
-            ("projected_finding_count", serde_json::json!(2), "malformed_producer"),
-            ("projection_limit", serde_json::json!(9), "malformed_producer"),
-            ("projection_truncated", serde_json::json!(true), "malformed_producer"),
+            (
+                "analysis_complete",
+                serde_json::json!(false),
+                "malformed_producer",
+            ),
+            (
+                "total_finding_count",
+                serde_json::json!(2),
+                "malformed_producer",
+            ),
+            (
+                "projected_finding_count",
+                serde_json::json!(2),
+                "malformed_producer",
+            ),
+            (
+                "projection_limit",
+                serde_json::json!(9),
+                "malformed_producer",
+            ),
+            (
+                "projection_truncated",
+                serde_json::json!(true),
+                "malformed_producer",
+            ),
             (
                 "projection_selection_policy",
                 serde_json::json!("unstable"),
@@ -854,13 +877,20 @@ mod tests {
                 serde_json::json!("v2"),
                 "producer_identity_mismatch",
             ),
-            ("projection_sha256", serde_json::json!("sha256:wrong"), "producer_identity_mismatch"),
+            (
+                "projection_sha256",
+                serde_json::json!("sha256:wrong"),
+                "producer_identity_mismatch",
+            ),
         ] {
             let mut mutation = valid.clone();
             mutation[field] = value;
             mutations.push(field);
-            std::fs::write(&path, serde_json::to_vec(&mutation).map_err(|error| error.to_string())?)
-                .map_err(|error| format!("write mutation {field}: {error}"))?;
+            std::fs::write(
+                &path,
+                serde_json::to_vec(&mutation).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| format!("write mutation {field}: {error}"))?;
             let error = admit_review_input(&path, &root, &identity, 1)
                 .err()
                 .ok_or_else(|| format!("mutation {field} must fail"))?;
