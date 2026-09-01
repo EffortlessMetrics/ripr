@@ -65,6 +65,9 @@
     "analysis_scope": {
       "$ref": "#/$defs/analysis_scope"
     },
+    "review_input": {
+      "$ref": "#/$defs/review_input"
+    },
     "analysis_outcome": {
       "$ref": "#/$defs/analysis_outcome_projection"
     },
@@ -289,6 +292,33 @@
     }
   ],
   "$defs": {
+    "review_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "findings", "projection_sha256", "reviewed_count"],
+      "properties": {
+        "schema_version": { "const": "ripr.review_input.v1" },
+        "root": { "type": "string", "minLength": 1 },
+        "root_identity": { "type": "string", "minLength": 1 },
+        "base_sha": { "type": "string", "minLength": 1 },
+        "head_sha": { "type": "string", "minLength": 1 },
+        "head_tree": { "type": "string", "minLength": 1 },
+        "canonical_diff_sha256": { "type": "string", "minLength": 1 },
+        "producer_check_sha256": { "type": "string", "minLength": 1 },
+        "check_sha256": { "type": "string", "minLength": 1 },
+        "mode": { "type": "string", "minLength": 1 },
+        "analysis_complete": { "type": "boolean" },
+        "total_finding_count": { "type": "integer", "minimum": 0 },
+        "projected_finding_count": { "type": "integer", "minimum": 0 },
+        "reviewed_count": { "type": "integer", "minimum": 0 },
+        "projection_limit": { "type": "integer", "minimum": 0 },
+        "projection_truncated": { "type": "boolean" },
+        "projection_selection_policy": { "type": "string", "minLength": 1 },
+        "projection_selection_policy_version": { "type": "string", "minLength": 1 },
+        "projection_sha256": { "type": "string", "minLength": 1 },
+        "findings": { "type": "array" }
+      }
+    },
     "analysis_outcome_projection": {
       "type": "object",
       "additionalProperties": false,
@@ -761,7 +791,8 @@
               "last_completed_phase": { "const": "artifact_io" },
               "active_phase": { "type": "null" },
               "completed_artifacts": { "minItems": 1 },
-              "missing_artifacts": { "maxItems": 0 }
+              "missing_artifacts": { "maxItems": 0 },
+              "phase_evidence": { "minItems": 1 }
             }
           }
         },

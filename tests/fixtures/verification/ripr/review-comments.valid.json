@@ -175,7 +175,16 @@
     "head_sha": "HEAD",
     "requested_mode": "draft",
     "analysis_identity": null,
-    "phase_evidence": [],
+    "phase_evidence": [
+      {
+        "phase": "artifact_io",
+        "duration_ms": 1,
+        "reused": false,
+        "subject_count": 2,
+        "stop_reason": "complete",
+        "input_identity_digest": null
+      }
+    ],
     "primary_failure": null,
     "configured_timeout_ms": 120000,
     "last_completed_phase": "artifact_io",
