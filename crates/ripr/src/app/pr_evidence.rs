@@ -11,7 +11,14 @@
 //! This avoids recompilation and keeps the analysis in-process.
 
 use crate::app::{CheckInput, Mode, OutputFormat, check_workspace, render_check};
+use crate::review_input::{
+    CanonicalFindingIndexV1, REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES,
+    REVIEW_INDEX_SCHEMA_VERSION, REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION,
+    REVIEW_INPUT_SELECTION_POLICY, REVIEW_INPUT_SELECTION_POLICY_VERSION, ReviewInputV1,
+    canonical_projection, canonical_projection_all, canonical_projection_from_index,
+};
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -22,7 +29,11 @@ const DEFAULT_BASE: &str = "origin/main";
 const DEFAULT_HEAD: &str = "HEAD";
 const PR_EVIDENCE_JSON: &str = "target/ripr/pr/repo-exposure.json";
 const PR_EVIDENCE_MD: &str = "target/ripr/pr/repo-exposure.md";
+const PR_CHECK_JSON: &str = "target/ripr/pr/check.json";
+const PR_CHECK_SUBJECT_JSON: &str = "target/ripr/pr/check.subject.json";
+const PR_REVIEW_INPUT_JSON: &str = "target/ripr/pr/review-input.json";
 const PR_DIFF: &str = "target/ripr/pr/pr.diff";
+const REVIEW_INPUT_MAX_BYTES: usize = 128 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PrEvidenceOptions {
@@ -170,10 +181,89 @@ fn write_pr_evidence_packet(
 ) -> Result<(), String> {
     let check_value: Value = serde_json::from_str(check_json)
         .map_err(|err| format!("ripr check output was not valid JSON: {err}"))?;
+    if !check_value.is_object() {
+        return Err("ripr check output must be a JSON object".to_string());
+    }
     let packet = pr_evidence_packet(options, changed_files, &check_value);
     let json_text = serde_json::to_string_pretty(&packet)
         .map_err(|err| format!("serialize PR evidence packet: {err}"))?;
     let markdown = render_pr_evidence_markdown(&packet);
+    let check_json_text = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&check_value)
+            .map_err(|err| format!("serialize canonical check output: {err}"))?
+    );
+    let root = repo
+        .join(&options.root)
+        .canonicalize()
+        .map_err(|err| format!("resolve review input root failed: {err}"))?;
+    let findings = check_value
+        .get("findings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "ripr check output findings must be an array".to_string())?;
+    let entries = canonical_projection_all(findings, &root)
+        .map_err(|error| format!("derive canonical finding index: {error}"))?;
+    if entries.len() > REVIEW_INDEX_MAX_ENTRIES {
+        return Err("canonical finding index exceeds entry limit".to_string());
+    }
+    let encoded_entries = serde_json::to_vec(&entries)
+        .map_err(|error| format!("serialize canonical finding index: {error}"))?;
+    if encoded_entries.len() > REVIEW_INDEX_MAX_BYTES {
+        return Err(format!(
+            "canonical finding index exceeds byte limit ({} > {})",
+            encoded_entries.len(),
+            REVIEW_INDEX_MAX_BYTES
+        ));
+    }
+    let index = CanonicalFindingIndexV1 {
+        schema_version: REVIEW_INDEX_SCHEMA_VERSION.to_string(),
+        total_finding_count: entries.len() as u64,
+        index_sha256: format!("sha256:{:x}", Sha256::digest(&encoded_entries)),
+        entries,
+    };
+    let mut subject = json!({
+        "schema_version": "ripr.pr_check_subject.v1",
+        "base_sha": resolve_revision(repo, &options.base, "commit")?,
+        "head_sha": resolve_revision(repo, &options.head, "commit")?,
+        "head_tree": resolve_revision(repo, &options.head, "tree")?,
+        "check_sha256": format!("sha256:{:x}", Sha256::digest(check_json_text.as_bytes())),
+        "check_byte_count": check_json_text.len(),
+        "check_schema": check_value.get("schema_version").cloned().unwrap_or(Value::Null),
+        "mode": check_value.get("mode").cloned().unwrap_or(Value::Null),
+        "analysis_outcome": check_value.get("analysis_outcome").cloned().unwrap_or(Value::Null),
+        "canonical_finding_index": serde_json::to_value(&index)
+            .map_err(|error| format!("serialize canonical finding index: {error}"))?,
+        "canonical_finding_index_entry_count": findings.len(),
+        "canonical_finding_index_byte_count": encoded_entries.len(),
+    });
+    let review_input = producer_review_input(&check_value, repo, options, &subject)?;
+    let review_input_text = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&review_input)
+            .map_err(|err| format!("serialize producer review input: {err}"))?
+    );
+    subject["review_input_sha256"] = json!(format!(
+        "sha256:{:x}",
+        Sha256::digest(review_input_text.as_bytes())
+    ));
+    subject["review_input_byte_count"] = json!(review_input_text.len());
+    let subject_text = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&subject)
+            .map_err(|err| format!("serialize check subject receipt: {err}"))?
+    );
+
+    write_parented_file(&repo.join(PR_CHECK_JSON), PR_CHECK_JSON, check_json_text)?;
+    write_parented_file(
+        &repo.join(PR_REVIEW_INPUT_JSON),
+        PR_REVIEW_INPUT_JSON,
+        review_input_text,
+    )?;
+    write_parented_file(
+        &repo.join(PR_CHECK_SUBJECT_JSON),
+        PR_CHECK_SUBJECT_JSON,
+        subject_text,
+    )?;
 
     write_parented_file(
         &repo.join(PR_EVIDENCE_JSON),
@@ -197,6 +287,67 @@ fn write_pr_evidence_packet(
     println!("Wrote {PR_EVIDENCE_JSON}");
     println!("Wrote {PR_EVIDENCE_MD}");
     Ok(())
+}
+
+fn producer_review_input(
+    check: &Value,
+    repo: &Path,
+    options: &PrEvidenceOptions,
+    subject: &Value,
+) -> Result<Value, String> {
+    let findings = check
+        .get("findings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "ripr check output findings must be an array".to_string())?;
+    let root = repo
+        .join(&options.root)
+        .canonicalize()
+        .map_err(|err| format!("resolve review input root failed: {err}"))?;
+    let projected = canonical_projection(findings, &root)
+        .map_err(|error| format!("derive review input projection: {error}"))?;
+    let projected_count = projected.len();
+    let total_finding_count = findings.len();
+    let analysis_complete = check
+        .get("analysis_outcome")
+        .and_then(|outcome| outcome.get("analysis_complete"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let projection_truncated = projected_count < total_finding_count;
+    let findings_value = serde_json::to_value(projected)
+        .map_err(|error| format!("serialize review input projection: {error}"))?;
+    let projection_bytes = serde_json::to_vec(&findings_value)
+        .map_err(|err| format!("serialize producer review input digest: {err}"))?;
+    let canonical_diff = fs::read(repo.join(PR_DIFF))
+        .map_err(|err| format!("read canonical diff for review input binding: {err}"))?;
+    if projection_bytes.len() > REVIEW_INPUT_MAX_BYTES {
+        return Err(format!(
+            "producer review input exceeds {REVIEW_INPUT_MAX_BYTES} byte limit"
+        ));
+    }
+    let input = json!({
+        "schema_version": REVIEW_INPUT_SCHEMA_VERSION,
+        "mode": check["mode"],
+        "root_identity": root.display().to_string().replace('\\', "/"),
+        "base_sha": subject["base_sha"],
+        "head_sha": subject["head_sha"],
+        "head_tree": subject["head_tree"],
+        "check_sha256": subject["check_sha256"],
+        "canonical_diff_sha256": format!("sha256:{:x}", Sha256::digest(canonical_diff)),
+        "analysis_complete": analysis_complete,
+        "total_finding_count": total_finding_count,
+        "projected_finding_count": projected_count,
+        "projection_limit": REVIEW_INPUT_PROJECTION_LIMIT,
+        "projection_truncated": projection_truncated,
+        "projection_selection_policy": REVIEW_INPUT_SELECTION_POLICY,
+        "projection_selection_policy_version": REVIEW_INPUT_SELECTION_POLICY_VERSION,
+        "reviewed_count": projected_count,
+        "projection_sha256": format!("sha256:{:x}", Sha256::digest(&projection_bytes)),
+        "findings": findings_value,
+    });
+    let typed: ReviewInputV1 = serde_json::from_value(input)
+        .map_err(|error| format!("producer review input does not match ReviewInputV1: {error}"))?;
+    serde_json::to_value(typed)
+        .map_err(|error| format!("serialize typed producer review input: {error}"))
 }
 
 fn write_pr_evidence_error_packet(
@@ -250,19 +401,98 @@ fn check_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), Str
         changed_files.len(),
         markdown_path.exists(),
     );
-    if violations.is_empty() {
-        println!("PR evidence contract ok: {PR_EVIDENCE_JSON}");
-        return Ok(());
+    if !violations.is_empty() {
+        return Err(format!(
+            "PR evidence contract violations:\n{}",
+            violations
+                .iter()
+                .map(|violation| format!("- {violation}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ));
     }
 
-    Err(format!(
-        "PR evidence contract violations:\n{}",
-        violations
-            .iter()
-            .map(|violation| format!("- {violation}"))
-            .collect::<Vec<_>>()
-            .join("\n")
-    ))
+    validate_producer_artifacts(repo, options)?;
+    println!("PR evidence contract ok: {PR_EVIDENCE_JSON}");
+    Ok(())
+}
+
+fn validate_producer_artifacts(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
+    let check_path = repo.join(PR_CHECK_JSON);
+    let subject_path = repo.join(PR_CHECK_SUBJECT_JSON);
+    let review_input_path = repo.join(PR_REVIEW_INPUT_JSON);
+    let check_bytes = fs::read(&check_path)
+        .map_err(|error| format!("missing or unreadable {PR_CHECK_JSON}: {error}"))?;
+    let subject_bytes = fs::read(&subject_path)
+        .map_err(|error| format!("missing or unreadable {PR_CHECK_SUBJECT_JSON}: {error}"))?;
+    let review_input_bytes = fs::read(&review_input_path)
+        .map_err(|error| format!("missing or unreadable {PR_REVIEW_INPUT_JSON}: {error}"))?;
+    let check: Value = serde_json::from_slice(&check_bytes)
+        .map_err(|error| format!("{PR_CHECK_JSON} is not valid JSON: {error}"))?;
+    let subject: Value = serde_json::from_slice(&subject_bytes)
+        .map_err(|error| format!("{PR_CHECK_SUBJECT_JSON} is not valid JSON: {error}"))?;
+    let review_input: ReviewInputV1 = serde_json::from_slice(&review_input_bytes)
+        .map_err(|error| format!("{PR_REVIEW_INPUT_JSON} is not valid ReviewInputV1: {error}"))?;
+    let check_digest = format!("sha256:{:x}", Sha256::digest(&check_bytes));
+    if subject.get("check_sha256").and_then(Value::as_str) != Some(&check_digest) {
+        return Err(format!(
+            "{PR_CHECK_SUBJECT_JSON} check_sha256 does not match {PR_CHECK_JSON}"
+        ));
+    }
+    if subject.get("check_byte_count").and_then(Value::as_u64) != Some(check_bytes.len() as u64) {
+        return Err(format!(
+            "{PR_CHECK_SUBJECT_JSON} check_byte_count does not match {PR_CHECK_JSON}"
+        ));
+    }
+    let root = repo
+        .join(&options.root)
+        .canonicalize()
+        .map_err(|error| format!("resolve producer root: {error}"))?;
+    let findings = check
+        .get("findings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("{PR_CHECK_JSON} findings must be an array"))?;
+    let expected_entries = canonical_projection_all(findings, &root)
+        .map_err(|error| format!("derive canonical finding index: {error}"))?;
+    let index: CanonicalFindingIndexV1 = subject
+        .get("canonical_finding_index")
+        .cloned()
+        .ok_or_else(|| format!("{PR_CHECK_SUBJECT_JSON} is missing canonical_finding_index"))
+        .and_then(|value| {
+            serde_json::from_value(value).map_err(|error| {
+                format!("{PR_CHECK_SUBJECT_JSON} canonical_finding_index is invalid: {error}")
+            })
+        })?;
+    if index.entries != expected_entries {
+        return Err(format!(
+            "{PR_CHECK_SUBJECT_JSON} canonical finding index does not match {PR_CHECK_JSON}"
+        ));
+    }
+    let expected_projection = canonical_projection_from_index(&index)
+        .map_err(|error| format!("validate canonical finding index: {error}"))?;
+    let actual_projection = review_input.findings.clone();
+    if actual_projection != expected_projection {
+        return Err(format!(
+            "{PR_REVIEW_INPUT_JSON} is not the canonical projection"
+        ));
+    }
+    if subject.get("review_input_sha256").and_then(Value::as_str)
+        != Some(&format!("sha256:{:x}", Sha256::digest(&review_input_bytes)))
+    {
+        return Err(format!(
+            "{PR_CHECK_SUBJECT_JSON} review_input_sha256 does not match {PR_REVIEW_INPUT_JSON}"
+        ));
+    }
+    if subject
+        .get("review_input_byte_count")
+        .and_then(Value::as_u64)
+        != Some(review_input_bytes.len() as u64)
+    {
+        return Err(format!(
+            "{PR_CHECK_SUBJECT_JSON} review_input_byte_count does not match {PR_REVIEW_INPUT_JSON}"
+        ));
+    }
+    Ok(())
 }
 
 fn verify_revision(repo: &Path, rev: &str) -> Result<(), String> {
@@ -322,6 +552,12 @@ fn command_root_path(repo: &Path, root: &str) -> PathBuf {
     } else {
         repo.join(root_path)
     }
+}
+
+fn resolve_revision(repo: &Path, revision: &str, object: &str) -> Result<String, String> {
+    let expression = format!("{revision}^{{{object}}}");
+    run_git_output(repo, &["rev-parse", "--verify", expression.as_str()])
+        .map(|output| output.trim().to_string())
 }
 
 fn run_git_output(repo: &Path, args: &[&str]) -> Result<String, String> {
@@ -1228,7 +1464,13 @@ mod tests {
         write_pr_evidence_with_runner(&repo, &options, |_repo, _options| {
             Err("ripr check for PR evidence failed; retry command: ripr pr-evidence --base HEAD~1 --head HEAD --root .".to_string())
         })?;
-        check_pr_evidence(&repo, &options)?;
+        let check_error = check_pr_evidence(&repo, &options)
+            .expect_err("an error packet without producer artifacts must not pass --check");
+        if !check_error.contains("missing or unreadable target/ripr/pr/check.json") {
+            return Err(format!(
+                "unexpected producer artifact validation error: {check_error}"
+            ));
+        }
 
         let packet_text = fs::read_to_string(repo.join(PR_EVIDENCE_JSON))
             .map_err(|err| format!("read packet: {err}"))?;
@@ -1262,6 +1504,10 @@ mod tests {
             ..options()
         };
         let check_json = r#"{
+          "schema_version": "ripr.check.v1",
+          "mode": "draft",
+          "analysis_outcome": {"analysis_complete": true},
+          "findings": [],
           "summary": {
             "weakly_exposed": 1,
             "reachable_unrevealed": 0,
