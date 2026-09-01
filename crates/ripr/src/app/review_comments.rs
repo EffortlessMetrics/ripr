@@ -725,6 +725,58 @@ mod tests {
         {
             return Err("admitted identity did not retain the exact subject".to_string());
         }
+
+        let reject_producer = |candidate: &Value| -> Result<&'static str, String> {
+            std::fs::write(
+                &check_path,
+                serde_json::to_vec(candidate).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let error = admit_producer_evidence(
+                &check_path,
+                &CheckInput::default(),
+                &RiprConfig::default(),
+                base,
+                head,
+                diff_text,
+            )
+            .err()
+            .ok_or_else(|| "producer mutation must fail closed".to_string())?;
+            Ok(error.category)
+        };
+        for (field, value) in [
+            ("summary", serde_json::json!([])),
+            ("findings", serde_json::json!({})),
+            ("analysis_outcome", serde_json::json!([])),
+        ] {
+            let mut mutation = producer.clone();
+            mutation[field] = value;
+            if reject_producer(&mutation)? != "malformed_producer" {
+                return Err(format!("invalid {field} was not malformed"));
+            }
+        }
+        let mut mutation = producer.clone();
+        mutation["findings"] = serde_json::json!([{}]);
+        if reject_producer(&mutation)? != "malformed_producer" {
+            return Err("contradictory finding count was admitted".to_string());
+        }
+        let mut mutation = producer.clone();
+        mutation["analysis_outcome"]["outcome"]["identity"]["base_revision"] =
+            serde_json::Value::Null;
+        if reject_producer(&mutation)? != "producer_identity_mismatch" {
+            return Err("missing base revision was admitted".to_string());
+        }
+        let mut mutation = producer.clone();
+        mutation["analysis_outcome"]["outcome"]["identity"]["input_identity"] =
+            serde_json::json!("sha256:wrong");
+        if reject_producer(&mutation)? != "producer_identity_mismatch" {
+            return Err("wrong diff identity was admitted".to_string());
+        }
+        std::fs::write(
+            &check_path,
+            serde_json::to_vec(&producer).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
         producer["analysis_outcome"]["analysis_complete"] = serde_json::json!(false);
         std::fs::write(
             &check_path,
