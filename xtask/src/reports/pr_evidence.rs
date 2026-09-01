@@ -4,6 +4,7 @@ use crate::run::{
     capture_output_with_timeout, run_output_owned, run_output_owned_with_timeout,
     tool_build_timeout,
 };
+use ripr::review_input::{ReviewInputV1, canonical_projection};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::env;
@@ -240,53 +241,8 @@ fn producer_review_input(
         .join(&options.root)
         .canonicalize()
         .map_err(|err| format!("resolve review input root failed: {err}"))?;
-    let mut projected = findings
-        .iter()
-        .filter_map(|finding| {
-            let probe = finding.get("probe")?;
-            let file = probe.get("file")?.as_str()?;
-            let line = probe.get("line")?.as_u64()?;
-            let stable_id = finding.get("id")?.as_str()?;
-            let related_test = finding
-                .get("related_tests")
-                .and_then(Value::as_array)
-                .and_then(|tests| tests.first())
-                .and_then(|test| {
-                    Some(json!({
-                        "name": test.get("name")?.as_str()?,
-                        "file": test.get("file")?.as_str()?,
-                        "line": test.get("line")?.as_u64()?,
-                    }))
-                });
-            let file_path = Path::new(file);
-            let absolute_file = if file_path.is_absolute() {
-                file_path.to_path_buf()
-            } else {
-                root.join(file_path)
-            };
-            let relative_file = absolute_file
-                .canonicalize()
-                .ok()?
-                .strip_prefix(&root)
-                .ok()?
-                .display()
-                .to_string();
-            Some(json!({
-                "stable_id": stable_id,
-                "file": relative_file.replace('\\', "/"),
-                "line": line,
-                "severity": finding.get("severity")?.as_str()?,
-                "finding_class": finding.get("classification")?.as_str()?,
-                "summary": projection_summary(finding),
-                "evidence_digest": format!("sha256:{:x}", Sha256::digest(
-                    serde_json::to_vec(finding).ok()?.as_slice()
-                )),
-                "related_test": related_test,
-            }))
-        })
-        .collect::<Vec<_>>();
-    projected.sort_by_key(projection_order);
-    projected.truncate(REVIEW_INPUT_PROJECTION_LIMIT);
+    let projected = canonical_projection(findings, &root)
+        .map_err(|error| format!("derive review input projection: {error}"))?;
     let projected_count = projected.len();
     let total_finding_count = findings.len();
     let analysis_complete = check
@@ -295,7 +251,8 @@ fn producer_review_input(
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let projection_truncated = projected_count < total_finding_count;
-    let findings_value = Value::Array(projected);
+    let findings_value = serde_json::to_value(projected)
+        .map_err(|error| format!("serialize review input projection: {error}"))?;
     let projection_bytes = serde_json::to_vec(&findings_value)
         .map_err(|err| format!("serialize producer review input digest: {err}"))?;
     let canonical_diff = fs::read(repo.join(PR_DIFF))
@@ -305,7 +262,7 @@ fn producer_review_input(
             "producer review input exceeds {REVIEW_INPUT_MAX_BYTES} byte limit"
         ));
     }
-    Ok(json!({
+    let input = json!({
         "schema_version": REVIEW_INPUT_SCHEMA_VERSION,
         "mode": check["mode"],
         "root_identity": root.display().to_string().replace('\\', "/"),
@@ -324,51 +281,11 @@ fn producer_review_input(
         "reviewed_count": projected_count,
         "projection_sha256": format!("sha256:{:x}", Sha256::digest(&projection_bytes)),
         "findings": findings_value,
-    }))
-}
-
-fn projection_summary(finding: &Value) -> &str {
-    finding
-        .get("suggested_next_action")
-        .and_then(Value::as_str)
-        .filter(|summary| !summary.trim().is_empty())
-        .or_else(|| {
-            finding
-                .get("recommended_next_step")
-                .and_then(Value::as_str)
-                .filter(|summary| !summary.trim().is_empty())
-        })
-        .unwrap_or("Inspect the producer-owned review finding.")
-}
-
-fn projection_order(value: &Value) -> (u8, u8, String, String, u64) {
-    let severity = match value.get("severity").and_then(Value::as_str) {
-        Some("critical") => 0,
-        Some("error") => 1,
-        Some("warning") => 2,
-        Some("note") => 3,
-        _ => 4,
-    };
-    let actionability = match value.get("finding_class").and_then(Value::as_str) {
-        Some("exposed") => 0,
-        Some("weakly_exposed") | Some("weakly_gripped") => 1,
-        _ => 2,
-    };
-    let stable_id = value
-        .get("stable_id")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let path = value
-        .get("file")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let line = value
-        .get("line")
-        .and_then(Value::as_u64)
-        .unwrap_or(u64::MAX);
-    (severity, actionability, stable_id, path, line)
+    });
+    let typed: ReviewInputV1 = serde_json::from_value(input)
+        .map_err(|error| format!("producer review input does not match ReviewInputV1: {error}"))?;
+    serde_json::to_value(typed)
+        .map_err(|error| format!("serialize typed producer review input: {error}"))
 }
 
 fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
@@ -1098,6 +1015,7 @@ fn repo_root() -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ripr::review_input::projection_summary;
 
     fn options() -> PrEvidenceOptions {
         PrEvidenceOptions {

@@ -3,6 +3,7 @@
 use super::CheckInput;
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::config::{RiprConfig, repo_exposure_config_identity_hash};
+use crate::review_input::ReviewInputV1;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -36,6 +37,7 @@ pub(crate) struct ReviewAnalysisIdentity {
 pub(crate) struct AdmittedReviewAnalysis {
     pub(crate) identity: ReviewAnalysisIdentity,
     pub(crate) outcome: AnalysisOutcome,
+    pub(crate) producer_findings: Vec<Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -262,6 +264,7 @@ pub(crate) fn admit_producer_evidence(
             check_sha256,
         },
         outcome,
+        producer_findings: findings.to_vec(),
     })
 }
 
@@ -270,6 +273,7 @@ pub(crate) fn admit_review_input(
     root: &Path,
     identity: &ReviewAnalysisIdentity,
     producer_finding_count: u64,
+    producer_findings: Option<&[Value]>,
 ) -> Result<AdmittedReviewInput, ProducerAdmissionError> {
     let bytes = std::fs::read(review_input_path).map_err(|error| {
         let message = format!(
@@ -282,10 +286,30 @@ pub(crate) fn admit_review_input(
             ProducerAdmissionError::malformed(message)
         }
     })?;
-    let value: Value = serde_json::from_slice(&bytes).map_err(|error| {
+    let raw: Value = serde_json::from_slice(&bytes).map_err(|error| {
         ProducerAdmissionError::malformed(format!(
-            "producer review input {} is invalid JSON: {error}",
+            "producer review input {} is invalid or does not match ReviewInputV1: {error}",
             review_input_path.display()
+        ))
+    })?;
+    require_equal(
+        "review_input_schema_version",
+        required_string(&raw, "schema_version")?,
+        crate::review_input::REVIEW_INPUT_SCHEMA_VERSION,
+    )?;
+    require_equal(
+        "root_identity",
+        required_string(&raw, "root_identity")?,
+        &logical_path(root),
+    )?;
+    let input: ReviewInputV1 = serde_json::from_value(raw).map_err(|error| {
+        ProducerAdmissionError::malformed(format!(
+            "producer review input does not match ReviewInputV1: {error}"
+        ))
+    })?;
+    let value = serde_json::to_value(&input).map_err(|error| {
+        ProducerAdmissionError::malformed(format!(
+            "serialize admitted producer review input: {error}"
         ))
     })?;
     require_equal(
@@ -375,6 +399,25 @@ pub(crate) fn admit_review_input(
         return Err(ProducerAdmissionError::malformed(
             "review input projection bounds contradict its findings payload",
         ));
+    }
+    if let Some(producer_findings) = producer_findings {
+        let expected = crate::review_input::canonical_projection(producer_findings, root).map_err(
+            |error| {
+                ProducerAdmissionError::malformed(format!(
+                    "derive canonical review input projection: {error}"
+                ))
+            },
+        )?;
+        let expected_value = serde_json::to_value(expected).map_err(|error| {
+            ProducerAdmissionError::malformed(format!(
+                "serialize canonical review input projection: {error}"
+            ))
+        })?;
+        if value.get("findings") != Some(&expected_value) {
+            return Err(ProducerAdmissionError::malformed(
+                "review input findings are not the canonical producer projection",
+            ));
+        }
     }
     require_equal(
         "projection_selection_policy",
@@ -852,7 +895,18 @@ mod tests {
             std::process::id()
         ));
         let root = std::env::current_dir().map_err(|error| error.to_string())?;
-        let findings = serde_json::json!([{"stable_id": "finding-1"}]);
+        let producer_findings = vec![serde_json::json!({
+            "id": "finding-1",
+            "probe": {"file": "Cargo.toml", "line": 1},
+            "severity": "warning",
+            "classification": "exposed",
+            "related_tests": []
+        })];
+        let findings = serde_json::to_value(crate::review_input::canonical_projection(
+            &producer_findings,
+            &root,
+        )?)
+        .map_err(|error| error.to_string())?;
         let projection_sha256 =
             digest_bytes(&serde_json::to_vec(&findings).map_err(|error| error.to_string())?);
         let identity = ReviewAnalysisIdentity {
@@ -894,13 +948,13 @@ mod tests {
             serde_json::to_vec(&valid).map_err(|error| error.to_string())?,
         )
         .map_err(|error| format!("write valid review input: {error}"))?;
-        let admitted = admit_review_input(&path, &root, &identity, 1)
+        let admitted = admit_review_input(&path, &root, &identity, 1, Some(&producer_findings))
             .map_err(|error| error.message.clone())?;
         if admitted.reviewed_count != 1 || admitted.projection_sha256 != projection_sha256 {
             return Err("valid review input was not admitted".to_string());
         }
         std::fs::remove_file(&path).map_err(|error| error.to_string())?;
-        let missing = admit_review_input(&path, &root, &identity, 1)
+        let missing = admit_review_input(&path, &root, &identity, 1, None)
             .err()
             .ok_or_else(|| "missing review input must fail".to_string())?;
         if missing.category != "missing_producer" {
@@ -934,7 +988,7 @@ mod tests {
                 serde_json::to_vec(&value).map_err(|error| error.to_string())?
             };
             std::fs::write(&path, bytes).map_err(|error| format!("write {name}: {error}"))?;
-            let error = admit_review_input(&path, &root, &identity, 1)
+            let error = admit_review_input(&path, &root, &identity, 1, None)
                 .err()
                 .ok_or_else(|| format!("{name} must fail"))?;
             if error.category != expected_category {
@@ -1000,7 +1054,7 @@ mod tests {
                 serde_json::to_vec(&mutation).map_err(|error| error.to_string())?,
             )
             .map_err(|error| format!("write mutation {field}: {error}"))?;
-            let error = admit_review_input(&path, &root, &identity, 1)
+            let error = admit_review_input(&path, &root, &identity, 1, None)
                 .err()
                 .ok_or_else(|| format!("mutation {field} must fail"))?;
             if error.category != expected_category {
@@ -1009,6 +1063,25 @@ mod tests {
         }
         if mutations.len() != 11 {
             return Err("not all review-input mutations were exercised".to_string());
+        }
+        let mut substituted = valid.clone();
+        substituted["findings"][0]["summary"] = serde_json::json!("substituted");
+        let substituted_bytes =
+            serde_json::to_vec(&substituted["findings"]).map_err(|error| error.to_string())?;
+        substituted["projection_sha256"] = serde_json::json!(digest_bytes(&substituted_bytes));
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&substituted).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| format!("write substituted projection: {error}"))?;
+        let error = admit_review_input(&path, &root, &identity, 1, Some(&producer_findings))
+            .err()
+            .ok_or_else(|| "substituted projection must fail canonical comparison".to_string())?;
+        if error.category != "malformed_producer" {
+            return Err(format!(
+                "substituted projection returned {}",
+                error.category
+            ));
         }
         std::fs::remove_file(&path).map_err(|error| error.to_string())?;
         Ok(())

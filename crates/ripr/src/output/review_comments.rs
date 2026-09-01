@@ -27,36 +27,19 @@ use std::path::Path;
 
 mod scope;
 
+pub(crate) use crate::review_input::{
+    ReviewFindingProjectionV1 as ReviewFindingProjection,
+    ReviewRelatedTestProjectionV1 as ReviewRelatedTestProjection,
+};
 pub(crate) use scope::ReviewCommentsAnalysisScope;
 use scope::ReviewPlacement;
 
 pub(crate) const REVIEW_COMMENTS_SCHEMA_VERSION: &str = "0.1";
 pub(crate) const DEFAULT_REVIEW_MAX_INLINE_COMMENTS: usize = 3;
 pub(crate) const DEFAULT_REVIEW_MAX_SUMMARY_ITEMS: usize = 10;
-pub(crate) const REVIEW_INPUT_SCHEMA_VERSION: &str = "ripr.review_input.v1";
+pub(crate) const REVIEW_INPUT_SCHEMA_VERSION: &str =
+    crate::review_input::REVIEW_INPUT_SCHEMA_VERSION;
 pub(crate) const REVIEW_INPUT_MAX_BYTES: usize = 128 * 1024;
-
-/// Renderer-owned facts retained after canonical analysis.  This is deliberately
-/// smaller than `ClassifiedSeam`: consumers need navigation and recommendation
-/// identity, not ASTs, source buffers, parser state, or the seam inventory.
-#[derive(Clone, Debug, serde::Serialize)]
-pub(crate) struct ReviewFindingProjection {
-    pub(crate) stable_id: String,
-    pub(crate) file: String,
-    pub(crate) line: Option<usize>,
-    pub(crate) severity: String,
-    pub(crate) finding_class: String,
-    pub(crate) summary: String,
-    pub(crate) evidence_digest: String,
-    pub(crate) related_test: Option<ReviewRelatedTestProjection>,
-}
-
-#[derive(Clone, Debug, serde::Serialize)]
-pub(crate) struct ReviewRelatedTestProjection {
-    pub(crate) name: String,
-    pub(crate) file: String,
-    pub(crate) line: usize,
-}
 
 pub(crate) fn review_input_projection(
     root: &Path,
@@ -74,13 +57,13 @@ pub(crate) fn review_input_projection(
                 ReviewRelatedTestProjection {
                     name: test.test_name.clone(),
                     file: display_path(&test.file),
-                    line: test.line,
+                    line: test.line as u64,
                 }
             });
             Ok(ReviewFindingProjection {
                 stable_id: seam.id().as_str().to_string(),
                 file: display_path(seam.file()),
-                line: Some(seam.display_line()),
+                line: Some(seam.display_line() as u64),
                 severity: config
                     .severity()
                     .for_seam(selected.seam.class)

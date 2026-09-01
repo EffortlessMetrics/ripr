@@ -97,6 +97,7 @@ pub mod lsp;
 // Kept public for compatibility with existing render integrations.
 #[doc(hidden)]
 pub mod output;
+pub mod review_input;
 
 pub use analysis::LanguageRun;
 pub use analysis::LanguageRunStatus;
