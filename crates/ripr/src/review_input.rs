@@ -135,7 +135,7 @@ struct ProducerCheckStream {
     _discarded: std::collections::BTreeMap<String, IgnoredAny>,
 }
 
-pub fn producer_mode(bytes: &[u8]) -> Result<Option<String>, String> {
+pub(crate) fn producer_mode(bytes: &[u8]) -> Result<Option<String>, String> {
     let Some(key_start) = bytes
         .windows(b"\"mode\"".len())
         .position(|window| window == b"\"mode\"")
