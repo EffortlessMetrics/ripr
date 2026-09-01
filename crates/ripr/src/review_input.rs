@@ -188,3 +188,54 @@ fn projection_order(value: &ReviewFindingProjectionV1) -> (u8, u8, String, Strin
         value.line.unwrap_or(u64::MAX),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn finding() -> Value {
+        serde_json::json!({
+            "id": "finding-1",
+            "probe": {"file": "Cargo.toml", "line": 1},
+            "severity": "warning",
+            "classification": "exposed",
+            "suggested_next_action": "Inspect the finding.",
+            "related_tests": []
+        })
+    }
+
+    #[test]
+    fn canonical_projection_rejects_unprojectable_findings() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        for (name, mutation) in [
+            ("probe", serde_json::json!(null)),
+            ("id", serde_json::json!(null)),
+            ("severity", serde_json::json!(null)),
+            ("classification", serde_json::json!(null)),
+            ("related_tests", serde_json::json!("not-an-array")),
+        ] {
+            let mut value = finding();
+            value[name] = mutation;
+            if canonical_projection(&[value], &root).is_ok() {
+                return Err(format!("{name} mutation was accepted"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn canonical_projection_rejects_malformed_related_tests_and_paths() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let mut related = finding();
+        related["related_tests"] = serde_json::json!([{"name": "test", "file": "Cargo.toml"}]);
+        if canonical_projection(&[related], &root).is_ok() {
+            return Err("related test missing line was accepted".to_string());
+        }
+        let mut escaping = finding();
+        escaping["probe"]["file"] = serde_json::json!("../outside");
+        if canonical_projection(&[escaping], &root).is_ok() {
+            return Err("path escaping the root was accepted".to_string());
+        }
+        Ok(())
+    }
+}
