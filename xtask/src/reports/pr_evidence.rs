@@ -4,7 +4,10 @@ use crate::run::{
     capture_output_with_timeout, run_output_owned, run_output_owned_with_timeout,
     tool_build_timeout,
 };
-use ripr::review_input::{ReviewInputV1, canonical_projection};
+use ripr::review_input::{
+    REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION, REVIEW_INPUT_SELECTION_POLICY,
+    REVIEW_INPUT_SELECTION_POLICY_VERSION, ReviewInputV1, canonical_projection,
+};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::env;
@@ -22,11 +25,7 @@ const PR_CHECK_JSON: &str = "target/ripr/pr/check.json";
 const PR_CHECK_SUBJECT_JSON: &str = "target/ripr/pr/check.subject.json";
 const PR_REVIEW_INPUT_JSON: &str = "target/ripr/pr/review-input.json";
 const PR_DIFF: &str = "target/ripr/pr/pr.diff";
-const REVIEW_INPUT_SCHEMA_VERSION: &str = "ripr.review_input.v1";
 const REVIEW_INPUT_MAX_BYTES: usize = 128 * 1024;
-const REVIEW_INPUT_PROJECTION_LIMIT: usize = 10;
-const REVIEW_INPUT_SELECTION_POLICY: &str = "severity_actionability_stable_id_path_line";
-const REVIEW_INPUT_SELECTION_POLICY_VERSION: &str = "v1";
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
 const PR_EVIDENCE_TIMEOUT_ENV: &str = "RIPR_PR_EVIDENCE_TIMEOUT_SECS";
 
