@@ -747,7 +747,7 @@ fn run_ripr_review_comments(
     if output.status.is_some_and(|status| status.success()) {
         Ok(())
     } else {
-        let receipt_detail = fs::read_to_string(repo.join("target/ripr/review/run-receipt.json"))
+        let receipt_detail = fs::read_to_string(repo.join(REVIEW_COMMENTS_RECEIPT))
             .ok()
             .and_then(|text| serde_json::from_str::<Value>(&text).ok())
             .and_then(|receipt| receipt.get("primary_failure").cloned())
