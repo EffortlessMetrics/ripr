@@ -232,14 +232,14 @@ fn write_pr_evidence_packet(
 
     write_parented_file(&repo.join(PR_CHECK_JSON), PR_CHECK_JSON, check_json_text)?;
     write_parented_file(
-        &repo.join(PR_CHECK_SUBJECT_JSON),
-        PR_CHECK_SUBJECT_JSON,
-        subject_text,
-    )?;
-    write_parented_file(
         &repo.join(PR_REVIEW_INPUT_JSON),
         PR_REVIEW_INPUT_JSON,
         review_input_text,
+    )?;
+    write_parented_file(
+        &repo.join(PR_CHECK_SUBJECT_JSON),
+        PR_CHECK_SUBJECT_JSON,
+        subject_text,
     )?;
 
     write_parented_file(
