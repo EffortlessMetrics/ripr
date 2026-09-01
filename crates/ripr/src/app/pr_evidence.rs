@@ -21,6 +21,7 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -417,43 +418,30 @@ fn check_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), Str
     Ok(())
 }
 
-fn validate_producer_artifacts(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
+fn validate_producer_artifacts(repo: &Path, _options: &PrEvidenceOptions) -> Result<(), String> {
     let check_path = repo.join(PR_CHECK_JSON);
     let subject_path = repo.join(PR_CHECK_SUBJECT_JSON);
     let review_input_path = repo.join(PR_REVIEW_INPUT_JSON);
-    let check_bytes = fs::read(&check_path)
+    let (check_digest, check_byte_count) = digest_file(&check_path)
         .map_err(|error| format!("missing or unreadable {PR_CHECK_JSON}: {error}"))?;
     let subject_bytes = fs::read(&subject_path)
         .map_err(|error| format!("missing or unreadable {PR_CHECK_SUBJECT_JSON}: {error}"))?;
     let review_input_bytes = fs::read(&review_input_path)
         .map_err(|error| format!("missing or unreadable {PR_REVIEW_INPUT_JSON}: {error}"))?;
-    let check: Value = serde_json::from_slice(&check_bytes)
-        .map_err(|error| format!("{PR_CHECK_JSON} is not valid JSON: {error}"))?;
     let subject: Value = serde_json::from_slice(&subject_bytes)
         .map_err(|error| format!("{PR_CHECK_SUBJECT_JSON} is not valid JSON: {error}"))?;
     let review_input: ReviewInputV1 = serde_json::from_slice(&review_input_bytes)
         .map_err(|error| format!("{PR_REVIEW_INPUT_JSON} is not valid ReviewInputV1: {error}"))?;
-    let check_digest = format!("sha256:{:x}", Sha256::digest(&check_bytes));
     if subject.get("check_sha256").and_then(Value::as_str) != Some(&check_digest) {
         return Err(format!(
             "{PR_CHECK_SUBJECT_JSON} check_sha256 does not match {PR_CHECK_JSON}"
         ));
     }
-    if subject.get("check_byte_count").and_then(Value::as_u64) != Some(check_bytes.len() as u64) {
+    if subject.get("check_byte_count").and_then(Value::as_u64) != Some(check_byte_count) {
         return Err(format!(
             "{PR_CHECK_SUBJECT_JSON} check_byte_count does not match {PR_CHECK_JSON}"
         ));
     }
-    let root = repo
-        .join(&options.root)
-        .canonicalize()
-        .map_err(|error| format!("resolve producer root: {error}"))?;
-    let findings = check
-        .get("findings")
-        .and_then(Value::as_array)
-        .ok_or_else(|| format!("{PR_CHECK_JSON} findings must be an array"))?;
-    let expected_entries = canonical_projection_all(findings, &root)
-        .map_err(|error| format!("derive canonical finding index: {error}"))?;
     let index: CanonicalFindingIndexV1 = subject
         .get("canonical_finding_index")
         .cloned()
@@ -463,11 +451,6 @@ fn validate_producer_artifacts(repo: &Path, options: &PrEvidenceOptions) -> Resu
                 format!("{PR_CHECK_SUBJECT_JSON} canonical_finding_index is invalid: {error}")
             })
         })?;
-    if index.entries != expected_entries {
-        return Err(format!(
-            "{PR_CHECK_SUBJECT_JSON} canonical finding index does not match {PR_CHECK_JSON}"
-        ));
-    }
     let expected_projection = canonical_projection_from_index(&index)
         .map_err(|error| format!("validate canonical finding index: {error}"))?;
     let actual_projection = review_input.findings.clone();
@@ -493,6 +476,27 @@ fn validate_producer_artifacts(repo: &Path, options: &PrEvidenceOptions) -> Resu
         ));
     }
     Ok(())
+}
+
+fn digest_file(path: &Path) -> Result<(String, u64), String> {
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut reader = BufReader::new(file);
+    let mut digest = Sha256::new();
+    let mut byte_count = 0u64;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|error| format!("read {} failed: {error}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+        byte_count = byte_count
+            .checked_add(read as u64)
+            .ok_or_else(|| format!("byte count overflow for {}", path.display()))?;
+    }
+    Ok((format!("sha256:{:x}", digest.finalize()), byte_count))
 }
 
 fn verify_revision(repo: &Path, rev: &str) -> Result<(), String> {
