@@ -6161,6 +6161,12 @@ language = "rust"
         let check_path = root.join("target/ripr/review-comments-bounded-check.json");
         let subject_path = check_path.with_extension("subject.json");
         let review_path = check_path.with_file_name("review-input.json");
+        std::fs::create_dir_all(
+            check_path
+                .parent()
+                .ok_or_else(|| "bounded fixture parent missing".to_string())?,
+        )
+        .map_err(|error| format!("create bounded fixture parent: {error}"))?;
         std::fs::write(&check_path, check_bytes).map_err(|error| error.to_string())?;
         std::fs::write(
             &subject_path,
