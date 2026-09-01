@@ -6077,6 +6077,139 @@ language = "rust"
     }
 
     #[test]
+    fn review_comments_renders_from_bounded_producer_input() -> Result<(), String> {
+        use sha2::{Digest, Sha256};
+
+        let root = repo_root();
+        let root_identity_text = crate::output::outcome::display_path(&root);
+        let root_identity = root_identity_text
+            .strip_prefix("//?/")
+            .unwrap_or(&root_identity_text)
+            .to_string();
+        let revision = |kind: &str| -> Result<String, String> {
+            let output = std::process::Command::new("git")
+                .args(["-C", &root.display().to_string(), "rev-parse"])
+                .arg(kind)
+                .output()
+                .map_err(|error| format!("resolve fixture revision: {error}"))?;
+            if !output.status.success() {
+                return Err(format!("resolve fixture revision failed: {kind}"));
+            }
+            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        };
+        let base_sha = revision("HEAD")?;
+        let head_tree = revision("HEAD^{tree}")?;
+        let check_bytes = br#"{}"#;
+        let check_sha = format!("sha256:{:x}", Sha256::digest(check_bytes));
+        let diff_sha = format!("sha256:{:x}", Sha256::digest([]));
+        let outcome = crate::analysis_outcome::AnalysisOutcome::new(
+            crate::analysis_outcome::AnalysisOutcomeKind::NoScope,
+            crate::analysis_outcome::AnalysisIdentity {
+                base_revision: Some(base_sha.clone()),
+                input_identity: Some(diff_sha.clone()),
+                ..Default::default()
+            },
+            Default::default(),
+            Vec::new(),
+        )
+        .map_err(|error| format!("build fixture outcome: {error}"))?;
+        let subject = serde_json::json!({
+            "schema_version": "ripr.pr_check_subject.v1",
+            "base_sha": base_sha,
+            "head_sha": revision("HEAD")?,
+            "head_tree": head_tree,
+            "check_sha256": check_sha,
+            "check_byte_count": check_bytes.len(),
+            "check_schema": "0.2",
+            "mode": "draft",
+            "analysis_outcome": {"analysis_complete": true, "outcome": outcome},
+            "canonical_finding_index": {
+                "schema_version": crate::review_input::REVIEW_INDEX_SCHEMA_VERSION,
+                "total_finding_count": 0,
+                "index_sha256": format!("sha256:{:x}", Sha256::digest(b"[]")),
+                "entries": []
+            },
+            "canonical_finding_index_entry_count": 0,
+            "canonical_finding_index_byte_count": 2,
+        });
+        let review_input = serde_json::json!({
+            "schema_version": crate::review_input::REVIEW_INPUT_SCHEMA_VERSION,
+            "root_identity": root_identity,
+            "base_sha": subject["base_sha"],
+            "head_sha": subject["head_sha"],
+            "head_tree": subject["head_tree"],
+            "check_sha256": subject["check_sha256"],
+            "canonical_diff_sha256": diff_sha,
+            "mode": "draft",
+            "analysis_complete": true,
+            "total_finding_count": 0,
+            "projected_finding_count": 0,
+            "projection_limit": 10,
+            "projection_truncated": false,
+            "projection_selection_policy": crate::review_input::REVIEW_INPUT_SELECTION_POLICY,
+            "projection_selection_policy_version": crate::review_input::REVIEW_INPUT_SELECTION_POLICY_VERSION,
+            "reviewed_count": 0,
+            "projection_sha256": format!("sha256:{:x}", Sha256::digest(b"[]")),
+            "findings": [],
+            "analysis_outcome": subject["analysis_outcome"]
+        });
+        let review_bytes = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&review_input)
+                .map_err(|error| format!("serialize review input: {error}"))?
+        );
+        let check_path = root.join("target/ripr/review-comments-bounded-check.json");
+        let subject_path = check_path.with_extension("subject.json");
+        let review_path = check_path.with_file_name("review-input.json");
+        std::fs::write(&check_path, check_bytes).map_err(|error| error.to_string())?;
+        std::fs::write(
+            &subject_path,
+            format!(
+                "{}\n",
+                serde_json::to_string_pretty(&subject)
+                    .map_err(|error| format!("serialize subject: {error}"))?
+            ),
+        )
+        .map_err(|error| error.to_string())?;
+        let review_input_sha = format!("sha256:{:x}", Sha256::digest(review_bytes.as_bytes()));
+        let mut subject = subject;
+        subject["review_input_sha256"] = serde_json::json!(review_input_sha);
+        subject["review_input_byte_count"] = serde_json::json!(review_bytes.len());
+        std::fs::write(
+            &subject_path,
+            format!(
+                "{}\n",
+                serde_json::to_string_pretty(&subject)
+                    .map_err(|error| format!("serialize bound subject: {error}"))?
+            ),
+        )
+        .map_err(|error| error.to_string())?;
+        std::fs::write(&review_path, review_bytes).map_err(|error| error.to_string())?;
+        let out = root.join("target/ripr/review-comments-bounded.json");
+        let args = args(&[
+            "--root",
+            &root.display().to_string(),
+            "--base",
+            "HEAD",
+            "--head",
+            "HEAD",
+            "--check-output",
+            &check_path.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+        ]);
+        review_comments_with_diff_loader(&args, |_root, _base, _head| Ok(String::new()))?;
+        let rendered = std::fs::read_to_string(&out).map_err(|error| error.to_string())?;
+        if !rendered.contains("\"basis\": \"producer_check_projection\"") {
+            return Err("bounded producer route did not render producer projection".to_string());
+        }
+        for path in [&check_path, &subject_path, &review_path, &out] {
+            let _ = std::fs::remove_file(path);
+        }
+        Ok(())
+    }
+
+    #[test]
     fn review_comments_returns_diff_loader_errors() -> Result<(), String> {
         let root = unique_command_test_dir("review-comments-diff-error");
         std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
