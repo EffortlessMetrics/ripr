@@ -316,6 +316,7 @@
         "projection_selection_policy": { "type": "string", "minLength": 1 },
         "projection_selection_policy_version": { "type": "string", "minLength": 1 },
         "projection_sha256": { "type": "string", "minLength": 1 },
+        "analysis_outcome": { "$ref": "#/$defs/analysis_outcome_projection" },
         "findings": { "type": "array" }
       }
     },

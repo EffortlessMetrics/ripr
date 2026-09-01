@@ -6779,7 +6779,7 @@ Producer-backed output may also include a top-level `review_input` object.
 It is the compact renderer projection, not the complete analysis inventory.
 Its `ripr.review_input.v1` envelope binds projected findings to the producer
 through root, base/head/tree, canonical-diff identity, producer check digest,
-mode, completeness, and finding-count/limit fields. A truncated projection
+mode, completeness, producer outcome, and finding-count/limit fields. A truncated projection
 must disclose its selection policy and projected count; consumers validate the
 digest and exact subject before rendering.
 

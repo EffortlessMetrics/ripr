@@ -4,13 +4,11 @@ use crate::run::{
     tool_build_timeout,
 };
 use crate::verification_contracts::validate_json_file_against_schema;
-use ripr::review_input::stream_producer_check;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::ffi::OsStr;
-use std::fs::{self, File};
-use std::io::Read;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -332,16 +330,6 @@ fn validate_check_output_against_packet(
     } else {
         repo.join(path)
     };
-    let check_sha256 = match digest_file(&path) {
-        Ok(digest) => digest,
-        Err(error) => {
-            violations.push(format!(
-                "--check-output {} is unreadable: {error}",
-                path.display()
-            ));
-            return;
-        }
-    };
     let subject_path = path.with_extension("subject.json");
     let subject_text = match fs::read_to_string(&subject_path) {
         Ok(text) => text,
@@ -378,7 +366,14 @@ fn validate_check_output_against_packet(
             "head_tree",
             resolve_tree_identity(&receipt_root, &options.head),
         ),
-        ("check_sha256", check_sha256),
+        (
+            "mode",
+            packet
+                .get("mode")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+        ),
     ];
     for (field, expected) in expected_subject {
         if subject.get(field).and_then(Value::as_str) != Some(expected.as_str()) {
@@ -388,96 +383,54 @@ fn validate_check_output_against_packet(
             ));
         }
     }
-    let producer_file = match File::open(&path) {
-        Ok(file) => file,
-        Err(error) => {
-            violations.push(format!(
-                "--check-output {} is unreadable: {error}",
-                path.display()
-            ));
-            return;
+    if subject.get("analysis_outcome") != packet.get("analysis_outcome").cloned().as_ref() {
+        violations.push(format!(
+            "--check-output subject receipt {} analysis_outcome does not match rendered review packet",
+            subject_path.display()
+        ));
+    }
+    let review_path = path.with_file_name("review-input.json");
+    match fs::read(&review_path) {
+        Ok(review_bytes) => {
+            let review_digest = format!("sha256:{:x}", Sha256::digest(&review_bytes));
+            if subject.get("review_input_sha256").and_then(Value::as_str)
+                != Some(review_digest.as_str())
+            {
+                violations.push(format!(
+                    "--check-output subject receipt {} review_input_sha256 does not match review-input.json",
+                    subject_path.display()
+                ));
+            }
+            if subject
+                .get("review_input_byte_count")
+                .and_then(Value::as_u64)
+                != Some(review_bytes.len() as u64)
+            {
+                violations.push(format!(
+                    "--check-output subject receipt {} review_input_byte_count does not match review-input.json",
+                    subject_path.display()
+                ));
+            }
+            if let Ok(review) =
+                serde_json::from_slice::<ripr::review_input::ReviewInputV1>(&review_bytes)
+                && let Some(index_value) = subject.get("canonical_finding_index")
+                && let Ok(index) = serde_json::from_value::<
+                    ripr::review_input::CanonicalFindingIndexV1,
+                >(index_value.clone())
+                && let Ok(expected) = ripr::review_input::canonical_projection_from_index(&index)
+                && review.findings != expected
+            {
+                violations.push(format!(
+                    "--check-output {} is not derived from the canonical finding index",
+                    review_path.display()
+                ));
+            }
         }
-    };
-    let producer = match stream_producer_check(producer_file, &receipt_root) {
-        Ok(producer) => producer,
-        Err(error) => {
-            violations.push(format!(
-                "--check-output {} is invalid: {error}",
-                path.display()
-            ));
-            return;
-        }
-    };
-    if producer.tool.trim().is_empty() {
-        violations.push(format!(
-            "--check-output {} is missing producer field tool",
-            path.display()
-        ));
+        Err(error) => violations.push(format!(
+            "--check-output review input {} is unreadable: {error}",
+            review_path.display()
+        )),
     }
-    if producer.tool != "ripr" {
-        violations.push(format!(
-            "--check-output {} producer tool must be ripr",
-            path.display()
-        ));
-    }
-    if producer.schema_version != "0.2" {
-        violations.push(format!(
-            "--check-output {} producer schema_version does not match expected \"0.2\"",
-            path.display()
-        ));
-    }
-    let packet_root = packet.get("root").and_then(Value::as_str).unwrap_or("");
-    for (field, actual, expected) in [
-        ("root", producer.root.as_str(), packet_root),
-        (
-            "base",
-            producer.base.as_str(),
-            packet.get("base").and_then(Value::as_str).unwrap_or(""),
-        ),
-        (
-            "mode",
-            producer.mode.as_str(),
-            packet.get("mode").and_then(Value::as_str).unwrap_or(""),
-        ),
-    ] {
-        if actual != expected {
-            violations.push(format!(
-                "--check-output {} producer {field} does not match expected {expected:?}",
-                path.display()
-            ));
-        }
-    }
-    if !producer.summary.is_object() || !producer.analysis_outcome.is_object() {
-        violations.push(format!(
-            "--check-output {} requires producer summary, findings and analysis_outcome",
-            path.display()
-        ));
-    }
-    if producer.analysis_outcome
-        != packet
-            .get("analysis_outcome")
-            .cloned()
-            .unwrap_or(Value::Null)
-    {
-        violations.push(format!(
-            "--check-output {} analysis_outcome does not match rendered review packet",
-            path.display()
-        ));
-    }
-}
-
-fn digest_file(path: &Path) -> Result<String, String> {
-    let mut file = File::open(path).map_err(|error| format!("open {}: {error}", path.display()))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
 fn validate_rendering_limits(packet: &Value, violations: &mut Vec<String>) {
@@ -1568,12 +1521,19 @@ mod tests {
         for (field, wrong) in [
             ("schema_version", "9.9"),
             ("mode", "ready"),
-            ("root", "wrong-root"),
-            ("base", "wrong-base"),
+            ("base_sha", "wrong-base"),
         ] {
-            let mut mutated = producer.clone();
+            write_check_output(&repo, &options, &producer)?;
+            let subject_path = repo.join("target/check-output.subject.json");
+            let subject_bytes =
+                fs::read(&subject_path).map_err(|err| format!("read subject: {err}"))?;
+            let mut mutated: Value = serde_json::from_slice(&subject_bytes)
+                .map_err(|err| format!("parse subject: {err}"))?;
             mutated[field] = json!(wrong);
-            write_check_output(&repo, &options, &mutated)?;
+            let mutated_bytes =
+                serde_json::to_vec(&mutated).map_err(|err| format!("serialize subject: {err}"))?;
+            fs::write(&subject_path, mutated_bytes)
+                .map_err(|err| format!("write subject: {err}"))?;
             let violations = validate_packet_value(
                 &packet,
                 &repo,
@@ -1582,15 +1542,13 @@ mod tests {
                 Path::new(REVIEW_COMMENTS_MD),
             );
             assert!(
-                violations
-                    .iter()
-                    .any(|violation| violation.contains(&format!("producer {field}"))),
+                violations.iter().any(|violation| violation.contains(field)),
                 "{field}: {violations:#?}"
             );
         }
         write_check_output(&repo, &options, &producer)?;
         let subject_path = repo.join("target/check-output.subject.json");
-        for field in ["head_sha", "head_tree", "check_sha256"] {
+        for field in ["head_sha", "head_tree"] {
             let mut subject: Value = serde_json::from_slice(
                 &fs::read(&subject_path).map_err(|err| format!("read subject: {err}"))?,
             )
@@ -2086,6 +2044,8 @@ mod tests {
             "head_sha": resolve_revision_identity(repo, &options.head),
             "head_tree": resolve_tree_identity(repo, &options.head),
             "check_sha256": format!("sha256:{:x}", Sha256::digest(&bytes)),
+            "mode": producer.get("mode").cloned().unwrap_or(Value::Null),
+            "analysis_outcome": producer.get("analysis_outcome").cloned().unwrap_or(Value::Null),
         });
         fs::write(
             path.with_extension("subject.json"),

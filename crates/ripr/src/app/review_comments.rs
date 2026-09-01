@@ -3,12 +3,12 @@
 use super::CheckInput;
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::config::{RiprConfig, repo_exposure_config_identity_hash};
-use crate::review_input::{ReviewInputV1, stream_producer_check};
+use crate::review_input::{
+    CanonicalFindingIndexV1, ReviewInputV1, canonical_projection_from_index,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -47,6 +47,7 @@ pub(crate) struct AdmittedReviewInput {
     pub(crate) projection_sha256: String,
     pub(crate) reviewed_count: usize,
     pub(crate) projection: Value,
+    pub(crate) analysis_outcome: Option<AnalysisOutcome>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -113,7 +114,6 @@ impl ProducerAdmissionError {
         }
     }
 }
-
 pub(crate) fn admit_producer_evidence(
     check_path: &Path,
     input: &CheckInput,
@@ -122,10 +122,11 @@ pub(crate) fn admit_producer_evidence(
     head: &str,
     diff_text: &str,
 ) -> Result<AdmittedReviewAnalysis, ProducerAdmissionError> {
-    let mut check_file = File::open(check_path).map_err(|error| {
+    let subject_path = check_path.with_extension("subject.json");
+    let subject_bytes = std::fs::read(&subject_path).map_err(|error| {
         let message = format!(
-            "producer check {} is unreadable: {error}",
-            check_path.display()
+            "producer subject receipt {} is unreadable: {error}",
+            subject_path.display()
         );
         if error.kind() == std::io::ErrorKind::NotFound {
             ProducerAdmissionError::missing(message)
@@ -133,113 +134,12 @@ pub(crate) fn admit_producer_evidence(
             ProducerAdmissionError::malformed(message)
         }
     })?;
-    let mut mode_prefix = Vec::new();
-    check_file
-        .by_ref()
-        .take(64 * 1024)
-        .read_to_end(&mut mode_prefix)
-        .map_err(|error| {
-            ProducerAdmissionError::malformed(format!(
-                "read producer mode prefix {}: {error}",
-                check_path.display()
-            ))
-        })?;
-    if let Some(mode) = crate::review_input::producer_mode(&mode_prefix)
-        .map_err(ProducerAdmissionError::malformed)?
-    {
-        require_equal("mode", &mode, input.mode.as_str())?;
-    }
-    check_file.seek(SeekFrom::Start(0)).map_err(|error| {
+    let subject: Value = serde_json::from_slice(&subject_bytes).map_err(|error| {
         ProducerAdmissionError::malformed(format!(
-            "rewind producer check {}: {error}",
-            check_path.display()
+            "producer subject receipt {} is invalid JSON: {error}",
+            subject_path.display()
         ))
     })?;
-    let streamed = stream_producer_check(check_file, &input.root)
-        .map_err(ProducerAdmissionError::malformed)?;
-    require_equal("schema_version", &streamed.schema_version, "0.2")?;
-    require_equal("tool", &streamed.tool, "ripr")?;
-    require_equal("mode", &streamed.mode, input.mode.as_str())?;
-    let producer_root = streamed.root.as_str();
-    let producer_root = logical_path(Path::new(producer_root));
-    require_equal("root", &producer_root, &logical_path(&input.root))?;
-    require_equal("base", &streamed.base, base)?;
-    if !streamed.summary.is_object() {
-        return Err(ProducerAdmissionError::malformed(
-            "producer summary must be an object",
-        ));
-    }
-    let envelope = streamed.analysis_outcome;
-    let envelope = envelope.as_object().ok_or_else(|| {
-        ProducerAdmissionError::malformed("producer check requires analysis_outcome")
-    })?;
-    let declared_complete = envelope
-        .get("analysis_complete")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| {
-            ProducerAdmissionError::malformed(
-                "producer analysis_outcome.analysis_complete must be boolean",
-            )
-        })?;
-    let outcome: AnalysisOutcome = serde_json::from_value(
-        envelope
-            .get("outcome")
-            .cloned()
-            .ok_or_else(|| ProducerAdmissionError::malformed("producer outcome is missing"))?,
-    )
-    .map_err(|error| {
-        ProducerAdmissionError::malformed(format!("producer outcome is invalid: {error}"))
-    })?;
-    if !declared_complete || !outcome.kind.is_complete() {
-        return Err(ProducerAdmissionError {
-            category: "incomplete_producer",
-            message: "producer analysis is not complete and cannot be reused".to_string(),
-        });
-    }
-    if outcome.counts.finding_count != streamed.finding_count {
-        return Err(ProducerAdmissionError::malformed(
-            "producer finding count contradicts its findings payload",
-        ));
-    }
-    require_equal(
-        "base_revision",
-        outcome
-            .identity
-            .base_revision
-            .as_deref()
-            .unwrap_or_default(),
-        base,
-    )?;
-    let canonical_diff_sha256 = digest_bytes(diff_text.as_bytes());
-    require_equal(
-        "canonical_diff_sha256",
-        outcome
-            .identity
-            .input_identity
-            .as_deref()
-            .unwrap_or_default(),
-        &canonical_diff_sha256,
-    )?;
-
-    let subject_path = check_path.with_extension("subject.json");
-    let subject: Value =
-        serde_json::from_slice(&std::fs::read(&subject_path).map_err(|error| {
-            let message = format!(
-                "producer subject receipt {} is unreadable: {error}",
-                subject_path.display()
-            );
-            if error.kind() == std::io::ErrorKind::NotFound {
-                ProducerAdmissionError::missing(message)
-            } else {
-                ProducerAdmissionError::malformed(message)
-            }
-        })?)
-        .map_err(|error| {
-            ProducerAdmissionError::malformed(format!(
-                "producer subject receipt {} is invalid JSON: {error}",
-                subject_path.display()
-            ))
-        })?;
     require_equal(
         "subject_schema_version",
         required_string(&subject, "schema_version")?,
@@ -248,32 +148,98 @@ pub(crate) fn admit_producer_evidence(
     let base_sha = resolve_revision(&input.root, base, "commit")?;
     let head_sha = resolve_revision(&input.root, head, "commit")?;
     let head_tree = resolve_revision(&input.root, head, "tree")?;
-    let check_sha256 = digest_file(check_path).map_err(ProducerAdmissionError::malformed)?;
     for (field, expected) in [
         ("base_sha", base_sha.as_str()),
         ("head_sha", head_sha.as_str()),
         ("head_tree", head_tree.as_str()),
-        ("check_sha256", check_sha256.as_str()),
+        ("mode", input.mode.as_str()),
     ] {
         require_equal(field, required_string(&subject, field)?, expected)?;
     }
+
+    let review_input_path = check_path.with_file_name("review-input.json");
+    let review_input_bytes = std::fs::read(&review_input_path).map_err(|error| {
+        let message = format!(
+            "producer review input {} is unreadable: {error}",
+            review_input_path.display()
+        );
+        if error.kind() == std::io::ErrorKind::NotFound {
+            ProducerAdmissionError::missing(message)
+        } else {
+            ProducerAdmissionError::malformed(message)
+        }
+    })?;
+    let review_input: crate::review_input::ReviewInputV1 =
+        serde_json::from_slice(&review_input_bytes).map_err(|error| {
+            ProducerAdmissionError::malformed(format!(
+                "producer review input {} is invalid: {error}",
+                review_input_path.display()
+            ))
+        })?;
+    let review_input_sha256 = digest_bytes(&review_input_bytes);
+    require_equal(
+        "review_input_sha256",
+        required_string(&subject, "review_input_sha256")?,
+        &review_input_sha256,
+    )?;
+    let review_input_byte_count = required_value(&subject, "review_input_byte_count")?
+        .as_u64()
+        .ok_or_else(|| ProducerAdmissionError::malformed("review_input_byte_count is invalid"))?;
+    if review_input_byte_count != review_input_bytes.len() as u64 {
+        return Err(ProducerAdmissionError::malformed(
+            "review_input_byte_count does not match review-input.json",
+        ));
+    }
+    let identity = ReviewAnalysisIdentity {
+        schema_version: REVIEW_ANALYSIS_IDENTITY_SCHEMA.to_string(),
+        repository_identity: repository_identity(&input.root),
+        root: logical_path(&input.root),
+        base_sha,
+        head_sha,
+        head_tree,
+        canonical_diff_sha256: digest_bytes(diff_text.as_bytes()),
+        mode: input.mode.as_str().to_string(),
+        configuration_fingerprint: repo_exposure_config_identity_hash(config),
+        producer_schema: "0.2".to_string(),
+        analyzer_generation: REVIEW_ANALYZER_GENERATION.to_string(),
+        check_sha256: required_string(&subject, "check_sha256")?.to_string(),
+    };
+    let admitted_input = admit_review_input(
+        &review_input_path,
+        &input.root,
+        &identity,
+        review_input.total_finding_count,
+        Some(&canonical_projection_from_subject(&subject)?),
+    )?;
+    let outcome_value = required_value(&subject, "analysis_outcome")?.clone();
+    let outcome_value = outcome_value.get("outcome").cloned().ok_or_else(|| {
+        ProducerAdmissionError::malformed(
+            "producer review input analysis_outcome is missing outcome",
+        )
+    })?;
+    let outcome: AnalysisOutcome = serde_json::from_value(outcome_value).map_err(|error| {
+        ProducerAdmissionError::malformed(format!(
+            "producer review input analysis_outcome is invalid: {error}"
+        ))
+    })?;
+    if !outcome.kind.is_complete()
+        || outcome.counts.finding_count != review_input.total_finding_count
+    {
+        return Err(ProducerAdmissionError {
+            category: "incomplete_producer",
+            message: "producer analysis is not complete and cannot be reused".to_string(),
+        });
+    }
+    let producer_projection: Vec<crate::review_input::ReviewFindingProjectionV1> =
+        serde_json::from_value(admitted_input.projection["findings"].clone()).map_err(|error| {
+            ProducerAdmissionError::malformed(format!(
+                "producer review input projection is invalid: {error}"
+            ))
+        })?;
     Ok(AdmittedReviewAnalysis {
-        identity: ReviewAnalysisIdentity {
-            schema_version: REVIEW_ANALYSIS_IDENTITY_SCHEMA.to_string(),
-            repository_identity: repository_identity(&input.root),
-            root: logical_path(&input.root),
-            base_sha,
-            head_sha,
-            head_tree,
-            canonical_diff_sha256,
-            mode: input.mode.as_str().to_string(),
-            configuration_fingerprint: repo_exposure_config_identity_hash(config),
-            producer_schema: streamed.schema_version,
-            analyzer_generation: REVIEW_ANALYZER_GENERATION.to_string(),
-            check_sha256,
-        },
+        identity,
         outcome,
-        producer_projection: streamed.projection,
+        producer_projection,
     })
 }
 
@@ -370,9 +336,10 @@ pub(crate) fn admit_review_input(
             ProducerAdmissionError::malformed("review input analysis_complete is invalid")
         })?;
     if !analysis_complete {
-        return Err(ProducerAdmissionError::malformed(
-            "review input analysis_complete must be true",
-        ));
+        return Err(ProducerAdmissionError {
+            category: "incomplete_producer",
+            message: "producer analysis is not complete and cannot be reused".to_string(),
+        });
     }
     let total_finding_count = value
         .get("total_finding_count")
@@ -440,11 +407,61 @@ pub(crate) fn admit_review_input(
         projection_sha256,
         &digest_bytes(&projection_bytes),
     )?;
+    let analysis_outcome = input
+        .analysis_outcome
+        .clone()
+        .and_then(|value| value.get("outcome").cloned())
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|error| {
+            ProducerAdmissionError::malformed(format!(
+                "review input analysis_outcome is invalid: {error}"
+            ))
+        })?;
     Ok(AdmittedReviewInput {
         projection_sha256: projection_sha256.to_string(),
         reviewed_count,
         projection: value,
+        analysis_outcome,
     })
+}
+
+fn canonical_projection_from_subject(
+    subject: &Value,
+) -> Result<Vec<crate::review_input::ReviewFindingProjectionV1>, ProducerAdmissionError> {
+    let index: CanonicalFindingIndexV1 =
+        serde_json::from_value(required_value(subject, "canonical_finding_index")?.clone())
+            .map_err(|error| {
+                ProducerAdmissionError::malformed(format!(
+                    "invalid canonical finding index: {error}"
+                ))
+            })?;
+    let projection =
+        canonical_projection_from_index(&index).map_err(ProducerAdmissionError::malformed)?;
+    let entry_count = required_value(subject, "canonical_finding_index_entry_count")?
+        .as_u64()
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("canonical finding index entry count is invalid")
+        })?;
+    if entry_count != index.entries.len() as u64 {
+        return Err(ProducerAdmissionError::malformed(
+            "canonical finding index entry count is contradictory",
+        ));
+    }
+    let byte_count = required_value(subject, "canonical_finding_index_byte_count")?
+        .as_u64()
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("canonical finding index byte count is invalid")
+        })?;
+    let encoded = serde_json::to_vec(&index.entries).map_err(|error| {
+        ProducerAdmissionError::malformed(format!("serialize canonical finding index: {error}"))
+    })?;
+    if byte_count != encoded.len() as u64 {
+        return Err(ProducerAdmissionError::malformed(
+            "canonical finding index byte count is contradictory",
+        ));
+    }
+    Ok(projection)
 }
 
 fn required_string<'a>(value: &'a Value, field: &str) -> Result<&'a str, ProducerAdmissionError> {
@@ -455,6 +472,12 @@ fn required_string<'a>(value: &'a Value, field: &str) -> Result<&'a str, Produce
         .ok_or_else(|| {
             ProducerAdmissionError::malformed(format!("producer field {field} is missing"))
         })
+}
+
+fn required_value<'a>(value: &'a Value, field: &str) -> Result<&'a Value, ProducerAdmissionError> {
+    value.get(field).ok_or_else(|| {
+        ProducerAdmissionError::malformed(format!("producer field {field} is missing"))
+    })
 }
 
 fn require_equal(field: &str, actual: &str, expected: &str) -> Result<(), ProducerAdmissionError> {
@@ -535,27 +558,6 @@ fn digest_bytes(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
-fn digest_file(path: &Path) -> Result<String, String> {
-    let mut file = File::open(path).map_err(|error| {
-        format!(
-            "open producer check {} for hashing: {error}",
-            path.display()
-        )
-    })?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let read = file
-            .read(&mut buffer)
-            .map_err(|error| format!("hash producer check {}: {error}", path.display()))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("sha256:{:x}", hasher.finalize()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -578,11 +580,25 @@ mod tests {
             serde_json::to_vec(&producer).map_err(|error| error.to_string())?,
         )
         .map_err(|error| format!("write producer fixture: {error}"))?;
+        let subject_path = path.with_extension("subject.json");
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let subject = serde_json::json!({
+            "schema_version": "ripr.pr_check_subject.v1",
+            "base_sha": resolve_revision(&root, "HEAD", "commit").unwrap_or_default(),
+            "head_sha": resolve_revision(&root, "HEAD", "commit").unwrap_or_default(),
+            "head_tree": resolve_revision(&root, "HEAD", "tree").unwrap_or_default(),
+            "mode": "fast"
+        });
+        std::fs::write(
+            &subject_path,
+            serde_json::to_vec(&subject).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| format!("write subject fixture: {error}"))?;
         let error = admit_producer_evidence(
             &path,
             &CheckInput::default(),
             &RiprConfig::default(),
-            "main",
+            "HEAD",
             "HEAD",
             "fixture diff",
         )
@@ -592,6 +608,8 @@ mod tests {
             return Err(format!("unexpected category: {}", error.category));
         }
         std::fs::remove_file(&path).map_err(|error| format!("remove producer fixture: {error}"))?;
+        std::fs::remove_file(&subject_path)
+            .map_err(|error| format!("remove subject fixture: {error}"))?;
         Ok(())
     }
 
@@ -603,7 +621,7 @@ mod tests {
             .map_err(|error| format!("write malformed producer: {error}"))?;
         let missing_path = path.with_extension("missing.json");
         for (candidate, expected) in [
-            (&path, "malformed_producer"),
+            (&path, "missing_producer"),
             (&missing_path, "missing_producer"),
         ] {
             let error = admit_producer_evidence(
@@ -700,7 +718,7 @@ mod tests {
             )
             .err()
             .ok_or_else(|| "missing required field must fail".to_string())?;
-            if error.category != "malformed_producer" {
+            if error.category != "missing_producer" {
                 return Err(format!("unexpected category: {}", error.category));
             }
         }
@@ -734,7 +752,7 @@ mod tests {
             std::process::id()
         ));
         let subject_path = check_path.with_extension("subject.json");
-        let mut producer = serde_json::json!({
+        let producer = serde_json::json!({
             "schema_version": "0.2",
             "tool": "ripr",
             "mode": "draft",
@@ -768,12 +786,54 @@ mod tests {
             "head_sha": head_sha,
             "head_tree": head_tree,
             "check_sha256": digest_bytes(&check_bytes),
+            "mode": "draft",
+            "analysis_outcome": {"analysis_complete": true, "outcome": outcome},
+            "canonical_finding_index": {
+                "schema_version": crate::review_input::REVIEW_INDEX_SCHEMA_VERSION,
+                "total_finding_count": 0,
+                "index_sha256": digest_bytes(b"[]"),
+                "entries": []
+            },
+            "canonical_finding_index_entry_count": 0,
+            "canonical_finding_index_byte_count": 2,
         });
+        let review_input_path = check_path.with_file_name("review-input.json");
+        let review_input = serde_json::json!({
+            "schema_version": crate::review_input::REVIEW_INPUT_SCHEMA_VERSION,
+            "root_identity": root_identity,
+            "base_sha": subject["base_sha"],
+            "head_sha": subject["head_sha"],
+            "head_tree": subject["head_tree"],
+            "check_sha256": subject["check_sha256"],
+            "canonical_diff_sha256": digest_bytes(diff_text.as_bytes()),
+            "mode": "draft",
+            "analysis_complete": true,
+            "total_finding_count": 0,
+            "projected_finding_count": 0,
+            "projection_limit": crate::review_input::REVIEW_INPUT_PROJECTION_LIMIT,
+            "projection_truncated": false,
+            "projection_selection_policy": crate::review_input::REVIEW_INPUT_SELECTION_POLICY,
+            "projection_selection_policy_version": crate::review_input::REVIEW_INPUT_SELECTION_POLICY_VERSION,
+            "reviewed_count": 0,
+            "projection_sha256": digest_bytes(b"[]"),
+            "findings": [],
+            "analysis_outcome": {
+                "analysis_complete": true,
+                "outcome": outcome,
+            },
+        });
+        let review_input_bytes = serde_json::to_vec(&review_input)
+            .map_err(|error| format!("serialize review input fixture: {error}"))?;
+        let mut subject = subject;
+        subject["review_input_sha256"] = serde_json::json!(digest_bytes(&review_input_bytes));
+        subject["review_input_byte_count"] = serde_json::json!(review_input_bytes.len());
         std::fs::write(
             &subject_path,
             serde_json::to_vec(&subject).map_err(|error| error.to_string())?,
         )
         .map_err(|error| format!("write subject fixture: {error}"))?;
+        std::fs::write(&review_input_path, &review_input_bytes)
+            .map_err(|error| format!("write review input fixture: {error}"))?;
 
         let admitted = admit_producer_evidence(
             &check_path,
@@ -791,64 +851,39 @@ mod tests {
         {
             return Err("admitted identity did not retain the exact subject".to_string());
         }
+        std::fs::remove_file(&check_path).map_err(|error| error.to_string())?;
+        admit_producer_evidence(
+            &check_path,
+            &CheckInput::default(),
+            &RiprConfig::default(),
+            base,
+            head,
+            diff_text,
+        )
+        .map_err(|error| {
+            format!(
+                "consumer unexpectedly required check.json: {}",
+                error.message
+            )
+        })?;
 
-        let reject_producer = |candidate: &Value| -> Result<&'static str, String> {
-            std::fs::write(
-                &check_path,
-                serde_json::to_vec(candidate).map_err(|error| error.to_string())?,
-            )
-            .map_err(|error| error.to_string())?;
-            let error = admit_producer_evidence(
-                &check_path,
-                &CheckInput::default(),
-                &RiprConfig::default(),
-                base,
-                head,
-                diff_text,
-            )
-            .err()
-            .ok_or_else(|| "producer mutation must fail closed".to_string())?;
-            Ok(error.category)
-        };
-        for (field, value) in [
-            ("summary", serde_json::json!([])),
-            ("findings", serde_json::json!({})),
-            ("analysis_outcome", serde_json::json!([])),
-        ] {
-            let mut mutation = producer.clone();
-            mutation[field] = value;
-            if reject_producer(&mutation)? != "malformed_producer" {
-                return Err(format!("invalid {field} was not malformed"));
-            }
-        }
-        let mut mutation = producer.clone();
-        mutation["findings"] = serde_json::json!([{}]);
-        if reject_producer(&mutation)? != "malformed_producer" {
-            return Err("contradictory finding count was admitted".to_string());
-        }
-        let mut mutation = producer.clone();
-        mutation["analysis_outcome"]["outcome"]["identity"]["base_revision"] =
-            serde_json::Value::Null;
-        if reject_producer(&mutation)? != "producer_identity_mismatch" {
-            return Err("missing base revision was admitted".to_string());
-        }
-        let mut mutation = producer.clone();
-        mutation["analysis_outcome"]["outcome"]["identity"]["input_identity"] =
-            serde_json::json!("sha256:wrong");
-        if reject_producer(&mutation)? != "producer_identity_mismatch" {
-            return Err("wrong diff identity was admitted".to_string());
-        }
+        let original_subject = subject.clone();
+        let mut incomplete_input = review_input.clone();
+        incomplete_input["analysis_complete"] = serde_json::json!(false);
+        incomplete_input["analysis_outcome"]["analysis_complete"] = serde_json::json!(false);
+        let incomplete_bytes = serde_json::to_vec(&incomplete_input)
+            .map_err(|error| format!("serialize incomplete review input: {error}"))?;
+        let mut incomplete_subject = subject.clone();
+        incomplete_subject["review_input_sha256"] =
+            serde_json::json!(digest_bytes(&incomplete_bytes));
+        incomplete_subject["review_input_byte_count"] = serde_json::json!(incomplete_bytes.len());
         std::fs::write(
-            &check_path,
-            serde_json::to_vec(&producer).map_err(|error| error.to_string())?,
+            &subject_path,
+            serde_json::to_vec(&incomplete_subject).map_err(|error| error.to_string())?,
         )
-        .map_err(|error| error.to_string())?;
-        producer["analysis_outcome"]["analysis_complete"] = serde_json::json!(false);
-        std::fs::write(
-            &check_path,
-            serde_json::to_vec(&producer).map_err(|error| error.to_string())?,
-        )
-        .map_err(|error| format!("write incomplete producer fixture: {error}"))?;
+        .map_err(|error| format!("write incomplete subject: {error}"))?;
+        std::fs::write(&review_input_path, &incomplete_bytes)
+            .map_err(|error| format!("write incomplete review input: {error}"))?;
         let incomplete = admit_producer_evidence(
             &check_path,
             &CheckInput::default(),
@@ -865,12 +900,13 @@ mod tests {
                 incomplete.category
             ));
         }
-        producer["analysis_outcome"]["analysis_complete"] = serde_json::json!(true);
         std::fs::write(
-            &check_path,
-            serde_json::to_vec(&producer).map_err(|error| error.to_string())?,
+            &subject_path,
+            serde_json::to_vec(&original_subject).map_err(|error| error.to_string())?,
         )
-        .map_err(|error| format!("restore producer fixture: {error}"))?;
+        .map_err(|error| format!("restore subject fixture: {error}"))?;
+        std::fs::write(&review_input_path, &review_input_bytes)
+            .map_err(|error| format!("restore review input fixture: {error}"))?;
         std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
         let missing_subject = admit_producer_evidence(
             &check_path,
@@ -905,8 +941,9 @@ mod tests {
                 malformed_subject.category
             ));
         }
-        std::fs::remove_file(&check_path).map_err(|error| error.to_string())?;
+        let _ = std::fs::remove_file(&check_path);
         std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
+        std::fs::remove_file(&review_input_path).map_err(|error| error.to_string())?;
         Ok(())
     }
 
@@ -1033,7 +1070,7 @@ mod tests {
             (
                 "analysis_complete",
                 serde_json::json!(false),
-                "malformed_producer",
+                "incomplete_producer",
             ),
             (
                 "total_finding_count",
