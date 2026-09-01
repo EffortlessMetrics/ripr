@@ -814,6 +814,8 @@ mod tests {
             serde_json::to_vec(&subject).map_err(|error| error.to_string())?,
         )
         .map_err(|error| format!("write subject fixture: {error}"))?;
+        let original_subject_bytes =
+            serde_json::to_vec(&subject).map_err(|error| error.to_string())?;
         std::fs::write(&review_input_path, &review_input_bytes)
             .map_err(|error| format!("write review input fixture: {error}"))?;
 
@@ -833,6 +835,120 @@ mod tests {
         {
             return Err("admitted identity did not retain the exact subject".to_string());
         }
+
+        std::fs::write(&review_input_path, b"{")
+            .map_err(|error| format!("write malformed review input: {error}"))?;
+        let malformed_review_input = admit_producer_evidence(
+            &check_path,
+            &CheckInput::default(),
+            &RiprConfig::default(),
+            base,
+            head,
+            diff_text,
+        )
+        .err()
+        .ok_or_else(|| "malformed review input must fail".to_string())?;
+        if malformed_review_input.category != "malformed_producer" {
+            return Err(format!(
+                "malformed review input returned {}",
+                malformed_review_input.category
+            ));
+        }
+        std::fs::write(&review_input_path, &review_input_bytes)
+            .map_err(|error| format!("restore review input: {error}"))?;
+
+        let mut invalid_byte_count = subject.clone();
+        invalid_byte_count["review_input_byte_count"] = serde_json::json!(0);
+        std::fs::write(
+            &subject_path,
+            serde_json::to_vec(&invalid_byte_count).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| format!("write invalid byte-count subject: {error}"))?;
+        let invalid_byte_count_error = admit_producer_evidence(
+            &check_path,
+            &CheckInput::default(),
+            &RiprConfig::default(),
+            base,
+            head,
+            diff_text,
+        )
+        .err()
+        .ok_or_else(|| "invalid review-input byte count must fail".to_string())?;
+        if invalid_byte_count_error.category != "malformed_producer" {
+            return Err(format!(
+                "invalid review-input byte count returned {}",
+                invalid_byte_count_error.category
+            ));
+        }
+
+        for (name, mutation, expected_category) in [
+            (
+                "missing-outcome",
+                serde_json::json!({}),
+                "malformed_producer",
+            ),
+            (
+                "invalid-outcome",
+                serde_json::json!("invalid"),
+                "malformed_producer",
+            ),
+            (
+                "incomplete-outcome",
+                serde_json::json!("limited_timeout"),
+                "malformed_producer",
+            ),
+        ] {
+            let mut mutated = subject.clone();
+            mutated["analysis_outcome"]["outcome"] = mutation;
+            std::fs::write(
+                &subject_path,
+                serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| format!("write {name} subject: {error}"))?;
+            let error = admit_producer_evidence(
+                &check_path,
+                &CheckInput::default(),
+                &RiprConfig::default(),
+                base,
+                head,
+                diff_text,
+            )
+            .err()
+            .ok_or_else(|| format!("{name} must fail"))?;
+            if error.category != expected_category {
+                return Err(format!("{name} returned {}", error.category));
+            }
+        }
+
+        let mut mismatched_outcome = subject.clone();
+        mismatched_outcome["analysis_outcome"]["outcome"]["kind"] =
+            serde_json::json!("complete_with_findings");
+        mismatched_outcome["analysis_outcome"]["outcome"]["counts"]["finding_count"] =
+            serde_json::json!(1);
+        std::fs::write(
+            &subject_path,
+            serde_json::to_vec(&mismatched_outcome).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| format!("write mismatched-outcome subject: {error}"))?;
+        let mismatched_outcome_error = admit_producer_evidence(
+            &check_path,
+            &CheckInput::default(),
+            &RiprConfig::default(),
+            base,
+            head,
+            diff_text,
+        )
+        .err()
+        .ok_or_else(|| "mismatched outcome must fail".to_string())?;
+        if mismatched_outcome_error.category != "incomplete_producer" {
+            return Err(format!(
+                "mismatched outcome returned {}",
+                mismatched_outcome_error.category
+            ));
+        }
+
+        std::fs::write(&subject_path, &original_subject_bytes)
+            .map_err(|error| format!("restore subject before cleanup: {error}"))?;
         std::fs::remove_file(&check_path).map_err(|error| error.to_string())?;
         admit_producer_evidence(
             &check_path,
