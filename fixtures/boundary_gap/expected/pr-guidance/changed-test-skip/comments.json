@@ -32,6 +32,28 @@
     "max_inline_comments": 3,
     "max_summary_items": 10
   },
+  "review_input": {
+    "findings": [
+      {
+        "evidence_digest": "sha256:2a0c82c6bda83bf148ca7bf5f9d8fc5a8568654418a9017896157ed6a8dc65ad",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 88,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "8f7fa8644fd12280",
+        "summary": "changed seam line"
+      }
+    ],
+    "projection_sha256": "sha256:ba092f2634c763c170297be088e34fe6b4356cbf2ae1a6bc77c1331e163c05b0",
+    "reviewed_count": 1,
+    "root": ".",
+    "schema_version": "ripr.review_input.v1"
+  },
   "root": ".",
   "schema_version": "0.1",
   "status": "advisory",

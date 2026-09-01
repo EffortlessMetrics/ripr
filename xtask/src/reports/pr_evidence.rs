@@ -19,7 +19,13 @@ const PR_EVIDENCE_JSON: &str = "target/ripr/pr/repo-exposure.json";
 const PR_EVIDENCE_MD: &str = "target/ripr/pr/repo-exposure.md";
 const PR_CHECK_JSON: &str = "target/ripr/pr/check.json";
 const PR_CHECK_SUBJECT_JSON: &str = "target/ripr/pr/check.subject.json";
+const PR_REVIEW_INPUT_JSON: &str = "target/ripr/pr/review-input.json";
 const PR_DIFF: &str = "target/ripr/pr/pr.diff";
+const REVIEW_INPUT_SCHEMA_VERSION: &str = "ripr.review_input.v1";
+const REVIEW_INPUT_MAX_BYTES: usize = 128 * 1024;
+const REVIEW_INPUT_PROJECTION_LIMIT: usize = 10;
+const REVIEW_INPUT_SELECTION_POLICY: &str = "severity_actionability_stable_id_path_line";
+const REVIEW_INPUT_SELECTION_POLICY_VERSION: &str = "v1";
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
 const PR_EVIDENCE_TIMEOUT_ENV: &str = "RIPR_PR_EVIDENCE_TIMEOUT_SECS";
 
@@ -185,6 +191,16 @@ fn write_pr_evidence_packet(
         PR_CHECK_SUBJECT_JSON,
         subject_text,
     )?;
+    let review_input = producer_review_input(&check_value, repo, options, &subject)?;
+    write_parented_file(
+        &repo.join(PR_REVIEW_INPUT_JSON),
+        PR_REVIEW_INPUT_JSON,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&review_input)
+                .map_err(|err| { format!("serialize producer review input: {err}") })?
+        ),
+    )?;
 
     write_parented_file(
         &repo.join(PR_EVIDENCE_JSON),
@@ -210,8 +226,153 @@ fn write_pr_evidence_packet(
     Ok(())
 }
 
+fn producer_review_input(
+    check: &Value,
+    repo: &Path,
+    options: &PrEvidenceOptions,
+    subject: &Value,
+) -> Result<Value, String> {
+    let findings = check
+        .get("findings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "ripr check output findings must be an array".to_string())?;
+    let root = repo
+        .join(&options.root)
+        .canonicalize()
+        .map_err(|err| format!("resolve review input root failed: {err}"))?;
+    let mut projected = findings
+        .iter()
+        .filter_map(|finding| {
+            let probe = finding.get("probe")?;
+            let file = probe.get("file")?.as_str()?;
+            let line = probe.get("line")?.as_u64()?;
+            let stable_id = finding.get("id")?.as_str()?;
+            let related_test = finding
+                .get("related_tests")
+                .and_then(Value::as_array)
+                .and_then(|tests| tests.first())
+                .and_then(|test| {
+                    Some(json!({
+                        "name": test.get("name")?.as_str()?,
+                        "file": test.get("file")?.as_str()?,
+                        "line": test.get("line")?.as_u64()?,
+                    }))
+                });
+            let file_path = Path::new(file);
+            let absolute_file = if file_path.is_absolute() {
+                file_path.to_path_buf()
+            } else {
+                root.join(file_path)
+            };
+            let relative_file = absolute_file
+                .canonicalize()
+                .ok()?
+                .strip_prefix(&root)
+                .ok()?
+                .display()
+                .to_string();
+            Some(json!({
+                "stable_id": stable_id,
+                "file": relative_file.replace('\\', "/"),
+                "line": line,
+                "severity": finding.get("severity")?.as_str()?,
+                "finding_class": finding.get("classification")?.as_str()?,
+                "summary": projection_summary(finding),
+                "evidence_digest": format!("sha256:{:x}", Sha256::digest(
+                    serde_json::to_vec(finding).ok()?.as_slice()
+                )),
+                "related_test": related_test,
+            }))
+        })
+        .collect::<Vec<_>>();
+    projected.sort_by_key(projection_order);
+    projected.truncate(REVIEW_INPUT_PROJECTION_LIMIT);
+    let projected_count = projected.len();
+    let total_finding_count = findings.len();
+    let analysis_complete = check
+        .get("analysis_outcome")
+        .and_then(|outcome| outcome.get("analysis_complete"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let projection_truncated = projected_count < total_finding_count;
+    let findings_value = Value::Array(projected);
+    let projection_bytes = serde_json::to_vec(&findings_value)
+        .map_err(|err| format!("serialize producer review input digest: {err}"))?;
+    let canonical_diff = fs::read(repo.join(PR_DIFF))
+        .map_err(|err| format!("read canonical diff for review input binding: {err}"))?;
+    if projection_bytes.len() > REVIEW_INPUT_MAX_BYTES {
+        return Err(format!(
+            "producer review input exceeds {REVIEW_INPUT_MAX_BYTES} byte limit"
+        ));
+    }
+    Ok(json!({
+        "schema_version": REVIEW_INPUT_SCHEMA_VERSION,
+        "mode": check["mode"],
+        "root_identity": root.display().to_string().replace('\\', "/"),
+        "base_sha": subject["base_sha"],
+        "head_sha": subject["head_sha"],
+        "head_tree": subject["head_tree"],
+        "check_sha256": subject["check_sha256"],
+        "canonical_diff_sha256": format!("sha256:{:x}", Sha256::digest(canonical_diff)),
+        "analysis_complete": analysis_complete,
+        "total_finding_count": total_finding_count,
+        "projected_finding_count": projected_count,
+        "projection_limit": REVIEW_INPUT_PROJECTION_LIMIT,
+        "projection_truncated": projection_truncated,
+        "projection_selection_policy": REVIEW_INPUT_SELECTION_POLICY,
+        "projection_selection_policy_version": REVIEW_INPUT_SELECTION_POLICY_VERSION,
+        "reviewed_count": projected_count,
+        "projection_sha256": format!("sha256:{:x}", Sha256::digest(&projection_bytes)),
+        "findings": findings_value,
+    }))
+}
+
+fn projection_summary(finding: &Value) -> &str {
+    finding
+        .get("suggested_next_action")
+        .and_then(Value::as_str)
+        .filter(|summary| !summary.trim().is_empty())
+        .or_else(|| {
+            finding
+                .get("recommended_next_step")
+                .and_then(Value::as_str)
+                .filter(|summary| !summary.trim().is_empty())
+        })
+        .unwrap_or("Inspect the producer-owned review finding.")
+}
+
+fn projection_order(value: &Value) -> (u8, u8, String, String, u64) {
+    let severity = match value.get("severity").and_then(Value::as_str) {
+        Some("critical") => 0,
+        Some("error") => 1,
+        Some("warning") => 2,
+        Some("note") => 3,
+        _ => 4,
+    };
+    let actionability = match value.get("finding_class").and_then(Value::as_str) {
+        Some("exposed") => 0,
+        Some("weakly_exposed") => 1,
+        _ => 2,
+    };
+    let stable_id = value
+        .get("stable_id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let path = value
+        .get("file")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let line = value
+        .get("line")
+        .and_then(Value::as_u64)
+        .unwrap_or(u64::MAX);
+    (severity, actionability, stable_id, path, line)
+}
+
 fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
-    for relative in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON] {
+    for relative in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
         match fs::remove_file(repo.join(relative)) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -400,6 +561,7 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
         options.base.clone(),
         "--diff".to_string(),
         diff_arg,
+        "--no-unchanged-tests".to_string(),
         "--format".to_string(),
         "json".to_string(),
     ];
@@ -947,6 +1109,25 @@ mod tests {
     }
 
     #[test]
+    fn projection_summary_is_non_empty_for_renderer_admission() {
+        assert_eq!(
+            projection_summary(&json!({"suggested_next_action": "  "})),
+            "Inspect the producer-owned review finding."
+        );
+        assert_eq!(
+            projection_summary(&json!({
+                "suggested_next_action": "",
+                "recommended_next_step": "Strengthen the assertion."
+            })),
+            "Strengthen the assertion."
+        );
+        assert_eq!(
+            projection_summary(&json!({"suggested_next_action": "Escalate."})),
+            "Escalate."
+        );
+    }
+
+    #[test]
     fn parse_defaults_and_check_mode() -> Result<(), String> {
         assert_eq!(parse_options(&[])?, options());
         let parsed = parse_options(&["--base".into(), "main".into(), "--check".into()])?;
@@ -1320,6 +1501,17 @@ mod tests {
             check_value["analysis_outcome"]["outcome"]["kind"],
             "no_behavioral_candidates"
         );
+        let review_input_text = fs::read_to_string(repo.join(PR_REVIEW_INPUT_JSON))
+            .map_err(|err| format!("read review input: {err}"))?;
+        let review_input: Value = serde_json::from_str(&review_input_text)
+            .map_err(|err| format!("parse review input: {err}"))?;
+        let diff_bytes =
+            fs::read(repo.join(PR_DIFF)).map_err(|err| format!("read canonical diff: {err}"))?;
+        assert_eq!(
+            review_input["canonical_diff_sha256"],
+            format!("sha256:{:x}", Sha256::digest(diff_bytes))
+        );
+        assert_eq!(review_input["mode"], "draft");
 
         run_git(
             &repo,

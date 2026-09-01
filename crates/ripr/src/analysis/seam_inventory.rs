@@ -783,6 +783,22 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
     changed_files: &[PathBuf],
     changed_owner_names: &[String],
 ) -> Result<ScopedClassifiedSeamInventory, String> {
+    inventory_diff_scoped_classified_seams_at_with_config_and_lines(
+        root,
+        config,
+        changed_files,
+        changed_owner_names,
+        None,
+    )
+}
+
+pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config_and_lines(
+    root: &Path,
+    config: &RiprConfig,
+    changed_files: &[PathBuf],
+    changed_owner_names: &[String],
+    changed_lines: Option<&[(PathBuf, usize)]>,
+) -> Result<ScopedClassifiedSeamInventory, String> {
     let state = collect_workspace_state(root, config)?;
     let workspace_cache_key = state.cache_key();
     let total_rust_files = state.files.len();
@@ -842,8 +858,48 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
         .cloned()
         .collect::<Vec<_>>();
 
+    // The review scope is owner-based, not merely file-based.  A changed file
+    // can contain thousands of unrelated probe shapes; materializing all of
+    // them defeats the bounded review denominator.  Keep changed owners and
+    // every owner in the explicitly selected immediate-caller files, while
+    // retaining file scope as the outer bound.
+    let mut scoped_owner_names = changed_owner_names
+        .iter()
+        .map(|owner| owner.replace('\\', "/"))
+        .collect::<BTreeSet<_>>();
+    let immediate_caller_file_set = immediate_caller_files.iter().collect::<BTreeSet<_>>();
+    let owner_call_names = changed_owner_names
+        .iter()
+        .filter_map(|owner| owner.rsplit("::").next())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    for function in &cached.index.functions {
+        if immediate_caller_file_set.contains(&function.file)
+            && !function.is_test
+            && function
+                .calls
+                .iter()
+                .any(|call| owner_call_names.contains(&call.name))
+        {
+            scoped_owner_names.insert(function.id.0.replace('\\', "/"));
+        }
+    }
+
     let seams_started = Instant::now();
-    let seams = inventory_seams_from_index(&scoped_production_files, &cached.index);
+    let changed_line_set = changed_lines.map(|lines| {
+        lines
+            .iter()
+            .map(|(path, line)| (normalized_inventory_path(path), *line))
+            .collect::<BTreeSet<_>>()
+    });
+    let seams = inventory_seams_from_index_filtered(
+        &scoped_production_files,
+        &cached.index,
+        Some(&scoped_owner_names),
+        changed_line_set.as_ref(),
+    );
     trace_latency_phase(
         "inventory_seams",
         "review_scope_ok",
@@ -1231,6 +1287,15 @@ pub(crate) fn inventory_seams_from_index(
     production_files: &[PathBuf],
     index: &RustIndex,
 ) -> Vec<RepoSeam> {
+    inventory_seams_from_index_filtered(production_files, index, None, None)
+}
+
+fn inventory_seams_from_index_filtered(
+    production_files: &[PathBuf],
+    index: &RustIndex,
+    owner_names: Option<&BTreeSet<String>>,
+    changed_lines: Option<&BTreeSet<(String, usize)>>,
+) -> Vec<RepoSeam> {
     if let Some(disclosure) = rust_index::lexical_fallback_disclosure(index) {
         eprintln!("{disclosure}");
     }
@@ -1246,7 +1311,13 @@ pub(crate) fn inventory_seams_from_index(
             let Some(seam) = build_seam_from_shape(path, shape, index) else {
                 continue;
             };
-            seams.push(seam);
+            if owner_names.is_none_or(|owners| owners.contains(seam.owner()))
+                && changed_lines.is_none_or(|lines| {
+                    lines.contains(&(normalized_inventory_path(path), seam.display_line()))
+                })
+            {
+                seams.push(seam);
+            }
         }
     }
 
@@ -1420,6 +1491,42 @@ pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
                 "predicate seam owner should contain discounted_total, got {}",
                 predicate_seam.owner()
             ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn owner_scoped_inventory_excludes_unrelated_functions_in_selected_files() -> Result<(), String>
+    {
+        let path = PathBuf::from("src/pricing.rs");
+        let source = r#"
+pub fn changed_total(amount: i32) -> i32 {
+    if amount >= 10 { amount - 1 } else { amount }
+}
+
+pub fn unrelated_total(amount: i32) -> i32 {
+    if amount >= 100 { amount - 2 } else { amount }
+}
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let changed_owner = index
+            .functions
+            .iter()
+            .find(|function| function.name == "changed_total")
+            .map(|function| function.id.0.replace('\\', "/"))
+            .ok_or_else(|| "changed owner was not indexed".to_string())?;
+        let owners = [changed_owner].into_iter().collect::<BTreeSet<_>>();
+        let all = inventory_seams_from_index(std::slice::from_ref(&path), &index);
+        let scoped = inventory_seams_from_index_filtered(&[path], &index, Some(&owners), None);
+        if scoped.is_empty() || scoped.len() >= all.len() {
+            return Err(format!(
+                "owner scope should retain changed seams and exclude unrelated seams: {} of {}",
+                scoped.len(),
+                all.len()
+            ));
+        }
+        if scoped.iter().any(|seam| !owners.contains(seam.owner())) {
+            return Err("owner-scoped inventory emitted an unrelated owner".to_string());
         }
         Ok(())
     }
