@@ -836,6 +836,87 @@ mod tests {
             return Err("admitted identity did not retain the exact subject".to_string());
         }
 
+        std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
+        std::fs::create_dir(&subject_path)
+            .map_err(|error| format!("create unreadable subject fixture: {error}"))?;
+        let unreadable_subject = admit_producer_evidence(
+            &check_path,
+            &CheckInput::default(),
+            &RiprConfig::default(),
+            base,
+            head,
+            diff_text,
+        )
+        .err()
+        .ok_or_else(|| "directory subject receipt must fail".to_string())?;
+        if unreadable_subject.category != "malformed_producer" {
+            return Err(format!(
+                "directory subject receipt returned {}",
+                unreadable_subject.category
+            ));
+        }
+        std::fs::remove_dir(&subject_path).map_err(|error| error.to_string())?;
+        std::fs::write(&subject_path, &original_subject_bytes)
+            .map_err(|error| format!("restore subject after unreadable case: {error}"))?;
+
+        std::fs::remove_file(&review_input_path).map_err(|error| error.to_string())?;
+        std::fs::create_dir(&review_input_path)
+            .map_err(|error| format!("create unreadable review input: {error}"))?;
+        let unreadable_review_input = admit_producer_evidence(
+            &check_path,
+            &CheckInput::default(),
+            &RiprConfig::default(),
+            base,
+            head,
+            diff_text,
+        )
+        .err()
+        .ok_or_else(|| "directory review input must fail".to_string())?;
+        if unreadable_review_input.category != "malformed_producer" {
+            return Err(format!(
+                "directory review input returned {}",
+                unreadable_review_input.category
+            ));
+        }
+        std::fs::remove_dir(&review_input_path).map_err(|error| error.to_string())?;
+        std::fs::write(&review_input_path, &review_input_bytes)
+            .map_err(|error| format!("restore review input after unreadable case: {error}"))?;
+
+        for (name, mutation) in [
+            ("invalid-index", serde_json::json!("invalid")),
+            ("invalid-index-entry-count", serde_json::json!(1)),
+            ("invalid-index-byte-count", serde_json::json!(0)),
+        ] {
+            let mut mutated = subject.clone();
+            match name {
+                "invalid-index" => mutated["canonical_finding_index"] = mutation,
+                "invalid-index-entry-count" => {
+                    mutated["canonical_finding_index_entry_count"] = mutation
+                }
+                _ => mutated["canonical_finding_index_byte_count"] = mutation,
+            }
+            std::fs::write(
+                &subject_path,
+                serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| format!("write {name} subject: {error}"))?;
+            let error = admit_producer_evidence(
+                &check_path,
+                &CheckInput::default(),
+                &RiprConfig::default(),
+                base,
+                head,
+                diff_text,
+            )
+            .err()
+            .ok_or_else(|| format!("{name} must fail"))?;
+            if error.category != "malformed_producer" {
+                return Err(format!("{name} returned {}", error.category));
+            }
+        }
+        std::fs::write(&subject_path, &original_subject_bytes)
+            .map_err(|error| format!("restore subject after index mutations: {error}"))?;
+
         std::fs::write(&review_input_path, b"{")
             .map_err(|error| format!("write malformed review input: {error}"))?;
         let malformed_review_input = admit_producer_evidence(
