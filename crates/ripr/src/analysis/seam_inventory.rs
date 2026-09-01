@@ -868,20 +868,13 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config_and_lines(
         .map(|owner| owner.replace('\\', "/"))
         .collect::<BTreeSet<_>>();
     let immediate_caller_file_set = immediate_caller_files.iter().collect::<BTreeSet<_>>();
-    let owner_call_names = changed_owner_names
-        .iter()
-        .filter_map(|owner| owner.rsplit("::").next())
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .map(str::to_string)
-        .collect::<BTreeSet<_>>();
     for function in &cached.index.functions {
         if immediate_caller_file_set.contains(&function.file)
             && !function.is_test
             && function
                 .calls
                 .iter()
-                .any(|call| owner_call_names.contains(&call.name))
+                .any(|call| call_targets_changed_owner(&cached.index, call, changed_owner_names))
         {
             scoped_owner_names.insert(function.id.0.replace('\\', "/"));
         }
@@ -937,14 +930,7 @@ fn immediate_caller_file_set(
     changed_file_set: &BTreeSet<String>,
     changed_owner_names: &[String],
 ) -> BTreeSet<String> {
-    let owner_call_names = changed_owner_names
-        .iter()
-        .filter_map(|owner| owner.rsplit("::").next())
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .map(str::to_string)
-        .collect::<BTreeSet<_>>();
-    if owner_call_names.is_empty() {
+    if changed_owner_names.is_empty() {
         return BTreeSet::new();
     }
 
@@ -959,10 +945,30 @@ fn immediate_caller_file_set(
                 && function
                     .calls
                     .iter()
-                    .any(|call| owner_call_names.contains(&call.name)))
+                    .any(|call| call_targets_changed_owner(index, call, changed_owner_names)))
             .then_some(file)
         })
         .collect()
+}
+
+fn call_targets_changed_owner(
+    index: &RustIndex,
+    call: &crate::analysis::facts::CallFact,
+    changed_owner_names: &[String],
+) -> bool {
+    let changed_owners = changed_owner_names
+        .iter()
+        .map(|owner| owner.replace('\\', "/"))
+        .collect::<BTreeSet<_>>();
+    let candidates = index
+        .functions
+        .iter()
+        .filter(|function| !function.is_test && function.name == call.name)
+        .collect::<Vec<_>>();
+    candidates.len() == 1
+        && candidates
+            .first()
+            .is_some_and(|candidate| changed_owners.contains(&candidate.id.0.replace('\\', "/")))
 }
 
 fn normalized_inventory_path(path: &Path) -> String {
@@ -1568,6 +1574,45 @@ pub fn caller(amount: i32) -> i32 {
             return Err(
                 "unchanged immediate-caller file was filtered by changed lines".to_string(),
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn ambiguous_same_named_caller_does_not_earn_changed_owner_scope() -> Result<(), String> {
+        let changed_path = PathBuf::from("src/module_a.rs");
+        let other_path = PathBuf::from("src/module_b.rs");
+        let caller_path = PathBuf::from("src/caller.rs");
+        let source = "pub fn process(value: i32) -> i32 { if value > 0 { value } else { 0 } }\n";
+        let caller_source = "pub fn caller(value: i32) -> i32 { module_b::process(value) }\n";
+        let index = index_from_files(&[
+            (changed_path.clone(), source),
+            (other_path.clone(), source),
+            (caller_path.clone(), caller_source),
+        ])?;
+        let changed_owner = index
+            .functions
+            .iter()
+            .find(|function| function.file == changed_path && function.name == "process")
+            .map(|function| function.id.0.clone())
+            .ok_or_else(|| "changed owner was not indexed".to_string())?;
+
+        let callers = immediate_caller_file_set(
+            &index,
+            &[
+                normalized_inventory_path(&changed_path),
+                normalized_inventory_path(&other_path),
+                normalized_inventory_path(&caller_path),
+            ]
+            .into_iter()
+            .collect(),
+            &[normalized_inventory_path(&changed_path)]
+                .into_iter()
+                .collect(),
+            &[changed_owner],
+        );
+        if callers.contains(&normalized_inventory_path(&caller_path)) {
+            return Err("ambiguous same-named caller was admitted into scope".to_string());
         }
         Ok(())
     }
