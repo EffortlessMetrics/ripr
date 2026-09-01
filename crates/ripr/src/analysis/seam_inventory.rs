@@ -867,6 +867,7 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config_and_lines(
         .iter()
         .map(|owner| owner.replace('\\', "/"))
         .collect::<BTreeSet<_>>();
+    let immediate_caller_file_set = immediate_caller_files.iter().collect::<BTreeSet<_>>();
     let owner_call_names = changed_owner_names
         .iter()
         .filter_map(|owner| owner.rsplit("::").next())
@@ -875,9 +876,7 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config_and_lines(
         .map(str::to_string)
         .collect::<BTreeSet<_>>();
     for function in &cached.index.functions {
-        if immediate_caller_files
-            .iter()
-            .any(|path| path == &function.file)
+        if immediate_caller_file_set.contains(&function.file)
             && !function.is_test
             && function
                 .calls
