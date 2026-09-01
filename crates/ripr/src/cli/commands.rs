@@ -1231,23 +1231,21 @@ fn review_comments_with_diff_loader(
         receipt.admit_identity(admitted.identity.clone());
         if let Some(check_output) = options.check_output.as_deref() {
             let review_input_path = check_output.with_file_name("review-input.json");
-            if review_input_path.exists() {
-                match app::review_comments::admit_review_input(
-                    &review_input_path,
-                    &input.root,
-                    &admitted.identity,
-                    admitted.outcome.counts.finding_count,
-                ) {
-                    Ok(review_input) => admitted_review_input = Some(review_input),
-                    Err(error) => {
-                        receipt.fail(
-                            "producer_evidence_admission",
-                            error.category,
-                            &error.message,
-                        );
-                        receipt.write_atomic(&receipt_path)?;
-                        return Err(format!("{}: {}", error.category, error.message));
-                    }
+            match app::review_comments::admit_review_input(
+                &review_input_path,
+                &input.root,
+                &admitted.identity,
+                admitted.outcome.counts.finding_count,
+            ) {
+                Ok(review_input) => admitted_review_input = Some(review_input),
+                Err(error) => {
+                    receipt.fail(
+                        "producer_evidence_admission",
+                        error.category,
+                        &error.message,
+                    );
+                    receipt.write_atomic(&receipt_path)?;
+                    return Err(format!("{}: {}", error.category, error.message));
                 }
             }
         }

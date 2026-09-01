@@ -847,6 +847,16 @@ mod tests {
         if admitted.reviewed_count != 1 || admitted.projection_sha256 != projection_sha256 {
             return Err("valid review input was not admitted".to_string());
         }
+        std::fs::remove_file(&path).map_err(|error| error.to_string())?;
+        let missing = admit_review_input(&path, &root, &identity, 1)
+            .err()
+            .ok_or_else(|| "missing review input must fail".to_string())?;
+        if missing.category != "missing_producer" {
+            return Err(format!(
+                "unexpected missing review-input category: {}",
+                missing.category
+            ));
+        }
 
         let mut cases = Vec::new();
         cases.push(("not-json", serde_json::json!("{"), "malformed_producer"));
