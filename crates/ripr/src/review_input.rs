@@ -365,8 +365,8 @@ mod tests {
             summary: "x".repeat(REVIEW_INDEX_MAX_BYTES),
             ..entries[0].clone()
         };
-        let oversized_bytes =
-            serde_json::to_vec(&[oversized.clone()]).map_err(|error| error.to_string())?;
+        let oversized_bytes = serde_json::to_vec(std::slice::from_ref(&oversized))
+            .map_err(|error| error.to_string())?;
         let oversized_index = CanonicalFindingIndexV1 {
             schema_version: REVIEW_INDEX_SCHEMA_VERSION.to_string(),
             total_finding_count: 1,
