@@ -890,7 +890,8 @@ fn producer_analysis_outcome(repo: &Path, options: &ReviewCommentsOptions) -> Op
     } else {
         repo.join(path)
     };
-    let text = fs::read_to_string(path).ok()?;
+    let subject_path = path.with_extension("subject.json");
+    let text = fs::read_to_string(subject_path).ok()?;
     let producer: Value = serde_json::from_str(&text).ok()?;
     producer
         .get("analysis_outcome")
@@ -1699,6 +1700,35 @@ mod tests {
             Path::new(REVIEW_COMMENTS_MD),
         );
         assert!(violations.is_empty(), "{violations:#?}");
+
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn producer_analysis_outcome_reads_subject_not_forensic_packet() -> Result<(), String> {
+        let repo = temp_repo("ripr-review-comments-subject-outcome")?;
+        let mut options = options();
+        options.check_output = Some("target/check-output.json".to_string());
+        let producer = json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "draft",
+            "root": normalize_path_text(&command_root_arg(&repo, &options.root)),
+            "base": options.base.clone(),
+            "summary": {},
+            "findings": [],
+            "analysis_outcome": {"analysis_complete": true}
+        });
+        write_check_output(&repo, &options, &producer)?;
+        fs::write(repo.join("target/check-output.json"), b"not-json")
+            .map_err(|err| format!("replace forensic packet fixture: {err}"))?;
+
+        let outcome = producer_analysis_outcome(&repo, &options)
+            .ok_or_else(|| "subject outcome was not retained".to_string())?;
+        if outcome != producer["analysis_outcome"] {
+            return Err("subject outcome did not match the bounded authority".to_string());
+        }
 
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
