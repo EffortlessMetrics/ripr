@@ -744,4 +744,134 @@ mod tests {
         std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
         Ok(())
     }
+
+    #[test]
+    fn review_input_admission_rejects_stale_incomplete_and_malformed_packets() -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "ripr-review-input-admission-{}.json",
+            std::process::id()
+        ));
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let findings = serde_json::json!([{"stable_id": "finding-1"}]);
+        let projection_sha256 = digest_bytes(
+            &serde_json::to_vec(&findings).map_err(|error| error.to_string())?,
+        );
+        let identity = ReviewAnalysisIdentity {
+            schema_version: REVIEW_ANALYSIS_IDENTITY_SCHEMA.to_string(),
+            repository_identity: "repository".to_string(),
+            root: logical_path(&root),
+            base_sha: "base".to_string(),
+            head_sha: "head".to_string(),
+            head_tree: "tree".to_string(),
+            canonical_diff_sha256: "diff".to_string(),
+            mode: "draft".to_string(),
+            configuration_fingerprint: "config".to_string(),
+            producer_schema: "0.2".to_string(),
+            analyzer_generation: "analyzer".to_string(),
+            check_sha256: "check".to_string(),
+        };
+        let valid = serde_json::json!({
+            "schema_version": "ripr.review_input.v1",
+            "root_identity": logical_path(&root),
+            "base_sha": "base",
+            "head_sha": "head",
+            "head_tree": "tree",
+            "check_sha256": "check",
+            "canonical_diff_sha256": "diff",
+            "mode": "draft",
+            "findings": findings,
+            "reviewed_count": 1,
+            "analysis_complete": true,
+            "total_finding_count": 1,
+            "projected_finding_count": 1,
+            "projection_limit": 10,
+            "projection_truncated": false,
+            "projection_selection_policy": "severity_actionability_stable_id_path_line",
+            "projection_selection_policy_version": "v1",
+            "projection_sha256": projection_sha256,
+        });
+        std::fs::write(&path, serde_json::to_vec(&valid).map_err(|error| error.to_string())?)
+            .map_err(|error| format!("write valid review input: {error}"))?;
+        let admitted = admit_review_input(&path, &root, &identity, 1)
+            .map_err(|error| error.message.clone())?;
+        if admitted.reviewed_count != 1 || admitted.projection_sha256 != projection_sha256 {
+            return Err("valid review input was not admitted".to_string());
+        }
+
+        let mut cases = Vec::new();
+        cases.push((
+            "not-json",
+            serde_json::json!("{"),
+            "malformed_producer",
+        ));
+        cases.push((
+            "wrong-schema",
+            serde_json::json!({"schema_version": "wrong"}),
+            "producer_identity_mismatch",
+        ));
+        cases.push((
+            "wrong-root",
+            serde_json::json!({"schema_version": "ripr.review_input.v1", "root_identity": "other"}),
+            "producer_identity_mismatch",
+        ));
+        cases.push((
+            "missing-findings",
+            serde_json::json!({"schema_version": "ripr.review_input.v1", "root_identity": logical_path(&root)}),
+            "malformed_producer",
+        ));
+        for (name, value, expected_category) in cases {
+            let bytes = if name == "not-json" {
+                value.as_str().unwrap_or_default().as_bytes().to_vec()
+            } else {
+                serde_json::to_vec(&value).map_err(|error| error.to_string())?
+            };
+            std::fs::write(&path, bytes).map_err(|error| format!("write {name}: {error}"))?;
+            let error = admit_review_input(&path, &root, &identity, 1)
+                .err()
+                .ok_or_else(|| format!("{name} must fail"))?;
+            if error.category != expected_category {
+                return Err(format!("{name} returned {}", error.category));
+            }
+        }
+
+        let mut mutations = Vec::new();
+        for (field, value, expected_category) in [
+            ("base_sha", serde_json::json!("other"), "producer_identity_mismatch"),
+            ("mode", serde_json::json!("fast"), "producer_mode_mismatch"),
+            ("reviewed_count", serde_json::json!(2), "malformed_producer"),
+            ("analysis_complete", serde_json::json!(false), "malformed_producer"),
+            ("total_finding_count", serde_json::json!(2), "malformed_producer"),
+            ("projected_finding_count", serde_json::json!(2), "malformed_producer"),
+            ("projection_limit", serde_json::json!(9), "malformed_producer"),
+            ("projection_truncated", serde_json::json!(true), "malformed_producer"),
+            (
+                "projection_selection_policy",
+                serde_json::json!("unstable"),
+                "producer_identity_mismatch",
+            ),
+            (
+                "projection_selection_policy_version",
+                serde_json::json!("v2"),
+                "producer_identity_mismatch",
+            ),
+            ("projection_sha256", serde_json::json!("sha256:wrong"), "producer_identity_mismatch"),
+        ] {
+            let mut mutation = valid.clone();
+            mutation[field] = value;
+            mutations.push(field);
+            std::fs::write(&path, serde_json::to_vec(&mutation).map_err(|error| error.to_string())?)
+                .map_err(|error| format!("write mutation {field}: {error}"))?;
+            let error = admit_review_input(&path, &root, &identity, 1)
+                .err()
+                .ok_or_else(|| format!("mutation {field} must fail"))?;
+            if error.category != expected_category {
+                return Err(format!("mutation {field} returned {}", error.category));
+            }
+        }
+        if mutations.len() != 11 {
+            return Err("not all review-input mutations were exercised".to_string());
+        }
+        std::fs::remove_file(&path).map_err(|error| error.to_string())?;
+        Ok(())
+    }
 }
