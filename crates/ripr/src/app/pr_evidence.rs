@@ -1464,8 +1464,12 @@ mod tests {
         write_pr_evidence_with_runner(&repo, &options, |_repo, _options| {
             Err("ripr check for PR evidence failed; retry command: ripr pr-evidence --base HEAD~1 --head HEAD --root .".to_string())
         })?;
-        let check_error = check_pr_evidence(&repo, &options)
-            .expect_err("an error packet without producer artifacts must not pass --check");
+        let check_error = match check_pr_evidence(&repo, &options) {
+            Ok(()) => {
+                return Err("an error packet without producer artifacts passed --check".into());
+            }
+            Err(error) => error,
+        };
         if !check_error.contains("missing or unreadable target/ripr/pr/check.json") {
             return Err(format!(
                 "unexpected producer artifact validation error: {check_error}"
