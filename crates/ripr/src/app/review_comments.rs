@@ -10,6 +10,8 @@ use std::path::Path;
 
 pub(crate) const REVIEW_ANALYSIS_IDENTITY_SCHEMA: &str = "ripr.review_analysis_identity.v1";
 const REVIEW_ANALYZER_GENERATION: &str = "diff_scoped_classified_seams.v1";
+// Keep this admission bound synchronized with the producer projection limit.
+const REVIEW_INPUT_PROJECTION_LIMIT: u64 = 10;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -177,10 +179,15 @@ pub(crate) fn admit_producer_evidence(
     let subject_path = check_path.with_extension("subject.json");
     let subject: Value =
         serde_json::from_slice(&std::fs::read(&subject_path).map_err(|error| {
-            ProducerAdmissionError::malformed(format!(
+            let message = format!(
                 "producer subject receipt {} is unreadable: {error}",
                 subject_path.display()
-            ))
+            );
+            if error.kind() == std::io::ErrorKind::NotFound {
+                ProducerAdmissionError::missing(message)
+            } else {
+                ProducerAdmissionError::malformed(message)
+            }
         })?)
         .map_err(|error| {
             ProducerAdmissionError::malformed(format!(
@@ -231,10 +238,15 @@ pub(crate) fn admit_review_input(
     producer_finding_count: u64,
 ) -> Result<AdmittedReviewInput, ProducerAdmissionError> {
     let bytes = std::fs::read(review_input_path).map_err(|error| {
-        ProducerAdmissionError::malformed(format!(
+        let message = format!(
             "producer review input {} is unreadable: {error}",
             review_input_path.display()
-        ))
+        );
+        if error.kind() == std::io::ErrorKind::NotFound {
+            ProducerAdmissionError::missing(message)
+        } else {
+            ProducerAdmissionError::malformed(message)
+        }
     })?;
     let value: Value = serde_json::from_slice(&bytes).map_err(|error| {
         ProducerAdmissionError::malformed(format!(
@@ -322,7 +334,7 @@ pub(crate) fn admit_review_input(
     if total_finding_count != producer_finding_count
         || projected_finding_count != reviewed_count as u64
         || projected_finding_count != findings.len() as u64
-        || projection_limit != 10
+        || projection_limit != REVIEW_INPUT_PROJECTION_LIMIT
         || projection_truncated != (total_finding_count > projected_finding_count)
         || total_finding_count < projected_finding_count
     {
@@ -421,19 +433,20 @@ fn repository_identity(root: &Path) -> String {
         .filter(|output| output.status.success())
         .map(|output| output.stdout)
         .unwrap_or_default();
-    format!("sha256:{:x}", Sha256::digest(origin))
+    if origin.is_empty() {
+        "unavailable".to_string()
+    } else {
+        format!("sha256:{:x}", Sha256::digest(origin))
+    }
 }
 
 fn logical_path(path: &Path) -> String {
     let textual = crate::output::outcome::display_path(path).replace('\\', "/");
     let textual = textual.strip_prefix("//?/").unwrap_or(&textual);
-    if Path::new(textual).is_absolute() {
-        return textual.strip_suffix("/.").unwrap_or(textual).to_string();
-    }
-    let display = path
+    let display = Path::new(textual)
         .canonicalize()
         .map(|canonical| crate::output::outcome::display_path(&canonical))
-        .unwrap_or_else(|_| crate::output::outcome::display_path(path))
+        .unwrap_or_else(|_| textual.to_string())
         .replace('\\', "/");
     let display = display.strip_prefix("//?/").unwrap_or(&display);
     display.strip_suffix("/.").unwrap_or(display).to_string()
@@ -717,7 +730,7 @@ mod tests {
         )
         .err()
         .ok_or_else(|| "missing subject receipt must fail closed".to_string())?;
-        if missing_subject.category != "malformed_producer" {
+        if missing_subject.category != "missing_producer" {
             return Err(format!(
                 "unexpected missing-subject category: {}",
                 missing_subject.category

@@ -351,7 +351,7 @@ fn projection_order(value: &Value) -> (u8, u8, String, String, u64) {
     };
     let actionability = match value.get("finding_class").and_then(Value::as_str) {
         Some("exposed") => 0,
-        Some("weakly_exposed") => 1,
+        Some("weakly_exposed") | Some("weakly_gripped") => 1,
         _ => 2,
     };
     let stable_id = value

@@ -2099,9 +2099,9 @@ mod tests {
         receipt["status"] = json!("in_progress");
         receipt["requested_mode"] = json!(mode);
         receipt["active_phase"] = json!(phase);
-        receipt
-            .as_object_mut()
-            .map(|object| object.remove("primary_failure"));
+        if let Some(object) = receipt.as_object_mut() {
+            object.remove("primary_failure");
+        }
         write_receipt_file(repo, &receipt)
     }
 
