@@ -2147,6 +2147,58 @@ mod tests {
     }
 
     #[test]
+    fn producer_projection_renderer_preserves_placements_and_summary_cap() -> Result<(), String> {
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            (1..=10)
+                .map(|line| AgentBriefLine::new("src/pricing.rs", line))
+                .collect(),
+        );
+        let findings = (1..=10)
+            .map(|line| {
+                serde_json::json!({
+                    "stable_id": format!("finding-{line}"),
+                    "file": "src/pricing.rs",
+                    "line": line,
+                    "severity": "warning",
+                    "finding_class": "exposed",
+                    "summary": format!("summary-{line}"),
+                    "evidence_digest": format!("digest-{line}"),
+                    "related_test": null,
+                })
+            })
+            .collect::<Vec<_>>();
+        let projection = serde_json::json!({"findings": findings});
+        let scope = ReviewCommentsAnalysisScope::producer_projection(&working_set, 10);
+        let config = RiprConfig::default();
+        let context = ReviewCommentsRenderContext {
+            root: Path::new("."),
+            base: "main",
+            head: "HEAD",
+            mode: &Mode::Draft,
+            config: &config,
+        };
+
+        let rendered = render_review_comments_json_from_projection(
+            &context,
+            &working_set,
+            &scope,
+            &projection,
+            None,
+        )?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|error| format!("parse projected review comments: {error}"))?;
+        assert_eq!(value["summary"]["comments"], 3);
+        assert_eq!(value["summary"]["summary_only"], 7);
+        assert_eq!(value["comments"][0]["placement"]["side"], "RIGHT");
+        assert_eq!(
+            value["summary_only"][0]["summary_reason"],
+            SUMMARY_REASON_INLINE_CAP_REACHED
+        );
+        Ok(())
+    }
+
+    #[test]
     fn review_comments_places_owner_function_changed_line() -> Result<(), String> {
         let seams = [classified(88)];
         let working_set = AgentBriefResolvedWorkingSet::base(

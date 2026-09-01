@@ -1128,6 +1128,59 @@ mod tests {
     }
 
     #[test]
+    fn producer_review_input_projects_and_prioritizes_findings() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-review-input-projection")?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 1 }\n")?;
+        let mut findings = Vec::new();
+        for index in 0..12 {
+            let severity = match index % 4 {
+                0 => "note",
+                1 => "warning",
+                2 => "error",
+                _ => "critical",
+            };
+            findings.push(json!({
+                "id": format!("finding-{index}"),
+                "severity": severity,
+                "classification": "exposed",
+                "probe": {"file": "src/lib.rs", "line": index + 1},
+                "suggested_next_action": if index == 0 { "  " } else { "Act." },
+                "recommended_next_step": if index == 0 { "Fallback." } else { "" },
+                "related_tests": [{"name": "value_is_one", "file": "src/lib.rs", "line": 1}],
+            }));
+        }
+        let check = json!({
+            "mode": "draft",
+            "findings": findings,
+            "analysis_outcome": {"analysis_complete": true}
+        });
+        let subject = json!({
+            "base_sha": "base",
+            "head_sha": "head",
+            "head_tree": "tree",
+            "check_sha256": "check"
+        });
+        fs::create_dir_all(repo.join("target/ripr/pr"))
+            .map_err(|err| format!("create review input directory: {err}"))?;
+        fs::write(repo.join(PR_DIFF), "diff --git a/src/lib.rs b/src/lib.rs\n")
+            .map_err(|err| format!("write canonical diff: {err}"))?;
+        let projected = producer_review_input(&check, &repo, &options(), &subject)?;
+        assert_eq!(projected["total_finding_count"], 12);
+        assert_eq!(projected["projected_finding_count"], 10);
+        assert_eq!(projected["reviewed_count"], 10);
+        assert_eq!(projected["projection_truncated"], true);
+        assert_eq!(projected["findings"][0]["severity"], "critical");
+        assert_eq!(projected["findings"][0]["related_test"]["name"], "value_is_one");
+        assert!(projected["findings"]
+            .as_array()
+            .is_some_and(|findings| findings.iter().any(|finding| {
+                finding["summary"] == "Fallback."
+            })));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
     fn parse_defaults_and_check_mode() -> Result<(), String> {
         assert_eq!(parse_options(&[])?, options());
         let parsed = parse_options(&["--base".into(), "main".into(), "--check".into()])?;
