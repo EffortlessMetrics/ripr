@@ -674,6 +674,76 @@ mod tests {
     }
 
     #[test]
+    fn admission_helpers_fail_closed_for_unavailable_and_non_regular_inputs() -> Result<(), String>
+    {
+        let root = std::env::temp_dir()
+            .join("..")
+            .join("..")
+            .join("..")
+            .join(format!(
+                "ripr-review-helper-boundaries-{}",
+                std::process::id()
+            ));
+        std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+
+        if repository_identity(&root) != "unavailable" {
+            return Err("non-repository origin must remain unavailable".to_string());
+        }
+        let nonexistent = root.join("missing").join("..").join("review-input.json");
+        if !logical_path(&nonexistent).contains("review-input.json") {
+            return Err("nonexistent logical path lost its filename".to_string());
+        }
+
+        let review_input_path = root.join("review-input.json");
+        std::fs::create_dir(&review_input_path).map_err(|error| error.to_string())?;
+        let identity = ReviewAnalysisIdentity {
+            schema_version: REVIEW_ANALYSIS_IDENTITY_SCHEMA.to_string(),
+            repository_identity: "unavailable".to_string(),
+            root: logical_path(&root),
+            base_sha: "base".to_string(),
+            head_sha: "head".to_string(),
+            head_tree: "tree".to_string(),
+            canonical_diff_sha256: "sha256:diff".to_string(),
+            mode: "draft".to_string(),
+            configuration_fingerprint: "sha256:config".to_string(),
+            producer_schema: "0.2".to_string(),
+            analyzer_generation: REVIEW_ANALYZER_GENERATION.to_string(),
+            check_sha256: "sha256:check".to_string(),
+        };
+        let error = admit_review_input(&review_input_path, &root, &identity, 0, None)
+            .err()
+            .ok_or_else(|| "directory review input must fail closed".to_string())?;
+        if error.category != "malformed_producer" {
+            return Err(format!(
+                "directory review input had unexpected category: {}",
+                error.category
+            ));
+        }
+
+        std::fs::remove_dir(&review_input_path).map_err(|error| error.to_string())?;
+        std::fs::remove_dir(&root).map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    #[test]
+    fn timeout_wrapper_preserves_success_and_reports_deadline() -> Result<(), String> {
+        if run_analysis_with_timeout(100, || Ok::<_, String>(7))
+            .map_err(|error| error.to_string())?
+            != 7
+        {
+            return Err("successful work did not complete".to_string());
+        }
+        let timed_out = run_analysis_with_timeout(1, || {
+            std::thread::sleep(Duration::from_millis(10));
+            Ok::<_, String>(())
+        });
+        if timed_out.is_ok() {
+            return Err("deadline did not cancel slow work".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn admission_rejects_missing_required_fields_as_malformed() -> Result<(), String> {
         let path = std::env::temp_dir().join(format!(
             "ripr-review-required-fields-{}.json",
