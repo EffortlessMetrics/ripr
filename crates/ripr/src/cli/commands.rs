@@ -20,6 +20,8 @@ use crate::cli::commands_agent_support::{
 };
 use crate::cli::commands_options::*;
 use crate::cli::commands_timestamps::generated_at_unix_ms;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
 
@@ -1418,8 +1420,31 @@ fn review_comments_with_diff_loader(
     } else {
         None
     };
+    let mut admitted_review_input = None;
     if let Some(admitted) = &admitted {
         receipt.admit_identity(admitted.identity.clone());
+        if let Some(check_output) = options.check_output.as_deref() {
+            let review_input_path = check_output.with_file_name("review-input.json");
+            if review_input_path.exists() {
+                match app::review_comments::admit_review_input(
+                    &review_input_path,
+                    &input.root,
+                    &admitted.identity,
+                    admitted.outcome.counts.finding_count,
+                ) {
+                    Ok(review_input) => admitted_review_input = Some(review_input),
+                    Err(error) => {
+                        receipt.fail(
+                            "producer_evidence_admission",
+                            error.category,
+                            &error.message,
+                        );
+                        receipt.write_atomic(&receipt_path)?;
+                        return Err(format!("{}: {}", error.category, error.message));
+                    }
+                }
+            }
+        }
     }
     receipt.phase("producer_evidence_admission", "language_facts");
     receipt.write_atomic(&receipt_path)?;
@@ -1434,12 +1459,82 @@ fn review_comments_with_diff_loader(
         .iter()
         .map(|owner| owner.owner.clone())
         .collect::<Vec<_>>();
-    let inventory = analysis::inventory_diff_scoped_classified_seams_at_with_config(
-        &input.root,
-        &config,
-        &working_set.files,
-        &changed_owner_names,
-    )?;
+    let changed_line_inputs = working_set
+        .changed_lines
+        .iter()
+        .map(|line| (line.file.clone(), line.line))
+        .collect::<Vec<_>>();
+    if let Some(review_input) = admitted_review_input {
+        let analysis_scope =
+            output::review_comments::ReviewCommentsAnalysisScope::producer_projection(
+                &working_set,
+                review_input.reviewed_count,
+            );
+        receipt.measured_phase(
+            "canonical_analysis",
+            "route_construction",
+            true,
+            Some(review_input.reviewed_count),
+            Some(review_input.projection_sha256),
+        );
+        receipt.write_atomic(&receipt_path)?;
+        let render_context = output::review_comments::ReviewCommentsRenderContext {
+            root: &input.root,
+            base: &options.base,
+            head: &options.head,
+            mode: &input.mode,
+            config: &config,
+        };
+        let rendered_json = output::review_comments::render_review_comments_json_from_projection(
+            &render_context,
+            &working_set,
+            &analysis_scope,
+            &review_input.projection,
+            admitted.as_ref().map(|value| &value.outcome),
+        )?;
+        let rendered_md = output::review_comments::render_review_comments_markdown_from_json(
+            &input.root,
+            &options.base,
+            &options.head,
+            &input.mode,
+            &rendered_json,
+        );
+        receipt.phase("route_construction", "artifact_io");
+        receipt.write_atomic(&receipt_path)?;
+        let rendered_json =
+            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
+        write_text_file(&options.out, &rendered_json)?;
+        write_text_file(&markdown_path, &rendered_md)?;
+        receipt.complete(&artifacts);
+        let rendered_json =
+            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
+        write_text_file(&options.out, &rendered_json)?;
+        receipt.write_atomic(&receipt_path)?;
+        println!("Wrote {}", options.out.display());
+        println!("Wrote {}", markdown_path.display());
+        return Ok(());
+    }
+    let inventory = match run_review_comments_analysis_with_timeout(options.timeout_ms, || {
+        analysis::inventory_diff_scoped_classified_seams_at_with_config_and_lines(
+            &input.root,
+            &config,
+            &working_set.files,
+            &changed_owner_names,
+            Some(&changed_line_inputs),
+        )
+    }) {
+        Ok(inventory) => inventory,
+        Err(error) if analysis::cancellation::is_cancellation_error(&error) => {
+            let message = format!(
+                "canonical review analysis exceeded the configured {}ms deadline: {error}",
+                options.timeout_ms
+            );
+            receipt.fail("canonical_analysis", "limited_timeout", &message);
+            receipt.write_atomic(&receipt_path)?;
+            return Err(format!("limited_timeout: {message}"));
+        }
+        Err(error) => return Err(error),
+    };
     let analysis_scope = output::review_comments::ReviewCommentsAnalysisScope::limited_diff_scope(
         &working_set,
         &inventory,
@@ -1504,6 +1599,37 @@ fn review_comments_with_diff_loader(
     println!("Wrote {}", options.out.display());
     println!("Wrote {}", markdown_path.display());
     Ok(())
+}
+
+fn run_review_comments_analysis_with_timeout<T>(
+    timeout_ms: u64,
+    work: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let token = analysis::cancellation::AnalysisCancellationToken::new();
+    let (finished_sender, finished_receiver) = mpsc::sync_channel(1);
+    std::thread::scope(|scope| {
+        let started = Instant::now();
+        let timer_token = token.clone();
+        scope.spawn(move || {
+            if finished_receiver
+                .recv_timeout(Duration::from_millis(timeout_ms))
+                .is_err()
+            {
+                let _ =
+                    timer_token.cancel(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
+            }
+        });
+
+        let result = analysis::cancellation::with_token(&token, work);
+        let deadline = if started.elapsed() >= Duration::from_millis(timeout_ms) {
+            let _ = token.cancel(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
+            Err("analysis cancelled: DeadlineExceeded".to_string())
+        } else {
+            token.checkpoint().map_err(|error| error.to_string())
+        };
+        let _ = finished_sender.send(());
+        result.and_then(|value| deadline.map(|_| value))
+    })
 }
 
 pub(super) fn calibrate(args: &[String]) -> Result<(), String> {
@@ -6304,6 +6430,30 @@ language = "rust"
             Err(err) => err,
         };
         assert!(err.contains("is not a directory"));
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_analysis_timeout_is_typed_and_fail_closed() -> Result<(), String> {
+        let result = run_review_comments_analysis_with_timeout(10, || {
+            std::thread::sleep(Duration::from_millis(100));
+            analysis::cancellation::checkpoint().map(|_| ())
+        });
+
+        let error = match result {
+            Ok(()) => {
+                return Err(
+                    "analysis that exceeded its deadline must not complete successfully"
+                        .to_string(),
+                );
+            }
+            Err(error) => error,
+        };
+        if !analysis::cancellation::is_cancellation_error(&error)
+            || !error.contains("DeadlineExceeded")
+        {
+            return Err(format!("expected typed deadline cancellation, got {error}"));
+        }
         Ok(())
     }
 

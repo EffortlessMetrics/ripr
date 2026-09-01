@@ -35,6 +35,13 @@ pub(crate) struct AdmittedReviewAnalysis {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AdmittedReviewInput {
+    pub(crate) projection_sha256: String,
+    pub(crate) reviewed_count: usize,
+    pub(crate) projection: Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ProducerAdmissionError {
     pub(crate) category: &'static str,
     pub(crate) message: String,
@@ -100,11 +107,9 @@ pub(crate) fn admit_producer_evidence(
         required_string(&producer, "mode")?,
         input.mode.as_str(),
     )?;
-    require_equal(
-        "root",
-        required_string(&producer, "root")?,
-        &logical_path(&input.root),
-    )?;
+    let producer_root = required_string(&producer, "root")?;
+    let producer_root = logical_path(Path::new(producer_root));
+    require_equal("root", &producer_root, &logical_path(&input.root))?;
     require_equal("base", required_string(&producer, "base")?, base)?;
     if !producer.get("summary").is_some_and(Value::is_object) {
         return Err(ProducerAdmissionError::malformed(
@@ -219,6 +224,138 @@ pub(crate) fn admit_producer_evidence(
     })
 }
 
+pub(crate) fn admit_review_input(
+    review_input_path: &Path,
+    root: &Path,
+    identity: &ReviewAnalysisIdentity,
+    producer_finding_count: u64,
+) -> Result<AdmittedReviewInput, ProducerAdmissionError> {
+    let bytes = std::fs::read(review_input_path).map_err(|error| {
+        ProducerAdmissionError::malformed(format!(
+            "producer review input {} is unreadable: {error}",
+            review_input_path.display()
+        ))
+    })?;
+    let value: Value = serde_json::from_slice(&bytes).map_err(|error| {
+        ProducerAdmissionError::malformed(format!(
+            "producer review input {} is invalid JSON: {error}",
+            review_input_path.display()
+        ))
+    })?;
+    require_equal(
+        "review_input_schema_version",
+        required_string(&value, "schema_version")?,
+        "ripr.review_input.v1",
+    )?;
+    let root_identity = logical_path(root);
+    require_equal(
+        "root_identity",
+        required_string(&value, "root_identity")?,
+        &root_identity,
+    )?;
+    for (field, expected) in [
+        ("base_sha", identity.base_sha.as_str()),
+        ("head_sha", identity.head_sha.as_str()),
+        ("head_tree", identity.head_tree.as_str()),
+        ("check_sha256", identity.check_sha256.as_str()),
+        (
+            "canonical_diff_sha256",
+            identity.canonical_diff_sha256.as_str(),
+        ),
+        ("mode", identity.mode.as_str()),
+    ] {
+        require_equal(field, required_string(&value, field)?, expected)?;
+    }
+    let findings = value
+        .get("findings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input findings must be an array")
+        })?;
+    let reviewed_count = value
+        .get("reviewed_count")
+        .and_then(Value::as_u64)
+        .and_then(|count| usize::try_from(count).ok())
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input reviewed_count is invalid")
+        })?;
+    if reviewed_count != findings.len() {
+        return Err(ProducerAdmissionError::malformed(
+            "review input reviewed_count contradicts its findings payload",
+        ));
+    }
+    let analysis_complete = value
+        .get("analysis_complete")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input analysis_complete is invalid")
+        })?;
+    if !analysis_complete {
+        return Err(ProducerAdmissionError::malformed(
+            "review input analysis_complete must be true",
+        ));
+    }
+    let total_finding_count = value
+        .get("total_finding_count")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input total_finding_count is invalid")
+        })?;
+    let projected_finding_count = value
+        .get("projected_finding_count")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input projected_finding_count is invalid")
+        })?;
+    let projection_limit = value
+        .get("projection_limit")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input projection_limit is invalid")
+        })?;
+    let projection_truncated = value
+        .get("projection_truncated")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| {
+            ProducerAdmissionError::malformed("review input projection_truncated is invalid")
+        })?;
+    if total_finding_count != producer_finding_count
+        || projected_finding_count != reviewed_count as u64
+        || projected_finding_count != findings.len() as u64
+        || projection_limit != 10
+        || projection_truncated != (total_finding_count > projected_finding_count)
+        || total_finding_count < projected_finding_count
+    {
+        return Err(ProducerAdmissionError::malformed(
+            "review input projection bounds contradict its findings payload",
+        ));
+    }
+    require_equal(
+        "projection_selection_policy",
+        required_string(&value, "projection_selection_policy")?,
+        "severity_actionability_stable_id_path_line",
+    )?;
+    require_equal(
+        "projection_selection_policy_version",
+        required_string(&value, "projection_selection_policy_version")?,
+        "v1",
+    )?;
+    let projection_sha256 = required_string(&value, "projection_sha256")?;
+    let projection_bytes = serde_json::to_vec(findings).map_err(|error| {
+        ProducerAdmissionError::malformed(format!("serialize review input digest: {error}"))
+    })?;
+    require_equal(
+        "projection_sha256",
+        projection_sha256,
+        &digest_bytes(&projection_bytes),
+    )?;
+    Ok(AdmittedReviewInput {
+        projection_sha256: projection_sha256.to_string(),
+        reviewed_count,
+        projection: value,
+    })
+}
+
 fn required_string<'a>(value: &'a Value, field: &str) -> Result<&'a str, ProducerAdmissionError> {
     value
         .get(field)
@@ -288,7 +425,18 @@ fn repository_identity(root: &Path) -> String {
 }
 
 fn logical_path(path: &Path) -> String {
-    crate::output::outcome::display_path(path).replace('\\', "/")
+    let textual = crate::output::outcome::display_path(path).replace('\\', "/");
+    let textual = textual.strip_prefix("//?/").unwrap_or(&textual);
+    if Path::new(textual).is_absolute() {
+        return textual.strip_suffix("/.").unwrap_or(textual).to_string();
+    }
+    let display = path
+        .canonicalize()
+        .map(|canonical| crate::output::outcome::display_path(&canonical))
+        .unwrap_or_else(|_| crate::output::outcome::display_path(path))
+        .replace('\\', "/");
+    let display = display.strip_prefix("//?/").unwrap_or(&display);
+    display.strip_suffix("/.").unwrap_or(display).to_string()
 }
 
 fn digest_bytes(bytes: &[u8]) -> String {
@@ -400,6 +548,19 @@ mod tests {
     }
 
     #[test]
+    fn logical_path_canonicalizes_existing_root_identity() -> Result<(), String> {
+        let current = std::env::current_dir().map_err(|error| error.to_string())?;
+        let expected = current.display().to_string().replace('\\', "/");
+        let actual = logical_path(Path::new("."));
+        if actual != expected {
+            return Err(format!(
+                "existing root identity was not canonicalized: expected {expected:?}, got {actual:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn admission_rejects_missing_required_fields_as_malformed() -> Result<(), String> {
         let path = std::env::temp_dir().join(format!(
             "ripr-review-required-fields-{}.json",
@@ -443,6 +604,7 @@ mod tests {
         let base = "HEAD";
         let head = "HEAD";
         let diff_text = "fixture diff";
+        let root_identity = logical_path(&root);
         let outcome = AnalysisOutcome::new(
             crate::analysis_outcome::AnalysisOutcomeKind::NoScope,
             crate::analysis_outcome::AnalysisIdentity {
@@ -463,7 +625,7 @@ mod tests {
             "schema_version": "0.2",
             "tool": "ripr",
             "mode": "draft",
-            "root": ".",
+            "root": root_identity,
             "base": base,
             "summary": {},
             "findings": [],

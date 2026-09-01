@@ -41,7 +41,8 @@ pub(crate) use seam_inventory::{
     SeamLimitSource, apply_pilot_seam_budget,
     inventory_changed_test_classified_seams_at_with_config_node,
     inventory_classified_seams_at_with_config, inventory_compact_classified_seams_at_with_config,
-    inventory_diff_scoped_classified_seams_at_with_config, inventory_seams_at,
+    inventory_diff_scoped_classified_seams_at_with_config,
+    inventory_diff_scoped_classified_seams_at_with_config_and_lines, inventory_seams_at,
     workspace_cache_key_at_with_config,
 };
 pub(crate) use seams::{RepoSeam, RequiredDiscriminator};

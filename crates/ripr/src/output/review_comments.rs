@@ -20,6 +20,7 @@ use crate::output::evidence_record::{
 };
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -32,6 +33,84 @@ use scope::ReviewPlacement;
 pub(crate) const REVIEW_COMMENTS_SCHEMA_VERSION: &str = "0.1";
 pub(crate) const DEFAULT_REVIEW_MAX_INLINE_COMMENTS: usize = 3;
 pub(crate) const DEFAULT_REVIEW_MAX_SUMMARY_ITEMS: usize = 10;
+pub(crate) const REVIEW_INPUT_SCHEMA_VERSION: &str = "ripr.review_input.v1";
+pub(crate) const REVIEW_INPUT_MAX_BYTES: usize = 128 * 1024;
+
+/// Renderer-owned facts retained after canonical analysis.  This is deliberately
+/// smaller than `ClassifiedSeam`: consumers need navigation and recommendation
+/// identity, not ASTs, source buffers, parser state, or the seam inventory.
+#[derive(Clone, Debug, serde::Serialize)]
+pub(crate) struct ReviewFindingProjection {
+    pub(crate) stable_id: String,
+    pub(crate) file: String,
+    pub(crate) line: Option<usize>,
+    pub(crate) severity: String,
+    pub(crate) finding_class: String,
+    pub(crate) summary: String,
+    pub(crate) evidence_digest: String,
+    pub(crate) related_test: Option<ReviewRelatedTestProjection>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub(crate) struct ReviewRelatedTestProjection {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) line: usize,
+}
+
+pub(crate) fn review_input_projection(
+    root: &Path,
+    config: &RiprConfig,
+    selection: &AgentBriefSelection<'_>,
+) -> Result<Value, String> {
+    let entries = selection
+        .top_seams
+        .iter()
+        .map(|selected| {
+            let seam = &selected.seam.seam;
+            let evidence_bytes = serde_json::to_vec(&selected.seam.evidence)
+                .map_err(|err| format!("serialize review evidence digest input: {err}"))?;
+            let related_test = selected.seam.evidence.related_tests.first().map(|test| {
+                ReviewRelatedTestProjection {
+                    name: test.test_name.clone(),
+                    file: display_path(&test.file),
+                    line: test.line,
+                }
+            });
+            Ok(ReviewFindingProjection {
+                stable_id: seam.id().as_str().to_string(),
+                file: display_path(seam.file()),
+                line: Some(seam.display_line()),
+                severity: config
+                    .severity()
+                    .for_seam(selected.seam.class)
+                    .as_str()
+                    .to_string(),
+                finding_class: selected.seam.class.as_str().to_string(),
+                summary: selected.why_now.evidence.clone(),
+                evidence_digest: format!("sha256:{:x}", Sha256::digest(evidence_bytes)),
+                related_test,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let entries_value = serde_json::to_value(entries)
+        .map_err(|err| format!("serialize review input projection: {err}"))?;
+    let bytes = serde_json::to_vec(&entries_value)
+        .map_err(|err| format!("serialize review input digest input: {err}"))?;
+    if bytes.len() > REVIEW_INPUT_MAX_BYTES {
+        return Err(format!(
+            "review input projection exceeds {} byte limit",
+            REVIEW_INPUT_MAX_BYTES
+        ));
+    }
+    Ok(json!({
+        "schema_version": REVIEW_INPUT_SCHEMA_VERSION,
+        "root": display_path(root),
+        "reviewed_count": entries_value.as_array().map_or(0, Vec::len),
+        "projection_sha256": format!("sha256:{:x}", Sha256::digest(&bytes)),
+        "findings": entries_value,
+    }))
+}
 
 // Closed selection-reason vocabulary (SPEC-0068). No free-text reason outside this set
 // may ship on the working-set selection path without amending the spec.
@@ -111,6 +190,7 @@ pub(crate) fn render_review_comments_json_with_scope(
         warning_messages.push(warning);
     }
     let warnings = warning_messages;
+    let review_input = review_input_projection(context.root, context.config, selection)?;
 
     for selected in actionable.iter().take(DEFAULT_REVIEW_MAX_SUMMARY_ITEMS) {
         let recommendation = review_recommendation_json(
@@ -184,6 +264,7 @@ pub(crate) fn render_review_comments_json_with_scope(
         "head": context.head,
         "mode": context.mode.as_str(),
         "analysis_scope": analysis_scope_json(analysis_scope),
+        "review_input": review_input,
         "rendering_limits": {
             "max_inline_comments": DEFAULT_REVIEW_MAX_INLINE_COMMENTS,
             "max_summary_items": DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
@@ -219,6 +300,105 @@ pub(crate) fn render_review_comments_json_with_scope(
     }
 
     super::json::render_pretty(&value, "review comments")
+}
+
+pub(crate) fn render_review_comments_json_from_projection(
+    context: &ReviewCommentsRenderContext<'_>,
+    working_set: &AgentBriefResolvedWorkingSet,
+    analysis_scope: &ReviewCommentsAnalysisScope,
+    projection: &Value,
+    analysis_outcome: Option<&AnalysisOutcome>,
+) -> Result<String, String> {
+    let findings = projection
+        .get("findings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "producer review input findings must be an array".to_string())?;
+    let mut comments = Vec::new();
+    let mut summary_only = Vec::new();
+    for finding in findings.iter().take(DEFAULT_REVIEW_MAX_SUMMARY_ITEMS) {
+        let stable_id = projection_string(finding, "stable_id")?;
+        let file = projection_string(finding, "file")?;
+        let line = finding
+            .get("line")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| format!("producer review input finding {stable_id} has invalid line"))?;
+        let severity = projection_string(finding, "severity")?;
+        let finding_class = projection_string(finding, "finding_class")?;
+        let summary = projection_string(finding, "summary")?;
+        let card = json!({
+            "id": format!("ripr-review-{stable_id}"),
+            "seam_id": stable_id,
+            "canonical_gap_id": null,
+            "dedupe_key": format!("ripr:{file}:{line}"),
+            "kind": finding_class,
+            "grip_class": finding_class,
+            "gap_state": "unknown",
+            "oracle_kind": "unknown",
+            "oracle_strength": "none",
+            "severity": severity,
+            "owner": "producer_review_projection",
+            "seam": {"file": file, "line": line, "expression": summary},
+            "source_location": {"status": "resolved", "file": file, "line": line, "span": null, "limitation": null, "repair_route": null},
+            "reason": summary,
+            "missing_discriminator": null,
+            "suggested_test": {"intent": "Inspect the producer-owned review finding.", "candidate_values": [], "assertion_shape": null, "assertion_kind": null, "recommended_file": "not_applicable", "recommended_name": "not_applicable"},
+            "llm_guidance": {"prompt": summary, "command": "ripr review-comments --help"}
+        });
+        let placement = working_set
+            .changed_lines
+            .iter()
+            .find(|changed| display_path(&changed.file) == file && changed.line == line)
+            .map(|changed| json!({"path": display_path(&changed.file), "line": changed.line, "side": "RIGHT", "mode": "exact_seam_line"}));
+        if let Some(placement) = placement {
+            if comments.len() < DEFAULT_REVIEW_MAX_INLINE_COMMENTS {
+                let mut card = card;
+                card["placement"] = placement;
+                comments.push(card);
+            } else {
+                let mut card = card;
+                card["placement"] = placement;
+                card["summary_reason"] = json!(SUMMARY_REASON_INLINE_CAP_REACHED);
+                summary_only.push(card);
+            }
+        } else {
+            let mut card = card;
+            card["placement"] = Value::Null;
+            card["summary_reason"] = json!(SUMMARY_REASON_NO_SAFE_PLACEMENT);
+            summary_only.push(card);
+        }
+    }
+    let value = json!({
+        "schema_version": REVIEW_COMMENTS_SCHEMA_VERSION,
+        "tool": "ripr",
+        "status": "advisory",
+        "root": display_path(context.root),
+        "base": context.base,
+        "head": context.head,
+        "mode": context.mode.as_str(),
+        "analysis_scope": analysis_scope_json(analysis_scope),
+        "rendering_limits": {"max_inline_comments": DEFAULT_REVIEW_MAX_INLINE_COMMENTS, "max_summary_items": DEFAULT_REVIEW_MAX_SUMMARY_ITEMS},
+        "summary": {"comments": comments.len(), "summary_only": summary_only.len(), "suppressed": 0, "unchanged_tests": false},
+        "comments": comments,
+        "summary_only": summary_only,
+        "suppressed": [],
+        "warnings": [],
+        "limits_note": "Advisory static evidence only; producer-owned compact review projection; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
+    });
+    let mut value = value;
+    if let Some(outcome) = analysis_outcome {
+        value["analysis_outcome"] = json!({"analysis_complete": true, "outcome": outcome});
+    }
+    super::json::render_pretty(&value, "review comments")
+}
+
+fn projection_string(value: &Value, field: &str) -> Result<String, String> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| format!("producer review input field {field} is missing"))
 }
 
 /// Render free-text selection warnings as schema-conformant warning objects.
@@ -379,6 +559,19 @@ pub(crate) fn render_review_comments_markdown_with_scope(
         context.mode,
         &value,
     )
+}
+
+pub(crate) fn render_review_comments_markdown_from_json(
+    root: &Path,
+    base: &str,
+    head: &str,
+    mode: &Mode,
+    rendered_json: &str,
+) -> String {
+    let Ok(value) = serde_json::from_str::<Value>(rendered_json) else {
+        return "# RIPR PR Guidance\n\nUnable to parse rendered PR guidance.\n".to_string();
+    };
+    render_review_comments_markdown_value(root, base, head, mode, &value)
 }
 
 pub(crate) fn render_gap_record_review_comments_markdown(
@@ -1892,6 +2085,25 @@ mod tests {
         assert_eq!(value["summary"]["comments"], 1);
         assert_eq!(value["comments"][0]["placement"]["mode"], "exact_seam_line");
         assert_eq!(
+            value["review_input"]["schema_version"],
+            REVIEW_INPUT_SCHEMA_VERSION
+        );
+        assert_eq!(value["review_input"]["reviewed_count"], 1);
+        assert!(
+            value["review_input"]["projection_sha256"]
+                .as_str()
+                .is_some_and(|digest| digest.starts_with("sha256:"))
+        );
+        assert_eq!(
+            value["review_input"]["findings"][0]["stable_id"],
+            "8f7fa8644fd12280"
+        );
+        assert_eq!(
+            value["review_input"]["findings"][0]["file"],
+            "src/pricing.rs"
+        );
+        assert_eq!(value["review_input"]["findings"][0]["line"], 88);
+        assert_eq!(
             value["comments"][0]["source_location"],
             serde_json::json!({
                 "status": "resolved",
@@ -1906,6 +2118,31 @@ mod tests {
             value["comments"][0]["llm_guidance"]["verify_command"],
             "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn review_input_projection_is_compact_and_fails_closed_at_byte_limit() -> Result<(), String> {
+        let mut entry = classified(88);
+        entry.evidence.related_tests.clear();
+        let config = RiprConfig::default();
+        let value = review_input_projection(Path::new("."), &config, &selection(&[entry]))?;
+        assert_eq!(value["reviewed_count"], 1);
+        assert!(value["findings"][0]["related_test"].is_null());
+
+        let mut oversized = Vec::new();
+        for line in 1..=10 {
+            oversized.push(classified(line));
+        }
+        let mut oversized_selection = selection(&oversized);
+        for selected in &mut oversized_selection.top_seams {
+            selected.why_now.evidence = "x".repeat(20_000);
+        }
+        let error = match review_input_projection(Path::new("."), &config, &oversized_selection) {
+            Ok(_) => return Err("oversized renderer input must fail closed".to_string()),
+            Err(error) => error,
+        };
+        assert!(error.contains("byte limit"), "{error}");
         Ok(())
     }
 
