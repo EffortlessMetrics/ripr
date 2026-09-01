@@ -3637,6 +3637,7 @@ pub(super) fn ripr_plus(args: &[String]) -> Result<(), String> {
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
+    use std::time::Duration;
 
     pub(super) fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
