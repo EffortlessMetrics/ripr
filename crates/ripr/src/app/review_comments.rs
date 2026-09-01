@@ -12,7 +12,6 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
-
 pub(crate) const REVIEW_ANALYSIS_IDENTITY_SCHEMA: &str = "ripr.review_analysis_identity.v1";
 const REVIEW_ANALYZER_GENERATION: &str = "diff_scoped_classified_seams.v1";
 // Keep this admission bound synchronized with the producer projection limit.
@@ -34,14 +33,12 @@ pub(crate) struct ReviewAnalysisIdentity {
     pub(crate) analyzer_generation: String,
     pub(crate) check_sha256: String,
 }
-
 #[derive(Clone, Debug)]
 pub(crate) struct AdmittedReviewAnalysis {
     pub(crate) identity: ReviewAnalysisIdentity,
     pub(crate) outcome: AnalysisOutcome,
     pub(crate) producer_projection: Vec<crate::review_input::ReviewFindingProjectionV1>,
 }
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct AdmittedReviewInput {
     pub(crate) projection_sha256: String,
@@ -49,13 +46,11 @@ pub(crate) struct AdmittedReviewInput {
     pub(crate) projection: Value,
     pub(crate) analysis_outcome: Option<AnalysisOutcome>,
 }
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ProducerAdmissionError {
     pub(crate) category: &'static str,
     pub(crate) message: String,
 }
-
 pub(crate) fn run_analysis_with_timeout<T>(
     timeout_ms: u64,
     work: impl FnOnce() -> Result<T, String>,
@@ -74,7 +69,6 @@ pub(crate) fn run_analysis_with_timeout<T>(
                     .cancel(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
             }
         });
-
         let result = crate::analysis::cancellation::with_token(&token, work);
         let deadline = if started.elapsed() >= Duration::from_millis(timeout_ms) {
             let _ =
@@ -87,7 +81,6 @@ pub(crate) fn run_analysis_with_timeout<T>(
         result.and_then(|value| deadline.map(|_| value))
     })
 }
-
 impl ProducerAdmissionError {
     fn malformed(message: impl Into<String>) -> Self {
         Self {
@@ -156,7 +149,6 @@ pub(crate) fn admit_producer_evidence(
     ] {
         require_equal(field, required_string(&subject, field)?, expected)?;
     }
-
     let review_input_path = check_path.with_file_name("review-input.json");
     let review_input_bytes = std::fs::read(&review_input_path).map_err(|error| {
         let message = format!(
@@ -242,7 +234,6 @@ pub(crate) fn admit_producer_evidence(
         producer_projection,
     })
 }
-
 pub(crate) fn admit_review_input(
     review_input_path: &Path,
     root: &Path,
@@ -425,7 +416,6 @@ pub(crate) fn admit_review_input(
         analysis_outcome,
     })
 }
-
 fn canonical_projection_from_subject(
     subject: &Value,
 ) -> Result<Vec<crate::review_input::ReviewFindingProjectionV1>, ProducerAdmissionError> {
@@ -463,7 +453,6 @@ fn canonical_projection_from_subject(
     }
     Ok(projection)
 }
-
 fn required_string<'a>(value: &'a Value, field: &str) -> Result<&'a str, ProducerAdmissionError> {
     value
         .get(field)
@@ -473,13 +462,11 @@ fn required_string<'a>(value: &'a Value, field: &str) -> Result<&'a str, Produce
             ProducerAdmissionError::malformed(format!("producer field {field} is missing"))
         })
 }
-
 fn required_value<'a>(value: &'a Value, field: &str) -> Result<&'a Value, ProducerAdmissionError> {
     value.get(field).ok_or_else(|| {
         ProducerAdmissionError::malformed(format!("producer field {field} is missing"))
     })
 }
-
 fn require_equal(field: &str, actual: &str, expected: &str) -> Result<(), ProducerAdmissionError> {
     if actual == expected {
         Ok(())
@@ -487,7 +474,6 @@ fn require_equal(field: &str, actual: &str, expected: &str) -> Result<(), Produc
         Err(ProducerAdmissionError::mismatch(field))
     }
 }
-
 fn resolve_revision(
     root: &Path,
     revision: &str,
@@ -524,7 +510,6 @@ fn resolve_revision(
         Ok(value)
     }
 }
-
 fn repository_identity(root: &Path) -> String {
     let origin = std::process::Command::new("git")
         .arg("-C")
@@ -541,7 +526,6 @@ fn repository_identity(root: &Path) -> String {
         format!("sha256:{:x}", Sha256::digest(origin))
     }
 }
-
 fn logical_path(path: &Path) -> String {
     let textual = crate::output::outcome::display_path(path).replace('\\', "/");
     let textual = textual.strip_prefix("//?/").unwrap_or(&textual);
@@ -553,11 +537,9 @@ fn logical_path(path: &Path) -> String {
     let display = display.strip_prefix("//?/").unwrap_or(&display);
     display.strip_suffix("/.").unwrap_or(display).to_string()
 }
-
 fn digest_bytes(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
