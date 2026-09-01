@@ -1040,6 +1040,46 @@ mod tests {
             }
         }
 
+        for field in [
+            "schema_version",
+            "root_identity",
+            "base_sha",
+            "head_sha",
+            "head_tree",
+            "check_sha256",
+            "canonical_diff_sha256",
+            "mode",
+            "findings",
+            "reviewed_count",
+            "analysis_complete",
+            "total_finding_count",
+            "projected_finding_count",
+            "projection_limit",
+            "projection_truncated",
+            "projection_selection_policy",
+            "projection_selection_policy_version",
+            "projection_sha256",
+        ] {
+            let mut mutation = valid.clone();
+            let Some(object) = mutation.as_object_mut() else {
+                return Err("valid review input fixture must be an object".to_string());
+            };
+            if object.remove(field).is_none() {
+                return Err(format!("valid review input fixture lacks {field}"));
+            }
+            std::fs::write(
+                &path,
+                serde_json::to_vec(&mutation).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| format!("write missing field {field}: {error}"))?;
+            let error = admit_review_input(&path, &root, &identity, 1, None)
+                .err()
+                .ok_or_else(|| format!("missing field {field} must fail"))?;
+            if error.category != "malformed_producer" {
+                return Err(format!("missing field {field} returned {}", error.category));
+            }
+        }
+
         let mut mutations = Vec::new();
         for (field, value, expected_category) in [
             (
