@@ -20,7 +20,6 @@ use crate::cli::commands_agent_support::{
 };
 use crate::cli::commands_options::*;
 use crate::cli::commands_timestamps::generated_at_unix_ms;
-use std::time::Duration;
 
 const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
 
