@@ -1313,7 +1313,11 @@ fn inventory_seams_from_index_filtered(
             };
             if owner_names.is_none_or(|owners| owners.contains(seam.owner()))
                 && changed_lines.is_none_or(|lines| {
-                    lines.contains(&(normalized_inventory_path(path), seam.display_line()))
+                    let normalized_path = normalized_inventory_path(path);
+                    !lines
+                        .iter()
+                        .any(|(line_path, _)| line_path == &normalized_path)
+                        || lines.contains(&(normalized_path, seam.display_line()))
                 })
             {
                 seams.push(seam);
@@ -1527,6 +1531,43 @@ pub fn unrelated_total(amount: i32) -> i32 {
         }
         if scoped.iter().any(|seam| !owners.contains(seam.owner())) {
             return Err("owner-scoped inventory emitted an unrelated owner".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn changed_line_filter_does_not_filter_unchanged_immediate_caller_files() -> Result<(), String>
+    {
+        let changed_path = PathBuf::from("src/changed.rs");
+        let caller_path = PathBuf::from("src/caller.rs");
+        let changed_source = r#"
+pub fn changed_total(amount: i32) -> i32 {
+    if amount >= 10 { amount - 1 } else { amount }
+}
+"#;
+        let caller_source = r#"
+pub fn caller(amount: i32) -> i32 {
+    changed_total(amount)
+}
+"#;
+        let index = index_from_files(&[
+            (changed_path.clone(), changed_source),
+            (caller_path.clone(), caller_source),
+        ])?;
+        let changed_lines = [(normalized_inventory_path(&changed_path), 3usize)]
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let seams = inventory_seams_from_index_filtered(
+            &[changed_path, caller_path.clone()],
+            &index,
+            None,
+            Some(&changed_lines),
+        );
+
+        if !seams.iter().any(|seam| seam.file() == caller_path) {
+            return Err(
+                "unchanged immediate-caller file was filtered by changed lines".to_string(),
+            );
         }
         Ok(())
     }
