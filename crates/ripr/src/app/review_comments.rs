@@ -3,10 +3,12 @@
 use super::CheckInput;
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::config::{RiprConfig, repo_exposure_config_identity_hash};
-use crate::review_input::ReviewInputV1;
+use crate::review_input::{ReviewInputV1, stream_producer_check};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -37,7 +39,7 @@ pub(crate) struct ReviewAnalysisIdentity {
 pub(crate) struct AdmittedReviewAnalysis {
     pub(crate) identity: ReviewAnalysisIdentity,
     pub(crate) outcome: AnalysisOutcome,
-    pub(crate) producer_findings: Vec<Value>,
+    pub(crate) producer_projection: Vec<crate::review_input::ReviewFindingProjectionV1>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -120,7 +122,7 @@ pub(crate) fn admit_producer_evidence(
     head: &str,
     diff_text: &str,
 ) -> Result<AdmittedReviewAnalysis, ProducerAdmissionError> {
-    let check_bytes = std::fs::read(check_path).map_err(|error| {
+    let mut check_file = File::open(check_path).map_err(|error| {
         let message = format!(
             "producer check {} is unreadable: {error}",
             check_path.display()
@@ -131,39 +133,46 @@ pub(crate) fn admit_producer_evidence(
             ProducerAdmissionError::malformed(message)
         }
     })?;
-    let producer: Value = serde_json::from_slice(&check_bytes).map_err(|error| {
+    let mut mode_prefix = Vec::new();
+    check_file
+        .by_ref()
+        .take(64 * 1024)
+        .read_to_end(&mut mode_prefix)
+        .map_err(|error| {
+            ProducerAdmissionError::malformed(format!(
+                "read producer mode prefix {}: {error}",
+                check_path.display()
+            ))
+        })?;
+    if let Some(mode) = crate::review_input::producer_mode(&mode_prefix)
+        .map_err(ProducerAdmissionError::malformed)?
+    {
+        require_equal("mode", &mode, input.mode.as_str())?;
+    }
+    check_file.seek(SeekFrom::Start(0)).map_err(|error| {
         ProducerAdmissionError::malformed(format!(
-            "producer check {} is invalid JSON: {error}",
+            "rewind producer check {}: {error}",
             check_path.display()
         ))
     })?;
-    let producer_schema = required_string(&producer, "schema_version")?;
-    require_equal("schema_version", producer_schema, "0.2")?;
-    require_equal("tool", required_string(&producer, "tool")?, "ripr")?;
-    require_equal(
-        "mode",
-        required_string(&producer, "mode")?,
-        input.mode.as_str(),
-    )?;
-    let producer_root = required_string(&producer, "root")?;
+    let streamed = stream_producer_check(check_file, &input.root)
+        .map_err(ProducerAdmissionError::malformed)?;
+    require_equal("schema_version", &streamed.schema_version, "0.2")?;
+    require_equal("tool", &streamed.tool, "ripr")?;
+    require_equal("mode", &streamed.mode, input.mode.as_str())?;
+    let producer_root = streamed.root.as_str();
     let producer_root = logical_path(Path::new(producer_root));
     require_equal("root", &producer_root, &logical_path(&input.root))?;
-    require_equal("base", required_string(&producer, "base")?, base)?;
-    if !producer.get("summary").is_some_and(Value::is_object) {
+    require_equal("base", &streamed.base, base)?;
+    if !streamed.summary.is_object() {
         return Err(ProducerAdmissionError::malformed(
             "producer summary must be an object",
         ));
     }
-    let findings = producer
-        .get("findings")
-        .and_then(Value::as_array)
-        .ok_or_else(|| ProducerAdmissionError::malformed("producer findings must be an array"))?;
-    let envelope = producer
-        .get("analysis_outcome")
-        .filter(|value| value.is_object())
-        .ok_or_else(|| {
-            ProducerAdmissionError::malformed("producer check requires analysis_outcome")
-        })?;
+    let envelope = streamed.analysis_outcome;
+    let envelope = envelope.as_object().ok_or_else(|| {
+        ProducerAdmissionError::malformed("producer check requires analysis_outcome")
+    })?;
     let declared_complete = envelope
         .get("analysis_complete")
         .and_then(Value::as_bool)
@@ -187,7 +196,7 @@ pub(crate) fn admit_producer_evidence(
             message: "producer analysis is not complete and cannot be reused".to_string(),
         });
     }
-    if outcome.counts.finding_count != findings.len() as u64 {
+    if outcome.counts.finding_count != streamed.finding_count {
         return Err(ProducerAdmissionError::malformed(
             "producer finding count contradicts its findings payload",
         ));
@@ -239,7 +248,7 @@ pub(crate) fn admit_producer_evidence(
     let base_sha = resolve_revision(&input.root, base, "commit")?;
     let head_sha = resolve_revision(&input.root, head, "commit")?;
     let head_tree = resolve_revision(&input.root, head, "tree")?;
-    let check_sha256 = digest_bytes(&check_bytes);
+    let check_sha256 = digest_file(check_path).map_err(ProducerAdmissionError::malformed)?;
     for (field, expected) in [
         ("base_sha", base_sha.as_str()),
         ("head_sha", head_sha.as_str()),
@@ -259,12 +268,12 @@ pub(crate) fn admit_producer_evidence(
             canonical_diff_sha256,
             mode: input.mode.as_str().to_string(),
             configuration_fingerprint: repo_exposure_config_identity_hash(config),
-            producer_schema: producer_schema.to_string(),
+            producer_schema: streamed.schema_version,
             analyzer_generation: REVIEW_ANALYZER_GENERATION.to_string(),
             check_sha256,
         },
         outcome,
-        producer_findings: findings.to_vec(),
+        producer_projection: streamed.projection,
     })
 }
 
@@ -273,7 +282,7 @@ pub(crate) fn admit_review_input(
     root: &Path,
     identity: &ReviewAnalysisIdentity,
     producer_finding_count: u64,
-    producer_findings: Option<&[Value]>,
+    producer_projection: Option<&[crate::review_input::ReviewFindingProjectionV1]>,
 ) -> Result<AdmittedReviewInput, ProducerAdmissionError> {
     let bytes = std::fs::read(review_input_path).map_err(|error| {
         let message = format!(
@@ -400,14 +409,7 @@ pub(crate) fn admit_review_input(
             "review input projection bounds contradict its findings payload",
         ));
     }
-    if let Some(producer_findings) = producer_findings {
-        let expected = crate::review_input::canonical_projection(producer_findings, root).map_err(
-            |error| {
-                ProducerAdmissionError::malformed(format!(
-                    "derive canonical review input projection: {error}"
-                ))
-            },
-        )?;
+    if let Some(expected) = producer_projection {
         let expected_value = serde_json::to_value(expected).map_err(|error| {
             ProducerAdmissionError::malformed(format!(
                 "serialize canonical review input projection: {error}"
@@ -531,6 +533,27 @@ fn logical_path(path: &Path) -> String {
 
 fn digest_bytes(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
+}
+
+fn digest_file(path: &Path) -> Result<String, String> {
+    let mut file = File::open(path).map_err(|error| {
+        format!(
+            "open producer check {} for hashing: {error}",
+            path.display()
+        )
+    })?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("hash producer check {}: {error}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
 #[cfg(test)]
@@ -902,6 +925,8 @@ mod tests {
             "classification": "exposed",
             "related_tests": []
         })];
+        let producer_projection =
+            crate::review_input::canonical_projection(&producer_findings, &root)?;
         let findings = serde_json::to_value(crate::review_input::canonical_projection(
             &producer_findings,
             &root,
@@ -948,7 +973,7 @@ mod tests {
             serde_json::to_vec(&valid).map_err(|error| error.to_string())?,
         )
         .map_err(|error| format!("write valid review input: {error}"))?;
-        let admitted = admit_review_input(&path, &root, &identity, 1, Some(&producer_findings))
+        let admitted = admit_review_input(&path, &root, &identity, 1, Some(&producer_projection))
             .map_err(|error| error.message.clone())?;
         if admitted.reviewed_count != 1 || admitted.projection_sha256 != projection_sha256 {
             return Err("valid review input was not admitted".to_string());
@@ -1074,7 +1099,7 @@ mod tests {
             serde_json::to_vec(&substituted).map_err(|error| error.to_string())?,
         )
         .map_err(|error| format!("write substituted projection: {error}"))?;
-        let error = admit_review_input(&path, &root, &identity, 1, Some(&producer_findings))
+        let error = admit_review_input(&path, &root, &identity, 1, Some(&producer_projection))
             .err()
             .ok_or_else(|| "substituted projection must fail canonical comparison".to_string())?;
         if error.category != "malformed_producer" {

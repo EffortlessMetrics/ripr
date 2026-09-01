@@ -4,11 +4,13 @@ use crate::run::{
     tool_build_timeout,
 };
 use crate::verification_contracts::validate_json_file_against_schema;
+use ripr::review_input::stream_producer_check;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::ffi::OsStr;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -330,21 +332,11 @@ fn validate_check_output_against_packet(
     } else {
         repo.join(path)
     };
-    let text = match fs::read_to_string(&path) {
-        Ok(text) => text,
+    let check_sha256 = match digest_file(&path) {
+        Ok(digest) => digest,
         Err(error) => {
             violations.push(format!(
                 "--check-output {} is unreadable: {error}",
-                path.display()
-            ));
-            return;
-        }
-    };
-    let producer: Value = match serde_json::from_str(&text) {
-        Ok(value) => value,
-        Err(error) => {
-            violations.push(format!(
-                "--check-output {} is invalid JSON: {error}",
                 path.display()
             ));
             return;
@@ -386,10 +378,7 @@ fn validate_check_output_against_packet(
             "head_tree",
             resolve_tree_identity(&receipt_root, &options.head),
         ),
-        (
-            "check_sha256",
-            format!("sha256:{:x}", Sha256::digest(text.as_bytes())),
-        ),
+        ("check_sha256", check_sha256),
     ];
     for (field, expected) in expected_subject {
         if subject.get(field).and_then(Value::as_str) != Some(expected.as_str()) {
@@ -399,57 +388,77 @@ fn validate_check_output_against_packet(
             ));
         }
     }
-    for field in ["schema_version", "tool", "mode", "root", "base"] {
-        if producer
-            .get(field)
-            .is_none_or(|value| value.as_str().is_none_or(|text| text.trim().is_empty()))
-        {
+    let producer_file = match File::open(&path) {
+        Ok(file) => file,
+        Err(error) => {
             violations.push(format!(
-                "--check-output {} is missing producer field {field}",
+                "--check-output {} is unreadable: {error}",
                 path.display()
             ));
+            return;
         }
+    };
+    let producer = match stream_producer_check(producer_file, &receipt_root) {
+        Ok(producer) => producer,
+        Err(error) => {
+            violations.push(format!(
+                "--check-output {} is invalid: {error}",
+                path.display()
+            ));
+            return;
+        }
+    };
+    if producer.tool.trim().is_empty() {
+        violations.push(format!(
+            "--check-output {} is missing producer field tool",
+            path.display()
+        ));
     }
-    if producer.get("tool").and_then(Value::as_str) != Some("ripr") {
+    if producer.tool != "ripr" {
         violations.push(format!(
             "--check-output {} producer tool must be ripr",
             path.display()
         ));
     }
-    expect_producer_string(&producer, "schema_version", "0.2", &path, violations);
-    expect_producer_string(
-        &producer,
-        "root",
-        packet.get("root").and_then(Value::as_str).unwrap_or(""),
-        &path,
-        violations,
-    );
-    expect_producer_string(
-        &producer,
-        "base",
-        packet.get("base").and_then(Value::as_str).unwrap_or(""),
-        &path,
-        violations,
-    );
-    expect_producer_string(
-        &producer,
-        "mode",
-        packet.get("mode").and_then(Value::as_str).unwrap_or(""),
-        &path,
-        violations,
-    );
-    if !producer.get("summary").is_some_and(Value::is_object)
-        || !producer.get("findings").is_some_and(Value::is_array)
-        || !producer
-            .get("analysis_outcome")
-            .is_some_and(Value::is_object)
-    {
+    if producer.schema_version != "0.2" {
+        violations.push(format!(
+            "--check-output {} producer schema_version does not match expected \"0.2\"",
+            path.display()
+        ));
+    }
+    let packet_root = packet.get("root").and_then(Value::as_str).unwrap_or("");
+    for (field, actual, expected) in [
+        ("root", producer.root.as_str(), packet_root),
+        (
+            "base",
+            producer.base.as_str(),
+            packet.get("base").and_then(Value::as_str).unwrap_or(""),
+        ),
+        (
+            "mode",
+            producer.mode.as_str(),
+            packet.get("mode").and_then(Value::as_str).unwrap_or(""),
+        ),
+    ] {
+        if actual != expected {
+            violations.push(format!(
+                "--check-output {} producer {field} does not match expected {expected:?}",
+                path.display()
+            ));
+        }
+    }
+    if !producer.summary.is_object() || !producer.analysis_outcome.is_object() {
         violations.push(format!(
             "--check-output {} requires producer summary, findings and analysis_outcome",
             path.display()
         ));
     }
-    if producer.get("analysis_outcome") != packet.get("analysis_outcome") {
+    if producer.analysis_outcome
+        != packet
+            .get("analysis_outcome")
+            .cloned()
+            .unwrap_or(Value::Null)
+    {
         violations.push(format!(
             "--check-output {} analysis_outcome does not match rendered review packet",
             path.display()
@@ -457,19 +466,18 @@ fn validate_check_output_against_packet(
     }
 }
 
-fn expect_producer_string(
-    producer: &Value,
-    field: &str,
-    expected: &str,
-    path: &Path,
-    violations: &mut Vec<String>,
-) {
-    if producer.get(field).and_then(Value::as_str) != Some(expected) {
-        violations.push(format!(
-            "--check-output {} producer {field} does not match expected {expected:?}",
-            path.display()
-        ));
+fn digest_file(path: &Path) -> Result<String, String> {
+    let mut file = File::open(path).map_err(|error| format!("open {}: {error}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
     }
+    Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
 fn validate_rendering_limits(packet: &Value, violations: &mut Vec<String>) {

@@ -1236,7 +1236,7 @@ fn review_comments_with_diff_loader(
                 &input.root,
                 &admitted.identity,
                 admitted.outcome.counts.finding_count,
-                Some(&admitted.producer_findings),
+                Some(&admitted.producer_projection),
             ) {
                 Ok(review_input) => admitted_review_input = Some(review_input),
                 Err(error) => {

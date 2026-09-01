@@ -1,8 +1,11 @@
 //! Typed, bounded input exchanged between the PR producer and review-comments.
 
+use serde::de::{self, IgnoredAny, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::fmt;
+use std::io::Read;
 use std::path::Path;
 
 pub const REVIEW_INPUT_SCHEMA_VERSION: &str = "ripr.review_input.v1";
@@ -52,6 +55,253 @@ pub struct ReviewRelatedTestProjectionV1 {
     pub name: String,
     pub file: String,
     pub line: u64,
+}
+
+#[derive(Debug)]
+pub struct StreamedProducerCheck {
+    pub schema_version: String,
+    pub tool: String,
+    pub mode: String,
+    pub root: String,
+    pub base: String,
+    pub summary: Value,
+    pub analysis_outcome: Value,
+    pub finding_count: u64,
+    pub projection: Vec<ReviewFindingProjectionV1>,
+}
+
+#[derive(Debug)]
+struct PendingFinding {
+    stable_id: String,
+    file: String,
+    line: u64,
+    severity: String,
+    finding_class: String,
+    summary: String,
+    evidence_digest: String,
+    related_test: Option<ReviewRelatedTestProjectionV1>,
+}
+
+#[derive(Default, Debug)]
+struct FindingStream {
+    count: u64,
+    findings: Vec<PendingFinding>,
+}
+
+impl<'de> Deserialize<'de> for FindingStream {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct FindingVisitor;
+
+        impl<'de> Visitor<'de> for FindingVisitor {
+            type Value = FindingStream;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a producer findings array")
+            }
+
+            fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut stream = FindingStream::default();
+                while let Some(finding) = sequence.next_element::<Value>()? {
+                    stream.count = stream.count.saturating_add(1);
+                    stream
+                        .findings
+                        .push(pending_finding(&finding).map_err(de::Error::custom)?);
+                }
+                Ok(stream)
+            }
+        }
+
+        deserializer.deserialize_seq(FindingVisitor)
+    }
+}
+
+#[derive(Deserialize)]
+struct ProducerCheckStream {
+    schema_version: String,
+    tool: String,
+    mode: String,
+    root: String,
+    base: String,
+    summary: Value,
+    analysis_outcome: Value,
+    findings: FindingStream,
+    #[serde(flatten)]
+    _discarded: std::collections::BTreeMap<String, IgnoredAny>,
+}
+
+pub fn producer_mode(bytes: &[u8]) -> Result<Option<String>, String> {
+    let Some(key_start) = bytes
+        .windows(b"\"mode\"".len())
+        .position(|window| window == b"\"mode\"")
+    else {
+        return Ok(None);
+    };
+    let Some(colon) = bytes[key_start + b"\"mode\"".len()..]
+        .iter()
+        .position(|byte| *byte == b':')
+        .map(|offset| key_start + b"\"mode\"".len() + offset + 1)
+    else {
+        return Ok(None);
+    };
+    let value_start = bytes[colon..]
+        .iter()
+        .position(|byte| !byte.is_ascii_whitespace())
+        .map(|offset| colon + offset)
+        .ok_or_else(|| "producer mode value is missing".to_string())?;
+    if bytes.get(value_start) != Some(&b'\"') {
+        return Ok(None);
+    }
+    let mut escaped = false;
+    let mut end = None;
+    for (offset, byte) in bytes[value_start + 1..].iter().enumerate() {
+        if escaped {
+            escaped = false;
+        } else if *byte == b'\\' {
+            escaped = true;
+        } else if *byte == b'\"' {
+            end = Some(value_start + offset + 2);
+            break;
+        }
+    }
+    let end = end.ok_or_else(|| "producer mode string is unterminated".to_string())?;
+    serde_json::from_slice(&bytes[value_start..end])
+        .map(Some)
+        .map_err(|error| format!("producer mode is invalid JSON: {error}"))
+}
+
+/// Read only the producer fields needed for admission. Large unrelated check
+/// fields are skipped, and each finding is released after its canonical
+/// projection facts have been retained.
+pub fn stream_producer_check<R: Read>(
+    reader: R,
+    root: &Path,
+) -> Result<StreamedProducerCheck, String> {
+    let parsed: ProducerCheckStream = serde_json::from_reader(reader)
+        .map_err(|error| format!("producer check is invalid JSON: {error}"))?;
+    let root = root
+        .canonicalize()
+        .map_err(|error| format!("canonicalize review input root: {error}"))?;
+    let mut projection = parsed
+        .findings
+        .findings
+        .into_iter()
+        .map(|pending| finish_pending_finding(pending, &root))
+        .collect::<Result<Vec<_>, _>>()?;
+    projection.sort_by_key(projection_order);
+    projection.truncate(REVIEW_INPUT_PROJECTION_LIMIT as usize);
+    Ok(StreamedProducerCheck {
+        schema_version: parsed.schema_version,
+        tool: parsed.tool,
+        mode: parsed.mode,
+        root: parsed.root,
+        base: parsed.base,
+        summary: parsed.summary,
+        analysis_outcome: parsed.analysis_outcome,
+        finding_count: parsed.findings.count,
+        projection,
+    })
+}
+
+fn pending_finding(finding: &Value) -> Result<PendingFinding, String> {
+    let probe = finding
+        .get("probe")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "producer finding probe must be an object".to_string())?;
+    let file = probe
+        .get("file")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "producer finding probe.file must be a string".to_string())?;
+    let line = probe
+        .get("line")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| "producer finding probe.line must be an integer".to_string())?;
+    let related_test = match finding.get("related_tests") {
+        None | Some(Value::Null) => None,
+        Some(Value::Array(tests)) => tests.first().map(|test| {
+            Ok::<ReviewRelatedTestProjectionV1, String>(ReviewRelatedTestProjectionV1 {
+                name: test
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "related test name must be a string".to_string())?
+                    .to_string(),
+                file: test
+                    .get("file")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "related test file must be a string".to_string())?
+                    .to_string(),
+                line: test
+                    .get("line")
+                    .and_then(Value::as_u64)
+                    .ok_or_else(|| "related test line must be an integer".to_string())?,
+            })
+        }),
+        Some(_) => return Err("producer finding related_tests must be an array".to_string()),
+    }
+    .transpose()?;
+    Ok(PendingFinding {
+        stable_id: finding
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "producer finding id must be a string".to_string())?
+            .to_string(),
+        file: file.to_string(),
+        line,
+        severity: finding
+            .get("severity")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "producer finding severity must be a string".to_string())?
+            .to_string(),
+        finding_class: finding
+            .get("classification")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "producer finding classification must be a string".to_string())?
+            .to_string(),
+        summary: projection_summary(finding).to_string(),
+        evidence_digest: format!(
+            "sha256:{:x}",
+            Sha256::digest(
+                serde_json::to_vec(finding)
+                    .map_err(|error| format!("serialize finding digest: {error}"))?
+            )
+        ),
+        related_test,
+    })
+}
+
+fn finish_pending_finding(
+    pending: PendingFinding,
+    root: &Path,
+) -> Result<ReviewFindingProjectionV1, String> {
+    let file_path = Path::new(&pending.file);
+    let absolute_file = if file_path.is_absolute() {
+        file_path.to_path_buf()
+    } else {
+        root.join(file_path)
+    };
+    let relative_file = absolute_file
+        .canonicalize()
+        .map_err(|error| format!("canonicalize producer finding file: {error}"))?
+        .strip_prefix(root)
+        .map_err(|error| format!("producer finding file escapes root: {error}"))?
+        .display()
+        .to_string()
+        .replace('\\', "/");
+    Ok(ReviewFindingProjectionV1 {
+        stable_id: pending.stable_id,
+        file: relative_file,
+        line: Some(pending.line),
+        severity: pending.severity,
+        finding_class: pending.finding_class,
+        summary: pending.summary,
+        evidence_digest: pending.evidence_digest,
+        related_test: pending.related_test,
+    })
 }
 
 /// Derive the only projection that may be admitted for review-comments.
@@ -235,6 +485,29 @@ mod tests {
         escaping["probe"]["file"] = serde_json::json!("../outside");
         if canonical_projection(&[escaping], &root).is_ok() {
             return Err("path escaping the root was accepted".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn streamed_producer_check_discards_large_unrelated_fields() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let finding = finding();
+        let check = serde_json::json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "draft",
+            "root": root,
+            "base": "HEAD",
+            "summary": {},
+            "findings": [finding],
+            "analysis_outcome": {"analysis_complete": true, "outcome": {}},
+            "finding_alignment": {"items": ["x".repeat(1024 * 1024)]}
+        });
+        let bytes = serde_json::to_vec(&check).map_err(|error| error.to_string())?;
+        let parsed = stream_producer_check(bytes.as_slice(), &root)?;
+        if parsed.finding_count != 1 || parsed.projection.len() != 1 {
+            return Err("streamed producer check lost finding projection".to_string());
         }
         Ok(())
     }
