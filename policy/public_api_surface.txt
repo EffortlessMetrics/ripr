@@ -76,6 +76,16 @@ pub fn ripr::output::receipt_lifecycle::receipt_lifecycle_state_is_present
 pub fn ripr::output::start_here_state::normalize_start_here_output_state
 pub fn ripr::output::start_here_state::start_here_output_state_is_known
 pub fn ripr::set_verbose
+pub const ripr::review_input::REVIEW_INPUT_PROJECTION_LIMIT
+pub const ripr::review_input::REVIEW_INPUT_SCHEMA_VERSION
+pub const ripr::review_input::REVIEW_INPUT_SELECTION_POLICY
+pub const ripr::review_input::REVIEW_INPUT_SELECTION_POLICY_VERSION
+pub fn ripr::review_input::canonical_projection
+pub fn ripr::review_input::projection_summary
+pub mod ripr::review_input
+pub struct ripr::review_input::ReviewFindingProjectionV1
+pub struct ripr::review_input::ReviewInputV1
+pub struct ripr::review_input::ReviewRelatedTestProjectionV1
 pub mod ripr::analysis
 pub mod ripr::app
 pub mod ripr::app::pr_summary
