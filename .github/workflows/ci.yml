@@ -105,6 +105,11 @@ jobs:
         run: cargo xtask pr-summary || true
       - name: Generate RIPR PR evidence
         if: github.event_name == 'pull_request'
+        env:
+          # The combined #1660 candidate measures 2,779 changed Rust lines;
+          # keep the explicit safety envelope above that observed denominator.
+          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "4000"
+          RIPR_PARTIAL_DIFF_LINE_BUDGET: "4000"
         run: |
           cargo xtask ripr-pr --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}"
           cargo xtask ripr-pr --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check
