@@ -1170,12 +1170,15 @@ mod tests {
         assert_eq!(projected["reviewed_count"], 10);
         assert_eq!(projected["projection_truncated"], true);
         assert_eq!(projected["findings"][0]["severity"], "critical");
-        assert_eq!(projected["findings"][0]["related_test"]["name"], "value_is_one");
-        assert!(projected["findings"]
-            .as_array()
-            .is_some_and(|findings| findings.iter().any(|finding| {
-                finding["summary"] == "Fallback."
-            })));
+        assert_eq!(
+            projected["findings"][0]["related_test"]["name"],
+            "value_is_one"
+        );
+        assert!(projected["findings"].as_array().is_some_and(|findings| {
+            findings
+                .iter()
+                .any(|finding| finding["summary"] == "Fallback.")
+        }));
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
