@@ -2046,12 +2046,46 @@ mod tests {
             "check_sha256": format!("sha256:{:x}", Sha256::digest(&bytes)),
             "mode": producer.get("mode").cloned().unwrap_or(Value::Null),
             "analysis_outcome": producer.get("analysis_outcome").cloned().unwrap_or(Value::Null),
+            "canonical_finding_index": {
+                "schema_version": "ripr.canonical_finding_index.v1",
+                "total_finding_count": 0,
+                "index_sha256": format!("sha256:{:x}", Sha256::digest(b"[]")),
+                "entries": []
+            }
         });
+        let review_input = json!({
+            "schema_version": "ripr.review_input.v1",
+            "root_identity": normalize_path_text(&command_root_arg(repo, &options.root)),
+            "base_sha": resolve_revision_identity(repo, &options.base),
+            "head_sha": resolve_revision_identity(repo, &options.head),
+            "head_tree": resolve_tree_identity(repo, &options.head),
+            "check_sha256": subject["check_sha256"],
+            "canonical_diff_sha256": "sha256:fixture",
+            "mode": producer.get("mode").cloned().unwrap_or(Value::Null),
+            "analysis_complete": true,
+            "total_finding_count": 0,
+            "projected_finding_count": 0,
+            "projection_limit": 10,
+            "projection_truncated": false,
+            "projection_selection_policy": "severity_actionability_stable_id_path_line",
+            "projection_selection_policy_version": "v1",
+            "reviewed_count": 0,
+            "projection_sha256": format!("sha256:{:x}", Sha256::digest(b"[]")),
+            "findings": []
+        });
+        let review_bytes = serde_json::to_vec(&review_input)
+            .map_err(|err| format!("serialize review input: {err}"))?;
+        let mut subject = subject;
+        subject["review_input_sha256"] =
+            json!(format!("sha256:{:x}", Sha256::digest(&review_bytes)));
+        subject["review_input_byte_count"] = json!(review_bytes.len());
         fs::write(
             path.with_extension("subject.json"),
             serde_json::to_vec(&subject).map_err(|err| format!("serialize subject: {err}"))?,
         )
-        .map_err(|err| format!("write check subject receipt: {err}"))
+        .map_err(|err| format!("write check subject receipt: {err}"))?;
+        fs::write(repo.join("target/review-input.json"), review_bytes)
+            .map_err(|err| format!("write review input: {err}"))
     }
 
     fn copy_review_comments_schema(repo: &Path) -> Result<(), String> {
