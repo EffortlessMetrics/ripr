@@ -46241,7 +46241,26 @@ fn review_comments_cross_check_oracle_rejects_contract_drift() -> Result<(), Str
     if !super::workflow_review_comments_cross_check_violations("fixture.yml", valid).is_empty() {
         return Err("valid producer-backed fixture was rejected".to_string());
     }
+    let inline = r#"jobs:
+  rust:
+    steps:
+      - run: cargo xtask ripr-pr --base "$BASE" --head "$HEAD"
+      - run: cargo xtask ripr-pr --base "$BASE" --head "$HEAD" --check
+      - run: cargo xtask ripr-review-comments --base "$BASE" --head "$HEAD" --check-output target/ripr/pr/check.json
+      - run: cargo xtask ripr-review-comments --base "$BASE" --head "$HEAD" --check-output target/ripr/pr/check.json --check
+"#;
+    if !super::workflow_review_comments_cross_check_violations("inline.yml", inline).is_empty() {
+        return Err("valid inline producer-backed fixture was rejected".to_string());
+    }
     let cases = [
+        (
+            "commented check-output flag",
+            valid.replacen(
+                " --check-output target/ripr/pr/check.json",
+                " # --check-output target/ripr/pr/check.json",
+                1,
+            ),
+        ),
         (
             "missing cross-check",
             valid.replacen(" --check-output target/ripr/pr/check.json", "", 1),

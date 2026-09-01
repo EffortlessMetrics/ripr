@@ -4779,7 +4779,7 @@ fn workflow_review_comments_cross_check_violations(path: &str, text: &str) -> Ve
             producer_checked = false;
             continue;
         }
-        let command = line.trim();
+        let command = workflow_command_text(line);
         if command.starts_with('#') {
             continue;
         }
@@ -4857,6 +4857,17 @@ fn workflow_step_disabled_or_shielded(lines: &[&str], command_index: usize) -> b
 
 fn workflow_command_failure_shielded(command: &str) -> bool {
     command.contains("|| true") || command.contains("|| :")
+}
+
+fn workflow_command_text(line: &str) -> &str {
+    let command = line
+        .trim()
+        .strip_prefix("- run:")
+        .unwrap_or_else(|| line.trim())
+        .trim();
+    command
+        .split_once(" #")
+        .map_or(command, |(command, _)| command.trim_end())
 }
 
 fn workflow_xtask_invocation(command: &str, subcommand: &str) -> bool {
