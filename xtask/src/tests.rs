@@ -222,6 +222,29 @@ pub(crate) fn temp_dir(name: &str) -> PathBuf {
     dir
 }
 
+#[test]
+fn release_server_build_uses_canonical_locked_toolchain() -> Result<(), String> {
+    let workflow = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join(".github/workflows/release-server-binaries.yml"),
+    )
+    .map_err(|error| format!("failed to read release-server workflow: {error}"))?;
+    let build = workflow
+        .split_once("\n  manifest:")
+        .map(|(build, _)| build)
+        .ok_or_else(|| "release workflow is missing manifest job".to_string())?;
+    if !build.contains("toolchain: 1.95.0")
+        || !build.contains("permissions:\n      contents: read")
+        || !build.contains("cargo build -p ripr --release --locked --target")
+        || !build.contains("cargo run --locked -p xtask -- release-server-archive")
+        || build.contains("cargo generate-lockfile")
+    {
+        return Err("release target build is not pinned, locked, and read-only".to_string());
+    }
+    Ok(())
+}
+
 pub(crate) fn write(path: &Path, text: &str) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).unwrap();
