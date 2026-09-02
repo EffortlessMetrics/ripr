@@ -521,6 +521,18 @@ fn resolve_revision(
     }
 }
 fn repository_identity(root: &Path) -> String {
+    let in_work_tree = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .output()
+        .ok()
+        .is_some_and(|output| {
+            output.status.success() && output.stdout.trim_ascii() == b"true"
+        });
+    if !in_work_tree {
+        return "unavailable".to_string();
+    }
     let origin = std::process::Command::new("git")
         .arg("-C")
         .arg(root)
@@ -695,7 +707,6 @@ mod tests {
     fn admission_helpers_fail_closed_for_unavailable_and_non_regular_inputs() -> Result<(), String>
     {
         let root = std::env::temp_dir()
-            .join("..")
             .join("..")
             .join("..")
             .join(format!(
