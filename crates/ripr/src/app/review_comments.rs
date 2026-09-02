@@ -521,20 +521,10 @@ fn resolve_revision(
     }
 }
 fn repository_identity(root: &Path) -> String {
-    let in_work_tree = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["rev-parse", "--is-inside-work-tree"])
-        .output()
-        .ok()
-        .is_some_and(|output| output.status.success() && output.stdout.trim_ascii() == b"true");
-    if !in_work_tree {
-        return "unavailable".to_string();
-    }
     let origin = std::process::Command::new("git")
         .arg("-C")
         .arg(root)
-        .args(["config", "--get", "remote.origin.url"])
+        .args(["config", "--local", "--get", "remote.origin.url"])
         .output()
         .ok()
         .filter(|output| output.status.success())
