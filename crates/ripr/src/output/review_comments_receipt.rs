@@ -9,13 +9,32 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
-pub(crate) const REVIEW_COMMENTS_RECEIPT_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const REVIEW_COMMENTS_RECEIPT_SCHEMA_VERSION: &str = "0.2";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) struct ReviewCommentsReceiptLimitation {
     pub(crate) category: String,
     pub(crate) repair_route: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct ReviewCommentsPhaseEvidence {
+    pub(crate) phase: String,
+    pub(crate) duration_ms: u64,
+    pub(crate) reused: bool,
+    pub(crate) subject_count: Option<usize>,
+    pub(crate) stop_reason: String,
+    pub(crate) input_identity_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct ReviewCommentsFailure {
+    pub(crate) phase: String,
+    pub(crate) category: String,
+    pub(crate) message: String,
+    pub(crate) secondary_diagnostics: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -25,6 +44,10 @@ pub(crate) struct ReviewCommentsRunReceipt {
     pub(crate) root_identity: String,
     pub(crate) base_sha: String,
     pub(crate) head_sha: String,
+    pub(crate) requested_mode: String,
+    pub(crate) analysis_identity: Option<crate::app::review_comments::ReviewAnalysisIdentity>,
+    pub(crate) phase_evidence: Vec<ReviewCommentsPhaseEvidence>,
+    pub(crate) primary_failure: Option<ReviewCommentsFailure>,
     pub(crate) configured_timeout_ms: u64,
     pub(crate) last_completed_phase: Option<String>,
     pub(crate) active_phase: Option<String>,
@@ -34,6 +57,8 @@ pub(crate) struct ReviewCommentsRunReceipt {
     pub(crate) limitations: Vec<ReviewCommentsReceiptLimitation>,
     pub(crate) non_claims: Vec<String>,
     pub(crate) atomic_write_status: &'static str,
+    #[serde(skip)]
+    phase_started: Option<Instant>,
 }
 
 impl ReviewCommentsRunReceipt {
@@ -41,6 +66,7 @@ impl ReviewCommentsRunReceipt {
         root: &Path,
         base: &str,
         head: &str,
+        mode: &crate::app::Mode,
         timeout_ms: u64,
         expected_artifacts: &[String],
     ) -> Self {
@@ -54,6 +80,10 @@ impl ReviewCommentsRunReceipt {
             root_identity,
             base_sha,
             head_sha,
+            requested_mode: mode.as_str().to_string(),
+            analysis_identity: None,
+            phase_evidence: Vec::new(),
+            primary_failure: None,
             configured_timeout_ms: timeout_ms,
             last_completed_phase: None,
             active_phase: Some("input_validation".to_string()),
@@ -66,20 +96,97 @@ impl ReviewCommentsRunReceipt {
                 "no complete route inventory is claimed until status is complete".to_string(),
             ],
             atomic_write_status: "not_written",
+            phase_started: Some(Instant::now()),
         }
     }
 
+    pub(crate) fn admit_identity(
+        &mut self,
+        identity: crate::app::review_comments::ReviewAnalysisIdentity,
+    ) {
+        self.analysis_identity = Some(identity);
+    }
+
+    pub(crate) fn fail(&mut self, phase: &str, category: &str, message: &str) {
+        self.finish_phase(phase, false, None, category, None);
+        self.status = "failed";
+        self.active_phase = Some(phase.to_string());
+        self.primary_failure = Some(ReviewCommentsFailure {
+            phase: phase.to_string(),
+            category: category.to_string(),
+            message: message.to_string(),
+            secondary_diagnostics: Vec::new(),
+        });
+        self.limitations = vec![ReviewCommentsReceiptLimitation {
+            category: category.to_string(),
+            repair_route: "analysis/review-comments-producer-admission".to_string(),
+        }];
+        self.non_claims = vec![
+            "no complete route inventory".to_string(),
+            "no all-clear".to_string(),
+        ];
+        self.phase_started = None;
+    }
+
     pub(crate) fn phase(&mut self, completed: &str, active: &str) {
+        self.finish_phase(completed, false, None, "complete", None);
         self.last_completed_phase = Some(completed.to_string());
         self.active_phase = Some(active.to_string());
+        self.phase_started = Some(Instant::now());
+    }
+
+    pub(crate) fn measured_phase(
+        &mut self,
+        completed: &str,
+        active: &str,
+        reused: bool,
+        subject_count: Option<usize>,
+        input_identity_digest: Option<String>,
+    ) {
+        self.finish_phase(
+            completed,
+            reused,
+            subject_count,
+            "complete",
+            input_identity_digest,
+        );
+        self.last_completed_phase = Some(completed.to_string());
+        self.active_phase = Some(active.to_string());
+        self.phase_started = Some(Instant::now());
     }
 
     pub(crate) fn complete(&mut self, artifacts: &[String]) {
+        if let Some(active) = self.active_phase.clone() {
+            self.finish_phase(&active, false, Some(artifacts.len()), "complete", None);
+        }
         self.status = "complete";
         self.last_completed_phase = Some("artifact_io".to_string());
         self.active_phase = None;
         self.completed_artifacts = artifacts.to_vec();
         self.missing_artifacts.clear();
+        self.phase_started = None;
+    }
+
+    fn finish_phase(
+        &mut self,
+        phase: &str,
+        reused: bool,
+        subject_count: Option<usize>,
+        stop_reason: &str,
+        input_identity_digest: Option<String>,
+    ) {
+        let duration_ms = self
+            .phase_started
+            .map(|started| started.elapsed().as_millis() as u64)
+            .unwrap_or_default();
+        self.phase_evidence.push(ReviewCommentsPhaseEvidence {
+            phase: phase.to_string(),
+            duration_ms,
+            reused,
+            subject_count,
+            stop_reason: stop_reason.to_string(),
+            input_identity_digest,
+        });
     }
 
     pub(crate) fn write_atomic(&mut self, path: &Path) -> Result<(), String> {
@@ -195,6 +302,7 @@ mod tests {
             Path::new("."),
             "origin/main",
             "HEAD",
+            &crate::app::Mode::Fast,
             30_000,
             &["comments.json".to_string()],
         )

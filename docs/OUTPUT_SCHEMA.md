@@ -6775,6 +6775,20 @@ files, or generate tests. CI can use the JSON to write a job summary and emit
 check annotations by default. Inline PR review comments require a custom
 explicit opt-in publisher.
 
+Producer-backed output may also include a top-level `review_input` object.
+It is the compact renderer projection, not the complete analysis inventory.
+Its `ripr.review_input.v1` envelope binds projected findings to the producer
+through root, base/head/tree, canonical-diff identity, producer check digest,
+mode, completeness, producer outcome, and finding-count/limit fields. A truncated projection
+must disclose its selection policy and projected count; consumers validate the
+digest and exact subject before rendering.
+
+The nested `run_receipt` uses schema `0.2`. A receipt with `status = complete`
+and `last_completed_phase = artifact_io` must contain at least one
+`phase_evidence` record and no missing artifacts. Timeout, partial, and
+malformed producer states remain non-green even when rendered comment arrays
+are empty.
+
 JSON shape:
 
 ```json

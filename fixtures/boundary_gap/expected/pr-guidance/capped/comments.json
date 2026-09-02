@@ -226,6 +226,182 @@
     "max_inline_comments": 3,
     "max_summary_items": 10
   },
+  "review_input": {
+    "findings": [
+      {
+        "evidence_digest": "sha256:3b0069e7b1e8e5c8c98c18047115313cece30ebb4eb2c12c0585978b1ebcdba0",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 10,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "53d21b642e4945bb",
+        "summary": "changed seam line"
+      },
+      {
+        "evidence_digest": "sha256:6b3398eda55e43aecc64937be39f5da527fe2940925c98ba742c496781ccdd65",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 20,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "5b353664321bdea6",
+        "summary": "changed seam line"
+      },
+      {
+        "evidence_digest": "sha256:648528d83236540637583d8c84b46e0d83b0e5a056931626eb3e3013ad08e957",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 30,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "644b716437604271",
+        "summary": "changed seam line"
+      },
+      {
+        "evidence_digest": "sha256:f48da57a33d4348e6be1536d6fd5e7673f313b70aaab5edbba15cc1a2bfac760",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 40,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "6d620c643ca5495c",
+        "summary": "changed seam line"
+      },
+      {
+        "evidence_digest": "sha256:d95dd2faf3952b79ff77dbad6be8f20fc30bf351c18e6a2275a2724db3cdd79c",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 50,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "7678476441e9ad27",
+        "summary": "changed seam line"
+      },
+      {
+        "evidence_digest": "sha256:8a61cf5354d6ed1709abbae05fa5dddbaeb36aa60dff5f52315539a9e62f9431",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 60,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "7f21626446d108b2",
+        "summary": "changed seam line"
+      },
+      {
+        "evidence_digest": "sha256:73907d533a75e9957b5b924c22e7747036fd92d381ecc4c91ae76650f41e07d8",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 70,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "86849d644aa3d7fd",
+        "summary": "changed seam line"
+      },
+      {
+        "evidence_digest": "sha256:4aad9b6b214771a4a875e1d98e77344df8a682912534c0737c174f702cf9cd26",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 80,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "8f9b38644fe8dee8",
+        "summary": "changed seam line"
+      },
+      {
+        "evidence_digest": "sha256:f0a4e4eefb1e46da3af80c632f6a573791f048eefd4edd827d32951d6d43eed6",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 90,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "98b15364552d0c53",
+        "summary": "changed seam line"
+      },
+      {
+        "evidence_digest": "sha256:1a909add6bced7e5d934d52e2a9dc65691b44d46855351cf5f036ed365fd10b1",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 100,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "b74a163aa6812b31",
+        "summary": "changed seam line"
+      },
+      {
+        "evidence_digest": "sha256:8fee530123cb2236ac5ba59e58f74cea49d4816c5ffa067849bde86f77e655f2",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 110,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "ae33db3aa13cc766",
+        "summary": "changed seam line"
+      },
+      {
+        "evidence_digest": "sha256:e33f102d05d5862828dff8d3c5bbd3d2475bc406d90da3398a50e3eb28511dc5",
+        "file": "src/pricing.rs",
+        "finding_class": "weakly_gripped",
+        "line": 120,
+        "related_test": {
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "severity": "warning",
+        "stable_id": "a6d0c03a9d6a2e7b",
+        "summary": "changed seam line"
+      }
+    ],
+    "projection_sha256": "sha256:8011bcb68d8767f7a2f5acf4d06c8c78bab0fec28a16caa18c0641d1ab6c7b10",
+    "reviewed_count": 12,
+    "root": ".",
+    "schema_version": "ripr.review_input.v1"
+  },
   "root": ".",
   "schema_version": "0.1",
   "status": "advisory",

@@ -6,7 +6,7 @@
   "base": "origin/main",
   "head": "HEAD",
   "generated_at": "2026-05-14T00:00:00Z",
-  "mode": "fast",
+  "mode": "draft",
   "analysis_scope": {
     "scope": "diff_scoped_changed_files",
     "run_status": "limited_diff_scope",
@@ -168,11 +168,24 @@
   ],
   "limits_note": "Comments are capped and advisory; summary-only items never annotate.",
   "run_receipt": {
-    "schema_version": "0.1",
+    "schema_version": "0.2",
     "status": "complete",
     "root_identity": ".",
     "base_sha": "origin/main",
     "head_sha": "HEAD",
+    "requested_mode": "draft",
+    "analysis_identity": null,
+    "phase_evidence": [
+      {
+        "phase": "artifact_io",
+        "duration_ms": 1,
+        "reused": false,
+        "subject_count": 2,
+        "stop_reason": "complete",
+        "input_identity_digest": null
+      }
+    ],
+    "primary_failure": null,
     "configured_timeout_ms": 120000,
     "last_completed_phase": "artifact_io",
     "active_phase": null,

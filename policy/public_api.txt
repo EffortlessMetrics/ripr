@@ -12,6 +12,7 @@ pub mod config;
 pub mod domain;
 pub mod lsp;
 pub mod output;
+pub mod review_input;
 pub use analysis::LanguageRun;
 pub use analysis::LanguageRunStatus;
 pub use analysis::PartialDiffScope;

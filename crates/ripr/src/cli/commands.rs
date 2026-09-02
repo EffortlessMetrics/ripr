@@ -11,7 +11,6 @@ use crate::cli::suggest::unknown_argument;
 use crate::config::CONFIG_FILE_NAME;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
 use crate::output;
-use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 use crate::cli::commands_agent_support::{
@@ -22,149 +21,6 @@ use crate::cli::commands_timestamps::generated_at_unix_ms;
 
 const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
 
-fn load_review_comments_analysis_outcome(
-    path: Option<&Path>,
-    root: &Path,
-    base: &str,
-    diff_text: &str,
-) -> Result<Option<crate::analysis_outcome::AnalysisOutcome>, String> {
-    let Some(path) = path else {
-        return Ok(None);
-    };
-    let text = std::fs::read_to_string(path).map_err(|error| {
-        format!(
-            "review-comments --check-output {} is invalid: read failed: {error}",
-            path.display()
-        )
-    })?;
-    let value: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
-        format!(
-            "review-comments --check-output {} is invalid: JSON parse failed: {error}",
-            path.display()
-        )
-    })?;
-    let _producer_schema_version = value
-        .get("schema_version")
-        .and_then(serde_json::Value::as_str)
-        .filter(|version| !version.trim().is_empty())
-        .ok_or_else(|| {
-            format!(
-                "review-comments --check-output {} is invalid: missing producer schema_version",
-                path.display()
-            )
-        })?;
-    if value.get("tool").and_then(serde_json::Value::as_str) != Some("ripr") {
-        return Err(format!(
-            "review-comments --check-output {} is invalid: producer tool must be ripr",
-            path.display()
-        ));
-    }
-    for field in ["mode", "root", "base"] {
-        if value
-            .get(field)
-            .and_then(serde_json::Value::as_str)
-            .is_none()
-        {
-            return Err(format!(
-                "review-comments --check-output {} is invalid: producer envelope is missing string field {field}",
-                path.display()
-            ));
-        }
-    }
-    if value.get("root").and_then(serde_json::Value::as_str)
-        != Some(output::outcome::display_path(root).as_str())
-    {
-        return Err(format!(
-            "review-comments --check-output {} is invalid: producer root does not match requested root",
-            path.display()
-        ));
-    }
-    if value.get("base").and_then(serde_json::Value::as_str) != Some(base) {
-        return Err(format!(
-            "review-comments --check-output {} is invalid: producer base does not match requested base",
-            path.display()
-        ));
-    }
-    if !value
-        .get("summary")
-        .is_some_and(serde_json::Value::is_object)
-        || !value
-            .get("findings")
-            .is_some_and(serde_json::Value::is_array)
-    {
-        return Err(format!(
-            "review-comments --check-output {} is invalid: producer envelope requires summary and findings",
-            path.display()
-        ));
-    }
-    let Some(envelope) = value.get("analysis_outcome") else {
-        return Err(format!(
-            "review-comments --check-output {} is invalid: missing analysis_outcome",
-            path.display()
-        ));
-    };
-    if envelope.is_null() {
-        return Err(format!(
-            "review-comments --check-output {} is invalid: analysis_outcome is null",
-            path.display()
-        ));
-    }
-    let declared_complete = envelope
-        .get("analysis_complete")
-        .and_then(serde_json::Value::as_bool)
-        .ok_or_else(|| {
-            format!(
-                "review-comments --check-output {} is invalid: analysis_complete is missing or not boolean",
-                path.display()
-            )
-        })?;
-    let outcome = envelope.get("outcome").cloned().ok_or_else(|| {
-        format!(
-            "review-comments --check-output {} is invalid: analysis_outcome.outcome is missing",
-            path.display()
-        )
-    })?;
-    let outcome: crate::analysis_outcome::AnalysisOutcome =
-        serde_json::from_value(outcome).map_err(|error| {
-            format!(
-                "review-comments --check-output {} is invalid: typed outcome failed validation: {error}",
-                path.display()
-            )
-        })?;
-    let expected_input_identity = format!(
-        "sha256:{}",
-        Sha256::digest(diff_text.as_bytes())
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
-    );
-    if outcome.identity.input_identity.as_deref() != Some(expected_input_identity.as_str()) {
-        return Err(format!(
-            "review-comments --check-output {} is invalid: producer input identity does not match the requested diff",
-            path.display()
-        ));
-    }
-    if outcome
-        .identity
-        .base_revision
-        .as_deref()
-        .is_some_and(|revision| revision != base)
-    {
-        return Err(format!(
-            "review-comments --check-output {} is invalid: typed outcome base revision does not match requested base",
-            path.display()
-        ));
-    }
-    if declared_complete != outcome.kind.is_complete() {
-        return Err(format!(
-            "review-comments --check-output {} is invalid: analysis_complete does not match typed outcome kind",
-            path.display()
-        ));
-    }
-    Ok(Some(outcome))
-}
-
-#[path = "commands/agent.rs"]
 mod agent;
 #[path = "commands/agent_dispatch.rs"]
 mod agent_dispatch;
@@ -1273,6 +1129,7 @@ fn review_comments_with_diff_loader(
         &input.root,
         &options.base,
         &options.head,
+        &input.mode,
         options.timeout_ms,
         &artifacts,
     );
@@ -1344,7 +1201,57 @@ fn review_comments_with_diff_loader(
             options.base, options.head
         );
     }
-    receipt.phase("diff_discovery", "language_facts");
+    receipt.phase("diff_discovery", "producer_evidence_admission");
+    receipt.write_atomic(&receipt_path)?;
+    let admitted = if let Some(path) = options.check_output.as_deref() {
+        match app::review_comments::admit_producer_evidence(
+            path,
+            &input,
+            &config,
+            &options.base,
+            &options.head,
+            &diff_text,
+        ) {
+            Ok(admitted) => Some(admitted),
+            Err(error) => {
+                receipt.fail(
+                    "producer_evidence_admission",
+                    error.category,
+                    &error.message,
+                );
+                receipt.write_atomic(&receipt_path)?;
+                return Err(format!("{}: {}", error.category, error.message));
+            }
+        }
+    } else {
+        None
+    };
+    let mut admitted_review_input = None;
+    if let Some(admitted) = &admitted {
+        receipt.admit_identity(admitted.identity.clone());
+        if let Some(check_output) = options.check_output.as_deref() {
+            let review_input_path = check_output.with_file_name("review-input.json");
+            match app::review_comments::admit_review_input(
+                &review_input_path,
+                &input.root,
+                &admitted.identity,
+                admitted.outcome.counts.finding_count,
+                Some(&admitted.producer_projection),
+            ) {
+                Ok(review_input) => admitted_review_input = Some(review_input),
+                Err(error) => {
+                    receipt.fail(
+                        "producer_evidence_admission",
+                        error.category,
+                        &error.message,
+                    );
+                    receipt.write_atomic(&receipt_path)?;
+                    return Err(format!("{}: {}", error.category, error.message));
+                }
+            }
+        }
+    }
+    receipt.phase("producer_evidence_admission", "language_facts");
     receipt.write_atomic(&receipt_path)?;
     let changed_lines = agent_brief_lines_from_diff(&input.root, &diff_text);
     let changed_owners = agent_brief_owners_for_lines(&input.root, &changed_lines);
@@ -1357,32 +1264,114 @@ fn review_comments_with_diff_loader(
         .iter()
         .map(|owner| owner.owner.clone())
         .collect::<Vec<_>>();
-    let scoped_inventory = analysis::inventory_diff_scoped_classified_seams_at_with_config(
-        &input.root,
-        &config,
-        &working_set.files,
-        &changed_owner_names,
-    )?;
-    receipt.phase("canonical_analysis", "route_construction");
+    let changed_line_inputs = working_set
+        .changed_lines
+        .iter()
+        .map(|line| (line.file.clone(), line.line))
+        .collect::<Vec<_>>();
+    if let Some(review_input) = admitted_review_input {
+        let analysis_scope =
+            output::review_comments::ReviewCommentsAnalysisScope::producer_projection(
+                &working_set,
+                review_input.reviewed_count,
+            );
+        receipt.measured_phase(
+            "canonical_analysis",
+            "route_construction",
+            true,
+            Some(review_input.reviewed_count),
+            Some(review_input.projection_sha256),
+        );
+        receipt.write_atomic(&receipt_path)?;
+        let render_context = output::review_comments::ReviewCommentsRenderContext {
+            root: &input.root,
+            base: &options.base,
+            head: &options.head,
+            mode: &input.mode,
+            config: &config,
+        };
+        let rendered_json = output::review_comments::render_review_comments_json_from_projection(
+            &render_context,
+            &working_set,
+            &analysis_scope,
+            &review_input.projection,
+            admitted.as_ref().map(|value| &value.outcome),
+        )?;
+        let rendered_md = output::review_comments::render_review_comments_markdown_from_json(
+            &input.root,
+            &options.base,
+            &options.head,
+            &input.mode,
+            &rendered_json,
+        );
+        receipt.phase("route_construction", "artifact_io");
+        receipt.write_atomic(&receipt_path)?;
+        let rendered_json =
+            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
+        write_text_file(&options.out, &rendered_json)?;
+        write_text_file(&markdown_path, &rendered_md)?;
+        receipt.complete(&artifacts);
+        let rendered_json =
+            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
+        write_text_file(&options.out, &rendered_json)?;
+        receipt.write_atomic(&receipt_path)?;
+        println!("Wrote {}", options.out.display());
+        println!("Wrote {}", markdown_path.display());
+        return Ok(());
+    }
+    let inventory =
+        match app::review_comments::run_analysis_with_timeout(options.timeout_ms, || {
+            analysis::inventory_diff_scoped_classified_seams_at_with_config_and_lines(
+                &input.root,
+                &config,
+                &working_set.files,
+                &changed_owner_names,
+                Some(&changed_line_inputs),
+            )
+        }) {
+            Ok(inventory) => inventory,
+            Err(error) if analysis::cancellation::is_cancellation_error(&error) => {
+                let message = format!(
+                    "canonical review analysis exceeded the configured {}ms deadline: {error}",
+                    options.timeout_ms
+                );
+                receipt.fail("canonical_analysis", "limited_timeout", &message);
+                receipt.write_atomic(&receipt_path)?;
+                return Err(format!("limited_timeout: {message}"));
+            }
+            Err(error) => return Err(error),
+        };
+    let analysis_scope = output::review_comments::ReviewCommentsAnalysisScope::limited_diff_scope(
+        &working_set,
+        &inventory,
+    );
+    let classified = inventory.classified;
+    receipt.measured_phase(
+        "canonical_analysis",
+        "route_construction",
+        false,
+        Some(classified.len()),
+        admitted
+            .as_ref()
+            .map(|value| value.identity.canonical_diff_sha256.clone()),
+    );
     receipt.write_atomic(&receipt_path)?;
     let selection = select_agent_brief_seams(
-        &scoped_inventory.classified,
+        &classified,
         &working_set,
         output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
         AgentBriefPolicy::from_config(&config),
     );
     receipt.phase("route_construction", "static_rendering");
     receipt.write_atomic(&receipt_path)?;
-    let analysis_scope = output::review_comments::ReviewCommentsAnalysisScope::limited_diff_scope(
-        &working_set,
-        &scoped_inventory,
-    );
-    let analysis_outcome = load_review_comments_analysis_outcome(
-        options.check_output.as_deref(),
-        &input.root,
-        &options.base,
-        &diff_text,
-    )?;
+    // An incomplete producer is admitted for identity and diagnostic
+    // continuity, but it is not the consumer's analysis result.  Rendering it
+    // as the final outcome would make a successful consumer run unhealthy;
+    // the consumer's canonical phase owns its own success or timeout result.
+    let analysis_outcome = admitted
+        .as_ref()
+        .filter(|value| value.outcome.kind.is_complete())
+        .map(|value| value.outcome.clone());
     let render_context = output::review_comments::ReviewCommentsRenderContext {
         root: &input.root,
         base: &options.base,
@@ -3454,7 +3443,7 @@ pub(super) fn ripr_plus(args: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sha2::{Digest, Sha256};
+    use std::time::Duration;
 
     pub(super) fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -4427,92 +4416,6 @@ mod tests {
                     .to_string()
             )
         );
-    }
-
-    #[test]
-    fn review_comments_loads_typed_outcome_from_check_artifact() -> Result<(), String> {
-        let root = unique_command_test_dir("review-comments-check-output");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create temp root: {err}"))?;
-        let path = root.join("check.json");
-        let diff_text = "fixture diff";
-        let input_identity = format!(
-            "sha256:{}",
-            Sha256::digest(diff_text.as_bytes())
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>()
-        );
-        let mut artifact = serde_json::json!({
-            "schema_version": "0.2",
-            "tool": "ripr",
-            "mode": "draft",
-            "root": ".",
-            "base": "main",
-            "summary": {},
-            "findings": [],
-            "analysis_outcome": {
-                "analysis_complete": false,
-                "outcome": {
-                    "schema_version": "0.1",
-                    "kind": "partial_with_limitations",
-                    "identity": {
-                        "repository_identity": null,
-                        "root_identity": null,
-                        "config_identity": null,
-                        "base_revision": "main",
-                        "input_identity": input_identity,
-                        "snapshot_identity": null
-                    },
-                    "counts": {
-                        "changed_file_count": 0,
-                        "changed_line_count": 0,
-                        "candidate_line_count": 0,
-                        "probe_count": 0,
-                        "finding_count": 0
-                    },
-                    "limitations": [{
-                        "kind": "producer_timeout",
-                        "producer_stage": "analysis_pipeline",
-                        "path": null,
-                        "affected_items": null,
-                        "bounded_detail": null,
-                        "recovery": {
-                            "kind": "retry",
-                            "detail": "rerun the producer"
-                        }
-                    }],
-                    "claim_boundary": crate::analysis_outcome::ANALYSIS_OUTCOME_CLAIM_BOUNDARY
-                }
-            }
-        });
-        std::fs::write(
-            &path,
-            serde_json::to_vec(&artifact).map_err(|err| err.to_string())?,
-        )
-        .map_err(|err| format!("write check artifact: {err}"))?;
-        let outcome =
-            load_review_comments_analysis_outcome(Some(&path), Path::new("."), "main", diff_text)?
-                .ok_or_else(|| "expected typed outcome".to_string())?;
-        assert_eq!(outcome.kind.as_str(), "partial_with_limitations");
-        assert_eq!(outcome.limitations[0].recovery.kind.as_str(), "retry");
-        artifact["analysis_outcome"]["analysis_complete"] = serde_json::json!(true);
-        std::fs::write(
-            &path,
-            serde_json::to_vec(&artifact).map_err(|err| err.to_string())?,
-        )
-        .map_err(|err| format!("rewrite mismatched check artifact: {err}"))?;
-        let mismatch = match load_review_comments_analysis_outcome(
-            Some(&path),
-            Path::new("."),
-            "main",
-            diff_text,
-        ) {
-            Ok(_) => return Err("mismatched completeness must fail closed".to_string()),
-            Err(error) => error,
-        };
-        assert!(mismatch.contains("does not match typed outcome kind"));
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
-        Ok(())
     }
 
     #[test]
@@ -6146,6 +6049,175 @@ language = "rust"
             Err(err) => err,
         };
         assert!(err.contains("is not a directory"));
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_analysis_timeout_is_typed_and_fail_closed() -> Result<(), String> {
+        let result = app::review_comments::run_analysis_with_timeout(10, || {
+            std::thread::sleep(Duration::from_millis(100));
+            analysis::cancellation::checkpoint().map(|_| ())
+        });
+
+        let error = match result {
+            Ok(()) => {
+                return Err(
+                    "analysis that exceeded its deadline must not complete successfully"
+                        .to_string(),
+                );
+            }
+            Err(error) => error,
+        };
+        if !analysis::cancellation::is_cancellation_error(&error)
+            || !error.contains("DeadlineExceeded")
+        {
+            return Err(format!("expected typed deadline cancellation, got {error}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_renders_from_bounded_producer_input() -> Result<(), String> {
+        use sha2::{Digest, Sha256};
+
+        let root = repo_root();
+        let root_identity_text = crate::output::outcome::display_path(&root);
+        let root_identity = root_identity_text
+            .strip_prefix("//?/")
+            .unwrap_or(&root_identity_text)
+            .to_string();
+        let revision = |kind: &str| -> Result<String, String> {
+            let output = std::process::Command::new("git")
+                .args(["-C", &root.display().to_string(), "rev-parse"])
+                .arg(kind)
+                .output()
+                .map_err(|error| format!("resolve fixture revision: {error}"))?;
+            if !output.status.success() {
+                return Err(format!("resolve fixture revision failed: {kind}"));
+            }
+            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        };
+        let base_sha = revision("HEAD")?;
+        let head_tree = revision("HEAD^{tree}")?;
+        let check_bytes = br#"{}"#;
+        let check_sha = format!("sha256:{:x}", Sha256::digest(check_bytes));
+        let diff_sha = format!("sha256:{:x}", Sha256::digest([]));
+        let outcome = crate::analysis_outcome::AnalysisOutcome::new(
+            crate::analysis_outcome::AnalysisOutcomeKind::NoScope,
+            crate::analysis_outcome::AnalysisIdentity {
+                base_revision: Some(base_sha.clone()),
+                input_identity: Some(diff_sha.clone()),
+                ..Default::default()
+            },
+            Default::default(),
+            Vec::new(),
+        )
+        .map_err(|error| format!("build fixture outcome: {error}"))?;
+        let subject = serde_json::json!({
+            "schema_version": "ripr.pr_check_subject.v1",
+            "root_identity": root_identity,
+            "base_sha": base_sha,
+            "head_sha": revision("HEAD")?,
+            "head_tree": head_tree,
+            "check_sha256": check_sha,
+            "check_byte_count": check_bytes.len(),
+            "check_schema": "0.2",
+            "canonical_diff_sha256": diff_sha,
+            "configuration_fingerprint": crate::config::repo_exposure_config_identity_hash(
+                &crate::config::RiprConfig::default(),
+            ),
+            "analyzer_generation": crate::review_input::REVIEW_ANALYZER_GENERATION,
+            "mode": "draft",
+            "analysis_outcome": {"analysis_complete": true, "outcome": outcome},
+            "canonical_finding_index": {
+                "schema_version": crate::review_input::REVIEW_INDEX_SCHEMA_VERSION,
+                "total_finding_count": 0,
+                "index_sha256": format!("sha256:{:x}", Sha256::digest(b"[]")),
+                "entries": []
+            },
+            "canonical_finding_index_entry_count": 0,
+            "canonical_finding_index_byte_count": 2,
+        });
+        let review_input = serde_json::json!({
+            "schema_version": crate::review_input::REVIEW_INPUT_SCHEMA_VERSION,
+            "root_identity": root_identity,
+            "base_sha": subject["base_sha"],
+            "head_sha": subject["head_sha"],
+            "head_tree": subject["head_tree"],
+            "check_sha256": subject["check_sha256"],
+            "canonical_diff_sha256": diff_sha,
+            "mode": "draft",
+            "analysis_complete": true,
+            "total_finding_count": 0,
+            "projected_finding_count": 0,
+            "projection_limit": 10,
+            "projection_truncated": false,
+            "projection_selection_policy": crate::review_input::REVIEW_INPUT_SELECTION_POLICY,
+            "projection_selection_policy_version": crate::review_input::REVIEW_INPUT_SELECTION_POLICY_VERSION,
+            "reviewed_count": 0,
+            "projection_sha256": format!("sha256:{:x}", Sha256::digest(b"[]")),
+            "findings": [],
+            "analysis_outcome": subject["analysis_outcome"]
+        });
+        let review_bytes = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&review_input)
+                .map_err(|error| format!("serialize review input: {error}"))?
+        );
+        let check_path = root.join("target/ripr/review-comments-bounded-check.json");
+        let subject_path = check_path.with_extension("subject.json");
+        let review_path = check_path.with_file_name("review-input.json");
+        std::fs::create_dir_all(
+            check_path
+                .parent()
+                .ok_or_else(|| "bounded fixture parent missing".to_string())?,
+        )
+        .map_err(|error| format!("create bounded fixture parent: {error}"))?;
+        std::fs::write(&check_path, check_bytes).map_err(|error| error.to_string())?;
+        std::fs::write(
+            &subject_path,
+            format!(
+                "{}\n",
+                serde_json::to_string_pretty(&subject)
+                    .map_err(|error| format!("serialize subject: {error}"))?
+            ),
+        )
+        .map_err(|error| error.to_string())?;
+        let review_input_sha = format!("sha256:{:x}", Sha256::digest(review_bytes.as_bytes()));
+        let mut subject = subject;
+        subject["review_input_sha256"] = serde_json::json!(review_input_sha);
+        subject["review_input_byte_count"] = serde_json::json!(review_bytes.len());
+        std::fs::write(
+            &subject_path,
+            format!(
+                "{}\n",
+                serde_json::to_string_pretty(&subject)
+                    .map_err(|error| format!("serialize bound subject: {error}"))?
+            ),
+        )
+        .map_err(|error| error.to_string())?;
+        std::fs::write(&review_path, review_bytes).map_err(|error| error.to_string())?;
+        let out = root.join("target/ripr/review-comments-bounded.json");
+        let args = args(&[
+            "--root",
+            &root.display().to_string(),
+            "--base",
+            "HEAD",
+            "--head",
+            "HEAD",
+            "--check-output",
+            &check_path.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+        ]);
+        review_comments_with_diff_loader(&args, |_root, _base, _head| Ok(String::new()))?;
+        let rendered = std::fs::read_to_string(&out).map_err(|error| error.to_string())?;
+        if !rendered.contains("\"basis\": \"producer_check_projection\"") {
+            return Err("bounded producer route did not render producer projection".to_string());
+        }
+        for path in [&check_path, &subject_path, &review_path, &out] {
+            let _ = std::fs::remove_file(path);
+        }
         Ok(())
     }
 

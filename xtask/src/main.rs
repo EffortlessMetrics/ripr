@@ -4690,6 +4690,10 @@ fn check_workflows_impl() -> Result<(), String> {
         ));
         violations.extend(workflow_bare_self_hosted_violations(&normalized, &text));
         violations.extend(workflow_plain_scalar_comment_violations(&normalized, &text));
+        violations.extend(workflow_review_comments_cross_check_violations(
+            &normalized,
+            &text,
+        ));
         for block in extract_workflow_run_blocks(&text) {
             if block.non_empty_lines > budget.max_non_empty_lines {
                 violations.push(format!(
@@ -4756,6 +4760,146 @@ fn workflow_review_thread_mutation_violations(path: &str, text: &str) -> Vec<Str
         )];
     }
     Vec::new()
+}
+
+/// Every live review-comments cross-check must consume a current producer from
+/// the same job path. This keeps workflow orchestration from silently dropping
+/// the producer, moving it after consumption, or checking a different subject.
+fn workflow_review_comments_cross_check_violations(path: &str, text: &str) -> Vec<String> {
+    let mut violations = Vec::new();
+    let mut job = "unknown";
+    let mut producer: Option<(String, String)> = None;
+    let mut producer_checked = false;
+    let lines = text.lines().collect::<Vec<_>>();
+
+    for (index, line) in lines.iter().copied().enumerate() {
+        if let Some(name) = workflow_job_name(line) {
+            job = name;
+            producer = None;
+            producer_checked = false;
+            continue;
+        }
+        let command = workflow_command_text(line);
+        if command.starts_with('#') {
+            continue;
+        }
+        if workflow_xtask_invocation(command, "ripr-pr") {
+            let identity = workflow_command_subject(command);
+            if workflow_step_disabled_or_shielded(&lines, index)
+                || workflow_command_failure_shielded(command)
+            {
+                violations.push(format!(
+                    "{path}:{} {job}: pr-evidence producer must not be failure-shielded",
+                    index + 1
+                ));
+                continue;
+            }
+            if command.split_whitespace().any(|token| token == "--check") {
+                if identity.is_none() || identity != producer {
+                    violations.push(format!(
+                        "{path}:{} {job}: pr-evidence check must follow the same base/head producer",
+                        index + 1
+                    ));
+                } else {
+                    producer_checked = true;
+                }
+            } else {
+                producer = identity;
+                producer_checked = false;
+            }
+            continue;
+        }
+        if !workflow_xtask_invocation(command, "ripr-review-comments") {
+            continue;
+        }
+        if workflow_step_disabled_or_shielded(&lines, index)
+            || workflow_command_failure_shielded(command)
+        {
+            violations.push(format!(
+                "{path}:{} {job}: review-comments consumer must not be failure-shielded",
+                index + 1
+            ));
+        }
+        if !command.contains("--check-output target/ripr/pr/check.json") {
+            violations.push(format!(
+                "{path}:{} {job}: review-comments consumer must use --check-output target/ripr/pr/check.json",
+                index + 1
+            ));
+        }
+        let consumer = workflow_command_subject(command);
+        if producer.is_none() || consumer.is_none() || consumer != producer || !producer_checked {
+            violations.push(format!(
+                "{path}:{} {job}: review-comments consumer requires a preceding checked pr-evidence producer for the same base/head",
+                index + 1
+            ));
+        }
+    }
+    violations
+}
+
+fn workflow_step_disabled_or_shielded(lines: &[&str], command_index: usize) -> bool {
+    let start = (0..=command_index)
+        .rev()
+        .find(|index| lines[*index].starts_with("      - "))
+        .unwrap_or(command_index);
+    let end = ((command_index + 1)..lines.len())
+        .find(|index| {
+            lines[*index].starts_with("      - ") || workflow_job_name(lines[*index]).is_some()
+        })
+        .unwrap_or(lines.len());
+    lines[start..end].iter().any(|line| {
+        let property = line.trim().strip_prefix("- ").unwrap_or(line.trim());
+        property == "continue-on-error: true"
+            || property == "if: false"
+            || property == "if: ${{ false }}"
+    })
+}
+
+fn workflow_command_failure_shielded(command: &str) -> bool {
+    command.contains("|| true") || command.contains("|| :")
+}
+
+fn workflow_command_text(line: &str) -> &str {
+    let command = line
+        .trim()
+        .strip_prefix("- run:")
+        .unwrap_or_else(|| line.trim())
+        .trim();
+    command
+        .split_once(" #")
+        .map_or(command, |(command, _)| command.trim_end())
+}
+
+fn workflow_xtask_invocation(command: &str, subcommand: &str) -> bool {
+    let invocation = format!("cargo xtask {subcommand} ");
+    if command.starts_with(&invocation) {
+        return true;
+    }
+    command.split_once(" -- ").is_some_and(|(recorder, tail)| {
+        recorder.trim_start().starts_with("$R ") && tail.starts_with(&invocation)
+    })
+}
+
+fn workflow_job_name(line: &str) -> Option<&str> {
+    if !line.starts_with("  ") || line.starts_with("   ") {
+        return None;
+    }
+    line.trim().strip_suffix(':')
+}
+
+fn workflow_command_subject(command: &str) -> Option<(String, String)> {
+    Some((
+        workflow_shell_flag_value(command, "--base")?,
+        workflow_shell_flag_value(command, "--head")?,
+    ))
+}
+
+fn workflow_shell_flag_value(command: &str, flag: &str) -> Option<String> {
+    let tail = command.split_once(&format!("{flag} "))?.1.trim_start();
+    if let Some(quoted) = tail.strip_prefix('"') {
+        return quoted.split_once('"').map(|(value, _)| value.to_string());
+    }
+    tail.split_whitespace().next().map(str::to_string)
 }
 
 fn review_thread_mutation_line(line: &str) -> bool {
@@ -5030,10 +5174,14 @@ fn routed_rust_expected_command(id: &str, base: &str, pr_head: &str) -> Option<S
             format!("cargo xtask ripr-pr --base {base} --head {pr_head} --check")
         }
         "ripr_review_comments" => {
-            format!("cargo xtask ripr-review-comments --base {base} --head {pr_head}")
+            format!(
+                "cargo xtask ripr-review-comments --base {base} --head {pr_head} --check-output target/ripr/pr/check.json"
+            )
         }
         "ripr_review_comments_check" => {
-            format!("cargo xtask ripr-review-comments --base {base} --head {pr_head} --check")
+            format!(
+                "cargo xtask ripr-review-comments --base {base} --head {pr_head} --check-output target/ripr/pr/check.json --check"
+            )
         }
         "impacted_evidence" => "cargo xtask impacted-evidence".to_string(),
         "impacted_evidence_check" => "cargo xtask impacted-evidence --check".to_string(),

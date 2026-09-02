@@ -56,6 +56,36 @@ impl ReviewCommentsAnalysisScope {
         }
     }
 
+    pub(crate) fn producer_projection(
+        working_set: &AgentBriefResolvedWorkingSet,
+        reviewed_count: usize,
+    ) -> Self {
+        let production_files = working_set
+            .files
+            .iter()
+            .filter(|path| crate::analysis::is_production_rust_path(path))
+            .cloned()
+            .collect::<Vec<_>>();
+        Self {
+            scope: "diff_scoped_changed_files",
+            run_status: "limited_diff_scope",
+            basis: "producer_check_projection",
+            changed_files: display_paths(&working_set.files),
+            changed_lines: working_set.changed_lines.len(),
+            changed_owner_functions: working_set.changed_owners.len(),
+            changed_production_files: display_paths(&production_files),
+            immediate_caller_files: Vec::new(),
+            scoped_production_files: display_paths(&production_files),
+            total_rust_files: None,
+            total_production_files: None,
+            production_files_considered: production_files.len(),
+            classified_seams_considered: reviewed_count,
+            downstream_consumable: true,
+            limitation: "review_comments_producer_projection_only",
+            repair_route: "analysis/review-comments-producer-projection",
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn from_working_set(
         working_set: &AgentBriefResolvedWorkingSet,

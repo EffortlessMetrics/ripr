@@ -46193,6 +46193,148 @@ fn routed_rust_workflow_text() -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|err| format!("read {}: {err}", path.display()))
 }
 
+#[test]
+fn review_comments_cross_check_covers_every_live_consumer() -> Result<(), String> {
+    let root = repo_root()?;
+    let workflows = [
+        (".github/workflows/ci.yml", 2usize),
+        (".github/workflows/routed-rust.yml", 4usize),
+    ];
+    let mut consumers = 0usize;
+    for (path, expected) in workflows {
+        let text = std::fs::read_to_string(root.join(path))
+            .map_err(|err| format!("read {path}: {err}"))?;
+        let found = text
+            .lines()
+            .filter(|line| line.contains("cargo xtask ripr-review-comments "))
+            .count();
+        if found != expected {
+            return Err(format!(
+                "{path} has {found} live review-comments consumers, expected {expected}"
+            ));
+        }
+        let violations = super::workflow_review_comments_cross_check_violations(path, &text);
+        if !violations.is_empty() {
+            return Err(violations.join("\n"));
+        }
+        consumers += found;
+    }
+    if consumers != 6 {
+        return Err(format!(
+            "expected six live consumer commands, found {consumers}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn review_comments_cross_check_oracle_rejects_contract_drift() -> Result<(), String> {
+    let valid = r#"jobs:
+  rust:
+    steps:
+      - run: |
+          cargo xtask ripr-pr --base "$BASE" --head "$HEAD"
+          cargo xtask ripr-pr --base "$BASE" --head "$HEAD" --check
+          cargo xtask ripr-review-comments --base "$BASE" --head "$HEAD" --check-output target/ripr/pr/check.json
+          cargo xtask ripr-review-comments --base "$BASE" --head "$HEAD" --check-output target/ripr/pr/check.json --check
+"#;
+    if !super::workflow_review_comments_cross_check_violations("fixture.yml", valid).is_empty() {
+        return Err("valid producer-backed fixture was rejected".to_string());
+    }
+    let inline = r#"jobs:
+  rust:
+    steps:
+      - run: cargo xtask ripr-pr --base "$BASE" --head "$HEAD"
+      - run: cargo xtask ripr-pr --base "$BASE" --head "$HEAD" --check
+      - run: cargo xtask ripr-review-comments --base "$BASE" --head "$HEAD" --check-output target/ripr/pr/check.json
+      - run: cargo xtask ripr-review-comments --base "$BASE" --head "$HEAD" --check-output target/ripr/pr/check.json --check
+"#;
+    if !super::workflow_review_comments_cross_check_violations("inline.yml", inline).is_empty() {
+        return Err("valid inline producer-backed fixture was rejected".to_string());
+    }
+    let cases = [
+        (
+            "commented check-output flag",
+            valid.replacen(
+                " --check-output target/ripr/pr/check.json",
+                " # --check-output target/ripr/pr/check.json",
+                1,
+            ),
+        ),
+        (
+            "missing cross-check",
+            valid.replacen(" --check-output target/ripr/pr/check.json", "", 1),
+        ),
+        (
+            "wrong subject",
+            valid.replacen(
+                "ripr-review-comments --base \"$BASE\"",
+                "ripr-review-comments --base \"$OTHER_BASE\"",
+                1,
+            ),
+        ),
+        (
+            "producer after consumer",
+            valid.replacen(
+                "          cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\"\n          cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\" --check\n",
+                "",
+                1,
+            ),
+        ),
+        (
+            "shell no-op shielding",
+            valid.replacen(
+                "cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\"",
+                "cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\" || :",
+                1,
+            ),
+        ),
+        (
+            "step continue-on-error shielding",
+            valid.replacen(
+                "      - run: |",
+                "      - continue-on-error: true\n        run: |",
+                1,
+            ),
+        ),
+        (
+            "step continue-on-error after run",
+            valid.replacen(
+                "cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\"",
+                "cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\"\n        continue-on-error: true",
+                1,
+            ),
+        ),
+        (
+            "statically disabled producer",
+            valid.replacen(
+                "      - run: |",
+                "      - if: ${{ false }}\n        run: |",
+                1,
+            ),
+        ),
+        (
+            "echoed producer",
+            valid.replacen(
+                "cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\"",
+                "echo cargo xtask ripr-pr --base \"$BASE\" --head \"$HEAD\"",
+                1,
+            ),
+        ),
+    ];
+    for (name, mutated) in cases {
+        if mutated == valid {
+            return Err(format!("{name} mutation did not alter the fixture"));
+        }
+        if super::workflow_review_comments_cross_check_violations("fixture.yml", &mutated)
+            .is_empty()
+        {
+            return Err(format!("oracle accepted {name}"));
+        }
+    }
+    Ok(())
+}
+
 /// Extracts the run-block lines of each `- name: <step>` whose name matches
 /// `step_name`, stopping at the next step (`- ` at the same indent).
 fn routed_rust_step_run_blocks(workflow: &str, step_name: &str) -> Vec<Vec<String>> {

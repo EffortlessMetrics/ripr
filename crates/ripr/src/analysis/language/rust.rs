@@ -271,15 +271,18 @@ pub(crate) struct PartialDiffBudgets {
 }
 
 pub(crate) fn partial_diff_budgets() -> Result<PartialDiffBudgets, String> {
+    let hard_line_guard = diff_changed_rust_line_limit()?;
     partial_diff_budgets_from_env(
         std::env::var(PARTIAL_DIFF_FILE_BUDGET_ENV),
         std::env::var(PARTIAL_DIFF_LINE_BUDGET_ENV),
+        hard_line_guard,
     )
 }
 
 fn partial_diff_budgets_from_env(
     file_value: Result<String, std::env::VarError>,
     line_value: Result<String, std::env::VarError>,
+    hard_line_guard: usize,
 ) -> Result<PartialDiffBudgets, String> {
     let (file_budget, file_disclosure) = partial_budget_from_env(
         PARTIAL_DIFF_FILE_BUDGET_ENV,
@@ -290,7 +293,7 @@ fn partial_diff_budgets_from_env(
     let (line_budget, line_disclosure) = partial_budget_from_env(
         PARTIAL_DIFF_LINE_BUDGET_ENV,
         PARTIAL_DIFF_LINE_BUDGET_DEFAULT,
-        DIFF_CHANGED_RUST_LINE_LIMIT,
+        hard_line_guard,
         line_value,
     )?;
     let mut disclosures = Vec::new();
@@ -2133,8 +2136,11 @@ mod tests {
 
     #[test]
     fn partial_budget_env_defaults_when_unset() -> Result<(), String> {
-        let resolved =
-            partial_diff_budgets_from_env(Err(VarError::NotPresent), Err(VarError::NotPresent))?;
+        let resolved = partial_diff_budgets_from_env(
+            Err(VarError::NotPresent),
+            Err(VarError::NotPresent),
+            DIFF_CHANGED_RUST_LINE_LIMIT,
+        )?;
         assert_eq!(resolved.file_budget, PARTIAL_DIFF_FILE_BUDGET_DEFAULT);
         assert_eq!(resolved.line_budget, PARTIAL_DIFF_LINE_BUDGET_DEFAULT);
         assert!(resolved.disclosures.is_empty());
@@ -2147,7 +2153,11 @@ mod tests {
     }
 
     fn invalid_budget_message(file: &str, line: &str) -> String {
-        match partial_diff_budgets_from_env(Ok(file.to_string()), Ok(line.to_string())) {
+        match partial_diff_budgets_from_env(
+            Ok(file.to_string()),
+            Ok(line.to_string()),
+            DIFF_CHANGED_RUST_LINE_LIMIT,
+        ) {
             Ok(resolved) => format!(
                 "expected partial_budget_invalid for file={file:?} line={line:?}, got {resolved:?}"
             ),
@@ -2236,6 +2246,7 @@ mod tests {
         let result = partial_diff_budgets_from_env(
             Err(VarError::NotUnicode("x".into())),
             Err(VarError::NotPresent),
+            DIFF_CHANGED_RUST_LINE_LIMIT,
         );
         assert!(
             matches!(&result, Err(message) if message.starts_with("partial_budget_invalid:")),
@@ -2248,6 +2259,7 @@ mod tests {
         let resolved = partial_diff_budgets_from_env(
             Ok((DIFF_INDEX_FILE_LIMIT + 1).to_string()),
             Ok((DIFF_CHANGED_RUST_LINE_LIMIT + 1).to_string()),
+            DIFF_CHANGED_RUST_LINE_LIMIT,
         )?;
 
         assert_eq!(resolved.file_budget, DIFF_INDEX_FILE_LIMIT);
@@ -2263,10 +2275,26 @@ mod tests {
         assert!(resolved.disclosures[1].contains(PARTIAL_DIFF_LINE_BUDGET_ENV));
 
         // A valid in-range override applies without disclosure.
-        let resolved =
-            partial_diff_budgets_from_env(Ok(" 50 ".to_string()), Ok("250".to_string()))?;
+        let resolved = partial_diff_budgets_from_env(
+            Ok(" 50 ".to_string()),
+            Ok("250".to_string()),
+            DIFF_CHANGED_RUST_LINE_LIMIT,
+        )?;
         assert_eq!(resolved.file_budget, 50);
         assert_eq!(resolved.line_budget, 250);
+        assert!(resolved.disclosures.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn partial_line_budget_uses_configured_hard_guard() -> Result<(), String> {
+        let configured_guard = DIFF_CHANGED_RUST_LINE_LIMIT + 1_000;
+        let resolved = partial_diff_budgets_from_env(
+            Err(VarError::NotPresent),
+            Ok(configured_guard.to_string()),
+            configured_guard,
+        )?;
+        assert_eq!(resolved.line_budget, configured_guard);
         assert!(resolved.disclosures.is_empty());
         Ok(())
     }

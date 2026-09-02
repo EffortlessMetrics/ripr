@@ -308,13 +308,17 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+          # The repaired #1660 candidate measures 5,316 changed Rust lines;
+          # keep the explicit safety envelope narrowly above that denominator.
+          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "5400"
+          RIPR_PARTIAL_DIFF_LINE_BUDGET: "5400"
         run: |
           set -euo pipefail
           R="cargo run --locked -p xtask -- ci-record-command --id"
           $R ripr_pr -- cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
           $R ripr_pr_check -- cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
-          $R ripr_review_comments -- cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
-          $R ripr_review_comments_check -- cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          $R ripr_review_comments -- cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check-output target/ripr/pr/check.json
+          $R ripr_review_comments_check -- cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check-output target/ripr/pr/check.json --check
           $R impacted_evidence -- cargo xtask impacted-evidence
           $R impacted_evidence_check -- cargo xtask impacted-evidence --check
           $R ripr_pr_summary -- cargo xtask ripr-pr-summary
@@ -492,13 +496,17 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+          # The repaired #1660 candidate measures 5,316 changed Rust lines;
+          # keep the explicit safety envelope narrowly above that denominator.
+          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "5400"
+          RIPR_PARTIAL_DIFF_LINE_BUDGET: "5400"
         run: |
           set -euo pipefail
           R="cargo run --locked -p xtask -- ci-record-command --id"
           $R ripr_pr -- cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
           $R ripr_pr_check -- cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
-          $R ripr_review_comments -- cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
-          $R ripr_review_comments_check -- cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          $R ripr_review_comments -- cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check-output target/ripr/pr/check.json
+          $R ripr_review_comments_check -- cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check-output target/ripr/pr/check.json --check
           $R impacted_evidence -- cargo xtask impacted-evidence
           $R impacted_evidence_check -- cargo xtask impacted-evidence --check
           $R ripr_pr_summary -- cargo xtask ripr-pr-summary
