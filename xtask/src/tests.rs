@@ -234,7 +234,9 @@ fn release_server_build_uses_canonical_locked_toolchain() -> Result<(), String> 
         .split_once("\n  manifest:")
         .map(|(build, _)| build)
         .ok_or_else(|| "release workflow is missing manifest job".to_string())?;
-    if !build.contains("toolchain: 1.95.0")
+    if build.contains("dtolnay/rust-toolchain@stable")
+        || !build.contains("dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4")
+        || !build.contains("toolchain: 1.95.0")
         || !build.contains("permissions:\n      contents: read")
         || !build.contains("cargo build -p ripr --release --locked --target")
         || !build.contains("cargo run --locked -p xtask -- release-server-archive")
