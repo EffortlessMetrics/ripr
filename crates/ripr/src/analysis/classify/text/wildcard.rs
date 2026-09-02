@@ -4,9 +4,13 @@ pub(in crate::analysis) fn is_wildcard_discard_binding(text: &str) -> bool {
     let Some(rest) = trimmed.strip_prefix("let") else {
         return false;
     };
-    let Some(rest) = rest.strip_prefix(|ch: char| ch.is_ascii_whitespace()) else {
+    let Some(first) = rest.chars().next() else {
         return false;
     };
+    if !first.is_ascii_whitespace() {
+        return false;
+    }
+    let rest = rest.trim_start();
     let Some(rest) = rest.strip_prefix('_') else {
         return false;
     };
@@ -33,6 +37,7 @@ mod tests {
             "let _ = value",
             "let _: Ty = value",
             "let _ : Ty = value",
+            "let   _   : Ty = value",
             "let _= value",
         ] {
             assert!(is_wildcard_discard_binding(text), "{text}");
