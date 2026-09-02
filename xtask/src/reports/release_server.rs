@@ -223,7 +223,10 @@ pub(crate) fn release_server_assets(
         let Some(target) = target else {
             continue;
         };
-        if assets.iter().any(|asset: &ReleaseServerAsset| asset.target == target) {
+        if assets
+            .iter()
+            .any(|asset: &ReleaseServerAsset| asset.target == target)
+        {
             return Err(format!(
                 "duplicate release server target `{target}` in `{file_name}`"
             ));
@@ -745,8 +748,12 @@ fn validate_release_server_receipts(dist_dir: &Path) -> Result<(), String> {
         if !file_name.ends_with(".receipt.json") {
             continue;
         }
-        let text = fs::read_to_string(&path)
-            .map_err(|err| format!("failed to read release server receipt {}: {err}", path.display()))?;
+        let text = fs::read_to_string(&path).map_err(|err| {
+            format!(
+                "failed to read release server receipt {}: {err}",
+                path.display()
+            )
+        })?;
         serde_json::from_str::<ReleaseServerBuildReceipt>(&text).map_err(|err| {
             format!(
                 "malformed release server receipt `{}`: {err}",

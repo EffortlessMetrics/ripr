@@ -7184,7 +7184,10 @@ fn release_server_assets_rejects_non_regular_staging_entries() -> Result<(), Str
     let Err(error) = super::release_server_assets(&root, "1.2.3") else {
         return Err("non-regular staging entries must be rejected".to_string());
     };
-    assert!(error.contains("non-regular release server staging entry"), "{error}");
+    assert!(
+        error.contains("non-regular release server staging entry"),
+        "{error}"
+    );
     Ok(())
 }
 
@@ -7214,7 +7217,10 @@ fn release_server_manifest_rejects_malformed_receipt() -> Result<(), String> {
         let Err(error) = super::release_server_manifest(&args) else {
             return Err("malformed receipt must reject manifest assembly".to_string());
         };
-        assert!(error.contains("malformed release server receipt"), "{error}");
+        assert!(
+            error.contains("malformed release server receipt"),
+            "{error}"
+        );
         Ok(())
     })
 }
