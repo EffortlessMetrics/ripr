@@ -7269,7 +7269,15 @@ fn release_server_archive_writes_bounded_receipt_and_deterministic_tar() -> Resu
                 .map_err(|err| format!("read receipt {}: {err}", receipt_path.display()))?,
         )
         .map_err(|err| format!("parse receipt: {err}"))?;
-        assert_eq!(receipt["schema_version"], "0.1");
+        assert_eq!(receipt["schema_version"], "0.2");
+        assert!(receipt["candidate_sha"].as_str().is_some());
+        assert!(receipt["candidate_tree"].as_str().is_some());
+        assert!(receipt["toolchain"]["rustc"].as_str().is_some());
+        assert!(receipt["toolchain"]["cargo"].as_str().is_some());
+        assert!(receipt["cargo_lock_sha256"].as_str().is_some());
+        assert_eq!(receipt["profile"], "release");
+        assert_eq!(receipt["features"], serde_json::json!([]));
+        assert_eq!(receipt["locked"], true);
         assert_eq!(receipt["target"], "x86_64-unknown-linux-gnu");
         assert_eq!(receipt["archive_format"], "tar.gz");
         assert_eq!(receipt["executable"]["path"], executable);

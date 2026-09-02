@@ -9,7 +9,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tar::Builder;
 
-use crate::{command_success_owned, run_owned};
+use crate::{command_success_owned, run_output, run_owned};
 
 pub(crate) fn release_server_archive(args: &[String]) -> Result<(), String> {
     let version = required_release_arg(args, "version", "RAW_VERSION")?;
@@ -343,12 +343,28 @@ pub(crate) fn create_zip_archive(package_dir: &Path, asset_path: &Path) -> Resul
 #[derive(Debug, Serialize)]
 struct ReleaseServerBuildReceipt {
     schema_version: &'static str,
+    repository: String,
+    candidate_sha: String,
+    candidate_tree: String,
+    toolchain: ReleaseServerToolchain,
+    toolchain_file_sha256: String,
+    cargo_lock_sha256: String,
+    profile: &'static str,
+    features: Vec<String>,
+    locked: bool,
+    build_command: String,
     version: String,
     target: String,
     archive_format: String,
     executable: ReleaseServerFile,
     archive: ReleaseServerFile,
     members: Vec<ReleaseServerMember>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReleaseServerToolchain {
+    rustc: String,
+    cargo: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -386,8 +402,19 @@ fn write_release_server_receipt(
         archive_path,
     )?;
     let members = archive_member_inventory(archive_path, archive, executable)?;
+    let identity = release_server_build_identity()?;
     let receipt = ReleaseServerBuildReceipt {
-        schema_version: "0.1",
+        schema_version: "0.2",
+        repository: identity.repository,
+        candidate_sha: identity.candidate_sha,
+        candidate_tree: identity.candidate_tree,
+        toolchain: identity.toolchain,
+        toolchain_file_sha256: identity.toolchain_file_sha256,
+        cargo_lock_sha256: identity.cargo_lock_sha256,
+        profile: "release",
+        features: Vec::new(),
+        locked: true,
+        build_command: format!("cargo build -p ripr --release --locked --target {target}"),
         version: version.to_string(),
         target: target.to_string(),
         archive_format: archive.to_string(),
@@ -407,6 +434,53 @@ fn write_release_server_receipt(
         .map_err(|err| format!("failed to write {}: {err}", receipt_path.display()))?;
     eprintln!("wrote {}", receipt_path.display());
     Ok(())
+}
+
+struct ReleaseServerBuildIdentity {
+    repository: String,
+    candidate_sha: String,
+    candidate_tree: String,
+    toolchain: ReleaseServerToolchain,
+    toolchain_file_sha256: String,
+    cargo_lock_sha256: String,
+}
+
+fn release_server_build_identity() -> Result<ReleaseServerBuildIdentity, String> {
+    let candidate_sha = std::env::var("GITHUB_SHA")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| run_output("git", &["rev-parse", "HEAD"]).ok())
+        .unwrap_or_else(|| "unavailable".to_string());
+    let candidate_tree = run_output("git", &["rev-parse", "HEAD^{tree}"])
+        .unwrap_or_else(|_| "unavailable".to_string())
+        .trim()
+        .to_string();
+    let rustc = run_output("rustc", &["-vV"])
+        .map(|value| value.trim().to_string())
+        .unwrap_or_else(|_| "unavailable".to_string());
+    let cargo = run_output("cargo", &["--version"])
+        .map(|value| value.trim().to_string())
+        .unwrap_or_else(|_| "unavailable".to_string());
+    let toolchain_file = Path::new("rust-toolchain.toml");
+    let lockfile = Path::new("Cargo.lock");
+    let toolchain_file_sha256 = if toolchain_file.is_file() {
+        sha256_file(toolchain_file)?
+    } else {
+        "unavailable".to_string()
+    };
+    let cargo_lock_sha256 = if lockfile.is_file() {
+        sha256_file(lockfile)?
+    } else {
+        "unavailable".to_string()
+    };
+    Ok(ReleaseServerBuildIdentity {
+        repository: std::env::var("GITHUB_REPOSITORY").unwrap_or_else(|_| "local".to_string()),
+        candidate_sha: candidate_sha.trim().to_string(),
+        candidate_tree,
+        toolchain: ReleaseServerToolchain { rustc, cargo },
+        toolchain_file_sha256,
+        cargo_lock_sha256,
+    })
 }
 
 fn release_server_file(path: &str, file: &Path) -> Result<ReleaseServerFile, String> {
