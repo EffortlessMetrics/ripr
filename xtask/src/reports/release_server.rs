@@ -125,6 +125,12 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
             receipt_targets, asset_targets
         ));
     }
+    validate_release_server_staging_inventory(
+        dist_dir,
+        &version,
+        &discovered_assets,
+        &receipt_targets,
+    )?;
     let mut assets = serde_json::Map::new();
     for asset in discovered_assets {
         let sha_path = dist_dir.join(format!("{}.sha256", asset.file_name));
@@ -919,6 +925,33 @@ pub(crate) fn validate_release_server_receipts(
         }
     }
     Ok(receipt_targets)
+}
+
+pub(crate) fn validate_release_server_staging_inventory(
+    dist_dir: &Path,
+    version: &str,
+    assets: &[ReleaseServerAsset],
+    receipt_targets: &std::collections::BTreeSet<String>,
+) -> Result<(), String> {
+    let mut allowed = std::collections::BTreeSet::new();
+    for asset in assets {
+        allowed.insert(asset.file_name.clone());
+        allowed.insert(format!("{}.sha256", asset.file_name));
+    }
+    for target in receipt_targets {
+        allowed.insert(format!("ripr-server-v{version}-{target}.receipt.json"));
+    }
+    for path in sorted_dist_files(dist_dir)? {
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !allowed.contains(file_name) {
+            return Err(format!(
+                "unrecognized staged release server file `{file_name}`"
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn read_trimmed(path: &Path) -> Result<String, String> {

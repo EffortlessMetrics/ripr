@@ -7478,6 +7478,41 @@ fn release_server_receipt_set_rejects_member_inventory_mismatch() -> Result<(), 
 }
 
 #[test]
+fn release_server_manifest_rejects_extra_staged_file() -> Result<(), String> {
+    let root = temp_dir("release-server-manifest-extra-file");
+    write(
+        &root.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"),
+        "archive",
+    );
+    write(
+        &root.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+        "sha",
+    );
+    write(
+        &root.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.receipt.json"),
+        "receipt",
+    );
+    write(&root.join("unexpected.txt"), "unreviewed");
+    let assets = vec![super::ReleaseServerAsset {
+        target: "x86_64-unknown-linux-gnu".to_string(),
+        file_name: "ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz".to_string(),
+    }];
+    let receipt_targets = ["x86_64-unknown-linux-gnu".to_string()]
+        .into_iter()
+        .collect();
+    let Err(error) =
+        super::validate_release_server_staging_inventory(&root, "1.2.3", &assets, &receipt_targets)
+    else {
+        return Err("extra staged file must be rejected".to_string());
+    };
+    assert!(
+        error.contains("unrecognized staged release server file"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn release_server_helpers_match_workflow_arguments() -> Result<(), String> {
     let args = vec![
         "--version=v1.2.3".to_string(),
