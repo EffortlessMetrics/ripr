@@ -11,6 +11,7 @@
 //! This avoids recompilation and keeps the analysis in-process.
 
 use crate::app::{CheckInput, Mode, OutputFormat, check_workspace, render_check};
+use crate::config::{load_for_root, repo_exposure_config_identity_hash};
 use crate::review_input::{
     CanonicalFindingIndexV1, REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES,
     REVIEW_INDEX_SCHEMA_VERSION, REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION,
@@ -198,6 +199,9 @@ fn write_pr_evidence_packet(
         .join(&options.root)
         .canonicalize()
         .map_err(|err| format!("resolve review input root failed: {err}"))?;
+    let config = load_for_root(&root)?;
+    let canonical_diff = fs::read(repo.join(PR_DIFF))
+        .map_err(|err| format!("read canonical diff for check subject binding: {err}"))?;
     let findings = check_value
         .get("findings")
         .and_then(Value::as_array)
@@ -224,6 +228,7 @@ fn write_pr_evidence_packet(
     };
     let mut subject = json!({
         "schema_version": "ripr.pr_check_subject.v1",
+        "root_identity": root.display().to_string().replace('\\', "/"),
         "base_sha": resolve_revision(repo, &options.base, "commit")?,
         "head_sha": resolve_revision(repo, &options.head, "commit")?,
         "head_tree": resolve_revision(repo, &options.head, "tree")?,
@@ -231,6 +236,9 @@ fn write_pr_evidence_packet(
         "check_byte_count": check_json_text.len(),
         "check_schema": check_value.get("schema_version").cloned().unwrap_or(Value::Null),
         "mode": check_value.get("mode").cloned().unwrap_or(Value::Null),
+        "canonical_diff_sha256": format!("sha256:{:x}", Sha256::digest(&canonical_diff)),
+        "configuration_fingerprint": repo_exposure_config_identity_hash(&config),
+        "analyzer_generation": crate::review_input::REVIEW_ANALYZER_GENERATION,
         "analysis_outcome": check_value.get("analysis_outcome").cloned().unwrap_or(Value::Null),
         "canonical_finding_index": serde_json::to_value(&index)
             .map_err(|error| format!("serialize canonical finding index: {error}"))?,
@@ -248,6 +256,15 @@ fn write_pr_evidence_packet(
         Sha256::digest(review_input_text.as_bytes())
     ));
     subject["review_input_byte_count"] = json!(review_input_text.len());
+    for field in [
+        "projected_finding_count",
+        "projection_limit",
+        "projection_truncated",
+        "projection_selection_policy",
+        "projection_selection_policy_version",
+    ] {
+        subject[field] = review_input[field].clone();
+    }
     let subject_text = format!(
         "{}\n",
         serde_json::to_string_pretty(&subject)

@@ -11,6 +11,7 @@ pub const REVIEW_INPUT_SELECTION_POLICY: &str = "severity_actionability_stable_i
 pub const REVIEW_INPUT_SELECTION_POLICY_VERSION: &str = "v1";
 pub const REVIEW_INPUT_PROJECTION_LIMIT: u64 = 10;
 pub const REVIEW_INDEX_SCHEMA_VERSION: &str = "ripr.canonical_finding_index.v1";
+pub const REVIEW_ANALYZER_GENERATION: &str = "diff_scoped_classified_seams.v1";
 pub const REVIEW_INDEX_MAX_ENTRIES: usize = 4096;
 // The index is bounded independently from the forensic check packet.  The
 // 4,096-entry cap and 2 MiB byte cap accommodate the promotion-scale canary

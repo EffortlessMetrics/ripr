@@ -13,7 +13,6 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 pub(crate) const REVIEW_ANALYSIS_IDENTITY_SCHEMA: &str = "ripr.review_analysis_identity.v1";
-const REVIEW_ANALYZER_GENERATION: &str = "diff_scoped_classified_seams.v1";
 // Keep this admission bound synchronized with the producer projection limit.
 const REVIEW_INPUT_PROJECTION_LIMIT: u64 = 10;
 
@@ -141,11 +140,19 @@ pub(crate) fn admit_producer_evidence(
     let base_sha = resolve_revision(&input.root, base, "commit")?;
     let head_sha = resolve_revision(&input.root, head, "commit")?;
     let head_tree = resolve_revision(&input.root, head, "tree")?;
+    let expected_root = logical_path(&input.root);
+    let expected_diff = digest_bytes(diff_text.as_bytes());
+    let expected_config = repo_exposure_config_identity_hash(config);
     for (field, expected) in [
+        ("root_identity", expected_root.as_str()),
         ("base_sha", base_sha.as_str()),
         ("head_sha", head_sha.as_str()),
         ("head_tree", head_tree.as_str()),
         ("mode", input.mode.as_str()),
+        ("canonical_diff_sha256", expected_diff.as_str()),
+        ("configuration_fingerprint", expected_config.as_str()),
+        ("analyzer_generation", crate::review_input::REVIEW_ANALYZER_GENERATION),
+        ("check_schema", "0.2"),
     ] {
         require_equal(field, required_string(&subject, field)?, expected)?;
     }
@@ -193,7 +200,7 @@ pub(crate) fn admit_producer_evidence(
         mode: input.mode.as_str().to_string(),
         configuration_fingerprint: repo_exposure_config_identity_hash(config),
         producer_schema: "0.2".to_string(),
-        analyzer_generation: REVIEW_ANALYZER_GENERATION.to_string(),
+        analyzer_generation: crate::review_input::REVIEW_ANALYZER_GENERATION.to_string(),
         check_sha256: required_string(&subject, "check_sha256")?.to_string(),
     };
     let admitted_input = admit_review_input(
@@ -566,9 +573,15 @@ mod tests {
         let root = std::env::current_dir().map_err(|error| error.to_string())?;
         let subject = serde_json::json!({
             "schema_version": "ripr.pr_check_subject.v1",
+            "root_identity": logical_path(&root),
             "base_sha": resolve_revision(&root, "HEAD", "commit").unwrap_or_default(),
             "head_sha": resolve_revision(&root, "HEAD", "commit").unwrap_or_default(),
             "head_tree": resolve_revision(&root, "HEAD", "tree").unwrap_or_default(),
+            "check_schema": "0.2",
+            "canonical_diff_sha256": digest_bytes(b"fixture diff"),
+            "configuration_fingerprint":
+                crate::config::repo_exposure_config_identity_hash(&RiprConfig::default()),
+            "analyzer_generation": crate::review_input::REVIEW_ANALYZER_GENERATION,
             "mode": "fast"
         });
         std::fs::write(
@@ -707,7 +720,7 @@ mod tests {
             mode: "draft".to_string(),
             configuration_fingerprint: "sha256:config".to_string(),
             producer_schema: "0.2".to_string(),
-            analyzer_generation: REVIEW_ANALYZER_GENERATION.to_string(),
+            analyzer_generation: crate::review_input::REVIEW_ANALYZER_GENERATION.to_string(),
             check_sha256: "sha256:check".to_string(),
         };
         let error = admit_review_input(&review_input_path, &root, &identity, 0, None)
@@ -788,6 +801,8 @@ mod tests {
         let head = "HEAD";
         let diff_text = "fixture diff";
         let root_identity = logical_path(&root);
+        let configuration_fingerprint =
+            crate::config::repo_exposure_config_identity_hash(&RiprConfig::default());
         let outcome = AnalysisOutcome::new(
             crate::analysis_outcome::AnalysisOutcomeKind::NoScope,
             crate::analysis_outcome::AnalysisIdentity {
@@ -834,9 +849,14 @@ mod tests {
             resolve_revision(&root, head, "tree").map_err(|error| error.message.clone())?;
         let subject = serde_json::json!({
             "schema_version": "ripr.pr_check_subject.v1",
+            "check_schema": "0.2",
+            "root_identity": root_identity,
             "base_sha": base_sha,
             "head_sha": head_sha,
             "head_tree": head_tree,
+            "canonical_diff_sha256": digest_bytes(diff_text.as_bytes()),
+            "configuration_fingerprint": configuration_fingerprint,
+            "analyzer_generation": crate::review_input::REVIEW_ANALYZER_GENERATION,
             "check_sha256": digest_bytes(&check_bytes),
             "mode": "draft",
             "analysis_outcome": {"analysis_complete": true, "outcome": outcome},

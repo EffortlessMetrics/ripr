@@ -178,8 +178,17 @@ fn write_pr_evidence_packet(
         serde_json::to_string_pretty(&check_value)
             .map_err(|err| format!("serialize canonical check output: {err}"))?
     );
+    let root = repo
+        .join(&options.root)
+        .canonicalize()
+        .map_err(|err| format!("resolve review input root failed: {err}"))?;
+    let config = ripr::config::load_for_root(&root)
+        .map_err(|err| format!("load review input config: {err}"))?;
+    let canonical_diff = fs::read(repo.join(PR_DIFF))
+        .map_err(|err| format!("read canonical diff for check subject binding: {err}"))?;
     let mut subject = json!({
         "schema_version": "ripr.pr_check_subject.v1",
+        "root_identity": root.display().to_string().replace('\\', "/"),
         "base_sha": resolve_revision(repo, &options.base, "commit")?,
         "head_sha": resolve_revision(repo, &options.head, "commit")?,
         "head_tree": resolve_revision(repo, &options.head, "tree")?,
@@ -187,12 +196,11 @@ fn write_pr_evidence_packet(
         "check_byte_count": check_json_text.len(),
         "check_schema": check_value.get("schema_version").cloned().unwrap_or(Value::Null),
         "mode": check_value.get("mode").cloned().unwrap_or(Value::Null),
+        "canonical_diff_sha256": format!("sha256:{:x}", Sha256::digest(&canonical_diff)),
+        "configuration_fingerprint": ripr::config::repo_exposure_config_identity_hash(&config),
+        "analyzer_generation": ripr::review_input::REVIEW_ANALYZER_GENERATION,
         "analysis_outcome": check_value.get("analysis_outcome").cloned().unwrap_or(Value::Null),
     });
-    let root = repo
-        .join(&options.root)
-        .canonicalize()
-        .map_err(|err| format!("resolve review input root failed: {err}"))?;
     let findings = check_value
         .get("findings")
         .and_then(Value::as_array)
@@ -228,6 +236,15 @@ fn write_pr_evidence_packet(
         Sha256::digest(review_input_text.as_bytes())
     ));
     subject["review_input_byte_count"] = json!(review_input_text.len());
+    for field in [
+        "projected_finding_count",
+        "projection_limit",
+        "projection_truncated",
+        "projection_selection_policy",
+        "projection_selection_policy_version",
+    ] {
+        subject[field] = review_input[field].clone();
+    }
     let subject_text = format!(
         "{}\n",
         serde_json::to_string_pretty(&subject)

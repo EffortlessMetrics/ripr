@@ -6115,12 +6115,18 @@ language = "rust"
         .map_err(|error| format!("build fixture outcome: {error}"))?;
         let subject = serde_json::json!({
             "schema_version": "ripr.pr_check_subject.v1",
+            "root_identity": root_identity,
             "base_sha": base_sha,
             "head_sha": revision("HEAD")?,
             "head_tree": head_tree,
             "check_sha256": check_sha,
             "check_byte_count": check_bytes.len(),
             "check_schema": "0.2",
+            "canonical_diff_sha256": diff_sha,
+            "configuration_fingerprint": crate::config::repo_exposure_config_identity_hash(
+                &crate::config::RiprConfig::default(),
+            ),
+            "analyzer_generation": crate::review_input::REVIEW_ANALYZER_GENERATION,
             "mode": "draft",
             "analysis_outcome": {"analysis_complete": true, "outcome": outcome},
             "canonical_finding_index": {
