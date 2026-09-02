@@ -1531,4 +1531,31 @@ mod tests {
         }
         Ok(())
     }
+
+    #[test]
+    fn admission_helpers_reject_empty_strings_and_unavailable_origin() -> Result<(), String> {
+        for value in [
+            serde_json::json!({}),
+            serde_json::json!({"field": ""}),
+            serde_json::json!({"field": 7}),
+        ] {
+            let error = required_string(&value, "field")
+                .err()
+                .ok_or_else(|| "invalid required string must fail".to_string())?;
+            if error.category != "malformed_producer" {
+                return Err(format!(
+                    "unexpected required-string category: {}",
+                    error.category
+                ));
+            }
+        }
+
+        let unavailable = repository_identity(Path::new("F:/path/that/does/not/exist"));
+        if unavailable != "unavailable" {
+            return Err(format!(
+                "unavailable origin was identified as {unavailable}"
+            ));
+        }
+        Ok(())
+    }
 }
