@@ -7513,6 +7513,20 @@ fn release_server_manifest_rejects_extra_staged_file() -> Result<(), String> {
 }
 
 #[test]
+fn release_server_atomic_write_replaces_complete_output() -> Result<(), String> {
+    let root = temp_dir("release-server-atomic-write");
+    let output = root.join("manifest.json");
+    super::write_release_server_file_atomic(&output, "first\n")?;
+    super::write_release_server_file_atomic(&output, "second\n")?;
+    assert_eq!(
+        fs::read_to_string(&output).map_err(|error| format!("read atomic output: {error}"))?,
+        "second\n"
+    );
+    assert!(!root.join("manifest.json.tmp").exists());
+    Ok(())
+}
+
+#[test]
 fn release_server_helpers_match_workflow_arguments() -> Result<(), String> {
     let args = vec![
         "--version=v1.2.3".to_string(),

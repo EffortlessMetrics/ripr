@@ -159,8 +159,7 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     let manifest_path = dist_dir.join(format!("ripr-server-manifest-v{version}.json"));
     let manifest_text = serde_json::to_string_pretty(&manifest)
         .map_err(|err| format!("failed to render release server manifest: {err}"))?;
-    fs::write(&manifest_path, format!("{manifest_text}\n"))
-        .map_err(|err| format!("failed to write {}: {err}", manifest_path.display()))?;
+    write_release_server_file_atomic(&manifest_path, &format!("{manifest_text}\n"))?;
 
     let mut checksum_lines = Vec::new();
     for path in sorted_dist_files(dist_dir)? {
@@ -175,8 +174,10 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
         }
         checksum_lines.push(format!("{}  {file_name}", sha256_file(&path)?));
     }
-    fs::write(&sha256sums_path, format!("{}\n", checksum_lines.join("\n")))
-        .map_err(|err| format!("failed to write {}: {err}", sha256sums_path.display()))?;
+    write_release_server_file_atomic(
+        &sha256sums_path,
+        &format!("{}\n", checksum_lines.join("\n")),
+    )?;
     eprintln!("wrote {}", manifest_path.display());
     eprintln!("wrote {}", sha256sums_path.display());
     Ok(())
@@ -952,6 +953,29 @@ pub(crate) fn validate_release_server_staging_inventory(
         }
     }
     Ok(())
+}
+
+pub(crate) fn write_release_server_file_atomic(path: &Path, contents: &str) -> Result<(), String> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("invalid release server output path {}", path.display()))?;
+    let temporary = path.with_file_name(format!("{file_name}.tmp"));
+    fs::write(&temporary, contents)
+        .map_err(|err| format!("failed to write {}: {err}", temporary.display()))?;
+    match fs::rename(&temporary, path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            fs::remove_file(path)
+                .map_err(|err| format!("failed to replace {}: {err}", path.display()))?;
+            fs::rename(&temporary, path)
+                .map_err(|err| format!("failed to install {}: {err}", path.display()))
+        }
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            Err(format!("failed to install {}: {error}", path.display()))
+        }
+    }
 }
 
 pub(crate) fn read_trimmed(path: &Path) -> Result<String, String> {
