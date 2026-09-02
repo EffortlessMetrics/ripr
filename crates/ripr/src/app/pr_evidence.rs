@@ -435,7 +435,7 @@ fn check_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), Str
     Ok(())
 }
 
-fn validate_producer_artifacts(repo: &Path, _options: &PrEvidenceOptions) -> Result<(), String> {
+fn validate_producer_artifacts(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
     let check_path = repo.join(PR_CHECK_JSON);
     let subject_path = repo.join(PR_CHECK_SUBJECT_JSON);
     let review_input_path = repo.join(PR_REVIEW_INPUT_JSON);
@@ -449,6 +449,92 @@ fn validate_producer_artifacts(repo: &Path, _options: &PrEvidenceOptions) -> Res
         .map_err(|error| format!("{PR_CHECK_SUBJECT_JSON} is not valid JSON: {error}"))?;
     let review_input: ReviewInputV1 = serde_json::from_slice(&review_input_bytes)
         .map_err(|error| format!("{PR_REVIEW_INPUT_JSON} is not valid ReviewInputV1: {error}"))?;
+    if subject.get("schema_version").and_then(Value::as_str) != Some("ripr.pr_check_subject.v1") {
+        return Err(format!(
+            "{PR_CHECK_SUBJECT_JSON} schema_version is unsupported"
+        ));
+    }
+    let expected_root = repo
+        .join(&options.root)
+        .canonicalize()
+        .map_err(|error| format!("resolve producer evidence root: {error}"))?
+        .display()
+        .to_string()
+        .replace('\\', "/");
+    let expected_base_sha = resolve_revision(repo, &options.base, "commit")?;
+    let expected_head_sha = resolve_revision(repo, &options.head, "commit")?;
+    let expected_head_tree = resolve_revision(repo, &options.head, "tree")?;
+    for (field, actual, expected) in [
+        (
+            "root_identity",
+            subject.get("root_identity").and_then(Value::as_str),
+            Some(expected_root.as_str()),
+        ),
+        (
+            "base_sha",
+            subject.get("base_sha").and_then(Value::as_str),
+            Some(expected_base_sha.as_str()),
+        ),
+        (
+            "head_sha",
+            subject.get("head_sha").and_then(Value::as_str),
+            Some(expected_head_sha.as_str()),
+        ),
+        (
+            "head_tree",
+            subject.get("head_tree").and_then(Value::as_str),
+            Some(expected_head_tree.as_str()),
+        ),
+    ] {
+        if actual != expected {
+            return Err(format!(
+                "{PR_CHECK_SUBJECT_JSON} {field} does not match the requested revision"
+            ));
+        }
+    }
+    for (field, subject_value, review_value) in [
+        (
+            "root_identity",
+            subject.get("root_identity").and_then(Value::as_str),
+            review_input.root_identity.as_str(),
+        ),
+        (
+            "base_sha",
+            subject.get("base_sha").and_then(Value::as_str),
+            review_input.base_sha.as_str(),
+        ),
+        (
+            "head_sha",
+            subject.get("head_sha").and_then(Value::as_str),
+            review_input.head_sha.as_str(),
+        ),
+        (
+            "head_tree",
+            subject.get("head_tree").and_then(Value::as_str),
+            review_input.head_tree.as_str(),
+        ),
+        (
+            "check_sha256",
+            subject.get("check_sha256").and_then(Value::as_str),
+            review_input.check_sha256.as_str(),
+        ),
+        (
+            "canonical_diff_sha256",
+            subject.get("canonical_diff_sha256").and_then(Value::as_str),
+            review_input.canonical_diff_sha256.as_str(),
+        ),
+        (
+            "mode",
+            subject.get("mode").and_then(Value::as_str),
+            review_input.mode.as_str(),
+        ),
+    ] {
+        if subject_value != Some(review_value) {
+            return Err(format!(
+                "{PR_CHECK_SUBJECT_JSON} {field} contradicts {PR_REVIEW_INPUT_JSON}"
+            ));
+        }
+    }
     if subject.get("check_sha256").and_then(Value::as_str) != Some(&check_digest) {
         return Err(format!(
             "{PR_CHECK_SUBJECT_JSON} check_sha256 does not match {PR_CHECK_JSON}"
@@ -470,6 +556,26 @@ fn validate_producer_artifacts(repo: &Path, _options: &PrEvidenceOptions) -> Res
         })?;
     let expected_projection = canonical_projection_from_index(&index)
         .map_err(|error| format!("validate canonical finding index: {error}"))?;
+    if subject
+        .get("canonical_finding_index_entry_count")
+        .and_then(Value::as_u64)
+        != Some(index.entries.len() as u64)
+    {
+        return Err(format!(
+            "{PR_CHECK_SUBJECT_JSON} canonical finding index entry count is contradictory"
+        ));
+    }
+    let encoded_index = serde_json::to_vec(&index.entries)
+        .map_err(|error| format!("serialize canonical finding index: {error}"))?;
+    if subject
+        .get("canonical_finding_index_byte_count")
+        .and_then(Value::as_u64)
+        != Some(encoded_index.len() as u64)
+    {
+        return Err(format!(
+            "{PR_CHECK_SUBJECT_JSON} canonical finding index byte count is contradictory"
+        ));
+    }
     let actual_projection = review_input.findings.clone();
     if actual_projection != expected_projection {
         return Err(format!(
