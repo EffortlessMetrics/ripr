@@ -810,6 +810,37 @@ pub(crate) fn validate_release_server_receipts(
                 receipt.version
             ));
         }
+        let receipt_target = file_name
+            .strip_prefix(&format!("ripr-server-v{version}-"))
+            .and_then(|name| name.strip_suffix(".receipt.json"))
+            .ok_or_else(|| format!("invalid release server receipt name `{file_name}`"))?;
+        let expected_archive = format!(
+            "ripr-server-v{version}-{receipt_target}.{}",
+            receipt.archive_format
+        );
+        if receipt.target != receipt_target || receipt.archive.path != expected_archive {
+            return Err(format!(
+                "release server receipt archive mapping mismatch for target `{receipt_target}`"
+            ));
+        }
+        let archive_path = dist_dir.join(&receipt.archive.path);
+        let archive_metadata = fs::metadata(&archive_path).map_err(|err| {
+            format!(
+                "release server receipt archive `{}` is unavailable: {err}",
+                receipt.archive.path
+            )
+        })?;
+        if archive_metadata.len() != receipt.archive.size {
+            return Err(format!(
+                "release server receipt archive size mismatch for target `{receipt_target}`"
+            ));
+        }
+        let archive_sha = sha256_file(&archive_path)?;
+        if receipt.archive.sha256 != archive_sha {
+            return Err(format!(
+                "release server receipt archive digest mismatch for target `{receipt_target}`"
+            ));
+        }
         if let Some(expected) = &baseline {
             if receipt.repository != expected.repository {
                 return Err(format!(
