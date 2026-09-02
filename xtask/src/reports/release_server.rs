@@ -105,11 +105,13 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     // pre-rename run so the stale sidecar cannot linger beside — or be hashed
     // into — the new `SHA256SUMS`.
     let legacy_checksums_path = dist_dir.join("checksums.txt");
+    let manifest_path = dist_dir.join(format!("ripr-server-manifest-v{version}.json"));
     let assembly_receipt_path =
         dist_dir.join(format!("ripr-server-assembly-v{version}.receipt.json"));
     for path in [
         &sha256sums_path,
         &legacy_checksums_path,
+        &manifest_path,
         &assembly_receipt_path,
     ] {
         if path.exists() {
@@ -194,7 +196,6 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
         },
         "assets": assets,
     });
-    let manifest_path = dist_dir.join(format!("ripr-server-manifest-v{version}.json"));
     let manifest_text = serde_json::to_string_pretty(&manifest)
         .map_err(|err| format!("failed to render release server manifest: {err}"))?;
     write_release_server_file_atomic(&manifest_path, &format!("{manifest_text}\n"))?;
@@ -285,11 +286,36 @@ pub(crate) fn release_upload_assets(args: &[String]) -> Result<(), String> {
     }
 
     let mut upload_args = vec!["release".to_string(), "upload".to_string(), tag];
-    for path in sorted_dist_files(Path::new("dist"))? {
+    for path in release_server_public_asset_paths(Path::new("dist"), &version)? {
         upload_args.push(path.to_string_lossy().to_string());
     }
     upload_args.push("--clobber".to_string());
     run_owned("gh", &upload_args)
+}
+
+pub(crate) fn release_server_public_asset_paths(
+    dist_dir: &Path,
+    version: &str,
+) -> Result<Vec<PathBuf>, String> {
+    let assets = release_server_assets(dist_dir, version)?;
+    let mut paths = Vec::with_capacity(assets.len() * 2 + 2);
+    for asset in assets {
+        paths.push(dist_dir.join(&asset.file_name));
+        paths.push(dist_dir.join(format!("{}.sha256", asset.file_name)));
+    }
+    paths.push(dist_dir.join(format!("ripr-server-manifest-v{version}.json")));
+    paths.push(dist_dir.join("SHA256SUMS"));
+    for path in &paths {
+        let metadata = fs::symlink_metadata(path)
+            .map_err(|err| format!("release asset {} is unavailable: {err}", path.display()))?;
+        if !metadata.file_type().is_file() {
+            return Err(format!(
+                "release asset is not a regular file: {}",
+                path.display()
+            ));
+        }
+    }
+    Ok(paths)
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -608,9 +634,14 @@ struct ReleaseServerBuildIdentity {
 }
 
 fn release_server_build_identity() -> Result<ReleaseServerBuildIdentity, String> {
-    let candidate_sha = std::env::var("GITHUB_SHA")
+    let candidate_sha = std::env::var("CANDIDATE_SHA")
         .ok()
         .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::env::var("GITHUB_SHA")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
         .or_else(|| run_output("git", &["rev-parse", "HEAD"]).ok())
         .unwrap_or_else(|| "unavailable".to_string());
     let candidate_tree = run_output("git", &["rev-parse", "HEAD^{tree}"])
@@ -919,6 +950,12 @@ pub(crate) fn validate_release_server_receipts(
                 path.display()
             )
         })?;
+        if receipt.schema_version != "0.2" {
+            return Err(format!(
+                "unsupported release server receipt schema `{}` for `{file_name}`; expected `0.2`",
+                receipt.schema_version
+            ));
+        }
         if receipt.version != version {
             return Err(format!(
                 "release server receipt version `{}` does not match requested version `{version}`",
@@ -933,6 +970,12 @@ pub(crate) fn validate_release_server_receipts(
             "ripr-server-v{version}-{receipt_target}.{}",
             receipt.archive_format
         );
+        validate_release_server_relative_path(&receipt.archive.path, "archive", receipt_target)?;
+        validate_release_server_relative_path(
+            &receipt.executable.path,
+            "executable",
+            receipt_target,
+        )?;
         if receipt.target != receipt_target || receipt.archive.path != expected_archive {
             return Err(format!(
                 "release server receipt archive mapping mismatch for target `{receipt_target}`"
@@ -1000,7 +1043,8 @@ pub(crate) fn validate_release_server_receipts(
                     receipt.target
                 ));
             }
-            if receipt.toolchain.rustc != expected.toolchain.rustc
+            if rustc_toolchain_identity(&receipt.toolchain.rustc)?
+                != rustc_toolchain_identity(&expected.toolchain.rustc)?
                 || receipt.toolchain.cargo != expected.toolchain.cargo
             {
                 return Err(format!(
@@ -1039,6 +1083,44 @@ pub(crate) fn validate_release_server_receipts(
         baseline,
         receipts,
     })
+}
+
+fn validate_release_server_relative_path(
+    value: &str,
+    field: &str,
+    target: &str,
+) -> Result<(), String> {
+    let path = Path::new(value);
+    let mut components = path.components();
+    match (components.next(), components.next()) {
+        (Some(std::path::Component::Normal(_)), None)
+            if !value.contains('/') && !value.contains('\\') =>
+        {
+            Ok(())
+        }
+        _ => Err(format!(
+            "release server receipt {field} path is not a safe staging file for target `{target}`: `{value}`"
+        )),
+    }
+}
+
+fn rustc_toolchain_identity(value: &str) -> Result<(String, String), String> {
+    let mut release = None;
+    let mut commit_hash = None;
+    for line in value.lines() {
+        let Some((key, field)) = line.split_once(':') else {
+            continue;
+        };
+        match key.trim() {
+            "release" => release = Some(field.trim().to_string()),
+            "commit-hash" => commit_hash = Some(field.trim().to_string()),
+            _ => {}
+        }
+    }
+    match (release, commit_hash) {
+        (Some(release), Some(commit_hash)) => Ok((release, commit_hash)),
+        _ => Err("rustc toolchain identity is missing release or commit-hash".to_string()),
+    }
 }
 
 pub(crate) fn validate_release_server_staging_inventory(

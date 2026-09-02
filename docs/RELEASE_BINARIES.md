@@ -93,6 +93,16 @@ and `SHA256SUMS` digests. It is excluded from `SHA256SUMS` and is not a
 release asset; downstream provenance and placement-independent subject
 selection consume this evidence.
 
+The release-server evidence contracts are versioned independently of release
+placement: per-target build receipts use schema `0.2`, the assembled manifest
+uses schema `0.1`, and the internal assembly receipt uses schema `0.1`.
+Manifest assembly accepts only per-target receipts with schema `0.2`, validates
+the platform-neutral compiler release/commit identity across runner hosts, and
+retains host-specific `rustc -vV` text only as per-target evidence. The
+publication command selects the archives, archive sidecars, versioned
+manifest, and `SHA256SUMS` explicitly; receipt files remain downstream
+evidence and are never release assets.
+
 The `SHA256SUMS` sidecar is `sha256sum -c SHA256SUMS`-compatible (one
 `<sha256>  <file_name>` line per asset). Releases through `v0.7.0` published the
 same manifest under the legacy name `checksums.txt`; the content format is

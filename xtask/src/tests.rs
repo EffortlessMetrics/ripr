@@ -6,6 +6,7 @@
 use std::io::Read;
 
 use crate::acquire_test_cwd_write_guard;
+use crate::reports::release_server::release_server_public_asset_paths;
 use ripr::output::receipt_lifecycle::{
     RECEIPT_MISSING, RECEIPT_MOVEMENT_IMPROVED, RECEIPT_NOT_APPLICABLE,
 };
@@ -7392,6 +7393,110 @@ fn release_server_receipt_set_rejects_mixed_candidate_identity() -> Result<(), S
 }
 
 #[test]
+fn release_server_receipt_set_accepts_different_runner_hosts() -> Result<(), String> {
+    with_temp_cwd("release-server-receipt-cross-platform", |root| {
+        for target in ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"] {
+            let executable = if target.contains("windows") {
+                "ripr.exe"
+            } else {
+                "ripr"
+            };
+            write(
+                &root
+                    .join("target")
+                    .join(target)
+                    .join("release")
+                    .join(executable),
+                target,
+            );
+            write(&root.join("LICENSE-MIT"), "mit");
+            write(&root.join("LICENSE-APACHE"), "apache");
+            super::release_server_archive(&[
+                "--version".to_string(),
+                "1.2.3".to_string(),
+                "--target".to_string(),
+                target.to_string(),
+                "--executable".to_string(),
+                executable.to_string(),
+                "--archive".to_string(),
+                if executable.ends_with(".exe") {
+                    "zip"
+                } else {
+                    "tar.gz"
+                }
+                .to_string(),
+            ])?;
+        }
+        let receipt_path = root.join("dist/ripr-server-v1.2.3-x86_64-pc-windows-msvc.receipt.json");
+        let mut receipt: Value = serde_json::from_str(
+            &fs::read_to_string(&receipt_path).map_err(|error| format!("read receipt: {error}"))?,
+        )
+        .map_err(|error| format!("parse receipt: {error}"))?;
+        let rustc = receipt["toolchain"]["rustc"]
+            .as_str()
+            .ok_or("rustc field is not a string")?
+            .lines()
+            .map(|line| {
+                if line.starts_with("host:") {
+                    "host: x86_64-pc-windows-msvc"
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        receipt["toolchain"]["rustc"] = Value::String(rustc);
+        write(&receipt_path, &format!("{receipt}\n"));
+        super::validate_release_server_receipts(&root.join("dist"), "1.2.3")?;
+        Ok(())
+    })
+}
+
+#[test]
+fn release_server_receipt_set_rejects_unsupported_schema() -> Result<(), String> {
+    with_temp_cwd("release-server-receipt-schema", |root| {
+        let target = "x86_64-unknown-linux-gnu";
+        write(
+            &root
+                .join("target")
+                .join(target)
+                .join("release")
+                .join("ripr"),
+            "binary",
+        );
+        write(&root.join("LICENSE-MIT"), "mit");
+        write(&root.join("LICENSE-APACHE"), "apache");
+        super::release_server_archive(&[
+            "--version".to_string(),
+            "1.2.3".to_string(),
+            "--target".to_string(),
+            target.to_string(),
+            "--executable".to_string(),
+            "ripr".to_string(),
+            "--archive".to_string(),
+            "tar.gz".to_string(),
+        ])?;
+        let receipt_path =
+            root.join("dist/ripr-server-v1.2.3-x86_64-unknown-linux-gnu.receipt.json");
+        let mut receipt: Value = serde_json::from_str(
+            &fs::read_to_string(&receipt_path).map_err(|error| format!("read receipt: {error}"))?,
+        )
+        .map_err(|error| format!("parse receipt: {error}"))?;
+        receipt["schema_version"] = Value::String("0.1".to_string());
+        write(&receipt_path, &format!("{receipt}\n"));
+        let Err(error) = super::validate_release_server_receipts(&root.join("dist"), "1.2.3")
+        else {
+            return Err("unsupported receipt schema must reject".to_string());
+        };
+        assert!(
+            error.contains("unsupported release server receipt schema"),
+            "{error}"
+        );
+        Ok(())
+    })
+}
+
+#[test]
 fn release_server_receipt_set_rejects_archive_mapping_mismatch() -> Result<(), String> {
     with_temp_cwd("release-server-receipt-archive-mapping", |root| {
         let target = "x86_64-unknown-linux-gnu";
@@ -7437,6 +7542,47 @@ fn release_server_receipt_set_rejects_archive_mapping_mismatch() -> Result<(), S
             error.contains("receipt archive mapping mismatch"),
             "{error}"
         );
+        Ok(())
+    })
+}
+
+#[test]
+fn release_server_receipt_set_rejects_unsafe_paths() -> Result<(), String> {
+    with_temp_cwd("release-server-receipt-unsafe-path", |root| {
+        let target = "x86_64-unknown-linux-gnu";
+        write(
+            &root
+                .join("target")
+                .join(target)
+                .join("release")
+                .join("ripr"),
+            "binary",
+        );
+        write(&root.join("LICENSE-MIT"), "mit");
+        write(&root.join("LICENSE-APACHE"), "apache");
+        super::release_server_archive(&[
+            "--version".to_string(),
+            "1.2.3".to_string(),
+            "--target".to_string(),
+            target.to_string(),
+            "--executable".to_string(),
+            "ripr".to_string(),
+            "--archive".to_string(),
+            "tar.gz".to_string(),
+        ])?;
+        let receipt_path =
+            root.join("dist/ripr-server-v1.2.3-x86_64-unknown-linux-gnu.receipt.json");
+        let mut receipt: Value = serde_json::from_str(
+            &fs::read_to_string(&receipt_path).map_err(|error| format!("read receipt: {error}"))?,
+        )
+        .map_err(|error| format!("parse receipt: {error}"))?;
+        receipt["archive"]["path"] = Value::String("../outside.tar.gz".to_string());
+        write(&receipt_path, &format!("{receipt}\n"));
+        let Err(error) = super::validate_release_server_receipts(&root.join("dist"), "1.2.3")
+        else {
+            return Err("unsafe receipt path must reject".to_string());
+        };
+        assert!(error.contains("not a safe staging file"), "{error}");
         Ok(())
     })
 }
@@ -7802,6 +7948,7 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
         ];
 
         super::release_server_manifest(&args)?;
+        super::release_server_manifest(&args)?;
 
         let manifest_path = dist.join("ripr-server-manifest-v1.2.3.json");
         let manifest_text = fs::read_to_string(&manifest_path)
@@ -7880,6 +8027,35 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
         );
         assert!(!assets.contains_key("SHA256SUMS"));
         assert!(!assets.contains_key("checksums.txt"));
+        Ok(())
+    })
+}
+
+#[test]
+fn release_server_public_asset_paths_exclude_internal_receipts() -> Result<(), String> {
+    with_temp_cwd("release-server-public-assets", |root| {
+        let dist = root.join("dist");
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"),
+            "archive",
+        );
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+            "sha\n",
+        );
+        write(&dist.join("ripr-server-manifest-v1.2.3.json"), "manifest");
+        write(&dist.join("SHA256SUMS"), "checksums");
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.receipt.json"),
+            "internal",
+        );
+        let paths = release_server_public_asset_paths(&dist, "1.2.3")?;
+        assert!(
+            paths
+                .iter()
+                .all(|path| !path.to_string_lossy().contains("receipt"))
+        );
+        assert!(paths.iter().any(|path| path.ends_with("SHA256SUMS")));
         Ok(())
     })
 }
