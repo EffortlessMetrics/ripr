@@ -112,7 +112,7 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
         }
     }
 
-    validate_release_server_receipts(dist_dir)?;
+    validate_release_server_receipts(dist_dir, &version)?;
 
     let mut assets = serde_json::Map::new();
     for asset in release_server_assets(dist_dir, &version)? {
@@ -740,7 +740,7 @@ fn sorted_dist_files(dist_dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(paths)
 }
 
-fn validate_release_server_receipts(dist_dir: &Path) -> Result<(), String> {
+fn validate_release_server_receipts(dist_dir: &Path, version: &str) -> Result<(), String> {
     for path in sorted_dist_files(dist_dir)? {
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
@@ -754,12 +754,18 @@ fn validate_release_server_receipts(dist_dir: &Path) -> Result<(), String> {
                 path.display()
             )
         })?;
-        serde_json::from_str::<ReleaseServerBuildReceipt>(&text).map_err(|err| {
+        let receipt = serde_json::from_str::<ReleaseServerBuildReceipt>(&text).map_err(|err| {
             format!(
                 "malformed release server receipt `{}`: {err}",
                 path.display()
             )
         })?;
+        if receipt.version != version {
+            return Err(format!(
+                "release server receipt version `{}` does not match requested version `{version}`",
+                receipt.version
+            ));
+        }
     }
     Ok(())
 }

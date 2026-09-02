@@ -7226,6 +7226,56 @@ fn release_server_manifest_rejects_malformed_receipt() -> Result<(), String> {
 }
 
 #[test]
+fn release_server_manifest_rejects_receipt_version_mismatch() -> Result<(), String> {
+    with_temp_cwd("release-server-manifest-receipt-version", |root| {
+        let dist = root.join("dist");
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"),
+            "linux",
+        );
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+            "linux-sha\n",
+        );
+        let receipt = serde_json::json!({
+            "schema_version": "0.2",
+            "repository": "EffortlessMetrics/ripr",
+            "candidate_sha": "candidate",
+            "candidate_tree": "tree",
+            "toolchain": {"rustc": "rustc", "cargo": "cargo"},
+            "toolchain_file_sha256": "toolchain",
+            "cargo_lock_sha256": "lock",
+            "profile": "release",
+            "features": [],
+            "locked": true,
+            "build_command": "cargo build",
+            "version": "9.9.9",
+            "target": "x86_64-unknown-linux-gnu",
+            "archive_format": "tar.gz",
+            "executable": {"path": "ripr", "size": 1, "sha256": "exe"},
+            "archive": {"path": "ripr-server-v9.9.9-x86_64-unknown-linux-gnu.tar.gz", "size": 1, "sha256": "archive"},
+            "members": []
+        });
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.receipt.json"),
+            &format!("{receipt}\n"),
+        );
+
+        let args = vec![
+            "--version".to_string(),
+            "v1.2.3".to_string(),
+            "--repository".to_string(),
+            "EffortlessMetrics/ripr".to_string(),
+        ];
+        let Err(error) = super::release_server_manifest(&args) else {
+            return Err("receipt version mismatch must reject manifest assembly".to_string());
+        };
+        assert!(error.contains("receipt version"), "{error}");
+        Ok(())
+    })
+}
+
+#[test]
 fn release_server_helpers_match_workflow_arguments() -> Result<(), String> {
     let args = vec![
         "--version=v1.2.3".to_string(),
