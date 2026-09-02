@@ -3708,15 +3708,58 @@ fn perl_to_domain_oracle_mapping_preserves_signal_kinds() -> Result<(), String> 
 /// rather than a test-local copy of its match expression.
 #[test]
 fn perl_production_mapping_preserves_oracle_signal_kinds() -> Result<(), String> {
-    let findings = findings_from_packet(EXACT_RETURN_PACKET)?;
-    let related = findings
-        .first()
-        .and_then(|finding| finding.related_tests.first())
-        .ok_or_else(|| "expected a production finding with related evidence".to_string())?;
-    assert_eq!(related.oracle_kind, crate::domain::OracleKind::ExactValue);
-    assert_eq!(
-        related.oracle_strength,
-        crate::domain::OracleStrength::Strong
-    );
+    let cases = [
+        (
+            "exact",
+            "exact_return_assertion",
+            "strong_exact",
+            crate::domain::OracleKind::ExactValue,
+            crate::domain::OracleStrength::Strong,
+        ),
+        (
+            "predicate",
+            "predicate_boundary_assertion",
+            "strong_exact",
+            crate::domain::OracleKind::RelationalCheck,
+            crate::domain::OracleStrength::Strong,
+        ),
+        (
+            "smoke",
+            "smoke_ok",
+            "weak_smoke",
+            crate::domain::OracleKind::SmokeOnly,
+            crate::domain::OracleStrength::Smoke,
+        ),
+        (
+            "weak",
+            "exact_return_assertion",
+            "weak_broad",
+            crate::domain::OracleKind::ExactValue,
+            crate::domain::OracleStrength::Weak,
+        ),
+    ];
+    for (label, kind, strength, expected_kind, expected_strength) in cases {
+        let packet = EXACT_RETURN_PACKET
+            .replace(
+                "\"kind\": \"exact_return_assertion\"",
+                &format!("\"kind\": \"{kind}\""),
+            )
+            .replace(
+                "\"strength\": \"strong_exact\"",
+                &format!("\"strength\": \"{strength}\""),
+            );
+        let findings = findings_from_packet(&packet)?;
+        let related = findings
+            .first()
+            .and_then(|finding| finding.related_tests.first())
+            .ok_or_else(|| {
+                format!("{label}: expected a production finding with related evidence")
+            })?;
+        assert_eq!(related.oracle_kind, expected_kind, "{label} oracle kind");
+        assert_eq!(
+            related.oracle_strength, expected_strength,
+            "{label} oracle strength"
+        );
+    }
     Ok(())
 }
