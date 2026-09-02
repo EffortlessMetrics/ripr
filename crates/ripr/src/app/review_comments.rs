@@ -1156,6 +1156,56 @@ mod tests {
         .map_err(|error| format!("restore subject fixture: {error}"))?;
         std::fs::write(&review_input_path, &review_input_bytes)
             .map_err(|error| format!("restore review input fixture: {error}"))?;
+        for (field, value) in [
+            ("subject_schema_version", serde_json::json!("unknown")),
+            ("base_sha", serde_json::json!("other")),
+            ("head_sha", serde_json::json!("other")),
+            ("head_tree", serde_json::json!("other")),
+            ("mode", serde_json::json!("fast")),
+            ("review_input_sha256", serde_json::json!("sha256:other")),
+            ("review_input_byte_count", serde_json::json!("not-a-count")),
+        ] {
+            let mut mutated = original_subject.clone();
+            let key = if field == "subject_schema_version" {
+                "schema_version"
+            } else {
+                field
+            };
+            mutated[key] = value;
+            std::fs::write(
+                &subject_path,
+                serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| format!("write subject mutation {field}: {error}"))?;
+            let error = admit_producer_evidence(
+                &check_path,
+                &CheckInput::default(),
+                &RiprConfig::default(),
+                base,
+                head,
+                diff_text,
+            )
+            .err()
+            .ok_or_else(|| format!("subject mutation {field} must fail"))?;
+            let expected_category = if field == "mode" {
+                "producer_mode_mismatch"
+            } else if field == "review_input_byte_count" {
+                "malformed_producer"
+            } else {
+                "producer_identity_mismatch"
+            };
+            if error.category != expected_category {
+                return Err(format!(
+                    "subject mutation {field} returned {}",
+                    error.category
+                ));
+            }
+        }
+        std::fs::write(
+            &subject_path,
+            serde_json::to_vec(&original_subject).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| format!("restore subject before cleanup: {error}"))?;
         std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
         let missing_subject = admit_producer_evidence(
             &check_path,
