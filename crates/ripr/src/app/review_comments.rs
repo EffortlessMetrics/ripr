@@ -1550,7 +1550,8 @@ mod tests {
             }
         }
 
-        let unavailable = repository_identity(Path::new("F:/path/that/does/not/exist"));
+        let unavailable =
+            repository_identity(Path::new("target/ripr/review-comments-missing-origin"));
         if unavailable != "unavailable" {
             return Err(format!(
                 "unavailable origin was identified as {unavailable}"
