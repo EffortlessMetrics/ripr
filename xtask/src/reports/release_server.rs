@@ -118,6 +118,13 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     for asset in release_server_assets(dist_dir, &version)? {
         let sha_path = dist_dir.join(format!("{}.sha256", asset.file_name));
         let sha = read_trimmed(&sha_path)?;
+        let actual_sha = sha256_file(&dist_dir.join(&asset.file_name))?;
+        if sha != actual_sha {
+            return Err(format!(
+                "archive checksum mismatch for `{}`: sidecar `{sha}`, actual `{actual_sha}`",
+                asset.file_name
+            ));
+        }
         let url = format!(
             "https://github.com/{repository}/releases/download/v{version}/{}",
             asset.file_name

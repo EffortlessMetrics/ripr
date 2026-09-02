@@ -7276,6 +7276,33 @@ fn release_server_manifest_rejects_receipt_version_mismatch() -> Result<(), Stri
 }
 
 #[test]
+fn release_server_manifest_rejects_archive_checksum_mismatch() -> Result<(), String> {
+    with_temp_cwd("release-server-manifest-checksum-mismatch", |root| {
+        let dist = root.join("dist");
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"),
+            "linux",
+        );
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+            "0000000000000000000000000000000000000000000000000000000000000000\n",
+        );
+
+        let args = vec![
+            "--version".to_string(),
+            "v1.2.3".to_string(),
+            "--repository".to_string(),
+            "EffortlessMetrics/ripr".to_string(),
+        ];
+        let Err(error) = super::release_server_manifest(&args) else {
+            return Err("archive checksum mismatch must reject manifest assembly".to_string());
+        };
+        assert!(error.contains("archive checksum mismatch"), "{error}");
+        Ok(())
+    })
+}
+
+#[test]
 fn release_server_helpers_match_workflow_arguments() -> Result<(), String> {
     let args = vec![
         "--version=v1.2.3".to_string(),
@@ -7486,6 +7513,18 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
             &dist.join("ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip.sha256"),
             "windows-sha\n",
         );
+        let linux_sha =
+            super::sha256_file(&dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"))?;
+        let windows_sha =
+            super::sha256_file(&dist.join("ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip"))?;
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+            &format!("{linux_sha}\n"),
+        );
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip.sha256"),
+            &format!("{windows_sha}\n"),
+        );
         // Simulate a reused `dist/` from a pre-rename run: a stale legacy
         // `checksums.txt` must be cleaned up, never hashed into the new
         // sidecar, and never surfaced in the manifest.
@@ -7512,7 +7551,7 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
         );
         assert_eq!(
             manifest["assets"]["x86_64-pc-windows-msvc"]["sha256"],
-            "windows-sha"
+            windows_sha
         );
 
         let checksums = fs::read_to_string(dist.join("SHA256SUMS"))
