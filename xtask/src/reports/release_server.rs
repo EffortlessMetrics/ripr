@@ -195,7 +195,20 @@ pub(crate) fn release_server_assets(
 ) -> Result<Vec<ReleaseServerAsset>, String> {
     let prefix = format!("ripr-server-v{version}-");
     let mut assets = Vec::new();
-    for path in sorted_dist_files(dist_dir)? {
+    for entry in fs::read_dir(dist_dir)
+        .map_err(|err| format!("failed to read {}: {err}", dist_dir.display()))?
+    {
+        let path = entry
+            .map_err(|err| format!("failed to read entry under {}: {err}", dist_dir.display()))?
+            .path();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|err| format!("failed to inspect {}: {err}", path.display()))?;
+        if !metadata.file_type().is_file() {
+            return Err(format!(
+                "non-regular release server staging entry `{}`",
+                path.display()
+            ));
+        }
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
@@ -218,6 +231,7 @@ pub(crate) fn release_server_assets(
             file_name: file_name.to_string(),
         });
     }
+    assets.sort_by(|left, right| left.target.cmp(&right.target));
     Ok(assets)
 }
 

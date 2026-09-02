@@ -7176,6 +7176,19 @@ fn release_server_assets_rejects_duplicate_target_archives() -> Result<(), Strin
 }
 
 #[test]
+fn release_server_assets_rejects_non_regular_staging_entries() -> Result<(), String> {
+    let root = temp_dir("release-server-assets-non-regular");
+    fs::create_dir(root.join("ripr-server-v1.2.3-extra"))
+        .map_err(|error| format!("create staging directory: {error}"))?;
+
+    let Err(error) = super::release_server_assets(&root, "1.2.3") else {
+        return Err("non-regular staging entries must be rejected".to_string());
+    };
+    assert!(error.contains("non-regular release server staging entry"), "{error}");
+    Ok(())
+}
+
+#[test]
 fn release_server_helpers_match_workflow_arguments() -> Result<(), String> {
     let args = vec![
         "--version=v1.2.3".to_string(),
