@@ -175,6 +175,7 @@ fn predicate_operand_tokens(expression: &str) -> Vec<String> {
                 .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
         })
         .filter(|token| !token.chars().all(|ch| ch == '_'))
+        .filter(|token| !matches!(*token, "self" | "true" | "false"))
         .map(str::to_string)
         .collect()
 }
@@ -1031,6 +1032,72 @@ mod tests {
         assert_eq!(sinks.len(), 1);
         assert_eq!(sinks[0].kind, FlowSinkKind::StructField);
         assert_eq!(sinks[0].text, "remaining: threshold");
+    }
+
+    #[test]
+    fn predicate_flow_ignores_self_and_boolean_literal_correlation_tokens() {
+        for (expression, field) in [
+            ("self.ready && enabled", "code: self.default_code"),
+            ("enabled == true", "code: false"),
+            ("enabled == false", "code: true"),
+        ] {
+            let owner = FunctionSummary {
+                id: SymbolId("src/lib.rs::quote".to_string()),
+                name: "quote".to_string(),
+                file: PathBuf::from("src/lib.rs"),
+                start_line: 1,
+                end_line: 6,
+                body: format!(
+                    "pub fn quote() -> Quote {{\n    if {expression} {{\n        Quote {{\n            {field},\n        }}\n    }}\n    Quote {{ code: 0 }}\n}}"
+                ),
+                calls: Vec::new(),
+                returns: Vec::new(),
+                literals: Vec::new(),
+                is_test: false,
+                attrs: Vec::new(),
+            };
+            let probe = probe(ProbeFamily::Predicate, expression, 2);
+
+            let sinks = local_flow_sinks(&probe, Some(&owner));
+
+            assert!(
+                sinks.is_empty(),
+                "non-data token correlation must not credit {field} for {expression}: {sinks:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn predicate_operand_tokens_keep_member_and_ordinary_identifiers() {
+        assert_eq!(
+            predicate_operand_tokens("self.threshold >= limit && enabled == true"),
+            vec!["threshold", "limit", "enabled"]
+        );
+    }
+
+    #[test]
+    fn predicate_flow_keeps_real_operands_and_adjacent_branch_tail() {
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::quote".to_string()),
+            name: "quote".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 8,
+            body: "pub fn quote(amount: i32, threshold: i32) -> i32 {\n    if amount >= threshold {\n        amount + 1\n    }\n    0\n}"
+                .to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            is_test: false,
+            attrs: Vec::new(),
+        };
+        let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(sinks[0].text, "amount + 1");
     }
 
     fn function(body: &str) -> FunctionSummary {
