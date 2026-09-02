@@ -2,7 +2,11 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use flate2::Compression;
+use flate2::GzBuilder;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
+use tar::Builder;
 
 use crate::{command_success_owned, run_owned};
 
@@ -65,6 +69,14 @@ pub(crate) fn release_server_archive(args: &[String]) -> Result<(), String> {
     }
 
     let sha = sha256_file(&asset_path)?;
+    write_release_server_receipt(
+        &version,
+        &target,
+        &executable,
+        &archive,
+        package_dir,
+        &asset_path,
+    )?;
     fs::write(
         dist_dir.join(format!("{asset_name}.sha256")),
         format!("{sha}\n"),
@@ -244,25 +256,52 @@ pub(crate) fn release_server_readme(version: &str) -> String {
 }
 
 pub(crate) fn create_tar_gz_archive(package_dir: &Path, asset_path: &Path) -> Result<(), String> {
-    run_owned(
-        "tar",
-        &[
-            "-czf".to_string(),
-            asset_path.to_string_lossy().to_string(),
-            "-C".to_string(),
-            package_dir.to_string_lossy().to_string(),
-            ".".to_string(),
-        ],
-    )
+    let output = fs::File::create(asset_path)
+        .map_err(|err| format!("failed to create {}: {err}", asset_path.display()))?;
+    let encoder = GzBuilder::new()
+        .mtime(0)
+        .write(output, Compression::default());
+    let mut builder = Builder::new(encoder);
+    for path in sorted_package_files(package_dir)? {
+        let name = path
+            .file_name()
+            .ok_or_else(|| format!("invalid package path {}", path.display()))?;
+        let mut header = tar::Header::new_gnu();
+        let metadata = fs::metadata(&path)
+            .map_err(|err| format!("failed to stat {}: {err}", path.display()))?;
+        header.set_size(metadata.len());
+        header.set_mode(package_mode(name.to_string_lossy().as_ref()));
+        header.set_mtime(0);
+        header.set_uid(0);
+        header.set_gid(0);
+        header
+            .set_username("")
+            .map_err(|err| format!("set tar username: {err}"))?;
+        header
+            .set_groupname("")
+            .map_err(|err| format!("set tar groupname: {err}"))?;
+        header.set_cksum();
+        let mut input = fs::File::open(&path)
+            .map_err(|err| format!("failed to open {} for tar: {err}", path.display()))?;
+        builder
+            .append_data(&mut header, name, &mut input)
+            .map_err(|err| format!("failed to write tar entry {}: {err}", path.display()))?;
+    }
+    let encoder = builder
+        .into_inner()
+        .map_err(|err| format!("failed to finalize tar {}: {err}", asset_path.display()))?;
+    encoder
+        .finish()
+        .map_err(|err| format!("failed to finalize gzip {}: {err}", asset_path.display()))?;
+    Ok(())
 }
 
 pub(crate) fn create_zip_archive(package_dir: &Path, asset_path: &Path) -> Result<(), String> {
     let file = fs::File::create(asset_path)
         .map_err(|err| format!("failed to create {}: {err}", asset_path.display()))?;
     let mut writer = zip::ZipWriter::new(file);
-    let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .unix_permissions(0o644);
+    let options: zip::write::FileOptions<'_, ()> =
+        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
     let entries = fs::read_dir(package_dir)
         .map_err(|err| format!("failed to read {}: {err}", package_dir.display()))?;
@@ -285,18 +324,7 @@ pub(crate) fn create_zip_archive(package_dir: &Path, asset_path: &Path) -> Resul
             .and_then(|name| name.to_str())
             .ok_or_else(|| format!("invalid file name in {}", path.display()))?
             .to_string();
-        let entry_options = if file_name.ends_with(".exe") {
-            options.unix_permissions(0o755)
-        } else if metadata.permissions().readonly() {
-            options
-        } else {
-            // Best-effort executable bit for Unix-style binaries (ripr) without an extension.
-            if !file_name.contains('.') {
-                options.unix_permissions(0o755)
-            } else {
-                options
-            }
-        };
+        let entry_options = options.unix_permissions(package_mode(&file_name));
         writer
             .start_file(&file_name, entry_options)
             .map_err(|err| format!("failed to start zip entry {file_name}: {err}"))?;
@@ -309,6 +337,139 @@ pub(crate) fn create_zip_archive(package_dir: &Path, asset_path: &Path) -> Resul
         .finish()
         .map_err(|err| format!("failed to finalize {}: {err}", asset_path.display()))?;
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct ReleaseServerBuildReceipt {
+    schema_version: &'static str,
+    version: String,
+    target: String,
+    archive_format: String,
+    executable: ReleaseServerFile,
+    archive: ReleaseServerFile,
+    members: Vec<ReleaseServerMember>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReleaseServerFile {
+    path: String,
+    size: u64,
+    sha256: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ReleaseServerMember {
+    path: String,
+    kind: &'static str,
+    role: &'static str,
+    size: u64,
+    sha256: String,
+    mode: u32,
+}
+
+fn write_release_server_receipt(
+    version: &str,
+    target: &str,
+    executable: &str,
+    archive: &str,
+    package_dir: &Path,
+    archive_path: &Path,
+) -> Result<(), String> {
+    let executable_path = package_dir.join(executable);
+    let executable_file = release_server_file(executable, &executable_path)?;
+    let archive_file = release_server_file(
+        archive_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("invalid archive path {}", archive_path.display()))?,
+        archive_path,
+    )?;
+    let mut members = Vec::new();
+    for path in sorted_package_files(package_dir)? {
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("invalid package member {}", path.display()))?;
+        let file = release_server_file(name, &path)?;
+        let role = if name == executable {
+            "executable"
+        } else if name == "LICENSE-MIT" {
+            "license_mit"
+        } else if name == "LICENSE-APACHE" {
+            "license_apache"
+        } else if name == "README-server.txt" {
+            "readme"
+        } else {
+            "reviewed_other"
+        };
+        members.push(ReleaseServerMember {
+            path: file.path,
+            kind: "regular_file",
+            role,
+            size: file.size,
+            sha256: file.sha256,
+            mode: package_mode(name),
+        });
+    }
+    let receipt = ReleaseServerBuildReceipt {
+        schema_version: "0.1",
+        version: version.to_string(),
+        target: target.to_string(),
+        archive_format: archive.to_string(),
+        executable: executable_file,
+        archive: archive_file,
+        members,
+    };
+    let receipt_dir = Path::new("target")
+        .join("ripr/release-server-build")
+        .join(target);
+    fs::create_dir_all(&receipt_dir)
+        .map_err(|err| format!("failed to create {}: {err}", receipt_dir.display()))?;
+    let receipt_path = receipt_dir.join("receipt.json");
+    let text = serde_json::to_string_pretty(&receipt)
+        .map_err(|err| format!("failed to render release server receipt: {err}"))?;
+    fs::write(&receipt_path, format!("{text}\n"))
+        .map_err(|err| format!("failed to write {}: {err}", receipt_path.display()))?;
+    eprintln!("wrote {}", receipt_path.display());
+    Ok(())
+}
+
+fn release_server_file(path: &str, file: &Path) -> Result<ReleaseServerFile, String> {
+    let metadata =
+        fs::metadata(file).map_err(|err| format!("failed to stat {}: {err}", file.display()))?;
+    Ok(ReleaseServerFile {
+        path: path.to_string(),
+        size: metadata.len(),
+        sha256: sha256_file(file)?,
+    })
+}
+
+fn sorted_package_files(package_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(package_dir)
+        .map_err(|err| format!("failed to read {}: {err}", package_dir.display()))?
+    {
+        let path = entry
+            .map_err(|err| format!("failed to read package entry: {err}"))?
+            .path();
+        if !path.is_file() {
+            return Err(format!(
+                "release server package must be flat: {}",
+                path.display()
+            ));
+        }
+        paths.push(path);
+    }
+    paths.sort();
+    Ok(paths)
+}
+
+fn package_mode(file_name: &str) -> u32 {
+    if file_name == "ripr" || file_name == "ripr.exe" {
+        0o755
+    } else {
+        0o644
+    }
 }
 
 pub(crate) fn sha256_file(path: &Path) -> Result<String, String> {

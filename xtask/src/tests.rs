@@ -7223,6 +7223,72 @@ fn release_server_archive_prepares_package_before_format_validation() -> Result<
 }
 
 #[test]
+fn release_server_archive_writes_bounded_receipt_and_deterministic_tar() -> Result<(), String> {
+    with_temp_cwd("release-server-receipt", |root| {
+        let executable = if cfg!(windows) { "ripr.exe" } else { "ripr" };
+        write(
+            &root
+                .join("target")
+                .join("x86_64-unknown-linux-gnu")
+                .join("release")
+                .join(executable),
+            "binary",
+        );
+        write(&root.join("LICENSE-MIT"), "mit");
+        write(&root.join("LICENSE-APACHE"), "apache");
+        let args = vec![
+            "--version".to_string(),
+            "1.2.3".to_string(),
+            "--target".to_string(),
+            "x86_64-unknown-linux-gnu".to_string(),
+            "--executable".to_string(),
+            executable.to_string(),
+            "--archive".to_string(),
+            "tar.gz".to_string(),
+        ];
+
+        super::release_server_archive(&args)?;
+        let archive = root.join("dist/ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz");
+        let first_archive =
+            fs::read(&archive).map_err(|err| format!("read first archive: {err}"))?;
+        super::release_server_archive(&args)?;
+        let second_archive =
+            fs::read(&archive).map_err(|err| format!("read second archive: {err}"))?;
+        assert_eq!(
+            first_archive, second_archive,
+            "tar output must be deterministic"
+        );
+
+        let receipt_path =
+            root.join("target/ripr/release-server-build/x86_64-unknown-linux-gnu/receipt.json");
+        let receipt: Value = serde_json::from_str(
+            &fs::read_to_string(&receipt_path)
+                .map_err(|err| format!("read receipt {}: {err}", receipt_path.display()))?,
+        )
+        .map_err(|err| format!("parse receipt: {err}"))?;
+        assert_eq!(receipt["schema_version"], "0.1");
+        assert_eq!(receipt["target"], "x86_64-unknown-linux-gnu");
+        assert_eq!(receipt["archive_format"], "tar.gz");
+        assert_eq!(receipt["executable"]["path"], executable);
+        let members = receipt["members"]
+            .as_array()
+            .ok_or("receipt members is not an array")?;
+        assert_eq!(members.len(), 4);
+        assert!(
+            members
+                .iter()
+                .any(|member| { member["path"] == executable && member["role"] == "executable" })
+        );
+        assert!(
+            members
+                .iter()
+                .any(|member| { member["path"] == "LICENSE-MIT" && member["mode"] == 0o644 })
+        );
+        Ok(())
+    })
+}
+
+#[test]
 fn create_zip_archive_writes_flat_package_contents() -> Result<(), String> {
     with_temp_cwd("release-server-archive-zip", |root| {
         let package = root.join("package");
