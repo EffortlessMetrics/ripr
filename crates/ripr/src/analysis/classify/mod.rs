@@ -26,7 +26,8 @@ pub(in crate::analysis) use reveal::reveal_evidence_with_expression;
 // apply variant-binding without reaching into the private `text` submodule.
 pub(in crate::analysis) use text::{
     enum_variant_values, error_constructor_call_paths, error_constructor_payloads,
-    error_result_payload_literal_sets, exact_error_variant, rust_string_literals,
+    error_result_payload_literal_sets, exact_error_variant, is_wildcard_discard_binding,
+    rust_string_literals,
 };
 // RIPR-SPEC-0114: bounded transitive-reach walk for Rust no_static_path findings.
 // RIPR-SPEC-0115: the walk now returns a witness so the limitation can name the
