@@ -114,8 +114,10 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
 
     validate_release_server_receipts(dist_dir, &version)?;
 
+    let discovered_assets = release_server_assets(dist_dir, &version)?;
+    validate_configured_release_server_targets(&discovered_assets)?;
     let mut assets = serde_json::Map::new();
-    for asset in release_server_assets(dist_dir, &version)? {
+    for asset in discovered_assets {
         let sha_path = dist_dir.join(format!("{}.sha256", asset.file_name));
         let sha = read_trimmed(&sha_path)?;
         let actual_sha = sha256_file(&dist_dir.join(&asset.file_name))?;
@@ -245,6 +247,37 @@ pub(crate) fn release_server_assets(
     }
     assets.sort_by(|left, right| left.target.cmp(&right.target));
     Ok(assets)
+}
+
+pub(crate) fn validate_configured_release_server_targets(
+    assets: &[ReleaseServerAsset],
+) -> Result<(), String> {
+    const CONFIGURED_TARGETS: [&str; 5] = [
+        "x86_64-pc-windows-msvc",
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "aarch64-apple-darwin",
+    ];
+    let observed = assets
+        .iter()
+        .map(|asset| asset.target.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    for expected in CONFIGURED_TARGETS {
+        if !observed.contains(expected) {
+            return Err(format!(
+                "missing configured release server target `{expected}`"
+            ));
+        }
+    }
+    for target in observed {
+        if !CONFIGURED_TARGETS.contains(&target) {
+            return Err(format!(
+                "unknown configured release server target `{target}`"
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn required_release_arg(

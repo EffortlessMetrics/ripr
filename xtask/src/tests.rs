@@ -7287,6 +7287,20 @@ fn release_server_manifest_rejects_archive_checksum_mismatch() -> Result<(), Str
             &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.sha256"),
             "0000000000000000000000000000000000000000000000000000000000000000\n",
         );
+        for (target, archive) in [
+            ("x86_64-pc-windows-msvc", "zip"),
+            ("aarch64-unknown-linux-gnu", "tar.gz"),
+            ("x86_64-apple-darwin", "tar.gz"),
+            ("aarch64-apple-darwin", "tar.gz"),
+        ] {
+            let archive_name = format!("ripr-server-v1.2.3-{target}.{archive}");
+            write(&dist.join(&archive_name), "valid");
+            let sha = super::sha256_file(&dist.join(&archive_name))?;
+            write(
+                &dist.join(format!("{archive_name}.sha256")),
+                &format!("{sha}\n"),
+            );
+        }
 
         let args = vec![
             "--version".to_string(),
@@ -7300,6 +7314,22 @@ fn release_server_manifest_rejects_archive_checksum_mismatch() -> Result<(), Str
         assert!(error.contains("archive checksum mismatch"), "{error}");
         Ok(())
     })
+}
+
+#[test]
+fn release_server_manifest_rejects_missing_configured_target() -> Result<(), String> {
+    let assets = vec![super::ReleaseServerAsset {
+        target: "x86_64-unknown-linux-gnu".to_string(),
+        file_name: "ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz".to_string(),
+    }];
+    let Err(error) = super::validate_configured_release_server_targets(&assets) else {
+        return Err("missing configured target must reject assembly".to_string());
+    };
+    assert!(
+        error.contains("missing configured release server target"),
+        "{error}"
+    );
+    Ok(())
 }
 
 #[test]
@@ -7513,6 +7543,19 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
             &dist.join("ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip.sha256"),
             "windows-sha\n",
         );
+        for (target, archive, contents) in [
+            ("aarch64-unknown-linux-gnu", "tar.gz", "arm-linux"),
+            ("x86_64-apple-darwin", "tar.gz", "intel-macos"),
+            ("aarch64-apple-darwin", "tar.gz", "arm-macos"),
+        ] {
+            let archive_name = format!("ripr-server-v1.2.3-{target}.{archive}");
+            write(&dist.join(&archive_name), contents);
+            let sha = super::sha256_file(&dist.join(&archive_name))?;
+            write(
+                &dist.join(format!("{archive_name}.sha256")),
+                &format!("{sha}\n"),
+            );
+        }
         let linux_sha =
             super::sha256_file(&dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"))?;
         let windows_sha =
@@ -7580,8 +7623,8 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
             .ok_or("manifest assets is not an object")?;
         assert_eq!(
             assets.len(),
-            2,
-            "only the two server targets are manifested"
+            5,
+            "all configured server targets are manifested"
         );
         assert!(!assets.contains_key("SHA256SUMS"));
         assert!(!assets.contains_key("checksums.txt"));

@@ -247,7 +247,7 @@ use repo_readiness::{
 pub(crate) use reports::release_server::{
     ReleaseServerAsset, create_zip_archive, normalize_release_version, release_server_archive,
     release_server_assets, release_server_manifest, release_server_readme, required_release_arg,
-    sha256_file,
+    sha256_file, validate_configured_release_server_targets,
 };
 #[cfg(test)]
 pub(crate) use reports::{
