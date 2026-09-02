@@ -438,7 +438,7 @@ struct ReleaseServerFile {
     sha256: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct ReleaseServerMember {
     path: String,
     kind: String,
@@ -839,6 +839,16 @@ pub(crate) fn validate_release_server_receipts(
         if receipt.archive.sha256 != archive_sha {
             return Err(format!(
                 "release server receipt archive digest mismatch for target `{receipt_target}`"
+            ));
+        }
+        let actual_members = archive_member_inventory(
+            &archive_path,
+            &receipt.archive_format,
+            &receipt.executable.path,
+        )?;
+        if receipt.members != actual_members {
+            return Err(format!(
+                "release server receipt member inventory mismatch for target `{receipt_target}`"
             ));
         }
         if let Some(expected) = &baseline {

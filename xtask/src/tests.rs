@@ -7431,6 +7431,53 @@ fn release_server_receipt_set_rejects_archive_mapping_mismatch() -> Result<(), S
 }
 
 #[test]
+fn release_server_receipt_set_rejects_member_inventory_mismatch() -> Result<(), String> {
+    with_temp_cwd("release-server-receipt-member-inventory", |root| {
+        let target = "x86_64-unknown-linux-gnu";
+        let executable = "ripr";
+        write(
+            &root
+                .join("target")
+                .join(target)
+                .join("release")
+                .join(executable),
+            "binary",
+        );
+        write(&root.join("LICENSE-MIT"), "mit");
+        write(&root.join("LICENSE-APACHE"), "apache");
+        let args = vec![
+            "--version".to_string(),
+            "1.2.3".to_string(),
+            "--target".to_string(),
+            target.to_string(),
+            "--executable".to_string(),
+            executable.to_string(),
+            "--archive".to_string(),
+            "tar.gz".to_string(),
+        ];
+        super::release_server_archive(&args)?;
+
+        let receipt_path = root
+            .join("dist")
+            .join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.receipt.json");
+        let mut receipt: Value = serde_json::from_str(
+            &fs::read_to_string(&receipt_path)
+                .map_err(|error| format!("read receipt for mutation: {error}"))?,
+        )
+        .map_err(|error| format!("parse receipt for mutation: {error}"))?;
+        receipt["members"][0]["sha256"] = Value::String("different-member".to_string());
+        write(&receipt_path, &format!("{receipt}\n"));
+
+        let Err(error) = super::validate_release_server_receipts(&root.join("dist"), "1.2.3")
+        else {
+            return Err("member inventory mismatch must be rejected".to_string());
+        };
+        assert!(error.contains("member inventory mismatch"), "{error}");
+        Ok(())
+    })
+}
+
+#[test]
 fn release_server_helpers_match_workflow_arguments() -> Result<(), String> {
     let args = vec![
         "--version=v1.2.3".to_string(),
