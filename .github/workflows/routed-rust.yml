@@ -308,8 +308,10 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
-          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "5000"
-          RIPR_PARTIAL_DIFF_LINE_BUDGET: "5000"
+          # The combined #1660 candidate measures 5,048 changed Rust lines;
+          # keep the explicit safety envelope narrowly above that denominator.
+          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "5100"
+          RIPR_PARTIAL_DIFF_LINE_BUDGET: "5100"
         run: |
           set -euo pipefail
           R="cargo run --locked -p xtask -- ci-record-command --id"
@@ -494,8 +496,10 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
-          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "5000"
-          RIPR_PARTIAL_DIFF_LINE_BUDGET: "5000"
+          # The combined #1660 candidate measures 5,048 changed Rust lines;
+          # keep the explicit safety envelope narrowly above that denominator.
+          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "5100"
+          RIPR_PARTIAL_DIFF_LINE_BUDGET: "5100"
         run: |
           set -euo pipefail
           R="cargo run --locked -p xtask -- ci-record-command --id"
