@@ -1487,4 +1487,48 @@ mod tests {
         std::fs::remove_file(&path).map_err(|error| error.to_string())?;
         Ok(())
     }
+
+    #[test]
+    fn admission_helpers_cover_required_values_and_revision_failures() -> Result<(), String> {
+        let missing = required_value(&serde_json::json!({}), "missing")
+            .err()
+            .ok_or_else(|| "missing required value must fail".to_string())?;
+        if missing.category != "malformed_producer" {
+            return Err(format!(
+                "unexpected required-value category: {}",
+                missing.category
+            ));
+        }
+
+        let mismatch = require_equal("mode", "draft", "fast")
+            .err()
+            .ok_or_else(|| "unequal identity values must fail".to_string())?;
+        if mismatch.category != "producer_mode_mismatch" {
+            return Err(format!(
+                "unexpected mode mismatch category: {}",
+                mismatch.category
+            ));
+        }
+        let identity_mismatch = require_equal("head_sha", "old", "new")
+            .err()
+            .ok_or_else(|| "unequal identity values must fail".to_string())?;
+        if identity_mismatch.category != "producer_identity_mismatch" {
+            return Err(format!(
+                "unexpected identity mismatch category: {}",
+                identity_mismatch.category
+            ));
+        }
+
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let revision_error = resolve_revision(&root, "definitely-not-a-revision", "commit")
+            .err()
+            .ok_or_else(|| "invalid revision must fail".to_string())?;
+        if revision_error.category != "malformed_producer" {
+            return Err(format!(
+                "unexpected revision category: {}",
+                revision_error.category
+            ));
+        }
+        Ok(())
+    }
 }
