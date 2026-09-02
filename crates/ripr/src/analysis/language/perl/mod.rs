@@ -360,23 +360,11 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
                     line: test_line,
                     oracle: oracle.and_then(|o| o.expression.clone()),
                     oracle_kind: oracle
-                        .map(|o| match o.kind {
-                            OracleKind::ExactReturnAssertion => DomainOracleKind::ExactValue,
-                            OracleKind::PredicateBoundaryAssertion => {
-                                DomainOracleKind::RelationalCheck
-                            }
-                            OracleKind::SmokeOk => DomainOracleKind::SmokeOnly,
-                            _ => DomainOracleKind::Unknown,
-                        })
+                        .map(|o| o.kind.to_domain_kind())
                         .unwrap_or(DomainOracleKind::Unknown),
                     oracle_strength: ev
                         .oracle_strength
-                        .map(|strength| match strength {
-                            OracleStrength::StrongExact => DomainOracleStrength::Strong,
-                            OracleStrength::WeakSmoke => DomainOracleStrength::Smoke,
-                            OracleStrength::WeakBroad => DomainOracleStrength::Weak,
-                            _ => DomainOracleStrength::Unknown,
-                        })
+                        .map(OracleStrength::to_domain_strength)
                         .unwrap_or(DomainOracleStrength::Unknown),
                     relation_reason: perl_relation_reason,
                     relation_confidence: perl_relation_confidence,
@@ -2617,6 +2605,24 @@ enum OracleKind {
 }
 
 impl OracleKind {
+    fn to_domain_kind(self) -> crate::domain::OracleKind {
+        match self {
+            Self::ExactReturnAssertion => crate::domain::OracleKind::ExactValue,
+            Self::PredicateBoundaryAssertion => crate::domain::OracleKind::RelationalCheck,
+            Self::SmokeOk => crate::domain::OracleKind::SmokeOnly,
+            Self::ExceptionObserver
+            | Self::HashOrObjectFieldAssertion
+            | Self::OutputObserver
+            | Self::WarnObserver
+            | Self::LogObserver
+            | Self::MentionOnly
+            | Self::DiesOnly
+            | Self::UnknownHelper
+            | Self::DynamicFrameworkIndirection
+            | Self::Unknown => crate::domain::OracleKind::Unknown,
+        }
+    }
+
     fn assertion_shape(self) -> &'static str {
         match self {
             Self::ExactReturnAssertion => "exact_return_assertion",
@@ -2657,6 +2663,17 @@ enum OracleStrength {
     WeakBroad,
     MentionOnly,
     Unknown,
+}
+
+impl OracleStrength {
+    fn to_domain_strength(self) -> crate::domain::OracleStrength {
+        match self {
+            Self::StrongExact => crate::domain::OracleStrength::Strong,
+            Self::WeakSmoke => crate::domain::OracleStrength::Smoke,
+            Self::WeakBroad => crate::domain::OracleStrength::Weak,
+            Self::MentionOnly | Self::Unknown => crate::domain::OracleStrength::Unknown,
+        }
+    }
 }
 
 impl OracleFact {
