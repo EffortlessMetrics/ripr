@@ -7809,6 +7809,17 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
         let manifest: Value = serde_json::from_str(&manifest_text)
             .map_err(|err| format!("parse release manifest: {err}"))?;
         assert_eq!(manifest["version"], "1.2.3");
+        let assembly_receipt: Value = serde_json::from_str(
+            &fs::read_to_string(dist.join("ripr-server-assembly-v1.2.3.receipt.json"))
+                .map_err(|err| format!("read assembly receipt: {err}"))?,
+        )
+        .map_err(|err| format!("parse assembly receipt: {err}"))?;
+        assert_eq!(assembly_receipt["schema_version"], "0.1");
+        assert_eq!(assembly_receipt["version"], "1.2.3");
+        assert_eq!(assembly_receipt["disposition"], "assembled");
+        assert_eq!(assembly_receipt["publication_mutation_attempted"], false);
+        assert_eq!(assembly_receipt["inputs"]["receipt_count"], 5);
+        assert_eq!(assembly_receipt["accepted_subject_count"], 5);
         assert_eq!(manifest["schema_version"], "0.1");
         assert!(manifest["build_identity"]["repository"].is_string());
         assert!(manifest["build_identity"]["candidate_sha"].is_string());

@@ -105,7 +105,13 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     // pre-rename run so the stale sidecar cannot linger beside — or be hashed
     // into — the new `SHA256SUMS`.
     let legacy_checksums_path = dist_dir.join("checksums.txt");
-    for path in [&sha256sums_path, &legacy_checksums_path] {
+    let assembly_receipt_path =
+        dist_dir.join(format!("ripr-server-assembly-v{version}.receipt.json"));
+    for path in [
+        &sha256sums_path,
+        &legacy_checksums_path,
+        &assembly_receipt_path,
+    ] {
         if path.exists() {
             fs::remove_file(path)
                 .map_err(|err| format!("failed to remove {}: {err}", path.display()))?;
@@ -211,8 +217,51 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
         &sha256sums_path,
         &format!("{}\n", checksum_lines.join("\n")),
     )?;
+    let assembly_receipt = serde_json::json!({
+        "schema_version": "0.1",
+        "assembler": "xtask",
+        "version": version,
+        "build_identity": {
+            "repository": build_identity.repository,
+            "candidate_sha": build_identity.candidate_sha,
+            "candidate_tree": build_identity.candidate_tree,
+            "toolchain": build_identity.toolchain,
+            "toolchain_file_sha256": build_identity.toolchain_file_sha256,
+            "cargo_lock_sha256": build_identity.cargo_lock_sha256,
+            "profile": build_identity.profile,
+            "features": build_identity.features,
+            "locked": build_identity.locked,
+        },
+        "inputs": {
+            "receipt_count": receipt_set.receipts.len(),
+            "receipts": receipt_set.receipts.iter().map(|(target, receipt)| serde_json::json!({
+                "target": target,
+                "path": receipt.path,
+                "sha256": receipt.sha256,
+                "schema_version": receipt.schema_version,
+            })).collect::<Vec<_>>(),
+        },
+        "accepted_subject_count": receipt_set.targets.len(),
+        "manifest": {
+            "path": manifest_path.file_name().and_then(|name| name.to_str()).unwrap_or_default(),
+            "size": fs::metadata(&manifest_path).map_err(|err| format!("stat {}: {err}", manifest_path.display()))?.len(),
+            "sha256": sha256_file(&manifest_path)?,
+        },
+        "sha256sums": {
+            "path": "SHA256SUMS",
+            "size": fs::metadata(&sha256sums_path).map_err(|err| format!("stat {}: {err}", sha256sums_path.display()))?.len(),
+            "sha256": sha256_file(&sha256sums_path)?,
+        },
+        "publication_mutation_attempted": false,
+        "disposition": "assembled",
+        "non_claims": ["no publication or ref mutation", "final attestation remains downstream"],
+    });
+    let assembly_text = serde_json::to_string_pretty(&assembly_receipt)
+        .map_err(|err| format!("failed to render assembly receipt: {err}"))?;
+    write_release_server_file_atomic(&assembly_receipt_path, &format!("{assembly_text}\n"))?;
     eprintln!("wrote {}", manifest_path.display());
     eprintln!("wrote {}", sha256sums_path.display());
+    eprintln!("wrote {}", assembly_receipt_path.display());
     Ok(())
 }
 
