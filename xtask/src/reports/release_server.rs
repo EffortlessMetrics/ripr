@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use flate2::Compression;
 use flate2::GzBuilder;
+use flate2::read::GzDecoder;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tar::Builder;
@@ -384,33 +385,7 @@ fn write_release_server_receipt(
             .ok_or_else(|| format!("invalid archive path {}", archive_path.display()))?,
         archive_path,
     )?;
-    let mut members = Vec::new();
-    for path in sorted_package_files(package_dir)? {
-        let name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| format!("invalid package member {}", path.display()))?;
-        let file = release_server_file(name, &path)?;
-        let role = if name == executable {
-            "executable"
-        } else if name == "LICENSE-MIT" {
-            "license_mit"
-        } else if name == "LICENSE-APACHE" {
-            "license_apache"
-        } else if name == "README-server.txt" {
-            "readme"
-        } else {
-            "reviewed_other"
-        };
-        members.push(ReleaseServerMember {
-            path: file.path,
-            kind: "regular_file",
-            role,
-            size: file.size,
-            sha256: file.sha256,
-            mode: package_mode(name),
-        });
-    }
+    let members = archive_member_inventory(archive_path, archive, executable)?;
     let receipt = ReleaseServerBuildReceipt {
         schema_version: "0.1",
         version: version.to_string(),
@@ -444,6 +419,143 @@ fn release_server_file(path: &str, file: &Path) -> Result<ReleaseServerFile, Str
     })
 }
 
+fn archive_member_inventory(
+    archive_path: &Path,
+    archive_format: &str,
+    executable: &str,
+) -> Result<Vec<ReleaseServerMember>, String> {
+    match archive_format {
+        "zip" => {
+            let file = fs::File::open(archive_path)
+                .map_err(|err| format!("failed to open {}: {err}", archive_path.display()))?;
+            let mut archive = zip::ZipArchive::new(file)
+                .map_err(|err| format!("failed to read {}: {err}", archive_path.display()))?;
+            let mut members = Vec::new();
+            for index in 0..archive.len() {
+                let mut entry = archive
+                    .by_index(index)
+                    .map_err(|err| format!("failed to read zip member {index}: {err}"))?;
+                if entry.is_dir() {
+                    return Err(format!(
+                        "release server archive contains directory `{}`",
+                        entry.name()
+                    ));
+                }
+                let name = entry.name().trim_start_matches("./").to_string();
+                let mode = entry.unix_mode().unwrap_or_else(|| package_mode(&name));
+                members.push(archive_member(
+                    &name,
+                    entry.size(),
+                    mode,
+                    sha256_reader(&mut entry)?,
+                    executable,
+                ));
+            }
+            validate_archive_members(&members, executable)?;
+            Ok(members)
+        }
+        "tar.gz" => {
+            let file = fs::File::open(archive_path)
+                .map_err(|err| format!("failed to open {}: {err}", archive_path.display()))?;
+            let decoder = GzDecoder::new(file);
+            let mut archive = tar::Archive::new(decoder);
+            let mut members = Vec::new();
+            for entry in archive
+                .entries()
+                .map_err(|err| format!("failed to read tar members: {err}"))?
+            {
+                let mut entry = entry.map_err(|err| format!("failed to read tar member: {err}"))?;
+                let kind = entry.header().entry_type();
+                if !kind.is_file() {
+                    return Err(format!(
+                        "release server archive contains non-regular member `{}`",
+                        entry
+                            .path()
+                            .map_err(|err| format!("read tar member path: {err}"))?
+                            .display()
+                    ));
+                }
+                let name = entry
+                    .path()
+                    .map_err(|err| format!("read tar member path: {err}"))?
+                    .to_string_lossy()
+                    .trim_start_matches("./")
+                    .to_string();
+                let size = entry.size();
+                let mode = entry
+                    .header()
+                    .mode()
+                    .map_err(|err| format!("read tar member mode: {err}"))?;
+                let sha256 = sha256_reader(&mut entry)?;
+                members.push(archive_member(&name, size, mode, sha256, executable));
+            }
+            validate_archive_members(&members, executable)?;
+            Ok(members)
+        }
+        other => Err(format!(
+            "unsupported release server archive format `{other}`"
+        )),
+    }
+}
+
+fn archive_member(
+    name: &str,
+    size: u64,
+    mode: u32,
+    sha256: String,
+    executable: &str,
+) -> ReleaseServerMember {
+    let role = if name == executable {
+        "executable"
+    } else if name == "LICENSE-MIT" {
+        "license_mit"
+    } else if name == "LICENSE-APACHE" {
+        "license_apache"
+    } else if name == "README-server.txt" {
+        "readme"
+    } else {
+        "reviewed_other"
+    };
+    ReleaseServerMember {
+        path: name.to_string(),
+        kind: "regular_file",
+        role,
+        size,
+        sha256,
+        mode,
+    }
+}
+
+fn validate_archive_members(
+    members: &[ReleaseServerMember],
+    executable: &str,
+) -> Result<(), String> {
+    let executable_members = members
+        .iter()
+        .filter(|member| member.role == "executable")
+        .collect::<Vec<_>>();
+    if executable_members.len() != 1 {
+        return Err(format!(
+            "release server archive must contain exactly one executable role, found {}",
+            executable_members.len()
+        ));
+    }
+    if executable_members[0].path != executable || executable_members[0].mode & 0o111 == 0 {
+        return Err(format!(
+            "release server executable `{executable}` has an invalid path or mode"
+        ));
+    }
+    for member in members {
+        if member.role != "executable" && member.mode & 0o111 != 0 {
+            return Err(format!(
+                "release server non-executable member `{}` has executable mode {:o}",
+                member.path, member.mode
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn sorted_package_files(package_dir: &Path) -> Result<Vec<PathBuf>, String> {
     let mut paths = Vec::new();
     for entry in fs::read_dir(package_dir)
@@ -475,12 +587,27 @@ fn package_mode(file_name: &str) -> u32 {
 pub(crate) fn sha256_file(path: &Path) -> Result<String, String> {
     let mut file = fs::File::open(path)
         .map_err(|err| format!("failed to open {} for hashing: {err}", path.display()))?;
-    let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 8192];
+    let mut hasher = Sha256::new();
     loop {
         let read = file
             .read(&mut buffer)
             .map_err(|err| format!("failed to read {} for hashing: {err}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hex_lower(&hasher.finalize()))
+}
+
+fn sha256_reader(reader: &mut impl Read) -> Result<String, String> {
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|err| format!("failed to read archive member: {err}"))?;
         if read == 0 {
             break;
         }
