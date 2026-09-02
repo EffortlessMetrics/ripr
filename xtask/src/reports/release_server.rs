@@ -780,7 +780,11 @@ fn sorted_dist_files(dist_dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(paths)
 }
 
-fn validate_release_server_receipts(dist_dir: &Path, version: &str) -> Result<(), String> {
+pub(crate) fn validate_release_server_receipts(
+    dist_dir: &Path,
+    version: &str,
+) -> Result<(), String> {
+    let mut baseline: Option<ReleaseServerBuildReceipt> = None;
     for path in sorted_dist_files(dist_dir)? {
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
@@ -805,6 +809,57 @@ fn validate_release_server_receipts(dist_dir: &Path, version: &str) -> Result<()
                 "release server receipt version `{}` does not match requested version `{version}`",
                 receipt.version
             ));
+        }
+        if let Some(expected) = &baseline {
+            if receipt.repository != expected.repository {
+                return Err(format!(
+                    "release server receipt repository mismatch for target `{}`",
+                    receipt.target
+                ));
+            }
+            if receipt.candidate_sha != expected.candidate_sha {
+                return Err(format!(
+                    "release server receipt candidate SHA mismatch for target `{}`",
+                    receipt.target
+                ));
+            }
+            if receipt.candidate_tree != expected.candidate_tree {
+                return Err(format!(
+                    "release server receipt candidate tree mismatch for target `{}`",
+                    receipt.target
+                ));
+            }
+            if receipt.toolchain.rustc != expected.toolchain.rustc
+                || receipt.toolchain.cargo != expected.toolchain.cargo
+            {
+                return Err(format!(
+                    "release server receipt toolchain mismatch for target `{}`",
+                    receipt.target
+                ));
+            }
+            if receipt.toolchain_file_sha256 != expected.toolchain_file_sha256 {
+                return Err(format!(
+                    "release server receipt toolchain-file identity mismatch for target `{}`",
+                    receipt.target
+                ));
+            }
+            if receipt.cargo_lock_sha256 != expected.cargo_lock_sha256 {
+                return Err(format!(
+                    "release server receipt Cargo.lock identity mismatch for target `{}`",
+                    receipt.target
+                ));
+            }
+            if receipt.profile != expected.profile
+                || receipt.features != expected.features
+                || receipt.locked != expected.locked
+            {
+                return Err(format!(
+                    "release server receipt build contract mismatch for target `{}`",
+                    receipt.target
+                ));
+            }
+        } else {
+            baseline = Some(receipt);
         }
     }
     Ok(())
