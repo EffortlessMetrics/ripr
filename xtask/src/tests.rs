@@ -7263,7 +7263,7 @@ fn release_server_archive_writes_bounded_receipt_and_deterministic_tar() -> Resu
         );
 
         let receipt_path =
-            root.join("target/ripr/release-server-build/x86_64-unknown-linux-gnu/receipt.json");
+            root.join("dist/ripr-server-v1.2.3-x86_64-unknown-linux-gnu.receipt.json");
         let receipt: Value = serde_json::from_str(
             &fs::read_to_string(&receipt_path)
                 .map_err(|err| format!("read receipt {}: {err}", receipt_path.display()))?,

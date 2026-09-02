@@ -62,9 +62,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ripr-server-${{ matrix.target }}
-          path: |
-            dist/*
-            target/ripr/release-server-build/${{ matrix.target }}/receipt.json
+          path: dist/*
 
   manifest:
     needs: build

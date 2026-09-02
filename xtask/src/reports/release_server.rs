@@ -422,12 +422,12 @@ fn write_release_server_receipt(
         archive: archive_file,
         members,
     };
-    let receipt_dir = Path::new("target")
-        .join("ripr/release-server-build")
-        .join(target);
-    fs::create_dir_all(&receipt_dir)
-        .map_err(|err| format!("failed to create {}: {err}", receipt_dir.display()))?;
-    let receipt_path = receipt_dir.join("receipt.json");
+    let receipt_path =
+        Path::new("dist").join(format!("ripr-server-v{version}-{target}.receipt.json"));
+    if let Some(parent) = receipt_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
+    }
     let text = serde_json::to_string_pretty(&receipt)
         .map_err(|err| format!("failed to render release server receipt: {err}"))?;
     fs::write(&receipt_path, format!("{text}\n"))
