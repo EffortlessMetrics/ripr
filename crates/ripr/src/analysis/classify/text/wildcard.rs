@@ -21,9 +21,24 @@ pub(in crate::analysis) fn is_wildcard_discard_binding(text: &str) -> bool {
     let Some(rest) = rest.strip_prefix(':') else {
         return false;
     };
-    let Some((ty, initializer)) = rest.split_once('=') else {
+    let mut angle_depth = 0usize;
+    let mut assignment = None;
+    for (index, byte) in rest.bytes().enumerate() {
+        match byte {
+            b'<' => angle_depth += 1,
+            b'>' => angle_depth = angle_depth.saturating_sub(1),
+            b'=' if angle_depth == 0 => {
+                assignment = Some(index);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let Some(index) = assignment else {
         return false;
     };
+    let (ty, initializer) = rest.split_at(index);
+    let initializer = &initializer[1..];
     !ty.trim().is_empty() && !initializer.trim().is_empty()
 }
 
@@ -38,6 +53,7 @@ mod tests {
             "let _: Ty = value",
             "let _ : Ty = value",
             "let   _   : Ty = value",
+            "let _: Box<dyn Iterator<Item = i32>> = value",
             "let _= value",
         ] {
             assert!(is_wildcard_discard_binding(text), "{text}");
@@ -56,6 +72,7 @@ mod tests {
             "let (a, _) = value",
             "let _ : Ty",
             "let _ =",
+            "let _: Box<dyn Iterator<Item = i32>>",
         ] {
             assert!(!is_wildcard_discard_binding(text), "{text}");
         }

@@ -1,3 +1,4 @@
+use super::super::classify::is_wildcard_discard_binding;
 use super::super::diff::{ChangedFile, ChangedLine};
 use super::super::rust_index::{
     RustIndex, SyntaxNodeFact, changed_nodes_for_lines, extract_identifier_tokens,
@@ -151,7 +152,7 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
 
 fn canonical_probe_text(changed_head: &str, parser_expression: &str) -> String {
     let changed_head = changed_head.trim();
-    if changed_head.starts_with("let _ =") {
+    if is_wildcard_discard_binding(changed_head) {
         changed_head.to_string()
     } else {
         parser_expression.to_string()
@@ -332,8 +333,8 @@ fn nearby_removed_line(
 mod tests {
     use super::super::super::diff::ChangedLine;
     use super::super::super::rust_index::{
-        FileFacts, FunctionFact, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_PREDICATE, ProbeShapeFact,
-        RustIndex,
+        FileFacts, FunctionFact, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_PREDICATE,
+        PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, RustIndex,
     };
     use super::*;
     use crate::domain::SymbolId;
@@ -528,41 +529,55 @@ mod tests {
 
     #[test]
     fn probes_for_file_preserves_wildcard_discard_head() -> Result<(), String> {
-        let path = PathBuf::from("src/lib.rs");
-        let changed_text = "let _ = compute_fee(amount * 9);";
-        let changed = ChangedFile {
-            path: path.clone(),
-            added_lines: vec![ChangedLine {
-                line: 4,
-                new_side_line: 4,
-                text: changed_text.to_string(),
-            }],
-            removed_lines: vec![],
-        };
-        let index = RustIndex {
-            files: BTreeMap::from([(
-                path.clone(),
-                FileFacts {
-                    path,
-                    probe_shapes: vec![ProbeShapeFact {
-                        start_line: 4,
-                        end_line: 4,
-                        start_byte: 40,
-                        kind: PROBE_SHAPE_CALL_DELETION.to_string(),
-                        text: "compute_fee(amount * 9)".to_string(),
-                    }],
-                    ..FileFacts::default()
-                },
-            )]),
-            ..RustIndex::default()
-        };
+        for changed_text in [
+            "let _ = compute_fee(amount * 9);",
+            "let _ : u32 = compute_fee(amount * 9);",
+            "let _= compute_fee(amount * 9);",
+        ] {
+            let path = PathBuf::from("src/lib.rs");
+            let changed = ChangedFile {
+                path: path.clone(),
+                added_lines: vec![ChangedLine {
+                    line: 4,
+                    new_side_line: 4,
+                    text: changed_text.to_string(),
+                }],
+                removed_lines: vec![],
+            };
+            let index = RustIndex {
+                files: BTreeMap::from([(
+                    path.clone(),
+                    FileFacts {
+                        path,
+                        probe_shapes: vec![ProbeShapeFact {
+                            start_line: 4,
+                            end_line: 4,
+                            start_byte: 40,
+                            kind: PROBE_SHAPE_SIDE_EFFECT.to_string(),
+                            text: "compute_fee(amount * 9)".to_string(),
+                        }],
+                        ..FileFacts::default()
+                    },
+                )]),
+                ..RustIndex::default()
+            };
 
-        let probes = probes_for_file(Path::new("workspace"), &changed, &index);
-        let Some(probe) = probes.first() else {
-            return Err("expected wildcard-discard call probe".to_string());
-        };
-        if probe.expression != changed_text {
-            return Err(format!("wildcard discard context was erased: {probe:?}"));
+            let probes = probes_for_file(Path::new("workspace"), &changed, &index);
+            let Some(probe) = probes.first() else {
+                return Err("expected wildcard-discard call probe".to_string());
+            };
+            if probe.expression != changed_text {
+                return Err(format!("wildcard discard context was erased: {probe:?}"));
+            }
+            let sinks = crate::analysis::classify::local_flow_sinks(probe, None);
+            if !sinks
+                .first()
+                .is_some_and(|sink| sink.kind == crate::domain::FlowSinkKind::Unknown)
+            {
+                return Err(format!(
+                    "wildcard discard did not produce an unknown sink: {probe:?}"
+                ));
+            }
         }
         Ok(())
     }

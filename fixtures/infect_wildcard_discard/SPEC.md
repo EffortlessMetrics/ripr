@@ -4,10 +4,10 @@ Spec: RIPR-SPEC-0096
 
 ## Given
 
-Production code adds a call whose return value is bound to the wildcard
-discard pattern `let _ = compute_fee(amount * 9)`.  The caller function
-returns `amount` unchanged — the changed value cannot reach any observable
-sink.
+Production code adds calls whose return values are bound to the wildcard
+discard patterns `let _ : i32 = compute_fee(amount * 9)` and
+`let _= compute_fee(amount * 9)`. The caller function returns `amount`
+unchanged — the changed values cannot reach any observable sink.
 
 A test with a strong exact-value assertion covers `process`:
 
@@ -33,7 +33,7 @@ ripr check --root fixtures/infect_wildcard_discard/input --diff fixtures/infect_
 ## Then
 
 `ripr` must emit `infection_unknown` (not `exposed`) for the
-`let _ = compute_fee(amount * 9)` probe.  The infect stage must be
+both wildcard-discard probes. The infect stage must be
 `unknown` with reason "Changed value is bound to a discard pattern; it
 cannot infect a sink".
 
