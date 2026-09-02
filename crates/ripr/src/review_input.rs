@@ -463,4 +463,42 @@ mod tests {
         }
         Ok(())
     }
+
+    #[test]
+    fn canonical_projection_rejects_each_malformed_finding_field() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let base = finding();
+        let cases = [
+            ("probe", serde_json::json!(null)),
+            ("probe", serde_json::json!({"file": "Cargo.toml"})),
+            (
+                "probe",
+                serde_json::json!({"file": "Cargo.toml", "line": "one"}),
+            ),
+            ("id", serde_json::json!(7)),
+            ("severity", serde_json::json!(7)),
+            ("classification", serde_json::json!(7)),
+            ("related_tests", serde_json::json!("not-an-array")),
+        ];
+        for (field, value) in cases {
+            let mut mutation = base.clone();
+            mutation[field] = value;
+            if canonical_projection_all(&[mutation], &root).is_ok() {
+                return Err(format!("malformed {field} was accepted"));
+            }
+        }
+
+        let mut malformed_related = base.clone();
+        malformed_related["related_tests"] = serde_json::json!([{"name": "test"}]);
+        if canonical_projection_all(&[malformed_related], &root).is_ok() {
+            return Err("malformed related test was accepted".to_string());
+        }
+
+        let mut escaping = base;
+        escaping["probe"]["file"] = serde_json::json!("../outside");
+        if canonical_projection_all(&[escaping], &root).is_ok() {
+            return Err("finding outside the repository was accepted".to_string());
+        }
+        Ok(())
+    }
 }
