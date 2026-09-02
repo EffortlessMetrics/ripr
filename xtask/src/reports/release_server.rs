@@ -112,14 +112,15 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
         }
     }
 
-    let receipt_targets = validate_release_server_receipts(dist_dir, &version)?;
+    let receipt_set = validate_release_server_receipts(dist_dir, &version)?;
+    let receipt_targets = &receipt_set.targets;
     let discovered_assets = release_server_assets(dist_dir, &version)?;
     validate_configured_release_server_targets(&discovered_assets)?;
     let asset_targets = discovered_assets
         .iter()
         .map(|asset| asset.target.clone())
         .collect::<std::collections::BTreeSet<_>>();
-    if receipt_targets != asset_targets {
+    if *receipt_targets != asset_targets {
         return Err(format!(
             "release server receipt targets do not match archive targets: receipts {:?}, archives {:?}",
             receipt_targets, asset_targets
@@ -129,10 +130,15 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
         dist_dir,
         &version,
         &discovered_assets,
-        &receipt_targets,
+        receipt_targets,
     )?;
     let mut assets = serde_json::Map::new();
+    let build_identity = &receipt_set.baseline;
     for asset in discovered_assets {
+        let receipt = receipt_set
+            .receipts
+            .get(&asset.target)
+            .ok_or_else(|| format!("missing validated receipt for target `{}`", asset.target))?;
         let sha_path = dist_dir.join(format!("{}.sha256", asset.file_name));
         let sha = read_trimmed(&sha_path)?;
         let actual_sha = sha256_file(&dist_dir.join(&asset.file_name))?;
@@ -148,12 +154,38 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
         );
         assets.insert(
             asset.target,
-            serde_json::json!({ "url": url, "sha256": sha }),
+            serde_json::json!({
+                "url": url,
+                "sha256": sha,
+                "receipt": {
+                    "path": receipt.path,
+                    "sha256": receipt.sha256,
+                    "schema_version": receipt.schema_version,
+                    "target": receipt.target,
+                },
+                "archive": {
+                    "path": receipt.archive.path,
+                    "size": receipt.archive.size,
+                    "sha256": receipt.archive.sha256,
+                },
+            }),
         );
     }
 
     let manifest = serde_json::json!({
+        "schema_version": "0.1",
         "version": version,
+        "build_identity": {
+            "repository": build_identity.repository,
+            "candidate_sha": build_identity.candidate_sha,
+            "candidate_tree": build_identity.candidate_tree,
+            "toolchain": build_identity.toolchain,
+            "toolchain_file_sha256": build_identity.toolchain_file_sha256,
+            "cargo_lock_sha256": build_identity.cargo_lock_sha256,
+            "profile": build_identity.profile,
+            "features": build_identity.features,
+            "locked": build_identity.locked,
+        },
         "assets": assets,
     });
     let manifest_path = dist_dir.join(format!("ripr-server-manifest-v{version}.json"));
@@ -421,7 +453,7 @@ pub(crate) fn create_zip_archive(package_dir: &Path, asset_path: &Path) -> Resul
     Ok(())
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct ReleaseServerBuildReceipt {
     schema_version: String,
     repository: String,
@@ -442,20 +474,20 @@ struct ReleaseServerBuildReceipt {
     members: Vec<ReleaseServerMember>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct ReleaseServerToolchain {
     rustc: String,
     cargo: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct ReleaseServerFile {
     path: String,
     size: u64,
     sha256: String,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
 struct ReleaseServerMember {
     path: String,
     kind: String,
@@ -797,12 +829,28 @@ fn sorted_dist_files(dist_dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(paths)
 }
 
+#[derive(Debug, Clone)]
+struct ReleaseServerReceiptSummary {
+    path: String,
+    sha256: String,
+    schema_version: String,
+    target: String,
+    archive: ReleaseServerFile,
+}
+
+pub(crate) struct ReleaseServerReceiptSet {
+    targets: std::collections::BTreeSet<String>,
+    baseline: ReleaseServerBuildReceipt,
+    receipts: std::collections::BTreeMap<String, ReleaseServerReceiptSummary>,
+}
+
 pub(crate) fn validate_release_server_receipts(
     dist_dir: &Path,
     version: &str,
-) -> Result<std::collections::BTreeSet<String>, String> {
+) -> Result<ReleaseServerReceiptSet, String> {
     let mut baseline: Option<ReleaseServerBuildReceipt> = None;
     let mut receipt_targets = std::collections::BTreeSet::new();
+    let mut receipts = std::collections::BTreeMap::new();
     for path in sorted_dist_files(dist_dir)? {
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
@@ -874,6 +922,16 @@ pub(crate) fn validate_release_server_receipts(
                 "release server receipt member inventory mismatch for target `{receipt_target}`"
             ));
         }
+        receipts.insert(
+            receipt_target.to_string(),
+            ReleaseServerReceiptSummary {
+                path: file_name.to_string(),
+                sha256: sha256_file(&path)?,
+                schema_version: receipt.schema_version.clone(),
+                target: receipt.target.clone(),
+                archive: receipt.archive.clone(),
+            },
+        );
         if let Some(expected) = &baseline {
             if receipt.repository != expected.repository {
                 return Err(format!(
@@ -926,7 +984,12 @@ pub(crate) fn validate_release_server_receipts(
             baseline = Some(receipt);
         }
     }
-    Ok(receipt_targets)
+    let baseline = baseline.ok_or_else(|| "no release server receipts found".to_string())?;
+    Ok(ReleaseServerReceiptSet {
+        targets: receipt_targets,
+        baseline,
+        receipts,
+    })
 }
 
 pub(crate) fn validate_release_server_staging_inventory(

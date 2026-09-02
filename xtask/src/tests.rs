@@ -7809,6 +7809,22 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
         let manifest: Value = serde_json::from_str(&manifest_text)
             .map_err(|err| format!("parse release manifest: {err}"))?;
         assert_eq!(manifest["version"], "1.2.3");
+        assert_eq!(manifest["schema_version"], "0.1");
+        assert!(manifest["build_identity"]["repository"].is_string());
+        assert!(manifest["build_identity"]["candidate_sha"].is_string());
+        assert!(manifest["build_identity"]["candidate_tree"].is_string());
+        assert_eq!(
+            manifest["assets"]["x86_64-unknown-linux-gnu"]["receipt"]["schema_version"],
+            "0.2"
+        );
+        assert_eq!(
+            manifest["assets"]["x86_64-unknown-linux-gnu"]["receipt"]["target"],
+            "x86_64-unknown-linux-gnu"
+        );
+        assert_eq!(
+            manifest["assets"]["x86_64-unknown-linux-gnu"]["archive"]["path"],
+            "ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"
+        );
         assert_eq!(
             manifest["assets"]["x86_64-unknown-linux-gnu"]["url"],
             "https://github.com/EffortlessMetrics/ripr/releases/download/v1.2.3/ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"
