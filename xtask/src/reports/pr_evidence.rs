@@ -129,15 +129,18 @@ fn write_pr_evidence_with_runner(
         Ok(check_json) => {
             match write_pr_evidence_packet(repo, options, &changed_files, &check_json) {
                 Ok(()) => Ok(()),
-                Err(err) => write_pr_evidence_error_packet(
-                    repo,
-                    options,
-                    &changed_files,
-                    &format!("RIPR check output could not be converted into PR evidence: {err}"),
-                ),
+                Err(err) => {
+                    let diagnostic =
+                        format!("RIPR check output could not be converted into PR evidence: {err}");
+                    write_pr_evidence_error_packet(repo, options, &changed_files, &diagnostic)?;
+                    Err(diagnostic)
+                }
             }
         }
-        Err(err) => write_pr_evidence_error_packet(repo, options, &changed_files, &err),
+        Err(err) => {
+            write_pr_evidence_error_packet(repo, options, &changed_files, &err)?;
+            Err(err)
+        }
     }
 }
 
@@ -904,12 +907,18 @@ fn pr_evidence_error_packet(
 }
 
 fn first_line(text: &str) -> String {
-    text.lines()
-        .next()
+    let mut diagnostic = text
+        .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .unwrap_or("RIPR PR evidence generation did not complete.")
-        .to_string()
+        .take(8)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if diagnostic.is_empty() {
+        diagnostic = "RIPR PR evidence generation did not complete.".to_string();
+    }
+    diagnostic.truncate(4096);
+    diagnostic
 }
 
 fn count_field(summary: Option<&Map<String, Value>>, key: &str) -> usize {
@@ -1418,9 +1427,12 @@ mod tests {
             PR_CHECK_JSON,
             "{\"stale\":true}\n",
         )?;
-        write_pr_evidence_with_runner(&repo, &options, |_repo, _options| {
+        let error = write_pr_evidence_with_runner(&repo, &options, |_repo, _options| {
             Err("ripr check for PR evidence timed out after 120 seconds; retry command: cargo xtask ripr-pr --base HEAD~1 --head HEAD --root .".to_string())
-        })?;
+        })
+        .err()
+        .ok_or_else(|| "producer failure must fail the command after writing its error packet".to_string())?;
+        assert!(error.contains("timed out after 120 seconds"));
         check_pr_evidence(&repo, &options)?;
 
         let packet_text = fs::read_to_string(repo.join(PR_EVIDENCE_JSON))
@@ -1429,6 +1441,11 @@ mod tests {
             serde_json::from_str(&packet_text).map_err(|err| format!("parse packet: {err}"))?;
         assert_eq!(packet["status"], "error");
         assert_eq!(packet["warnings"][0]["kind"], "tool_error");
+        assert!(
+            packet["warnings"][0]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("timed out after 120 seconds"))
+        );
         assert!(repo.join(PR_DIFF).exists());
         assert!(repo.join(PR_EVIDENCE_MD).exists());
         assert!(!repo.join(PR_CHECK_JSON).exists());
