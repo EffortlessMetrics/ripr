@@ -169,6 +169,7 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
         if file_name.ends_with(".sha256")
             || file_name == "SHA256SUMS"
             || file_name == "checksums.txt"
+            || file_name.ends_with(".receipt.json")
         {
             continue;
         }

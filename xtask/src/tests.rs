@@ -7279,28 +7279,39 @@ fn release_server_manifest_rejects_receipt_version_mismatch() -> Result<(), Stri
 fn release_server_manifest_rejects_archive_checksum_mismatch() -> Result<(), String> {
     with_temp_cwd("release-server-manifest-checksum-mismatch", |root| {
         let dist = root.join("dist");
-        write(
-            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"),
-            "linux",
-        );
+        write(&root.join("LICENSE-MIT"), "mit");
+        write(&root.join("LICENSE-APACHE"), "apache");
+        for (target, executable, archive) in [
+            ("x86_64-pc-windows-msvc", "ripr.exe", "zip"),
+            ("x86_64-unknown-linux-gnu", "ripr", "tar.gz"),
+            ("aarch64-unknown-linux-gnu", "ripr", "tar.gz"),
+            ("x86_64-apple-darwin", "ripr", "tar.gz"),
+            ("aarch64-apple-darwin", "ripr", "tar.gz"),
+        ] {
+            write(
+                &root
+                    .join("target")
+                    .join(target)
+                    .join("release")
+                    .join(executable),
+                target,
+            );
+            let archive_args = vec![
+                "--version".to_string(),
+                "1.2.3".to_string(),
+                "--target".to_string(),
+                target.to_string(),
+                "--executable".to_string(),
+                executable.to_string(),
+                "--archive".to_string(),
+                archive.to_string(),
+            ];
+            super::release_server_archive(&archive_args)?;
+        }
         write(
             &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.sha256"),
             "0000000000000000000000000000000000000000000000000000000000000000\n",
         );
-        for (target, archive) in [
-            ("x86_64-pc-windows-msvc", "zip"),
-            ("aarch64-unknown-linux-gnu", "tar.gz"),
-            ("x86_64-apple-darwin", "tar.gz"),
-            ("aarch64-apple-darwin", "tar.gz"),
-        ] {
-            let archive_name = format!("ripr-server-v1.2.3-{target}.{archive}");
-            write(&dist.join(&archive_name), "valid");
-            let sha = super::sha256_file(&dist.join(&archive_name))?;
-            write(
-                &dist.join(format!("{archive_name}.sha256")),
-                &format!("{sha}\n"),
-            );
-        }
 
         let args = vec![
             "--version".to_string(),
@@ -7813,6 +7824,10 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
         assert!(checksums.contains("  ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip"));
         assert!(checksums.contains("  ripr-server-manifest-v1.2.3.json"));
         assert!(!checksums.contains(".sha256"));
+        assert!(
+            !checksums.contains(".receipt.json"),
+            "internal receipt evidence must not be published in SHA256SUMS"
+        );
         // Neither sidecar hashes itself or the stale legacy file.
         assert!(
             !checksums.contains("SHA256SUMS"),
