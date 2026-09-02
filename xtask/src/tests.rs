@@ -7157,6 +7157,25 @@ fn release_server_assets_selects_versioned_archives() -> Result<(), String> {
 }
 
 #[test]
+fn release_server_assets_rejects_duplicate_target_archives() -> Result<(), String> {
+    let root = temp_dir("release-server-assets-duplicate-target");
+    write(
+        &root.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"),
+        "tar",
+    );
+    write(
+        &root.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.zip"),
+        "zip",
+    );
+
+    let Err(error) = super::release_server_assets(&root, "1.2.3") else {
+        return Err("duplicate target archives must be rejected".to_string());
+    };
+    assert!(error.contains("duplicate release server target"), "{error}");
+    Ok(())
+}
+
+#[test]
 fn release_server_helpers_match_workflow_arguments() -> Result<(), String> {
     let args = vec![
         "--version=v1.2.3".to_string(),

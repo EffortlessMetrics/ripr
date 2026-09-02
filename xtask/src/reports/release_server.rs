@@ -208,6 +208,11 @@ pub(crate) fn release_server_assets(
         let Some(target) = target else {
             continue;
         };
+        if assets.iter().any(|asset: &ReleaseServerAsset| asset.target == target) {
+            return Err(format!(
+                "duplicate release server target `{target}` in `{file_name}`"
+            ));
+        }
         assets.push(ReleaseServerAsset {
             target: target.to_string(),
             file_name: file_name.to_string(),
