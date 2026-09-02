@@ -86,6 +86,13 @@ ripr-server-manifest-v<VERSION>.json
 SHA256SUMS
 ```
 
+The assembly step also retains the internal, non-publication evidence packet
+`ripr-server-assembly-v<VERSION>.receipt.json`. It records the common build
+identity, one validated per-target receipt/archive mapping, and the manifest
+and `SHA256SUMS` digests. It is excluded from `SHA256SUMS` and is not a
+release asset; downstream provenance and placement-independent subject
+selection consume this evidence.
+
 The `SHA256SUMS` sidecar is `sha256sum -c SHA256SUMS`-compatible (one
 `<sha256>  <file_name>` line per asset). Releases through `v0.7.0` published the
 same manifest under the legacy name `checksums.txt`; the content format is
