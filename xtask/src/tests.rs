@@ -222,6 +222,34 @@ pub(crate) fn temp_dir(name: &str) -> PathBuf {
     dir
 }
 
+#[test]
+fn release_server_build_uses_canonical_locked_toolchain() -> Result<(), String> {
+    let workflow = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join(".github/workflows/release-server-binaries.yml"),
+    )
+    .map_err(|error| format!("failed to read release-server workflow: {error}"))?;
+    let build = workflow
+        .split_once("\n  manifest:")
+        .map(|(build, _)| build)
+        .ok_or_else(|| "release workflow is missing manifest job".to_string())?;
+    if build.contains("dtolnay/rust-toolchain@stable")
+        || !build.contains("dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4")
+        || !build.contains("toolchain: 1.95.0")
+        || !build.contains("permissions:\n      contents: read")
+        || !build.contains("cargo build -p ripr --release --locked --target")
+        || !build.contains("cargo run --locked -p xtask -- release-server-archive")
+        || !build.contains("RIPR_RELEASE_VERSION:")
+        || !build.contains("--version \"$RIPR_RELEASE_VERSION\"")
+        || build.contains("github.event.inputs.version || github.ref_name }}\"")
+        || build.contains("cargo generate-lockfile")
+    {
+        return Err("release target build is not pinned, locked, and read-only".to_string());
+    }
+    Ok(())
+}
+
 pub(crate) fn write(path: &Path, text: &str) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).unwrap();
@@ -7193,6 +7221,80 @@ fn release_server_archive_prepares_package_before_format_validation() -> Result<
             super::release_server_readme("1.2.3")
         );
         assert!(root.join("dist").is_dir());
+        Ok(())
+    })
+}
+
+#[test]
+fn release_server_archive_writes_bounded_receipt_and_deterministic_tar() -> Result<(), String> {
+    with_temp_cwd("release-server-receipt", |root| {
+        let executable = if cfg!(windows) { "ripr.exe" } else { "ripr" };
+        write(
+            &root
+                .join("target")
+                .join("x86_64-unknown-linux-gnu")
+                .join("release")
+                .join(executable),
+            "binary",
+        );
+        write(&root.join("LICENSE-MIT"), "mit");
+        write(&root.join("LICENSE-APACHE"), "apache");
+        let args = vec![
+            "--version".to_string(),
+            "1.2.3".to_string(),
+            "--target".to_string(),
+            "x86_64-unknown-linux-gnu".to_string(),
+            "--executable".to_string(),
+            executable.to_string(),
+            "--archive".to_string(),
+            "tar.gz".to_string(),
+        ];
+
+        super::release_server_archive(&args)?;
+        let archive = root.join("dist/ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz");
+        let first_archive =
+            fs::read(&archive).map_err(|err| format!("read first archive: {err}"))?;
+        super::release_server_archive(&args)?;
+        let second_archive =
+            fs::read(&archive).map_err(|err| format!("read second archive: {err}"))?;
+        assert_eq!(
+            first_archive, second_archive,
+            "tar output must be deterministic"
+        );
+
+        let receipt_path =
+            root.join("dist/ripr-server-v1.2.3-x86_64-unknown-linux-gnu.receipt.json");
+        let receipt: Value = serde_json::from_str(
+            &fs::read_to_string(&receipt_path)
+                .map_err(|err| format!("read receipt {}: {err}", receipt_path.display()))?,
+        )
+        .map_err(|err| format!("parse receipt: {err}"))?;
+        assert_eq!(receipt["schema_version"], "0.2");
+        assert!(receipt["candidate_sha"].as_str().is_some());
+        assert!(receipt["candidate_tree"].as_str().is_some());
+        assert!(receipt["toolchain"]["rustc"].as_str().is_some());
+        assert!(receipt["toolchain"]["cargo"].as_str().is_some());
+        assert!(receipt["cargo_lock_sha256"].as_str().is_some());
+        assert_eq!(receipt["profile"], "release");
+        assert_eq!(receipt["features"], serde_json::json!([]));
+        assert_eq!(receipt["locked"], true);
+        assert_eq!(receipt["target"], "x86_64-unknown-linux-gnu");
+        assert_eq!(receipt["archive_format"], "tar.gz");
+        assert_eq!(receipt["executable"]["path"], executable);
+        let members = receipt["members"]
+            .as_array()
+            .ok_or("receipt members is not an array")?;
+        assert_eq!(members.len(), 4);
+        assert!(
+            members
+                .iter()
+                .any(|member| { member["path"] == executable && member["role"] == "executable" })
+        );
+        assert!(
+            members
+                .iter()
+                .any(|member| { member["path"] == "LICENSE-MIT" && member["mode"] == 0o644 })
+        );
         Ok(())
     })
 }

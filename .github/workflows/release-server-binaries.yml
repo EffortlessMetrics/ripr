@@ -10,13 +10,12 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write
-
 jobs:
   build:
     name: build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -45,15 +44,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
+          toolchain: 1.95.0
           targets: ${{ matrix.target }}
 
       - name: Build ripr
-        run: cargo build -p ripr --release --target ${{ matrix.target }}
+        run: cargo build -p ripr --release --locked --target ${{ matrix.target }}
 
       - name: Package server archive
-        run: cargo xtask release-server-archive --version "${{ github.event.inputs.version || github.ref_name }}" --target "${{ matrix.target }}" --executable "${{ matrix.executable }}" --archive "${{ matrix.archive }}"
+        shell: bash
+        env:
+          RIPR_RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: cargo run --locked -p xtask -- release-server-archive --version "$RIPR_RELEASE_VERSION" --target "${{ matrix.target }}" --executable "${{ matrix.executable }}" --archive "${{ matrix.archive }}"
 
       - name: Upload server artifact
         uses: actions/upload-artifact@v7
@@ -64,10 +67,14 @@ jobs:
   manifest:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: 1.95.0
 
       - uses: actions/download-artifact@v8
         with:
@@ -76,10 +83,15 @@ jobs:
           merge-multiple: true
 
       - name: Generate manifest and checksums
-        run: cargo xtask release-server-manifest --version "${{ github.event.inputs.version || github.ref_name }}" --repository "${{ github.repository }}"
+        shell: bash
+        env:
+          RIPR_RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: cargo run --locked -p xtask -- release-server-manifest --version "$RIPR_RELEASE_VERSION" --repository "${{ github.repository }}"
 
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: cargo xtask release-upload-assets --version "${{ github.event.inputs.version || github.ref_name }}"
+          RIPR_RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        shell: bash
+        run: cargo run --locked -p xtask -- release-upload-assets --version "$RIPR_RELEASE_VERSION"
