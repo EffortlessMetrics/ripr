@@ -397,4 +397,70 @@ mod tests {
         }
         Ok(())
     }
+
+    #[test]
+    fn projection_preserves_related_tests_and_summary_fallbacks() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let mut related = finding();
+        related["suggested_next_action"] = Value::Null;
+        related["recommended_next_step"] = serde_json::json!("Use the recommended step.");
+        related["related_tests"] = serde_json::json!([{
+            "name": "covers_finding",
+            "file": "Cargo.toml",
+            "line": 7
+        }]);
+        let projected = canonical_projection(&[related], &root)?;
+        let first = projected
+            .first()
+            .ok_or_else(|| "expected one projected finding".to_string())?;
+        if first.summary != "Use the recommended step." {
+            return Err("recommended summary fallback was not preserved".to_string());
+        }
+        let test = first
+            .related_test
+            .as_ref()
+            .ok_or_else(|| "related test projection was dropped".to_string())?;
+        if test.name != "covers_finding" || test.file != "Cargo.toml" || test.line != 7 {
+            return Err("related test projection changed".to_string());
+        }
+
+        let mut blank = finding();
+        blank["suggested_next_action"] = serde_json::json!("  ");
+        blank["recommended_next_step"] = serde_json::json!("\n");
+        let blank_projection = canonical_projection(&[blank], &root)?;
+        let blank_first = blank_projection
+            .first()
+            .ok_or_else(|| "expected blank-summary projection".to_string())?;
+        if blank_first.summary != "Inspect the producer-owned review finding." {
+            return Err("blank summary fallback was not used".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn projection_order_covers_priority_buckets_and_cached_paths() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let severities = ["critical", "error", "warning", "note", "unknown"];
+        let classes = ["exposed", "weakly_exposed", "weakly_gripped", "other"];
+        let findings = severities
+            .iter()
+            .enumerate()
+            .map(|(index, severity)| {
+                let mut value = finding();
+                value["id"] = serde_json::json!(format!("finding-{index}"));
+                value["severity"] = serde_json::json!(severity);
+                value["classification"] = serde_json::json!(classes[index % classes.len()]);
+                value["probe"]["line"] = serde_json::json!(index + 1);
+                value
+            })
+            .collect::<Vec<_>>();
+        let projected = canonical_projection_all(&findings, &root)?;
+        let first = projected
+            .first()
+            .ok_or_else(|| "expected priority projections".to_string())?;
+        if projected.len() != findings.len() || first.severity != "critical" {
+            return Err("priority ordering was not applied".to_string());
+        }
+        Ok(())
+    }
 }
