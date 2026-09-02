@@ -1695,6 +1695,27 @@ mod tests {
         fs::write(&subject_path, &subject_bytes)
             .map_err(|err| format!("restore subject: {err}"))?;
 
+        for (field, mutation) in [
+            ("schema_version", json!("ripr.pr_check_subject.v0")),
+            ("root_identity", json!("/another/repository")),
+            ("base_sha", json!("sha256:other")),
+            ("head_sha", json!("sha256:other")),
+            ("head_tree", json!("sha256:other")),
+        ] {
+            let mut mutated_subject = subject.clone();
+            mutated_subject[field] = mutation;
+            fs::write(
+                &subject_path,
+                serde_json::to_vec(&mutated_subject).map_err(|err| err.to_string())?,
+            )
+            .map_err(|err| format!("write subject {field} mutation: {err}"))?;
+            if check_pr_evidence(&repo, &options).is_ok() {
+                return Err(format!("subject {field} mutation must fail"));
+            }
+            fs::write(&subject_path, &subject_bytes)
+                .map_err(|err| format!("restore subject: {err}"))?;
+        }
+
         let mut mutated_subject = subject.clone();
         mutated_subject["canonical_finding_index"] = json!("invalid");
         fs::write(
@@ -1745,6 +1766,37 @@ mod tests {
         }
         fs::write(&subject_path, &subject_bytes)
             .map_err(|err| format!("restore subject: {err}"))?;
+
+        for (field, mutation) in [
+            ("canonical_finding_index_entry_count", json!(1)),
+            ("canonical_finding_index_byte_count", json!(1)),
+        ] {
+            let mut mutated_subject = subject.clone();
+            mutated_subject[field] = mutation;
+            fs::write(
+                &subject_path,
+                serde_json::to_vec(&mutated_subject).map_err(|err| err.to_string())?,
+            )
+            .map_err(|err| format!("write index {field} mutation: {err}"))?;
+            if check_pr_evidence(&repo, &options).is_ok() {
+                return Err(format!("index {field} mutation must fail"));
+            }
+            fs::write(&subject_path, &subject_bytes)
+                .map_err(|err| format!("restore subject: {err}"))?;
+        }
+
+        let mut mutated_review_input = review_input.clone();
+        mutated_review_input["mode"] = json!("fast");
+        fs::write(
+            &review_input_path,
+            serde_json::to_vec(&mutated_review_input).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| format!("write review mode mutation: {err}"))?;
+        if check_pr_evidence(&repo, &options).is_ok() {
+            return Err("review mode contradiction must fail".to_string());
+        }
+        fs::write(&review_input_path, &review_input_bytes)
+            .map_err(|err| format!("restore review input: {err}"))?;
 
         let mut mutated_subject = subject.clone();
         mutated_subject["review_input_byte_count"] = json!(0);
