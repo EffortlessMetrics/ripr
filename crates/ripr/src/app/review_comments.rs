@@ -151,7 +151,10 @@ pub(crate) fn admit_producer_evidence(
         ("mode", input.mode.as_str()),
         ("canonical_diff_sha256", expected_diff.as_str()),
         ("configuration_fingerprint", expected_config.as_str()),
-        ("analyzer_generation", crate::review_input::REVIEW_ANALYZER_GENERATION),
+        (
+            "analyzer_generation",
+            crate::review_input::REVIEW_ANALYZER_GENERATION,
+        ),
         ("check_schema", "0.2"),
     ] {
         require_equal(field, required_string(&subject, field)?, expected)?;
