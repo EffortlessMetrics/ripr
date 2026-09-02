@@ -529,11 +529,13 @@ fn repository_identity(root: &Path) -> String {
         .ok()
         .filter(|output| output.status.success())
         .map(|output| output.stdout)
-        .unwrap_or_default();
-    if origin.is_empty() {
-        "unavailable".to_string()
-    } else {
-        format!("sha256:{:x}", Sha256::digest(origin))
+        .filter(|origin| !origin.iter().all(u8::is_ascii_whitespace));
+    origin_identity(origin.as_deref())
+}
+fn origin_identity(origin: Option<&[u8]>) -> String {
+    match origin.filter(|origin| !origin.iter().all(u8::is_ascii_whitespace)) {
+        Some(origin) => format!("sha256:{:x}", Sha256::digest(origin)),
+        None => "unavailable".to_string(),
     }
 }
 fn logical_path(path: &Path) -> String {
@@ -743,7 +745,7 @@ mod tests {
 
     #[test]
     fn timeout_wrapper_preserves_success_and_reports_deadline() -> Result<(), String> {
-        if run_analysis_with_timeout(100, || Ok::<_, String>(7))
+        if run_analysis_with_timeout(5_000, || Ok::<_, String>(7))
             .map_err(|error| error.to_string())?
             != 7
         {
@@ -1579,6 +1581,19 @@ mod tests {
             return Err(format!(
                 "unavailable origin was identified as {unavailable}"
             ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn origin_identity_distinguishes_missing_blank_and_present_origins() -> Result<(), String> {
+        if origin_identity(None) != "unavailable" || origin_identity(Some(b"\n\t")) != "unavailable"
+        {
+            return Err("missing or blank origins must be unavailable".to_string());
+        }
+        let present = origin_identity(Some(b"https://github.com/example/repo.git\n"));
+        if !present.starts_with("sha256:") || present == "unavailable" {
+            return Err("present origin must have a digest identity".to_string());
         }
         Ok(())
     }

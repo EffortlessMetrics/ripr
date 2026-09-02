@@ -1552,6 +1552,107 @@ mod tests {
         assert!(repo.join(PR_DIFF).exists());
         assert!(repo.join(PR_EVIDENCE_MD).exists());
 
+        let subject_path = repo.join(PR_CHECK_SUBJECT_JSON);
+        let review_input_path = repo.join(PR_REVIEW_INPUT_JSON);
+        let subject_bytes =
+            fs::read(&subject_path).map_err(|err| format!("read subject: {err}"))?;
+        let review_input_bytes =
+            fs::read(&review_input_path).map_err(|err| format!("read review input: {err}"))?;
+        let subject = serde_json::from_slice::<Value>(&subject_bytes)
+            .map_err(|err| format!("parse subject: {err}"))?;
+        let review_input = serde_json::from_slice::<Value>(&review_input_bytes)
+            .map_err(|err| format!("parse review input: {err}"))?;
+
+        let mut mutated_subject = subject.clone();
+        mutated_subject["check_sha256"] = json!("sha256:wrong");
+        fs::write(
+            &subject_path,
+            serde_json::to_vec(&mutated_subject).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| format!("write subject digest mutation: {err}"))?;
+        if check_pr_evidence(&repo, &options).is_ok() {
+            return Err("subject check digest mutation must fail".to_string());
+        }
+        fs::write(&subject_path, &subject_bytes)
+            .map_err(|err| format!("restore subject: {err}"))?;
+
+        let mut mutated_subject = subject.clone();
+        mutated_subject["check_byte_count"] = json!(0);
+        fs::write(
+            &subject_path,
+            serde_json::to_vec(&mutated_subject).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| format!("write subject size mutation: {err}"))?;
+        if check_pr_evidence(&repo, &options).is_ok() {
+            return Err("subject check size mutation must fail".to_string());
+        }
+        fs::write(&subject_path, &subject_bytes)
+            .map_err(|err| format!("restore subject: {err}"))?;
+
+        let mut mutated_subject = subject.clone();
+        mutated_subject["canonical_finding_index"] = json!("invalid");
+        fs::write(
+            &subject_path,
+            serde_json::to_vec(&mutated_subject).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| format!("write index mutation: {err}"))?;
+        if check_pr_evidence(&repo, &options).is_ok() {
+            return Err("invalid canonical index must fail".to_string());
+        }
+        fs::write(&subject_path, &subject_bytes)
+            .map_err(|err| format!("restore subject: {err}"))?;
+
+        let plausible_finding = json!({
+            "stable_id": "substituted",
+            "file": "src/lib.rs",
+            "line": 1,
+            "severity": "warning",
+            "finding_class": "exposed",
+            "summary": "substituted",
+            "evidence_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "related_test": null
+        });
+        let mut mutated_review_input = review_input.clone();
+        mutated_review_input["findings"] = json!([plausible_finding]);
+        mutated_review_input["reviewed_count"] = json!(1);
+        mutated_review_input["projected_finding_count"] = json!(1);
+        fs::write(
+            &review_input_path,
+            serde_json::to_vec(&mutated_review_input).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| format!("write projection mutation: {err}"))?;
+        if check_pr_evidence(&repo, &options).is_ok() {
+            return Err("substituted projection must fail".to_string());
+        }
+        fs::write(&review_input_path, &review_input_bytes)
+            .map_err(|err| format!("restore review input: {err}"))?;
+
+        let mut mutated_subject = subject.clone();
+        mutated_subject["review_input_sha256"] = json!("sha256:wrong");
+        fs::write(
+            &subject_path,
+            serde_json::to_vec(&mutated_subject).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| format!("write review digest mutation: {err}"))?;
+        if check_pr_evidence(&repo, &options).is_ok() {
+            return Err("review input digest mutation must fail".to_string());
+        }
+        fs::write(&subject_path, &subject_bytes)
+            .map_err(|err| format!("restore subject: {err}"))?;
+
+        let mut mutated_subject = subject.clone();
+        mutated_subject["review_input_byte_count"] = json!(0);
+        fs::write(
+            &subject_path,
+            serde_json::to_vec(&mutated_subject).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| format!("write review size mutation: {err}"))?;
+        if check_pr_evidence(&repo, &options).is_ok() {
+            return Err("review input size mutation must fail".to_string());
+        }
+        fs::write(&subject_path, &subject_bytes)
+            .map_err(|err| format!("restore subject: {err}"))?;
+
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
