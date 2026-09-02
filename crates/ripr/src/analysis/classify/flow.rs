@@ -1,4 +1,5 @@
 use super::super::rust_index::FunctionSummary;
+use super::is_wildcard_discard_binding;
 use super::text::exact_error_variant;
 use crate::domain::*;
 
@@ -498,8 +499,8 @@ fn value_is_swallowed(text: &str) -> bool {
     // Pattern 1: `let _ = <expr>;`  — wildcard-discard binding.
     // Also `let _: <ty> = <expr>;`  — typed wildcard discard (#2401).
     // Must match both so the flow stage agrees with the infection stage's
-    // `is_wildcard_discard` (infection.rs:112), which already handles both.
-    if trimmed.starts_with("let _ =") || trimmed.starts_with("let _:") {
+    // `is_wildcard_discard_binding`, which is shared with infection.
+    if is_wildcard_discard_binding(trimmed) {
         return true;
     }
     // Pattern 2: trailing `.ok();`  — result converted to Option and dropped
@@ -1083,6 +1084,20 @@ mod tests {
             FlowSinkKind::Unknown,
             "typed wildcard `let _:` must be swallowed, matching infection stage"
         );
+    }
+
+    #[test]
+    fn non_canonical_wildcard_discard_whitespace_yields_unknown_sink() {
+        for expression in ["let _ : i32 = compute(x);", "let _= compute(x);"] {
+            let probe = probe(ProbeFamily::SideEffect, expression, 2);
+            let sinks = local_flow_sinks(&probe, None);
+            assert_eq!(sinks.len(), 1, "{expression}");
+            assert_eq!(
+                sinks[0].kind,
+                FlowSinkKind::Unknown,
+                "{expression} must be treated as a swallowed value"
+            );
+        }
     }
 
     #[test]
