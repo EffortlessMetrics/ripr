@@ -7673,13 +7673,40 @@ fn release_server_manifest_rejects_extra_staged_file() -> Result<(), String> {
 fn release_server_atomic_write_replaces_complete_output() -> Result<(), String> {
     let root = temp_dir("release-server-atomic-write");
     let output = root.join("manifest.json");
-    super::write_release_server_file_atomic(&output, "first\n")?;
-    super::write_release_server_file_atomic(&output, "second\n")?;
+    super::write_release_server_outputs_transactional(&[(&output, "first\n")])?;
+    super::write_release_server_outputs_transactional(&[(&output, "second\n")])?;
     assert_eq!(
         fs::read_to_string(&output).map_err(|error| format!("read atomic output: {error}"))?,
         "second\n"
     );
-    assert!(!root.join("manifest.json.tmp").exists());
+    assert!(
+        fs::read_dir(&root)
+            .map_err(|error| format!("read transaction directory: {error}"))?
+            .filter_map(Result::ok)
+            .all(|entry| !entry.file_name().to_string_lossy().contains(".tmp"))
+    );
+    Ok(())
+}
+
+#[test]
+fn release_server_transaction_preserves_existing_outputs_when_staging_fails() -> Result<(), String>
+{
+    let root = temp_dir("release-server-transaction-staging-failure");
+    let existing = root.join("manifest.json");
+    write(&existing, "previous\n");
+    let missing_parent = root.join("missing").join("checksums");
+    let outputs = [
+        (existing.as_path(), "replacement\n"),
+        (missing_parent.as_path(), "never\n"),
+    ];
+    let Err(error) = super::write_release_server_outputs_transactional(&outputs) else {
+        return Err("staging failure must be rejected".to_string());
+    };
+    assert!(error.contains("failed to stage"), "{error}");
+    assert_eq!(
+        fs::read_to_string(&existing).map_err(|error| format!("read preserved output: {error}"))?,
+        "previous\n"
+    );
     Ok(())
 }
 

@@ -108,18 +108,14 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     let manifest_path = dist_dir.join(format!("ripr-server-manifest-v{version}.json"));
     let assembly_receipt_path =
         dist_dir.join(format!("ripr-server-assembly-v{version}.receipt.json"));
-    for path in [
-        &sha256sums_path,
-        &legacy_checksums_path,
-        &manifest_path,
-        &assembly_receipt_path,
-    ] {
-        if path.exists() {
-            fs::remove_file(path)
-                .map_err(|err| format!("failed to remove {}: {err}", path.display()))?;
-        }
+    if legacy_checksums_path.exists() {
+        fs::remove_file(&legacy_checksums_path).map_err(|err| {
+            format!(
+                "failed to remove {} before validation: {err}",
+                legacy_checksums_path.display()
+            )
+        })?;
     }
-
     let receipt_set = validate_release_server_receipts(dist_dir, &version)?;
     let receipt_targets = &receipt_set.targets;
     let discovered_assets = release_server_assets(dist_dir, &version)?;
@@ -198,8 +194,7 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     });
     let manifest_text = serde_json::to_string_pretty(&manifest)
         .map_err(|err| format!("failed to render release server manifest: {err}"))?;
-    write_release_server_file_atomic(&manifest_path, &format!("{manifest_text}\n"))?;
-
+    let manifest_text = format!("{manifest_text}\n");
     let mut checksum_lines = Vec::new();
     for path in sorted_dist_files(dist_dir)? {
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
@@ -209,15 +204,25 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
             || file_name == "SHA256SUMS"
             || file_name == "checksums.txt"
             || file_name.ends_with(".receipt.json")
+            || file_name
+                == manifest_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or_default()
         {
             continue;
         }
         checksum_lines.push(format!("{}  {file_name}", sha256_file(&path)?));
     }
-    write_release_server_file_atomic(
-        &sha256sums_path,
-        &format!("{}\n", checksum_lines.join("\n")),
-    )?;
+    checksum_lines.push(format!(
+        "{}  {}",
+        sha256_bytes(manifest_text.as_bytes()),
+        manifest_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default()
+    ));
+    let checksum_text = format!("{}\n", checksum_lines.join("\n"));
     let assembly_receipt = serde_json::json!({
         "schema_version": "0.1",
         "assembler": "xtask",
@@ -245,13 +250,13 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
         "accepted_subject_count": receipt_set.targets.len(),
         "manifest": {
             "path": manifest_path.file_name().and_then(|name| name.to_str()).unwrap_or_default(),
-            "size": fs::metadata(&manifest_path).map_err(|err| format!("stat {}: {err}", manifest_path.display()))?.len(),
-            "sha256": sha256_file(&manifest_path)?,
+            "size": manifest_text.len(),
+            "sha256": sha256_bytes(manifest_text.as_bytes()),
         },
         "sha256sums": {
             "path": "SHA256SUMS",
-            "size": fs::metadata(&sha256sums_path).map_err(|err| format!("stat {}: {err}", sha256sums_path.display()))?.len(),
-            "sha256": sha256_file(&sha256sums_path)?,
+            "size": checksum_text.len(),
+            "sha256": sha256_bytes(checksum_text.as_bytes()),
         },
         "publication_mutation_attempted": false,
         "disposition": "assembled",
@@ -259,7 +264,12 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     });
     let assembly_text = serde_json::to_string_pretty(&assembly_receipt)
         .map_err(|err| format!("failed to render assembly receipt: {err}"))?;
-    write_release_server_file_atomic(&assembly_receipt_path, &format!("{assembly_text}\n"))?;
+    let assembly_text = format!("{assembly_text}\n");
+    write_release_server_outputs_transactional(&[
+        (&manifest_path, manifest_text.as_str()),
+        (&sha256sums_path, checksum_text.as_str()),
+        (&assembly_receipt_path, assembly_text.as_str()),
+    ])?;
     eprintln!("wrote {}", manifest_path.display());
     eprintln!("wrote {}", sha256sums_path.display());
     eprintln!("wrote {}", assembly_receipt_path.display());
@@ -938,6 +948,9 @@ pub(crate) fn validate_release_server_receipts(
         if !file_name.ends_with(".receipt.json") {
             continue;
         }
+        if file_name == format!("ripr-server-assembly-v{version}.receipt.json") {
+            continue;
+        }
         let text = fs::read_to_string(&path).map_err(|err| {
             format!(
                 "failed to read release server receipt {}: {err}",
@@ -1137,6 +1150,9 @@ pub(crate) fn validate_release_server_staging_inventory(
     for target in receipt_targets {
         allowed.insert(format!("ripr-server-v{version}-{target}.receipt.json"));
     }
+    allowed.insert("SHA256SUMS".to_string());
+    allowed.insert(format!("ripr-server-manifest-v{version}.json"));
+    allowed.insert(format!("ripr-server-assembly-v{version}.receipt.json"));
     for path in sorted_dist_files(dist_dir)? {
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
@@ -1150,27 +1166,68 @@ pub(crate) fn validate_release_server_staging_inventory(
     Ok(())
 }
 
-pub(crate) fn write_release_server_file_atomic(path: &Path, contents: &str) -> Result<(), String> {
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| format!("invalid release server output path {}", path.display()))?;
-    let temporary = path.with_file_name(format!("{file_name}.tmp"));
-    fs::write(&temporary, contents)
-        .map_err(|err| format!("failed to write {}: {err}", temporary.display()))?;
-    match fs::rename(&temporary, path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            fs::remove_file(path)
-                .map_err(|err| format!("failed to replace {}: {err}", path.display()))?;
-            fs::rename(&temporary, path)
-                .map_err(|err| format!("failed to install {}: {err}", path.display()))
-        }
-        Err(error) => {
+pub(crate) fn write_release_server_outputs_transactional(
+    outputs: &[(&Path, &str)],
+) -> Result<(), String> {
+    let transaction_id = format!("{}-{}", std::process::id(), outputs.len());
+    let mut staged = Vec::with_capacity(outputs.len());
+    for (index, (path, contents)) in outputs.iter().enumerate() {
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("invalid release server output path {}", path.display()))?;
+        let temporary = path.with_file_name(format!(".{file_name}.{transaction_id}.{index}.tmp"));
+        if let Err(error) = fs::write(&temporary, contents) {
+            for (staged_path, _) in &staged {
+                let _ = fs::remove_file(staged_path);
+            }
             let _ = fs::remove_file(&temporary);
-            Err(format!("failed to install {}: {error}", path.display()))
+            return Err(format!("failed to stage {}: {error}", path.display()));
         }
+        staged.push((temporary, (*path).to_path_buf()));
     }
+
+    let mut backups = Vec::new();
+    let mut installed = Vec::new();
+    let result = (|| {
+        for (index, (_, destination)) in staged.iter().enumerate() {
+            if destination.exists() {
+                let backup = destination.with_file_name(format!(".{transaction_id}.{index}.bak"));
+                fs::rename(destination, &backup).map_err(|error| {
+                    format!("failed to preserve {}: {error}", destination.display())
+                })?;
+                backups.push((backup, destination.clone()));
+            }
+        }
+        for (temporary, destination) in &staged {
+            fs::rename(temporary, destination)
+                .map_err(|error| format!("failed to install {}: {error}", destination.display()))?;
+            installed.push(destination.clone());
+        }
+        Ok(())
+    })();
+
+    if let Err(error) = result {
+        for destination in installed {
+            let _ = fs::remove_file(destination);
+        }
+        for (backup, destination) in backups.iter().rev() {
+            let _ = fs::rename(backup, destination);
+        }
+        for (temporary, _) in &staged {
+            let _ = fs::remove_file(temporary);
+        }
+        return Err(error);
+    }
+    for (backup, _) in backups {
+        let _ = fs::remove_file(backup);
+    }
+    Ok(())
+}
+
+fn sha256_bytes(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    format!("sha256:{digest:x}")
 }
 
 pub(crate) fn read_trimmed(path: &Path) -> Result<String, String> {
