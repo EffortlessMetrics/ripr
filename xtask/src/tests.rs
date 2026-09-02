@@ -7189,6 +7189,37 @@ fn release_server_assets_rejects_non_regular_staging_entries() -> Result<(), Str
 }
 
 #[test]
+fn release_server_manifest_rejects_malformed_receipt() -> Result<(), String> {
+    with_temp_cwd("release-server-manifest-malformed-receipt", |root| {
+        let dist = root.join("dist");
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"),
+            "linux",
+        );
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+            "linux-sha\n",
+        );
+        write(
+            &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.receipt.json"),
+            "{ malformed",
+        );
+
+        let args = vec![
+            "--version".to_string(),
+            "v1.2.3".to_string(),
+            "--repository".to_string(),
+            "EffortlessMetrics/ripr".to_string(),
+        ];
+        let Err(error) = super::release_server_manifest(&args) else {
+            return Err("malformed receipt must reject manifest assembly".to_string());
+        };
+        assert!(error.contains("malformed release server receipt"), "{error}");
+        Ok(())
+    })
+}
+
+#[test]
 fn release_server_helpers_match_workflow_arguments() -> Result<(), String> {
     let args = vec![
         "--version=v1.2.3".to_string(),

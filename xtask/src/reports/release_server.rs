@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use flate2::Compression;
 use flate2::GzBuilder;
 use flate2::read::GzDecoder;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tar::Builder;
 
@@ -111,6 +111,8 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
                 .map_err(|err| format!("failed to remove {}: {err}", path.display()))?;
         }
     }
+
+    validate_release_server_receipts(dist_dir)?;
 
     let mut assets = serde_json::Map::new();
     for asset in release_server_assets(dist_dir, &version)? {
@@ -359,16 +361,16 @@ pub(crate) fn create_zip_archive(package_dir: &Path, asset_path: &Path) -> Resul
     Ok(())
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ReleaseServerBuildReceipt {
-    schema_version: &'static str,
+    schema_version: String,
     repository: String,
     candidate_sha: String,
     candidate_tree: String,
     toolchain: ReleaseServerToolchain,
     toolchain_file_sha256: String,
     cargo_lock_sha256: String,
-    profile: &'static str,
+    profile: String,
     features: Vec<String>,
     locked: bool,
     build_command: String,
@@ -380,24 +382,24 @@ struct ReleaseServerBuildReceipt {
     members: Vec<ReleaseServerMember>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ReleaseServerToolchain {
     rustc: String,
     cargo: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ReleaseServerFile {
     path: String,
     size: u64,
     sha256: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ReleaseServerMember {
     path: String,
-    kind: &'static str,
-    role: &'static str,
+    kind: String,
+    role: String,
     size: u64,
     sha256: String,
     mode: u32,
@@ -423,14 +425,14 @@ fn write_release_server_receipt(
     let members = archive_member_inventory(archive_path, archive, executable)?;
     let identity = release_server_build_identity()?;
     let receipt = ReleaseServerBuildReceipt {
-        schema_version: "0.2",
+        schema_version: "0.2".to_string(),
         repository: identity.repository,
         candidate_sha: identity.candidate_sha,
         candidate_tree: identity.candidate_tree,
         toolchain: identity.toolchain,
         toolchain_file_sha256: identity.toolchain_file_sha256,
         cargo_lock_sha256: identity.cargo_lock_sha256,
-        profile: "release",
+        profile: "release".to_string(),
         features: Vec::new(),
         locked: true,
         build_command: format!("cargo build -p ripr --release --locked --target {target}"),
@@ -611,8 +613,8 @@ fn archive_member(
     };
     ReleaseServerMember {
         path: name.to_string(),
-        kind: "regular_file",
-        role,
+        kind: "regular_file".to_string(),
+        role: role.to_string(),
         size,
         sha256,
         mode,
@@ -733,6 +735,26 @@ fn sorted_dist_files(dist_dir: &Path) -> Result<Vec<PathBuf>, String> {
     }
     paths.sort();
     Ok(paths)
+}
+
+fn validate_release_server_receipts(dist_dir: &Path) -> Result<(), String> {
+    for path in sorted_dist_files(dist_dir)? {
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !file_name.ends_with(".receipt.json") {
+            continue;
+        }
+        let text = fs::read_to_string(&path)
+            .map_err(|err| format!("failed to read release server receipt {}: {err}", path.display()))?;
+        serde_json::from_str::<ReleaseServerBuildReceipt>(&text).map_err(|err| {
+            format!(
+                "malformed release server receipt `{}`: {err}",
+                path.display()
+            )
+        })?;
+    }
+    Ok(())
 }
 
 pub(crate) fn read_trimmed(path: &Path) -> Result<String, String> {
