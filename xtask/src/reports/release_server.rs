@@ -112,10 +112,19 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
         }
     }
 
-    validate_release_server_receipts(dist_dir, &version)?;
-
+    let receipt_targets = validate_release_server_receipts(dist_dir, &version)?;
     let discovered_assets = release_server_assets(dist_dir, &version)?;
     validate_configured_release_server_targets(&discovered_assets)?;
+    let asset_targets = discovered_assets
+        .iter()
+        .map(|asset| asset.target.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    if receipt_targets != asset_targets {
+        return Err(format!(
+            "release server receipt targets do not match archive targets: receipts {:?}, archives {:?}",
+            receipt_targets, asset_targets
+        ));
+    }
     let mut assets = serde_json::Map::new();
     for asset in discovered_assets {
         let sha_path = dist_dir.join(format!("{}.sha256", asset.file_name));
@@ -783,8 +792,9 @@ fn sorted_dist_files(dist_dir: &Path) -> Result<Vec<PathBuf>, String> {
 pub(crate) fn validate_release_server_receipts(
     dist_dir: &Path,
     version: &str,
-) -> Result<(), String> {
+) -> Result<std::collections::BTreeSet<String>, String> {
     let mut baseline: Option<ReleaseServerBuildReceipt> = None;
+    let mut receipt_targets = std::collections::BTreeSet::new();
     for path in sorted_dist_files(dist_dir)? {
         let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
@@ -821,6 +831,11 @@ pub(crate) fn validate_release_server_receipts(
         if receipt.target != receipt_target || receipt.archive.path != expected_archive {
             return Err(format!(
                 "release server receipt archive mapping mismatch for target `{receipt_target}`"
+            ));
+        }
+        if !receipt_targets.insert(receipt_target.to_string()) {
+            return Err(format!(
+                "duplicate release server receipt target `{receipt_target}`"
             ));
         }
         let archive_path = dist_dir.join(&receipt.archive.path);
@@ -903,7 +918,7 @@ pub(crate) fn validate_release_server_receipts(
             baseline = Some(receipt);
         }
     }
-    Ok(())
+    Ok(receipt_targets)
 }
 
 pub(crate) fn read_trimmed(path: &Path) -> Result<String, String> {

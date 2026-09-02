@@ -7688,18 +7688,34 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
             &dist.join("ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip.sha256"),
             "windows-sha\n",
         );
-        for (target, archive, contents) in [
-            ("aarch64-unknown-linux-gnu", "tar.gz", "arm-linux"),
-            ("x86_64-apple-darwin", "tar.gz", "intel-macos"),
-            ("aarch64-apple-darwin", "tar.gz", "arm-macos"),
+        write(&root.join("LICENSE-MIT"), "mit");
+        write(&root.join("LICENSE-APACHE"), "apache");
+        for (target, executable, archive) in [
+            ("x86_64-pc-windows-msvc", "ripr.exe", "zip"),
+            ("x86_64-unknown-linux-gnu", "ripr", "tar.gz"),
+            ("aarch64-unknown-linux-gnu", "ripr", "tar.gz"),
+            ("x86_64-apple-darwin", "ripr", "tar.gz"),
+            ("aarch64-apple-darwin", "ripr", "tar.gz"),
         ] {
-            let archive_name = format!("ripr-server-v1.2.3-{target}.{archive}");
-            write(&dist.join(&archive_name), contents);
-            let sha = super::sha256_file(&dist.join(&archive_name))?;
             write(
-                &dist.join(format!("{archive_name}.sha256")),
-                &format!("{sha}\n"),
+                &root
+                    .join("target")
+                    .join(target)
+                    .join("release")
+                    .join(executable),
+                target,
             );
+            let archive_args = vec![
+                "--version".to_string(),
+                "1.2.3".to_string(),
+                "--target".to_string(),
+                target.to_string(),
+                "--executable".to_string(),
+                executable.to_string(),
+                "--archive".to_string(),
+                archive.to_string(),
+            ];
+            super::release_server_archive(&archive_args)?;
         }
         let linux_sha =
             super::sha256_file(&dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"))?;
