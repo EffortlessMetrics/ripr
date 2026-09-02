@@ -1227,7 +1227,7 @@ pub(crate) fn write_release_server_outputs_transactional(
 
 fn sha256_bytes(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
-    format!("sha256:{digest:x}")
+    format!("{digest:x}")
 }
 
 pub(crate) fn read_trimmed(path: &Path) -> Result<String, String> {

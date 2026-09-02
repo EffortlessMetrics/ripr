@@ -8024,6 +8024,18 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
         assert!(checksums.contains("  ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"));
         assert!(checksums.contains("  ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip"));
         assert!(checksums.contains("  ripr-server-manifest-v1.2.3.json"));
+        for line in checksums.lines() {
+            let (digest, _) = line
+                .split_once("  ")
+                .ok_or_else(|| format!("invalid SHA256SUMS line: {line}"))?;
+            assert_eq!(digest.len(), 64, "digest must be 64 hex characters: {line}");
+            assert!(
+                digest
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit()),
+                "digest must contain only hexadecimal characters: {line}"
+            );
+        }
         assert!(!checksums.contains(".sha256"));
         assert!(
             !checksums.contains(".receipt.json"),
