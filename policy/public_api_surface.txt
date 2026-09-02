@@ -83,10 +83,13 @@ pub const ripr::review_input::REVIEW_INPUT_SELECTION_POLICY_VERSION
 pub const ripr::review_input::REVIEW_INDEX_MAX_BYTES
 pub const ripr::review_input::REVIEW_INDEX_MAX_ENTRIES
 pub const ripr::review_input::REVIEW_INDEX_SCHEMA_VERSION
+pub const ripr::review_input::REVIEW_ANALYZER_GENERATION
 pub fn ripr::review_input::canonical_projection
 pub fn ripr::review_input::canonical_projection_all
 pub fn ripr::review_input::canonical_projection_from_index
 pub fn ripr::review_input::projection_summary
+pub fn ripr::config::load_for_root
+pub fn ripr::config::repo_exposure_config_identity_hash
 pub mod ripr::review_input
 pub struct ripr::review_input::CanonicalFindingIndexV1
 pub struct ripr::review_input::ReviewFindingProjectionV1
