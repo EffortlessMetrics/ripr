@@ -1777,8 +1777,8 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "mutating",
             "editors/vscode/dist",
             false,
-            false,
-            "Builds VS Code extension package artifacts.",
+            true,
+            "Builds VS Code extension package artifacts; CI fails when packaging fails.",
         ),
         command_entry(
             "vscode-test",

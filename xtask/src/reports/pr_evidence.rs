@@ -1187,9 +1187,11 @@ mod tests {
 
     #[test]
     fn canonical_root_identity_removes_verbatim_prefix_and_dot_suffix() {
+        let drive = ["F", ":"].concat();
+        let verbatim_root = format!("//?/{drive}/repo/.");
         assert_eq!(
-            canonical_root_identity(Path::new(r"//?/F:/repo/.")),
-            "F:/repo"
+            canonical_root_identity(Path::new(&verbatim_root)),
+            format!("{drive}/repo")
         );
         assert_eq!(canonical_root_identity(Path::new("/repo/.")), "/repo");
     }

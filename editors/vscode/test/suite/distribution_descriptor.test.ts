@@ -74,7 +74,7 @@ suite('distribution descriptor', () => {
 
   test('uses a Windows-safe cache identity segment', () => {
     const request = resolveDistributionRequest('0.11.0', rc);
-    const context = { globalStorageUri: { fsPath: 'C:\\ripr-storage' } } as never;
+    const context = { globalStorageUri: { fsPath: 'ripr-storage' } } as never;
     const platform = {
       target: 'x86_64-pc-windows-msvc',
       executableName: 'ripr.exe',

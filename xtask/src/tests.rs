@@ -49230,11 +49230,67 @@ fn count_policy_gates_have_no_stale_bounds() -> Result<(), String> {
 fn golden_comparison_runs_consume_the_cache_the_runner_cleared() -> Result<(), String> {
     with_repo_cwd(|| {
         let name = "all_no_path_disclosure";
-        let fixture = PathBuf::from("fixtures").join(name);
+        let source_fixture = PathBuf::from("fixtures").join(name);
+        let fixture = temp_dir("golden-comparison-isolated-fixture");
+
+        fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
+            fs::create_dir_all(destination)
+                .map_err(|err| format!("create {}: {err}", destination.display()))?;
+            for entry in
+                fs::read_dir(source).map_err(|err| format!("read {}: {err}", source.display()))?
+            {
+                let entry = entry.map_err(|err| format!("read fixture entry: {err}"))?;
+                let source_path = entry.path();
+                let destination_path = destination.join(entry.file_name());
+                if source_path.is_dir() {
+                    copy_tree(&source_path, &destination_path)?;
+                } else {
+                    fs::copy(&source_path, &destination_path).map_err(|err| {
+                        format!(
+                            "copy {} to {}: {err}",
+                            source_path.display(),
+                            destination_path.display()
+                        )
+                    })?;
+                }
+            }
+            Ok(())
+        }
+
+        copy_tree(&source_fixture, &fixture)?;
+        fs::create_dir_all(fixture.join("input").join(".git"))
+            .map_err(|err| format!("create fixture config boundary: {err}"))?;
+        let expected_root = super::normalize_path(&source_fixture.join("input"));
+        let isolated_root = super::normalize_path(&fixture.join("input"));
+        let expected_diff = super::normalize_path(&source_fixture.join("diff.patch"));
+        let isolated_diff = super::normalize_path(&fixture.join("diff.patch"));
+        for relative in [
+            "expected/check.json",
+            "expected/human.txt",
+            "expected/human-full.txt",
+        ] {
+            let expected = fixture.join(relative);
+            if !expected.exists() {
+                continue;
+            }
+            let contents = fs::read_to_string(&expected)
+                .map_err(|err| format!("read {}: {err}", expected.display()))?;
+            fs::write(
+                &expected,
+                contents
+                    .replace(&expected_root, &isolated_root)
+                    .replace(&expected_diff, &isolated_diff),
+            )
+            .map_err(|err| format!("write {}: {err}", expected.display()))?;
+        }
+        let isolated_name = fixture
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| "isolated fixture should have a directory name".to_string())?;
         let leaked = fixture.join("input").join("target");
         let _ = fs::remove_dir_all(&leaked);
 
-        let cache_dir = super::fixture_cache_dir(name)?;
+        let cache_dir = super::fixture_cache_dir(isolated_name)?;
         let stale = cache_dir
             .join("repo-file-facts")
             .join("0.2")
