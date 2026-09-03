@@ -44479,6 +44479,43 @@ fn vscode_distribution_descriptor_binds_package_version_and_required_fields() ->
 }
 
 #[test]
+fn vscode_distribution_descriptor_rejects_each_missing_required_field() -> Result<(), String> {
+    with_temp_cwd("vscode-distribution-descriptor-fields", |root| {
+        let descriptor = root.join("distribution.json");
+        let fields = [
+            "schema",
+            "productVersion",
+            "channel",
+            "releaseTag",
+            "releaseRef",
+            "manifestFile",
+            "sourceRepository",
+        ];
+        for field in fields {
+            let mut value = serde_json::json!({
+                "schema": 1,
+                "productVersion": "0.11.0",
+                "channel": "rc",
+                "releaseTag": "v0.11.0-rc.1",
+                "releaseRef": "refs/tags/v0.11.0-rc.1",
+                "manifestFile": "ripr-server-manifest-v0.11.0.json",
+                "sourceRepository": "https://github.com/EffortlessMetrics/ripr"
+            });
+            let Some(object) = value.as_object_mut() else {
+                return Err("descriptor fixture must be an object".to_string());
+            };
+            object.remove(field);
+            fs::write(&descriptor, value.to_string())
+                .map_err(|err| format!("failed to write {}: {err}", descriptor.display()))?;
+            let error = validate_vscode_distribution_descriptor(&descriptor, "0.11.0")
+                .expect_err("missing descriptor fields must fail closed");
+            assert!(error.contains(field));
+        }
+        Ok(())
+    })
+}
+
+#[test]
 fn vscode_commands_use_extension_cwd_and_local_bins() {
     let extension_dir = vscode_extension_dir();
     let node_bin_extension = if cfg!(windows) { ".cmd" } else { "" };
