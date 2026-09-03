@@ -15,6 +15,8 @@ fn temp_root(name: &str) -> Result<PathBuf, String> {
         .unwrap_or(0);
     let root = std::env::temp_dir().join(format!("ripr-config-{name}-{stamp}"));
     fs::create_dir_all(&root).map_err(|err| format!("create temp root failed: {err}"))?;
+    fs::create_dir(root.join(".git"))
+        .map_err(|err| format!("create test boundary failed: {err}"))?;
     Ok(root)
 }
 

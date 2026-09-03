@@ -185,9 +185,9 @@ use super::{
     user_surface_projection_required_run_status_violations,
     validate_actionable_gap_outcomes_fixture_case, validate_actionable_gap_outcomes_fixture_corpus,
     validate_local_context_allowlist, validate_swarm_plan_packet_fixture_case,
-    validate_swarm_plan_packet_fixture_corpus, vscode_compile_command, vscode_extension_dir,
-    vscode_package_command, vscode_package_version, vscode_test_e2e_command,
-    windows_absolute_path_tokens, workflow_bare_self_hosted_violations,
+    validate_swarm_plan_packet_fixture_corpus, validate_vscode_distribution_descriptor,
+    vscode_compile_command, vscode_extension_dir, vscode_package_command, vscode_package_version,
+    vscode_test_e2e_command, windows_absolute_path_tokens, workflow_bare_self_hosted_violations,
     workflow_review_thread_mutation_violations, workflow_runtime_violations, worktree,
     worktree_doctor_findings, write_badge_artifacts_after_build, write_badge_artifacts_from_diff,
     write_evidence_health_report_with_runner, write_evidence_health_report_with_runners,
@@ -44461,6 +44461,61 @@ fn vscode_package_version_reads_extension_manifest() -> Result<(), String> {
 }
 
 #[test]
+fn vscode_distribution_descriptor_binds_package_version_and_required_fields() -> Result<(), String>
+{
+    with_temp_cwd("vscode-distribution-descriptor", |root| {
+        let descriptor = root.join("distribution.json");
+        fs::write(
+            &descriptor,
+            r#"{"schema":1,"productVersion":"0.11.0","channel":"rc","releaseTag":"v0.11.0-rc.1","releaseRef":"refs/tags/v0.11.0-rc.1","manifestFile":"ripr-server-manifest-v0.11.0.json","sourceRepository":"https://github.com/EffortlessMetrics/ripr"}"#,
+        )
+        .map_err(|err| format!("failed to write {}: {err}", descriptor.display()))?;
+        validate_vscode_distribution_descriptor(&descriptor, "0.11.0")?;
+        let error = validate_vscode_distribution_descriptor(&descriptor, "0.10.1")
+            .expect_err("package and descriptor versions must bind");
+        assert!(error.contains("does not match package version"));
+        Ok(())
+    })
+}
+
+#[test]
+fn vscode_distribution_descriptor_rejects_each_missing_required_field() -> Result<(), String> {
+    with_temp_cwd("vscode-distribution-descriptor-fields", |root| {
+        let descriptor = root.join("distribution.json");
+        let fields = [
+            "schema",
+            "productVersion",
+            "channel",
+            "releaseTag",
+            "releaseRef",
+            "manifestFile",
+            "sourceRepository",
+        ];
+        for field in fields {
+            let mut value = serde_json::json!({
+                "schema": 1,
+                "productVersion": "0.11.0",
+                "channel": "rc",
+                "releaseTag": "v0.11.0-rc.1",
+                "releaseRef": "refs/tags/v0.11.0-rc.1",
+                "manifestFile": "ripr-server-manifest-v0.11.0.json",
+                "sourceRepository": "https://github.com/EffortlessMetrics/ripr"
+            });
+            let Some(object) = value.as_object_mut() else {
+                return Err("descriptor fixture must be an object".to_string());
+            };
+            object.remove(field);
+            fs::write(&descriptor, value.to_string())
+                .map_err(|err| format!("failed to write {}: {err}", descriptor.display()))?;
+            let error = validate_vscode_distribution_descriptor(&descriptor, "0.11.0")
+                .expect_err("missing descriptor fields must fail closed");
+            assert!(error.contains(field));
+        }
+        Ok(())
+    })
+}
+
+#[test]
 fn vscode_commands_use_extension_cwd_and_local_bins() {
     let extension_dir = vscode_extension_dir();
     let node_bin_extension = if cfg!(windows) { ".cmd" } else { "" };
@@ -49175,11 +49230,67 @@ fn count_policy_gates_have_no_stale_bounds() -> Result<(), String> {
 fn golden_comparison_runs_consume_the_cache_the_runner_cleared() -> Result<(), String> {
     with_repo_cwd(|| {
         let name = "all_no_path_disclosure";
-        let fixture = PathBuf::from("fixtures").join(name);
+        let source_fixture = PathBuf::from("fixtures").join(name);
+        let fixture = temp_dir("golden-comparison-isolated-fixture");
+
+        fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
+            fs::create_dir_all(destination)
+                .map_err(|err| format!("create {}: {err}", destination.display()))?;
+            for entry in
+                fs::read_dir(source).map_err(|err| format!("read {}: {err}", source.display()))?
+            {
+                let entry = entry.map_err(|err| format!("read fixture entry: {err}"))?;
+                let source_path = entry.path();
+                let destination_path = destination.join(entry.file_name());
+                if source_path.is_dir() {
+                    copy_tree(&source_path, &destination_path)?;
+                } else {
+                    fs::copy(&source_path, &destination_path).map_err(|err| {
+                        format!(
+                            "copy {} to {}: {err}",
+                            source_path.display(),
+                            destination_path.display()
+                        )
+                    })?;
+                }
+            }
+            Ok(())
+        }
+
+        copy_tree(&source_fixture, &fixture)?;
+        fs::create_dir_all(fixture.join("input").join(".git"))
+            .map_err(|err| format!("create fixture config boundary: {err}"))?;
+        let expected_root = super::normalize_path(&source_fixture.join("input"));
+        let isolated_root = super::normalize_path(&fixture.join("input"));
+        let expected_diff = super::normalize_path(&source_fixture.join("diff.patch"));
+        let isolated_diff = super::normalize_path(&fixture.join("diff.patch"));
+        for relative in [
+            "expected/check.json",
+            "expected/human.txt",
+            "expected/human-full.txt",
+        ] {
+            let expected = fixture.join(relative);
+            if !expected.exists() {
+                continue;
+            }
+            let contents = fs::read_to_string(&expected)
+                .map_err(|err| format!("read {}: {err}", expected.display()))?;
+            fs::write(
+                &expected,
+                contents
+                    .replace(&expected_root, &isolated_root)
+                    .replace(&expected_diff, &isolated_diff),
+            )
+            .map_err(|err| format!("write {}: {err}", expected.display()))?;
+        }
+        let isolated_name = fixture
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| "isolated fixture should have a directory name".to_string())?;
         let leaked = fixture.join("input").join("target");
         let _ = fs::remove_dir_all(&leaked);
 
-        let cache_dir = super::fixture_cache_dir(name)?;
+        let cache_dir = super::fixture_cache_dir(isolated_name)?;
         let stale = cache_dir
             .join("repo-file-facts")
             .join("0.2")

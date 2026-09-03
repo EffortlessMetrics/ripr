@@ -36,6 +36,7 @@ pub(crate) use oxc_ast::ast::{
 };
 pub(crate) use oxc_parser::Parser;
 pub(crate) use oxc_span::{GetSpan, SourceType};
+use std::collections::HashMap;
 pub(crate) use std::path::{Path, PathBuf};
 
 mod actionability;
@@ -157,6 +158,7 @@ impl LanguageAdapter for TypeScriptAdapter {
         // Phase 2: for each accepted changed file, classify each changed
         // line that falls inside an owner.
         let mut findings: Vec<Finding> = Vec::new();
+        let mut finding_id_ordinals: HashMap<String, u32> = HashMap::new();
         let mut changed_count: usize = 0;
         // Per-output-language tally (#2103 review): this adapter covers both
         // typescript (.ts/.tsx) and javascript (.js/.jsx), so the summary
@@ -217,6 +219,7 @@ impl LanguageAdapter for TypeScriptAdapter {
                     &reexport_index,
                     alias_map_ref,
                 ) {
+                    disambiguate_finding_id(&mut finding, &mut finding_id_ordinals);
                     finding.evidence.extend(discovery_evidence.clone());
                     // Inject verify-command evidence derived from the strongest
                     // related test and the package-discovery facts already
@@ -321,5 +324,27 @@ impl LanguageAdapter for TypeScriptAdapter {
             production_files: 0,
             skipped_files: 0,
         })
+    }
+}
+
+/// Keep content-addressed IDs stable across line movement while making
+/// repeated identical expressions in one diff distinct.  The classifier's
+/// base ID intentionally omits line numbers; the assembly ordinal is the
+/// narrowest deterministic collision boundary available here.
+fn disambiguate_finding_id(finding: &mut Finding, ordinals: &mut HashMap<String, u32>) {
+    let base_id = finding.id.clone();
+    let ordinal = ordinals.entry(base_id.clone()).or_insert(0);
+    *ordinal += 1;
+    if *ordinal <= 1 {
+        return;
+    }
+
+    let unique_id = format!("{base_id}.{}", *ordinal);
+    finding.id = unique_id.clone();
+    finding.probe.id = crate::domain::ProbeId(unique_id.clone());
+    for evidence in &mut finding.evidence {
+        if let Some(prefix) = evidence.strip_suffix(&base_id) {
+            *evidence = format!("{prefix}{unique_id}");
+        }
     }
 }

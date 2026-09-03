@@ -6,6 +6,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { RiprConfig } from './config';
 import { RiprPlatform } from './platform';
+import { distributionManifestUrl, ResolvedDistributionRequest } from './distributionDescriptor';
 
 export interface ManifestAsset {
   readonly url: string;
@@ -17,44 +18,46 @@ export interface ServerManifest {
   readonly assets: Record<string, ManifestAsset>;
 }
 
+/** Downloads, verifies, extracts, and records one admitted server distribution. */
 export async function downloadServer(
   context: vscode.ExtensionContext,
   config: RiprConfig,
   platform: RiprPlatform,
-  version: string,
+  distribution: ResolvedDistributionRequest,
   output: vscode.OutputChannel
 ): Promise<string> {
-  const origin = downloadOriginLabel(config, version);
+  const origin = downloadOriginLabel(config, distribution);
   return vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `ripr: downloading server ${version} for ${platform.target} from ${origin}`,
+      title: `ripr: downloading server ${distribution.releaseTag} for ${platform.target} from ${origin}`,
       cancellable: false
     },
-    (progress) => downloadServerWithProgress(context, config, platform, version, output, progress)
+    (progress) => downloadServerWithProgress(context, config, platform, distribution, output, progress)
   );
 }
 
+/** Performs the bounded download and cache installation under progress reporting. */
 async function downloadServerWithProgress(
   context: vscode.ExtensionContext,
   config: RiprConfig,
   platform: RiprPlatform,
-  version: string,
+  distribution: ResolvedDistributionRequest,
   output: vscode.OutputChannel,
   progress: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<string> {
-  const cacheDir = serverCacheDir(context, version, platform.target);
+  const cacheDir = serverCacheDir(context, distribution, platform.target);
   const executablePath = path.join(cacheDir, platform.executableName);
   await fs.promises.mkdir(cacheDir, { recursive: true });
 
   progress.report({ message: 'Fetching release manifest…' });
-  const manifest = await fetchManifest(manifestUrl(config.downloadBaseUrl, version));
+  const manifest = await fetchManifest(distributionManifestUrl(config.downloadBaseUrl, distribution));
   const asset = manifest.assets[platform.target];
   if (!asset) {
     throw new Error(`No ripr server asset is listed for ${platform.target} in manifest ${manifest.version}.`);
   }
 
-  output.appendLine(`Downloading ripr server ${version} for ${platform.target}.`);
+  output.appendLine(`Downloading ripr server ${distribution.releaseTag} for ${platform.target}.`);
   progress.report({ message: `Downloading ${platform.executableName}…` });
   const archive = await fetchBuffer(asset.url);
   progress.report({ message: 'Verifying checksum…' });
@@ -84,29 +87,38 @@ async function downloadServerWithProgress(
   return executablePath;
 }
 
-export function cachedServerPath(context: vscode.ExtensionContext, version: string, platform: RiprPlatform): string {
-  return path.join(serverCacheDir(context, version, platform.target), platform.executableName);
+/** Resolves the executable path for one descriptor-bound cache entry. */
+export function cachedServerPath(
+  context: vscode.ExtensionContext,
+  distribution: ResolvedDistributionRequest,
+  platform: RiprPlatform
+): string {
+  return path.join(serverCacheDir(context, distribution, platform.target), platform.executableName);
 }
 
-function serverCacheDir(context: vscode.ExtensionContext, version: string, target: string): string {
-  return path.join(context.globalStorageUri.fsPath, 'servers', version, target);
+/** Returns the descriptor- and target-specific cache directory. */
+function serverCacheDir(context: vscode.ExtensionContext, distribution: ResolvedDistributionRequest, target: string): string {
+  return path.join(
+    context.globalStorageUri.fsPath,
+    'servers',
+    distribution.releaseTag,
+    cacheIdentitySegment(distribution.descriptorIdentity),
+    target
+  );
 }
 
-function downloadOriginLabel(config: RiprConfig, version: string): string {
+/** Returns a filesystem-safe cache segment while retaining the labeled digest in receipts. */
+function cacheIdentitySegment(identity: string): string {
+  return identity.startsWith('sha256:') ? identity.slice('sha256:'.length) : identity;
+}
+
+/** Formats the host used for download diagnostics without exposing URL details. */
+function downloadOriginLabel(config: RiprConfig, distribution: ResolvedDistributionRequest): string {
   try {
-    return new URL(manifestUrl(config.downloadBaseUrl, version)).host;
+    return new URL(distributionManifestUrl(config.downloadBaseUrl, distribution)).host;
   } catch {
     return 'the configured download mirror';
   }
-}
-
-function manifestUrl(baseUrl: string, version: string): string {
-  const file = `ripr-server-manifest-v${version}.json`;
-  const base = baseUrl.trim();
-  if (base.length > 0) {
-    return `${base.replace(/\/+$/, '')}/${file}`;
-  }
-  return `https://github.com/EffortlessMetrics/ripr/releases/download/v${version}/${file}`;
 }
 
 async function fetchManifest(url: string): Promise<ServerManifest> {

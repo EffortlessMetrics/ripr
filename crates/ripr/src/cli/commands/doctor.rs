@@ -1537,7 +1537,14 @@ mod tests {
         // Drop a .ts file so TypeScript is detected.
         std::fs::write(dir.join("index.ts"), "export const x = 1;\n")
             .map_err(|err| format!("write ts: {err}"))?;
-        // No ripr.toml → defaults to enabled = ["rust"] only.
+        // Keep the default-disabled contract explicit rather than relying on
+        // ancestor lookup, since the source repository may itself configure a
+        // preview adapter for its hosted evidence workflow.
+        std::fs::write(
+            dir.join(CONFIG_FILE_NAME),
+            "[languages]\nenabled = [\"rust\"]\n",
+        )
+        .map_err(|err| format!("write default config: {err}"))?;
         let suggestions = preview_language_enable_suggestions(&dir);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(

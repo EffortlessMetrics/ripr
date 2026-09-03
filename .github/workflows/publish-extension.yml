@@ -45,10 +45,7 @@ jobs:
         run: npm run compile
 
       - name: Package VSIX
-        run: |
-          version="${EXTENSION_VERSION#v}"
-          mkdir -p dist
-          npx @vscode/vsce package --out "dist/ripr-${version}.vsix"
+        run: cargo xtask vscode-package
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v7
