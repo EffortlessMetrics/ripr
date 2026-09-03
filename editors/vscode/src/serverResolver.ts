@@ -6,6 +6,7 @@ import { RiprConfig } from './config';
 import { cachedServerPath, downloadServer } from './downloader';
 import {
   DistributionDescriptor,
+  distributionDescriptorIdentity,
   parseDistributionDescriptor,
   resolveDistributionRequest,
   ResolvedDistributionRequest
@@ -56,7 +57,7 @@ export async function resolveServer(
       return bundledResult;
     }
 
-    const cached = cachedServerPath(context, distribution.releaseTag, platform);
+    const cached = cachedServerPath(context, distribution, platform);
     const cachedResult = await probeExistingCandidate(
       cached,
       'downloaded',
@@ -165,7 +166,8 @@ function legacyDescriptor(productVersion: string, releaseTag: string): Distribut
 
 function legacyRequest(productVersion: string, releaseTag: string): ResolvedDistributionRequest {
   const releaseVersion = releaseTag.replace(/^v/, '').replace(/-rc\.\d+$/, '');
-  return {
+  const descriptor: DistributionDescriptor = {
+    schema: 1,
     productVersion,
     releaseTag,
     releaseRef: `refs/tags/${releaseTag}`,
@@ -173,6 +175,7 @@ function legacyRequest(productVersion: string, releaseTag: string): ResolvedDist
     sourceRepository: 'https://github.com/EffortlessMetrics/ripr',
     channel: /-rc\.\d+$/.test(releaseTag) ? 'rc' : 'stable'
   };
+  return { ...descriptor, descriptorIdentity: distributionDescriptorIdentity(descriptor) };
 }
 
 function bundledServerPath(context: vscode.ExtensionContext, platform: RiprPlatform): string {

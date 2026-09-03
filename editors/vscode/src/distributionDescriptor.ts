@@ -17,6 +17,7 @@ export interface ResolvedDistributionRequest {
   readonly manifestFile: string;
   readonly sourceRepository: string;
   readonly channel: DistributionChannel;
+  readonly descriptorIdentity: string;
 }
 
 export function parseDistributionDescriptor(serialized: string): DistributionDescriptor {
@@ -105,8 +106,22 @@ export function resolveDistributionRequest(
     releaseRef: validated.releaseRef,
     manifestFile: validated.manifestFile,
     sourceRepository: validated.sourceRepository,
-    channel: validated.channel
+    channel: validated.channel,
+    descriptorIdentity: distributionDescriptorIdentity(validated)
   };
+}
+
+export function distributionDescriptorIdentity(descriptor: DistributionDescriptor): string {
+  const canonical = JSON.stringify([
+    descriptor.schema,
+    descriptor.productVersion,
+    descriptor.channel,
+    descriptor.releaseTag,
+    descriptor.releaseRef,
+    descriptor.manifestFile,
+    descriptor.sourceRepository
+  ]);
+  return `sha256:${crypto.createHash('sha256').update(canonical, 'utf8').digest('hex')}`;
 }
 
 export function distributionManifestUrl(baseUrl: string, distribution: ResolvedDistributionRequest): string {
@@ -129,3 +144,4 @@ function isChannel(value: string): value is DistributionChannel {
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+import * as crypto from 'crypto';

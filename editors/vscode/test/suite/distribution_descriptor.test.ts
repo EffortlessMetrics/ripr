@@ -22,6 +22,16 @@ describe('distribution descriptor', () => {
     assert.strictEqual(request.productVersion, '0.11.0');
     assert.strictEqual(request.releaseTag, 'v0.11.0-rc.1');
     assert.strictEqual(request.manifestFile, 'ripr-server-manifest-v0.11.0.json');
+    assert.match(request.descriptorIdentity, /^sha256:[0-9a-f]{64}$/);
+  });
+
+  it('does not alias different source repositories', () => {
+    const first = resolveDistributionRequest('0.11.0', rc);
+    const second = resolveDistributionRequest('0.11.0', {
+      ...rc,
+      sourceRepository: 'https://mirror.invalid/ripr'
+    });
+    assert.notStrictEqual(first.descriptorIdentity, second.descriptorIdentity);
   });
 
   it('rejects a package version mismatch', () => {

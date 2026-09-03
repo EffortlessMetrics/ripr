@@ -44,7 +44,7 @@ async function downloadServerWithProgress(
   output: vscode.OutputChannel,
   progress: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<string> {
-  const cacheDir = serverCacheDir(context, distribution.releaseTag, platform.target);
+  const cacheDir = serverCacheDir(context, distribution, platform.target);
   const executablePath = path.join(cacheDir, platform.executableName);
   await fs.promises.mkdir(cacheDir, { recursive: true });
 
@@ -85,12 +85,16 @@ async function downloadServerWithProgress(
   return executablePath;
 }
 
-export function cachedServerPath(context: vscode.ExtensionContext, releaseTag: string, platform: RiprPlatform): string {
-  return path.join(serverCacheDir(context, releaseTag, platform.target), platform.executableName);
+export function cachedServerPath(
+  context: vscode.ExtensionContext,
+  distribution: ResolvedDistributionRequest,
+  platform: RiprPlatform
+): string {
+  return path.join(serverCacheDir(context, distribution, platform.target), platform.executableName);
 }
 
-function serverCacheDir(context: vscode.ExtensionContext, version: string, target: string): string {
-  return path.join(context.globalStorageUri.fsPath, 'servers', version, target);
+function serverCacheDir(context: vscode.ExtensionContext, distribution: ResolvedDistributionRequest, target: string): string {
+  return path.join(context.globalStorageUri.fsPath, 'servers', distribution.releaseTag, distribution.descriptorIdentity, target);
 }
 
 function downloadOriginLabel(config: RiprConfig, distribution: ResolvedDistributionRequest): string {
