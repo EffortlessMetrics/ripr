@@ -188,7 +188,7 @@ fn write_pr_evidence_packet(
         .map_err(|err| format!("read canonical diff for check subject binding: {err}"))?;
     let mut subject = json!({
         "schema_version": "ripr.pr_check_subject.v1",
-        "root_identity": root.display().to_string().replace('\\', "/"),
+        "root_identity": canonical_root_identity(&root),
         "base_sha": resolve_revision(repo, &options.base, "commit")?,
         "head_sha": resolve_revision(repo, &options.head, "commit")?,
         "head_tree": resolve_revision(repo, &options.head, "tree")?,
@@ -325,7 +325,7 @@ fn producer_review_input(
     let input = json!({
         "schema_version": REVIEW_INPUT_SCHEMA_VERSION,
         "mode": check["mode"],
-        "root_identity": root.display().to_string().replace('\\', "/"),
+        "root_identity": canonical_root_identity(&root),
         "base_sha": subject["base_sha"],
         "head_sha": subject["head_sha"],
         "head_tree": subject["head_tree"],
@@ -346,6 +346,15 @@ fn producer_review_input(
         .map_err(|error| format!("producer review input does not match ReviewInputV1: {error}"))?;
     serde_json::to_value(typed)
         .map_err(|error| format!("serialize typed producer review input: {error}"))
+}
+
+fn canonical_root_identity(root: &Path) -> String {
+    let normalized = root.to_string_lossy().replace('\\', "/");
+    let without_verbatim_prefix = normalized.strip_prefix("//?/").unwrap_or(&normalized);
+    without_verbatim_prefix
+        .strip_suffix("/.")
+        .unwrap_or(without_verbatim_prefix)
+        .to_string()
 }
 
 fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
@@ -1175,6 +1184,15 @@ fn repo_root() -> Result<PathBuf, String> {
 mod tests {
     use super::*;
     use ripr::review_input::projection_summary;
+
+    #[test]
+    fn canonical_root_identity_removes_verbatim_prefix_and_dot_suffix() {
+        assert_eq!(
+            canonical_root_identity(Path::new(r"//?/F:/repo/.")),
+            "F:/repo"
+        );
+        assert_eq!(canonical_root_identity(Path::new("/repo/.")), "/repo");
+    }
 
     fn options() -> PrEvidenceOptions {
         PrEvidenceOptions {
