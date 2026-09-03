@@ -29,6 +29,7 @@ fn write_file(path: &Path, text: &str) -> Result<(), String> {
 #[test]
 fn missing_config_uses_behavior_preserving_defaults() -> Result<(), String> {
     let root = temp_root("missing")?;
+    fs::create_dir(root.join(".git")).map_err(|err| format!("create test boundary: {err}"))?;
     let config = load_for_root(&root)?;
 
     assert!(config.source_path().is_none());
@@ -47,6 +48,7 @@ fn missing_config_uses_behavior_preserving_defaults() -> Result<(), String> {
 fn missing_config_detects_root_python_project_markers() -> Result<(), String> {
     for marker in PYTHON_PROJECT_MARKERS {
         let root = temp_root(&format!("python-marker-{}", marker.replace('.', "-")))?;
+        fs::create_dir(root.join(".git")).map_err(|err| format!("create test boundary: {err}"))?;
         write_file(&root.join(marker), "")?;
 
         let config = load_for_root(&root)?;
@@ -67,6 +69,7 @@ fn missing_config_detects_root_python_project_markers() -> Result<(), String> {
 fn missing_config_detects_python_source_under_src_or_tests() -> Result<(), String> {
     for source_dir in PYTHON_SOURCE_DIR_MARKERS {
         let root = temp_root(&format!("python-source-{source_dir}"))?;
+        fs::create_dir(root.join(".git")).map_err(|err| format!("create test boundary: {err}"))?;
         write_file(
             &root.join(source_dir).join("pricing.py"),
             "def price():\n    return 1\n",
@@ -87,6 +90,7 @@ fn missing_config_detects_python_source_under_src_or_tests() -> Result<(), Strin
 #[test]
 fn missing_config_does_not_treat_empty_src_or_tests_as_python() -> Result<(), String> {
     let root = temp_root("empty-python-marker-dirs")?;
+    fs::create_dir(root.join(".git")).map_err(|err| format!("create test boundary: {err}"))?;
     fs::create_dir_all(root.join("src")).map_err(|err| format!("create src failed: {err}"))?;
     fs::create_dir_all(root.join("tests")).map_err(|err| format!("create tests failed: {err}"))?;
     write_file(&root.join("src/lib.rs"), "pub fn price() -> u32 { 1 }\n")?;
@@ -101,6 +105,7 @@ fn missing_config_does_not_treat_empty_src_or_tests_as_python() -> Result<(), St
 #[test]
 fn missing_config_ignores_excluded_python_directories_and_generated_files() -> Result<(), String> {
     let root = temp_root("excluded-python-sources")?;
+    fs::create_dir(root.join(".git")).map_err(|err| format!("create test boundary: {err}"))?;
     for excluded_dir in PYTHON_PROJECT_EXCLUDED_DIRS {
         write_file(
             &root.join("src").join(excluded_dir).join("ignored.py"),
