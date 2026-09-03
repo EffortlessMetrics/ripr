@@ -185,9 +185,9 @@ use super::{
     user_surface_projection_required_run_status_violations,
     validate_actionable_gap_outcomes_fixture_case, validate_actionable_gap_outcomes_fixture_corpus,
     validate_local_context_allowlist, validate_swarm_plan_packet_fixture_case,
-    validate_swarm_plan_packet_fixture_corpus, vscode_compile_command, vscode_extension_dir,
-    vscode_package_command, vscode_package_version, vscode_test_e2e_command,
-    windows_absolute_path_tokens, workflow_bare_self_hosted_violations,
+    validate_swarm_plan_packet_fixture_corpus, validate_vscode_distribution_descriptor,
+    vscode_compile_command, vscode_extension_dir, vscode_package_command, vscode_package_version,
+    vscode_test_e2e_command, windows_absolute_path_tokens, workflow_bare_self_hosted_violations,
     workflow_review_thread_mutation_violations, workflow_runtime_violations, worktree,
     worktree_doctor_findings, write_badge_artifacts_after_build, write_badge_artifacts_from_diff,
     write_evidence_health_report_with_runner, write_evidence_health_report_with_runners,
@@ -44456,6 +44456,24 @@ fn vscode_package_version_reads_extension_manifest() -> Result<(), String> {
         fs::write(&package_json, r#"{"version":"0.4.0"}"#)
             .map_err(|err| format!("failed to write {}: {err}", package_json.display()))?;
         assert_eq!(vscode_package_version(&package_json)?, "0.4.0");
+        Ok(())
+    })
+}
+
+#[test]
+fn vscode_distribution_descriptor_binds_package_version_and_required_fields() -> Result<(), String>
+{
+    with_temp_cwd("vscode-distribution-descriptor", |root| {
+        let descriptor = root.join("distribution.json");
+        fs::write(
+            &descriptor,
+            r#"{"schema":1,"productVersion":"0.11.0","channel":"rc","releaseTag":"v0.11.0-rc.1","releaseRef":"refs/tags/v0.11.0-rc.1","manifestFile":"ripr-server-manifest-v0.11.0.json","sourceRepository":"https://github.com/EffortlessMetrics/ripr"}"#,
+        )
+        .map_err(|err| format!("failed to write {}: {err}", descriptor.display()))?;
+        validate_vscode_distribution_descriptor(&descriptor, "0.11.0")?;
+        let error = validate_vscode_distribution_descriptor(&descriptor, "0.10.1")
+            .expect_err("package and descriptor versions must bind");
+        assert!(error.contains("does not match package version"));
         Ok(())
     })
 }

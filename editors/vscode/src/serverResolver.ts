@@ -4,6 +4,12 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { RiprConfig } from './config';
 import { cachedServerPath, downloadServer } from './downloader';
+import {
+  DistributionDescriptor,
+  parseDistributionDescriptor,
+  resolveDistributionRequest,
+  ResolvedDistributionRequest
+} from './distributionDescriptor';
 import { currentRiprPlatform, RiprPlatform } from './platform';
 
 const START_TIMEOUT_MS = 5000;
@@ -40,7 +46,7 @@ export async function resolveServer(
   }
 
   const platform = currentRiprPlatform();
-  const version = requestedServerVersion(context, config);
+  const distribution = requestedServerDistribution(context, config);
   let downloadFailure: string | undefined;
 
   if (platform) {
@@ -50,19 +56,23 @@ export async function resolveServer(
       return bundledResult;
     }
 
-    const cached = cachedServerPath(context, version, platform);
-    const cachedResult = await probeExistingCandidate(cached, 'downloaded', `cached server ${version} for ${platform.target}`);
+    const cached = cachedServerPath(context, distribution.releaseTag, platform);
+    const cachedResult = await probeExistingCandidate(
+      cached,
+      'downloaded',
+      `cached server ${distribution.releaseTag} for ${platform.target}`
+    );
     if (isResolved(cachedResult)) {
       return cachedResult;
     }
 
     if (config.autoDownload) {
       try {
-        const downloaded = await downloadServer(context, config, platform, version, output);
+        const downloaded = await downloadServer(context, config, platform, distribution, output);
         const downloadedResult = await probeCandidate(
           downloaded,
           'downloaded',
-          `downloaded server ${version} for ${platform.target}`
+          `downloaded server ${distribution.releaseTag} for ${platform.target}`
         );
         if (isResolved(downloadedResult)) {
           return downloadedResult;
@@ -108,12 +118,61 @@ export async function resolveServer(
 }
 
 export function requestedServerVersion(context: vscode.ExtensionContext, config: RiprConfig): string {
+  return requestedServerDistribution(context, config).productVersion;
+}
+
+export function requestedServerDistribution(
+  context: vscode.ExtensionContext,
+  config: RiprConfig
+): ResolvedDistributionRequest {
+  const packageVersion = extensionPackageVersion(context);
   const configured = config.serverVersion.trim();
   if (configured.length > 0) {
-    return configured.replace(/^v/, '');
+    const releaseTag = configured.startsWith('v') ? configured : `v${configured}`;
+    // An explicit version is a legacy, user-selected transport override. It
+    // must not be represented as an embedded trusted distribution identity.
+    return legacyRequest(packageVersion, releaseTag);
   }
+  const descriptor = embeddedDistributionDescriptor(context, packageVersion);
+  return resolveDistributionRequest(packageVersion, descriptor);
+}
+
+function extensionPackageVersion(context: vscode.ExtensionContext): string {
   const version = context.extension?.packageJSON?.version;
   return typeof version === 'string' ? version.replace(/^v/, '') : '0.8.0';
+}
+
+function embeddedDistributionDescriptor(context: vscode.ExtensionContext, productVersion: string): DistributionDescriptor {
+  const descriptorPath = path.join(context.extensionUri.fsPath, 'distribution.json');
+  if (fs.existsSync(descriptorPath)) {
+    return parseDistributionDescriptor(fs.readFileSync(descriptorPath, 'utf8'));
+  }
+  return legacyDescriptor(productVersion, `v${productVersion}`);
+}
+
+function legacyDescriptor(productVersion: string, releaseTag: string): DistributionDescriptor {
+  const channel = /-rc\.\d+$/.test(releaseTag) ? 'rc' : 'stable';
+  return {
+    schema: 1,
+    productVersion,
+    channel,
+    releaseTag,
+    releaseRef: `refs/tags/${releaseTag}`,
+    manifestFile: `ripr-server-manifest-v${productVersion}.json`,
+    sourceRepository: 'https://github.com/EffortlessMetrics/ripr'
+  };
+}
+
+function legacyRequest(productVersion: string, releaseTag: string): ResolvedDistributionRequest {
+  const releaseVersion = releaseTag.replace(/^v/, '').replace(/-rc\.\d+$/, '');
+  return {
+    productVersion,
+    releaseTag,
+    releaseRef: `refs/tags/${releaseTag}`,
+    manifestFile: `ripr-server-manifest-v${releaseVersion}.json`,
+    sourceRepository: 'https://github.com/EffortlessMetrics/ripr',
+    channel: /-rc\.\d+$/.test(releaseTag) ? 'rc' : 'stable'
+  };
 }
 
 function bundledServerPath(context: vscode.ExtensionContext, platform: RiprPlatform): string {

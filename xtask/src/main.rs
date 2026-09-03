@@ -966,6 +966,7 @@ fn vscode_package() -> Result<(), String> {
     fs::create_dir_all(&dist)
         .map_err(|err| format!("failed to create {}: {err}", dist.display()))?;
     let version = vscode_package_version(&extension_dir.join("package.json"))?;
+    validate_vscode_distribution_descriptor(&extension_dir.join("distribution.json"), &version)?;
     run_cwd_command(&vscode_package_command(&version))
 }
 
@@ -1109,6 +1110,42 @@ fn vscode_package_version(package_json: &Path) -> Result<String, String> {
         .filter(|version| !version.trim().is_empty())
         .map(str::to_string)
         .ok_or_else(|| format!("{} is missing a string version", package_json.display()))
+}
+
+fn validate_vscode_distribution_descriptor(
+    path: &Path,
+    package_version: &str,
+) -> Result<(), String> {
+    let value = read_json_value(path)?;
+    let descriptor_version = value
+        .get("productVersion")
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("{} is missing productVersion", path.display()))?;
+    if descriptor_version != package_version {
+        return Err(format!(
+            "{} productVersion {} does not match package version {}",
+            path.display(),
+            descriptor_version,
+            package_version
+        ));
+    }
+    for field in [
+        "schema",
+        "channel",
+        "releaseTag",
+        "releaseRef",
+        "manifestFile",
+        "sourceRepository",
+    ] {
+        if value.get(field).is_none() {
+            return Err(format!(
+                "{} is missing descriptor field {}",
+                path.display(),
+                field
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn ci_full_evidence_gates() -> [CiFullEvidenceGate; 5] {
