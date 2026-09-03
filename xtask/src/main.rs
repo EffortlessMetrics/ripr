@@ -1112,6 +1112,7 @@ fn vscode_package_version(package_json: &Path) -> Result<String, String> {
         .ok_or_else(|| format!("{} is missing a string version", package_json.display()))
 }
 
+/// Validates the packaged descriptor's required fields and package-version binding.
 fn validate_vscode_distribution_descriptor(
     path: &Path,
     package_version: &str,

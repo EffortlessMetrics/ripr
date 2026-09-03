@@ -1,3 +1,4 @@
+/** Describes the installed extension's exact server distribution placement. */
 export type DistributionChannel = 'development' | 'rc' | 'stable';
 
 export interface DistributionDescriptor {
@@ -20,6 +21,7 @@ export interface ResolvedDistributionRequest {
   readonly descriptorIdentity: string;
 }
 
+/** Parses and validates one embedded distribution descriptor. */
 export function parseDistributionDescriptor(serialized: string): DistributionDescriptor {
   let value: unknown;
   try {
@@ -92,6 +94,7 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
   return { schema, productVersion, channel, releaseTag, releaseRef, manifestFile, sourceRepository };
 }
 
+/** Binds a descriptor to the package version used by the installed extension. */
 export function resolveDistributionRequest(
   packageVersion: string,
   descriptor: DistributionDescriptor
@@ -111,6 +114,7 @@ export function resolveDistributionRequest(
   };
 }
 
+/** Returns the stable semantic identity used to partition managed-server caches. */
 export function distributionDescriptorIdentity(descriptor: DistributionDescriptor): string {
   const canonical = JSON.stringify([
     descriptor.schema,
@@ -124,6 +128,7 @@ export function distributionDescriptorIdentity(descriptor: DistributionDescripto
   return `sha256:${crypto.createHash('sha256').update(canonical, 'utf8').digest('hex')}`;
 }
 
+/** Builds a mirror or source-repository URL without changing distribution identity. */
 export function distributionManifestUrl(baseUrl: string, distribution: ResolvedDistributionRequest): string {
   const file = distribution.manifestFile;
   const base = baseUrl.trim();
@@ -133,14 +138,17 @@ export function distributionManifestUrl(baseUrl: string, distribution: ResolvedD
   return `${distribution.sourceRepository}/releases/download/${distribution.releaseTag}/${file}`;
 }
 
+/** Narrows parsed JSON to a non-null object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Narrows descriptor channel values to the supported set. */
 function isChannel(value: string): value is DistributionChannel {
   return value === 'development' || value === 'rc' || value === 'stable';
 }
 
+/** Escapes a semantic version before using it in a validation expression. */
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

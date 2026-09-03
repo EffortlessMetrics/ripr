@@ -18,6 +18,7 @@ export interface ServerManifest {
   readonly assets: Record<string, ManifestAsset>;
 }
 
+/** Downloads, verifies, extracts, and records one admitted server distribution. */
 export async function downloadServer(
   context: vscode.ExtensionContext,
   config: RiprConfig,
@@ -36,6 +37,7 @@ export async function downloadServer(
   );
 }
 
+/** Performs the bounded download and cache installation under progress reporting. */
 async function downloadServerWithProgress(
   context: vscode.ExtensionContext,
   config: RiprConfig,
@@ -85,6 +87,7 @@ async function downloadServerWithProgress(
   return executablePath;
 }
 
+/** Resolves the executable path for one descriptor-bound cache entry. */
 export function cachedServerPath(
   context: vscode.ExtensionContext,
   distribution: ResolvedDistributionRequest,
@@ -93,10 +96,12 @@ export function cachedServerPath(
   return path.join(serverCacheDir(context, distribution, platform.target), platform.executableName);
 }
 
+/** Returns the descriptor- and target-specific cache directory. */
 function serverCacheDir(context: vscode.ExtensionContext, distribution: ResolvedDistributionRequest, target: string): string {
   return path.join(context.globalStorageUri.fsPath, 'servers', distribution.releaseTag, distribution.descriptorIdentity, target);
 }
 
+/** Formats the host used for download diagnostics without exposing URL details. */
 function downloadOriginLabel(config: RiprConfig, distribution: ResolvedDistributionRequest): string {
   try {
     return new URL(distributionManifestUrl(config.downloadBaseUrl, distribution)).host;

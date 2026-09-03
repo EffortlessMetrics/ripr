@@ -118,10 +118,12 @@ export async function resolveServer(
   };
 }
 
+/** Returns the product version used in setup and diagnostic output. */
 export function requestedServerVersion(context: vscode.ExtensionContext, config: RiprConfig): string {
   return requestedServerDistribution(context, config).productVersion;
 }
 
+/** Resolves embedded distribution identity, or an explicit legacy override. */
 export function requestedServerDistribution(
   context: vscode.ExtensionContext,
   config: RiprConfig
@@ -138,11 +140,13 @@ export function requestedServerDistribution(
   return resolveDistributionRequest(packageVersion, descriptor);
 }
 
+/** Reads and normalizes the installed extension package version. */
 function extensionPackageVersion(context: vscode.ExtensionContext): string {
   const version = context.extension?.packageJSON?.version;
   return typeof version === 'string' ? version.replace(/^v/, '') : '0.8.0';
 }
 
+/** Loads the installed descriptor or constructs the development fallback. */
 function embeddedDistributionDescriptor(context: vscode.ExtensionContext, productVersion: string): DistributionDescriptor {
   const descriptorPath = path.join(context.extensionUri.fsPath, 'distribution.json');
   if (fs.existsSync(descriptorPath)) {
@@ -151,6 +155,7 @@ function embeddedDistributionDescriptor(context: vscode.ExtensionContext, produc
   return legacyDescriptor(productVersion, `v${productVersion}`);
 }
 
+/** Constructs the compatibility descriptor used when no embedded file exists. */
 function legacyDescriptor(productVersion: string, releaseTag: string): DistributionDescriptor {
   const channel = /-rc\.\d+$/.test(releaseTag) ? 'rc' : 'stable';
   return {
@@ -164,6 +169,7 @@ function legacyDescriptor(productVersion: string, releaseTag: string): Distribut
   };
 }
 
+/** Constructs an explicitly selected, legacy transport request. */
 function legacyRequest(productVersion: string, releaseTag: string): ResolvedDistributionRequest {
   const releaseVersion = releaseTag.replace(/^v/, '').replace(/-rc\.\d+$/, '');
   const descriptor: DistributionDescriptor = {
