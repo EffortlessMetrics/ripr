@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import { cachedServerPath } from '../../src/downloader';
+import { requestedServerDistribution, requestedServerVersion } from '../../src/serverResolver';
 import {
   DistributionDescriptor,
   distributionManifestUrl,
@@ -44,6 +46,10 @@ describe('distribution descriptor', () => {
       /stable channel requires a stable release tag/
     );
     assert.throws(() => parseDistributionDescriptor('{"schema":1}'), /missing release descriptor field/);
+    assert.throws(
+      () => parseDistributionDescriptor(JSON.stringify({ ...rc, channel: 'development', releaseTag: '', releaseRef: 'refs/tags/' })),
+      /release tag must not be empty/
+    );
   });
 
   it('rejects a descriptor with a non-canonical release ref', () => {
@@ -64,5 +70,31 @@ describe('distribution descriptor', () => {
       distributionManifestUrl('', request),
       'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0-rc.1/ripr-server-manifest-v0.11.0.json'
     );
+  });
+
+  it('uses a Windows-safe cache identity segment', () => {
+    const request = resolveDistributionRequest('0.11.0', rc);
+    const context = { globalStorageUri: { fsPath: 'C:\\ripr-storage' } } as never;
+    const platform = {
+      target: 'x86_64-pc-windows-msvc',
+      executableName: 'ripr.exe',
+      archiveExtension: 'zip' as const,
+      displayName: 'Windows x64'
+    };
+    const cachePath = cachedServerPath(context, request, platform);
+    assert.ok(!cachePath.includes('sha256:'), cachePath);
+    assert.ok(cachePath.includes(request.descriptorIdentity.slice('sha256:'.length)), cachePath);
+  });
+
+  it('keeps configured server compatibility version separate from extension version', () => {
+    const context = { extension: { packageJSON: { version: '0.10.1' } } } as never;
+    const config = { serverVersion: '0.8.0' } as never;
+    assert.strictEqual(requestedServerVersion(context, config), '0.8.0');
+  });
+
+  it('supports a context-less development fallback', () => {
+    const context = { extension: { packageJSON: { version: '0.10.1' } } } as never;
+    const config = { serverVersion: '' } as never;
+    assert.doesNotThrow(() => requestedServerDistribution(context, config));
   });
 });

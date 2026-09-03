@@ -120,6 +120,10 @@ export async function resolveServer(
 
 /** Returns the product version used in setup and diagnostic output. */
 export function requestedServerVersion(context: vscode.ExtensionContext, config: RiprConfig): string {
+  const configured = config.serverVersion.trim();
+  if (configured.length > 0) {
+    return configured.replace(/^v/, '').replace(/-rc\.\d+$/, '');
+  }
   return requestedServerDistribution(context, config).productVersion;
 }
 
@@ -148,7 +152,11 @@ function extensionPackageVersion(context: vscode.ExtensionContext): string {
 
 /** Loads the installed descriptor or constructs the development fallback. */
 function embeddedDistributionDescriptor(context: vscode.ExtensionContext, productVersion: string): DistributionDescriptor {
-  const descriptorPath = path.join(context.extensionUri.fsPath, 'distribution.json');
+  const extensionUri = context.extensionUri;
+  if (!extensionUri) {
+    return legacyDescriptor(productVersion, `v${productVersion}`);
+  }
+  const descriptorPath = path.join(extensionUri.fsPath, 'distribution.json');
   if (fs.existsSync(descriptorPath)) {
     return parseDistributionDescriptor(fs.readFileSync(descriptorPath, 'utf8'));
   }

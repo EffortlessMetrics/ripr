@@ -98,7 +98,18 @@ export function cachedServerPath(
 
 /** Returns the descriptor- and target-specific cache directory. */
 function serverCacheDir(context: vscode.ExtensionContext, distribution: ResolvedDistributionRequest, target: string): string {
-  return path.join(context.globalStorageUri.fsPath, 'servers', distribution.releaseTag, distribution.descriptorIdentity, target);
+  return path.join(
+    context.globalStorageUri.fsPath,
+    'servers',
+    distribution.releaseTag,
+    cacheIdentitySegment(distribution.descriptorIdentity),
+    target
+  );
+}
+
+/** Returns a filesystem-safe cache segment while retaining the labeled digest in receipts. */
+function cacheIdentitySegment(identity: string): string {
+  return identity.startsWith('sha256:') ? identity.slice('sha256:'.length) : identity;
 }
 
 /** Formats the host used for download diagnostics without exposing URL details. */

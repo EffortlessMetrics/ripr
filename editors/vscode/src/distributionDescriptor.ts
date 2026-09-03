@@ -71,6 +71,9 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
   if (!/^\d+\.\d+\.\d+$/.test(productVersion)) {
     throw new Error('release descriptor product version is not semantic');
   }
+  if (releaseTag.length === 0) {
+    throw new Error('release descriptor release tag must not be empty');
+  }
   if (manifestFile !== `ripr-server-manifest-v${productVersion}.json`) {
     throw new Error('release descriptor manifest filename does not match product version');
   }
