@@ -273,6 +273,15 @@ reason = "Example ripr configuration."
 covered_by = []
 
 [[allow]]
+glob = "ripr.toml"
+kind = "repository_config"
+owner = "config"
+surface = "config"
+classification = "config"
+reason = "Committed repository configuration that explicitly enables supported preview language adapters."
+covered_by = ["cargo xtask check-file-policy", "cargo xtask check-output-contracts"]
+
+[[allow]]
 glob = ".ub-review.toml"
 kind = "review_gate_config"
 owner = "release/ci"
