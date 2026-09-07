@@ -6,7 +6,12 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { RiprConfig } from './config';
 import { RiprPlatform } from './platform';
-import { distributionManifestUrl, ResolvedDistributionRequest } from './distributionDescriptor';
+import {
+  DistributionPlacement,
+  distributionManifestUrl,
+  distributionPlacements,
+  ResolvedDistributionRequest
+} from './distributionDescriptor';
 
 export interface ManifestAsset {
   readonly url: string;
@@ -16,6 +21,22 @@ export interface ManifestAsset {
 export interface ServerManifest {
   readonly version: string;
   readonly assets: Record<string, ManifestAsset>;
+}
+
+interface SelectedManifest {
+  readonly manifest: ServerManifest;
+  readonly placement: DistributionPlacement;
+}
+
+class HttpStatusError extends Error {
+  constructor(
+    readonly statusCode: number,
+    readonly redirected: boolean,
+    url: string
+  ) {
+    super(`GET ${url} failed with HTTP ${statusCode}.`);
+    this.name = 'HttpStatusError';
+  }
 }
 
 /** Downloads, verifies, extracts, and records one admitted server distribution. */
@@ -30,7 +51,7 @@ export async function downloadServer(
   return vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `ripr: downloading server ${distribution.releaseTag} for ${platform.target} from ${origin}`,
+      title: `ripr: downloading server generation ${distribution.productVersion} for ${platform.target} from ${origin}`,
       cancellable: false
     },
     (progress) => downloadServerWithProgress(context, config, platform, distribution, output, progress)
@@ -51,13 +72,17 @@ async function downloadServerWithProgress(
   await fs.promises.mkdir(cacheDir, { recursive: true });
 
   progress.report({ message: 'Fetching release manifest…' });
-  const manifest = await fetchManifest(distributionManifestUrl(config.downloadBaseUrl, distribution));
+  const selected = await fetchDistributionManifest(config, distribution);
+  const manifest = selected.manifest;
   const asset = manifest.assets[platform.target];
   if (!asset) {
     throw new Error(`No ripr server asset is listed for ${platform.target} in manifest ${manifest.version}.`);
   }
 
-  output.appendLine(`Downloading ripr server ${distribution.releaseTag} for ${platform.target}.`);
+  output.appendLine(
+    `Downloading ripr server ${selected.placement.releaseTag} for ${platform.target} ` +
+      `(generation ${distribution.descriptorIdentity}).`
+  );
   progress.report({ message: `Downloading ${platform.executableName}…` });
   const archive = await fetchBuffer(asset.url);
   progress.report({ message: 'Verifying checksum…' });
@@ -87,7 +112,7 @@ async function downloadServerWithProgress(
   return executablePath;
 }
 
-/** Resolves the executable path for one descriptor-bound cache entry. */
+/** Resolves the executable path for one generation-bound cache entry. */
 export function cachedServerPath(
   context: vscode.ExtensionContext,
   distribution: ResolvedDistributionRequest,
@@ -96,12 +121,12 @@ export function cachedServerPath(
   return path.join(serverCacheDir(context, distribution, platform.target), platform.executableName);
 }
 
-/** Returns the descriptor- and target-specific cache directory. */
+/** Returns the generation- and target-specific cache directory. */
 function serverCacheDir(context: vscode.ExtensionContext, distribution: ResolvedDistributionRequest, target: string): string {
   return path.join(
     context.globalStorageUri.fsPath,
     'servers',
-    distribution.releaseTag,
+    distribution.productVersion,
     cacheIdentitySegment(distribution.descriptorIdentity),
     target
   );
@@ -117,13 +142,47 @@ function downloadOriginLabel(config: RiprConfig, distribution: ResolvedDistribut
   try {
     return new URL(distributionManifestUrl(config.downloadBaseUrl, distribution)).host;
   } catch {
-    return 'the configured download mirror';
+    return config.downloadBaseUrl.trim().length > 0 ? 'the configured download mirror' : 'the declared release placement';
   }
+}
+
+/** Selects stable first and uses the predeclared RC only for an exact direct 404. */
+async function fetchDistributionManifest(
+  config: RiprConfig,
+  distribution: ResolvedDistributionRequest
+): Promise<SelectedManifest> {
+  const mirror = config.downloadBaseUrl.trim();
+  const placements = mirror.length > 0 ? [distribution.preferredPlacement] : distributionPlacements(distribution);
+
+  for (let index = 0; index < placements.length; index += 1) {
+    const placement = placements[index];
+    const url = distributionManifestUrl(config.downloadBaseUrl, distribution, placement);
+    try {
+      return { manifest: await fetchManifest(url), placement };
+    } catch (error) {
+      const mayUseFallback =
+        index === 0 &&
+        placements.length > 1 &&
+        error instanceof HttpStatusError &&
+        error.statusCode === 404 &&
+        !error.redirected;
+      if (mayUseFallback) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error('No declared ripr server release placement produced a manifest.');
 }
 
 async function fetchManifest(url: string): Promise<ServerManifest> {
   const body = await fetchBuffer(url);
-  return JSON.parse(body.toString('utf8')) as ServerManifest;
+  try {
+    return JSON.parse(body.toString('utf8')) as ServerManifest;
+  } catch (error) {
+    throw new Error(`Malformed ripr server manifest from ${url}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function fetchBuffer(url: string, redirects = 0): Promise<Buffer> {
@@ -143,7 +202,7 @@ function fetchBuffer(url: string, redirects = 0): Promise<Buffer> {
       }
       if (statusCode < 200 || statusCode >= 300) {
         response.resume();
-        reject(new Error(`GET ${url} failed with HTTP ${statusCode}.`));
+        reject(new HttpStatusError(statusCode, redirects > 0, url));
         return;
       }
 
