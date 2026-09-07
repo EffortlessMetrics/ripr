@@ -188,7 +188,7 @@ fn write_pr_evidence_packet(
         .map_err(|err| format!("read canonical diff for check subject binding: {err}"))?;
     let mut subject = json!({
         "schema_version": "ripr.pr_check_subject.v1",
-        "root_identity": root.display().to_string().replace('\\', "/"),
+        "root_identity": ripr::review_input::canonical_root_identity(&root),
         "base_sha": resolve_revision(repo, &options.base, "commit")?,
         "head_sha": resolve_revision(repo, &options.head, "commit")?,
         "head_tree": resolve_revision(repo, &options.head, "tree")?,
@@ -325,7 +325,7 @@ fn producer_review_input(
     let input = json!({
         "schema_version": REVIEW_INPUT_SCHEMA_VERSION,
         "mode": check["mode"],
-        "root_identity": root.display().to_string().replace('\\', "/"),
+        "root_identity": ripr::review_input::canonical_root_identity(&root),
         "base_sha": subject["base_sha"],
         "head_sha": subject["head_sha"],
         "head_tree": subject["head_tree"],
@@ -1731,6 +1731,152 @@ mod tests {
         assert!(!repo.join(PR_CHECK_JSON).exists());
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
+    }
+
+    #[test]
+    fn real_producer_root_identity_is_admitted_but_not_replayed() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
+        crate::reports::fixtures::ripr_fixture_binary()?;
+        let binary = built_ripr_binary_path(&repo_root()?)?.display().to_string();
+        let parent = temp_repo("ripr-pr-root-identity")?;
+        let repo = parent.join("producer");
+        let other = parent.join("other-root");
+        let result = (|| {
+            fs::create_dir_all(&repo).map_err(|error| error.to_string())?;
+            run_git(&repo, &["init"])?;
+            run_git(&repo, &["config", "user.email", "ripr-pr@example.invalid"])?;
+            run_git(&repo, &["config", "user.name", "RIPR PR Test"])?;
+            write_repo_file(&repo, ".gitignore", "target/\n")?;
+            write_repo_file(
+                &repo,
+                "Cargo.toml",
+                "[package]\nname = \"root-identity-probe\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            )?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 0 }\n",
+            )?;
+            run_git(&repo, &["add", "."])?;
+            run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 1 }\n",
+            )?;
+            run_git(&repo, &["add", "."])?;
+            run_git(
+                &repo,
+                &["commit", "--no-gpg-sign", "-m", "change predicate"],
+            )?;
+            let options = PrEvidenceOptions {
+                base: "HEAD~1".into(),
+                head: "HEAD".into(),
+                ..options()
+            };
+            let check = run_ripr_check_binary(
+                &binary,
+                vec![
+                    "check".into(),
+                    "--root".into(),
+                    repo.display().to_string(),
+                    "--base".into(),
+                    options.base.clone(),
+                    "--no-unchanged-tests".into(),
+                    "--format".into(),
+                    "json".into(),
+                ],
+                &options,
+                Duration::from_mins(2),
+            )?;
+            let value: Value = serde_json::from_str(&check).map_err(|error| error.to_string())?;
+            if value
+                .pointer("/analysis_outcome/analysis_complete")
+                .and_then(Value::as_bool)
+                != Some(true)
+                || value
+                    .get("findings")
+                    .and_then(Value::as_array)
+                    .is_none_or(|findings| findings.is_empty())
+            {
+                return Err("fixture producer must generate complete nonempty findings".into());
+            }
+            write_pr_evidence_from_check_json(&repo, &options, &check)?;
+            check_pr_evidence(&repo, &options)?;
+            run_git(
+                &parent,
+                &[
+                    "clone",
+                    "--no-hardlinks",
+                    &repo.display().to_string(),
+                    &other.display().to_string(),
+                ],
+            )?;
+            let canonical = repo.canonicalize().map_err(|error| error.to_string())?;
+            for root in [&repo, &canonical, &repo.join("."), &other] {
+                let admitted = root != &other;
+                let out = parent.join("review.json");
+                let args = vec![
+                    "review-comments".into(),
+                    "--root".into(),
+                    root.display().to_string(),
+                    "--base".into(),
+                    options.base.clone(),
+                    "--head".into(),
+                    options.head.clone(),
+                    "--check-output".into(),
+                    repo.join(PR_CHECK_JSON).display().to_string(),
+                    "--out".into(),
+                    out.display().to_string(),
+                ];
+                let review = capture_output_with_timeout(
+                    &binary,
+                    &args,
+                    &[],
+                    Duration::from_mins(2),
+                    "real root identity admission",
+                )?;
+                if review.timed_out
+                    || review.status.is_some_and(|status| status.success()) != admitted
+                {
+                    return Err(format!(
+                        "unexpected root admission for {}: {}\n{}",
+                        root.display(),
+                        review.stdout,
+                        review.stderr
+                    ));
+                }
+                if admitted {
+                    let rendered = fs::read_to_string(&out).map_err(|error| error.to_string())?;
+                    let rendered: Value =
+                        serde_json::from_str(&rendered).map_err(|error| error.to_string())?;
+                    if rendered
+                        .pointer("/analysis_scope/basis")
+                        .and_then(Value::as_str)
+                        != Some("producer_check_projection")
+                        || rendered
+                            .pointer("/analysis_scope/classified_seams_considered")
+                            .and_then(Value::as_u64)
+                            .is_none_or(|count| count == 0)
+                    {
+                        return Err(
+                            "consumer did not review the nonempty producer projection".into()
+                        );
+                    }
+                } else if !review.stderr.contains("producer_identity_mismatch")
+                    || !review.stderr.contains("root_identity")
+                {
+                    return Err(format!(
+                        "replay did not fail at root identity admission: {}",
+                        review.stderr
+                    ));
+                }
+            }
+            Ok(())
+        })();
+        let cleanup = fs::remove_dir_all(&parent)
+            .map_err(|error| format!("cleanup {}: {error}", parent.display()));
+        result.and(cleanup)
     }
 
     fn temp_repo(name: &str) -> Result<PathBuf, String> {
