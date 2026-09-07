@@ -2,7 +2,12 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { cachedServerPath } from '../../src/downloader';
+import {
+  cachedServerPath,
+  fetchDistributionManifest,
+  HttpStatusError,
+  ServerManifest
+} from '../../src/downloader';
 import { requestedServerDistribution, requestedServerVersion } from '../../src/serverResolver';
 import {
   DistributionDescriptor,
@@ -37,6 +42,15 @@ suite('distribution descriptor', () => {
         releaseRef: 'refs/tags/v0.11.0-rc.1'
       }
     ]
+  };
+  const validManifest: ServerManifest = {
+    version: '0.11.0',
+    assets: {
+      'x86_64-unknown-linux-gnu': {
+        url: 'https://example.invalid/ripr.tar.gz',
+        sha256: 'a'.repeat(64)
+      }
+    }
   };
 
   test('keeps package version distinct from an RC release placement', () => {
@@ -75,6 +89,65 @@ suite('distribution descriptor', () => {
       distributionManifestUrl('', request, placements[1]),
       'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0-rc.1/ripr-server-manifest-v0.11.0.json'
     );
+  });
+
+  test('selects RC only after a direct stable 404', async () => {
+    const request = resolveDistributionRequest('0.11.0', catalog);
+    const seen: string[] = [];
+    const selected = await fetchDistributionManifest(
+      { downloadBaseUrl: '' },
+      request,
+      async (url) => {
+        seen.push(url);
+        if (url.includes('/releases/download/v0.11.0/')) {
+          throw new HttpStatusError(404, false, url);
+        }
+        return validManifest;
+      }
+    );
+    assert.strictEqual(selected.placement.channel, 'rc');
+    assert.strictEqual(selected.placement.releaseTag, 'v0.11.0-rc.1');
+    assert.strictEqual(seen.length, 2);
+    assert.ok(seen[0].includes('/v0.11.0/'), seen[0]);
+    assert.ok(seen[1].includes('/v0.11.0-rc.1/'), seen[1]);
+  });
+
+  test('does not let RC mask contradictory or unavailable stable state', async () => {
+    const request = resolveDistributionRequest('0.11.0', catalog);
+    const cases: Array<() => Error> = [
+      () => new HttpStatusError(500, false, 'https://stable.invalid'),
+      () => new HttpStatusError(404, true, 'https://redirected.invalid'),
+      () => new Error('Malformed ripr server manifest from stable: unexpected manifest shape.')
+    ];
+    for (const makeError of cases) {
+      const seen: string[] = [];
+      await assert.rejects(
+        () =>
+          fetchDistributionManifest({ downloadBaseUrl: '' }, request, async (url) => {
+            seen.push(url);
+            throw makeError();
+          }),
+        makeError().constructor
+      );
+      assert.strictEqual(seen.length, 1, `must not attempt RC after ${makeError().message}`);
+      assert.ok(seen[0].includes('/v0.11.0/'), seen[0]);
+    }
+  });
+
+  test('configured mirror never selects the RC placement', async () => {
+    const request = resolveDistributionRequest('0.11.0', catalog);
+    const seen: string[] = [];
+    await assert.rejects(() =>
+      fetchDistributionManifest(
+        { downloadBaseUrl: 'https://mirror.invalid/ripr' },
+        request,
+        async (url) => {
+          seen.push(url);
+          throw new HttpStatusError(404, false, url);
+        }
+      )
+    );
+    assert.deepStrictEqual(seen, ['https://mirror.invalid/ripr/ripr-server-manifest-v0.11.0.json']);
   });
 
   test('does not alias different server generations or source repositories', () => {
