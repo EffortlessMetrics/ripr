@@ -43,6 +43,26 @@ worktree doctor` checks your working tree for common local hygiene issues
 (dirty `main`, stale branches, generated-artifact residue) before you start
 shaping a PR.
 
+Run automation from the repository root. The `cargo xtask` alias places its
+running executable in `target/xtask-driver`, separate from the workspace
+executables that `check-pr` and other gates rebuild. This avoids replacing a
+running executable on Windows. Reserve that directory for the launcher: do not
+set `CARGO_TARGET_DIR` to `target/xtask-driver`, which defeats the separation.
+Other custom workspace target directories remain supported.
+
+The launcher uses `target` for intermediate build artifacts, sharing the normal
+workspace cache. A custom workspace intermediate directory is still honored by
+the child Cargo commands, but does not share the launcher's cache. Invocation
+from a subdirectory resolves the launcher's relative output and cache paths
+there; prefer the repository root to avoid duplicate caches. Gate commands and
+their exit statuses are unchanged.
+
+The native lifecycle regression can be run independently:
+
+```bash
+cargo test -p xtask cargo_alias_keeps_live_driver_outside_workspace_rebuild
+```
+
 ## Product Contract
 
 Before changing code, check the product question:
