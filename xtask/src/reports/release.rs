@@ -3504,6 +3504,7 @@ mod tests {
 
     #[test]
     fn release_fixture_root_is_canonical_and_external() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let root = super::release_temp_root()?;
         let current = fs::canonicalize(
             std::env::current_dir()

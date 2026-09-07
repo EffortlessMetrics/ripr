@@ -1,5 +1,9 @@
 #[cfg(test)]
 pub(crate) mod source_promotion_control_tests {
+    // #1613: each test owns one shared CWD guard through its full invocation
+    // and cleanup. Controller entry points may capture ambient repository
+    // paths; locking only current_repo or a fixture helper ends too early.
+    // Keep helpers unguarded: the fair gate deliberately is not reentrant.
     use super::*;
     use std::cell::Cell;
     use std::fmt::Debug;
@@ -57,6 +61,72 @@ pub(crate) mod source_promotion_control_tests {
         } else {
             Err(message.into())
         }
+    }
+
+    /// #1613: hold the reader boundary from ambient path capture through use.
+    /// The writer is observed queued (or entered in the removal control), so
+    /// scheduling delays are not the oracle. The deadline only bounds failure.
+    #[test]
+    fn controller_repository_survives_a_competing_temporary_cwd() -> Result<(), String> {
+        let cwd_guard = crate::acquire_test_cwd_read_guard();
+        let expected = current_repo()?;
+        let temporary = test_temp_dir("competing-cwd")?;
+        let (attempt_tx, attempt_rx) = std::sync::mpsc::channel();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let writer = std::thread::spawn(move || -> Result<(), String> {
+            attempt_tx.send(()).map_err(|error| error.to_string())?;
+            let _writer = crate::acquire_test_cwd_write_guard();
+            let original = current_repo()?;
+            std::env::set_current_dir(&*temporary)
+                .map_err(|error| format!("enter competing cwd: {error}"))?;
+            let result = (|| {
+                entered_tx.send(()).map_err(|error| error.to_string())?;
+                release_rx
+                    .recv_timeout(std::time::Duration::from_secs(30))
+                    .map_err(|error| format!("release competing cwd: {error}"))
+            })();
+            // Restore before cleanup even when the observer fails.
+            std::env::set_current_dir(&original)
+                .map_err(|error| format!("restore competing cwd: {error}"))?;
+            temporary.cleanup()?;
+            result
+        });
+        let observed = (|| -> Result<PathBuf, String> {
+            attempt_rx
+                .recv_timeout(std::time::Duration::from_secs(30))
+                .map_err(|error| format!("writer did not start: {error}"))?;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            loop {
+                let queued = crate::CWD_LOCK
+                    .get_or_init(crate::CwdLock::new)
+                    .state
+                    .lock()
+                    .map_err(|error| format!("inspect cwd gate: {error}"))?
+                    .waiting_writers > 0;
+                if queued || entered_rx.try_recv().is_ok() {
+                    break;
+                }
+                if std::time::Instant::now() >= deadline {
+                    return Err("writer neither queued nor entered".to_string());
+                }
+                std::thread::yield_now();
+            }
+            // Real controller authority: this path must remain usable after
+            // the competing writer's temporary directory has been deleted.
+            current_repo()
+        })();
+        let released = release_tx.send(()).map_err(|error| error.to_string());
+        drop(cwd_guard);
+        let finished = writer
+            .join()
+            .map_err(|payload| format!("competing cwd writer panicked: {payload:?}"))?;
+        released?;
+        finished?;
+        let observed = observed?;
+        current_head(&observed)?;
+        require_equal(observed, expected, "controller repository identity")?;
+        Ok(())
     }
 
     fn require_equal<T>(actual: T, expected: T, context: &str) -> Result<(), String>
@@ -1120,6 +1190,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn impossible_validated_fixture_is_explicitly_rejected() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/source_promotion_control/impossible-validated.json");
         let (value, _, _) = read_json(&path, "impossible validated fixture")?;
@@ -1138,6 +1209,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn resolved_tree_admission_rejects_failed_unavailable_not_run_and_reordered_commands()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let valid = valid_resolved_tree_receipt();
         require(
             resolved_tree_receipt_is_admissible(&valid),
@@ -1200,6 +1272,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn admission_receipt_requires_every_green_authority_bit() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let identity = test_identity();
         let valid = valid_admission_receipt(&identity);
         require(
@@ -1241,6 +1314,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn admission_consumer_requires_null_builder_merge_command() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let fixture = admission_snapshot_fixture("builder-merge-command-consumer")?;
         let builder = packet_json(
             &fixture.builder_packet,
@@ -1286,6 +1360,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn builder_rejections_emit_null_merge_command_and_zero_attempts() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let root = test_temp_dir("builder-rejection-shape")?;
         let parse_out = root.join("parse-rejection");
         let parse_args = vec![
@@ -1326,6 +1401,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn integration_index_rejects_well_shaped_unbound_bytes_before_attempts()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let directory = test_temp_dir("integration-index-bound-digest")?;
         let identity = test_identity();
         let index_path = directory.join("integration-index.json");
@@ -1394,6 +1470,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn qualification_rejects_zero_step_failed_and_reordered_lanes() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let identity = test_identity();
         let admission = valid_admission_receipt(&identity);
         let integration = integration_evidence_from_admission(&admission)?;
@@ -1540,6 +1617,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn construction_rejects_forged_admission_integration_digest_before_commit_tree()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let fixture = admission_snapshot_fixture("construction-forged-integration")?;
         let identity = fixture.options.identity.clone();
         let root = fixture.repo.join(".git/forged-construction-evidence");
@@ -1637,6 +1715,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn qualification_lane_documentation_matches_production_order() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         // Intentional independent mirror of the normative denominator in
         // RIPR-SPEC-0150; do not derive this oracle from the production constant.
         const NORMATIVE_QUALIFICATION_LANES: &[&str] = &[
@@ -1691,6 +1770,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn output_schema_assigns_evidence_to_the_correct_control_stage() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .map(Path::to_path_buf)
@@ -1714,6 +1794,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn publication_status_definitions_match_every_contract() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .map(Path::to_path_buf)
@@ -1826,6 +1907,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn unavailable_final_remote_observation_rollback_contract_matches_every_doc()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .map(Path::to_path_buf)
@@ -1861,6 +1943,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn control_packet_rejects_partial_digest_mismatch_and_unindexed_files() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let temp = test_temp_dir("packet")?;
         let root = temp.join("packet");
         let report = serde_json::json!({
@@ -1932,6 +2015,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn construction_snapshot_rejects_changed_packet_member_behind_unchanged_index()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let fixture = construction_snapshot_fixture("snapshot-packet-member-race")?;
         let refs_before = refs_digest(&fixture.repo)?;
         let index_before = fs::read(fixture.options.validation_packet.join(PACKET_INDEX))
@@ -1973,6 +2057,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn admission_snapshot_rejects_changed_packet_member_behind_unchanged_index()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let fixture = admission_snapshot_fixture("admission-snapshot-packet-member-race")?;
         let refs_before = refs_digest(&fixture.repo)?;
         let index_before = fs::read(fixture.options.validation_packet.join(PACKET_INDEX))
@@ -2015,6 +2100,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn admission_snapshot_rejects_changed_typed_receipt_behind_unchanged_index()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let fixture = admission_snapshot_fixture("admission-snapshot-integration-race")?;
         let refs_before = refs_digest(&fixture.repo)?;
         let index_before = fs::read(&fixture.options.integration_index)
@@ -2061,6 +2147,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn admission_rejects_stable_bound_sidecar_replacements_before_second_snapshot()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         for (label, replace_preflight, expected_reason) in [
             (
                 "admission-stable-preflight-replacement",
@@ -2128,6 +2215,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn admission_rejects_stable_wrong_protected_w7_before_attempts() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let fixture = admission_snapshot_fixture("admission-stable-wrong-w7")?;
         git_test(
             &fixture.repo,
@@ -2152,6 +2240,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn construction_snapshot_rejects_changed_typed_receipt_behind_unchanged_index()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let fixture = construction_snapshot_fixture("snapshot-integration-receipt-race")?;
         let refs_before = refs_digest(&fixture.repo)?;
         let index_before = fs::read(&fixture.options.integration_index)
@@ -2195,6 +2284,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn constructor_final_live_snapshot_rejects_post_snapshot_receipt_change_before_commit_tree()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let fixture = construction_snapshot_fixture("constructor-final-live-snapshot-race")?;
         let refs_before = refs_digest(&fixture.repo)?;
         let admission_receipt_sha256 =
@@ -2245,6 +2335,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn candidate_ref_and_remote_row_validation_fail_closed() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         require(
             validate_candidate_ref("refs/heads/promote/0.11.0-w7").is_ok(),
             "valid candidate ref should pass",
@@ -2372,6 +2463,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn local_candidate_ref_io_rejects_symbolic_and_broken_refs() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (repo, identity) = init_synthetic_repo("candidate-ref-kind")?;
         let candidate_ref = "refs/heads/promote/0.11.0-ref-kind";
         let source_before = current_head(&repo)?;
@@ -2421,6 +2513,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn rejected_and_prepublication_receipts_never_emit_merge_command() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let identity = test_identity();
         let construction = construction_rejection_report(
             Some(&identity),
@@ -2450,6 +2543,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn source_promotion_constructor_preserves_parent_order_tree_and_refs() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (repo, identity) = init_synthetic_repo("construct")?;
         let refs_before = refs_digest(&repo)?;
         let join = create_exact_join_object(&repo, &identity)?;
@@ -2485,6 +2579,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn source_promotion_constructor_rejects_mismatched_journal_before_commit_tree()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (repo, identity) = init_synthetic_repo("construct-journal")?;
         let refs_before = refs_digest(&repo)?;
         let admission_bytes = b"test admission receipt".to_vec();
@@ -2578,6 +2673,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn source_promotion_publication_uses_expected_absent_guard_without_merge_authority()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (repo, identity) = init_synthetic_repo("publish")?;
         let join = create_exact_join_object(&repo, &identity)?;
         verify_constructed_join(&repo, &join, &identity)?;
@@ -3404,6 +3500,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn source_promotion_publication_rolls_back_local_ref_on_remote_rejection() -> Result<(), String>
     {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (repo, identity) = init_synthetic_repo("publish-rollback")?;
         let join = create_exact_join_object(&repo, &identity)?;
         let mut evidence = valid_construction_evidence(identity.clone());
@@ -3523,6 +3620,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn construction_receipt_rejects_stale_or_reversed_claims() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let identity = test_identity();
         let evidence = valid_construction_evidence(identity.clone());
         let valid = construction_success_report(&evidence);
@@ -3563,6 +3661,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn command_parser_rejects_duplicate_unknown_and_conflicting_expected_state()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let duplicate = vec![
             SOURCE_PROMOTION_PUBLISH_CANDIDATE_REF_SUBCOMMAND.to_string(),
             "--target-ref".to_string(),
@@ -3630,6 +3729,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn source_main_authority_rejects_caller_selected_aliases() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         require(
             validate_source_main_ref(SOURCE_MAIN_REF).is_ok(),
             "the exact protected source main ref should pass",
@@ -3642,6 +3742,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn publication_authority_requires_successful_guarded_push_process() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let evidence = valid_construction_evidence(test_identity());
         let mut state = PublicationState {
             push_process_succeeded: Some(false),
@@ -3702,6 +3803,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn control_packet_reservation_is_exclusive_and_journaled_before_side_effects()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let root = test_temp_dir("packet-reservation")?;
         let out = root.join("packet");
         let context = serde_json::json!({"target_ref": "refs/heads/test"});
@@ -3751,6 +3853,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn control_packet_outputs_reject_git_admin_and_consumed_input_roots_before_creation()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (repo, identity) = init_synthetic_repo("packet-output-protection")?;
         let context = serde_json::json!({"target_ref": "refs/heads/test"});
         let git_dir = git_admin_path(
@@ -4004,6 +4107,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn malformed_commands_cannot_write_rejections_inside_supplied_inputs() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let root = test_temp_dir("parse-rejection-output-protection")?;
         let cases = [
             (
@@ -4065,6 +4169,7 @@ pub(crate) mod source_promotion_control_tests {
 
     #[test]
     fn control_packet_output_comparison_resolves_filesystem_aliases() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let root = test_temp_dir("packet-output-alias")?;
         let real = root.join("real-input");
         fs::create_dir(&real)
@@ -4106,6 +4211,7 @@ pub(crate) mod source_promotion_control_tests {
     #[test]
     fn control_packet_finalization_failure_retains_incomplete_attempt_journal() -> Result<(), String>
     {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let root = test_temp_dir("packet-finalization-failure")?;
         let out = root.join("packet");
         let reservation =

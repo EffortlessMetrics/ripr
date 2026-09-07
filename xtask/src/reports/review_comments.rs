@@ -1932,6 +1932,7 @@ mod tests {
 
     #[test]
     fn built_path_resolves_to_debug_ripr_binary() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let repo = env::temp_dir().join("ripr-review-repo");
         let path = built_ripr_binary_path(&repo)?;
 
