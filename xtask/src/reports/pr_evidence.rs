@@ -1813,63 +1813,100 @@ mod tests {
                 ],
             )?;
             let canonical = repo.canonicalize().map_err(|error| error.to_string())?;
-            for root in [&repo, &canonical, &repo.join("."), &other] {
-                let admitted = root != &other;
-                let out = parent.join("review.json");
-                let args = vec![
-                    "review-comments".into(),
-                    "--root".into(),
-                    root.display().to_string(),
-                    "--base".into(),
-                    options.base.clone(),
-                    "--head".into(),
-                    options.head.clone(),
-                    "--check-output".into(),
-                    repo.join(PR_CHECK_JSON).display().to_string(),
-                    "--out".into(),
-                    out.display().to_string(),
-                ];
-                let review = capture_output_with_timeout(
-                    &binary,
-                    &args,
-                    &[],
-                    Duration::from_mins(2),
-                    "real root identity admission",
-                )?;
-                if review.timed_out
-                    || review.status.is_some_and(|status| status.success()) != admitted
-                {
-                    return Err(format!(
-                        "unexpected root admission for {}: {}\n{}",
-                        root.display(),
-                        review.stdout,
-                        review.stderr
-                    ));
-                }
-                if admitted {
-                    let rendered = fs::read_to_string(&out).map_err(|error| error.to_string())?;
-                    let rendered: Value =
-                        serde_json::from_str(&rendered).map_err(|error| error.to_string())?;
-                    if rendered
-                        .pointer("/analysis_scope/basis")
-                        .and_then(Value::as_str)
-                        != Some("producer_check_projection")
-                        || rendered
-                            .pointer("/analysis_scope/classified_seams_considered")
-                            .and_then(Value::as_u64)
-                            .is_none_or(|count| count == 0)
-                    {
-                        return Err(
-                            "consumer did not review the nonempty producer projection".into()
-                        );
+            for public_producer in [false, true] {
+                if public_producer {
+                    for artifact in [
+                        PR_EVIDENCE_JSON,
+                        PR_EVIDENCE_MD,
+                        PR_CHECK_JSON,
+                        PR_CHECK_SUBJECT_JSON,
+                        PR_REVIEW_INPUT_JSON,
+                    ] {
+                        fs::remove_file(repo.join(artifact)).map_err(|error| {
+                            format!("remove compatibility producer artifact {artifact}: {error}")
+                        })?;
                     }
-                } else if !review.stderr.contains("producer_identity_mismatch")
-                    || !review.stderr.contains("root_identity")
-                {
-                    return Err(format!(
-                        "replay did not fail at root identity admission: {}",
-                        review.stderr
-                    ));
+                    for verify in [false, true] {
+                        let mut producer_args =
+                            vec!["pr-evidence".into(), "--base".into(), options.base.clone()];
+                        if verify {
+                            producer_args.push("--check".into());
+                        }
+                        let producer = crate::run::capture_output_in_dir_with_timeout_bounded(
+                            Path::new(&binary),
+                            &producer_args,
+                            &[],
+                            &repo,
+                            Duration::from_mins(2),
+                            64 * 1024,
+                            "public PR evidence producer",
+                        )?;
+                        if producer.timed_out
+                            || !producer.status.is_some_and(|status| status.success())
+                        {
+                            return Err(format!("public producer failed: {}", producer.stderr));
+                        }
+                    }
+                }
+                for root in [&repo, &canonical, &repo.join("."), &other] {
+                    let admitted = root != &other;
+                    let out = parent.join("review.json");
+                    let args = vec![
+                        "review-comments".into(),
+                        "--root".into(),
+                        root.display().to_string(),
+                        "--base".into(),
+                        options.base.clone(),
+                        "--head".into(),
+                        options.head.clone(),
+                        "--check-output".into(),
+                        repo.join(PR_CHECK_JSON).display().to_string(),
+                        "--out".into(),
+                        out.display().to_string(),
+                    ];
+                    let review = capture_output_with_timeout(
+                        &binary,
+                        &args,
+                        &[],
+                        Duration::from_mins(2),
+                        "real root identity admission",
+                    )?;
+                    if review.timed_out
+                        || review.status.is_some_and(|status| status.success()) != admitted
+                    {
+                        return Err(format!(
+                            "unexpected root admission for {}: {}\n{}",
+                            root.display(),
+                            review.stdout,
+                            review.stderr
+                        ));
+                    }
+                    if admitted {
+                        let rendered =
+                            fs::read_to_string(&out).map_err(|error| error.to_string())?;
+                        let rendered: Value =
+                            serde_json::from_str(&rendered).map_err(|error| error.to_string())?;
+                        if rendered
+                            .pointer("/analysis_scope/basis")
+                            .and_then(Value::as_str)
+                            != Some("producer_check_projection")
+                            || rendered
+                                .pointer("/analysis_scope/classified_seams_considered")
+                                .and_then(Value::as_u64)
+                                .is_none_or(|count| count == 0)
+                        {
+                            return Err(
+                                "consumer did not review the nonempty producer projection".into()
+                            );
+                        }
+                    } else if !review.stderr.contains("producer_identity_mismatch")
+                        || !review.stderr.contains("root_identity")
+                    {
+                        return Err(format!(
+                            "replay did not fail at root identity admission: {}",
+                            review.stderr
+                        ));
+                    }
                 }
             }
             Ok(())

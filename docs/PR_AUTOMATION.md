@@ -771,8 +771,10 @@ admission requirement: evidence from a different checkout is not reusable merely
 because its commits and source files match.
 
 `cargo test -p xtask real_producer_root_identity_is_admitted_but_not_replayed`
-exercises actual CLI findings through the canonical producer packet and review
-consumer, including equivalent-root admission and independent-clone rejection.
+exercises actual CLI findings through both the xtask producer packet and public
+`ripr pr-evidence` producer/validator and review consumer, including equivalent-root
+admission and independent-clone rejection. Empty-diff fallback receipts use the
+same root and cache identity authority as child-produced receipts.
 This bounded fixture does not run canonical-delta snapshots or qualify a release.
 
 CI uploads review artifacts from the Rust workflow when reports are present:
