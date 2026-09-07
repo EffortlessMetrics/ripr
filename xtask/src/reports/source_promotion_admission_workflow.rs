@@ -2885,12 +2885,14 @@ mod tests {
 
     #[test]
     fn j5_negative_is_fail_closed_before_constructor() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let report = test_report("rejected", "constructor_dry_run", "j5_negative", 0)?;
         validate_report(&report)
     }
 
     #[test]
     fn j5_negative_rejects_constructor_attempt() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let report = test_report("rejected", "constructor_dry_run", "j5_negative", 1)?;
         let Err(_) = validate_report(&report) else {
             return Err("J5 negative constructor attempt unexpectedly passed".to_string());
@@ -2900,6 +2902,7 @@ mod tests {
 
     #[test]
     fn j5_negative_rejects_final_phase_and_passed_admission_mutations() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let baseline = test_report("rejected", "constructor_dry_run", "j5_negative", 0)?;
         validate_report(&baseline)?;
 
@@ -2924,6 +2927,7 @@ mod tests {
 
     #[test]
     fn rejected_admission_replays_built_builder_and_rejection_semantics() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (builder_root, builder_packet) =
             write_admission_rejected_test_closure("rejected-admission-builder-replay")?;
         verify_packet(&builder_packet)?;
@@ -2969,6 +2973,7 @@ mod tests {
 
     #[test]
     fn rejected_admission_requires_a_failed_builder_or_admission_stage() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let mut report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
         report["phase"] = Value::String("admission".to_string());
         report["status"] = Value::String("rejected".to_string());
@@ -2986,6 +2991,7 @@ mod tests {
     #[test]
     fn rejected_admission_accepts_unavailable_admission_receipt_after_builder_failure()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let mut report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
         report["phase"] = Value::String("admission".to_string());
         report["status"] = Value::String("rejected".to_string());
@@ -3011,6 +3017,7 @@ mod tests {
 
     #[test]
     fn failed_builder_rejects_every_available_admission_state() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         for (builder_label, builder_summary) in [
             (
                 "unavailable",
@@ -3067,6 +3074,7 @@ mod tests {
 
     #[test]
     fn builder_rejection_replays_optional_provenance_and_zero_authority() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) = write_builder_rejected_test_closure("builder-rejection-replay")?;
         verify_packet(&packet)?;
         let builder = packet.join("evidence/trusted-builder");
@@ -3089,6 +3097,7 @@ mod tests {
 
     #[test]
     fn malformed_controller_receipts_keep_attempts_exactly_unavailable() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         for (label, builder) in [
             ("malformed-builder-attempts", true),
             ("malformed-admission-attempts", false),
@@ -3136,6 +3145,7 @@ mod tests {
     #[test]
     fn final_dispositions_require_an_admitted_prefix_and_reachable_terminal_status()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let mut failed_prefix = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
         failed_prefix["controller_packets"]["resolved_tree_admission"] = serde_json::json!({
             "path": "evidence/resolved-tree-admission",
@@ -3174,6 +3184,7 @@ mod tests {
 
     #[test]
     fn admitted_constructor_requires_exactly_one_unreferenced_object() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let zero = test_report("admitted", "constructor_dry_run", "positive_synthetic", 0)?;
         let two = test_report("admitted", "constructor_dry_run", "positive_synthetic", 2)?;
         if validate_report(&zero).is_ok() || validate_report(&two).is_ok() {
@@ -3186,6 +3197,7 @@ mod tests {
 
     #[test]
     fn verifier_rejects_every_forbidden_attempt_counter() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         for key in [
             "local_ref_attempts",
             "remote_push_attempts",
@@ -3201,6 +3213,7 @@ mod tests {
 
     #[test]
     fn parser_closes_profile_and_mode_enums() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let Err(_) = OperationMode::parse("publish") else {
             return Err("publication operation mode unexpectedly passed".to_string());
         };
@@ -3212,6 +3225,7 @@ mod tests {
 
     #[test]
     fn reviewed_tree_carrier_identity_is_live_only() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         validate_reviewed_tree_carrier_identity(ExecutionProfile::Live, &"a".repeat(40))?;
         validate_reviewed_tree_carrier_identity(
             ExecutionProfile::PositiveSynthetic,
@@ -3232,6 +3246,7 @@ mod tests {
 
     #[test]
     fn exact_identity_binding_rejects_moved_ref_and_sidecar() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
         for (pointer, replacement) in [
             (
@@ -3255,6 +3270,7 @@ mod tests {
     #[test]
     fn verifier_rejects_self_consistent_report_that_moves_requested_identity() -> Result<(), String>
     {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) = write_test_closure("requested-identity-moved")?;
         let mut report = read_json(&packet.join(REPORT_JSON), "test workflow disposition")?;
         report["protected_w7_ref"] =
@@ -3273,6 +3289,7 @@ mod tests {
 
     #[test]
     fn verifier_rejects_digest_rebound_controller_repository() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) = write_test_closure("controller-repository-moved")?;
         let mut report = read_json(&packet.join(REPORT_JSON), "test workflow disposition")?;
         report["controller_repository"] = Value::String("source-checkout".to_string());
@@ -3290,6 +3307,7 @@ mod tests {
 
     #[test]
     fn verifier_rejects_digest_rebound_unknown_public_fields() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         for (label, pointer) in [
             ("unknown-workflow-field", ""),
             ("unknown-attempt-field", "/attempts"),
@@ -3382,6 +3400,7 @@ mod tests {
     #[test]
     fn verifier_rejects_digest_rebound_construction_summary_outside_final_constructor()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) = write_test_closure("construction-summary-rebound")?;
         let baseline = verify_packet(&packet)?;
         let mut moved = baseline.clone();
@@ -3400,6 +3419,7 @@ mod tests {
 
     #[test]
     fn verifier_rejects_digest_rebound_producer_state_families() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) = write_test_closure("producer-state-rebound")?;
         let baseline = verify_packet(&packet)?;
         for (field, replacement) in [
@@ -3429,6 +3449,7 @@ mod tests {
 
     #[test]
     fn verifier_rejects_digest_rebound_failure_reasons_on_admitted_packet() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) = write_test_closure("failure-reasons-rebound")?;
         let baseline = verify_packet(&packet)?;
         let mut moved = baseline;
@@ -3444,6 +3465,7 @@ mod tests {
 
     #[test]
     fn verifier_rejects_digest_rebound_admitted_status_to_rejected() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) = write_test_closure("status-stage-rebound")?;
         let baseline = verify_packet(&packet)?;
         let mut moved = baseline;
@@ -3464,6 +3486,7 @@ mod tests {
 
     #[test]
     fn verifier_rejects_digest_rebound_markdown_and_packet_status() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (markdown_root, markdown_packet) = write_test_closure("markdown-moved")?;
         fs::write(
             markdown_packet.join(REPORT_MD),
@@ -3492,6 +3515,7 @@ mod tests {
 
     #[test]
     fn verifier_replays_nested_builder_semantics_after_digest_rebinding() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) = write_test_closure("nested-builder-replay")?;
         let builder_root = packet.join("evidence/trusted-builder");
         let builder_report = builder_root.join("trusted-builder.json");
@@ -3575,6 +3599,7 @@ mod tests {
     #[test]
     fn verifier_rejects_digest_rebound_validation_catalog_and_envelope_tampering()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         verify_digest_rebound_validation_contract_mutation_rejected(
             "removed-validation-catalog-row",
             |report| {
@@ -3648,6 +3673,7 @@ mod tests {
 
     #[test]
     fn verifier_binds_validation_receipt_to_indexed_command_logs() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) = write_test_closure("nested-command-log-replay")?;
         let validation_root = packet.join("evidence/locators/validation_packet");
         fs::write(
@@ -3683,6 +3709,7 @@ mod tests {
 
     #[test]
     fn verifier_rejects_digest_rebound_undeclared_nested_members() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (validation_root, validation_packet) = write_test_closure("extra-validation-member")?;
         let nested_validation = validation_packet.join("evidence/locators/validation_packet");
         fs::write(
@@ -3859,6 +3886,7 @@ mod tests {
 
     #[test]
     fn verifier_rejects_digest_rebound_nested_markdown() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) = write_test_closure("nested-markdown-moved")?;
         let builder_root = packet.join("evidence/trusted-builder");
         fs::write(
@@ -3893,6 +3921,7 @@ mod tests {
 
     #[test]
     fn verifier_requires_original_external_request_and_digest() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) = write_test_closure("external-request-authority")?;
         let external = root.join("original-request.json");
         fs::copy(packet.join("evidence/requested-identity.json"), &external)
@@ -3947,6 +3976,7 @@ mod tests {
     #[test]
     fn admitted_constructor_packet_replays_qualification_before_enforcement() -> Result<(), String>
     {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) =
             write_admitted_test_closure_for("qualification-replay", "constructor_dry_run")?;
         verify_packet(&packet)?;
@@ -3973,6 +4003,7 @@ mod tests {
 
     #[test]
     fn rejected_constructor_packet_replays_digest_rebound_qualification() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) =
             write_rejected_constructor_test_closure("rejected-qualification-replay", false)?;
         verify_packet(&packet)?;
@@ -4004,6 +4035,7 @@ mod tests {
 
     #[test]
     fn rejected_constructor_replays_parseable_attempt_and_outer_parity() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         for attempted in [false, true] {
             let label = if attempted {
                 "parseable-rejection-attempted"
@@ -4030,6 +4062,7 @@ mod tests {
 
     #[test]
     fn rejected_constructor_replays_forbidden_inner_authority() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) =
             write_parseable_rejected_constructor_test_closure("rejected-inner-authority", true)?;
         verify_packet(&packet)?;
@@ -4054,6 +4087,7 @@ mod tests {
 
     #[test]
     fn attempted_rejected_constructor_requires_complete_identity() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         for key in [
             "source_parent",
             "swarm_parent",
@@ -4092,6 +4126,7 @@ mod tests {
     #[test]
     fn finalizer_records_rejected_exit_and_unknown_attempts_without_constructor_receipt()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) =
             write_admitted_test_closure_for("finalizer-rejection", "constructor_dry_run")?;
         let workspace = root.join("workspace");
@@ -4135,6 +4170,7 @@ mod tests {
 
     #[test]
     fn finalizer_rejects_canonical_controller_escape_and_retains_evidence() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) =
             write_admitted_test_closure_for("finalizer-controller-escape", "constructor_dry_run")?;
         let workspace = root.join("workspace");
@@ -4224,6 +4260,7 @@ mod tests {
 
     #[test]
     fn live_locator_provenance_rejects_same_byte_movement() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let report = test_report("admitted", "admit_only", "live", 0)?;
         for (pointer, replacement) in [
             (
@@ -4261,6 +4298,7 @@ mod tests {
 
     #[test]
     fn synthetic_locator_rejects_absolute_or_out_of_workspace_local_path() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let report = test_report("admitted", "admit_only", "positive_synthetic", 0)?;
         for local_path in [
             "/tmp/escaped/preflight.json",
@@ -4280,6 +4318,7 @@ mod tests {
 
     #[test]
     fn packet_index_binds_complete_evidence_closure() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (root, packet) = write_test_closure("inventory")?;
         let report = verify_packet(&packet)?;
         let index = read_json(&packet.join(PACKET_INDEX), "test packet index")?;
@@ -4329,6 +4368,7 @@ mod tests {
 
     #[test]
     fn packet_verifier_rejects_removed_or_corrupted_closure_member() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (removed_root, removed_packet) = write_test_closure("removed")?;
         fs::remove_file(
             removed_packet
@@ -4358,6 +4398,7 @@ mod tests {
     #[test]
     fn rejected_constructor_packet_retains_partial_evidence_or_accepts_no_output()
     -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let (partial_root, partial_packet) = write_test_closure_for(
             "partial-construction",
             "rejected",
@@ -4418,6 +4459,7 @@ mod tests {
 
     #[test]
     fn synthetic_paths_are_root_independent() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let left = Path::new("one/root/synthetic-fixture/fixture-repository/.git/evidence.json");
         let right =
             Path::new("another/root/synthetic-fixture/fixture-repository/.git/evidence.json");
