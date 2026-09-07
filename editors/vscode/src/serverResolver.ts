@@ -50,9 +50,11 @@ export async function resolveServer(
 
   if (platform) {
     const bundled = bundledServerPath(context, platform);
-    const bundledResult = await probeExistingCandidate(bundled, 'bundled', `bundled server for ${platform.target}`);
-    if (isResolved(bundledResult)) {
-      return bundledResult;
+    if (bundled) {
+      const bundledResult = await probeExistingCandidate(bundled, 'bundled', `bundled server for ${platform.target}`);
+      if (isResolved(bundledResult)) {
+        return bundledResult;
+      }
     }
 
     let distribution: ResolvedDistributionRequest | undefined;
@@ -63,7 +65,9 @@ export async function resolveServer(
       output.appendLine(`ripr managed server resolution unavailable: ${downloadFailure}`);
     }
 
-    if (distribution) {
+    if (distribution?.origin === 'development_fixture') {
+      downloadFailure = 'Development fixture context has no installed managed-server distribution authority.';
+    } else if (distribution) {
       const cached = cachedServerPath(context, distribution, platform);
       const cachedResult = await probeExistingCandidate(
         cached,
@@ -201,12 +205,18 @@ function developmentRequest(productVersion: string): ResolvedDistributionRequest
   return resolveDistributionRequest(productVersion, descriptor, 'development_fixture');
 }
 
-function bundledServerPath(context: vscode.ExtensionContext, platform: RiprPlatform): string {
+function bundledServerPath(context: vscode.ExtensionContext, platform: RiprPlatform): string | undefined {
+  // Context-less harnesses have no installed extension root and therefore no
+  // bundled candidate. Real installed contexts retain the documented bundled
+  // preference without fabricating a path from missing metadata.
+  const extensionRoot = context.extensionUri?.fsPath;
+  if (!extensionRoot) {
+    return undefined;
+  }
   // Dormant by design (#2085): no platform VSIX ships a bundled server
-  // today, so this candidate never exists on disk and resolution falls
-  // through to the cache/download path. Kept as the documented first
-  // preference for when #1443 / #1624 ship platform VSIXs.
-  return path.join(context.extensionUri.fsPath, 'server', platform.target, platform.executableName);
+  // today, so this candidate normally does not exist on disk and resolution
+  // falls through to the cache/download path.
+  return path.join(extensionRoot, 'server', platform.target, platform.executableName);
 }
 
 async function probeExistingCandidate(
