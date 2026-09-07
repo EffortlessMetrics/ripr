@@ -2881,6 +2881,7 @@ mod tests {
 
     #[test]
     fn two_seam_honesty_fixture_compiles_and_its_tests_pass() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         // PR-time proof for the honesty-case fixture (#2824 review): build
         // the two-seam before/after states through the same code path the
         // case uses (build_two_seam_commits, on a copy of the real
