@@ -23,12 +23,12 @@ export interface ServerManifest {
   readonly assets: Record<string, ManifestAsset>;
 }
 
-interface SelectedManifest {
+export interface SelectedManifest {
   readonly manifest: ServerManifest;
   readonly placement: DistributionPlacement;
 }
 
-class HttpStatusError extends Error {
+export class HttpStatusError extends Error {
   constructor(
     readonly statusCode: number,
     readonly redirected: boolean,
@@ -38,6 +38,8 @@ class HttpStatusError extends Error {
     this.name = 'HttpStatusError';
   }
 }
+
+type ManifestFetcher = (url: string) => Promise<ServerManifest>;
 
 /** Downloads, verifies, extracts, and records one admitted server distribution. */
 export async function downloadServer(
@@ -147,9 +149,10 @@ function downloadOriginLabel(config: RiprConfig, distribution: ResolvedDistribut
 }
 
 /** Selects stable first and uses the predeclared RC only for an exact direct 404. */
-async function fetchDistributionManifest(
-  config: RiprConfig,
-  distribution: ResolvedDistributionRequest
+export async function fetchDistributionManifest(
+  config: Pick<RiprConfig, 'downloadBaseUrl'>,
+  distribution: ResolvedDistributionRequest,
+  fetcher: ManifestFetcher = fetchManifest
 ): Promise<SelectedManifest> {
   const mirror = config.downloadBaseUrl.trim();
   const placements = mirror.length > 0 ? [distribution.preferredPlacement] : distributionPlacements(distribution);
@@ -158,7 +161,7 @@ async function fetchDistributionManifest(
     const placement = placements[index];
     const url = distributionManifestUrl(config.downloadBaseUrl, distribution, placement);
     try {
-      return { manifest: await fetchManifest(url), placement };
+      return { manifest: await fetcher(url), placement };
     } catch (error) {
       const mayUseFallback =
         index === 0 &&
@@ -178,11 +181,44 @@ async function fetchDistributionManifest(
 
 async function fetchManifest(url: string): Promise<ServerManifest> {
   const body = await fetchBuffer(url);
+  let parsed: unknown;
   try {
-    return JSON.parse(body.toString('utf8')) as ServerManifest;
+    parsed = JSON.parse(body.toString('utf8')) as unknown;
   } catch (error) {
     throw new Error(`Malformed ripr server manifest from ${url}: ${error instanceof Error ? error.message : String(error)}`);
   }
+  if (!isServerManifest(parsed)) {
+    throw new Error(`Malformed ripr server manifest from ${url}: unexpected manifest shape.`);
+  }
+  return parsed;
+}
+
+function isServerManifest(value: unknown): value is ServerManifest {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as { version?: unknown; assets?: unknown };
+  if (
+    typeof candidate.version !== 'string' ||
+    candidate.version.trim().length === 0 ||
+    typeof candidate.assets !== 'object' ||
+    candidate.assets === null ||
+    Array.isArray(candidate.assets)
+  ) {
+    return false;
+  }
+  return Object.values(candidate.assets as Record<string, unknown>).every((asset) => {
+    if (typeof asset !== 'object' || asset === null || Array.isArray(asset)) {
+      return false;
+    }
+    const entry = asset as { url?: unknown; sha256?: unknown };
+    return (
+      typeof entry.url === 'string' &&
+      entry.url.length > 0 &&
+      typeof entry.sha256 === 'string' &&
+      /^[0-9a-fA-F]{64}$/.test(entry.sha256)
+    );
+  });
 }
 
 function fetchBuffer(url: string, redirects = 0): Promise<Buffer> {
