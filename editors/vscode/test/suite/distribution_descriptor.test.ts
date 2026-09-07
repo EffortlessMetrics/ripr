@@ -114,22 +114,25 @@ suite('distribution descriptor', () => {
 
   test('does not let RC mask contradictory or unavailable stable state', async () => {
     const request = resolveDistributionRequest('0.11.0', catalog);
-    const cases: Array<() => Error> = [
-      () => new HttpStatusError(500, false, 'https://stable.invalid'),
-      () => new HttpStatusError(404, true, 'https://redirected.invalid'),
-      () => new Error('Malformed ripr server manifest from stable: unexpected manifest shape.')
+    const cases: Array<{ error: Error; expected: RegExp }> = [
+      { error: new HttpStatusError(500, false, 'https://stable.invalid'), expected: /HTTP 500/ },
+      { error: new HttpStatusError(404, true, 'https://redirected.invalid'), expected: /HTTP 404/ },
+      {
+        error: new Error('Malformed ripr server manifest from stable: unexpected manifest shape.'),
+        expected: /Malformed ripr server manifest/
+      }
     ];
-    for (const makeError of cases) {
+    for (const testCase of cases) {
       const seen: string[] = [];
       await assert.rejects(
         () =>
           fetchDistributionManifest({ downloadBaseUrl: '' }, request, async (url) => {
             seen.push(url);
-            throw makeError();
+            throw testCase.error;
           }),
-        makeError().constructor
+        testCase.expected
       );
-      assert.strictEqual(seen.length, 1, `must not attempt RC after ${makeError().message}`);
+      assert.strictEqual(seen.length, 1, `must not attempt RC after ${testCase.error.message}`);
       assert.ok(seen[0].includes('/v0.11.0/'), seen[0]);
     }
   });
@@ -137,15 +140,17 @@ suite('distribution descriptor', () => {
   test('configured mirror never selects the RC placement', async () => {
     const request = resolveDistributionRequest('0.11.0', catalog);
     const seen: string[] = [];
-    await assert.rejects(() =>
-      fetchDistributionManifest(
-        { downloadBaseUrl: 'https://mirror.invalid/ripr' },
-        request,
-        async (url) => {
-          seen.push(url);
-          throw new HttpStatusError(404, false, url);
-        }
-      )
+    await assert.rejects(
+      () =>
+        fetchDistributionManifest(
+          { downloadBaseUrl: 'https://mirror.invalid/ripr' },
+          request,
+          async (url) => {
+            seen.push(url);
+            throw new HttpStatusError(404, false, url);
+          }
+        ),
+      /HTTP 404/
     );
     assert.deepStrictEqual(seen, ['https://mirror.invalid/ripr/ripr-server-manifest-v0.11.0.json']);
   });
