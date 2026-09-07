@@ -110,7 +110,7 @@ pub(crate) mod source_promotion_control_tests {
                 if std::time::Instant::now() >= deadline {
                     return Err("writer neither queued nor entered".to_string());
                 }
-                std::thread::yield_now();
+                std::thread::sleep(std::time::Duration::from_millis(10));
             }
             // Real controller authority: this path must remain usable after
             // the competing writer's temporary directory has been deleted.
