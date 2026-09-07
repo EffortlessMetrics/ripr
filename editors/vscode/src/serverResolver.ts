@@ -6,7 +6,6 @@ import { RiprConfig } from './config';
 import { cachedServerPath, downloadServer } from './downloader';
 import {
   DistributionDescriptor,
-  distributionDescriptorIdentity,
   parseDistributionDescriptor,
   resolveDistributionRequest,
   ResolvedDistributionRequest
@@ -47,7 +46,6 @@ export async function resolveServer(
   }
 
   const platform = currentRiprPlatform();
-  const distribution = requestedServerDistribution(context, config);
   let downloadFailure: string | undefined;
 
   if (platform) {
@@ -57,31 +55,41 @@ export async function resolveServer(
       return bundledResult;
     }
 
-    const cached = cachedServerPath(context, distribution, platform);
-    const cachedResult = await probeExistingCandidate(
-      cached,
-      'downloaded',
-      `cached server ${distribution.releaseTag} for ${platform.target}`
-    );
-    if (isResolved(cachedResult)) {
-      return cachedResult;
+    let distribution: ResolvedDistributionRequest | undefined;
+    try {
+      distribution = requestedServerDistribution(context, config);
+    } catch (error) {
+      downloadFailure = error instanceof Error ? error.message : String(error);
+      output.appendLine(`ripr managed server resolution unavailable: ${downloadFailure}`);
     }
 
-    if (config.autoDownload) {
-      try {
-        const downloaded = await downloadServer(context, config, platform, distribution, output);
-        const downloadedResult = await probeCandidate(
-          downloaded,
-          'downloaded',
-          `downloaded server ${distribution.releaseTag} for ${platform.target}`
-        );
-        if (isResolved(downloadedResult)) {
-          return downloadedResult;
+    if (distribution) {
+      const cached = cachedServerPath(context, distribution, platform);
+      const cachedResult = await probeExistingCandidate(
+        cached,
+        'downloaded',
+        `cached server generation ${distribution.productVersion} for ${platform.target}`
+      );
+      if (isResolved(cachedResult)) {
+        return cachedResult;
+      }
+
+      if (config.autoDownload) {
+        try {
+          const downloaded = await downloadServer(context, config, platform, distribution, output);
+          const downloadedResult = await probeCandidate(
+            downloaded,
+            'downloaded',
+            `downloaded server generation ${distribution.productVersion} for ${platform.target}`
+          );
+          if (isResolved(downloadedResult)) {
+            return downloadedResult;
+          }
+          downloadFailure = downloadedResult.detail;
+        } catch (error) {
+          downloadFailure = error instanceof Error ? error.message : String(error);
+          output.appendLine(`ripr server download failed: ${downloadFailure}`);
         }
-        downloadFailure = downloadedResult.detail;
-      } catch (error) {
-        downloadFailure = error instanceof Error ? error.message : String(error);
-        output.appendLine(`ripr server download failed: ${downloadFailure}`);
       }
     }
   } else {
@@ -118,13 +126,13 @@ export async function resolveServer(
   };
 }
 
-/** Returns the product version used in setup and diagnostic output. */
+/** Returns the server compatibility version used in setup and diagnostic output. */
 export function requestedServerVersion(context: vscode.ExtensionContext, config: RiprConfig): string {
   const configured = config.serverVersion.trim();
   if (configured.length > 0) {
     return configured.replace(/^v/, '').replace(/-rc\.\d+$/, '');
   }
-  return requestedServerDistribution(context, config).productVersion;
+  return extensionPackageVersion(context);
 }
 
 /** Resolves embedded distribution identity, or an explicit legacy override. */
@@ -132,16 +140,21 @@ export function requestedServerDistribution(
   context: vscode.ExtensionContext,
   config: RiprConfig
 ): ResolvedDistributionRequest {
-  const packageVersion = extensionPackageVersion(context);
   const configured = config.serverVersion.trim();
   if (configured.length > 0) {
     const releaseTag = configured.startsWith('v') ? configured : `v${configured}`;
     // An explicit version is a legacy, user-selected transport override. It
     // must not be represented as an embedded trusted distribution identity.
-    return legacyRequest(packageVersion, releaseTag);
+    return legacyRequest(releaseTag);
   }
-  const descriptor = embeddedDistributionDescriptor(context, packageVersion);
-  return resolveDistributionRequest(packageVersion, descriptor);
+
+  const packageVersion = extensionPackageVersion(context);
+  if (!context.extensionUri) {
+    return developmentRequest(packageVersion);
+  }
+
+  const descriptor = embeddedDistributionDescriptor(context);
+  return resolveDistributionRequest(packageVersion, descriptor, 'embedded_descriptor');
 }
 
 /** Reads and normalizes the installed extension package version. */
@@ -150,46 +163,42 @@ function extensionPackageVersion(context: vscode.ExtensionContext): string {
   return typeof version === 'string' ? version.replace(/^v/, '') : '0.8.0';
 }
 
-/** Loads the installed descriptor or constructs the development fallback. */
-function embeddedDistributionDescriptor(context: vscode.ExtensionContext, productVersion: string): DistributionDescriptor {
-  const extensionUri = context.extensionUri;
-  if (!extensionUri) {
-    return legacyDescriptor(productVersion, `v${productVersion}`);
+/** Loads the descriptor from installed extension bytes and fails closed when absent. */
+function embeddedDistributionDescriptor(context: vscode.ExtensionContext): DistributionDescriptor {
+  const descriptorPath = path.join(context.extensionUri.fsPath, 'distribution.json');
+  if (!fs.existsSync(descriptorPath)) {
+    throw new Error(`installed ripr extension is missing distribution descriptor ${descriptorPath}`);
   }
-  const descriptorPath = path.join(extensionUri.fsPath, 'distribution.json');
-  if (fs.existsSync(descriptorPath)) {
-    return parseDistributionDescriptor(fs.readFileSync(descriptorPath, 'utf8'));
-  }
-  return legacyDescriptor(productVersion, `v${productVersion}`);
-}
-
-/** Constructs the compatibility descriptor used when no embedded file exists. */
-function legacyDescriptor(productVersion: string, releaseTag: string): DistributionDescriptor {
-  const channel = /-rc\.\d+$/.test(releaseTag) ? 'rc' : 'stable';
-  return {
-    schema: 1,
-    productVersion,
-    channel,
-    releaseTag,
-    releaseRef: `refs/tags/${releaseTag}`,
-    manifestFile: `ripr-server-manifest-v${productVersion}.json`,
-    sourceRepository: 'https://github.com/EffortlessMetrics/ripr'
-  };
+  return parseDistributionDescriptor(fs.readFileSync(descriptorPath, 'utf8'));
 }
 
 /** Constructs an explicitly selected, legacy transport request. */
-function legacyRequest(productVersion: string, releaseTag: string): ResolvedDistributionRequest {
+function legacyRequest(releaseTag: string): ResolvedDistributionRequest {
   const releaseVersion = releaseTag.replace(/^v/, '').replace(/-rc\.\d+$/, '');
   const descriptor: DistributionDescriptor = {
     schema: 1,
-    productVersion,
+    productVersion: releaseVersion,
     releaseTag,
     releaseRef: `refs/tags/${releaseTag}`,
     manifestFile: `ripr-server-manifest-v${releaseVersion}.json`,
     sourceRepository: 'https://github.com/EffortlessMetrics/ripr',
     channel: /-rc\.\d+$/.test(releaseTag) ? 'rc' : 'stable'
   };
-  return { ...descriptor, descriptorIdentity: distributionDescriptorIdentity(descriptor) };
+  return resolveDistributionRequest(releaseVersion, descriptor, 'explicit_legacy_override');
+}
+
+/** Constructs an explicit development fixture request without public-release authority. */
+function developmentRequest(productVersion: string): ResolvedDistributionRequest {
+  const descriptor: DistributionDescriptor = {
+    schema: 1,
+    productVersion,
+    channel: 'development',
+    releaseTag: `v${productVersion}`,
+    releaseRef: `refs/tags/v${productVersion}`,
+    manifestFile: `ripr-server-manifest-v${productVersion}.json`,
+    sourceRepository: 'https://github.com/EffortlessMetrics/ripr'
+  };
+  return resolveDistributionRequest(productVersion, descriptor, 'development_fixture');
 }
 
 function bundledServerPath(context: vscode.ExtensionContext, platform: RiprPlatform): string {
