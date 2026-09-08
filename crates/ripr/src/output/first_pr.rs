@@ -1872,7 +1872,7 @@ mod tests {
         if bash_label >= powershell_label {
             return Err("bash form must be presented before the PowerShell variant".to_string());
         }
-        if !markdown.contains("The first form is written for Bash; the second requires PowerShell 7+; cmd.exe and Windows PowerShell 5.1 are not supported.") {
+        if !markdown.contains("The first form is written for Bash; the second requires PowerShell 7.6; cmd.exe and Windows PowerShell 5.1 are not supported.") {
             return Err(format!(
                 "receipt presentation must state the cmd.exe boundary:\n{markdown}"
             ));
@@ -1937,7 +1937,7 @@ mod tests {
             ));
         }
         if markdown
-            .matches("The first form is written for Bash; the second requires PowerShell 7+; cmd.exe and Windows PowerShell 5.1 are not supported.")
+            .matches("The first form is written for Bash; the second requires PowerShell 7.6; cmd.exe and Windows PowerShell 5.1 are not supported.")
             .count()
             != 2
         {

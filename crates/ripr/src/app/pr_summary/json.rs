@@ -746,12 +746,11 @@ mod tests {
         }
         // The disclosure names the command; no powershell fence is emitted for
         // it.
-        let disclosure =
-            "PowerShell form unavailable for compound commands: `cargo test a && cargo test b`\n\n";
+        let disclosure = "PowerShell form unavailable for unsupported or compound commands: `cargo test a && cargo test b`\n\n";
         if !markdown.contains(disclosure) {
             return Err(format!("compound disclosure missing:\n{markdown}"));
         }
-        if markdown.contains("```powershell\ncargo test a") {
+        if markdown.contains("```powershell") {
             return Err(format!(
                 "compound command must not gain a powershell fence:\n{markdown}"
             ));
@@ -789,11 +788,11 @@ mod tests {
         if !markdown.contains(bash_form) {
             return Err(format!("bash input-redirect command drifted:\n{markdown}"));
         }
-        let disclosure = "PowerShell form unavailable for compound commands: `cargo run --bin replay < input.json`\n\n";
+        let disclosure = "PowerShell form unavailable for unsupported or compound commands: `cargo run --bin replay < input.json`\n\n";
         if !markdown.contains(disclosure) {
             return Err(format!("input-redirect disclosure missing:\n{markdown}"));
         }
-        if markdown.contains("```powershell\ncargo run --bin replay") {
+        if markdown.contains("```powershell") {
             return Err(format!(
                 "input-redirect command must not gain a powershell fence:\n{markdown}"
             ));

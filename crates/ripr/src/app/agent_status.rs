@@ -721,7 +721,7 @@ mod tests {
         if bash_fence >= powershell_fence {
             return Err("bash form must be presented before the PowerShell variant".to_string());
         }
-        if !rendered.contains("cmd.exe is not supported.") {
+        if !rendered.contains("cmd.exe and Windows PowerShell 5.1 are not supported.") {
             return Err(format!(
                 "next command presentation must state the cmd.exe boundary:\n{rendered}"
             ));

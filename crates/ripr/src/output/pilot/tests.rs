@@ -377,7 +377,7 @@ fn pilot_summary_md_pairs_bash_next_commands_with_powershell_variants() -> Resul
     // Disclosure precedes the first copyable command, mirroring the landed
     // agent_workflow ordering, and states the cmd.exe boundary.
     let disclosure = md
-        .find("cmd.exe is not supported")
+        .find("cmd.exe and Windows PowerShell 5.1 are not supported")
         .ok_or_else(|| format!("pilot markdown must state the cmd.exe boundary: {md}"))?;
     let first_fence = md
         .find("```bash")
@@ -526,7 +526,7 @@ fn timeout_summary_md_pairs_bash_retry_with_powershell_variant() -> Result<(), S
         return Err(format!("powershell retry block missing or drifted:\n{md}"));
     }
     let disclosure = md
-        .find("cmd.exe is not supported")
+        .find("cmd.exe and Windows PowerShell 5.1 are not supported")
         .ok_or_else(|| format!("pilot timeout markdown must state the cmd.exe boundary: {md}"))?;
     let first_fence = md
         .find("```bash")
