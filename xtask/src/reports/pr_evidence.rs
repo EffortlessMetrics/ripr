@@ -2003,6 +2003,188 @@ mod tests {
         result.and(cleanup)
     }
 
+    #[test]
+    fn repository_language_policy_admits_real_mixed_language_producer() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
+        // Cargo runs unit tests from the xtask package directory. Retain the
+        // fixture builder's freshness guarantee, but resolve the workspace
+        // binary through the same path owner as the production PR producer.
+        crate::reports::fixtures::ripr_fixture_binary()?;
+        let binary = built_ripr_binary_path(&repo_root()?)?.display().to_string();
+        let policy = match fs::read_to_string(repo_root()?.join("ripr.toml")) {
+            Ok(policy) => policy,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) => return Err(format!("read repository language policy: {error}")),
+        };
+        let repo = temp_repo("ripr-pr-real-language-policy")?;
+        let result = (|| {
+            run_git(&repo, &["init"])?;
+            run_git(&repo, &["config", "user.email", "ripr-pr@example.invalid"])?;
+            run_git(&repo, &["config", "user.name", "RIPR PR Test"])?;
+            write_repo_file(&repo, ".gitignore", "target/\n")?;
+            write_repo_file(
+                &repo,
+                "Cargo.toml",
+                "[package]\nname = \"mixed-producer\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            )?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 0 }\n",
+            )?;
+            write_repo_file(
+                &repo,
+                "src/eligible.ts",
+                "export function eligible(value: number): boolean { return value > 0; }\n",
+            )?;
+            write_repo_file(
+                &repo,
+                "tests/eligible.test.ts",
+                "import { eligible } from '../src/eligible';\ntest('positive value is eligible', () => { expect(eligible(2)).toBe(true); });\n",
+            )?;
+            run_git(&repo, &["add", "."])?;
+            run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+            let base = run_git_output(&repo, &["rev-parse", "HEAD"])?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 1 }\n",
+            )?;
+            write_repo_file(
+                &repo,
+                "src/eligible.ts",
+                "export function eligible(value: number): boolean { return value > 1; }\n",
+            )?;
+            for (config, complete) in [
+                (policy.as_str(), true),
+                ("[languages]\nenabled = [\"rust\"]\n", false),
+            ] {
+                write_repo_file(&repo, "ripr.toml", config)?;
+                run_git(&repo, &["add", "."])?;
+                run_git(
+                    &repo,
+                    &["commit", "--no-gpg-sign", "-m", "producer policy case"],
+                )?;
+                let options = PrEvidenceOptions {
+                    root: ".".to_string(),
+                    base: base.trim().to_string(),
+                    head: run_git_output(&repo, &["rev-parse", "HEAD"])?
+                        .trim()
+                        .to_string(),
+                    check: false,
+                };
+                let args = vec![
+                    "check".into(),
+                    "--root".into(),
+                    repo.display().to_string(),
+                    "--base".into(),
+                    options.base.clone(),
+                    "--no-unchanged-tests".into(),
+                    "--format".into(),
+                    "json".into(),
+                ];
+                let check = run_ripr_check_binary(&binary, args, &options, Duration::from_mins(2))?;
+                let value: Value =
+                    serde_json::from_str(&check).map_err(|error| error.to_string())?;
+                if value
+                    .pointer("/analysis_outcome/analysis_complete")
+                    .and_then(Value::as_bool)
+                    != Some(complete)
+                {
+                    return Err(format!(
+                        "repository policy expected complete={complete}, got {}",
+                        value
+                            .get("analysis_outcome")
+                            .ok_or("missing analysis outcome")?
+                    ));
+                }
+                let findings = value
+                    .get("findings")
+                    .and_then(Value::as_array)
+                    .ok_or("missing producer findings")?;
+                if !findings
+                    .iter()
+                    .any(|finding| finding.get("language").and_then(Value::as_str) == Some("rust"))
+                {
+                    return Err("real Rust finding missing".into());
+                }
+                if complete
+                    && !findings.iter().any(|finding| {
+                        finding.get("language").and_then(Value::as_str) == Some("typescript")
+                            && finding.get("language_status").and_then(Value::as_str)
+                                == Some("preview")
+                    })
+                {
+                    return Err("real preview TypeScript finding missing".into());
+                }
+                write_pr_evidence_from_check_json(&repo, &options, &check)?;
+                check_pr_evidence(&repo, &options)?;
+                let args = vec![
+                    "review-comments".into(),
+                    "--root".into(),
+                    repo.display().to_string(),
+                    "--base".into(),
+                    options.base.clone(),
+                    "--head".into(),
+                    options.head.clone(),
+                    "--check-output".into(),
+                    repo.join(PR_CHECK_JSON).display().to_string(),
+                    "--out".into(),
+                    repo.join("target/ripr/review/comments.json")
+                        .display()
+                        .to_string(),
+                ];
+                let review = capture_output_with_timeout(
+                    &binary,
+                    &args,
+                    &[],
+                    Duration::from_mins(2),
+                    "real producer review admission",
+                )?;
+                if review.timed_out
+                    || review.status.is_some_and(|status| status.success()) != complete
+                {
+                    return Err(format!(
+                        "unexpected review admission complete={complete}: {}\n{}",
+                        review.stdout, review.stderr
+                    ));
+                }
+                if !complete
+                    && !format!("{}{}", review.stdout, review.stderr)
+                        .contains("producer analysis is not complete")
+                {
+                    return Err(
+                        "disabled adapter was not rejected for incomplete producer evidence".into(),
+                    );
+                }
+                if complete {
+                    let rendered =
+                        fs::read_to_string(repo.join("target/ripr/review/comments.json"))
+                            .map_err(|error| format!("read admitted review output: {error}"))?;
+                    let rendered: Value = serde_json::from_str(&rendered)
+                        .map_err(|error| format!("parse admitted review output: {error}"))?;
+                    if rendered
+                        .pointer("/analysis_scope/basis")
+                        .and_then(Value::as_str)
+                        != Some("producer_check_projection")
+                        || rendered
+                            .pointer("/analysis_scope/classified_seams_considered")
+                            .and_then(Value::as_u64)
+                            .is_none_or(|count| count == 0)
+                    {
+                        return Err(
+                            "consumer did not review the nonempty producer projection".into()
+                        );
+                    }
+                }
+            }
+            Ok(())
+        })();
+        let cleanup = fs::remove_dir_all(&repo)
+            .map_err(|error| format!("cleanup {}: {error}", repo.display()));
+        result.and(cleanup)
+    }
+
     fn temp_repo(name: &str) -> Result<PathBuf, String> {
         let unique = format!(
             "{}-{}-{}",

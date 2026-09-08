@@ -10,7 +10,11 @@
 //! `evidence_promotion`, and `tests.rs`) compile unchanged.
 
 use crate::no_panic::contains_word;
-use crate::run::{run, run_output_owned, run_output_owned_with_envs};
+use crate::run::{
+    capture_output_in_dir_with_envs, run, run_output_owned, run_output_owned_with_envs,
+};
+#[path = "fixture_workspace.rs"]
+mod fixture_workspace;
 use crate::{
     collect_pr_changes, forbidden_static_terms, has_markdown_heading, json_escape, markdown_cell,
     normalize_path, read_text_lossy, ripr_debug_binary, write_json_string_array, write_report,
@@ -443,6 +447,11 @@ pub(crate) struct FixtureRun {
 
 impl FixtureRun {
     #[cfg(test)]
+    pub(crate) fn check_json_path(&self) -> &Path {
+        &self.check_json
+    }
+
+    #[cfg(test)]
     pub(crate) fn comparisons_all_match(&self) -> bool {
         self.comparisons.iter().all(|comparison| comparison.matches)
     }
@@ -623,6 +632,22 @@ fn clear_fixture_cache(dir: &Path) -> Result<(), String> {
 }
 
 pub(crate) fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
+    let binary = ripr_fixture_binary()?;
+    let mut workspace = fixture_workspace::FixtureWorkspace::create(path)?;
+    let result = run_fixture_outputs_isolated(path, &binary, workspace.root());
+    let cleanup = workspace.cleanup();
+    match (result, cleanup) {
+        (Ok(run), Ok(())) => Ok(run),
+        (Err(error), Ok(())) | (Ok(_), Err(error)) => Err(error),
+        (Err(error), Err(cleanup)) => Err(format!("{error}; {cleanup}")),
+    }
+}
+
+fn run_fixture_outputs_isolated(
+    path: &Path,
+    binary: &str,
+    cwd: &Path,
+) -> Result<FixtureRun, String> {
     let name = fixture_name(path)?;
     let diff = path.join("diff.patch");
     let input = path.join("input");
@@ -659,11 +684,13 @@ pub(crate) fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
     let cache_dir = fixture_cache_dir(&name)?;
     clear_fixture_cache(&cache_dir)?;
 
-    let json = normalize_fixture_json_output(&run_fixture_check(
+    let json = normalize_fixture_json_output(&run_fixture_check_with_context(
+        binary,
         &root,
         &diff_file,
         FixtureCheckFormat::Json,
         Some(&cache_dir),
+        Some(cwd),
     )?);
     fs::write(&check_json, json).map_err(|err| {
         format!(
@@ -672,11 +699,13 @@ pub(crate) fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
         )
     })?;
 
-    let human = normalize_fixture_human_output(&run_fixture_check(
+    let human = normalize_fixture_human_output(&run_fixture_check_with_context(
+        binary,
         &root,
         &diff_file,
         FixtureCheckFormat::Human,
         Some(&cache_dir),
+        Some(cwd),
     )?);
     fs::write(&human_txt, human).map_err(|err| {
         format!(
@@ -685,11 +714,13 @@ pub(crate) fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
         )
     })?;
 
-    let human_full = normalize_fixture_human_output(&run_fixture_check(
+    let human_full = normalize_fixture_human_output(&run_fixture_check_with_context(
+        binary,
         &root,
         &diff_file,
         FixtureCheckFormat::HumanFull,
         Some(&cache_dir),
+        Some(cwd),
     )?);
     fs::write(&human_full_txt, human_full).map_err(|err| {
         format!(
@@ -772,6 +803,17 @@ pub(crate) fn run_fixture_check(
     cache_dir: Option<&Path>,
 ) -> Result<String, String> {
     let binary = ripr_fixture_binary()?;
+    run_fixture_check_with_context(&binary, root, diff_file, format, cache_dir, None)
+}
+
+fn run_fixture_check_with_context(
+    binary: &str,
+    root: &str,
+    diff_file: &str,
+    format: FixtureCheckFormat,
+    cache_dir: Option<&Path>,
+    cwd: Option<&Path>,
+) -> Result<String, String> {
     let mut args = vec![
         "check".to_string(),
         "--root".to_string(),
@@ -789,12 +831,28 @@ pub(crate) fn run_fixture_check(
             args.push("human-full".to_string());
         }
     }
+    if let Some(cwd) = cwd {
+        let value = cache_dir.map(|dir| dir.to_string_lossy().into_owned());
+        let envs = value
+            .as_deref()
+            .map(|value| vec![(FIXTURE_CACHE_DIR_ENV, value)])
+            .unwrap_or_default();
+        let output =
+            capture_output_in_dir_with_envs(binary, &args, cwd, "fixture check", &envs, &[])?;
+        if !output.status.success() {
+            return Err(format!(
+                "fixture check failed: {}\n{}\n{}",
+                output.status, output.stdout, output.stderr
+            ));
+        }
+        return Ok(output.stdout);
+    }
     match cache_dir {
         Some(dir) => {
             let value = dir.to_string_lossy().into_owned();
-            run_output_owned_with_envs(&binary, &args, &[(FIXTURE_CACHE_DIR_ENV, &value)])
+            run_output_owned_with_envs(binary, &args, &[(FIXTURE_CACHE_DIR_ENV, &value)])
         }
-        None => run_output_owned(&binary, &args),
+        None => run_output_owned(binary, &args),
     }
 }
 

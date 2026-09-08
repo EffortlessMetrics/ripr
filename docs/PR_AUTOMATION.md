@@ -762,6 +762,22 @@ so local user hooks are not clobbered.
 
 ## CI Reports
 
+The repository's root `ripr.toml` explicitly enables Rust and preview TypeScript
+analysis. Mixed-language PR evidence must analyze changed extension sources before
+the review-comments consumer can reuse the producer's complete analysis. This is
+a repository-local opt-in, not a change to RIPR's Rust-only default or TypeScript's
+preview support tier. Disabled or unavailable adapters still produce partial
+evidence, which the consumer rejects rather than treating as a clean review.
+
+Corpus fixture runs use owned copies with a configuration-discovery boundary,
+preserving fixture-relative command paths, fixture-owned configuration and
+no-config defaults. Their fact cache remains pinned outside the tracked corpus.
+
+`cargo test -p xtask repository_language_policy_admits_real_mixed_language_producer`
+checks actual mixed-language CLI findings, canonical producer projection and
+review-consumer admission, with a Rust-only rejection control. It does not prove
+canonical-delta snapshot generation, distribution packaging or release readiness.
+
 PR check subjects, bounded review input and review receipts share the
 `review_input::canonical_root_identity` representation. Existing roots are
 canonicalized using native filesystem semantics before display normalization.
@@ -908,3 +924,4 @@ The PR body should link the issue, proposal/spec/plan references when present,
 acceptance text, non-goals, and proof commands. Support-tier and policy impact
 checkboxes must be reviewed from the actual diff and proof, not inferred from
 issue metadata.
+

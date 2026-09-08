@@ -257,6 +257,57 @@ fn unique_external_workspace(label: &str) -> Result<PathBuf, String> {
     Ok(parent.join(name))
 }
 
+struct IsolatedFixtureWorkspace(PathBuf);
+
+impl IsolatedFixtureWorkspace {
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for IsolatedFixtureWorkspace {
+    fn drop(&mut self) {
+        if let Err(error) = std::fs::remove_dir_all(&self.0) {
+            eprintln!("cleanup isolated fixture {}: {error}", self.0.display());
+        }
+    }
+}
+
+fn isolated_fixture_workspace(
+    label: &str,
+    fixture: &str,
+) -> Result<IsolatedFixtureWorkspace, String> {
+    fn copy_tree(source: &Path, destination: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(destination)?;
+        for entry in std::fs::read_dir(source)? {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            let target = destination.join(entry.file_name());
+            if kind.is_dir() {
+                copy_tree(&entry.path(), &target)?;
+            } else if kind.is_file() {
+                std::fs::copy(entry.path(), target)?;
+            } else {
+                return Err(std::io::Error::other("unsupported fixture entry type"));
+            }
+        }
+        Ok(())
+    }
+
+    let path = unique_temp_workspace(label);
+    std::fs::create_dir_all(&path).map_err(|error| format!("create isolated fixture: {error}"))?;
+    let isolated = IsolatedFixtureWorkspace(path);
+    // Preserve relative CLI paths and golden output while stopping host config discovery.
+    std::fs::create_dir(isolated.path().join(".git"))
+        .map_err(|error| format!("create fixture boundary: {error}"))?;
+    copy_tree(
+        &workspace_root().join(fixture),
+        &isolated.path().join(fixture),
+    )
+    .map_err(|error| format!("copy fixture {fixture}: {error}"))?;
+    Ok(isolated)
+}
+
 fn assert_success(output: &Output) {
     assert!(
         output.status.success(),
@@ -2254,42 +2305,52 @@ fn agent_packet_expands_one_brief_seam_by_id() -> Result<(), Box<dyn std::error:
 fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std::error::Error>> {
     let base = "fixtures/boundary_gap/expected/editor-agent-loop";
     let seam_id = "67fc764ba37d77bd";
+    let isolated = isolated_fixture_workspace("editor-agent-loop", "fixtures/boundary_gap/input")?;
+    init_git_fixture_repo(isolated.path())?;
 
-    let packet = run_ripr_in_workspace(&[
-        "agent",
-        "packet",
-        "--root",
-        "fixtures/boundary_gap/input",
-        "--seam-id",
-        seam_id,
-        "--json",
-    ])?;
+    let packet = run_command(
+        env!("CARGO_BIN_EXE_ripr"),
+        Some(isolated.path()),
+        &[
+            "agent",
+            "packet",
+            "--root",
+            "fixtures/boundary_gap/input",
+            "--seam-id",
+            seam_id,
+            "--json",
+        ],
+    )?;
     assert_stdout_matches_fixture(&packet, &format!("{base}/agent-packet.json"))?;
 
-    let brief = run_ripr_in_workspace(&[
-        "agent",
-        "brief",
-        "--root",
-        "fixtures/boundary_gap/input",
-        "--seam-id",
-        seam_id,
-        "--json",
-    ])?;
+    let brief = run_command(
+        env!("CARGO_BIN_EXE_ripr"),
+        Some(isolated.path()),
+        &[
+            "agent",
+            "brief",
+            "--root",
+            "fixtures/boundary_gap/input",
+            "--seam-id",
+            seam_id,
+            "--json",
+        ],
+    )?;
     assert_stdout_matches_fixture(&brief, &format!("{base}/agent-brief.json"))?;
 
-    let artifact_dir = workspace_root().join("target/ripr/test-agent-verify");
+    let artifact_dir = isolated.path().join("target/ripr/test-agent-verify");
     std::fs::create_dir_all(&artifact_dir)?;
     let before_artifact = artifact_dir.join("before.repo-exposure.json");
     let after_artifact = artifact_dir.join("after.repo-exposure.json");
     bind_repo_exposure_fixture_with_worktree(
-        &workspace_root(),
+        isolated.path(),
         &workspace_root()
             .join("fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json"),
         &before_artifact,
         "dirty",
     )?;
     bind_repo_exposure_fixture_with_worktree(
-        &workspace_root(),
+        isolated.path(),
         &workspace_root()
             .join("fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json"),
         &after_artifact,
@@ -2297,17 +2358,21 @@ fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std:
     )?;
     let before_artifact_path = "target/ripr/test-agent-verify/before.repo-exposure.json";
     let after_artifact_path = "target/ripr/test-agent-verify/after.repo-exposure.json";
-    let verify = run_ripr_in_workspace(&[
-        "agent",
-        "verify",
-        "--root",
-        ".",
-        "--before",
-        before_artifact_path,
-        "--after",
-        after_artifact_path,
-        "--json",
-    ])?;
+    let verify = run_command(
+        env!("CARGO_BIN_EXE_ripr"),
+        Some(isolated.path()),
+        &[
+            "agent",
+            "verify",
+            "--root",
+            ".",
+            "--before",
+            before_artifact_path,
+            "--after",
+            after_artifact_path,
+            "--json",
+        ],
+    )?;
     assert_success(&verify);
     // The verify JSON binds the exact artifact content commitments (#2922
     // PR B), which embed the live repository head, so the static golden can
@@ -2328,21 +2393,25 @@ fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std:
     let out_dir = unique_temp_workspace("agent-receipt-fixture");
     std::fs::create_dir_all(&out_dir)?;
     let receipt_path = out_dir.join("agent-receipt.json");
-    let receipt = run_ripr_in_workspace(&[
-        "agent",
-        "receipt",
-        "--root",
-        ".",
-        "--verify-json",
-        verify_artifact_path,
-        "--seam-id",
-        seam_id,
-        "--json",
-        "--out",
-        receipt_path
-            .to_str()
-            .ok_or("receipt path should be utf-8")?,
-    ])?;
+    let receipt = run_command(
+        env!("CARGO_BIN_EXE_ripr"),
+        Some(isolated.path()),
+        &[
+            "agent",
+            "receipt",
+            "--root",
+            ".",
+            "--verify-json",
+            verify_artifact_path,
+            "--seam-id",
+            seam_id,
+            "--json",
+            "--out",
+            receipt_path
+                .to_str()
+                .ok_or("receipt path should be utf-8")?,
+        ],
+    )?;
     assert_success(&receipt);
     let expected_receipt =
         std::fs::read_to_string(workspace_root().join(base).join("agent-receipt.json"))?;
@@ -4441,6 +4510,8 @@ fn make_temp_workspace(report: Option<&str>) -> Result<PathBuf, String> {
 #[test]
 fn doctor_reports_missing_config_defaults() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;
+    std::fs::create_dir(workspace.join(".git"))
+        .map_err(|error| format!("create fixture boundary: {error}"))?;
     let root = workspace.display().to_string();
     let output = run_ripr(&["doctor", "--root", &root]);
     assert_success(&output);
@@ -5627,7 +5698,8 @@ fn baseline_update_removes_resolved_without_adopting_new_debt() -> Result<(), St
 
 #[test]
 fn pilot_writes_default_packet_outputs_for_boundary_gap_fixture() -> Result<(), String> {
-    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let isolated = isolated_fixture_workspace("pilot-boundary", "fixtures/boundary_gap/input")?;
+    let root = isolated.path().join("fixtures/boundary_gap/input");
     let out_dir = unique_temp_workspace("pilot");
     let output = run_ripr(&[
         "pilot",
@@ -6388,7 +6460,8 @@ fn rerun_gap_groups_multiple_current_seams() -> Result<(), String> {
 #[test]
 #[cfg(feature = "lang-python")]
 fn pilot_accepts_python_project_without_ripr_config() -> Result<(), String> {
-    let root = workspace_root().join("fixtures/python/basic");
+    let isolated = isolated_fixture_workspace("pilot-python", "fixtures/python/basic")?;
+    let root = isolated.path().join("fixtures/python/basic");
     let out_dir = unique_temp_workspace("pilot-python-basic");
     let output = run_ripr(&[
         "pilot",
@@ -6498,8 +6571,9 @@ fn pilot_projects_python_repair_card_for_git_diff() -> Result<(), String> {
 
 #[test]
 #[cfg(feature = "lang-python")]
-fn check_detects_python_project_without_ripr_config() {
-    let root = workspace_root().join("fixtures/python/basic");
+fn check_detects_python_project_without_ripr_config() -> Result<(), String> {
+    let isolated = isolated_fixture_workspace("check-python", "fixtures/python/basic")?;
+    let root = isolated.path().join("fixtures/python/basic");
     let diff = root.join("diff.patch");
     let output = run_ripr(&[
         "check",
@@ -6515,6 +6589,7 @@ fn check_detects_python_project_without_ripr_config() {
     assert!(stdout.contains(r#""language": "python""#));
     assert!(stdout.contains(r#""language_status": "preview""#));
     assert!(stdout.contains("python_preview"));
+    Ok(())
 }
 
 #[test]
