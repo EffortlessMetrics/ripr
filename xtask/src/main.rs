@@ -21,6 +21,8 @@ use ripr::output::start_here_state::{
 mod agent_skills;
 mod branch_inventory;
 mod cache;
+#[cfg(test)]
+mod cargo_driver_tests;
 mod command;
 mod dispatch;
 mod dogfood;
