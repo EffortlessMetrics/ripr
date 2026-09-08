@@ -65,8 +65,8 @@ export async function resolveServer(
       output.appendLine(`ripr managed server resolution unavailable: ${downloadFailure}`);
     }
 
-    if (distribution?.origin === 'development_fixture') {
-      downloadFailure = 'Development fixture context has no installed managed-server distribution authority.';
+    if (distribution?.preferredPlacement.channel === 'development') {
+      downloadFailure = 'Development distribution has no managed-server cache or download authority.';
     } else if (distribution) {
       const cached = cachedServerPath(context, distribution, platform);
       const cachedResult = await probeExistingCandidate(

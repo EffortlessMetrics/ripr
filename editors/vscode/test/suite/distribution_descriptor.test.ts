@@ -8,7 +8,9 @@ import {
   HttpStatusError,
   ServerManifest
 } from '../../src/downloader';
-import { requestedServerDistribution, requestedServerVersion } from '../../src/serverResolver';
+import { requestedServerDistribution, requestedServerVersion, resolveServer } from '../../src/serverResolver';
+import { currentRiprPlatform } from '../../src/platform';
+import { RiprConfig } from '../../src/config';
 import {
   DistributionDescriptor,
   distributionManifestUrl,
@@ -18,6 +20,60 @@ import {
 } from '../../src/distributionDescriptor';
 
 suite('distribution descriptor', () => {
+  test('installed development catalog cannot select a populated managed cache', async () => {
+    const platform = currentRiprPlatform();
+    const server = process.env.RIPR_TEST_SERVER_PATH;
+    assert.ok(platform, 'test requires a supported managed platform');
+    assert.ok(server && fs.existsSync(server), 'test requires the built RIPR_TEST_SERVER_PATH');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ripr-development-cache-'));
+    try {
+      const descriptor: DistributionDescriptor = {
+        schema: 1,
+        productVersion: '0.11.0',
+        channel: 'development',
+        releaseTag: 'v0.11.0',
+        releaseRef: 'refs/tags/v0.11.0',
+        manifestFile: 'ripr-server-manifest-v0.11.0.json',
+        sourceRepository: 'https://github.com/EffortlessMetrics/ripr'
+      };
+      fs.writeFileSync(path.join(root, 'distribution.json'), JSON.stringify(descriptor));
+      const context = {
+        extensionUri: { fsPath: root },
+        extension: { packageJSON: { version: descriptor.productVersion } },
+        globalStorageUri: { fsPath: path.join(root, 'storage') }
+      } as never;
+      const config = {
+        serverPath: '', serverVersion: '', autoDownload: true,
+        downloadBaseUrl: 'https://127.0.0.1:1'
+      } as RiprConfig;
+      const request = requestedServerDistribution(context, config);
+      assert.strictEqual(request.origin, 'embedded_descriptor');
+      const cached = cachedServerPath(context, request, platform);
+      fs.mkdirSync(path.dirname(cached), { recursive: true });
+      fs.copyFileSync(server, cached);
+      fs.chmodSync(cached, 0o755);
+      const messages: string[] = [];
+      const output = { appendLine: (line: string) => messages.push(line) } as never;
+      const result = await resolveServer(context, config, output);
+      assert.ok(!('source' in result) || result.source !== 'downloaded',
+        'development catalog must not launch the populated managed cache');
+      assert.ok(!messages.some((line) => line.includes('server download failed')),
+        'development catalog must not attempt a managed mirror download');
+      const configured = await resolveServer(context, { ...config, serverPath: cached }, output);
+      assert.ok('source' in configured && configured.source === 'configured',
+        'explicit executable selection remains independent of the development catalog');
+      fs.rmSync(cached);
+      messages.length = 0;
+      const uncached = await resolveServer(context, config, output);
+      assert.ok(!('source' in uncached) || uncached.source !== 'downloaded');
+      assert.ok(!messages.some((line) => line.includes('server download failed')),
+        'empty development cache must not initiate a managed mirror download');
+      assert.throws(() => distributionManifestUrl(config.downloadBaseUrl, request),
+        /development distribution has no public release placement/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
   const rc: DistributionDescriptor = {
     schema: 1,
     productVersion: '0.11.0',

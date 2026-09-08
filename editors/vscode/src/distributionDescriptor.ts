@@ -185,11 +185,11 @@ export function distributionManifestUrl(
 ): string {
   const file = distribution.manifestFile;
   const base = baseUrl.trim();
-  if (base.length > 0) {
-    return `${base.replace(/\/+$/, '')}/${file}`;
-  }
   if (placement.channel === 'development') {
     throw new Error('development distribution has no public release placement');
+  }
+  if (base.length > 0) {
+    return `${base.replace(/\/+$/, '')}/${file}`;
   }
   return `${distribution.sourceRepository.replace(/\/+$/, '')}/releases/download/${placement.releaseTag}/${file}`;
 }
