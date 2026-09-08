@@ -769,6 +769,10 @@ a repository-local opt-in, not a change to RIPR's Rust-only default or TypeScrip
 preview support tier. Disabled or unavailable adapters still produce partial
 evidence, which the consumer rejects rather than treating as a clean review.
 
+Corpus fixture runs use owned copies with a configuration-discovery boundary,
+preserving fixture-relative command paths, fixture-owned configuration and
+no-config defaults. Their fact cache remains pinned outside the tracked corpus.
+
 `cargo test -p xtask repository_language_policy_admits_real_mixed_language_producer`
 checks actual mixed-language CLI findings, canonical producer projection and
 review-consumer admission, with a Rust-only rejection control. It does not prove
