@@ -12,9 +12,9 @@ Start here:
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/propagate_stdout_macro/input/src/lib.rs:2
   Static exposure: propagation_unknown (note, confidence 0.51)
-  Why propagation_unknown: the change propagates but the downstream effect is unknown statically
+  Why propagation_unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: println!("amount is {}", amount * 9);
-  Missing discriminator: No clear propagation path from changed behavior to an observable sink
+  Analyzer limit: No clear propagation path from changed behavior to an observable sink
   Related test: tests/report_tests.rs:4 report_does_not_panic
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
   Evidence:

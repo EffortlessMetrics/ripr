@@ -1,0 +1,486 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/source_role_harness_suppression/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":2,"probes":3,"findings":3,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":2,"changed_files_by_language":[{"language":"rust","files":2}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:2d542bf3124427c5fcee0b3cd823f03dac97aa7cd51f8c3845324b3180449d96","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":2,"changed_line_count":31,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:static_unknown:53e0d683",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:53e0d683",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/source_role_harness_suppression/input/src/lib.rs",
+        "line": 1,
+        "expression": "pub fn price(amount: i32, threshold: i32) -> i32 {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach price: contract_journey"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach price: contract_journey", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches unknown sink: unknown sink (line 1)", "related test tests/contract.rs:19 contract_journey uses unknown relational check oracle: if price(100, 100) != 90 {\nreturn Err(\"boundary mismatch\".to_string());\n}", "related test tests/contract.rs:19 contract_journey uses unknown exact value oracle: assert_eq!(price(100, 100), 90);", "observed function argument value amount = 50 at line 21", "observed function argument value threshold = 100 at line 21", "observed assertion argument value 50 at line 22", "observed function argument value amount = 100 at line 23", "observed function argument value threshold = 100 at line 23", "observed assertion argument value 90 at line 26", "observed function argument value amount = 100 at line 26", "observed function argument value threshold = 100 at line 26"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":1}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed syntax is not mapped to a high-confidence probe family", "No propagation model is available for this changed syntax", "Related tests appear to reach price: contract_journey"],
+      "missing": ["No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "21": "let value = checked(price(50, 100)).map_err(|error| format!(\"checked: {error}\"))?;",
+        "22": "assert_eq!(value, 50);",
+        "23": "if price(100, 100) != 90 {",
+        "26": "assert_eq!(price(100, 100), 90);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 21,
+            "value": "amount = 50",
+            "context": "function_argument"
+          },
+          {
+            "line": 21,
+            "value": "threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 22,
+            "value": "50",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 23,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 23,
+            "value": "threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 26,
+            "value": "90",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 26,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 26,
+            "value": "threshold = 100",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 21,
+          "value": "amount = 50",
+          "context": "function_argument"
+        },
+        {
+          "line": 21,
+          "value": "threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 22,
+          "value": "50",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 23,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 23,
+          "value": "threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 26,
+          "value": "90",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 26,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 26,
+          "value": "threshold = 100",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "contract_journey",
+          "file": "tests/contract.rs",
+          "line": 19,
+          "oracle_strength": "unknown",
+          "oracle_kind": "relational_check",
+          "oracle": "if price(100, 100) != 90 {\nreturn Err(\"boundary mismatch\".to_string());\n}",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "contract_journey",
+          "file": "tests/contract.rs",
+          "line": 19,
+          "oracle_strength": "unknown",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(price(100, 100), 90);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:34000fd8",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:34000fd8",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/source_role_harness_suppression/input/src/lib.rs",
+        "line": 2,
+        "expression": "amount >= threshold"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach price: contract_journey"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach price: contract_journey", "infection yes: Detected related test input at the changed boundary", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "related test tests/contract.rs:19 contract_journey uses strong exact value oracle: assert_eq!(value, 50);", "related test tests/contract.rs:19 contract_journey uses weak relational check oracle: if price(100, 100) != 90 {\nreturn Err(\"boundary mismatch\".to_string());\n}", "related test tests/contract.rs:19 contract_journey uses strong exact value oracle: assert_eq!(price(100, 100), 90);", "observed function argument value amount = 50 at line 21", "observed function argument value threshold = 100 at line 21", "observed assertion argument value 50 at line 22", "observed function argument value amount = 100 at line 23", "observed function argument value amount == threshold at line 23", "observed function argument value threshold = 100 at line 23", "observed assertion argument value 90 at line 26", "observed function argument value amount = 100 at line 26"],
+      "flow_sinks": [
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Detected related test input at the changed boundary", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach price: contract_journey", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["No clear propagation path from changed behavior to an observable sink"],
+      "assertion_texts": {
+        "21": "let value = checked(price(50, 100)).map_err(|error| format!(\"checked: {error}\"))?;",
+        "22": "assert_eq!(value, 50);",
+        "23": "if price(100, 100) != 90 {",
+        "26": "assert_eq!(price(100, 100), 90);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 21,
+            "value": "amount = 50",
+            "context": "function_argument"
+          },
+          {
+            "line": 21,
+            "value": "threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 22,
+            "value": "50",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 23,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 23,
+            "value": "amount == threshold",
+            "context": "function_argument",
+            "provenance": "if price(100, 100) != 90 { | exact input amount = 100; exact input threshold = 100"
+          },
+          {
+            "line": 23,
+            "value": "threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 26,
+            "value": "90",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 26,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 26,
+            "value": "amount == threshold",
+            "context": "function_argument",
+            "provenance": "assert_eq!(price(100, 100), 90); | exact input amount = 100; exact input threshold = 100"
+          },
+          {
+            "line": 26,
+            "value": "threshold = 100",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 21,
+          "value": "amount = 50",
+          "context": "function_argument"
+        },
+        {
+          "line": 21,
+          "value": "threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 22,
+          "value": "50",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 23,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 23,
+          "value": "amount == threshold",
+          "context": "function_argument",
+          "provenance": "if price(100, 100) != 90 { | exact input amount = 100; exact input threshold = 100"
+        },
+        {
+          "line": 23,
+          "value": "threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 26,
+          "value": "90",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 26,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 26,
+          "value": "amount == threshold",
+          "context": "function_argument",
+          "provenance": "assert_eq!(price(100, 100), 90); | exact input amount = 100; exact input threshold = 100"
+        },
+        {
+          "line": 26,
+          "value": "threshold = 100",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "contract_journey",
+          "file": "tests/contract.rs",
+          "line": 19,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(value, 50);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "contract_journey",
+          "file": "tests/contract.rs",
+          "line": 19,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "if price(100, 100) != 90 {\nreturn Err(\"boundary mismatch\".to_string());\n}",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "contract_journey",
+          "file": "tests/contract.rs",
+          "line": 19,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(price(100, 100), 90);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["propagation_evidence_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:static_unknown:f5c1ea19",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.38,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:f5c1ea19",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/source_role_harness_suppression/input/src/lib.rs",
+        "line": 3,
+        "expression": "}"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach price: contract_journey"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach price: contract_journey", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches unknown sink: unknown sink (line 3)", "observed function argument value amount = 50 at line 21", "observed function argument value threshold = 100 at line 21", "observed assertion argument value 50 at line 22", "observed function argument value amount = 100 at line 23", "observed function argument value threshold = 100 at line 23", "observed assertion argument value 90 at line 26", "observed function argument value amount = 100 at line 26", "observed function argument value threshold = 100 at line 26"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":3}
+      ],
+      "evidence": ["Changed syntax is not mapped to a high-confidence probe family", "No assertion found on related tests", "No propagation model is available for this changed syntax", "Related tests appear to reach price: contract_journey", "Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"],
+      "missing": ["No relevant oracle was detected", "No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "21": "let value = checked(price(50, 100)).map_err(|error| format!(\"checked: {error}\"))?;",
+        "22": "assert_eq!(value, 50);",
+        "23": "if price(100, 100) != 90 {",
+        "26": "assert_eq!(price(100, 100), 90);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 21,
+            "value": "amount = 50",
+            "context": "function_argument"
+          },
+          {
+            "line": 21,
+            "value": "threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 22,
+            "value": "50",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 23,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 23,
+            "value": "threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 26,
+            "value": "90",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 26,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 26,
+            "value": "threshold = 100",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 21,
+          "value": "amount = 50",
+          "context": "function_argument"
+        },
+        {
+          "line": 21,
+          "value": "threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 22,
+          "value": "50",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 23,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 23,
+          "value": "threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 26,
+          "value": "90",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 26,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 26,
+          "value": "threshold = 100",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

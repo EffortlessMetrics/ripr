@@ -203,36 +203,60 @@ Useful references:
 - [TypeScript preview static facts](specs/RIPR-SPEC-0027-typescript-preview-static-facts.md).
 - [Python preview static facts](specs/RIPR-SPEC-0028-python-preview-static-facts.md).
 
-## Repo-Mode Analysis Is Rust-Only
+## Repo-Mode Analysis: Rust/Perl Full, Python Bounded Preview, TypeScript Stub
 
 The preview adapters (TypeScript, Python) implement diff-mode static exposure
-analysis. They do NOT implement repo-mode analysis: `analyze_repo` for both
-adapters is an intentional stub that returns an empty result (`python.rs`,
-`typescript/mod.rs`). Only Rust and Perl implement full repo-mode analysis.
+analysis. Repo-mode analysis differs per adapter:
 
-A user running one of the repo-scoped formats on a Python-only or TypeScript-only
-workspace will get zero seams and a near-empty report from the preview adapter.
-This is a known limitation, not a clean result. Note that repo-exposure already
-emits a `typescript_diff_first` limitation entry for TS/JS-only workspaces
-pointing the user at diff-scoped analysis — so a TypeScript-only run is not
-entirely warning-free, even though the empty adapter result itself is silent.
-Python-only runs do not currently carry an equivalent entry.
+- **Python** no longer returns an empty `LanguageRepoResult`: `analyze_repo`
+  runs a bounded native evidence pass (#3554). It selects a role-partitioned
+  working set under the shared repo working-set cap (#2109; default 800,
+  override with `RIPR_MAX_REPO_INDEX_FILES`), builds native Python behavior,
+  owner, relation, and oracle evidence over the selected files, and returns
+  findings with the same shape as diff-mode Python findings — preview-tier,
+  native `gap:python:` canonical identity, never bridged to Rust seam
+  vocabulary. Test and helper files contribute evidence but never seed
+  production findings. Generated, environment, cache, and vendor paths are
+  excluded with counts. A capped or partial run (working-set cap, parse
+  failure, incomplete discovery, ambiguous roles) keeps its computed
+  findings and discloses a partial language run on the shared
+  `language_runs` channel, which gates fail closed on: a capped or partial
+  Python repo run can never back a full-denominator, all-clear, badge, or
+  baseline claim. A workspace with no Python production source is an honest
+  zero with zero counts, not a fabricated limitation. Broader Python repo
+  support remains preview until #1160's tier ruling.
+- **TypeScript** remains an intentional stub that returns an empty result
+  (`typescript/mod.rs`).
+
+Consumption boundary: the repo-scoped CLI formats (`repo-exposure-*`,
+`repo-seams-*`, `repo-badge-*`, `agent-seam-packets-json`) render the
+Rust/Perl seam inventory and do not render preview-language findings, so a
+Python-only or TypeScript-only workspace still shows zero seams in those
+formats — a known limitation, not a clean result. Repo-exposure emits a
+`typescript_diff_first` limitation entry for TS/JS-only workspaces pointing
+the user at diff-scoped analysis; Python-only runs do not currently carry an
+equivalent entry. Python's repo-mode evidence is consumed through the shared
+repo analysis result (`run_repo_analysis` / `check_workspace_repo`): its
+findings, per-language file counts, and `language_runs` partial-run
+disclosure — no renderer reconstructs Python semantics.
 
 | Format | Rust repo | Perl repo | TypeScript repo | Python repo |
 | --- | --- | --- | --- | --- |
-| `repo-exposure-json` / `repo-exposure-md` / `repo-sarif` | full | full | empty (stub) | empty (stub) |
-| `repo-seams-json` / `repo-seams-md` | full | full | empty (stub) | empty (stub) |
-| `repo-badge-json` / `repo-badge-shields` | full | full | empty (stub) | empty (stub) |
-| `agent-seam-packets-json` | full | full | empty (stub) | empty (stub) |
+| `repo-exposure-json` / `repo-exposure-md` / `repo-sarif` | full | full | empty (stub) | seams: none rendered; evidence via repo analysis result |
+| `repo-seams-json` / `repo-seams-md` | full | full | empty (stub) | seams: none rendered; evidence via repo analysis result |
+| `repo-badge-json` / `repo-badge-shields` | full | full | empty (stub) | seams: none rendered; capped/partial runs never badge-eligible |
+| `agent-seam-packets-json` | full | full | empty (stub) | seams: none rendered; evidence via repo analysis result |
 
 Diff-scoped formats (`check --json`, `check --format human`, SARIF from a diff,
-review-comments) work normally on all four languages — the stub only affects
-formats that scan the full repo baseline.
+review-comments) work normally on all four languages.
 
-**Until the stubs are implemented**, do not interpret a zero-seam repo-mode
-report for a preview language as evidence of clean coverage. Run
+**Until the TypeScript stub is implemented**, do not interpret a zero-seam
+repo-mode report for TypeScript as evidence of clean coverage. Run
 `ripr check --diff <diff>` against a representative PR diff to get real
-exposure evidence for that language.
+exposure evidence for that language. For Python, read repo-mode results
+together with the disclosed run status: a capped or partial run covers only
+its selected working set, and preview-tier exposure evidence is draft-mode
+input, not a coverage claim.
 
 ## Editor Workflow
 

@@ -1,0 +1,134 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/helper_chain_one_hop/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:41e3f57851eebb624f2b38a3757631f44c6545ab7a1c3d3527c663193597f0b9","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:ac178c7f",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:ac178c7f",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/helper_chain_one_hop/input/src/lib.rs",
+        "line": 2,
+        "expression": "c == ' '"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach is_word_start: leading_space_classifies_other, letter_classifies_word"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach is_word_start: leading_space_classifies_other, letter_classifies_word", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "related test tests/classify.rs:4 leading_space_classifies_other uses strong exact value oracle: assert_eq!(classify(\" x\"), \"other\");", "related test tests/classify.rs:9 letter_classifies_word uses strong exact value oracle: assert_eq!(classify(\"hello\"), \"word\");", "observed assertion argument value \" x\" at line 5", "observed assertion argument value \"other\" at line 5", "observed assertion argument value \"hello\" at line 10", "observed assertion argument value \"word\" at line 10", "missing discriminator c == ' ': No related test call uses c equal to ' '; observed c values: unknown; target ' ' value: ' '"],
+      "flow_sinks": [
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach is_word_start: leading_space_classifies_other, letter_classifies_word", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["Missing discriminator value: c == ' '", "No clear propagation path from changed behavior to an observable sink"],
+      "assertion_texts": {
+        "5": "assert_eq!(classify(\" x\"), \"other\");",
+        "10": "assert_eq!(classify(\"hello\"), \"word\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "\" x\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "\"other\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "\"hello\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "\"word\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "c == ' '",
+            "reason": "No related test call uses c equal to ' '; observed c values: unknown; target ' ' value: ' '",
+            "flow_sink": null
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "\" x\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "\"other\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "\"hello\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "\"word\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "c == ' '",
+          "reason": "No related test call uses c equal to ' '; observed c values: unknown; target ' ' value: ' '",
+          "flow_sink": null
+        }
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "leading_space_classifies_other",
+          "file": "tests/classify.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(classify(\" x\"), \"other\");",
+          "relation_reason": "helper_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "letter_classifies_word",
+          "file": "tests/classify.rs",
+          "line": 9,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(classify(\"hello\"), \"word\");",
+          "relation_reason": "helper_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["propagation_evidence_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

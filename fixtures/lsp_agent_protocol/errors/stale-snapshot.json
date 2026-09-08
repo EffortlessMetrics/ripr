@@ -1,6 +1,6 @@
 {
   "protocol_version": "0.1",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "request": "ripr/getRepairPacket",
   "status": "error",
   "error": { "kind": "stale_snapshot", "retryable": true, "recovery_route": "refresh", "snapshot_id": "snapshot:6" },

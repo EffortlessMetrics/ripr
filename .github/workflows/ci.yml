@@ -19,7 +19,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
 
 jobs:
-  rust:
+  release-proof:
+    name: Perl and release proof
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -27,45 +28,19 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.95.0
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ripr-rust-1.95-${{ runner.os }}
+          shared-key: ripr-release-proof-1.95-${{ runner.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: nextest
-      - run: cargo fmt --check
-      - run: cargo check --workspace --all-targets
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo nextest run --workspace
-      # Exercise Perl alongside the product's required/default adapters. A
-      # Perl-only no-default build is invalid because RIPR requires lang-rust,
-      # and doctor intentionally shares optional Python framework detection.
-      - run: cargo check -p ripr --features lang-perl
-      - run: cargo test -p ripr --features lang-perl --lib analysis::language::perl
-      - run: cargo xtask check-static-language
-      - run: cargo xtask check-no-panic-family
-      - run: cargo xtask check-allow-attributes
-      - run: cargo xtask check-local-context
-      - run: cargo xtask check-file-policy
-      - run: cargo xtask check-executable-files
-      - run: cargo xtask check-workflows
-      - run: cargo xtask check-droid-review-config
-      - run: cargo xtask check-spec-format
-      - run: cargo xtask check-spec-numbering
-      - run: cargo xtask check-fixture-contracts
-      - run: cargo xtask check-evidence-promotion-honesty
-      - run: cargo xtask check-generated
-      - run: cargo xtask check-badge-diff-policy
-      - run: cargo xtask check-generated-clean
-      - run: cargo xtask check-dependencies
-      - run: cargo xtask check-process-policy
-      - run: cargo xtask check-network-policy
-      # Release-surface steps run only when the PR targets a release path:
-      # push to main, the `release-check` label, or the `full-ci` label.
-      # Ordinary code PRs skip them; package metadata and publish dry-run
-      # are still validated on every release-bearing change.
+
+      # The routed Rust workflow owns ordinary merge-safety and repository
+      # policy. This job retains only proof that is unique to the legacy lane.
+      - name: Check Perl feature adapter
+        run: cargo check -p ripr --features lang-perl
+      - name: Test Perl language analysis
+        run: cargo test -p ripr --features lang-perl --lib analysis::language::perl
+
       - name: Package list (release surface)
         if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
         run: cargo package -p ripr --list
@@ -190,9 +165,13 @@ jobs:
             target/ripr/review/
             target/xtask/impacted-evidence/
           if-no-files-found: ignore
+          retention-days: 7
 
   msrv:
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    # Routed Rust already runs the declared 1.95.0 toolchain on every ordinary
+    # PR and main push. Keep the duplicate named proof only for explicit full
+    # CI and manual investigation.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -201,7 +180,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ripr-msrv-1.95-${{ runner.os }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: false
       - run: cargo check --workspace --all-targets
 
   vscode:
@@ -222,10 +201,5 @@ jobs:
       - run: npm ci
       - run: npm run compile
       - run: npm run package
-      - name: Build local ripr server for e2e
-        working-directory: .
-        run: cargo build -p ripr
       - run: sudo apt-get update && sudo apt-get install -y xvfb
       - run: xvfb-run -a npm run test:e2e
-        env:
-          RIPR_TEST_SERVER_PATH: ${{ github.workspace }}/target/debug/ripr

@@ -1,7 +1,8 @@
 //! Shared git invocation helper.
 //!
 //! All git subprocess spawns in the published crate should delegate to
-//! [`run_git`] / [`run_git_output_with_deadline`] so error formatting stays
+//! [`run_git`], [`run_git_output_with_deadline`], or
+//! [`run_git_output_with_deadline_and_limit`] so error formatting stays
 //! unified and the process-policy allowlist has a single canonical entry
 //! point.
 //!
@@ -102,15 +103,208 @@ pub(crate) fn run_git_output_with_deadline(
     timeout: Option<Duration>,
 ) -> Result<Output, String> {
     let describe = format!("git -C {} {:?}", root.display(), args);
-    let mut command = Command::new("git");
+    let mut command = git_command(root, args);
     // `current_dir(root)`, not `git -C <root>`: for a missing/unusable root
     // the spawn itself fails, preserving the established
     // `failed to run git …` error family the context/explain invalid-root
     // contract pins (a `-C` flag would let git report the bad root as a
     // non-zero exit instead, changing the error text). For valid roots the
     // two forms are equivalent.
-    command.current_dir(root).args(args);
     collect_output_with_deadline(&mut command, timeout, &describe)
+}
+
+fn git_command(root: &Path, args: &[&str]) -> Command {
+    let mut command = Command::new("git");
+    command.current_dir(root).args(args);
+    command
+}
+
+/// Run Git through the shared deadline/process-tree authority while retaining
+/// at most `max_output_bytes` from each output stream.
+///
+/// The reader continues draining after the cap so the child cannot deadlock,
+/// but excess bytes are discarded and the invocation fails closed after the
+/// child exits. This is intended for repository-inventory consumers where an
+/// attacker-controlled path set must not cause unbounded allocation.
+pub(crate) fn run_git_output_with_deadline_and_limit(
+    root: &Path,
+    args: &[&str],
+    timeout: Duration,
+    max_output_bytes: usize,
+) -> Result<Output, String> {
+    if max_output_bytes == 0 {
+        return Err("git output limit must be greater than zero".to_string());
+    }
+    let describe = format!("git -C {} {:?}", root.display(), args);
+    let mut command = git_command(root, args);
+    collect_output_with_deadline_and_limit(&mut command, timeout, max_output_bytes, &describe)
+}
+
+#[cfg(test)]
+pub(crate) fn run_git_output_with_deadline_and_limit_isolated(
+    root: &Path,
+    args: &[&str],
+    timeout: Duration,
+    max_output_bytes: usize,
+) -> Result<Output, String> {
+    if max_output_bytes == 0 {
+        return Err("git output limit must be greater than zero".to_string());
+    }
+    let describe = format!("isolated git -C {} {:?}", root.display(), args);
+    let mut command = git_command(root, args);
+    let null_config = if cfg!(windows) { "NUL" } else { "/dev/null" };
+    command
+        .env("GIT_CONFIG_GLOBAL", null_config)
+        .env("GIT_CONFIG_SYSTEM", null_config)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE");
+    collect_output_with_deadline_and_limit(&mut command, timeout, max_output_bytes, &describe)
+}
+
+fn collect_output_with_deadline_and_limit(
+    command: &mut Command,
+    timeout: Duration,
+    max_output_bytes: usize,
+    describe: &str,
+) -> Result<Output, String> {
+    if timeout.is_zero() {
+        return Err(format!(
+            "{GIT_INVOCATION_TIMEOUT_PREFIX}: {describe} was given a zero deadline (not spawned)"
+        ));
+    }
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| format!("failed to run {describe}: {err}"))?;
+    let stdout_reader = child
+        .stdout
+        .take()
+        .map(|pipe| spawn_bounded_pipe_reader(pipe, max_output_bytes));
+    let stderr_reader = child
+        .stderr
+        .take()
+        .map(|pipe| spawn_bounded_pipe_reader(pipe, max_output_bytes));
+
+    let wait = poll_child(&mut child, Some(timeout), describe);
+    let timed_out = !matches!(&wait, ChildWait::Exited(_));
+    let drain_deadline = timed_out.then(|| Instant::now() + POST_KILL_DRAIN_GRACE);
+    let stdout_result =
+        drain_bounded_pipe_reader(stdout_reader, timed_out, drain_deadline, "stdout", describe);
+    let stderr_result =
+        drain_bounded_pipe_reader(stderr_reader, timed_out, drain_deadline, "stderr", describe);
+    let stdout = stdout_result?;
+    let stderr = stderr_result?;
+
+    match wait {
+        ChildWait::Exited(_) if stdout.exceeded || stderr.exceeded => Err(format!(
+            "git_output_limit_exceeded: {describe} exceeded the {max_output_bytes}-byte per-stream capture limit"
+        )),
+        ChildWait::Exited(status) => Ok(Output {
+            status,
+            stdout: stdout.bytes,
+            stderr: stderr.bytes,
+        }),
+        ChildWait::TimedOut(message) | ChildWait::Cancelled(message) => Err(message),
+        ChildWait::WaitFailed(err) => Err(format!("failed while waiting on {describe}: {err}")),
+    }
+}
+
+struct BoundedPipeOutput {
+    bytes: Vec<u8>,
+    exceeded: bool,
+    read_error: Option<String>,
+}
+
+type BoundedPipeReader = (
+    std::thread::JoinHandle<()>,
+    mpsc::Receiver<BoundedPipeOutput>,
+);
+
+fn spawn_bounded_pipe_reader(
+    mut pipe: impl std::io::Read + Send + 'static,
+    max_bytes: usize,
+) -> BoundedPipeReader {
+    let (sender, receiver) = mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let mut retained = Vec::with_capacity(max_bytes.min(64 * 1024));
+        let mut exceeded = false;
+        let mut chunk = [0_u8; 8192];
+        loop {
+            match pipe.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(read) => {
+                    let remaining = max_bytes.saturating_sub(retained.len());
+                    let keep = read.min(remaining);
+                    retained.extend_from_slice(&chunk[..keep]);
+                    exceeded |= keep < read;
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(err) => {
+                    let _ = sender.send(BoundedPipeOutput {
+                        bytes: retained,
+                        exceeded,
+                        read_error: Some(err.to_string()),
+                    });
+                    return;
+                }
+            }
+        }
+        let _ = sender.send(BoundedPipeOutput {
+            bytes: retained,
+            exceeded,
+            read_error: None,
+        });
+    });
+    (handle, receiver)
+}
+
+fn drain_bounded_pipe_reader(
+    reader: Option<BoundedPipeReader>,
+    timed_out: bool,
+    deadline: Option<Instant>,
+    stream_name: &str,
+    describe: &str,
+) -> Result<BoundedPipeOutput, String> {
+    let Some((handle, receiver)) = reader else {
+        return Ok(BoundedPipeOutput {
+            bytes: Vec::new(),
+            exceeded: false,
+            read_error: None,
+        });
+    };
+    let received = match deadline {
+        Some(deadline) => receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())),
+        None => receiver
+            .recv()
+            .map_err(|_receive_error| mpsc::RecvTimeoutError::Disconnected),
+    };
+    match received {
+        Ok(output) => {
+            handle.join().map_err(|_panic_payload| {
+                format!("{stream_name} pipe reader panicked while collecting {describe}")
+            })?;
+            if let Some(error) = &output.read_error {
+                return Err(format!(
+                    "failed while reading {stream_name} from {describe}: {error}"
+                ));
+            }
+            Ok(output)
+        }
+        Err(mpsc::RecvTimeoutError::Timeout) if timed_out => Ok(BoundedPipeOutput {
+            bytes: Vec::new(),
+            exceeded: false,
+            read_error: None,
+        }),
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!(
+            "{stream_name} pipe did not drain after {describe} completed"
+        )),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!(
+            "{stream_name} pipe reader failed while collecting {describe}"
+        )),
+    }
 }
 
 /// Spawn `command` with piped stdout/stderr, collect the full output under
@@ -669,6 +863,113 @@ mod tests {
         let unbounded = run_git(&root, &["--version"])?;
         if bounded != unbounded {
             return Err(format!("bounded {bounded:?} != unbounded {unbounded:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_pipe_reader_drains_but_retains_only_the_limit() -> Result<(), String> {
+        let reader = spawn_bounded_pipe_reader(std::io::Cursor::new(vec![b'x'; 65_537]), 1_024);
+        let output =
+            drain_bounded_pipe_reader(Some(reader), false, None, "stdout", "bounded-test")?;
+        if output.bytes.len() != 1_024 {
+            return Err(format!(
+                "bounded reader retained {} bytes instead of 1024",
+                output.bytes.len()
+            ));
+        }
+        if !output.exceeded {
+            return Err("bounded reader did not report discarded output".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_pipe_reader_propagates_error_after_valid_prefix() -> Result<(), String> {
+        struct PrefixThenError {
+            emitted: bool,
+        }
+
+        impl std::io::Read for PrefixThenError {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                if self.emitted {
+                    return Err(std::io::Error::other("injected pipe failure"));
+                }
+                self.emitted = true;
+                let prefix = b"complete\0";
+                buffer[..prefix.len()].copy_from_slice(prefix);
+                Ok(prefix.len())
+            }
+        }
+
+        let reader = spawn_bounded_pipe_reader(PrefixThenError { emitted: false }, 1_024);
+        let error = drain_bounded_pipe_reader(Some(reader), false, None, "stdout", "error-test")
+            .err()
+            .ok_or_else(|| "pipe read error was accepted as EOF".to_string())?;
+        if !error.contains("injected pipe failure") {
+            return Err(format!("unexpected pipe read error: {error}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_pipe_reader_retries_interrupted_reads() -> Result<(), String> {
+        struct InterruptedThenBytes {
+            state: u8,
+        }
+
+        impl std::io::Read for InterruptedThenBytes {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                match self.state {
+                    0 => {
+                        self.state = 1;
+                        Err(std::io::Error::from(std::io::ErrorKind::Interrupted))
+                    }
+                    1 => {
+                        self.state = 2;
+                        buffer[..2].copy_from_slice(b"ok");
+                        Ok(2)
+                    }
+                    _ => Ok(0),
+                }
+            }
+        }
+
+        let reader = spawn_bounded_pipe_reader(InterruptedThenBytes { state: 0 }, 16);
+        let output =
+            drain_bounded_pipe_reader(Some(reader), false, None, "stdout", "interrupt-test")?;
+        if output.bytes != b"ok" {
+            return Err(format!("interrupted read lost bytes: {:?}", output.bytes));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_git_output_rejects_zero_limit_before_spawn() -> Result<(), String> {
+        let missing = Path::new("definitely-missing-git-root");
+        let error =
+            run_git_output_with_deadline_and_limit(missing, &["status"], Duration::from_secs(1), 0)
+                .err()
+                .ok_or_else(|| "zero output limit unexpectedly spawned Git".to_string())?;
+        if error != "git output limit must be greater than zero" {
+            return Err(format!("unexpected zero-limit error: {error}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_git_output_fails_closed_when_stdout_exceeds_limit() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|err| err.to_string())?;
+        let error = run_git_output_with_deadline_and_limit(
+            &root,
+            &["--version"],
+            Duration::from_secs(30),
+            1,
+        )
+        .err()
+        .ok_or_else(|| "one-byte Git output limit unexpectedly succeeded".to_string())?;
+        if !error.starts_with("git_output_limit_exceeded:") {
+            return Err(format!("unexpected output-limit error: {error}"));
         }
         Ok(())
     }

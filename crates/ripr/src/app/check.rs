@@ -75,10 +75,16 @@ pub fn check_workspace_repo_with_config(
 /// disk artifacts as needed, so this avoids running `run_repo_analysis`
 /// to compute legacy `Findings` those formats discard. The rest of the
 /// fields are populated for schema-consistency only.
+///
+/// This helper performs no analysis, so a [`crate::GitCandidateSubject`]
+/// on the input is not consumed or validated here (#3276): callers reach
+/// the subject's fail-closed boundary only through the `check_workspace*`
+/// entry points.
 pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
     output_builder::check_output_from_analysis(
         input,
         AnalysisResult {
+            harness_projections: Vec::new(),
             analysis_outcome: None,
             summary: Summary::default(),
             findings: Vec::new(),
@@ -101,6 +107,11 @@ fn run_check(
     config: &RiprConfig,
     mode: AnalysisMode,
 ) -> Result<CheckOutput, String> {
+    // Immutable Git candidate subjects (#3237 / #3276): bind-and-validate
+    // only in this build. Validate first, before any subprocess or diff
+    // acquisition, so a subject input can never fall through to worktree
+    // analysis or an empty diff.
+    super::analysis_subject::validate_input_subject(&input).map_err(|error| error.to_string())?;
     // Managed producer mode (Campaign 31 Phase D, #1407; architecture
     // corrected post perl-lsp-swarm #3294): when a Perl facts exporter is
     // configured (`producer = "perl-ripr-facts"` or `producer = "perllsp"`
@@ -547,6 +558,98 @@ mod tests {
         let options =
             options_builder::analysis_options_from_input_and_config(&input, &RiprConfig::default());
         assert_eq!(options.git_timeout, None);
+    }
+
+    fn sample_candidate_tree()
+    -> Result<crate::domain::GitObjectId, crate::domain::GitCandidateSubjectError> {
+        crate::domain::GitObjectId::parse(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+    }
+
+    #[test]
+    fn git_candidate_subject_retains_exact_identity_through_options_construction()
+    -> Result<(), crate::domain::GitCandidateSubjectError> {
+        // #3276 acceptance: a valid subject keeps its exact repository,
+        // base, and candidate identities through app→analysis construction.
+        let subject = crate::domain::GitCandidateSubject::new(
+            sample_root(),
+            crate::domain::GitCandidateBase::Treeish(crate::domain::GitTreeish::new(
+                "0123456789abcdef0123456789abcdef01234567",
+            )?),
+            sample_candidate_tree()?,
+        );
+        let mut input = sample_diff_input();
+        input.diff_file = None;
+        input.base = None;
+        input.git_candidate = Some(subject.clone());
+        let options =
+            options_builder::analysis_options_from_input_and_config(&input, &RiprConfig::default());
+        assert_eq!(options.git_candidate, Some(subject));
+        Ok(())
+    }
+
+    #[test]
+    fn check_workspace_fails_closed_on_git_candidate_subject_before_any_git_run()
+    -> Result<(), String> {
+        // #3276/#3277: binding validates the subject, and the object
+        // producer resolves it BEFORE any worktree/diff loading — the
+        // root is a temp directory that is not a git repository, so the
+        // producer must fail with the named identity error; any other
+        // failure text would mean the run leaked past the object
+        // producer into worktree/diff loading.
+        let temp = std::env::temp_dir().join("ripr-3276-not-a-repo");
+        std::fs::create_dir_all(&temp)
+            .map_err(|error| format!("create_dir_all failed: {error}"))?;
+        let subject = crate::domain::GitCandidateSubject::new(
+            &temp,
+            crate::domain::GitCandidateBase::EmptyTree,
+            sample_candidate_tree().map_err(|error| error.to_string())?,
+        );
+        let mut input = sample_diff_input();
+        input.root = temp.clone();
+        input.diff_file = None;
+        input.base = None;
+        input.git_candidate = Some(subject);
+        let Err(error) = check_workspace(input) else {
+            return Err("a git candidate subject input must not produce a run".to_string());
+        };
+        assert!(
+            error.contains("git candidate subject"),
+            "error must name the subject boundary: {error:?}"
+        );
+        // Both producer failures are valid here and which one fires is
+        // environment-dependent: the ambient temp dir may sit inside a
+        // git repository, in which case the repository gate passes and
+        // the nonexistent sample tree OID fails resolution instead.
+        // Either way the failure must stay inside the subject boundary
+        // (the producer prefix) — never leak into worktree loading.
+        assert!(
+            error.contains("git candidate subject: object producer failed"),
+            "error must stay inside the subject boundary: {error:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn check_workspace_rejects_conflicting_subject_inputs_with_named_errors() -> Result<(), String>
+    {
+        let temp = std::env::temp_dir();
+        let subject = crate::domain::GitCandidateSubject::new(
+            &temp,
+            crate::domain::GitCandidateBase::EmptyTree,
+            sample_candidate_tree().map_err(|error| error.to_string())?,
+        );
+        let mut conflicting = sample_diff_input();
+        conflicting.git_candidate = Some(subject);
+        let Err(error) = check_workspace(conflicting) else {
+            return Err("a diff-file + subject input must not produce a run".to_string());
+        };
+        assert!(
+            error.contains("conflicts with the external diff file"),
+            "error must name the diff-file conflict: {error:?}"
+        );
+        Ok(())
     }
 
     #[test]

@@ -251,6 +251,14 @@ fn run_agent_verify_execute(options: AgentVerifyExecuteOptions) -> Result<(), St
 }
 
 fn run_agent_receipt(options: AgentReceiptOptions) -> Result<(), String> {
+    run_agent_receipt_for_attempt(options, None, None)
+}
+
+fn run_agent_receipt_for_attempt(
+    options: AgentReceiptOptions,
+    attempt_id: Option<&str>,
+    attempt_packet_path: Option<&Path>,
+) -> Result<(), String> {
     ensure_command_root(&options.root, "agent receipt")?;
 
     let verify_path = validate_agent_receipt_verify_path(&options.root, &options.verify_json)?;
@@ -262,6 +270,35 @@ fn run_agent_receipt(options: AgentReceiptOptions) -> Result<(), String> {
     })?;
     let validated =
         app::agent_receipt::validate_agent_receipt_verify_json(&options.root, &verify_json)?;
+    if let Some(attempt_id) = attempt_id {
+        let before_sha256 = validated
+            .verify
+            .get("inputs")
+            .and_then(|inputs| inputs.get("before_content_sha256"))
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "agent verify JSON is missing before_content_sha256".to_string())?;
+        crate::app::repair_attempt::validate_verify_binding(
+            &options.root,
+            attempt_id,
+            &validated.input_paths.before,
+            before_sha256,
+        )?;
+    }
+    let compatibility_packet_path = options.root.join("target/ripr/workflow/agent-packet.json");
+    let packet_path = attempt_packet_path.unwrap_or(&compatibility_packet_path);
+    let attempts_root = options
+        .root
+        .join(crate::app::repair_attempt::REPAIR_ATTEMPT_DIRECTORY);
+    let repair_attempt_binding = if packet_path.exists() || attempts_root.exists() {
+        Some(crate::app::repair_attempt::receipt_binding(
+            &options.root,
+            &options.seam_id,
+            packet_path,
+            attempt_id,
+        )?)
+    } else {
+        None
+    };
     let input_paths = &validated.input_paths;
     let provenance = build_agent_receipt_provenance(
         &options.root,
@@ -304,6 +341,14 @@ fn run_agent_receipt(options: AgentReceiptOptions) -> Result<(), String> {
         provenance,
         analysis_outcome,
     )?;
+    let mut receipt: serde_json::Value = serde_json::from_str(&rendered)
+        .map_err(|error| format!("parse rendered agent receipt failed: {error}"))?;
+    if let Some(binding) = repair_attempt_binding {
+        receipt["repair_attempt"] = binding;
+    }
+    let rendered = serde_json::to_string_pretty(&receipt)
+        .map_err(|error| format!("serialize bound agent receipt failed: {error}"))?
+        + "\n";
 
     match options.out {
         Some(path) => {
@@ -364,18 +409,39 @@ fn run_agent_review_summary(options: AgentReviewSummaryOptions) -> Result<(), St
 /// Two-phase agent repair loop (#2443). Composes the existing 7 subcommands
 /// into 2 phases:
 /// - `--phase before`: runs before-snapshot + packet (the agent then edits in
-///   the workspace between phases).
-/// - `--phase after`: runs after-snapshot + verify + receipt + status.
+///   the workspace between phases) and publishes a durable attempt ID.
+/// - `--phase after`: consumes that exact attempt's retained inputs, then runs
+///   after-snapshot + verify + receipt + status.
 ///
 /// This reduces the 7-command loop to 2 while preserving the agent's control
-/// over the edit step.
+/// over the edit step and the transaction's identity across fresh sessions.
+///
+/// When the before phase was bound to a Python repair-trust selection
+/// (RIPR-SPEC-0176, #3568), the after phase re-verifies the retained binding
+/// by digest before recording the applied edit, and publishes the apply-phase
+/// record. The driver records no verification result, no static movement, and
+/// no closure; #3570 owns the verification phase.
 fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
-    let root = &options.root;
-    let seam_id = &options.seam_id;
+    let AgentRepairOptions {
+        root,
+        seam_id,
+        attempt_id,
+        phase,
+        // The before-phase half runs the workflow only; the digest-bound
+        // binding is produced in `cli::run` once the workflow artifacts exist
+        // (see `persist_before_repair_attempt`).
+        python_repair_trust: _,
+        edit_authorization,
+        verify_authorization,
+        verify_rollback,
+    } = options;
 
-    match options.phase {
+    match phase {
         AgentRepairPhase::Before => {
-            ensure_command_root(root, "agent repair --phase before")?;
+            let seam_id = seam_id.ok_or_else(|| {
+                "agent repair --phase before lost its parsed seam identity".to_string()
+            })?;
+            ensure_command_root(&root, "agent repair --phase before")?;
             eprintln!(
                 "ripr: agent repair --phase before for seam `{seam_id}` at {}",
                 root.display()
@@ -389,11 +455,11 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
             })?;
 
             let before = root.join("target/ripr/workflow/before.repo-exposure.json");
-            write_agent_repo_exposure_snapshot(root, &before)?;
+            write_agent_repo_exposure_snapshot(&root, &before)?;
 
             let packet = render_agent_packet(&AgentPacketOptions {
                 root: root.clone(),
-                seam_id: Some(seam_id.clone()),
+                seam_id: Some(seam_id),
                 gap_ledger: None,
                 gap_id: None,
                 json: true,
@@ -405,44 +471,85 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
             eprintln!("ripr: before phase complete. Next:");
             eprintln!("  1. Edit the source code to add or strengthen the discriminator.");
             eprintln!(
-                "  2. Run: ripr agent repair --root {} --seam-id {} --phase after",
-                root.display(),
-                seam_id
+                "  2. Run the exact --attempt command printed after the attempt manifest is published."
             );
             Ok(())
         }
         AgentRepairPhase::After => {
-            ensure_command_root(root, "agent repair --phase after")?;
+            ensure_command_root(&root, "agent repair --phase after")?;
+            let attempt = crate::app::repair_attempt::resolve_awaiting_repair_attempt(
+                &root,
+                attempt_id.as_deref(),
+                seam_id.as_deref(),
+            )?;
             eprintln!(
-                "ripr: agent repair --phase after for seam `{seam_id}` at {}",
+                "ripr: agent repair --phase after for attempt `{}` (seam `{}`) at {}",
+                attempt.attempt_id.as_str(),
+                attempt.seam_id,
                 root.display()
             );
+            eprintln!(
+                "ripr: consuming attempt manifest {}",
+                attempt.manifest_path.display()
+            );
 
-            // Compose existing commands: verify + receipt + status.
-            // The before/after snapshots must exist from the before phase.
-            let before = root.join("target/ripr/workflow/before.repo-exposure.json");
+            // The retained before snapshot and packet are the transaction's
+            // authority. The repository-global after, verify, receipt, and
+            // status paths remain compatibility projections for existing
+            // review and cockpit consumers.
+            let before = attempt.before_snapshot_path.clone();
             let after = root.join("target/ripr/workflow/after.repo-exposure.json");
-            if !before.exists() {
-                return Err(format!(
-                    "before snapshot not found at {}; run `ripr agent repair --phase before` first",
-                    before.display()
-                ));
-            }
-            // This is command-owned evidence. Always regenerate it so a
-            // repeated repair cannot compare the new before snapshot with a
-            // stale after artifact from an earlier run.
-            write_agent_repo_exposure_snapshot(root, &after)?;
+            write_agent_repo_exposure_snapshot(&root, &after)?;
+
+            let packet_path = attempt.packet_path.clone();
+            let packet_bytes = std::fs::read(&packet_path).map_err(|error| {
+                format!(
+                    "read retained repair packet {} failed: {error}",
+                    packet_path.display()
+                )
+            })?;
+            let packet_text = String::from_utf8(packet_bytes.clone())
+                .map_err(|error| format!("retained repair packet is not UTF-8: {error}"))?;
+            let cage_policy = crate::app::repair_attempt::edit_cage_policy_from_packet(
+                &packet_text,
+                &attempt.seam_id,
+            )?;
+
+            // The trust binding, when the attempt carries one, is re-verified
+            // by digest immediately before the applied edit is recorded.
+            let retained_binding = crate::app::python_repair_binding::load_retained_binding(
+                &root,
+                &attempt.attempt_id,
+            )?;
+            let verified_binding = match &retained_binding {
+                Some(binding) => Some(crate::app::python_repair_binding::reverify_for_apply(
+                    &attempt.seam_id,
+                    &cage_policy,
+                    &packet_bytes,
+                    binding,
+                    &edit_authorization,
+                )?),
+                None => {
+                    if edit_authorization.authorized {
+                        return Err(
+                            "agent repair --edit-authorized/--edit-authority require an attempt whose before phase recorded a python repair-trust binding; this attempt is not trust-bound"
+                                .to_string(),
+                        );
+                    }
+                    None
+                }
+            };
 
             // Review summaries consume the canonical diff-scoped producer
             // outcome. Generate it from the same current root before issuing
             // the receipt so the built-in repair route cannot report a clean
             // review packet without completeness evidence.
-            write_agent_analysis_outcome(root)?;
+            write_agent_analysis_outcome(&root)?;
 
             let verify_options = AgentVerifyOptions {
                 root: root.clone(),
-                before: before.clone(),
-                after: after.clone(),
+                before,
+                after,
                 json: true,
             };
 
@@ -451,15 +558,46 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
             write_text_file(&verify_json, &rendered_verify)?;
             print!("{rendered_verify}");
 
-            run_agent_receipt(AgentReceiptOptions {
-                root: root.clone(),
-                verify_json: verify_json.clone(),
-                seam_id: seam_id.clone(),
-                test_changed: None,
-                commands_run: Vec::new(),
-                json: true,
-                out: Some(root.join("target/ripr/reports/agent-receipt.json")),
-            })?;
+            // The retained binding's manifest bytes are confirmed again
+            // immediately before the durable finish: the apply verification
+            // ran before several expensive operations, and a manifest
+            // replaced inside that window must refuse instead of silently
+            // advancing the attempt against replaced trust data.
+            if let Some(binding) = &retained_binding {
+                crate::app::python_repair_binding::confirm_manifest_unchanged(binding)?;
+            }
+
+            // Finish only after all command-owned after artifacts exist. This
+            // makes the durable delta the exact delta the receipt binds, while
+            // the receipt itself remains outside the measured edit window.
+            let cage_after = crate::app::repair_attempt::finish_repair_attempt(
+                &root,
+                &attempt.attempt_id,
+                &packet_path,
+            )?;
+            eprintln!(
+                "ripr: edit-cage verdict for attempt `{}`: {:?}",
+                cage_after.attempt_id.as_str(),
+                cage_after.verdict.status
+            );
+
+            // The receipt can refuse (for example an escape verdict is not
+            // receipt-ready). The refusal must not swallow the typed apply
+            // evidence, so the outcome is carried to the end and the apply
+            // record is published either way.
+            let receipt_result = run_agent_receipt_for_attempt(
+                AgentReceiptOptions {
+                    root: root.clone(),
+                    verify_json: verify_json.clone(),
+                    seam_id: attempt.seam_id,
+                    test_changed: None,
+                    commands_run: Vec::new(),
+                    json: true,
+                    out: Some(root.join("target/ripr/reports/agent-receipt.json")),
+                },
+                Some(cage_after.attempt_id.as_str()),
+                Some(&packet_path),
+            );
 
             run_agent_status(AgentStatusOptions {
                 root: root.clone(),
@@ -467,7 +605,98 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
                 out_dir: Some(std::path::PathBuf::from("target/ripr/workflow")),
             })?;
 
+            // The apply record is published last: the receipt re-evaluates the
+            // edit cage over the exact delta finish measured, so no artifact
+            // write may land between finish and the receipt binding.
+            // The retained binding's manifest bytes are confirmed once more
+            // immediately before the record write: the earlier confirmation
+            // ran before the durable finish, so a manifest replaced inside
+            // that finalize window must refuse here instead of publishing an
+            // apply record against replaced trust data. The refusal restores
+            // the attempt to awaiting_edit, so the identical retry
+            // re-verifies everything.
+            let mut apply_record_result = Ok(());
+            if let (Some(binding), Some(verified)) = (&retained_binding, &verified_binding) {
+                let record_outcome =
+                    crate::app::python_repair_binding::confirm_manifest_unchanged(binding)
+                        .and_then(|()| {
+                            crate::app::python_repair_binding::write_apply_record(
+                                &root,
+                                &attempt.attempt_id,
+                                &binding.artifact_sha256,
+                                verified,
+                                edit_authorization.authority.as_deref().unwrap_or_default(),
+                                &cage_after,
+                            )
+                        });
+                match record_outcome {
+                    Ok(apply_record_path) => {
+                        eprintln!(
+                            "ripr: python repair-trust apply record: {}",
+                            apply_record_path.display()
+                        );
+                    }
+                    Err(error) => {
+                        // Finish already advanced the durable state, so a
+                        // failed record publication must restore the attempt
+                        // to awaiting_edit: the identical retry is otherwise
+                        // rejected and the record could never be recreated.
+                        match crate::app::repair_attempt::restore_repair_attempt_to_awaiting_edit(
+                            &root,
+                            &attempt.attempt_id,
+                        ) {
+                            Ok(()) => {
+                                eprintln!(
+                                    "ripr: apply record publication failed; the attempt was restored to awaiting_edit for a retry"
+                                );
+                                apply_record_result = Err(error);
+                            }
+                            Err(restore_error) => {
+                                apply_record_result = Err(format!(
+                                    "{error}; rolling the attempt back for a retry also failed: {restore_error}"
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            receipt_result?;
+            apply_record_result?;
+
             eprintln!("ripr: after phase complete. Review the receipt and status output.");
+            Ok(())
+        }
+        AgentRepairPhase::Verify => {
+            ensure_command_root(&root, "agent repair --phase verify")?;
+            let attempt_id = attempt_id.as_deref().ok_or_else(|| {
+                "agent repair --phase verify lost its parsed attempt identity".to_string()
+            })?;
+            eprintln!(
+                "ripr: agent repair --phase verify for attempt `{attempt_id}` at {}",
+                root.display()
+            );
+            let receipt_path = app::python_repair_verification::run_verification_phase(
+                app::python_repair_verification::VerificationOptions {
+                    root: &root,
+                    attempt_id,
+                    authorization: app::python_repair_verification::VerifyAuthorization {
+                        authorized: verify_authorization.authorized,
+                        authority: verify_authorization.authority.clone(),
+                    },
+                    rollback: verify_rollback,
+                },
+            )?;
+            let rendered = std::fs::read_to_string(&receipt_path).map_err(|error| {
+                format!(
+                    "read verification receipt {} failed: {error}",
+                    receipt_path.display()
+                )
+            })?;
+            print!("{rendered}");
+            eprintln!(
+                "ripr: verification receipt: {} (immutable; execution and static movement are separate observations)",
+                receipt_path.display()
+            );
             Ok(())
         }
     }

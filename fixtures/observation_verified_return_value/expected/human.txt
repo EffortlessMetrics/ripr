@@ -8,23 +8,20 @@ Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 Start here:
-  State: static_limited
-  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  State: no_actionable_gap
+  Safe next action: no non-exposed diff finding was selected. This is not runtime proof, coverage adequacy, or mutation confirmation.
   File: fixtures/observation_verified_return_value/input/src/lib.rs:4
-  Static exposure: static_unknown (note, confidence 0.50)
-  Why static_unknown: the analysis could not determine a static exposure state
-  Changed behavior: x + 1
-  Missing discriminator: No strong discriminator was detected
+  Static exposure: exposed (warning, confidence 1.00)
+  Changed behavior: x * SCALE_FACTOR
   Related test: tests/score_tests.rs:4 score_uses_scale_factor
-  Next step: Escalate to real mutation testing or deep static analysis for this probe.
   Evidence:
     - reach yes: Related tests appear to reach compute_score: score_uses_scale_factor
-    - infection unknown: Changed syntax is not mapped to a high-confidence probe family
+    - infection yes: Reachable tests can plausibly activate this changed behavior
     - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain --root fixtures/observation_verified_return_value/input --diff fixtures/observation_verified_return_value/diff.patch --mode fast probe:src_lib.rs:static_unknown:35a08f71
-  ripr context --root fixtures/observation_verified_return_value/input --diff fixtures/observation_verified_return_value/diff.patch --mode fast --at probe:src_lib.rs:static_unknown:35a08f71
+  ripr explain --root fixtures/observation_verified_return_value/input --diff fixtures/observation_verified_return_value/diff.patch --mode fast probe:src_lib.rs:return_value:bc806f88
+  ripr context --root fixtures/observation_verified_return_value/input --diff fixtures/observation_verified_return_value/diff.patch --mode fast --at probe:src_lib.rs:return_value:bc806f88
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

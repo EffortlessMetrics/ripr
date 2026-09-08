@@ -64,8 +64,9 @@ lack a complete repair packet by definition.
 
 A gap record has a complete repair packet when:
 - `repairability == "repairable"`, AND
-- `verification_commands` is non-empty, AND
-- `receipt_command.is_some()`.
+- `verification_commands` is non-empty and every legacy display is non-whitespace
+  after trimming, AND
+- `receipt_command` is present and non-whitespace after trimming.
 
 A gap record is advisory when `language_status == "preview"` or
 `static_limit_kind.is_some()`.
@@ -125,8 +126,9 @@ and status surfaces, and it cannot authorize full-run gap diagnostics.
   `ConfigSeverity::Warning` mapping for that class.
 - A finding with `language_status = Some(Preview)` emits INFORMATION even when the
   exposure class maps to WARNING by default config.
-- A gap record with `repairability = "repairable"`, non-empty `verification_commands`,
-  and `receipt_command = Some(...)`, and `language_status = "stable"` emits WARNING.
+- A gap record with `repairability = "repairable"`, an all-non-whitespace
+  `verification_commands` list, a non-whitespace `receipt_command`, and
+  `language_status = "stable"` emits WARNING.
 - The same gap record with `receipt_command = None` emits INFORMATION.
 - A gap record with `language_status = "preview"` and an otherwise complete packet
   emits INFORMATION.

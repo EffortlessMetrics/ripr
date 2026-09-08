@@ -53,6 +53,61 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy_and_generated_file_patterns(
     languages: &[LanguageId],
     generated_file_patterns: &[String],
 ) -> Result<AnalysisResult, String> {
+    // Immutable Git candidate subject (#3237 / #3277): resolve the
+    // bound identity through object plumbing, derive the exact
+    // base→candidate diff, and analyze the materialized candidate root.
+    // The worktree, index, `--diff` file, and `base` are never consulted
+    // (the binding layer already rejects those combinations).
+    if let Some(subject) = options.git_candidate.as_ref() {
+        let resolved = super::git_candidate_execution::resolve(subject, options.git_timeout)
+            .map_err(|error| error.to_string())?;
+        if crate::is_verbose() {
+            eprintln!(
+                "ripr: immutable git candidate resolved: {}",
+                super::git_candidate_execution::subject_identity(&resolved)
+            );
+        }
+        let subject_identity_outcome = crate::analysis_outcome::GitCandidateSubjectIdentity {
+            subject_kind: "tree_to_tree".to_string(),
+            base_tree: resolved.base_tree.clone(),
+            candidate_tree: resolved.candidate_tree.clone(),
+            diff_identity: format!(
+                "sha256:{}",
+                Sha256::digest(resolved.diff.as_bytes()).iter().fold(
+                    String::new(),
+                    |mut acc, byte| {
+                        use std::fmt::Write as _;
+                        let _ = write!(acc, "{byte:02x}");
+                        acc
+                    }
+                )
+            ),
+        };
+        let candidate_options = AnalysisOptions {
+            root: resolved.root.clone(),
+            base: None,
+            diff_file: None,
+            git_candidate: None,
+            resolved_subject_identity: Some(subject_identity_outcome),
+            ..options.clone()
+        };
+        cancellation::checkpoint()?;
+        let mut result = run_pipeline_for_diff_text(
+            &candidate_options,
+            oracle_policy,
+            languages,
+            generated_file_patterns,
+            &resolved.diff,
+        )?;
+        // #3279 R4: finding locations name the user's repository, not
+        // the ephemeral materialization directory — the temp root is
+        // machine-local and unreplayable. The relative path inside the
+        // candidate tree is unchanged; only the prefix is rebased from
+        // the materialized root back to the named repository root at
+        // the same seam that set it.
+        rebase_finding_paths_to_repository(&mut result, &resolved.root, &options.root);
+        return Ok(result);
+    }
     let diff_text = diff::load_diff(
         &options.root,
         options.base.as_deref(),
@@ -77,6 +132,18 @@ pub(crate) fn run_worktree_pipeline_with_oracle_policy_and_generated_file_patter
 ) -> Result<AnalysisResult, String> {
     if options.diff_file.is_some() {
         return Err("worktree diff mode cannot be combined with --diff".to_string());
+    }
+    // #3237/#3277: the immutable subject's contract is exact-tree diff
+    // semantics. Worktree mode analyzes the live tree by definition, so
+    // a subject input must fail closed here rather than silently fall
+    // back to worktree bytes (review blocker: the bound subject was
+    // previously ignored in this mode).
+    if options.git_candidate.is_some() {
+        return Err(crate::domain::GitCandidateSubjectError::ExecutionFailed {
+            detail: "git candidate subjects are diff-semantics inputs; worktree mode cannot execute them"
+                .to_string(),
+        }
+        .to_string());
     }
     let diff_text =
         diff::load_worktree_diff(&options.root, options.base.as_deref(), options.git_timeout)?;
@@ -188,6 +255,8 @@ fn run_pipeline_for_diff_text(
     let parsed_diff = diff::parse_unified_diff_bounded_with_metadata(diff_text)?;
     let changed_files = parsed_diff.changed_files;
     let mut limitations = parsed_diff.limitations;
+    let mut harness_projections: Vec<crate::analysis::harness_projection::TestHarnessProjection> =
+        Vec::new();
     let deleted_file_count = parsed_diff.deleted_file_count;
     let submodule_file_count = parsed_diff.submodule_file_count;
     let renamed_file_count = parsed_diff.renamed_file_count;
@@ -244,6 +313,7 @@ fn run_pipeline_for_diff_text(
         }
         limitations.extend(result.limitations);
         partial_scope = result.partial_scope.clone();
+        harness_projections.extend(result.harness_projections);
         findings.extend(result.findings);
         rust_changed_files += result.changed_files;
         candidate_line_count += result.candidate_line_count;
@@ -490,6 +560,7 @@ fn run_pipeline_for_diff_text(
         AnalysisIdentity {
             base_revision: options.base.clone(),
             input_identity: Some(input_identity),
+            git_candidate_subject: options.resolved_subject_identity.clone(),
             ..AnalysisIdentity::default()
         },
         AnalysisOutcomeCounts {
@@ -503,6 +574,7 @@ fn run_pipeline_for_diff_text(
     )?);
 
     Ok(AnalysisResult {
+        harness_projections,
         analysis_outcome,
         summary: summary_result,
         findings,
@@ -575,6 +647,18 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
     oracle_policy: &OraclePolicy,
     languages: &[LanguageId],
 ) -> Result<AnalysisResult, String> {
+    // #3237/#3277: repo mode seeds probes from the live tree; a subject
+    // input is a diff-semantics contract and fails closed here.
+    if let Some(subject) = options.git_candidate.as_ref() {
+        return Err(crate::domain::GitCandidateSubjectError::ExecutionFailed {
+            detail: format!(
+                "git candidate subjects are diff-semantics inputs; repo mode cannot execute subject `{}`",
+                subject.candidate_tree.as_str()
+            ),
+        }
+        .to_string());
+    }
+
     run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
         options,
         oracle_policy,
@@ -595,6 +679,9 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
     let mut rust_production_files: usize = 0;
     let mut files_by_language: Vec<(LanguageId, usize)> = Vec::new();
     let mut language_runs: Vec<LanguageRun> = Vec::new();
+    let mut rust_harness_projections: Vec<
+        crate::analysis::harness_projection::TestHarnessProjection,
+    > = Vec::new();
     for language in languages {
         cancellation::checkpoint()?;
         // Non-abort contract (see the diff loop above): preview-language
@@ -617,6 +704,7 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
                     )),
                 });
             }
+            rust_harness_projections = result.harness_projections;
             findings.extend(result.findings);
             rust_production_files += result.production_files;
             files_by_language.push((LanguageId::Rust, result.production_files));
@@ -635,6 +723,18 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
         match attempted {
             Ok(result) => {
                 cancellation::checkpoint()?;
+                // Mirror the Rust repo path's generated-file skip
+                // disclosure: a capped/partial preview run records a
+                // `Partial` language run on the shared channel, so human
+                // and JSON output render the limitation and gates fail
+                // closed on the partial denominator (#3554, #2109).
+                if let Some(reason) = &result.partial_reason {
+                    language_runs.push(LanguageRun {
+                        language: language.as_str().to_string(),
+                        status: LanguageRunStatus::Partial,
+                        reason: Some(reason.clone()),
+                    });
+                }
                 findings.extend(result.findings);
                 files_by_language.push((*language, result.production_files));
             }
@@ -660,6 +760,7 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
     }
 
     Ok(AnalysisResult {
+        harness_projections: rust_harness_projections,
         analysis_outcome: None,
         summary: summary_result,
         findings,
@@ -905,6 +1006,27 @@ fn unavailable_language<T>(language: LanguageId) -> Result<T, String> {
     ))
 }
 
+/// Rebase every finding/probe location prefix from the materialized
+/// candidate root onto the named repository root (#3279 R4). The
+/// relative path is preserved exactly; a path outside the materialized
+/// root is left untouched (fail-open on the rewrite is honest — the
+/// analyzer produced it from candidate bytes).
+fn rebase_finding_paths_to_repository(
+    result: &mut AnalysisResult,
+    materialized_root: &std::path::Path,
+    repository_root: &std::path::Path,
+) {
+    let rebase = |path: &std::path::Path| -> std::path::PathBuf {
+        path.strip_prefix(materialized_root).map_or_else(
+            |_| path.to_path_buf(),
+            |relative| repository_root.join(relative),
+        )
+    };
+    for finding in &mut result.findings {
+        finding.probe.location.file = rebase(&finding.probe.location.file);
+    }
+}
+
 #[cfg(test)]
 #[expect(
     clippy::expect_used,
@@ -1034,10 +1156,14 @@ mod tests {
                 base: None,
                 diff_file: None,
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -1083,10 +1209,14 @@ mod tests {
                 base: None,
                 diff_file: None,
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -1211,10 +1341,14 @@ mod tests {
                 base: None,
                 diff_file: Some(diff_file),
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -1296,10 +1430,14 @@ mod tests {
                 base: None,
                 diff_file: Some(diff_file),
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -1323,10 +1461,14 @@ mod tests {
                 base: None,
                 diff_file: None,
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -1345,10 +1487,14 @@ mod tests {
             base: None,
             diff_file: None,
             mode: AnalysisMode::Draft,
+            resolved_subject_identity: None,
             include_unchanged_tests: false,
             resolve_tsconfig_paths: false,
             perl_facts_path: None,
             git_timeout: None,
+            git_candidate: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
         };
         let combined = "diff --cc src/lib.rs\n\
              index 1111111,2222222..3333333\n\
@@ -1410,10 +1556,14 @@ mod tests {
                 base: None,
                 diff_file: None,
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -1448,10 +1598,14 @@ mod tests {
                 base: None,
                 diff_file: Some(diff_file),
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust, LanguageId::Perl],
@@ -1549,10 +1703,14 @@ mod tests {
                 base: None,
                 diff_file: Some(diff_file),
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: Some(facts),
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust, LanguageId::Perl],
@@ -1583,6 +1741,17 @@ mod tests {
                 .starts_with("ingestion:"),
             "the reason must be the ingestion-check message, got: {:?}",
             perl_run.reason
+        );
+        let advisory = analysis
+            .preview_language_advisories
+            .iter()
+            .find(|advisory| advisory.language == "perl")
+            .ok_or_else(|| "expected an enabled Perl preview advisory".to_string())?;
+        assert!(advisory.enabled, "the Perl adapter remains enabled");
+        assert_eq!(advisory.file_count, 1);
+        assert!(
+            !advisory.analyzed(&analysis.language_runs),
+            "an invalid adapter run must not claim the routed file was analyzed"
         );
 
         let _ = std::fs::remove_dir_all(&root);
@@ -1617,10 +1786,14 @@ index 0000000..1111111 100644
                 base: None,
                 diff_file: Some(diff_file),
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: true,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::TypeScript, LanguageId::Python],
@@ -1670,10 +1843,14 @@ index 0000000..1111111 100644
                 base: None,
                 diff_file: Some(diff_file),
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust, LanguageId::Python],
@@ -1724,10 +1901,14 @@ index 0000000..1111111 100644
                 base: None,
                 diff_file: Some(diff_file),
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: true,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::TypeScript],
@@ -1781,10 +1962,14 @@ index 0000000..1111111 100644
                 base: None,
                 diff_file: Some(diff_file),
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: true,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::TypeScript],
@@ -1835,10 +2020,14 @@ index 0000000..1111111 100644
                 base: None,
                 diff_file: Some(diff_file),
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: true,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -1903,10 +2092,14 @@ index 0000000..1111111 100644
                 base: None,
                 diff_file: Some(diff_file),
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -1944,10 +2137,14 @@ index 0000000..1111111 100644
                 base: None,
                 diff_file: Some(diff_file),
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: false,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust, LanguageId::Perl],
@@ -1987,10 +2184,14 @@ index 0000000..1111111 100644
                 base: None,
                 diff_file: Some(diff_file),
                 mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
                 include_unchanged_tests: true,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::Rust],
@@ -2028,10 +2229,14 @@ index 0000000..1111111 100644
                 base: None,
                 diff_file: None,
                 mode: AnalysisMode::Deep,
+                resolved_subject_identity: None,
                 include_unchanged_tests: true,
                 resolve_tsconfig_paths: false,
                 perl_facts_path: None,
                 git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
             },
             &OraclePolicy::default(),
             &[LanguageId::TypeScript, LanguageId::Python],
@@ -2039,6 +2244,137 @@ index 0000000..1111111 100644
 
         assert!(result.findings.is_empty());
         assert_eq!(result.summary.changed_rust_files, 0);
+        Ok(())
+    }
+
+    /// Mixed Rust/Python repo reconciliation (#3554 PR C, #2103): each
+    /// language keeps its own production-file count, Python evidence adds no
+    /// weight to `changed_rust_files`, and Python findings keep their native
+    /// identity.
+    #[cfg(feature = "lang-python")]
+    #[test]
+    fn repo_pipeline_mixed_rust_python_keeps_per_language_counts() -> Result<(), String> {
+        use crate::domain::LanguageId as DomainLanguageId;
+        let root = temp_root("mixed-repo")?;
+        write(
+            &root.join("src").join("lib.rs"),
+            "pub fn discount(price: u32) -> u32 { price / 2 }\n",
+        )?;
+        write(&root.join("app.py"), "def run():\n    return 1\n")?;
+        write(
+            &root.join("test_app.py"),
+            "from app import run\n\n\ndef test_run():\n    assert run() == 1\n",
+        )?;
+
+        let result = run_repo_pipeline_with_oracle_policy(
+            &AnalysisOptions {
+                root,
+                base: None,
+                diff_file: None,
+                mode: AnalysisMode::Deep,
+                resolved_subject_identity: None,
+                include_unchanged_tests: true,
+                resolve_tsconfig_paths: false,
+                perl_facts_path: None,
+                git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
+            },
+            &OraclePolicy::default(),
+            &[LanguageId::Rust, LanguageId::Python],
+        )?;
+
+        // Both languages produced evidence.
+        assert!(
+            result
+                .findings
+                .iter()
+                .any(|finding| finding.language == Some(DomainLanguageId::Rust)),
+            "expected at least one Rust finding"
+        );
+        assert!(
+            result
+                .findings
+                .iter()
+                .any(|finding| finding.language == Some(DomainLanguageId::Python)),
+            "expected at least one Python finding"
+        );
+        // #2103: `changed_rust_files` counts the Rust adapter only.
+        assert_eq!(
+            result.summary.changed_rust_files, 1,
+            "Python production files must never inflate changed_rust_files"
+        );
+        let counts: Vec<(&str, usize)> = result
+            .summary
+            .changed_files_by_language
+            .iter()
+            .map(|count| (count.language.as_str(), count.files))
+            .collect();
+        assert_eq!(
+            counts,
+            vec![("python", 1), ("rust", 1)],
+            "per-language counts stay separate and sorted"
+        );
+        // Both runs completed: no partial-run disclosure.
+        assert!(
+            result.language_runs.is_empty(),
+            "unexpected language runs: {:?}",
+            result.language_runs
+        );
+        Ok(())
+    }
+
+    /// A partial Python repo run (a parse failure leaves the analyzed
+    /// denominator) records a `Partial` language run on the shared channel —
+    /// the same disclosure the Rust repo path uses for generated-file skips
+    /// (#3554, #2109) — while the analyzed files' findings still emit.
+    #[cfg(feature = "lang-python")]
+    #[test]
+    fn repo_pipeline_records_partial_disclosure_for_python_parse_failures() -> Result<(), String> {
+        let root = temp_root("py-repo-partial")?;
+        write(&root.join("good.py"), "def good():\n    return 1\n")?;
+        write(&root.join("broken.py"), "def broken(:\n    pass\n")?;
+
+        let result = run_repo_pipeline_with_oracle_policy(
+            &AnalysisOptions {
+                root,
+                base: None,
+                diff_file: None,
+                mode: AnalysisMode::Deep,
+                resolved_subject_identity: None,
+                include_unchanged_tests: true,
+                resolve_tsconfig_paths: false,
+                perl_facts_path: None,
+                git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
+            },
+            &OraclePolicy::default(),
+            &[LanguageId::Python],
+        )?;
+
+        let run = result
+            .language_runs
+            .iter()
+            .find(|run| run.language == "python")
+            .ok_or("expected a python language run disclosure")?;
+        assert_eq!(run.status, LanguageRunStatus::Partial);
+        let reason = run
+            .reason
+            .as_deref()
+            .ok_or("partial run must carry a reason")?;
+        assert!(reason.contains("partial"), "{reason}");
+        assert!(reason.contains("failed to read or parse"), "{reason}");
+        // The analyzed file's findings still emit.
+        assert!(
+            result
+                .findings
+                .iter()
+                .any(|finding| finding.language == Some(crate::domain::LanguageId::Python)),
+            "findings from the analyzed files must survive the partial disclosure"
+        );
         Ok(())
     }
 }

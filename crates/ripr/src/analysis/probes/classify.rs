@@ -1,6 +1,9 @@
-use super::super::rust_index::{FileFacts, RustIndex};
+use super::super::extract::PROBE_SHAPE_UNSAFE_BOUNDARY;
+use super::super::rust_index::{FileFacts, ProbeShapeFact, RustIndex};
 use super::family::family_for_probe_shape;
 use crate::domain::ProbeFamily;
+use ra_ap_syntax::{AstNode, Edition, SourceFile, ast};
+use std::ops::Range;
 use std::path::Path;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -10,6 +13,7 @@ pub(crate) struct ParserProbeShape<'a> {
     pub(crate) start_byte: usize,
     pub(crate) text: &'a str,
     pub(crate) standalone_call: bool,
+    pub(crate) unsafe_boundary: bool,
 }
 
 pub(crate) fn parser_probe_shapes_for_changed_line<'a>(
@@ -29,20 +33,39 @@ pub(crate) fn parser_probe_shapes_for_changed_line<'a>(
         let Some(family) = family_for_probe_shape(&shape.kind) else {
             continue;
         };
-        if shape_match_rank(&shape.text, changed_text).is_none() {
+        let unsafe_boundary = shape.kind == PROBE_SHAPE_UNSAFE_BOUNDARY;
+        if unsafe_boundary && !unsafe_boundary_owns_changed_line(facts, shape, line) {
+            continue;
+        }
+        if !unsafe_boundary && shape_match_rank(&shape.text, changed_text).is_none() {
             continue;
         }
         let candidate = ParserProbeShape {
             family,
-            start_line: shape.start_line,
+            // Unsafe boundaries match by parser-owned containment rather than
+            // source text. Project them at the changed line so diff synthesis
+            // emits one explicit canonical probe while `start_byte` keeps the
+            // stable boundary identity used for deduplication.
+            start_line: if unsafe_boundary {
+                line
+            } else {
+                shape.start_line
+            },
             start_byte: shape.start_byte,
             text: &shape.text,
             standalone_call: parser_call_shape_is_standalone(facts, shape),
+            unsafe_boundary,
         };
         if let Some(position) = selected
             .iter()
             .position(|current| current.family == candidate.family)
         {
+            if candidate.unsafe_boundary && selected[position].unsafe_boundary {
+                if candidate.start_byte > selected[position].start_byte {
+                    selected[position] = candidate;
+                }
+                continue;
+            }
             let current = &selected[position];
             let candidate_rank = shape_match_rank(candidate.text, changed_text);
             let current_rank = shape_match_rank(current.text, changed_text);
@@ -65,10 +88,99 @@ pub(crate) fn parser_probe_shapes_for_changed_line<'a>(
     selected
 }
 
-fn parser_call_shape_is_standalone(
+/// A line-only diff cannot identify which bytes changed when code outside an
+/// unsafe boundary shares its opening or closing line. Re-resolve the exact
+/// AST range and fail closed on those ambiguous edge lines; interior lines and
+/// edge lines wholly owned by the boundary remain eligible.
+fn unsafe_boundary_owns_changed_line(
     facts: &FileFacts,
-    shape: &super::super::rust_index::ProbeShapeFact,
+    shape: &ProbeShapeFact,
+    line: usize,
 ) -> bool {
+    let Some(boundary) = unsafe_boundary_syntax_range(facts, shape) else {
+        return false;
+    };
+    let Some(line_range) = source_line_byte_range(&facts.source, line) else {
+        return false;
+    };
+    let boundary_start = u32::from(boundary.start()) as usize;
+    let boundary_end = u32::from(boundary.end()) as usize;
+    if boundary_start >= line_range.end || boundary_end <= line_range.start {
+        return false;
+    }
+
+    if line == shape.start_line {
+        let prefix_end = boundary_start.max(line_range.start).min(line_range.end);
+        let Some(prefix) = facts.source.get(line_range.start..prefix_end) else {
+            return false;
+        };
+        if !boundary_edge_is_empty(prefix) {
+            return false;
+        }
+    }
+    if line == shape.end_line {
+        let suffix_start = boundary_end.max(line_range.start).min(line_range.end);
+        let Some(suffix) = facts.source.get(suffix_start..line_range.end) else {
+            return false;
+        };
+        if !boundary_edge_is_empty(suffix) {
+            return false;
+        }
+    }
+    true
+}
+
+fn unsafe_boundary_syntax_range(
+    facts: &FileFacts,
+    shape: &ProbeShapeFact,
+) -> Option<ra_ap_syntax::TextRange> {
+    let parse = SourceFile::parse(&facts.source, Edition::CURRENT);
+    if !parse.errors().is_empty() {
+        return None;
+    }
+    let root = parse.tree();
+    for function in root.syntax().descendants().filter_map(ast::Fn::cast) {
+        let Some(token) = function.unsafe_token() else {
+            continue;
+        };
+        if u32::from(token.text_range().start()) as usize == shape.start_byte {
+            return Some(function.syntax().text_range());
+        }
+    }
+    for block in root.syntax().descendants().filter_map(ast::BlockExpr::cast) {
+        let Some(token) = block.unsafe_token() else {
+            continue;
+        };
+        if u32::from(token.text_range().start()) as usize == shape.start_byte {
+            return Some(block.syntax().text_range());
+        }
+    }
+    None
+}
+
+fn source_line_byte_range(source: &str, line: usize) -> Option<Range<usize>> {
+    if line == 0 {
+        return None;
+    }
+    let mut start = 0usize;
+    for _ in 1..line {
+        let next = source.get(start..)?.find('\n')?;
+        start = start.saturating_add(next).saturating_add(1);
+    }
+    let end = source
+        .get(start..)?
+        .find('\n')
+        .map(|offset| start.saturating_add(offset))
+        .unwrap_or(source.len());
+    Some(start..end)
+}
+
+fn boundary_edge_is_empty(text: &str) -> bool {
+    text.chars()
+        .all(|character| character.is_whitespace() || character == ';')
+}
+
+fn parser_call_shape_is_standalone(facts: &FileFacts, shape: &ProbeShapeFact) -> bool {
     if family_for_probe_shape(&shape.kind) != Some(ProbeFamily::CallDeletion) {
         return true;
     }
@@ -213,6 +325,141 @@ mod tests {
 
         let shapes = parser_probe_shapes_for_changed_line(&index, &path, 4, "return total");
         assert!(shapes.is_empty());
+    }
+
+    #[test]
+    fn unsafe_boundaries_match_by_span_and_prefer_the_innermost_boundary() -> Result<(), String> {
+        let path = PathBuf::from("src/lib.rs");
+        let source = "pub unsafe fn read_raw(value: i32, limit: i32) -> i32 {\n    unsafe {\n        if value < limit { value } else { limit }\n    }\n}\n";
+        let function_start = source
+            .find("unsafe fn")
+            .ok_or_else(|| "missing unsafe function token".to_string())?;
+        let block_start = source
+            .rfind("unsafe {")
+            .ok_or_else(|| "missing unsafe block token".to_string())?;
+        let predicate_start = source
+            .find("value < limit")
+            .ok_or_else(|| "missing predicate".to_string())?;
+        let index = RustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path: path.clone(),
+                    source: source.to_string(),
+                    probe_shapes: vec![
+                        ProbeShapeFact {
+                            start_line: 1,
+                            end_line: 5,
+                            start_byte: function_start,
+                            kind: PROBE_SHAPE_UNSAFE_BOUNDARY.to_string(),
+                            text: "unsafe fn read_raw".to_string(),
+                        },
+                        ProbeShapeFact {
+                            start_line: 2,
+                            end_line: 4,
+                            start_byte: block_start,
+                            kind: PROBE_SHAPE_UNSAFE_BOUNDARY.to_string(),
+                            text: "unsafe block".to_string(),
+                        },
+                        ProbeShapeFact {
+                            start_line: 3,
+                            end_line: 3,
+                            start_byte: predicate_start,
+                            kind: PROBE_SHAPE_PREDICATE.to_string(),
+                            text: "value < limit".to_string(),
+                        },
+                    ],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+
+        let shapes = parser_probe_shapes_for_changed_line(&index, &path, 3, "value < limit");
+        assert_eq!(shapes.len(), 2);
+        assert!(
+            shapes
+                .iter()
+                .any(|shape| shape.family == ProbeFamily::Predicate)
+        );
+        let unsafe_shape = shapes
+            .iter()
+            .find(|shape| shape.family == ProbeFamily::StaticUnknown)
+            .ok_or_else(|| "missing unsafe boundary shape".to_string())?;
+        assert_eq!(unsafe_shape.start_line, 3);
+        assert_eq!(unsafe_shape.start_byte, block_start);
+        assert_eq!(unsafe_shape.text, "unsafe block");
+        assert!(unsafe_shape.unsafe_boundary);
+        Ok(())
+    }
+
+    #[test]
+    fn unsafe_boundary_rejects_shared_edge_lines_with_outside_code() -> Result<(), String> {
+        let path = PathBuf::from("src/lib.rs");
+        let source = "pub fn read(ptr: *const u8) -> u8 { let limit = 2; unsafe { ptr.read() } }\n";
+        let block_start = source
+            .find("unsafe {")
+            .ok_or_else(|| "missing unsafe block token".to_string())?;
+        let index = RustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path: path.clone(),
+                    source: source.to_string(),
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 1,
+                        end_line: 1,
+                        start_byte: block_start,
+                        kind: PROBE_SHAPE_UNSAFE_BOUNDARY.to_string(),
+                        text: "unsafe block".to_string(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+
+        let shapes = parser_probe_shapes_for_changed_line(
+            &index,
+            &path,
+            1,
+            "pub fn read(ptr: *const u8) -> u8 { let limit = 3; unsafe { ptr.read() } }",
+        );
+        assert!(shapes.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn unsafe_boundary_accepts_an_edge_line_owned_by_the_boundary() -> Result<(), String> {
+        let path = PathBuf::from("src/lib.rs");
+        let source = "pub fn read(ptr: *const u8) -> u8 {\n    unsafe { ptr.read() }\n}\n";
+        let block_start = source
+            .find("unsafe {")
+            .ok_or_else(|| "missing unsafe block token".to_string())?;
+        let index = RustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path: path.clone(),
+                    source: source.to_string(),
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 2,
+                        end_line: 2,
+                        start_byte: block_start,
+                        kind: PROBE_SHAPE_UNSAFE_BOUNDARY.to_string(),
+                        text: "unsafe block".to_string(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+
+        let shapes =
+            parser_probe_shapes_for_changed_line(&index, &path, 2, "unsafe { ptr.add(1).read() }");
+        assert_eq!(shapes.len(), 1);
+        assert_eq!(shapes[0].family, ProbeFamily::StaticUnknown);
+        Ok(())
     }
 
     #[test]

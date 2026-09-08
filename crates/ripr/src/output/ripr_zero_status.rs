@@ -1410,6 +1410,7 @@ mod tests {
           "gap_records": [
             {
               "gap_id": "gap:repo:pricing:reintroduced-boundary",
+              "source_currentness": "candidate_current",
               "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
               "kind": "MissingBoundaryAssertion",
               "language": "rust",

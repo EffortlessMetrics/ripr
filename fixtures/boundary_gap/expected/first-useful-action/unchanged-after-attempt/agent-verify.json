@@ -1,0 +1,59 @@
+{
+  "artifact_currentness": "historical_noncurrent",
+  "changed_seams": [],
+  "inputs": {
+    "after": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/after.repo-exposure.json",
+    "after_content_sha256": "sha256:d9d0ecb94aae1542a1437b0212319c11e145496facf3ac363d097cbd246295bd",
+    "before": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/before.repo-exposure.json",
+    "before_content_sha256": "sha256:d9d0ecb94aae1542a1437b0212319c11e145496facf3ac363d097cbd246295bd"
+  },
+  "new_gaps": [],
+  "resolved_gaps": [],
+  "schema_version": "0.3",
+  "status": "advisory",
+  "summary": {
+    "changed": 0,
+    "gap_movement": {
+      "changed": 0,
+      "closed": 0,
+      "new": 0,
+      "opened": 0,
+      "removed": 0,
+      "strengthened": 0,
+      "unchanged": 1,
+      "weakened": 0
+    },
+    "improved": 0,
+    "new": 0,
+    "regressed": 0,
+    "resolved": 0,
+    "unchanged": 1
+  },
+  "tool": "ripr",
+  "unchanged_seams": [
+    {
+      "activate_delta": null,
+      "after": "weakly_gripped",
+      "before": "weakly_gripped",
+      "change": "unchanged",
+      "discriminate_delta": null,
+      "evidence_delta": [],
+      "evidence_source": "evidence_record",
+      "file": "src/lib.rs",
+      "gap_movement": "unchanged",
+      "line": 2,
+      "missing_discriminators_reopened": [],
+      "missing_discriminators_resolved": [],
+      "no_movement_reason": "grip class and evidence_record evidence were unchanged",
+      "observe_delta": null,
+      "observed_values_added": [],
+      "observed_values_removed": [],
+      "oracle_strength_delta": null,
+      "propagate_delta": null,
+      "reach_delta": null,
+      "related_test_delta": 0,
+      "seam_id": "67fc764ba37d77bd",
+      "seam_kind": "predicate_boundary"
+    }
+  ]
+}

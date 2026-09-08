@@ -1,6 +1,6 @@
 {
   "protocol_version": "0.1",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "request": "ripr/listActionableItems",
   "kind": "actionable_items",
   "status": "ok",
@@ -22,6 +22,10 @@
   "must_not_change": ["source_edits", "workspace_edit", "autonomous_repair"],
   "verify_route": "cargo test -p pricing",
   "receipt_route": "ripr receipt record --gap gap:42",
+  "verify_route_readiness": "legacy_string_only",
+  "receipt_route_readiness": "legacy_string_only",
+  "verify_command_spec": null,
+  "receipt_command_spec": null,
   "limitations": [],
   "non_claims": ["Static exposure evidence is not runtime mutation proof."]
 }

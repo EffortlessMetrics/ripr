@@ -1,0 +1,15 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -12,1 +12,1 @@
+-    if final_label == "alpha" {
++    if final_label == "other" {
+@@ -31,1 +31,1 @@
+-    if final_label == "alpha" {
++    if final_label == "other" {
+@@ -51,1 +51,1 @@
+-    if final_label == "alpha" {
++    if final_label == "other" {
+@@ -71,1 +71,1 @@
+-    if final_label == "alpha" {
++    if final_label == "other" {

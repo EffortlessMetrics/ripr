@@ -28,3 +28,4 @@ PR. They should be short, dated, and focused on consequences.
 | [0019](0019-language-adapters-reuse-shared-packet-contract.md) | accepted | Language adapters reuse the shared packet contract: one validator, shared renderers, parity test. |
 | [0020](0020-repair-artifacts-carry-producer-identity.md) | accepted | Repair artifacts carry producer identity, repository revision, worktree state, and a bounded content commitment. |
 | [0021](0021-static-and-executed-assurance-axes.md) | accepted | Keep static movement, executed verification, receipt issuance, and external runtime mutation on separate axes. |
+| [0022](0022-mcp-is-a-bounded-projection.md) | accepted | Keep MCP as a bounded projection over shared RIPR authority. |

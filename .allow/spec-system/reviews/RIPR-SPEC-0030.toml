@@ -1,0 +1,17 @@
+schema_version = "1"
+producer = "xtask specs close"
+spec_id = "RIPR-SPEC-0030"
+spec_path = "docs/specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md"
+content_digest = "sha256:1f868a2b840f3a9a94c338040c953c0f338c0ed248fd7c3c7cc88b478fe4e804"
+status_observed = "proposed"
+observed_at = "2026-08-30"
+reviewed_by = "ZCode agent (session 2026-08-30, verified by landing PR review)"
+disposition = "retain_proposed_named_evidence_gap"
+waived_until = "2026-11-30"
+disposition_detail = "Required Evidence demands cross-surface proof that preview evidence remains visible but non-governing across readiness, gates, baselines, RIPR Zero, suppressions, and calibration; the spec Test Mapping is still prospective and traceability pins no current test set for most of that matrix, so the named gap is retained as real while partial policy-operations and preview-promotion coverage is credited."
+reasons_inspected = []
+evidence_refs = []
+limitations = []
+receipt_id = "sha256:6ada57bd2a65fcc9d9e6488a0d98fac8f818cde04f472b929a65d4f65ce3a587"
+claim_boundary = "An asserted, content-bound record that this exact spec content was observed by the named reviewer and reached the labeled advisory maintenance disposition; the PR review that lands the receipt is the verification act."
+non_claims = ["specification correctness or completeness", "normative document status, requirement lifecycle, implementation, evidence, or support state", "acceptance, deprecation, supersession, migration, merge eligibility, or branch protection"]

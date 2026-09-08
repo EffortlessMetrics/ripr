@@ -6,6 +6,9 @@ mod candidate_control;
 mod ci_budget;
 mod dogfood;
 mod eval_sweep;
+mod eval_sweep_check;
+mod eval_sweep_refresh;
+mod eval_sweep_report;
 mod first_pr;
 mod fixtures;
 mod impacted_evidence;
@@ -16,12 +19,16 @@ mod metrics;
 mod module_health;
 mod mutation;
 mod operator;
+mod perl_migration;
 mod pr;
 mod pr_causal_delta;
 mod pr_evidence;
 mod pr_evidence_summary;
 mod proof_preflight;
 mod proof_route;
+mod python_repair_driver;
+mod python_repair_trust;
+mod python_repair_verification;
 mod receipts;
 mod recommendation;
 pub(crate) mod release;
@@ -31,6 +38,8 @@ mod release_negative;
 mod release_scope;
 pub(crate) mod release_server;
 mod repo;
+#[cfg(test)]
+mod reverse_authorization;
 mod review_comments;
 mod rust_repair_trust;
 mod sarif;
@@ -40,6 +49,8 @@ mod source_promotion_admission_workflow;
 mod source_promotion_control;
 mod source_promotion_validate_resolved_tree;
 mod source_promotion_verify;
+mod spec_maintenance;
+mod spec_receipts;
 mod targeted_rerun;
 mod targeted_test;
 mod test_oracles;
@@ -89,8 +100,8 @@ pub(crate) use fixtures::{
     GoldenDriftEntry, GoldenDriftSemantics, first_line_difference, fixture_cache_dir,
     fixture_contract_violations, golden_assistant_loop_health_contract_violations_at,
     golden_drift_semantics, golden_drift_type, goldens_check_failure_message,
-    json_string_values_for_key, normalize_golden_text, parse_reason, run_fixture,
-    run_fixture_outputs, validate_bless_reason,
+    json_string_values_for_key, next_pending_heading, normalize_golden_text, parse_reason,
+    run_fixture, run_fixture_outputs, validate_bless_reason,
 };
 pub(crate) use impacted_evidence::impacted_evidence;
 pub(crate) use index::{reports, reports_index};
@@ -111,6 +122,7 @@ pub(crate) use pr::{critic, gh_pr_status, pr_summary, pr_triage_report};
 pub(crate) use pr_evidence::ripr_pr;
 pub(crate) use pr_evidence_summary::ripr_pr_summary;
 pub(crate) use proof_route::{pr_summary_proof_route_section, proof};
+pub(crate) use python_repair_trust::python_repair_trust;
 pub(crate) use receipts::{receipts, receipts_write};
 pub(crate) use recommendation::recommendation_calibration;
 pub(crate) use release::release_readiness;
@@ -125,7 +137,7 @@ pub(crate) use repo::{
     repo_seam_inventory,
 };
 pub(crate) use review_comments::ripr_review_comments;
-pub(crate) use rust_repair_trust::rust_repair_trust_report;
+pub(crate) use rust_repair_trust::{rust_repair_trust_report, rust_repair_trust_report_value_at};
 pub(crate) use sarif::sarif_policy;
 #[cfg(test)]
 pub(crate) use sarif::{
@@ -144,9 +156,18 @@ pub(crate) use source_promotion_validate_resolved_tree::{
     SOURCE_PROMOTION_VALIDATE_RESOLVED_TREE_SUBCOMMAND, source_promotion_validate_resolved_tree,
 };
 pub(crate) use source_promotion_verify::source_promotion_verify;
+pub(crate) use spec_maintenance::spec_digest;
+pub(crate) use spec_maintenance::spec_maintenance;
+pub(crate) use spec_receipts::spec_close;
+#[cfg(test)]
+pub(crate) use spec_receipts::validate_receipt;
 pub(crate) use targeted_rerun::targeted_rerun_benchmark;
 pub(crate) use targeted_test::targeted_test_outcome;
 pub(crate) use test_oracles::{test_efficiency_report, test_oracle_report};
+#[cfg(test)]
+pub(crate) use test_oracles::{
+    test_oracle_report_impl_for_roots, test_oracle_report_json, test_oracle_report_markdown,
+};
 
 fn ensure_parent_dir(path: &std::path::Path, label: &str) -> Result<(), String> {
     let Some(parent) = path.parent() else {
@@ -164,3 +185,4 @@ fn write_parented_file(
     ensure_parent_dir(path, label)?;
     std::fs::write(path, contents).map_err(|err| format!("failed to write {label}: {err}"))
 }
+pub(crate) use perl_migration::perl_migration_refresh;

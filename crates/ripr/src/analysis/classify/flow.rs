@@ -1,5 +1,8 @@
 use super::super::rust_index::FunctionSummary;
-use super::is_wildcard_discard_binding;
+use super::propagation_witness::{
+    PropagationWitnessV1, complete_direct_witness, normalize_semantic_text,
+    valid_owner_bound_partial_witness,
+};
 use super::text::exact_error_variant;
 use crate::domain::*;
 
@@ -35,6 +38,95 @@ pub(in crate::analysis) fn propagation_evidence(
             "Propagation is not statically obvious from syntax-first analysis",
         )
     }
+}
+
+/// Production propagation gate for PR-B's bounded direct sink slice.  The
+/// legacy helper above remains available to characterization tests and to
+/// effect-family callers; only this path can upgrade direct return/error/field
+/// sinks from syntax evidence to `Yes`.
+pub(in crate::analysis) fn propagation_evidence_with_witness(
+    probe: &Probe,
+    flow_sinks: &[FlowSinkFact],
+    witness: Option<&PropagationWitnessV1>,
+) -> StageEvidence {
+    if matches!(probe.family, ProbeFamily::StaticUnknown) {
+        return propagation_evidence(probe, flow_sinks);
+    }
+
+    let sink = if let Some(witness) = witness {
+        flow_sinks.iter().find(|sink| {
+            sink.owner.as_ref() == Some(&witness.behavior.owner)
+                && sink.kind.as_str() == witness.sink.kind
+                && normalize_semantic_text(&sink.text)
+                    == normalize_semantic_text(&witness.sink.identity)
+        })
+    } else {
+        flow_sinks
+            .iter()
+            .find(|sink| sink.kind != FlowSinkKind::Unknown)
+    };
+
+    let Some(sink) = sink else {
+        if !flow_sinks
+            .iter()
+            .any(|sink| sink.kind != FlowSinkKind::Unknown)
+        {
+            return propagation_evidence(probe, flow_sinks);
+        }
+        return StageEvidence::new(
+            StageState::Weak,
+            Confidence::Low,
+            "No complete owner-bound propagation witness found for direct sink".to_string(),
+        );
+    };
+
+    let direct_sink = matches!(
+        sink.kind,
+        FlowSinkKind::ReturnValue | FlowSinkKind::ErrorVariant | FlowSinkKind::StructField
+    );
+    if direct_sink && integrated_direct_family(&probe.family) {
+        if sink.owner.as_ref() == probe.owner.as_ref()
+            && complete_direct_witness(probe, witness)
+            && witness.is_some_and(|witness| {
+                witness.sink.kind == sink.kind.as_str()
+                    && normalize_semantic_text(&witness.sink.identity)
+                        == normalize_semantic_text(&sink.text)
+            })
+        {
+            return StageEvidence::new(
+                StageState::Yes,
+                Confidence::High,
+                format!(
+                    "Complete propagation witness reaches {}: {}",
+                    sink.kind.label(),
+                    sink.text
+                ),
+            );
+        }
+        let summary = if !valid_owner_bound_partial_witness(probe, witness) {
+            format!(
+                "No complete owner-bound propagation witness found for {}: {}",
+                sink.kind.label(),
+                sink.text
+            )
+        } else {
+            format!(
+                "Propagation witness is incomplete for {}: {}",
+                sink.kind.label(),
+                sink.text
+            )
+        };
+        return StageEvidence::new(StageState::Weak, Confidence::Low, summary);
+    }
+
+    propagation_evidence(probe, flow_sinks)
+}
+
+fn integrated_direct_family(family: &ProbeFamily) -> bool {
+    matches!(
+        family,
+        ProbeFamily::ReturnValue | ProbeFamily::ErrorPath | ProbeFamily::FieldConstruction
+    )
 }
 
 pub(in crate::analysis) fn local_flow_sinks(
@@ -497,11 +589,11 @@ fn looks_like_field_store_of(line: &str, receiver: &str) -> bool {
 /// flagged (the value continues to flow).
 fn value_is_swallowed(text: &str) -> bool {
     let trimmed = text.trim();
-    // Pattern 1: `let _ = <expr>;`  — wildcard-discard binding.
-    // Also `let _: <ty> = <expr>;`  — typed wildcard discard (#2401).
-    // Must match both so the flow stage agrees with the infection stage's
-    // `is_wildcard_discard_binding`, which is shared with infection.
-    if is_wildcard_discard_binding(trimmed) {
+    // Pattern 1: wildcard-discard binding — `let _ = expr;` and
+    // `let _: <ty> = expr;` across any legal whitespace (#2401, #3233).
+    // Same shared predicate as the infection stage's `is_wildcard_discard`,
+    // so the flow and infection contracts cannot drift apart again.
+    if super::text::is_wildcard_discard_binding(trimmed) {
         return true;
     }
     // Pattern 2: trailing `.ok();`  — result converted to Option and dropped
@@ -722,7 +814,9 @@ fn is_obvious_return_expression(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::propagation_witness::PathCompleteness;
     use super::*;
+    use crate::analysis::facts::FunctionSourceRole;
     use crate::analysis::rust_index::ReturnFact;
     use std::path::PathBuf;
 
@@ -772,6 +866,160 @@ mod tests {
         assert_eq!(
             evidence.summary,
             "Changed behavior appears to influence returned value: amount - 1"
+        );
+    }
+
+    #[test]
+    fn direct_sink_propagation_requires_complete_owner_bound_witness() {
+        for (family, expression, kind) in [
+            (
+                ProbeFamily::ReturnValue,
+                "amount",
+                FlowSinkKind::ReturnValue,
+            ),
+            (
+                ProbeFamily::ErrorPath,
+                "Result::Err(error)",
+                FlowSinkKind::ErrorVariant,
+            ),
+            (
+                ProbeFamily::FieldConstruction,
+                "status: amount",
+                FlowSinkKind::StructField,
+            ),
+        ] {
+            let probe = probe(family, expression, 2);
+            let sinks = vec![FlowSinkFact {
+                kind,
+                text: expression.to_string(),
+                line: 3,
+                owner: probe.owner.clone(),
+            }];
+            let witness = super::super::propagation_witness::current_path_witness(&probe, &sinks);
+            let evidence = propagation_evidence_with_witness(&probe, &sinks, witness.as_ref());
+            assert_eq!(evidence.state, StageState::Yes);
+        }
+
+        let comma_probe = probe(ProbeFamily::FieldConstruction, "status: amount", 2);
+        let comma_sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::StructField,
+            text: "status: amount,".to_string(),
+            line: 3,
+            owner: comma_probe.owner.clone(),
+        }];
+        let comma_witness =
+            super::super::propagation_witness::current_path_witness(&comma_probe, &comma_sinks);
+        assert!(comma_witness.is_some());
+        let comma_evidence =
+            propagation_evidence_with_witness(&comma_probe, &comma_sinks, comma_witness.as_ref());
+        assert_eq!(comma_evidence.state, StageState::Yes);
+
+        let field_probe = probe(ProbeFamily::FieldConstruction, "status: amount", 2);
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::StructField,
+            text: "status: amount".to_string(),
+            line: 3,
+            owner: field_probe.owner.clone(),
+        }];
+        let witness = super::super::propagation_witness::current_path_witness(&field_probe, &sinks);
+
+        let mut invalid = witness.clone();
+        if let Some(witness) = invalid.as_mut() {
+            witness.semantic_digest = "sha256:invalid".to_string();
+        }
+        assert_eq!(
+            propagation_evidence_with_witness(&field_probe, &sinks, invalid.as_ref()).state,
+            StageState::Weak
+        );
+
+        let mut sibling = sinks.clone();
+        sibling[0].owner = Some(SymbolId("src/lib.rs::sibling".to_string()));
+        assert_eq!(
+            propagation_evidence_with_witness(&field_probe, &sibling, witness.as_ref()).state,
+            StageState::Weak
+        );
+
+        let probe = probe(ProbeFamily::ReturnValue, "amount", 2);
+        let sinks = vec![
+            FlowSinkFact {
+                kind: FlowSinkKind::ReturnValue,
+                text: "sibling".to_string(),
+                line: 3,
+                owner: probe.owner.clone(),
+            },
+            FlowSinkFact {
+                kind: FlowSinkKind::ReturnValue,
+                text: "amount".to_string(),
+                line: 4,
+                owner: probe.owner.clone(),
+            },
+        ];
+        let witness = super::super::propagation_witness::current_path_witness(&probe, &sinks);
+        assert_eq!(
+            propagation_evidence_with_witness(&probe, &sinks, witness.as_ref()).state,
+            StageState::Yes
+        );
+
+        let mut invalid_cases = Vec::new();
+        if let Some(witness) = witness {
+            let mut invalid_delta = witness.clone();
+            invalid_delta.behavior.delta = "effect".to_string();
+            invalid_delta.semantic_digest = invalid_delta.compute_semantic_digest();
+            invalid_cases.push(invalid_delta);
+
+            let mut invalid_schema = witness.clone();
+            invalid_schema.schema_version = 99;
+            invalid_schema.semantic_digest = invalid_schema.compute_semantic_digest();
+            invalid_cases.push(invalid_schema);
+
+            let mut invalid_family = witness.clone();
+            invalid_family.behavior.family = "error_path".to_string();
+            invalid_family.semantic_digest = invalid_family.compute_semantic_digest();
+            invalid_cases.push(invalid_family);
+
+            let mut invalid_completeness = witness;
+            invalid_completeness.completeness = PathCompleteness::Partial;
+            invalid_completeness.semantic_digest = invalid_completeness.compute_semantic_digest();
+            invalid_cases.push(invalid_completeness);
+        }
+        for invalid in invalid_cases {
+            let evidence = propagation_evidence_with_witness(&probe, &sinks, Some(&invalid));
+            assert_eq!(evidence.state, StageState::Weak);
+            assert!(
+                evidence
+                    .summary
+                    .starts_with("No complete owner-bound propagation witness")
+            );
+        }
+    }
+
+    #[test]
+    fn candidate_only_and_orthogonal_direct_sinks_do_not_propagate_yes() {
+        let probe = probe(ProbeFamily::ReturnValue, "amount", 2);
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::ReturnValue,
+            text: "Ok(amount)".to_string(),
+            line: 3,
+            owner: probe.owner.clone(),
+        }];
+        let witness = super::super::propagation_witness::current_path_witness(&probe, &sinks);
+        let evidence = propagation_evidence_with_witness(&probe, &sinks, witness.as_ref());
+        assert_eq!(evidence.state, StageState::Weak);
+        assert!(
+            evidence
+                .summary
+                .starts_with("Propagation witness is incomplete for")
+        );
+
+        let opaque = vec![FlowSinkFact {
+            kind: FlowSinkKind::ReturnValue,
+            text: "Box<dyn Handler>::amount".to_string(),
+            line: 3,
+            owner: probe.owner.clone(),
+        }];
+        assert_eq!(
+            propagation_evidence_with_witness(&probe, &opaque, None).state,
+            StageState::Weak
         );
     }
 
@@ -965,8 +1213,11 @@ mod tests {
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
-            is_test: false,
+            source_role: FunctionSourceRole::Production,
+
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
         let probe = probe(ProbeFamily::Predicate, "amount > 10", 2);
 
@@ -996,8 +1247,10 @@ mod tests {
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
-            is_test: false,
+            source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
         let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
 
@@ -1022,8 +1275,10 @@ mod tests {
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
-            is_test: false,
+            source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
         let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
 
@@ -1053,7 +1308,9 @@ mod tests {
                 calls: Vec::new(),
                 returns: Vec::new(),
                 literals: Vec::new(),
-                is_test: false,
+                source_role: FunctionSourceRole::Production,
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
                 attrs: Vec::new(),
             };
             let probe = probe(ProbeFamily::Predicate, expression, 2);
@@ -1088,7 +1345,9 @@ mod tests {
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
-            is_test: false,
+            source_role: FunctionSourceRole::Production,
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
             attrs: Vec::new(),
         };
         let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
@@ -1114,8 +1373,10 @@ mod tests {
                 text: "amount - 1".to_string(),
             }],
             literals: Vec::new(),
-            is_test: false,
+            source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 
@@ -1154,15 +1415,26 @@ mod tests {
     }
 
     #[test]
-    fn non_canonical_wildcard_discard_whitespace_yields_unknown_sink() {
-        for expression in ["let _ : i32 = compute(x);", "let _= compute(x);"] {
+    fn whitespace_padded_wildcard_discards_are_still_swallowed() {
+        // #3233: whitespace is not semantically meaningful between `let`,
+        // `_`, and the binding token. Both stages consume the shared
+        // predicate, so these tokenizations must not resurrect a flow sink.
+        for expression in [
+            "let _ : i32 = compute(x);",
+            "let _=compute(x);",
+            "let   _   =   compute(x);",
+        ] {
             let probe = probe(ProbeFamily::SideEffect, expression, 2);
             let sinks = local_flow_sinks(&probe, None);
-            assert_eq!(sinks.len(), 1, "{expression}");
+            assert_eq!(
+                sinks.len(),
+                1,
+                "`{expression}` must produce exactly one sink"
+            );
             assert_eq!(
                 sinks[0].kind,
                 FlowSinkKind::Unknown,
-                "{expression} must be treated as a swallowed value"
+                "`{expression}` must be swallowed across whitespace shapes"
             );
         }
     }
@@ -1252,8 +1524,10 @@ mod tests {
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
-            is_test: false,
+            source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
         let probe = probe(ProbeFamily::SideEffect, "items.push(x * 9);", 3);
         let sinks = local_flow_sinks(&probe, Some(&owner));

@@ -4,6 +4,7 @@
   "findings": [
     {
       "id": "probe:src_discount.ts:typescript_preview:2396aec1",
+      "source_currentness": "candidate_current",
       "classification": "weakly_exposed",
       "probe": {
         "family": "predicate",

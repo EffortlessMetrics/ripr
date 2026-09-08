@@ -56,10 +56,14 @@ fn packet_test_options() -> crate::analysis::AnalysisOptions {
         base: None,
         diff_file: None,
         mode: AnalysisMode::Draft,
+        resolved_subject_identity: None,
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
         perl_facts_path: None,
         git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
     }
 }
 
@@ -316,6 +320,40 @@ fn perl_diff_projection_keeps_partial_packet_incomplete() -> Result<(), String> 
             .bounded_detail
             .as_deref()
             .is_some_and(|detail| detail.contains("packet partial"))
+    );
+    std::fs::remove_file(packet_path).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+/// #3668 review: a Partial fact packet analyzed in repo mode retains its
+/// findings but must disclose the partial run through `partial_reason`,
+/// so the pipeline records a partial `LanguageRun` and gates fail
+/// closed on the truncated denominator.
+#[test]
+fn perl_repo_projection_discloses_partial_packet() -> Result<(), String> {
+    let packet_path = std::env::temp_dir().join(format!(
+        "ripr-perl-partial-repo-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(
+        &packet_path,
+        bless_fingerprint(PARTIAL_DYNAMIC_BOUNDARY_PACKET),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut options = packet_test_options();
+    options.perl_facts_path = Some(packet_path.clone());
+    let result = PerlAdapter.analyze_repo(&options, &OraclePolicy::default())?;
+    assert!(
+        !result.findings.is_empty(),
+        "partial packet findings are retained"
+    );
+    let reason = result
+        .partial_reason
+        .as_deref()
+        .ok_or("partial packet must disclose the partial run")?;
+    assert!(
+        reason.contains("partial"),
+        "reason should name the partial packet: {reason}"
     );
     std::fs::remove_file(packet_path).map_err(|error| error.to_string())?;
     Ok(())
@@ -796,6 +834,38 @@ fn perl_strict_actionability_uses_selected_strict_evidence_for_gap_identity() ->
     assert_eq!(
         actionable.target_test_shape,
         "Test::More exact_return_assertion"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn perl_strict_actionability_blocks_limitation_on_any_related_evidence() -> Result<(), String> {
+    let fixture = include_str!(
+        "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+    );
+    let mut packet = consume(fixture)?;
+    let mut additional_relation = packet
+        .relations
+        .first()
+        .cloned()
+        .ok_or_else(|| "missing fixture relation".to_string())?;
+    additional_relation.relation_id = "relation:return:additional-smoke".to_string();
+    packet.relations.push(additional_relation);
+    packet.limitations.push(LimitationFact {
+        limitation_id: "limitation:related-evidence:additional-smoke".to_string(),
+        kind: "framework_indirection".to_string(),
+        message: "a related test has an opaque assertion boundary".to_string(),
+        evidence_refs: vec!["relation:return:additional-smoke".to_string()],
+    });
+
+    assert_eq!(
+        packet.strict_actionability_for_change(
+            "change:lib/My/App.pm:8:return",
+            &complete_perl_actionability_context(),
+        ),
+        Err(PerlActionabilityBlocker::DynamicBoundary),
+        "a limitation attached to a non-selected related test must still block actionability"
     );
 
     Ok(())
@@ -3630,9 +3700,15 @@ const PARTIAL_DYNAMIC_BOUNDARY_PACKET: &str = r#"{
 /// #1938: Verify the Perl→domain OracleKind/OracleStrength mapping is
 /// non-lossy for the kinds that carry discrimination signal, and explicitly
 /// documents which kinds map to Unknown by design (no domain equivalent).
+/// #3228: the assertions consume the production mapping authority that
+/// `packet_to_findings` projects through — changing one production projection
+/// fails this test; a newly added Perl variant is a compile decision inside
+/// the mapping helper, not a silent wildcard fallthrough here.
 #[test]
 fn perl_to_domain_oracle_mapping_preserves_signal_kinds() -> Result<(), String> {
-    use super::{OracleKind, OracleStrength};
+    use super::{
+        OracleKind, OracleStrength, perl_oracle_kind_to_domain, perl_oracle_strength_to_domain,
+    };
     use crate::domain::{OracleKind as DomainOracleKind, OracleStrength as DomainOracleStrength};
 
     // OracleKind: signal-bearing kinds must round-trip to non-Unknown domain kinds.
@@ -3648,9 +3724,9 @@ fn perl_to_domain_oracle_mapping_preserves_signal_kinds() -> Result<(), String> 
         (OracleKind::SmokeOk, DomainOracleKind::SmokeOnly),
     ];
     for (perl_kind, expected_domain) in signal_kinds {
-        let mapped = perl_kind.to_domain_kind();
         assert_eq!(
-            mapped, expected_domain,
+            perl_oracle_kind_to_domain(perl_kind),
+            expected_domain,
             "Perl OracleKind {perl_kind:?} must map to {expected_domain:?}"
         );
     }
@@ -3669,9 +3745,8 @@ fn perl_to_domain_oracle_mapping_preserves_signal_kinds() -> Result<(), String> 
         OracleKind::Unknown,
     ];
     for kind in unknown_kinds {
-        let mapped = kind.to_domain_kind();
         assert_eq!(
-            mapped,
+            perl_oracle_kind_to_domain(kind),
             DomainOracleKind::Unknown,
             "Perl OracleKind {kind:?} must map to Unknown (no domain equivalent)"
         );
@@ -3684,18 +3759,17 @@ fn perl_to_domain_oracle_mapping_preserves_signal_kinds() -> Result<(), String> 
         (OracleStrength::WeakBroad, DomainOracleStrength::Weak),
     ];
     for (perl_strength, expected_domain) in signal_strengths {
-        let mapped = perl_strength.to_domain_strength();
         assert_eq!(
-            mapped, expected_domain,
+            perl_oracle_strength_to_domain(perl_strength),
+            expected_domain,
             "Perl OracleStrength {perl_strength:?} must map to {expected_domain:?}"
         );
     }
 
     // OracleStrength: MentionOnly and Unknown explicitly map to Unknown.
     for strength in [OracleStrength::MentionOnly, OracleStrength::Unknown] {
-        let mapped = strength.to_domain_strength();
         assert_eq!(
-            mapped,
+            perl_oracle_strength_to_domain(strength),
             DomainOracleStrength::Unknown,
             "Perl OracleStrength {strength:?} must map to Unknown"
         );
@@ -3761,5 +3835,200 @@ fn perl_production_mapping_preserves_oracle_signal_kinds() -> Result<(), String>
             "{label} oracle strength"
         );
     }
+    Ok(())
+}
+/// Migration-oracle corpus pin (#3217, PR 1 of the #3216 Perl v2 consumer
+/// train): the committed packet was emitted by the real `perl-ripr-facts`
+/// producer (see `fixtures/perl_packet_contract_migration/corpus.json` for
+/// the pinned producer commit/version/command). The packet bytes are consumed
+/// exactly as committed — no normalization — with the analysis root pointed
+/// at the committed producer inputs so the file-digest freshness check runs
+/// for real. This test pins the current consumer disposition of a real
+/// packet; the recorded contradictions live in
+/// `expected/contradictions.v1.json` and are validated by
+/// `cargo xtask check-fixture-contracts`.
+#[test]
+fn perl_packet_contract_migration_corpus_pins_real_producer_dispositions() -> Result<(), String> {
+    let packet_text = include_str!(
+        "../../../../../../fixtures/perl_packet_contract_migration/producer-packets/v1/ordinary_discount.json"
+    );
+
+    // Analysis root at the committed producer inputs: the ingestion
+    // freshness check recomputes each file digest against the on-disk
+    // committed bytes (both must match the packet's declared digests).
+    let input_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/perl_packet_contract_migration/producer-inputs/ordinary_discount");
+    let mut options = packet_test_options();
+    options.root = input_root;
+
+    let packet = PerlAdapter
+        .consume_fact_packet(packet_text, &options)
+        .map_err(|err| format!("real producer packet must decode and validate: {err}"))?;
+
+    // Pinned producer identity (must match corpus.json).
+    assert_eq!(packet.producer.name, "perl-lsp");
+    assert_eq!(packet.producer.version, "0.17.0");
+    assert_eq!(packet.schema_version, crate::app::PERL_FACT_PACKET_SCHEMA);
+    assert_eq!(packet.packet_status, PacketStatus::Partial);
+
+    // Observed contradiction facts pinned so silently "fixing" the packet
+    // without a reviewed corpus update fails here too (see
+    // expected/contradictions.v1.json for the full typed rows).
+    assert_eq!(packet.root.path_style, "posix", "path_style drift pinned");
+    let owner = packet
+        .owner("owner:lib/App/Discount.pm:sub:App::Discount::discount:51-174")
+        .ok_or("real producer owner id changed shape")?;
+    assert!(
+        !owner.owner_id.starts_with("perl:"),
+        "owner id scheme drift pinned: real producer ids do not carry the `perl:` qualifier"
+    );
+    assert!(
+        packet.canonical_owner_identity(&owner.owner_id).is_none(),
+        "real producer owner ids cannot yield a canonical owner identity"
+    );
+    let change = &packet.changes[0];
+    assert!(
+        change.changed_text_digest.starts_with("fnv64:"),
+        "change digest recipe drift pinned"
+    );
+    assert_eq!(
+        change.missing_discriminator, None,
+        "missing_discriminator always null in this producer slice"
+    );
+    assert!(
+        change.provenance_refs.is_empty(),
+        "change facts carry no provenance refs in this producer slice"
+    );
+    let limitation_kinds: Vec<&str> = packet.limitations.iter().map(|l| l.kind.as_str()).collect();
+    for kind in [
+        "unverified_provenance",
+        "range_precision",
+        "partial_inference",
+    ] {
+        assert!(
+            limitation_kinds.contains(&kind),
+            "producer limitation kind `{kind}` outside the SPEC-0064 enumeration must stay pinned"
+        );
+        assert!(
+            !super::limitation_kind_blocks_strict_actionability(kind),
+            "unrecognized producer limitation kind `{kind}` must not silently gain blocking power"
+        );
+    }
+    let provenance_range = packet
+        .provenance
+        .iter()
+        .find(|p| p.provenance_id == "prov:test_discovery:file:t/discount.t")
+        .ok_or("missing test_discovery provenance")?;
+    assert!(
+        matches!(&provenance_range.range, Some(serde_json::Value::String(text)) if text == "3:0-3:14"),
+        "provenance range string shape drift pinned"
+    );
+    assert_eq!(
+        packet.owners[1].range.start_line, 5,
+        "zero-based coordinate basis pinned (declaration is on one-based line 6)"
+    );
+    assert_eq!(
+        packet.input.diff_id, None,
+        "diff_id null despite supplied diff"
+    );
+
+    // Pipeline disposition, bound to the committed record
+    // (expected/consumer-dispositions.v1.json): every load-bearing field of
+    // that record is compared against what the consumer actually projected,
+    // so an edited record that no longer describes reality fails here.
+    let dispositions = serde_json::from_str::<serde_json::Value>(include_str!(
+        "../../../../../../fixtures/perl_packet_contract_migration/expected/consumer-dispositions.v1.json"
+    ))
+    .map_err(|error| format!("consumer-dispositions.v1.json is not valid JSON: {error}"))?;
+    let pipeline = dispositions
+        .get("pipeline")
+        .ok_or("consumer-dispositions.v1.json is missing pipeline")?;
+    let findings = super::packet_to_findings(&packet);
+    assert_eq!(
+        findings.len(),
+        pipeline
+            .get("findings_count")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or("dispositions findings_count missing")? as usize,
+        "dispositions findings_count must match the projected findings"
+    );
+    if std::env::var("RIPR_DEBUG_PERL").is_ok() {
+        eprintln!(
+            "DEBUG class={:?} finding={:#?}",
+            findings[0].class, findings[0]
+        );
+    }
+    assert_eq!(
+        findings[0].class,
+        ExposureClass::Exposed,
+        "sink-aligned strong exact oracle over a direct_owner_call relation projects exposed"
+    );
+    let recorded_class = pipeline
+        .get("finding_exposure_class")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("dispositions finding_exposure_class missing")?;
+    assert_eq!(
+        recorded_class, "exposed",
+        "dispositions finding_exposure_class must match the projected exposure class"
+    );
+    assert!(
+        findings[0].canonical_gap.is_none(),
+        "partial packet must not emit canonical gap debt"
+    );
+    for field in [
+        "canonical_gap_emitted",
+        "repair_packet_ready",
+        "agent_packet_ready",
+    ] {
+        assert_eq!(
+            pipeline.get(field).and_then(serde_json::Value::as_bool),
+            Some(false),
+            "dispositions {field} must stay false and match the fail-closed pipeline"
+        );
+    }
+    let observed_status = format!("{:?}", packet.packet_status).to_lowercase();
+    assert_eq!(
+        dispositions
+            .get("packet_status_observed")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("dispositions packet_status_observed missing")?,
+        observed_status,
+        "dispositions packet_status_observed must match the packet"
+    );
+    assert!(
+        packet
+            .canonical_gap_identity_for_change(&change.change_id)
+            .is_none(),
+        "partial packet cannot derive a canonical gap identity"
+    );
+
+    // The partial status keeps the diff projection advisory with a named
+    // language limitation (same non-abort contract as hand-authored partial
+    // packets). The temp packet file uses an RAII guard so assertion or
+    // analysis failures cannot leak it into the system temp dir.
+    let packet_path = std::env::temp_dir().join(format!(
+        "ripr-perl-migration-corpus-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(&packet_path, packet_text).map_err(|error| error.to_string())?;
+    struct TempPacketGuard(std::path::PathBuf);
+    impl Drop for TempPacketGuard {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+    let _guard = TempPacketGuard(packet_path.clone());
+    options.perl_facts_path = Some(packet_path.clone());
+    let result = PerlAdapter.analyze_diff(&options, &OraclePolicy::default(), &[])?;
+    assert_eq!(result.findings.len(), 1);
+    assert_eq!(result.limitations.len(), 1);
+    assert!(
+        result.limitations[0]
+            .bounded_detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("packet partial")),
+        "partial real packet keeps the advisory limitation disposition"
+    );
+
     Ok(())
 }

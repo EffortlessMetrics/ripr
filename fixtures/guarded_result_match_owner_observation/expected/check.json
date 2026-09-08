@@ -1,0 +1,284 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/guarded_result_match_owner_observation/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:a681337e605274715f272d7b7e9726e7019614b52ef3d4bd63cbdac482b2a0b9","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:error_path:d0871089",
+      "classification": "exposed",
+      "severity": "warning",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:error_path:d0871089",
+        "family": "error_path",
+        "delta": "value",
+        "file": "fixtures/guarded_result_match_owner_observation/input/src/lib.rs",
+        "line": 46,
+        "expression": "Ok(build_response(expected_id, trimmed.trim())?)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach expect_response: validates_ready_response"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches error variant: Ok(build_response(expected_id, trimmed.trim())?)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: guarded Result match over the changed owner's result"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach expect_response: validates_ready_response", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: Ok(build_response(expected_id, trimmed.trim())?)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: guarded Result match over the changed owner's result", "local flow reaches error variant: Ok(build_response(expected_id, trimmed.trim())?) (line 46)", "related test tests/protocol.rs:4 validates_ready_response uses strong guarded result match oracle: match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData { .. }) }", "related test tests/protocol.rs:4 validates_ready_response uses strong exact value oracle: matches!(\n                error.downcast_ref::<ParseError>(),\n                Some(ParseError::InvalidData { .. })\n            )", "observed enum variant value ParseError::InvalidData at line 6", "observed function argument value \"ready\" at line 6", "observed assertion argument value \"ready\" at line 8", "observed assertion argument value \"payload\" at line 9", "observed enum variant value ParseError::InvalidData at line 12"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Ok(build_response(expected_id, trimmed.trim())?)","line":46}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches error variant: Ok(build_response(expected_id, trimmed.trim())?)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach expect_response: validates_ready_response", "Strong oracle found: guarded Result match over the changed owner's result"],
+      "missing": [],
+      "assertion_texts": {
+        "6": "match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData { .. }) }",
+        "8": "assert_eq!(response.id, \"ready\");",
+        "9": "assert_eq!(response.body, \"payload\");",
+        "12": "matches!(\n                error.downcast_ref::<ParseError>(),\n                Some(ParseError::InvalidData { .. })\n            )"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "ParseError::InvalidData",
+            "context": "enum_variant"
+          },
+          {
+            "line": 6,
+            "value": "\"ready\"",
+            "context": "function_argument",
+            "provenance": "match expect_response(&mut cursor, \"ready\") {"
+          },
+          {
+            "line": 8,
+            "value": "\"ready\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 9,
+            "value": "\"payload\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 12,
+            "value": "ParseError::InvalidData",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "ParseError::InvalidData",
+          "context": "enum_variant"
+        },
+        {
+          "line": 6,
+          "value": "\"ready\"",
+          "context": "function_argument",
+          "provenance": "match expect_response(&mut cursor, \"ready\") {"
+        },
+        {
+          "line": 8,
+          "value": "\"ready\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 9,
+          "value": "\"payload\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 12,
+          "value": "ParseError::InvalidData",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "validates_ready_response",
+          "file": "tests/protocol.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "guarded_result_match",
+          "oracle": "match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData { .. }) }",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "validates_ready_response",
+          "file": "tests/protocol.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "matches!(\n                error.downcast_ref::<ParseError>(),\n                Some(ParseError::InvalidData { .. })\n            )",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:6daabbf3",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:6daabbf3",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/guarded_result_match_owner_observation/input/src/lib.rs",
+        "line": 46,
+        "expression": "Ok(build_response(expected_id, trimmed.trim())?)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach expect_response: validates_ready_response"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"weak","confidence":"low","summary":"No complete owner-bound propagation witness found for returned value: Ok(build_response(expected_id, trimmed)?)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: guarded Result match over the changed owner's result"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach expect_response: validates_ready_response", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for returned value: Ok(build_response(expected_id, trimmed)?)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: guarded Result match over the changed owner's result", "local flow reaches returned value: Ok(build_response(expected_id, trimmed)?) (line 46)", "related test tests/protocol.rs:4 validates_ready_response uses strong guarded result match oracle: match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData { .. }) }", "related test tests/protocol.rs:4 validates_ready_response uses strong exact value oracle: assert_eq!(response.id, \"ready\");", "related test tests/protocol.rs:4 validates_ready_response uses strong exact value oracle: assert_eq!(response.body, \"payload\");", "related test tests/protocol.rs:4 validates_ready_response uses strong exact value oracle: matches!(\n                error.downcast_ref::<ParseError>(),\n                Some(ParseError::InvalidData { .. })\n            )", "observed enum variant value ParseError::InvalidData at line 6", "observed function argument value \"ready\" at line 6", "observed assertion argument value \"ready\" at line 8", "observed assertion argument value \"payload\" at line 9", "observed enum variant value ParseError::InvalidData at line 12"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"Ok(build_response(expected_id, trimmed)?)","line":46}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "No complete owner-bound propagation witness found for returned value: Ok(build_response(expected_id, trimmed)?)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach expect_response: validates_ready_response", "Strong oracle found: guarded Result match over the changed owner's result"],
+      "missing": [],
+      "assertion_texts": {
+        "6": "match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData { .. }) }",
+        "8": "assert_eq!(response.id, \"ready\");",
+        "9": "assert_eq!(response.body, \"payload\");",
+        "12": "matches!(\n                error.downcast_ref::<ParseError>(),\n                Some(ParseError::InvalidData { .. })\n            )"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "ParseError::InvalidData",
+            "context": "enum_variant"
+          },
+          {
+            "line": 6,
+            "value": "\"ready\"",
+            "context": "function_argument",
+            "provenance": "match expect_response(&mut cursor, \"ready\") {"
+          },
+          {
+            "line": 8,
+            "value": "\"ready\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 9,
+            "value": "\"payload\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 12,
+            "value": "ParseError::InvalidData",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "ParseError::InvalidData",
+          "context": "enum_variant"
+        },
+        {
+          "line": 6,
+          "value": "\"ready\"",
+          "context": "function_argument",
+          "provenance": "match expect_response(&mut cursor, \"ready\") {"
+        },
+        {
+          "line": 8,
+          "value": "\"ready\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 9,
+          "value": "\"payload\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 12,
+          "value": "ParseError::InvalidData",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 4,
+      "related_tests": [
+        {
+          "name": "validates_ready_response",
+          "file": "tests/protocol.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "guarded_result_match",
+          "oracle": "match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData { .. }) }",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "validates_ready_response",
+          "file": "tests/protocol.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(response.id, \"ready\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "validates_ready_response",
+          "file": "tests/protocol.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(response.body, \"payload\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "validates_ready_response",
+          "file": "tests/protocol.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "matches!(\n                error.downcast_ref::<ParseError>(),\n                Some(ParseError::InvalidData { .. })\n            )",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

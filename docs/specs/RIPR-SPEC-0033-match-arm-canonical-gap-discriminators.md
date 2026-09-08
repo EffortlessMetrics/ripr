@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on parser-backed match-arm discriminators and the audit proof that generic duplicates are removed.
+
 ## Problem
 
 The Lane 1 evidence-quality audit found a dogfood overgrouping pattern where

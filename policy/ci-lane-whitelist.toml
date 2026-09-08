@@ -113,11 +113,11 @@ description = "Spec, campaign, capability, and traceability checks."
 id = "source-of-truth"
 posture = "advisory"
 workflow = ".github/workflows/source-of-truth.yml"
-jobs = ["source-of-truth"]
-commands = ["cargo xtask check-doc-artifacts", "cargo xtask check-goals", "cargo xtask check-support-tiers"]
-estimated_lem = 3
+jobs = ["source-of-truth", "spec-maintenance-digest"]
+commands = ["cargo xtask check-doc-artifacts", "cargo xtask check-support-tiers", "cargo xtask specs digest"]
+estimated_lem = 6
 artifact_families = []
-description = "Proof-stack artifact, active goal, and support-tier claim map checks."
+description = "Proof-stack artifact and support-tier claim map checks, plus the non-blocking spec maintenance digest (#3467): candidate counts never gate, and an instrument failure is a failed advisory observation."
 
 [[lane]]
 id = "badge-endpoints"

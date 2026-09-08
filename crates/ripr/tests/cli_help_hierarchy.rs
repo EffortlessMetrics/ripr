@@ -78,7 +78,7 @@ fn exhaustive_help_keeps_the_same_roles_and_boundaries() -> Result<(), String> {
         "Diagnose setup ripr doctor",
         "Inspect one change ripr check --base origin/main",
         "Guided repo adoption ripr pilot --root .",
-        "Repair one named gap ripr agent repair --seam-id ID --phase before|after",
+        "Repair one named gap ripr agent repair --seam-id ID --phase before|after|verify",
         "Compose PR evidence ripr first-pr --root . --base origin/main --head HEAD",
         "Adopt advisory CI ripr init --ci github",
         "`ripr check` is the ordinary first-value analysis; `ripr pilot` is the guided repo-adoption workflow.",
@@ -95,10 +95,11 @@ fn agent_help_makes_repair_primary_without_removing_control_surfaces() -> Result
         let stdout = rendered_help(args)?;
         let collapsed = normalized(&stdout);
         assert_contains("agent help", &collapsed, "Primary workflow:")?;
+
         assert_contains(
             "agent help",
             &collapsed,
-            "repair Run the two-phase before/edit/after repair transaction for one seam.",
+            "repair Run the before/edit/after repair transaction and its verification phase for one seam.",
         )?;
         assert_contains(
             "agent help",
@@ -143,10 +144,14 @@ fn agent_help_makes_repair_primary_without_removing_control_surfaces() -> Result
 fn agent_repair_help_names_the_primary_transaction_and_its_limits() -> Result<(), String> {
     let stdout = normalized(&rendered_help(&["agent", "repair", "--help"])?);
     for needle in [
-        "Run the primary two-phase repair transaction for one named gap.",
+        "Run the before/edit/after repair transaction and its verification phase for one named gap.",
         "ripr agent repair --seam-id ID --phase before",
         "# edit one focused test outside RIPR",
-        "ripr agent repair --seam-id ID --phase after",
+        "ripr agent repair --attempt ID --phase after",
+        "--verify-authorized",
+        "--verify-authority ID",
+        "--verify-rollback",
+        "ripr agent repair [--root PATH] --attempt ID --phase verify",
         "The repair command does not generate or apply tests, execute mutation testing, or declare the repository safe to merge.",
     ] {
         assert_contains(

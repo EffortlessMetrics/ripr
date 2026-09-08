@@ -80,15 +80,164 @@ impl RiprConfig {
 pub struct AnalysisConfig {
     pub mode: Option<Mode>,
     pub include_unchanged_tests: Option<bool>,
+    /// Workspace-relative targets opted in as production-like
+    /// test infrastructure (#3283). Empty by default.
+    pub production_like_targets: std::collections::BTreeSet<std::path::PathBuf>,
+    /// Repository-governed test-harness registrations (#3532). Empty by
+    /// default: without an explicit registration, no custom harness or
+    /// registered test producer is recognized.
+    pub test_harnesses: Vec<TestHarnessRegistration>,
 }
 
 impl AnalysisConfig {
+    /// Explicit production-like test-infrastructure opt-in (#3283):
+    /// workspace-relative targets analyzed as production behavior.
+    pub(crate) fn production_like_targets(
+        &self,
+    ) -> &std::collections::BTreeSet<std::path::PathBuf> {
+        &self.production_like_targets
+    }
     pub(crate) fn mode(&self) -> Option<&Mode> {
         self.mode.as_ref()
     }
 
     pub(crate) fn include_unchanged_tests(&self) -> Option<bool> {
         self.include_unchanged_tests
+    }
+
+    /// Repository-governed test-harness registrations (#3532): exact
+    /// configured inputs only — never inferred from filenames, imports,
+    /// macro suffixes, or function names.
+    pub(crate) fn test_harnesses(&self) -> &[TestHarnessRegistration] {
+        &self.test_harnesses
+    }
+}
+
+/// The registered family of one test-harness registration (#3532).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TestHarnessKind {
+    /// A custom Cargo test target (`[[test]]` with `harness = false`):
+    /// the whole target is evidence role and its executable subjects come
+    /// from the harness's own source-visible registration calls.
+    #[serde(rename = "custom_harness")]
+    CustomHarnessTarget,
+    /// A repository-configured test-producing attribute or macro path
+    /// applied to functions inside one exact target file.
+    #[serde(rename = "registered_attribute")]
+    RegisteredAttribute,
+}
+
+impl TestHarnessKind {
+    pub(crate) fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "custom_harness" => Ok(Self::CustomHarnessTarget),
+            "registered_attribute" => Ok(Self::RegisteredAttribute),
+            other => Err(format!(
+                "analysis.test_harnesses.kind `{other}` is unknown; expected \"custom_harness\" or \"registered_attribute\" (unknown harness kinds fail closed)"
+            )),
+        }
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::CustomHarnessTarget => "custom_harness",
+            Self::RegisteredAttribute => "registered_attribute",
+        }
+    }
+}
+
+/// The exact adapter generation bound to one registration (#3532).
+/// Unknown versions fail closed at parse time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TestHarnessAdapter {
+    /// libtest-mimic custom harness adapter, generation 1: bounded
+    /// source-visible `Trial::test("name", ...)` registrations with
+    /// stable names.
+    LibtestMimicV1,
+    /// Exact registered test-producing attribute adapter, generation 1:
+    /// functions carrying the exact registered attribute path in one
+    /// target file.
+    ExactAttributeV1,
+}
+
+impl TestHarnessAdapter {
+    pub(crate) fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "libtest_mimic_v1" => Ok(Self::LibtestMimicV1),
+            "exact_attribute_v1" => Ok(Self::ExactAttributeV1),
+            other => Err(format!(
+                "analysis.test_harnesses.adapter `{other}` is unknown; expected \"libtest_mimic_v1\" or \"exact_attribute_v1\" (unknown adapter versions fail closed)"
+            )),
+        }
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::LibtestMimicV1 => "libtest_mimic_v1",
+            Self::ExactAttributeV1 => "exact_attribute_v1",
+        }
+    }
+
+    /// The adapter generation that supports each registered family.
+    /// A kind/adapter mismatch is a config error, not a silent no-op.
+    pub(crate) fn supports_kind(self, kind: TestHarnessKind) -> bool {
+        matches!(
+            (kind, self),
+            (
+                TestHarnessKind::CustomHarnessTarget,
+                TestHarnessAdapter::LibtestMimicV1
+            ) | (
+                TestHarnessKind::RegisteredAttribute,
+                TestHarnessAdapter::ExactAttributeV1
+            )
+        )
+    }
+}
+
+/// One repository-governed test-harness registration (#3532) — the
+/// configured equivalent of `RustTestHarnessRegistrationV1`:
+///
+/// - `registration_id` — stable identifier named in limitations and
+///   subject provenance;
+/// - `target` — exact workspace-relative file identity of the registered
+///   Cargo target file (root escape fails closed at parse time);
+/// - `kind` + `adapter` — harness family and adapter generation
+///   (unknown versions fail closed);
+/// - `marker` — exact source marker: the harness crate path for
+///   `custom_harness` targets (e.g. `libtest_mimic`) or the exact
+///   attribute path for `registered_attribute` targets (e.g.
+///   `myco::contract_test`). Prefix/suffix lookalikes never match.
+///
+/// Registration is explicit configuration only. It is never inferred
+/// from filenames, crate imports, macro suffixes, or function names.
+/// A registration classifies source and describes a selector route; it
+/// cannot execute anything during passive analysis and grants no
+/// process, network, edit, GitHub, or publication capability.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TestHarnessRegistration {
+    pub registration_id: String,
+    pub target: std::path::PathBuf,
+    pub kind: TestHarnessKind,
+    pub adapter: TestHarnessAdapter,
+    pub marker: String,
+}
+
+impl TestHarnessRegistration {
+    /// Provenance string recorded on derived subject facts, so every
+    /// projection can name where the authority came from.
+    pub(crate) fn provenance() -> &'static str {
+        "ripr.toml [analysis.test_harnesses]"
+    }
+
+    /// Whether the registration makes its whole target file evidence
+    /// role. Only a custom `harness = false` target is harness-driven
+    /// end to end; a registered attribute applies to individual
+    /// functions, so the rest of a mixed production file must keep
+    /// seeding production seams (#3532 review).
+    pub(crate) fn file_wide_harness_evidence(&self) -> bool {
+        matches!(self.kind, TestHarnessKind::CustomHarnessTarget)
     }
 }
 
@@ -305,6 +454,43 @@ fn canonical_generated_file_patterns(patterns: &[String]) -> String {
         encoded.push_str(pattern);
     }
     encoded
+}
+
+/// Canonical identity encoding for test-harness registrations (#3532).
+/// Length-prefixed, NUL-joined, sorted — injective, so distinct
+/// registration sets never hash to the same artifact identity.
+fn canonical_test_harnesses_identity(registrations: &[TestHarnessRegistration]) -> String {
+    let mut ordered = registrations
+        .iter()
+        .map(|registration| {
+            let mut encoded = String::new();
+            for field in [
+                registration.registration_id.as_str(),
+                registration
+                    .target
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .as_str(),
+                registration.kind.as_str(),
+                registration.adapter.as_str(),
+                registration.marker.as_str(),
+            ] {
+                encoded.push_str(&field.len().to_string());
+                encoded.push(':');
+                encoded.push_str(field);
+                encoded.push('\u{0}');
+            }
+            encoded
+        })
+        .collect::<Vec<_>>();
+    ordered.sort();
+
+    let mut identity = ordered.len().to_string();
+    for encoded in ordered {
+        identity.push('\u{0}');
+        identity.push_str(&encoded);
+    }
+    identity
 }
 
 /// `[perl]` repository configuration (Campaign 31 Phase D, #1407).
@@ -524,11 +710,11 @@ pub struct CheckInputExplicit {
 /// Version of the check-artifact config-identity contract (RIPR-SPEC-0140).
 ///
 /// Any PR that adds a finding-affecting `ripr.toml` field must classify it in
-/// [`RiprConfig::check_artifact_identity_fields`] and bump this version in the
+/// `RiprConfig::check_artifact_identity_fields` and bump this version in the
 /// same PR. The classification is closed: the field enumerator destructures
 /// every config struct without `..`, so an unclassified field fails to
 /// compile, and a unit test pins the resulting role of every field.
-pub const CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION: u32 = 1;
+pub const CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION: u32 = 3;
 
 /// How one `ripr.toml` field participates in the check-artifact identity gate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -585,6 +771,8 @@ impl RiprConfig {
         let AnalysisConfig {
             mode: _,
             include_unchanged_tests: _,
+            production_like_targets,
+            test_harnesses,
         } = analysis;
         let OraclePolicy {
             snapshot_strength,
@@ -655,6 +843,31 @@ impl RiprConfig {
                 role: ConfigIdentityRole::CapturedElsewhere,
                 value: None,
                 note: "resolved into the artifact identity analysis input options via CheckInput",
+            },
+            ConfigIdentityField {
+                name: "analysis.production_like_targets",
+                role: ConfigIdentityRole::FindingAffecting,
+                // NUL-separated with a count prefix: an injective encoding,
+                // so distinct sets never collide (a comma join would be
+                // ambiguous for paths containing commas).
+                value: Some(format!(
+                    "{}\u{0}{}",
+                    production_like_targets.len(),
+                    production_like_targets
+                        .iter()
+                        .map(|path| path.to_string_lossy().to_string())
+                        .collect::<Vec<_>>()
+                        .join("\u{0}")
+                )),
+                note: "the production-like opt-in changes which files are production subjects (#3283)",
+            },
+            ConfigIdentityField {
+                name: "analysis.test_harnesses",
+                role: ConfigIdentityRole::FindingAffecting,
+                // Canonical registration encoding, sorted and count-prefixed:
+                // injective, so distinct registration sets never collide.
+                value: Some(canonical_test_harnesses_identity(test_harnesses)),
+                note: "harness registrations change source-role classification and the test denominator (#3532)",
             },
             ConfigIdentityField {
                 name: "oracles.snapshot_strength",

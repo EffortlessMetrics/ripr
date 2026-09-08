@@ -6,6 +6,7 @@ use super::model::{
 use super::{LIMITS_NOTE, SCHEMA_VERSION};
 use crate::app::causal_projection::insert_canonical_delta_fields;
 use serde_json::{Value, json};
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 pub(crate) fn render_gate_decision_json(report: &GateDecisionReport) -> Result<String, String> {
@@ -157,8 +158,12 @@ pub(crate) fn gate_decision_status(report: &GateDecisionReport) -> &str {
 /// (#2599).
 ///
 /// For `config_error`: the first config error message. For `blocked`: the
-/// first blocking decision or, when exception policy is the blocker, the
-/// count and first blocking exception-policy violation.
+/// first blocking decision enriched with the exact seam location,
+/// classification, a concrete fix sketch, and the producer-owned
+/// inspection command (#1440) — so the point of failure names what to fix
+/// and how to inspect it instead of forcing artifact archaeology. When
+/// exception policy is the blocker: the count and first blocking
+/// exception-policy violation.
 /// Returns an empty string when no useful detail is available.
 pub(crate) fn gate_decision_inline_detail(report: &GateDecisionReport) -> String {
     if report.status == "config_error"
@@ -173,11 +178,51 @@ pub(crate) fn gate_decision_inline_detail(report: &GateDecisionReport) -> String
             .filter(|d| d.decision == "blocking")
             .collect();
         if let Some(first) = blocking.first() {
-            return format!(
+            let mut detail = format!(
                 ": {} blocking gap(s); first: {}",
                 blocking.len(),
                 first.gate_reason
             );
+            match (first.placement.path.as_deref(), first.placement.line) {
+                (Some(path), Some(line)) => {
+                    let _ = write!(detail, " [{path}:{line}]");
+                }
+                (Some(path), None) => {
+                    let _ = write!(detail, " [{path}]");
+                }
+                (None, Some(line)) => {
+                    let _ = write!(detail, " [(no file anchor):{line}]");
+                }
+                (None, None) => {}
+            }
+            if let Some(class) = &first.static_class {
+                let _ = write!(detail, " ({class})");
+            }
+            let behavior = first
+                .repair_route
+                .missing_discriminator
+                .as_deref()
+                .or(first.repair_route.test_intent.as_deref())
+                .or(first.repair_route.changed_behavior.as_deref());
+            match (first.repair_route.repair_target.as_ref(), behavior) {
+                (Some(GateRepairTarget::ProductionCaller { owner, .. }), Some(behavior)) => {
+                    let _ = write!(
+                        detail,
+                        "; add a test that drives `{owner}` so it observes {behavior}"
+                    );
+                }
+                (_, Some(behavior)) => {
+                    let _ = write!(
+                        detail,
+                        "; add a test that observes {behavior} at the flagged seam"
+                    );
+                }
+                (_, None) => {}
+            }
+            if let Some(command) = first.repair_route.inspection_command.as_deref() {
+                let _ = write!(detail, "; inspect with `{command}`");
+            }
+            return detail;
         }
         if let Some(exception_policy) = &report.exception_policy {
             let mut blocking_violations = exception_policy

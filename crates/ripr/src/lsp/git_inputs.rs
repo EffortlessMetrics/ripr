@@ -313,9 +313,8 @@ mod tests {
         let dirty = ResolvedGitInputs::resolve(root.path(), Some("HEAD"), None);
         if clean != dirty {
             return Err(
-                "uncommitted edits must not alter resolved base identity; the diff path \
-                 analyzes committed history and the CLI dirty-worktree disclosure is a \
-                 separate, unchanged surface"
+                "uncommitted edits must not alter resolved base identity; worktree scope \
+                 changes the diff bytes, not the request's resolved base commit"
                     .to_string(),
             );
         }

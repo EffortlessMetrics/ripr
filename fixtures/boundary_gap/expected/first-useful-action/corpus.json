@@ -419,13 +419,13 @@
       "inputs": {
         "assistant_proof": {
           "state": "present",
-          "artifact": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json",
+          "artifact": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/assistant-proof.json",
           "evidence_movement": "unchanged"
         },
         "receipt": {
           "state": "present",
           "movement": "unchanged",
-          "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
+          "artifact": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-receipt.json"
         },
         "staleness": {
           "state": "fresh"

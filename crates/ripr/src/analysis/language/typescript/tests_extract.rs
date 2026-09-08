@@ -2,6 +2,21 @@
 
 use super::*;
 
+#[derive(Clone, Copy)]
+enum TestDeclarationRoot {
+    Test,
+    Describe,
+}
+
+impl TestDeclarationRoot {
+    fn matches_identifier(self, name: &str) -> bool {
+        match self {
+            Self::Test => matches!(name, "test" | "it"),
+            Self::Describe => name == "describe",
+        }
+    }
+}
+
 pub(crate) fn extract_tests(file: &Path, source: &str) -> Vec<TypeScriptTest> {
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, source, source_type_for(file)).parse();
@@ -110,10 +125,9 @@ pub(crate) fn describe_body_from_statement<'a>(
     let Expression::CallExpression(call) = &expr_stmt.expression else {
         return None;
     };
-    let Expression::Identifier(ident) = &call.callee else {
-        return None;
-    };
-    if ident.name.as_str() != "describe" {
+    if !call_callee_is_active_declaration(call, TestDeclarationRoot::Describe)
+        && !call_callee_is_active_each_declaration(call, TestDeclarationRoot::Describe)
+    {
         return None;
     }
     let name = string_argument(call.arguments.first()?)?;
@@ -153,31 +167,21 @@ pub(crate) fn test_name_and_assertions_from_call(
     call: &oxc_ast::ast::CallExpression<'_>,
     source: &str,
 ) -> Option<(String, Vec<TypeScriptAssertion>)> {
-    if test_callee_is_identifier(call) {
-        let name = string_argument(call.arguments.first()?)?;
-        let callback = call.arguments.get(1)?;
-        let receiver = test_callback_receiver_name(callback);
-        let assertions = function_body_statements_from_argument(callback)
-            .map(|statements| {
-                collect_expect_assertions_in_statements(statements, source, receiver.as_deref())
-            })
-            .unwrap_or_default();
-        return Some((name, assertions));
+    if !call_callee_is_active_declaration(call, TestDeclarationRoot::Test)
+        && !call_callee_is_active_each_declaration(call, TestDeclarationRoot::Test)
+    {
+        return None;
     }
 
-    if test_callee_is_each(call) {
-        let name = string_argument(call.arguments.first()?)?;
-        let callback = call.arguments.get(1)?;
-        let receiver = test_callback_receiver_name(callback);
-        let assertions = function_body_statements_from_argument(callback)
-            .map(|statements| {
-                collect_expect_assertions_in_statements(statements, source, receiver.as_deref())
-            })
-            .unwrap_or_default();
-        return Some((name, assertions));
-    }
-
-    None
+    let name = string_argument(call.arguments.first()?)?;
+    let callback = call.arguments.get(1)?;
+    let receiver = test_callback_receiver_name(callback);
+    let assertions = function_body_statements_from_argument(callback)
+        .map(|statements| {
+            collect_expect_assertions_in_statements(statements, source, receiver.as_deref())
+        })
+        .unwrap_or_default();
+    Some((name, assertions))
 }
 
 /// Extract the name bound to the test callback's first parameter.
@@ -198,27 +202,43 @@ fn test_callback_receiver_name(arg: &oxc_ast::ast::Argument<'_>) -> Option<Strin
     super::owners::binding_identifier_name(&first.pattern).map(|name| name.to_string())
 }
 
-pub(crate) fn test_callee_is_identifier(call: &oxc_ast::ast::CallExpression<'_>) -> bool {
-    let Expression::Identifier(ident) = &call.callee else {
-        return false;
-    };
-    matches!(ident.name.as_str(), "test" | "it")
+fn call_callee_is_active_declaration(
+    call: &oxc_ast::ast::CallExpression<'_>,
+    root: TestDeclarationRoot,
+) -> bool {
+    expression_is_active_declaration(&call.callee, root)
 }
 
-pub(crate) fn test_callee_is_each(call: &oxc_ast::ast::CallExpression<'_>) -> bool {
+fn call_callee_is_active_each_declaration(
+    call: &oxc_ast::ast::CallExpression<'_>,
+    root: TestDeclarationRoot,
+) -> bool {
     let Expression::CallExpression(each_call) = &call.callee else {
         return false;
     };
     let Expression::StaticMemberExpression(member) = &each_call.callee else {
         return false;
     };
-    if member.property.name.as_str() != "each" {
-        return false;
+    member.property.name.as_str() == "each"
+        && expression_is_active_declaration(&member.object, root)
+}
+
+fn expression_is_active_declaration(
+    expression: &Expression<'_>,
+    root: TestDeclarationRoot,
+) -> bool {
+    match expression {
+        Expression::Identifier(ident) => root.matches_identifier(ident.name.as_str()),
+        Expression::StaticMemberExpression(member) => {
+            is_active_declaration_modifier(member.property.name.as_str())
+                && expression_is_active_declaration(&member.object, root)
+        }
+        _ => false,
     }
-    let Expression::Identifier(ident) = &member.object else {
-        return false;
-    };
-    matches!(ident.name.as_str(), "test" | "it")
+}
+
+fn is_active_declaration_modifier(name: &str) -> bool {
+    matches!(name, "only" | "concurrent" | "sequential")
 }
 
 pub(crate) fn string_argument(arg: &oxc_ast::ast::Argument<'_>) -> Option<String> {

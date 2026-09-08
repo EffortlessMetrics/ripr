@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on workspace-root, freshness, identity, and static-limit projection evidence.
+
 ## Problem
 
 Preview language findings are syntax-first and advisory. They can still help a

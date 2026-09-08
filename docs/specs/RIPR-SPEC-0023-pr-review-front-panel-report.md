@@ -417,8 +417,10 @@ Field contract:
   typed field. For legacy PR guidance, gate, baseline, and assistant-health
   artifacts, the front panel may normalize existing typed class/status fields,
   but must not derive the value from Markdown prose.
-- `movement.*` preserves before/after static movement when supplied. It is not
-  runtime mutation confirmation.
+- `movement.*` preserves before/after static movement in the producer's
+  vocabulary when supplied. The pair must use one vocabulary; the front panel
+  does not normalize producer-owned movement classes. It is not runtime
+  mutation confirmation.
 - `debt_delta.*` carries PR-local movement from baseline, RIPR Zero, gate, or
   ledger inputs when available.
 - `policy.authority_artifact` records the gate decision path when supplied.

@@ -1,3 +1,4 @@
+use super::super::extract::PROBE_SHAPE_UNSAFE_BOUNDARY;
 use super::super::rust_index::{
     PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_FIELD_CONSTRUCTION,
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
@@ -18,6 +19,7 @@ pub fn family_for_probe_shape(kind: &str) -> Option<ProbeFamily> {
         PROBE_SHAPE_FIELD_CONSTRUCTION => Some(ProbeFamily::FieldConstruction),
         PROBE_SHAPE_SIDE_EFFECT => Some(ProbeFamily::SideEffect),
         PROBE_SHAPE_MATCH_ARM => Some(ProbeFamily::MatchArm),
+        PROBE_SHAPE_UNSAFE_BOUNDARY => Some(ProbeFamily::StaticUnknown),
         _ => None,
     }
 }
@@ -68,6 +70,7 @@ mod tests {
             ),
             (PROBE_SHAPE_SIDE_EFFECT, ProbeFamily::SideEffect),
             (PROBE_SHAPE_MATCH_ARM, ProbeFamily::MatchArm),
+            (PROBE_SHAPE_UNSAFE_BOUNDARY, ProbeFamily::StaticUnknown),
         ];
 
         for (shape, family) in cases {
