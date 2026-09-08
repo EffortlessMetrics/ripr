@@ -229,7 +229,10 @@ fn is_compound_bash_command(command: &str) -> bool {
                 {
                     return true;
                 }
-                _ => {}
+                _ if ch.is_alphanumeric()
+                    || ch.is_ascii_whitespace()
+                    || matches!(ch, '.' | '/' | '_' | '-' | ':') => {}
+                _ => return true,
             }
             index += 1;
         }
@@ -540,6 +543,8 @@ mod tests {
         check_eq!(powershell_command("ripr check {a,b}"), None);
         check_eq!(powershell_command("ripr check @missing"), None);
         check_eq!(powershell_command("ripr check (echo literal)"), None);
+        check_eq!(powershell_command("ripr check --% data"), None);
+        check_eq!(powershell_command("ripr check KEY=value"), None);
         check_eq!(powershell_command("ripr check ~"), None);
         check_eq!(
             powershell_command("ripr check > first.json second.json"),
