@@ -774,6 +774,21 @@ checks actual mixed-language CLI findings, canonical producer projection and
 review-consumer admission, with a Rust-only rejection control. It does not prove
 canonical-delta snapshot generation, distribution packaging or release readiness.
 
+PR check subjects, bounded review input and review receipts share the
+`review_input::canonical_root_identity` representation. Existing roots are
+canonicalized using native filesystem semantics before display normalization.
+On Windows, ordinary and verbatim drive/UNC paths identify the same root; on
+POSIX, backslashes remain filename characters. Exact root equality remains an
+admission requirement: evidence from a different checkout is not reusable merely
+because its commits and source files match.
+
+`cargo test -p xtask real_producer_root_identity_is_admitted_but_not_replayed`
+exercises actual CLI findings through both the xtask producer packet and public
+`ripr pr-evidence` producer/validator and review consumer, including equivalent-root
+admission and independent-clone rejection. Empty-diff fallback receipts use the
+same root and cache identity authority as child-produced receipts.
+This bounded fixture does not run canonical-delta snapshots or qualify a release.
+
 CI uploads review artifacts from the Rust workflow when reports are present:
 
 ```text
@@ -905,3 +920,4 @@ The PR body should link the issue, proposal/spec/plan references when present,
 acceptance text, non-goals, and proof commands. Support-tier and policy impact
 checkboxes must be reviewed from the actual diff and proof, not inferred from
 issue metadata.
+
