@@ -4,6 +4,7 @@
 //! static evidence into a proof, and an incomplete receipt never means that
 //! the requested review is clean or complete.
 
+use crate::review_input::canonical_root_identity;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -242,18 +243,6 @@ pub(crate) fn attach_to_json(
     );
     serde_json::to_string_pretty(&value)
         .map_err(|err| format!("render review-comments JSON with receipt failed: {err}"))
-}
-
-fn canonical_root_identity(root: &Path) -> String {
-    let normalized = root
-        .canonicalize()
-        .unwrap_or_else(|_| root.to_path_buf())
-        .to_string_lossy()
-        .replace('\\', "/");
-    normalized
-        .strip_prefix("//?/")
-        .unwrap_or(&normalized)
-        .to_string()
 }
 
 fn reusable_cache_identity(root: &str, base: &str, head: &str) -> String {

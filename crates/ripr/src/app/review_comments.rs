@@ -5,6 +5,7 @@ use crate::analysis_outcome::AnalysisOutcome;
 use crate::config::{RiprConfig, repo_exposure_config_identity_hash};
 use crate::review_input::{
     CanonicalFindingIndexV1, ReviewInputV1, canonical_projection_from_index,
+    canonical_root_identity as logical_path,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -538,17 +539,6 @@ fn origin_identity(origin: Option<&[u8]>) -> String {
         None => "unavailable".to_string(),
     }
 }
-fn logical_path(path: &Path) -> String {
-    let textual = crate::output::outcome::display_path(path).replace('\\', "/");
-    let textual = textual.strip_prefix("//?/").unwrap_or(&textual);
-    let display = Path::new(textual)
-        .canonicalize()
-        .map(|canonical| crate::output::outcome::display_path(&canonical))
-        .unwrap_or_else(|_| textual.to_string())
-        .replace('\\', "/");
-    let display = display.strip_prefix("//?/").unwrap_or(&display);
-    display.strip_suffix("/.").unwrap_or(display).to_string()
-}
 fn digest_bytes(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
 }
@@ -651,7 +641,12 @@ mod tests {
             return Err(format!("unexpected repository identity: {repository}"));
         }
         let logical = logical_path(Path::new("target\\ripr\\check.json"));
-        if logical != "target/ripr/check.json" {
+        let expected = if cfg!(windows) {
+            "target/ripr/check.json"
+        } else {
+            r"target\ripr\check.json"
+        };
+        if logical != expected {
             return Err(format!("unexpected logical path: {logical}"));
         }
         let first = digest_bytes(b"identity");
