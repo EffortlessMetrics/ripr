@@ -49,12 +49,12 @@ pub(crate) const POWERSHELL_UNAVAILABLE_DISCLOSURE: &str =
 ///   differs: bash closes, escapes, and reopens (`'\''`) where PowerShell
 ///   doubles in place (`''`), so every occurrence is rewritten.
 /// - bash `>` redirection becomes native PowerShell process redirection. The
-///   child writes directly to the target, preserving its stdout bytes rather
-///   than routing them through `Out-String`, `Out-File`, or `WriteAllText`.
-///   The target is rendered as a PowerShell string literal and the redirect
-///   is detected only outside single- and double-quoted regions, so a quoted
-///   `>` inside an argument cannot hijack it. A quote of the other kind is
-///   literal data.
+///   child writes directly to a random sibling staging file, preserving its
+///   stdout bytes rather than routing them through `Out-String`, `Out-File`, or
+///   `WriteAllText`; only a successful process moves that file to the target.
+///   Existing target files and unrelated staging files are preserved. Directory
+///   targets are rejected. The target is rendered as a PowerShell string
+///   literal and the redirect is detected only outside quoted regions.
 /// - Redirected and unredirected invocations are guarded. A nonzero native
 ///   status throws before a generated command sequence can continue, so a
 ///   failed step cannot look complete or permit a later success artifact.
@@ -223,13 +223,6 @@ fn powershell_argv(command: &str) -> Option<Vec<String>> {
     while let Some(ch) = chars.next() {
         match quote {
             Some('\'') => match ch {
-                '\'' if chars.peek() == Some(&'\\') => {
-                    chars.next();
-                    if chars.next() != Some('\'') {
-                        return None;
-                    }
-                    value.push('\'');
-                }
                 '\'' => quote = None,
                 _ => value.push(ch),
             },
@@ -250,7 +243,13 @@ fn powershell_argv(command: &str) -> Option<Vec<String>> {
                         token_started = false;
                     }
                 }
-                '\\' => return None,
+                '\\' => match chars.next() {
+                    Some('\'') => {
+                        token_started = true;
+                        value.push('\'');
+                    }
+                    _ => return None,
+                },
                 _ => {
                     token_started = true;
                     value.push(ch);
@@ -279,6 +278,14 @@ mod tests {
         }
     }
 
+    struct TempDirGuard(std::path::PathBuf);
+
+    impl Drop for TempDirGuard {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn markdown_text_escapes_backslashes() {
         assert_eq!(markdown_text("a\\b"), "a\\\\b");
@@ -297,17 +304,16 @@ mod tests {
     }
 
     #[test]
-    fn powershell_command_handles_unredirected_quoted_and_unicode_commands() {
+    fn powershell_command_handles_unredirected_quoted_and_unicode_commands() -> Result<(), String> {
         assert_eq!(
             powershell_command("ripr check --root 'a > b'"),
             Some("& ripr check --root 'a > b'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
-        let rendered = powershell_command("ripr check --root 'café' > 'résumé.json'").unwrap();
-        assert!(
-            rendered.contains("Start-Process")
-                && rendered.contains("'café'")
-                && rendered.contains("'résumé.json'")
-        );
+        let rendered = powershell_command("ripr check --root 'café' > 'résumé.json'")
+            .ok_or_else(|| "redirect command was withheld".to_string())?;
+        require_contains(&rendered, "Start-Process")?;
+        require_contains(&rendered, "'café'")?;
+        require_contains(&rendered, "'résumé.json'")
     }
 
     #[test]
@@ -549,6 +555,7 @@ mod tests {
 
         let root =
             std::env::temp_dir().join(format!("ripr-powershell-1672-{}", std::process::id()));
+        let _guard = TempDirGuard(root.clone());
         fs::create_dir_all(&root).map_err(|error| error.to_string())?;
         let source = root.join("fixture.rs");
         let executable = root.join("fixture.exe");
@@ -572,6 +579,7 @@ fn main() {
         "$x",
         "backtick`",
         "C:\\workspace\\path",
+        "'quoted'",
     ];
     if args.iter().map(String::as_str).collect::<Vec<_>>() != expected {
         eprintln!("unexpected argv: {args:?}");
@@ -595,7 +603,7 @@ fn main() {
 
         let bash_quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
         let command = format!(
-            "{} '' 'space value' 'café' 'it'\\''s' '\"' '$x' 'backtick`' 'C:\\workspace\\path' > {}",
+            "{} '' 'space value' 'café' 'it'\\''s' '\"' '$x' 'backtick`' 'C:\\workspace\\path' ''\\''quoted'\\''' > {}",
             bash_quote(&executable.to_string_lossy()),
             bash_quote(&artifact.to_string_lossy()),
         );
@@ -654,7 +662,6 @@ fn main() {
             return Err("wrong output role was not preserved as a directory".to_string());
         }
         fs::remove_dir(&artifact).map_err(|error| error.to_string())?;
-        let _ = fs::remove_dir_all(root);
         Ok(())
     }
 }
