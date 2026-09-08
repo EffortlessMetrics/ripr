@@ -236,15 +236,11 @@ fn is_compound_bash_command(command: &str) -> bool {
 
 /// Render one value as a PowerShell single-quoted string literal.
 ///
-/// A value that is already a single-quoted literal passes through: the bash
-/// form quotes every argument that needs quoting, and the `'\''` rewrite in
-/// [`powershell_command`] has already made such an interior PowerShell-valid.
-/// Anything else is wrapped, doubling any embedded `'` so PowerShell receives
-/// the intended argv or redirection path.
+/// Every value is decoded argv/path data and is wrapped for PowerShell.
+/// Embedded apostrophes are doubled so PowerShell receives the intended value;
+/// passing raw leading/trailing apostrophes through as a pre-quoted literal
+/// would strip those data bytes.
 fn powershell_literal(value: &str) -> String {
-    if value.len() >= 2 && value.starts_with('\'') && value.ends_with('\'') {
-        return value.to_string();
-    }
     format!("'{}'", value.replace('\'', "''"))
 }
 
@@ -701,6 +697,33 @@ fn main() {
         let payload = fs::read(&artifact).map_err(|error| error.to_string())?;
         if payload != br#"{"ok":true}"# {
             return Err(format!("native payload drifted: {payload:?}"));
+        }
+        let relative_name = "'relativeboth'";
+        let relative_artifact = root.join(relative_name);
+        let relative_command = format!(
+            "{} '' 'space value' 'café' 'it'\\''s' '\"' '$x' 'backtick`' 'C:\\workspace\\path' ''\\''quoted'\\''' > {}",
+            bash_quote(&executable.to_string_lossy()),
+            bash_quote(relative_name),
+        );
+        let relative_powershell = powershell_command(&relative_command)
+            .ok_or_else(|| format!("relative target command was withheld: {relative_command}"))?;
+        let relative_powershell = format!(
+            "Set-Location -LiteralPath {}; {}",
+            powershell_literal(&root.to_string_lossy()),
+            relative_powershell
+        );
+        let relative_run = Command::new("pwsh")
+            .args(["-NoProfile", "-Command", &relative_powershell])
+            .output()
+            .map_err(|error| error.to_string())?;
+        if !relative_run.status.success() {
+            return Err(format!("relative target proof failed: {:?}", relative_run));
+        }
+        let relative_payload = fs::read(&relative_artifact).map_err(|error| error.to_string())?;
+        if relative_payload != br#"{"ok":true}"# {
+            return Err(format!(
+                "relative target payload drifted: {relative_payload:?}"
+            ));
         }
         let sentinel = root.join("artifact.bin.ripr-staging");
         fs::write(&sentinel, b"preexisting-user-file").map_err(|error| error.to_string())?;

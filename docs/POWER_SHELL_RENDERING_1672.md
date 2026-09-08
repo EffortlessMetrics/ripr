@@ -62,8 +62,9 @@ rustc --edition=2024 --test crates/ripr/src/output/markdown.rs -o <temp>\\markdo
 
 The current receipt is 16/16 tests passed on the Windows host. The native
 child route is invoked as `pwsh -NoProfile -Command <generated command>` and
-the proof host reports `$PSVersionTable.PSVersion` as `7.6.5`; this packet
-therefore scopes the claim to the tested PowerShell 7.6 route. Cargo workspace
+the proof host reports `$PSVersionTable.PSVersion` as `7.6.5` and
+`$PSNativeCommandArgumentPassing` as `Windows`; this packet therefore scopes
+the claim to that tested PowerShell 7.6 mode and version. Cargo workspace
 proof, hosted CI, and release qualification remain separate gates.
 
 ## Remaining issue scope
