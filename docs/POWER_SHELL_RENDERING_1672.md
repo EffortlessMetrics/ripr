@@ -7,10 +7,10 @@ approval.
 ## Source pair and ancestry
 
 - Source base: `971ac1a85ac76e60003c2c915761a2c13e854c2b`.
-- Final candidate: `ce4ad79d8c57cfa215033a7d2274efe52604e95f` (`fix(output): bound PowerShell translation eligibility`).
-- Source candidate proof subject: `d3011ff036583cd751e2c8395bcee2f26c1a188a`
-  (the standalone 16-test subject before the final eligibility controls and
-  evidence update).
+- Production repair proof subject: `1bb53c78ce2ff603f680990f566937cffd52ce53`
+  (`fix(output): preserve literal apostrophes in targets`).
+- Standalone proof subject before the final apostrophe repair:
+  `d3011ff036583cd751e2c8395bcee2f26c1a188a`.
 - Donor ancestry was carried and adapted from merged PRs in the
   `EffortlessMetrics/ripr-swarm` repository: #3617 at
   `140b2de76a7b43462e2212b005b6ac84142e08d`, #3625 at
