@@ -7,7 +7,7 @@
 /// `agent_workflow` disclosure so every generated-command surface states the
 /// same contract. Shared here — beside the translation it describes — so the
 /// fenced command surfaces do not fork one disclosure per module.
-pub(crate) const COMMAND_SHELL_DISCLOSURE: &str = "Each command includes Bash and PowerShell 7+ variants. The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and staged native byte-preserving redirection. cmd.exe and Windows PowerShell 5.1 are not supported. On Windows, use Git Bash or PowerShell 7+. WSL bash is not a drop-in substitute: paths keep their Windows drive-letter prefix, which WSL resolves as a relative path.\n\n";
+pub(crate) const COMMAND_SHELL_DISCLOSURE: &str = "Each command includes Bash and PowerShell 7.6 forms (native proof run on PowerShell 7.6.5). The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and staged native byte-preserving redirection. cmd.exe and Windows PowerShell 5.1 are not supported. On Windows, use Git Bash or the tested PowerShell 7.6 route. WSL bash is not a drop-in substitute: paths keep their Windows drive-letter prefix, which WSL resolves as a relative path.\n\n";
 
 pub(crate) fn render_string_section(out: &mut String, title: &str, values: &[String]) {
     out.push_str(&format!("\n## {title}\n\n"));
@@ -25,11 +25,11 @@ pub(crate) fn markdown_text(value: &str) -> String {
 }
 
 /// One-line disclosure emitted in place of a PowerShell variant when the bash
-/// command is compound and no honest translation exists (#2628). Standalone
+/// command is unsupported or compound and no honest translation exists (#2628). Standalone
 /// emitters append the sentence period; emitters that name the command append
 /// `: `<command>`.
 pub(crate) const POWERSHELL_UNAVAILABLE_DISCLOSURE: &str =
-    "PowerShell form unavailable for compound commands";
+    "PowerShell form unavailable for unsupported or compound commands";
 
 /// Translate a bash-rendered advisory command into its PowerShell form.
 ///
@@ -74,7 +74,12 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
     let redirect = powershell_redirect_offset(command).ok()?;
     if let Some(index) = redirect {
         let invocation = command[..index].trim_end();
-        let output = powershell_literal(&command[index + 1..].trim().replace("'\\''", "''"));
+        let target = command[index + 1..].trim();
+        let target_argv = powershell_argv(&format!("ripr {target}"))?;
+        if target_argv.len() != 2 {
+            return None;
+        }
+        let output = powershell_literal(target_argv.get(1)?);
         let argv = powershell_argv(invocation)?;
         let file = argv.first()?.clone();
         let args = argv
@@ -206,6 +211,21 @@ fn is_compound_bash_command(command: &str) -> bool {
                 '<' => return true,
                 '`' => return true,
                 '$' => return true,
+                '#' if index == 0
+                    || chars
+                        .get(index - 1)
+                        .is_some_and(|character| character.is_whitespace()) =>
+                {
+                    return true;
+                }
+                '*' | '?' | '[' | ']' => return true,
+                '~' if index == 0
+                    || chars
+                        .get(index - 1)
+                        .is_some_and(|character| character.is_whitespace()) =>
+                {
+                    return true;
+                }
                 _ => {}
             }
             index += 1;
@@ -524,6 +544,17 @@ mod tests {
         );
         check_eq!(powershell_command("$RIPR_ROOT > output.json"), None);
         check_eq!(powershell_command("ripr check>output.json"), None);
+        check_eq!(powershell_command("ripr check # diagnostic"), None);
+        check_eq!(powershell_command("ripr check *.rs"), None);
+        check_eq!(powershell_command("ripr check ~"), None);
+        check_eq!(
+            powershell_command("ripr check > first.json second.json"),
+            None
+        );
+        check_eq!(
+            powershell_command("ripr check > first.json > second.json"),
+            None
+        );
         check_eq!(
             powershell_command("ripr receipt write --gap 'a;b'"),
             Some("& ripr receipt write --gap 'a;b'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
