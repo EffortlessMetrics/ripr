@@ -82,10 +82,8 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
             .map(|arg| powershell_literal(arg))
             .collect::<Vec<_>>()
             .join(", ");
-        let output_without_closing = output.strip_suffix('\'')?;
-        let staging = format!("{output_without_closing}.ripr-staging'");
         return Some(format!(
-            "$staging = {staging}; Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; $process = Start-Process -FilePath {} -ArgumentList @({args}) -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) {{ Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; throw \"ripr exited with code $($process.ExitCode)\" }}; Move-Item -LiteralPath $staging -Destination {output} -Force",
+            "$target = {output}; if (Test-Path -LiteralPath $target -PathType Container) {{ throw \"output path is a directory: $target\" }}; $staging = Join-Path ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($target))) ('.ripr-' + [IO.Path]::GetRandomFileName() + '.tmp'); try {{ $process = Start-Process -FilePath {} -ArgumentList @({args}) -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) {{ throw \"ripr exited with code $($process.ExitCode)\" }}; Move-Item -LiteralPath $staging -Destination $target -Force -ErrorAction Stop }} finally {{ if (Test-Path -LiteralPath $staging -PathType Leaf) {{ Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue }} }}",
             powershell_literal(&file)
         ));
     }
@@ -273,6 +271,14 @@ fn powershell_argv(command: &str) -> Option<Vec<String>> {
 mod tests {
     use super::*;
 
+    fn require_contains(value: &str, needle: &str) -> Result<(), String> {
+        if value.contains(needle) {
+            Ok(())
+        } else {
+            Err(format!("missing `{needle}` in `{value}`"))
+        }
+    }
+
     #[test]
     fn markdown_text_escapes_backslashes() {
         assert_eq!(markdown_text("a\\b"), "a\\\\b");
@@ -317,21 +323,22 @@ mod tests {
     }
 
     #[test]
-    fn powershell_command_finds_real_redirect_after_double_quoted_argument() {
+    fn powershell_command_finds_real_redirect_after_double_quoted_argument() -> Result<(), String> {
         let rendered =
             powershell_command("ripr check --root \"café > owner's repo\" > 'résumé.json'")
-                .unwrap();
-        assert!(rendered.contains("'café > owner''s repo'"));
-        assert!(rendered.contains("-RedirectStandardOutput $staging"));
-        assert!(rendered.contains("-Destination 'résumé.json'"));
+                .ok_or_else(|| "redirect command was withheld".to_string())?;
+        require_contains(&rendered, "'café > owner''s repo'")?;
+        require_contains(&rendered, "-RedirectStandardOutput $staging")?;
+        require_contains(&rendered, "$target = 'résumé.json'")
     }
 
     #[test]
-    fn powershell_command_keeps_double_quote_literal_inside_single_quotes() {
-        let rendered = powershell_command("cargo test 'a \" > b' > evidence.txt").unwrap();
-        assert!(rendered.contains("-FilePath 'cargo'"));
-        assert!(rendered.contains("'a \" > b'"));
-        assert!(rendered.contains("-Destination 'evidence.txt'"));
+    fn powershell_command_keeps_double_quote_literal_inside_single_quotes() -> Result<(), String> {
+        let rendered = powershell_command("cargo test 'a \" > b' > evidence.txt")
+            .ok_or_else(|| "redirect command was withheld".to_string())?;
+        require_contains(&rendered, "-FilePath 'cargo'")?;
+        require_contains(&rendered, "'a \" > b'")?;
+        require_contains(&rendered, "$target = 'evidence.txt'")
     }
 
     /// #3625 review (CWE-78): bash treats `\$` inside double quotes as
@@ -371,22 +378,29 @@ mod tests {
     /// must arrive as a quoted literal even when the bash form left it
     /// unquoted. This is the default pilot path shape.
     #[test]
-    fn powershell_command_quotes_the_default_unquoted_redirect_target() {
+    fn powershell_command_quotes_the_default_unquoted_redirect_target() -> Result<(), String> {
         let rendered = powershell_command(
             "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
-        ).unwrap();
-        assert!(rendered.contains("-ArgumentList @('check', '--root', '.', '--mode', 'draft', '--format', 'repo-exposure-json')"));
-        assert!(rendered.contains("-Destination 'target/ripr/pilot/after.repo-exposure.json'"));
+        ).ok_or_else(|| "redirect command was withheld".to_string())?;
+        require_contains(
+            &rendered,
+            "-ArgumentList @('check', '--root', '.', '--mode', 'draft', '--format', 'repo-exposure-json')",
+        )?;
+        require_contains(
+            &rendered,
+            "$target = 'target/ripr/pilot/after.repo-exposure.json'",
+        )
     }
 
     /// An embedded quote in an unwrapped target must survive the literal: the
     /// wrapper doubles it. A target the bash form already single-quoted passes
     /// through with its interior `''` doubling intact.
     #[test]
-    fn powershell_command_redirect_target_escapes_embedded_quotes() {
+    fn powershell_command_redirect_target_escapes_embedded_quotes() -> Result<(), String> {
         assert_eq!(powershell_command("ripr check --root . > it's.json"), None);
-        let rendered = powershell_command("ripr check --root . > 'it'\\''s.json'").unwrap();
-        assert!(rendered.contains("-Destination 'it''s.json'"));
+        let rendered = powershell_command("ripr check --root . > 'it'\\''s.json'")
+            .ok_or_else(|| "redirect command was withheld".to_string())?;
+        require_contains(&rendered, "$target = 'it''s.json'")
     }
 
     /// The artifact write must sit inside the success branch, and a nonzero
@@ -424,7 +438,10 @@ mod tests {
             !line.contains("Out-String") && !line.contains("WriteAllText"),
             "PowerShell must not normalize stdout through text conversion:\n{line}"
         );
-        assert!(line.contains("Move-Item -LiteralPath $staging -Destination 'target/ripr/workflow/agent-packet.json' -Force"));
+        require_contains(
+            &line,
+            "Move-Item -LiteralPath $staging -Destination $target -Force -ErrorAction Stop",
+        )?;
         Ok(())
     }
 
@@ -512,11 +529,11 @@ mod tests {
 
     /// Literal multiline data must not hide the real redirect that follows it.
     #[test]
-    fn powershell_command_keeps_redirect_after_quoted_newline() {
-        let rendered =
-            powershell_command("ripr check --root 'café\nrepo' > 'résumé.json'").unwrap();
-        assert!(rendered.contains("'café\nrepo'"));
-        assert!(rendered.contains("-Destination 'résumé.json'"));
+    fn powershell_command_keeps_redirect_after_quoted_newline() -> Result<(), String> {
+        let rendered = powershell_command("ripr check --root 'café\nrepo' > 'résumé.json'")
+            .ok_or_else(|| "redirect command was withheld".to_string())?;
+        require_contains(&rendered, "'café\nrepo'")?;
+        require_contains(&rendered, "$target = 'résumé.json'")
     }
 
     /// Exercise the generated form against a real Windows native executable.
@@ -595,6 +612,8 @@ fn main() {
         if payload != br#"{"ok":true}"# {
             return Err(format!("native payload drifted: {payload:?}"));
         }
+        let sentinel = root.join("artifact.bin.ripr-staging");
+        fs::write(&sentinel, b"preexisting-user-file").map_err(|error| error.to_string())?;
         fs::write(&artifact, b"prior-valid").map_err(|error| error.to_string())?;
         let failure_command = format!(
             "{} 'fail' > {}",
@@ -616,6 +635,25 @@ fn main() {
                 "failed command overwrote retained artifact: {retained:?}"
             ));
         }
+        let sentinel_bytes = fs::read(&sentinel).map_err(|error| error.to_string())?;
+        if sentinel_bytes != b"preexisting-user-file" {
+            return Err(format!(
+                "failed command removed unrelated staging file: {sentinel_bytes:?}"
+            ));
+        }
+        fs::remove_file(&artifact).map_err(|error| error.to_string())?;
+        fs::create_dir(&artifact).map_err(|error| error.to_string())?;
+        let wrong_role = Command::new("pwsh")
+            .args(["-NoProfile", "-Command", &powershell])
+            .output()
+            .map_err(|error| error.to_string())?;
+        if wrong_role.status.success() {
+            return Err("directory output role unexpectedly succeeded".to_string());
+        }
+        if !artifact.is_dir() {
+            return Err("wrong output role was not preserved as a directory".to_string());
+        }
+        fs::remove_dir(&artifact).map_err(|error| error.to_string())?;
         let _ = fs::remove_dir_all(root);
         Ok(())
     }

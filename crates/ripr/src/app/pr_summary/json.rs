@@ -710,7 +710,7 @@ mod tests {
             markdown.contains(bash_form),
             "bash verify command drifted:\n{markdown}"
         );
-        let powershell_form = "```powershell\n$staging = 'evidence.txt.ripr-staging'; Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; $process = Start-Process -FilePath 'cargo' -ArgumentList @('test', 'boundary') -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; throw \"ripr exited with code $($process.ExitCode)\" }; Move-Item -LiteralPath $staging -Destination 'evidence.txt' -Force\n```\n\n";
+        let powershell_form = "```powershell\n$target = 'evidence.txt'; if (Test-Path -LiteralPath $target -PathType Container) { throw \"output path is a directory: $target\" }; $staging = Join-Path ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($target))) ('.ripr-' + [IO.Path]::GetRandomFileName() + '.tmp'); try { $process = Start-Process -FilePath 'cargo' -ArgumentList @('test', 'boundary') -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }; Move-Item -LiteralPath $staging -Destination $target -Force -ErrorAction Stop } finally { if (Test-Path -LiteralPath $staging -PathType Leaf) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue } }\n```\n\n";
         assert!(
             markdown.contains(powershell_form),
             "powershell verify command missing or drifted:\n{markdown}"
