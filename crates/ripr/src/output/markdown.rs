@@ -71,7 +71,8 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
     if is_compound_bash_command(command) {
         return None;
     }
-    if let Some(index) = powershell_redirect_offset(command) {
+    let redirect = powershell_redirect_offset(command).ok()?;
+    if let Some(index) = redirect {
         let invocation = command[..index].trim_end();
         let output = powershell_literal(&command[index + 1..].trim().replace("'\\''", "''"));
         let argv = powershell_argv(invocation)?;
@@ -97,10 +98,11 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
 /// only quote-aware boundary selection; unsupported escapes and compound
 /// shell forms are rejected before this helper runs. Offsets remain UTF-8
 /// byte indices, including when quoted arguments contain non-ASCII text.
-fn powershell_redirect_offset(command: &str) -> Option<usize> {
+fn powershell_redirect_offset(command: &str) -> Result<Option<usize>, ()> {
     let mut chars = command.char_indices().peekable();
     let mut in_single_quote = false;
     let mut in_double_quote = false;
+    let mut redirect = None;
     while let Some((index, ch)) = chars.next() {
         if in_single_quote {
             if ch == '\'' {
@@ -118,14 +120,20 @@ fn powershell_redirect_offset(command: &str) -> Option<usize> {
             in_single_quote = true;
         } else if ch == '"' {
             in_double_quote = true;
-        } else if ch == '>'
-            && command[..index].ends_with(' ')
-            && command[index + ch.len_utf8()..].starts_with(' ')
-        {
-            return Some(index);
+        } else if ch == '>' {
+            if !command[..index].ends_with(' ')
+                || !command[index + ch.len_utf8()..].starts_with(' ')
+                || redirect.is_some()
+            {
+                return Err(());
+            }
+            redirect = Some(index);
         }
     }
-    None
+    if redirect.is_some_and(|index| command[index + 1..].trim().is_empty()) {
+        return Err(());
+    }
+    Ok(redirect)
 }
 
 /// Decide whether a bash command is compound: forms whose PowerShell
@@ -168,7 +176,7 @@ fn is_compound_bash_command(command: &str) -> bool {
                 // double-quoted backslash under-emits (#3625 review).
                 '\\' => return true,
                 '`' => return true,
-                '$' if next == Some('(') => return true,
+                '$' => return true,
                 _ => {}
             }
             index += 1;
@@ -187,11 +195,17 @@ fn is_compound_bash_command(command: &str) -> bool {
                     None => index += 1,
                 },
                 ';' | '\n' | '\r' => return true,
+                '>' => {
+                    let previous = index.checked_sub(1).and_then(|offset| chars.get(offset));
+                    if previous != Some(&' ') || next != Some(' ') {
+                        return true;
+                    }
+                }
                 '&' => return true,
                 '|' => return true,
                 '<' => return true,
                 '`' => return true,
-                '$' if next == Some('(') => return true,
+                '$' => return true,
                 _ => {}
             }
             index += 1;
@@ -476,6 +490,14 @@ mod tests {
         assert_eq!(powershell_command(r"echo a\;b"), None);
         assert_eq!(powershell_command("cmd1 $(whoami)"), None);
         assert_eq!(powershell_command("cmd1 `whoami`"), None);
+        assert_eq!(powershell_command("ripr check >output.json"), None);
+        assert_eq!(powershell_command("ripr check >> output.json"), None);
+        assert_eq!(
+            powershell_command("ripr check > first.json > second.json"),
+            None
+        );
+        assert_eq!(powershell_command("$RIPR_ROOT > output.json"), None);
+        assert_eq!(powershell_command("ripr check>output.json"), None);
         assert_eq!(
             powershell_command("ripr receipt write --gap 'a;b'"),
             Some("& ripr receipt write --gap 'a;b'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
