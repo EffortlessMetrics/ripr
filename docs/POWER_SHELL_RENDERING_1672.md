@@ -65,7 +65,9 @@ child route is invoked as `pwsh -NoProfile -Command <generated command>` and
 the proof host reports `$PSVersionTable.PSVersion` as `7.6.5` and
 `$PSNativeCommandArgumentPassing` as `Windows`; this packet therefore scopes
 the claim to that tested PowerShell 7.6 mode and version. Cargo workspace
-proof, hosted CI, and release qualification remain separate gates.
+proof for the focused selector also passed 14/14 with
+`cargo test -p ripr powershell_command --lib`; hosted CI and release
+qualification remain separate gates.
 
 ## Remaining issue scope
 
