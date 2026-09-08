@@ -17,6 +17,7 @@ use crate::review_input::{
     REVIEW_INDEX_SCHEMA_VERSION, REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION,
     REVIEW_INPUT_SELECTION_POLICY, REVIEW_INPUT_SELECTION_POLICY_VERSION, ReviewInputV1,
     canonical_projection, canonical_projection_all, canonical_projection_from_index,
+    canonical_root_identity,
 };
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -228,7 +229,7 @@ fn write_pr_evidence_packet(
     };
     let mut subject = json!({
         "schema_version": "ripr.pr_check_subject.v1",
-        "root_identity": root.display().to_string().replace('\\', "/"),
+        "root_identity": canonical_root_identity(&root),
         "base_sha": resolve_revision(repo, &options.base, "commit")?,
         "head_sha": resolve_revision(repo, &options.head, "commit")?,
         "head_tree": resolve_revision(repo, &options.head, "tree")?,
@@ -345,7 +346,7 @@ fn producer_review_input(
     let input = json!({
         "schema_version": REVIEW_INPUT_SCHEMA_VERSION,
         "mode": check["mode"],
-        "root_identity": root.display().to_string().replace('\\', "/"),
+        "root_identity": canonical_root_identity(&root),
         "base_sha": subject["base_sha"],
         "head_sha": subject["head_sha"],
         "head_tree": subject["head_tree"],
@@ -457,10 +458,8 @@ fn validate_producer_artifacts(repo: &Path, options: &PrEvidenceOptions) -> Resu
     let expected_root = repo
         .join(&options.root)
         .canonicalize()
-        .map_err(|error| format!("resolve producer evidence root: {error}"))?
-        .display()
-        .to_string()
-        .replace('\\', "/");
+        .map_err(|error| format!("resolve producer evidence root: {error}"))?;
+    let expected_root = canonical_root_identity(&expected_root);
     let expected_base_sha = resolve_revision(repo, &options.base, "commit")?;
     let expected_head_sha = resolve_revision(repo, &options.head, "commit")?;
     let expected_head_tree = resolve_revision(repo, &options.head, "tree")?;

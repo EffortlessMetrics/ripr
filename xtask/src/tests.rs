@@ -49213,6 +49213,61 @@ fn golden_comparison_runs_consume_the_cache_the_runner_cleared() -> Result<(), S
 }
 
 #[test]
+fn fixture_isolation_preserves_explicit_languages_and_python_detection() -> Result<(), String> {
+    with_repo_cwd(|| {
+        let mixed = super::run_fixture(Path::new("fixtures/mixed_rust_typescript_preview"))?;
+        if !mixed.comparisons_all_match() {
+            return Err("isolated explicit-language fixture drifted from committed goldens".into());
+        }
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("fixture timestamp: {error}"))?
+            .as_nanos();
+        let fixture = PathBuf::from("target/ripr")
+            .join(format!("python-discovery-{}-{stamp}", std::process::id()));
+        let result = (|| {
+            for file in ["pyproject.toml", "src/pricing.py", "tests/test_pricing.py"] {
+                let target = fixture.join("input").join(file);
+                let parent = target.parent().ok_or("fixture file has no parent")?;
+                fs::create_dir_all(parent)
+                    .map_err(|error| format!("create fixture parent: {error}"))?;
+                fs::copy(Path::new("fixtures/python/basic").join(file), target)
+                    .map_err(|error| format!("copy Python fixture: {error}"))?;
+            }
+            fs::copy(
+                "fixtures/python/basic/diff.patch",
+                fixture.join("diff.patch"),
+            )
+            .map_err(|error| format!("copy Python diff: {error}"))?;
+            let run = super::run_fixture_outputs(&fixture)?;
+            let value: Value = serde_json::from_str(
+                &fs::read_to_string(run.check_json_path())
+                    .map_err(|error| format!("read Python findings: {error}"))?,
+            )
+            .map_err(|error| format!("parse Python findings: {error}"))?;
+            let findings = value
+                .get("findings")
+                .and_then(Value::as_array)
+                .ok_or("missing Python findings")?;
+            if !findings.iter().any(|finding| {
+                finding.get("language").and_then(Value::as_str) == Some("python")
+                    && finding.get("language_status").and_then(Value::as_str) == Some("preview")
+            }) {
+                return Err("isolated no-config Python fixture lost autodetection".into());
+            }
+            Ok(())
+        })();
+        let cleanup =
+            fs::remove_dir_all(&fixture).map_err(|error| format!("remove Python fixture: {error}"));
+        match (result, cleanup) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+            (Err(error), Err(cleanup)) => Err(format!("{error}; {cleanup}")),
+        }
+    })
+}
+
+#[test]
 fn release_pin_ruleset_requires_fully_qualified_tag_ref() -> Result<(), String> {
     const REQUIRED_PATTERN: &str = "refs/tags/ripr-release-*";
     const SHORT_PATTERN: &str = "ripr-release-*";

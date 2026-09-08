@@ -7563,6 +7563,9 @@ fn framed_lsp_configuration_pull_applies_and_discloses_pull_state() -> Result<()
 
     runtime.block_on(async {
         let root = unique_lsp_test_root("framed-config-pull")?;
+        // Exercise configuration pull from defaults, independent of host policy.
+        std::fs::create_dir(root.path().join(".git"))
+            .map_err(|err| format!("create repository boundary: {err}"))?;
         let root_uri = file_uri_for_path(root.path())?;
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (client_read, mut client_write) = tokio::io::split(client_io);
