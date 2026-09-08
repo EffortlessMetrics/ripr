@@ -2083,8 +2083,7 @@ mod tests {
                     "--format".into(),
                     "json".into(),
                 ];
-                let check =
-                    run_ripr_check_binary(&binary, args, &options, Duration::from_secs(120))?;
+                let check = run_ripr_check_binary(&binary, args, &options, Duration::from_mins(2))?;
                 let value: Value =
                     serde_json::from_str(&check).map_err(|error| error.to_string())?;
                 if value
@@ -2139,7 +2138,7 @@ mod tests {
                     &binary,
                     &args,
                     &[],
-                    Duration::from_secs(120),
+                    Duration::from_mins(2),
                     "real producer review admission",
                 )?;
                 if review.timed_out
@@ -2168,10 +2167,10 @@ mod tests {
                         .pointer("/analysis_scope/basis")
                         .and_then(Value::as_str)
                         != Some("producer_check_projection")
-                        || !rendered
+                        || rendered
                             .pointer("/analysis_scope/classified_seams_considered")
                             .and_then(Value::as_u64)
-                            .is_some_and(|count| count > 0)
+                            .is_none_or(|count| count == 0)
                     {
                         return Err(
                             "consumer did not review the nonempty producer projection".into()
