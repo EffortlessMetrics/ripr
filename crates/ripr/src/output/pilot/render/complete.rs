@@ -7,6 +7,7 @@ use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_outline_for_classified_seam,
 };
 use crate::output::json::escape as json_escape;
+use crate::output::markdown::powershell_command;
 use crate::output::path::{display_path, display_path_text};
 use crate::output::pilot::commands::PilotCommands;
 use crate::output::pilot::ranking::{actionable_total, top_actionable_seams};
@@ -231,11 +232,36 @@ pub(crate) fn render_pilot_summary_md(
     out.push_str(
         "After adding one focused test, rerun repo exposure and compare the snapshots:\n\n",
     );
+    out.push_str(super::COMMAND_SHELL_DISCLOSURE);
     out.push_str("```bash\n");
     out.push_str(&commands.after_snapshot);
     out.push('\n');
     out.push_str(&commands.outcome);
     out.push_str("\n```\n");
+    let mut unavailable: Vec<&String> = Vec::new();
+    let mut translations: Vec<String> = Vec::new();
+    for command in [&commands.after_snapshot, &commands.outcome] {
+        match powershell_command(command) {
+            Some(line) => translations.push(line),
+            None => unavailable.push(command),
+        }
+    }
+    // Only fence translations that exist; a compound command under-emits to a
+    // disclosure naming the bash form instead of an invalid translation.
+    if !translations.is_empty() {
+        out.push_str("\n```powershell\n");
+        for line in &translations {
+            out.push_str(line);
+            out.push('\n');
+        }
+        out.push_str("\n```\n");
+    }
+    for command in unavailable {
+        out.push_str(&format!(
+            "{}: `{command}`\n",
+            crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE
+        ));
+    }
     out
 }
 

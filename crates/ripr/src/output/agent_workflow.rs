@@ -2,6 +2,7 @@ use crate::app::agent_workflow::{
     AGENT_WORKFLOW_SCHEMA_VERSION, AgentWorkflowArtifact, AgentWorkflowCommand,
     AgentWorkflowManifest, AgentWorkflowSeam,
 };
+use crate::output::markdown::{POWERSHELL_UNAVAILABLE_DISCLOSURE, powershell_command};
 use serde_json::{Value, json};
 
 /// Shell that every `command` string in this packet is written for.
@@ -89,7 +90,9 @@ fn command_label(step: &str) -> String {
 }
 
 mod markdown {
-    use super::{AgentWorkflowManifest, command_label};
+    use super::{
+        AgentWorkflowManifest, POWERSHELL_UNAVAILABLE_DISCLOSURE, command_label, powershell_command,
+    };
 
     pub(super) fn render_commands_document(manifest: &AgentWorkflowManifest) -> String {
         let mut lines = Vec::new();
@@ -152,6 +155,17 @@ mod markdown {
             lines.push("```bash".to_string());
             lines.push(command.command.clone());
             lines.push("```".to_string());
+            lines.push(String::new());
+            if let Some(power) = powershell_command(&command.command) {
+                lines.push("```powershell".to_string());
+                lines.push(power);
+                lines.push("```".to_string());
+            } else {
+                lines.push(format!(
+                    "{POWERSHELL_UNAVAILABLE_DISCLOSURE}: `{}`.",
+                    command.command
+                ));
+            }
             lines.push(String::new());
         }
     }

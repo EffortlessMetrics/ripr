@@ -742,4 +742,46 @@ mod tests {
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
     }
+
+    /// The review-summary Next command block must offer both shells (#2628):
+    /// the bash fence stays byte-identical, the PowerShell fence derives
+    /// through the shared `powershell_command` translation, and the cmd.exe
+    /// boundary is stated.
+    #[test]
+    fn agent_review_summary_markdown_next_command_offers_powershell_variant() -> Result<(), String>
+    {
+        let root = unique_agent_review_summary_test_dir("markdown-next-command-powershell");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_markdown(&report);
+
+        let bash_form = "```bash\nripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json\n```\n";
+        assert!(
+            rendered.contains(bash_form),
+            "bash next command drifted:\n{rendered}"
+        );
+        let powershell_form = "```powershell\n$process = Start-Process -FilePath 'ripr' -ArgumentList @('check', '--root', '.', '--mode', 'draft', '--format', 'repo-exposure-json') -RedirectStandardOutput 'target/ripr/workflow/before.repo-exposure.json' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }\n```\n";
+        assert!(
+            rendered.contains(powershell_form),
+            "powershell next command missing or drifted:\n{rendered}"
+        );
+        let bash_fence = rendered
+            .find(bash_form)
+            .ok_or_else(|| format!("bash fence must exist: {rendered}"))?;
+        let powershell_fence = rendered
+            .find(powershell_form)
+            .ok_or_else(|| format!("powershell fence must exist: {rendered}"))?;
+        assert!(
+            bash_fence < powershell_fence,
+            "bash form must be presented before the PowerShell variant"
+        );
+        assert!(
+            rendered.contains("cmd.exe is not supported."),
+            "next command presentation must state the cmd.exe boundary:\n{rendered}"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
 }

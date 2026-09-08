@@ -346,6 +346,61 @@ fn pilot_summary_md_spells_out_first_screen_recommendation() {
     }
 }
 
+/// The bash fence content is pinned byte-for-byte: adding the PowerShell
+/// variant must never reshape the form existing consumers copy today (#2628).
+#[test]
+fn pilot_summary_md_pairs_bash_next_commands_with_powershell_variants() -> Result<(), String> {
+    let entry = classified_with(
+        SeamGripClass::WeaklyGripped,
+        "src/pricing.rs",
+        88,
+        vec![missing()],
+        vec![related_test()],
+    );
+    let artifacts = pilot_artifacts();
+    let md = render_pilot_summary_md(&[entry], pilot_context(&artifacts));
+
+    let bash_block = "```bash\nripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json\nripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json\n```";
+    assert!(
+        md.contains(bash_block),
+        "bash next-commands block drifted:\n{md}"
+    );
+    // The default pilot path is unquoted in the bash form; PowerShell parses
+    // The native process redirect receives a quoted target and preserves raw
+    // stdout bytes; the exit guard prevents a failed run from publishing a
+    // success artifact (PR #3625 review, codex P1).
+    let powershell_snapshot = "$process = Start-Process -FilePath 'ripr' -ArgumentList @('check', '--root', '.', '--mode', 'draft', '--format', 'repo-exposure-json') -RedirectStandardOutput 'target/ripr/pilot/after.repo-exposure.json' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }";
+    assert!(
+        md.contains(powershell_snapshot),
+        "powershell after-snapshot translation missing:\n{md}"
+    );
+    // Disclosure precedes the first copyable command, mirroring the landed
+    // agent_workflow ordering, and states the cmd.exe boundary.
+    let disclosure = md
+        .find("cmd.exe is not supported")
+        .ok_or_else(|| format!("pilot markdown must state the cmd.exe boundary: {md}"))?;
+    let first_fence = md
+        .find("```bash")
+        .ok_or_else(|| format!("pilot markdown must fence the bash commands: {md}"))?;
+    assert!(
+        disclosure < first_fence,
+        "shell disclosure at {disclosure} must precede the first command fence at {first_fence}"
+    );
+    // The redirect-free outcome command translates to itself in PowerShell, so
+    // the variant fence still carries a runnable second command.
+    let powershell_block = md
+        .find("```powershell\n")
+        .map(|start| &md[start..])
+        .ok_or_else(|| format!("pilot markdown must fence the powershell commands: {md}"))?;
+    assert!(
+        powershell_block.contains(
+            "ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json"
+        ),
+        "powershell outcome command missing:\n{powershell_block}"
+    );
+    Ok(())
+}
+
 #[test]
 fn pilot_terminal_prints_top_test_and_follow_up_commands() {
     let entry = classified_with(
@@ -453,6 +508,36 @@ fn timeout_summary_md_explains_partial_status_and_retry_command() {
     ] {
         assert!(md.contains(needle), "missing timeout-md needle: {needle}");
     }
+}
+
+/// The retry command carries no redirect and no quoting, so its PowerShell
+/// form is the same text; the fences must still both be present and the bash
+/// form must stay byte-identical (#2628).
+#[test]
+fn timeout_summary_md_pairs_bash_retry_with_powershell_variant() -> Result<(), String> {
+    let artifacts = pilot_artifacts();
+    let md = render_pilot_timeout_summary_md(pilot_context(&artifacts));
+
+    let retry = "ripr pilot --root . --out target/ripr/pilot --mode draft --max-seams 5 --timeout-ms 120000";
+    assert!(
+        md.contains(&format!("```bash\n{retry}\n```")),
+        "bash retry block drifted:\n{md}"
+    );
+    assert!(
+        md.contains(&format!("```powershell\n{retry}\n```")),
+        "powershell retry block missing or drifted:\n{md}"
+    );
+    let disclosure = md
+        .find("cmd.exe is not supported")
+        .ok_or_else(|| format!("pilot timeout markdown must state the cmd.exe boundary: {md}"))?;
+    let first_fence = md
+        .find("```bash")
+        .ok_or_else(|| format!("pilot timeout markdown must fence the bash command: {md}"))?;
+    assert!(
+        disclosure < first_fence,
+        "shell disclosure at {disclosure} must precede the first command fence at {first_fence}"
+    );
+    Ok(())
 }
 
 #[test]

@@ -37,11 +37,26 @@ Repair:
 Verify command:
 `pytest tests/test_pricing.py::test_calculate_discount_smoke`
 
+Verify command (PowerShell):
+`pytest tests/test_pricing.py::test_calculate_discount_smoke`
+
+The first form is written for Bash; cmd.exe is not supported.
+
 Receipt command:
 `ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json`
 
+Receipt command (PowerShell):
+`ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json`
+
+The first form is written for Bash; cmd.exe is not supported.
+
 Agent packet command:
-`ripr agent packet --root fixtures/first_successful_pr/python-preview-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold --json > target/ripr/workflow/agent-packet.json`
+`ripr agent packet --root fixtures/first_successful_pr/python-preview-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id 'gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold' --json > target/ripr/workflow/agent-packet.json`
+
+Agent packet command (PowerShell):
+`$process = Start-Process -FilePath 'ripr' -ArgumentList @('agent', 'packet', '--root', 'fixtures/first_successful_pr/python-preview-gap', '--gap-ledger', 'inputs/reports/gap-decision-ledger.json', '--gap-id', 'gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold', '--json') -RedirectStandardOutput 'target/ripr/workflow/agent-packet.json' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw "ripr exited with code $($process.ExitCode)" }`
+
+The first form is written for Bash; cmd.exe is not supported.
 
 ## Artifacts
 
