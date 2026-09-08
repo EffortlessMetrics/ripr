@@ -4,6 +4,7 @@ use crate::run::{
     tool_build_timeout,
 };
 use crate::verification_contracts::validate_json_file_against_schema;
+use ripr::review_input::canonical_root_identity;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::env;
@@ -1196,18 +1197,6 @@ fn requested_review_mode(repo: &Path, options: &ReviewCommentsOptions) -> String
     }
 }
 
-fn canonical_root_identity(root: &Path) -> String {
-    let normalized = root
-        .canonicalize()
-        .unwrap_or_else(|_| root.to_path_buf())
-        .to_string_lossy()
-        .replace('\\', "/");
-    normalized
-        .strip_prefix("//?/")
-        .unwrap_or(&normalized)
-        .to_string()
-}
-
 fn reusable_cache_identity(root: &str, base: &str, head: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"ripr-review-comments\0");
@@ -1869,7 +1858,12 @@ mod tests {
 
     #[test]
     fn write_wrapper_skips_producer_for_empty_diff() -> Result<(), String> {
-        let (repo, mut options) = prepared_review_repo("ripr-review-comments-empty")?;
+        let name = if cfg!(unix) {
+            r"ripr-review\comments-empty"
+        } else {
+            "ripr-review-comments-empty"
+        };
+        let (repo, mut options) = prepared_review_repo(name)?;
         options.base = "HEAD".to_string();
         options.head = "HEAD".to_string();
 
@@ -1880,6 +1874,17 @@ mod tests {
         })?;
 
         let packet = read_packet(&repo)?;
+        let expected_root = ripr::review_input::canonical_root_identity(&repo);
+        let revision = resolve_revision_identity(&repo, "HEAD");
+        let expected_cache = reusable_cache_identity(&expected_root, &revision, &revision);
+        if packet["run_receipt"]["root_identity"].as_str() != Some(expected_root.as_str())
+            || packet["run_receipt"]["reusable_cache_identity"].as_str()
+                != Some(expected_cache.as_str())
+        {
+            return Err(
+                "empty-diff fallback receipt diverged from shared root/cache identity".into(),
+            );
+        }
         assert_eq!(packet["status"], "advisory");
         assert_eq!(packet["summary"]["comments"], 0);
         assert_eq!(
