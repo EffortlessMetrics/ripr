@@ -35,11 +35,26 @@ Repair:
 Verify command:
 `cargo xtask fixtures boundary_gap`
 
+Verify command (PowerShell):
+`& cargo xtask fixtures boundary_gap; if (-not $? -or $LASTEXITCODE -ne 0) { throw "native command exited with code $($LASTEXITCODE)" }`
+
+The first form is written for Bash; the second requires PowerShell 7.6; cmd.exe and Windows PowerShell 5.1 are not supported.
+
 Receipt command:
 `ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command 'cargo xtask fixtures boundary_gap' --status not_run --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json`
 
+Receipt command (PowerShell):
+`& ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command 'cargo xtask fixtures boundary_gap' --status not_run --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json; if (-not $? -or $LASTEXITCODE -ne 0) { throw "native command exited with code $($LASTEXITCODE)" }`
+
+The first form is written for Bash; the second requires PowerShell 7.6; cmd.exe and Windows PowerShell 5.1 are not supported.
+
 Agent packet command:
 `ripr agent packet --root fixtures/first_successful_pr/boundary-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:pricing:threshold-boundary --json > target/ripr/workflow/agent-packet.json`
+
+Agent packet command (PowerShell):
+`$target = 'target/ripr/workflow/agent-packet.json'; if (Test-Path -LiteralPath $target -PathType Container) { throw "output path is a directory: $target" }; $staging = Join-Path ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($target))) ('.ripr-' + [IO.Path]::GetRandomFileName() + '.tmp'); try { $process = Start-Process -FilePath 'ripr' -ArgumentList @('agent', 'packet', '--root', 'fixtures/first_successful_pr/boundary-gap', '--gap-ledger', 'inputs/reports/gap-decision-ledger.json', '--gap-id', 'gap:pr:pricing:threshold-boundary', '--json') -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw "ripr exited with code $($process.ExitCode)" }; Move-Item -LiteralPath $staging -Destination $target -Force -ErrorAction Stop } finally { if (Test-Path -LiteralPath $staging -PathType Leaf) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue } }`
+
+The first form is written for Bash; the second requires PowerShell 7.6; cmd.exe and Windows PowerShell 5.1 are not supported.
 
 ## Artifacts
 

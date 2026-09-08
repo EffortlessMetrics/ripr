@@ -3,6 +3,11 @@
 //! Lives in the ripr output layer rather than `agent::loop_commands` because it
 //! is consumed only by ripr's gap-ledger and first-PR receipt fallbacks, not by
 //! the agent-loop cockpit commands that `xtask`'s `operator.rs` `#[path]`-shares.
+//!
+//! The built string stays bash source (`shell_arg`); presentation surfaces that
+//! offer a copy-paste form derive the PowerShell variant with the shared
+//! `output::markdown::powershell_command` translation (#2628) rather than a
+//! second quoting implementation.
 
 use crate::agent::loop_commands::shell_arg;
 

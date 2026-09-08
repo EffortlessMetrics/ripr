@@ -15,6 +15,10 @@ The editor consumes existing artifacts. It does not create the first-pr packet,
 publish PR comments, write CI summaries, decide gates, edit source, generate
 tests, call providers, or run mutation testing.
 
+The current Rust command-rendering evidence and its bounded PowerShell 7.6
+support contract are recorded in [the #1672 evidence packet](POWER_SHELL_RENDERING_1672.md).
+The editor copy path remains a separate follow-up under #1672.
+
 ## 1. Start From Setup
 
 Run:

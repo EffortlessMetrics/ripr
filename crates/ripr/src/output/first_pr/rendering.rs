@@ -1,4 +1,5 @@
 use super::{STATIC_EVIDENCE_BOUNDARY, string_path};
+use crate::output::markdown::powershell_command;
 use crate::output::start_here_state::{
     START_HERE_PREVIEW_LIMITED, normalize_start_here_output_state,
 };
@@ -371,16 +372,46 @@ fn render_top_gap_markdown(selected: &Value, out: &mut String) {
         out.push('\n');
     }
     if let Some(command) = selected.get("verify_command").and_then(Value::as_str) {
-        out.push_str("Verify command:\n");
-        out.push_str(&format!("`{command}`\n\n"));
+        push_shell_command_pair(out, "Verify command", command, true);
     }
     if let Some(command) = selected.get("receipt_command").and_then(Value::as_str) {
-        out.push_str("Receipt command:\n");
-        out.push_str(&format!("`{command}`\n\n"));
+        push_shell_command_pair(out, "Receipt command", command, true);
     }
     if let Some(command) = selected.get("agent_packet_command").and_then(Value::as_str) {
-        out.push_str("Agent packet command:\n");
-        out.push_str(&format!("`{command}`\n"));
+        push_shell_command_pair(out, "Agent packet command", command, false);
+    }
+}
+
+/// Present one generated start-here command for both shells (#2628).
+///
+/// The bash form stays authoritative and byte-identical; the PowerShell form
+/// derives through the shared `powershell_command` translation (never a second
+/// quoting implementation), and a compound command under-emits to the
+/// availability disclosure instead of an invalid line; the closing line states
+/// the cmd.exe boundary, which has no translation. `trailing_blank_line` is
+/// false for the last block in the section so the following heading keeps a
+/// single separating blank line.
+fn push_shell_command_pair(
+    out: &mut String,
+    label: &str,
+    command: &str,
+    trailing_blank_line: bool,
+) {
+    out.push_str(&format!("{label}:\n"));
+    out.push_str(&format!("`{command}`\n\n"));
+    match powershell_command(command) {
+        Some(line) => {
+            out.push_str(&format!("{label} (PowerShell):\n"));
+            out.push_str(&format!("`{line}`\n\n"));
+        }
+        None => out.push_str(&format!(
+            "{}: `{command}`\n\n",
+            crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE
+        )),
+    }
+    out.push_str("The first form is written for Bash; the second requires PowerShell 7.6; cmd.exe and Windows PowerShell 5.1 are not supported.\n");
+    if trailing_blank_line {
+        out.push('\n');
     }
 }
 
