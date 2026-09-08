@@ -94,6 +94,15 @@ covered_by = ["cargo xtask check-file-policy", "cargo xtask check-output-contrac
 # ---------------------------------------------------------------------------
 
 [[allow]]
+glob = "ripr.toml"
+kind = "ripr_config"
+owner = "repo-policy"
+surface = "repo"
+classification = "config"
+reason = "Repository-local Rust and preview TypeScript analysis for mixed-language PR producer evidence."
+covered_by = ["cargo test -p xtask repository_language_policy_admits_real_mixed_language_producer", "cargo xtask check-file-policy"]
+
+[[allow]]
 glob = ".cargo/config.toml"
 kind = "cargo_config"
 owner = "rust"

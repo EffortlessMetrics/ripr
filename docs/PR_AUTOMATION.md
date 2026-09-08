@@ -762,6 +762,18 @@ so local user hooks are not clobbered.
 
 ## CI Reports
 
+The repository's root `ripr.toml` explicitly enables Rust and preview TypeScript
+analysis. Mixed-language PR evidence must analyze changed extension sources before
+the review-comments consumer can reuse the producer's complete analysis. This is
+a repository-local opt-in, not a change to RIPR's Rust-only default or TypeScript's
+preview support tier. Disabled or unavailable adapters still produce partial
+evidence, which the consumer rejects rather than treating as a clean review.
+
+`cargo test -p xtask repository_language_policy_admits_real_mixed_language_producer`
+checks actual mixed-language CLI findings, canonical producer projection and
+review-consumer admission, with a Rust-only rejection control. It does not prove
+canonical-delta snapshot generation, distribution packaging or release readiness.
+
 CI uploads review artifacts from the Rust workflow when reports are present:
 
 ```text
