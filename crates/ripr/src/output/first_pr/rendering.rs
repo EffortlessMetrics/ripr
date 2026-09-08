@@ -409,7 +409,7 @@ fn push_shell_command_pair(
             crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE
         )),
     }
-    out.push_str("The first form is written for Bash; cmd.exe is not supported.\n");
+    out.push_str("The first form is written for Bash; the second requires PowerShell 7+; cmd.exe and Windows PowerShell 5.1 are not supported.\n");
     if trailing_blank_line {
         out.push('\n');
     }

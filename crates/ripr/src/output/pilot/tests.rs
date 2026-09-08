@@ -369,7 +369,7 @@ fn pilot_summary_md_pairs_bash_next_commands_with_powershell_variants() -> Resul
     // The native process redirect receives a quoted target and preserves raw
     // stdout bytes; the exit guard prevents a failed run from publishing a
     // success artifact (PR #3625 review, codex P1).
-    let powershell_snapshot = "$process = Start-Process -FilePath 'ripr' -ArgumentList @('check', '--root', '.', '--mode', 'draft', '--format', 'repo-exposure-json') -RedirectStandardOutput 'target/ripr/pilot/after.repo-exposure.json' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }";
+    let powershell_snapshot = "$staging = 'target/ripr/pilot/after.repo-exposure.json.ripr-staging'; Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; $process = Start-Process -FilePath 'ripr' -ArgumentList @('check', '--root', '.', '--mode', 'draft', '--format', 'repo-exposure-json') -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; throw \"ripr exited with code $($process.ExitCode)\" }; Move-Item -LiteralPath $staging -Destination 'target/ripr/pilot/after.repo-exposure.json' -Force";
     assert!(
         md.contains(powershell_snapshot),
         "powershell after-snapshot translation missing:\n{md}"

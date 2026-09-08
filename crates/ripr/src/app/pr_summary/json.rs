@@ -710,7 +710,7 @@ mod tests {
             markdown.contains(bash_form),
             "bash verify command drifted:\n{markdown}"
         );
-        let powershell_form = "```powershell\n$process = Start-Process -FilePath 'cargo' -ArgumentList @('test', 'boundary') -RedirectStandardOutput 'evidence.txt' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }\n```\n\n";
+        let powershell_form = "```powershell\n$staging = 'evidence.txt.ripr-staging'; Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; $process = Start-Process -FilePath 'cargo' -ArgumentList @('test', 'boundary') -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; throw \"ripr exited with code $($process.ExitCode)\" }; Move-Item -LiteralPath $staging -Destination 'evidence.txt' -Force\n```\n\n";
         assert!(
             markdown.contains(powershell_form),
             "powershell verify command missing or drifted:\n{markdown}"

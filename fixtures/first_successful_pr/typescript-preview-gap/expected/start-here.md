@@ -53,7 +53,7 @@ Agent packet command:
 `ripr agent packet --root fixtures/first_successful_pr/typescript-preview-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:typescript:typescript_preview:2396aec1 --json > target/ripr/workflow/agent-packet.json`
 
 Agent packet command (PowerShell):
-`$process = Start-Process -FilePath 'ripr' -ArgumentList @('agent', 'packet', '--root', 'fixtures/first_successful_pr/typescript-preview-gap', '--gap-ledger', 'inputs/reports/gap-decision-ledger.json', '--gap-id', 'gap:pr:gap:typescript:typescript_preview:2396aec1', '--json') -RedirectStandardOutput 'target/ripr/workflow/agent-packet.json' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw "ripr exited with code $($process.ExitCode)" }`
+`$staging = 'target/ripr/workflow/agent-packet.json.ripr-staging'; Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; $process = Start-Process -FilePath 'ripr' -ArgumentList @('agent', 'packet', '--root', 'fixtures/first_successful_pr/typescript-preview-gap', '--gap-ledger', 'inputs/reports/gap-decision-ledger.json', '--gap-id', 'gap:pr:gap:typescript:typescript_preview:2396aec1', '--json') -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; throw "ripr exited with code $($process.ExitCode)" }; Move-Item -LiteralPath $staging -Destination 'target/ripr/workflow/agent-packet.json' -Force`
 
 The first form is written for Bash; cmd.exe is not supported.
 

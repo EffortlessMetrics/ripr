@@ -707,7 +707,7 @@ mod tests {
             rendered.contains(bash_form),
             "bash next command drifted:\n{rendered}"
         );
-        let powershell_form = "```powershell\n$process = Start-Process -FilePath 'ripr' -ArgumentList @('check', '--root', 'repo root', '--mode', 'draft', '--format', 'repo-exposure-json') -RedirectStandardOutput 'target/ripr/workflow/before.repo-exposure.json' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }\n```\n";
+        let powershell_form = "```powershell\n$staging = 'target/ripr/workflow/before.repo-exposure.json.ripr-staging'; Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; $process = Start-Process -FilePath 'ripr' -ArgumentList @('check', '--root', 'repo root', '--mode', 'draft', '--format', 'repo-exposure-json') -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; throw \"ripr exited with code $($process.ExitCode)\" }; Move-Item -LiteralPath $staging -Destination 'target/ripr/workflow/before.repo-exposure.json' -Force\n```\n";
         assert!(
             rendered.contains(powershell_form),
             "powershell next command missing or drifted:\n{rendered}"

@@ -7,7 +7,7 @@
 /// `agent_workflow` disclosure so every generated-command surface states the
 /// same contract. Shared here — beside the translation it describes — so the
 /// fenced command surfaces do not fork one disclosure per module.
-pub(crate) const COMMAND_SHELL_DISCLOSURE: &str = "Each command includes Bash and PowerShell variants. The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and native byte-preserving redirection. cmd.exe is not supported. On Windows, use either Git Bash or PowerShell. WSL bash is not a drop-in substitute: paths keep their Windows drive-letter prefix, which WSL resolves as a relative path.\n\n";
+pub(crate) const COMMAND_SHELL_DISCLOSURE: &str = "Each command includes Bash and PowerShell 7+ variants. The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and staged native byte-preserving redirection. cmd.exe and Windows PowerShell 5.1 are not supported. On Windows, use Git Bash or PowerShell 7+. WSL bash is not a drop-in substitute: paths keep their Windows drive-letter prefix, which WSL resolves as a relative path.\n\n";
 
 pub(crate) fn render_string_section(out: &mut String, title: &str, values: &[String]) {
     out.push_str(&format!("\n## {title}\n\n"));
@@ -82,8 +82,10 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
             .map(|arg| powershell_literal(arg))
             .collect::<Vec<_>>()
             .join(", ");
+        let output_without_closing = output.strip_suffix('\'')?;
+        let staging = format!("{output_without_closing}.ripr-staging'");
         return Some(format!(
-            "$process = Start-Process -FilePath {} -ArgumentList @({args}) -RedirectStandardOutput {output} -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) {{ throw \"ripr exited with code $($process.ExitCode)\" }}",
+            "$staging = {staging}; Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; $process = Start-Process -FilePath {} -ArgumentList @({args}) -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) {{ Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; throw \"ripr exited with code $($process.ExitCode)\" }}; Move-Item -LiteralPath $staging -Destination {output} -Force",
             powershell_literal(&file)
         ));
     }
@@ -316,18 +318,20 @@ mod tests {
 
     #[test]
     fn powershell_command_finds_real_redirect_after_double_quoted_argument() {
-        assert_eq!(
-            powershell_command("ripr check --root \"café > owner's repo\" > 'résumé.json'"),
-            Some("$process = Start-Process -FilePath 'ripr' -ArgumentList @('check', '--root', 'café > owner''s repo') -RedirectStandardOutput 'résumé.json' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }".to_string())
-        );
+        let rendered =
+            powershell_command("ripr check --root \"café > owner's repo\" > 'résumé.json'")
+                .unwrap();
+        assert!(rendered.contains("'café > owner''s repo'"));
+        assert!(rendered.contains("-RedirectStandardOutput $staging"));
+        assert!(rendered.contains("-Destination 'résumé.json'"));
     }
 
     #[test]
     fn powershell_command_keeps_double_quote_literal_inside_single_quotes() {
-        assert_eq!(
-            powershell_command("cargo test 'a \" > b' > evidence.txt"),
-            Some("$process = Start-Process -FilePath 'cargo' -ArgumentList @('test', 'a \" > b') -RedirectStandardOutput 'evidence.txt' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }".to_string())
-        );
+        let rendered = powershell_command("cargo test 'a \" > b' > evidence.txt").unwrap();
+        assert!(rendered.contains("-FilePath 'cargo'"));
+        assert!(rendered.contains("'a \" > b'"));
+        assert!(rendered.contains("-Destination 'evidence.txt'"));
     }
 
     /// #3625 review (CWE-78): bash treats `\$` inside double quotes as
@@ -368,12 +372,11 @@ mod tests {
     /// unquoted. This is the default pilot path shape.
     #[test]
     fn powershell_command_quotes_the_default_unquoted_redirect_target() {
-        assert_eq!(
-            powershell_command(
-                "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
-            ),
-            Some("$process = Start-Process -FilePath 'ripr' -ArgumentList @('check', '--root', '.', '--mode', 'draft', '--format', 'repo-exposure-json') -RedirectStandardOutput 'target/ripr/pilot/after.repo-exposure.json' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }".to_string())
-        );
+        let rendered = powershell_command(
+            "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
+        ).unwrap();
+        assert!(rendered.contains("-ArgumentList @('check', '--root', '.', '--mode', 'draft', '--format', 'repo-exposure-json')"));
+        assert!(rendered.contains("-Destination 'target/ripr/pilot/after.repo-exposure.json'"));
     }
 
     /// An embedded quote in an unwrapped target must survive the literal: the
@@ -382,10 +385,8 @@ mod tests {
     #[test]
     fn powershell_command_redirect_target_escapes_embedded_quotes() {
         assert_eq!(powershell_command("ripr check --root . > it's.json"), None);
-        assert_eq!(
-            powershell_command("ripr check --root . > 'it'\\''s.json'"),
-            Some("$process = Start-Process -FilePath 'ripr' -ArgumentList @('check', '--root', '.') -RedirectStandardOutput 'it''s.json' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }".to_string())
-        );
+        let rendered = powershell_command("ripr check --root . > 'it'\\''s.json'").unwrap();
+        assert!(rendered.contains("-Destination 'it''s.json'"));
     }
 
     /// The artifact write must sit inside the success branch, and a nonzero
@@ -408,9 +409,7 @@ mod tests {
         // The write is textually inside the success branch, and the failure
         // branch throws with the invocation's exit status instead of exiting.
         assert!(
-            line.contains(
-                "Start-Process -FilePath 'ripr' -ArgumentList @('agent', 'packet', '--root', '.', '--json') -RedirectStandardOutput 'target/ripr/workflow/agent-packet.json'"
-            ),
+            line.contains("Start-Process -FilePath 'ripr' -ArgumentList @('agent', 'packet', '--root', '.', '--json') -RedirectStandardOutput $staging"),
             "write must be guarded by the success branch:\n{line}"
         );
         assert!(
@@ -425,6 +424,7 @@ mod tests {
             !line.contains("Out-String") && !line.contains("WriteAllText"),
             "PowerShell must not normalize stdout through text conversion:\n{line}"
         );
+        assert!(line.contains("Move-Item -LiteralPath $staging -Destination 'target/ripr/workflow/agent-packet.json' -Force"));
         Ok(())
     }
 
@@ -513,10 +513,10 @@ mod tests {
     /// Literal multiline data must not hide the real redirect that follows it.
     #[test]
     fn powershell_command_keeps_redirect_after_quoted_newline() {
-        assert_eq!(
-            powershell_command("ripr check --root 'café\nrepo' > 'résumé.json'"),
-            Some("$process = Start-Process -FilePath 'ripr' -ArgumentList @('check', '--root', 'café\nrepo') -RedirectStandardOutput 'résumé.json' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }".to_string())
-        );
+        let rendered =
+            powershell_command("ripr check --root 'café\nrepo' > 'résumé.json'").unwrap();
+        assert!(rendered.contains("'café\nrepo'"));
+        assert!(rendered.contains("-Destination 'résumé.json'"));
     }
 
     /// Exercise the generated form against a real Windows native executable.
@@ -542,7 +542,20 @@ mod tests {
 use std::{env, process};
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    let expected = ["", "space value", "café", "it's", "\"", "$x", "backtick`"];
+    if args.len() == 1 && args.first().is_some_and(|arg| arg == "fail") {
+        print!("partial failure");
+        process::exit(7);
+    }
+    let expected = [
+        "",
+        "space value",
+        "café",
+        "it's",
+        "\"",
+        "$x",
+        "backtick`",
+        "C:\\workspace\\path",
+    ];
     if args.iter().map(String::as_str).collect::<Vec<_>>() != expected {
         eprintln!("unexpected argv: {args:?}");
         process::exit(17);
@@ -565,7 +578,7 @@ fn main() {
 
         let bash_quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
         let command = format!(
-            "{} '' 'space value' 'café' 'it'\\''s' '\"' '$x' 'backtick`' > {}",
+            "{} '' 'space value' 'café' 'it'\\''s' '\"' '$x' 'backtick`' 'C:\\workspace\\path' > {}",
             bash_quote(&executable.to_string_lossy()),
             bash_quote(&artifact.to_string_lossy()),
         );
@@ -581,6 +594,27 @@ fn main() {
         let payload = fs::read(&artifact).map_err(|error| error.to_string())?;
         if payload != br#"{"ok":true}"# {
             return Err(format!("native payload drifted: {payload:?}"));
+        }
+        fs::write(&artifact, b"prior-valid").map_err(|error| error.to_string())?;
+        let failure_command = format!(
+            "{} 'fail' > {}",
+            bash_quote(&executable.to_string_lossy()),
+            bash_quote(&artifact.to_string_lossy())
+        );
+        let failure_powershell = powershell_command(&failure_command)
+            .ok_or_else(|| format!("failure command was withheld: {failure_command}"))?;
+        let failed = Command::new("pwsh")
+            .args(["-NoProfile", "-Command", &failure_powershell])
+            .output()
+            .map_err(|error| error.to_string())?;
+        if failed.status.success() {
+            return Err("native failure unexpectedly succeeded".to_string());
+        }
+        let retained = fs::read(&artifact).map_err(|error| error.to_string())?;
+        if retained != b"prior-valid" {
+            return Err(format!(
+                "failed command overwrote retained artifact: {retained:?}"
+            ));
         }
         let _ = fs::remove_dir_all(root);
         Ok(())

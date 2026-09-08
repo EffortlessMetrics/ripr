@@ -1874,7 +1874,7 @@ mod tests {
             "bash form must be presented before the PowerShell variant"
         );
         assert!(
-            markdown.contains("The first form is written for Bash; cmd.exe is not supported."),
+            markdown.contains("The first form is written for Bash; the second requires PowerShell 7+; cmd.exe and Windows PowerShell 5.1 are not supported."),
             "receipt presentation must state the cmd.exe boundary:\n{markdown}"
         );
         Ok(())
@@ -1914,7 +1914,7 @@ mod tests {
             markdown.contains(bash_packet),
             "bash agent packet command drifted:\n{markdown}"
         );
-        let powershell_packet = "Agent packet command (PowerShell):\n`$process = Start-Process -FilePath 'ripr' -ArgumentList @('agent', 'packet', '--root', 'repo root', '--gap-id', 'gap:pr:pricing', '--json') -RedirectStandardOutput 'target/ripr/workflow/agent-packet.json' -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }`";
+        let powershell_packet = "Agent packet command (PowerShell):\n`$staging = 'target/ripr/workflow/agent-packet.json.ripr-staging'; Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; $process = Start-Process -FilePath 'ripr' -ArgumentList @('agent', 'packet', '--root', 'repo root', '--gap-id', 'gap:pr:pricing', '--json') -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue; throw \"ripr exited with code $($process.ExitCode)\" }; Move-Item -LiteralPath $staging -Destination 'target/ripr/workflow/agent-packet.json' -Force`";
         assert!(
             markdown.contains(powershell_packet),
             "powershell agent packet command missing or drifted:\n{markdown}"
@@ -1937,7 +1937,7 @@ mod tests {
         );
         assert_eq!(
             markdown
-                .matches("The first form is written for Bash; cmd.exe is not supported.")
+                .matches("The first form is written for Bash; the second requires PowerShell 7+; cmd.exe and Windows PowerShell 5.1 are not supported.")
                 .count(),
             2,
             "each presented block must state the cmd.exe boundary:\n{markdown}"
