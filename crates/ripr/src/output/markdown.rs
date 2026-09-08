@@ -656,7 +656,7 @@ fn main() {
         "\"",
         "$x",
         "backtick`",
-        "C:\\workspace\\path",
+        "workspace\\path",
         "'quoted'",
     ];
     if args.iter().map(String::as_str).collect::<Vec<_>>() != expected {
@@ -681,7 +681,7 @@ fn main() {
 
         let bash_quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
         let command = format!(
-            "{} '' 'space value' 'café' 'it'\\''s' '\"' '$x' 'backtick`' 'C:\\workspace\\path' ''\\''quoted'\\''' > {}",
+            "{} '' 'space value' 'café' 'it'\\''s' '\"' '$x' 'backtick`' 'workspace\\path' ''\\''quoted'\\''' > {}",
             bash_quote(&executable.to_string_lossy()),
             bash_quote(&artifact.to_string_lossy()),
         );
@@ -701,7 +701,7 @@ fn main() {
         let relative_name = "'relativeboth'";
         let relative_artifact = root.join(relative_name);
         let relative_command = format!(
-            "{} '' 'space value' 'café' 'it'\\''s' '\"' '$x' 'backtick`' 'C:\\workspace\\path' ''\\''quoted'\\''' > {}",
+            "{} '' 'space value' 'café' 'it'\\''s' '\"' '$x' 'backtick`' 'workspace\\path' ''\\''quoted'\\''' > {}",
             bash_quote(&executable.to_string_lossy()),
             bash_quote(relative_name),
         );
