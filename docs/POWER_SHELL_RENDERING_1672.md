@@ -7,7 +7,7 @@ approval.
 ## Source pair and ancestry
 
 - Source base: `971ac1a85ac76e60003c2c915761a2c13e854c2b`.
-- Final candidate: `1bb53c78ce2ff603f680990f566937cffd52ce53` (`fix(output): bound PowerShell translation eligibility`).
+- Final candidate: `ce4ad79d8c57cfa215033a7d2274efe52604e95f` (`fix(output): bound PowerShell translation eligibility`).
 - Source candidate proof subject: `d3011ff036583cd751e2c8395bcee2f26c1a188a`
   (the standalone 16-test subject before the final eligibility controls and
   evidence update).
