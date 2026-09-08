@@ -297,6 +297,34 @@ does not advertise fails the parity tests.
 
 ## Behavior
 
+### Installed server distribution authority
+
+The installed VS Code extension reads `distribution.json` and requires its
+product version to equal the extension package version. The closed catalog
+separates server-generation identity from release placement: stable and its
+single exact RC fallback share a generation, while catalog identity includes
+the placement policy. Only a direct initial preferred-placement 404 permits
+the bounded RC fallback; other failures and configured mirrors do not.
+
+A missing or malformed installed catalog cannot fabricate managed-release
+authority. A development catalog, including an installed one, cannot select
+the managed generation cache or initiate a download, even with a configured
+mirror. Explicit `server.path`, bundled executables and PATH remain separate
+resolution choices. An explicit `server.version` remains a legacy transport
+override, not embedded catalog authority.
+
+Runtime owners are `distributionDescriptor.ts`, `serverResolver.ts` and
+`downloader.ts` under `editors/vscode/src`. The distribution-descriptor suite
+maps these rules to parser, placement-failure, identity and real resolver
+tests, including `installed development catalog cannot select a populated
+managed cache` with a runnable cached executable, empty-cache mirror and
+explicit-path controls. This is the runtime slice of #1639 / #1670.
+Transactional catalog packaging remains #1682; fetched-byte authentication
+and verified cache admission remain #1640. Generation identity and a successful
+version probe alone do not authenticate executable contents.
+
+### Advertised protocol behavior
+
 The server advertises capabilities at `initialize` based on what the
 client supports:
 - Pull diagnostics are advertised only if the client supports

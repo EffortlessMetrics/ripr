@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- VS Code managed server resolution now binds the installed distribution
+  catalog to the extension version, separates generation identity from bounded
+  stable/RC placement, and prevents missing or development catalogs from
+  selecting managed downloads or caches. Explicit executable and legacy version
+  overrides remain separate choices (#1639, #1670).
+
 ## 0.10.1 - Bounded subprocess adapter analysis
 
 Release date: staged (unreleased).
