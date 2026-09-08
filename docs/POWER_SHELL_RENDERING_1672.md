@@ -7,8 +7,7 @@ approval.
 ## Source pair and ancestry
 
 - Source base: `971ac1a85ac76e60003c2c915761a2c13e854c2b`.
-- Production repair proof subject: `1bb53c78ce2ff603f680990f566937cffd52ce53`
-  (`fix(output): preserve literal apostrophes in targets`).
+- Production repair proof subject: `35098a852c9799eb6ca290923d9974987932fb9a` (`test(output): avoid machine-local Windows fixture path`)..
 - Standalone proof subject before the final apostrophe repair:
   `d3011ff036583cd751e2c8395bcee2f26c1a188a`.
 - Donor ancestry was carried and adapted from merged PRs in the
