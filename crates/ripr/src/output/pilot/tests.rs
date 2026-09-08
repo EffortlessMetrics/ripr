@@ -523,7 +523,7 @@ fn timeout_summary_md_pairs_bash_retry_with_powershell_variant() -> Result<(), S
         return Err(format!("bash retry block drifted:\n{md}"));
     }
     let powershell_retry = format!(
-        "```powershell\n& {retry}; if ($LASTEXITCODE -ne 0) {{ throw \"native command exited with code $($LASTEXITCODE)\" }}\n```"
+        "```powershell\n& {retry}; if (-not $? -or $LASTEXITCODE -ne 0) {{ throw \"native command exited with code $($LASTEXITCODE)\" }}\n```"
     );
     if !md.contains(&powershell_retry) {
         return Err(format!("powershell retry block missing or drifted:\n{md}"));

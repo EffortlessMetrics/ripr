@@ -1857,7 +1857,7 @@ mod tests {
         if !markdown.contains(bash_form) {
             return Err(format!("bash receipt command drifted:\n{markdown}"));
         }
-        let powershell_form = "Receipt command (PowerShell):\n`& ripr receipt write --gap 'it''s' --verify-command 'cargo test' --status not_run; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }`";
+        let powershell_form = "Receipt command (PowerShell):\n`& ripr receipt write --gap 'it''s' --verify-command 'cargo test' --status not_run; if (-not $? -or $LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }`";
         if !markdown.contains(powershell_form) {
             return Err(format!(
                 "powershell receipt command missing or drifted:\n{markdown}"
@@ -1903,7 +1903,7 @@ mod tests {
         if !markdown.contains(bash_verify) {
             return Err(format!("bash verify command drifted:\n{markdown}"));
         }
-        let powershell_verify = "Verify command (PowerShell):\n`& cargo test 'it''s'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }`";
+        let powershell_verify = "Verify command (PowerShell):\n`& cargo test 'it''s'; if (-not $? -or $LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }`";
         if !markdown.contains(powershell_verify) {
             return Err(format!(
                 "powershell verify command missing or drifted:\n{markdown}"

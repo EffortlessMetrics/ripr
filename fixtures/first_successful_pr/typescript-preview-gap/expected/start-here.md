@@ -37,7 +37,7 @@ Verify command:
 `jest tests/discount.test.ts`
 
 Verify command (PowerShell):
-`& jest tests/discount.test.ts; if ($LASTEXITCODE -ne 0) { throw "native command exited with code $($LASTEXITCODE)" }`
+`& jest tests/discount.test.ts; if (-not $? -or $LASTEXITCODE -ne 0) { throw "native command exited with code $($LASTEXITCODE)" }`
 
 The first form is written for Bash; the second requires PowerShell 7.6; cmd.exe and Windows PowerShell 5.1 are not supported.
 
@@ -45,7 +45,7 @@ Receipt command:
 `ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command "jest tests/discount.test.ts" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json`
 
 Receipt command (PowerShell):
-`& ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command "jest tests/discount.test.ts" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json; if ($LASTEXITCODE -ne 0) { throw "native command exited with code $($LASTEXITCODE)" }`
+`& ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command "jest tests/discount.test.ts" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json; if (-not $? -or $LASTEXITCODE -ne 0) { throw "native command exited with code $($LASTEXITCODE)" }`
 
 The first form is written for Bash; the second requires PowerShell 7.6; cmd.exe and Windows PowerShell 5.1 are not supported.
 

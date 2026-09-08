@@ -95,7 +95,7 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
     }
     let command = command.replace("'\\''", "''");
     Some(format!(
-        "& {command}; if ($LASTEXITCODE -ne 0) {{ throw \"native command exited with code $($LASTEXITCODE)\" }}"
+        "& {command}; if (-not $? -or $LASTEXITCODE -ne 0) {{ throw \"native command exited with code $($LASTEXITCODE)\" }}"
     ))
 }
 
@@ -220,6 +220,8 @@ fn is_compound_bash_command(command: &str) -> bool {
                 }
                 '*' | '?' | '[' | ']' => return true,
                 '{' | '}' => return true,
+                '(' | ')' => return true,
+                '@' => return true,
                 '~' if index == 0
                     || chars
                         .get(index - 1)
@@ -363,7 +365,7 @@ mod tests {
     fn powershell_command_handles_unredirected_quoted_and_unicode_commands() -> Result<(), String> {
         check_eq!(
             powershell_command("ripr check --root 'a > b'"),
-            Some("& ripr check --root 'a > b'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
+            Some("& ripr check --root 'a > b'; if (-not $? -or $LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
         let rendered = powershell_command("ripr check --root 'café' > 'résumé.json'")
             .ok_or_else(|| "redirect command was withheld".to_string())?;
@@ -380,7 +382,7 @@ mod tests {
             "cargo test 'a \" > b'",
             "cargo test \"résumé > café\"",
         ] {
-            check_eq!(powershell_command(command).as_deref(), Some(format!("& {command}; if ($LASTEXITCODE -ne 0) {{ throw \"native command exited with code $($LASTEXITCODE)\" }}").as_str()));
+            check_eq!(powershell_command(command).as_deref(), Some(format!("& {command}; if (-not $? -or $LASTEXITCODE -ne 0) {{ throw \"native command exited with code $($LASTEXITCODE)\" }}").as_str()));
         }
         Ok(())
     }
@@ -427,12 +429,12 @@ mod tests {
         let bash = "ripr receipt write --gap 'it'\\''s'";
         check_eq!(
             powershell_command(bash),
-            Some("& ripr receipt write --gap 'it''s'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
+            Some("& ripr receipt write --gap 'it''s'; if (-not $? -or $LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
         // A quoted `>` inside an argument must not be mistaken for a redirect.
         check_eq!(
             powershell_command("ripr receipt write --gap 'gap > file'"),
-            Some("& ripr receipt write --gap 'gap > file'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
+            Some("& ripr receipt write --gap 'gap > file'; if (-not $? -or $LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
         Ok(())
     }
@@ -536,6 +538,8 @@ mod tests {
         check_eq!(powershell_command("ripr check # diagnostic"), None);
         check_eq!(powershell_command("ripr check *.rs"), None);
         check_eq!(powershell_command("ripr check {a,b}"), None);
+        check_eq!(powershell_command("ripr check @missing"), None);
+        check_eq!(powershell_command("ripr check (echo literal)"), None);
         check_eq!(powershell_command("ripr check ~"), None);
         check_eq!(
             powershell_command("ripr check > first.json second.json"),
@@ -547,21 +551,25 @@ mod tests {
         );
         check_eq!(
             powershell_command("ripr receipt write --gap 'a;b'"),
-            Some("& ripr receipt write --gap 'a;b'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
+            Some("& ripr receipt write --gap 'a;b'; if (-not $? -or $LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
         check_eq!(
             powershell_command("cargo test \"a && b\""),
-            Some("& cargo test \"a && b\"; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
+            Some("& cargo test \"a && b\"; if (-not $? -or $LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
         check_eq!(
             powershell_command("cargo test '{a,b}'"),
-            Some("& cargo test '{a,b}'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
+            Some("& cargo test '{a,b}'; if (-not $? -or $LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
+        );
+        check_eq!(
+            powershell_command("cargo test '(echo literal)'"),
+            Some("& cargo test '(echo literal)'; if (-not $? -or $LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
         // The `'\''` idiom keeps translating: its `\'` is quoting, not a
         // compound escape.
         check_eq!(
             powershell_command("ripr receipt write --gap 'it'\\''s'"),
-            Some("& ripr receipt write --gap 'it''s'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
+            Some("& ripr receipt write --gap 'it''s'; if (-not $? -or $LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
         Ok(())
     }
@@ -597,7 +605,7 @@ mod tests {
             ] {
                 let rendered = powershell_command(&command);
                 let expected = format!(
-                    "& {command}; if ($LASTEXITCODE -ne 0) {{ throw \"native command exited with code $($LASTEXITCODE)\" }}"
+                    "& {command}; if (-not $? -or $LASTEXITCODE -ne 0) {{ throw \"native command exited with code $($LASTEXITCODE)\" }}"
                 );
                 check_eq!(rendered.as_deref(), Some(expected.as_str()));
             }
@@ -770,6 +778,23 @@ fn main() {
             return Err("wrong output role was not preserved as a directory".to_string());
         }
         fs::remove_dir(&artifact).map_err(|error| error.to_string())?;
+
+        let missing = root.join("ripr_missing_native_1672.exe");
+        let missing_command = powershell_command(&bash_quote(&missing.to_string_lossy()))
+            .ok_or_else(|| "missing executable command was withheld".to_string())?;
+        let missing_script = format!(
+            "$global:LASTEXITCODE=0; {missing_command}; Write-Output \"UNEXPECTED_CONTINUATION\""
+        );
+        let missing_run = Command::new("pwsh")
+            .args(["-NoProfile", "-Command", &missing_script])
+            .output()
+            .map_err(|error| error.to_string())?;
+        if missing_run.status.success() {
+            return Err("missing native executable unexpectedly succeeded".to_string());
+        }
+        if String::from_utf8_lossy(&missing_run.stdout).contains("UNEXPECTED_CONTINUATION") {
+            return Err("missing native executable allowed continuation".to_string());
+        }
         Ok(())
     }
 }

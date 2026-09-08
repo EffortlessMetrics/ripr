@@ -38,7 +38,7 @@ Verify command:
 `pytest tests/test_pricing.py::test_calculate_discount_smoke`
 
 Verify command (PowerShell):
-`& pytest tests/test_pricing.py::test_calculate_discount_smoke; if ($LASTEXITCODE -ne 0) { throw "native command exited with code $($LASTEXITCODE)" }`
+`& pytest tests/test_pricing.py::test_calculate_discount_smoke; if (-not $? -or $LASTEXITCODE -ne 0) { throw "native command exited with code $($LASTEXITCODE)" }`
 
 The first form is written for Bash; the second requires PowerShell 7.6; cmd.exe and Windows PowerShell 5.1 are not supported.
 
@@ -46,7 +46,7 @@ Receipt command:
 `ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json`
 
 Receipt command (PowerShell):
-`& ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json; if ($LASTEXITCODE -ne 0) { throw "native command exited with code $($LASTEXITCODE)" }`
+`& ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json; if (-not $? -or $LASTEXITCODE -ne 0) { throw "native command exited with code $($LASTEXITCODE)" }`
 
 The first form is written for Bash; the second requires PowerShell 7.6; cmd.exe and Windows PowerShell 5.1 are not supported.
 

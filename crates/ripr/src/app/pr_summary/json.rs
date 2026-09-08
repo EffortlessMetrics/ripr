@@ -697,7 +697,7 @@ mod tests {
         if !markdown.contains("```bash\nripr check --base origin/main\n```\n\n") {
             return Err(format!("bash form drifted:\n{markdown}"));
         }
-        if !markdown.contains("```powershell\n& ripr check --base origin/main; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }\n```\n\n") {
+        if !markdown.contains("```powershell\n& ripr check --base origin/main; if (-not $? -or $LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }\n```\n\n") {
             return Err(format!("powershell form missing or drifted:\n{markdown}"));
         }
         // A redirecting verify command round-trips through the shared
