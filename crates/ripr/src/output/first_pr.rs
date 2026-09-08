@@ -1854,29 +1854,29 @@ mod tests {
         let markdown = render_start_here_markdown(&packet);
 
         let bash_form = "Receipt command:\n`ripr receipt write --gap 'it'\\''s' --verify-command 'cargo test' --status not_run`\n\n";
-        assert!(
-            markdown.contains(bash_form),
-            "bash receipt command drifted:\n{markdown}"
-        );
+        if !markdown.contains(bash_form) {
+            return Err(format!("bash receipt command drifted:\n{markdown}"));
+        }
         let powershell_form = "Receipt command (PowerShell):\n`& ripr receipt write --gap 'it''s' --verify-command 'cargo test' --status not_run; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }`";
-        assert!(
-            markdown.contains(powershell_form),
-            "powershell receipt command missing or drifted:\n{markdown}"
-        );
+        if !markdown.contains(powershell_form) {
+            return Err(format!(
+                "powershell receipt command missing or drifted:\n{markdown}"
+            ));
+        }
         let bash_label = markdown
             .find("Receipt command:\n")
             .ok_or_else(|| format!("bash receipt label must exist: {markdown}"))?;
         let powershell_label = markdown
             .find("Receipt command (PowerShell):\n")
             .ok_or_else(|| format!("powershell receipt label must exist: {markdown}"))?;
-        assert!(
-            bash_label < powershell_label,
-            "bash form must be presented before the PowerShell variant"
-        );
-        assert!(
-            markdown.contains("The first form is written for Bash; the second requires PowerShell 7+; cmd.exe and Windows PowerShell 5.1 are not supported."),
-            "receipt presentation must state the cmd.exe boundary:\n{markdown}"
-        );
+        if bash_label >= powershell_label {
+            return Err("bash form must be presented before the PowerShell variant".to_string());
+        }
+        if !markdown.contains("The first form is written for Bash; the second requires PowerShell 7+; cmd.exe and Windows PowerShell 5.1 are not supported.") {
+            return Err(format!(
+                "receipt presentation must state the cmd.exe boundary:\n{markdown}"
+            ));
+        }
         Ok(())
     }
 
@@ -1900,25 +1900,25 @@ mod tests {
         let markdown = render_start_here_markdown(&packet);
 
         let bash_verify = "Verify command:\n`cargo test 'it'\\''s'`\n\n";
-        assert!(
-            markdown.contains(bash_verify),
-            "bash verify command drifted:\n{markdown}"
-        );
+        if !markdown.contains(bash_verify) {
+            return Err(format!("bash verify command drifted:\n{markdown}"));
+        }
         let powershell_verify = "Verify command (PowerShell):\n`& cargo test 'it''s'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }`";
-        assert!(
-            markdown.contains(powershell_verify),
-            "powershell verify command missing or drifted:\n{markdown}"
-        );
+        if !markdown.contains(powershell_verify) {
+            return Err(format!(
+                "powershell verify command missing or drifted:\n{markdown}"
+            ));
+        }
         let bash_packet = "Agent packet command:\n`ripr agent packet --root 'repo root' --gap-id gap:pr:pricing --json > target/ripr/workflow/agent-packet.json`\n\n";
-        assert!(
-            markdown.contains(bash_packet),
-            "bash agent packet command drifted:\n{markdown}"
-        );
+        if !markdown.contains(bash_packet) {
+            return Err(format!("bash agent packet command drifted:\n{markdown}"));
+        }
         let powershell_packet = "Agent packet command (PowerShell):\n`$target = 'target/ripr/workflow/agent-packet.json'; if (Test-Path -LiteralPath $target -PathType Container) { throw \"output path is a directory: $target\" }; $staging = Join-Path ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($target))) ('.ripr-' + [IO.Path]::GetRandomFileName() + '.tmp'); try { $process = Start-Process -FilePath 'ripr' -ArgumentList @('agent', 'packet', '--root', 'repo root', '--gap-id', 'gap:pr:pricing', '--json') -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }; Move-Item -LiteralPath $staging -Destination $target -Force -ErrorAction Stop } finally { if (Test-Path -LiteralPath $staging -PathType Leaf) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue } }`";
-        assert!(
-            markdown.contains(powershell_packet),
-            "powershell agent packet command missing or drifted:\n{markdown}"
-        );
+        if !markdown.contains(powershell_packet) {
+            return Err(format!(
+                "powershell agent packet command missing or drifted:\n{markdown}"
+            ));
+        }
         let bash_verify_at = markdown
             .find(bash_verify)
             .ok_or_else(|| format!("bash verify label must exist: {markdown}"))?;
@@ -1931,17 +1931,20 @@ mod tests {
         let powershell_packet_at = markdown
             .find(powershell_packet)
             .ok_or_else(|| format!("powershell agent packet label must exist: {markdown}"))?;
-        assert!(
-            bash_verify_at < powershell_verify_at && bash_packet_at < powershell_packet_at,
-            "bash form must be presented before the PowerShell variant:\n{markdown}"
-        );
-        assert_eq!(
-            markdown
-                .matches("The first form is written for Bash; the second requires PowerShell 7+; cmd.exe and Windows PowerShell 5.1 are not supported.")
-                .count(),
-            2,
-            "each presented block must state the cmd.exe boundary:\n{markdown}"
-        );
+        if bash_verify_at >= powershell_verify_at || bash_packet_at >= powershell_packet_at {
+            return Err(format!(
+                "bash form must be presented before the PowerShell variant:\n{markdown}"
+            ));
+        }
+        if markdown
+            .matches("The first form is written for Bash; the second requires PowerShell 7+; cmd.exe and Windows PowerShell 5.1 are not supported.")
+            .count()
+            != 2
+        {
+            return Err(format!(
+                "each presented block must state the cmd.exe boundary:\n{markdown}"
+            ));
+        }
         Ok(())
     }
 

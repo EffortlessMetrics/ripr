@@ -684,47 +684,44 @@ mod tests {
         let s = build_pr_evidence_summary(Some(&start_here), None, None, None, None, None);
         let markdown = super::super::render_evidence_summary_md(&s);
 
-        assert!(
-            markdown.contains("## Local Reproduction Commands\n\n"),
-            "section missing:\n{markdown}"
-        );
-        assert!(
-            markdown.contains("cmd.exe is not supported."),
-            "command presentation must state the cmd.exe boundary:\n{markdown}"
-        );
+        if !markdown.contains("## Local Reproduction Commands\n\n") {
+            return Err(format!("section missing:\n{markdown}"));
+        }
+        if !markdown.contains("cmd.exe is not supported.") {
+            return Err(format!(
+                "command presentation must state the cmd.exe boundary:\n{markdown}"
+            ));
+        }
         // The default derived commands keep byte-identical bash bytes and gain
         // their PowerShell pairs.
-        assert!(
-            markdown.contains("```bash\nripr check --base origin/main\n```\n\n"),
-            "bash form drifted:\n{markdown}"
-        );
-        assert!(
-            markdown.contains("```powershell\nripr check --base origin/main\n```\n\n"),
-            "powershell form missing or drifted:\n{markdown}"
-        );
+        if !markdown.contains("```bash\nripr check --base origin/main\n```\n\n") {
+            return Err(format!("bash form drifted:\n{markdown}"));
+        }
+        if !markdown.contains("```powershell\nripr check --base origin/main\n```\n\n") {
+            return Err(format!("powershell form missing or drifted:\n{markdown}"));
+        }
         // A redirecting verify command round-trips through the shared
         // translation: bash bytes unchanged, PowerShell gets the guarded
         // .NET write.
         let bash_form = "```bash\ncargo test boundary > evidence.txt\n```\n\n";
-        assert!(
-            markdown.contains(bash_form),
-            "bash verify command drifted:\n{markdown}"
-        );
+        if !markdown.contains(bash_form) {
+            return Err(format!("bash verify command drifted:\n{markdown}"));
+        }
         let powershell_form = "```powershell\n$target = 'evidence.txt'; if (Test-Path -LiteralPath $target -PathType Container) { throw \"output path is a directory: $target\" }; $staging = Join-Path ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($target))) ('.ripr-' + [IO.Path]::GetRandomFileName() + '.tmp'); try { $process = Start-Process -FilePath 'cargo' -ArgumentList @('test', 'boundary') -RedirectStandardOutput $staging -NoNewWindow -Wait -PassThru; if ($process.ExitCode -ne 0) { throw \"ripr exited with code $($process.ExitCode)\" }; Move-Item -LiteralPath $staging -Destination $target -Force -ErrorAction Stop } finally { if (Test-Path -LiteralPath $staging -PathType Leaf) { Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue } }\n```\n\n";
-        assert!(
-            markdown.contains(powershell_form),
-            "powershell verify command missing or drifted:\n{markdown}"
-        );
+        if !markdown.contains(powershell_form) {
+            return Err(format!(
+                "powershell verify command missing or drifted:\n{markdown}"
+            ));
+        }
         let bash_fence = markdown
             .find(bash_form)
             .ok_or_else(|| format!("bash fence must exist: {markdown}"))?;
         let powershell_fence = markdown
             .find(powershell_form)
             .ok_or_else(|| format!("powershell fence must exist: {markdown}"))?;
-        assert!(
-            bash_fence < powershell_fence,
-            "bash form must be presented before the PowerShell variant"
-        );
+        if bash_fence >= powershell_fence {
+            return Err("bash form must be presented before the PowerShell variant".to_string());
+        }
         Ok(())
     }
 
@@ -744,32 +741,30 @@ mod tests {
 
         // Bash-only form is still offered, byte-identical.
         let bash_form = "```bash\ncargo test a && cargo test b\n```\n\n";
-        assert!(
-            markdown.contains(bash_form),
-            "bash compound command drifted:\n{markdown}"
-        );
+        if !markdown.contains(bash_form) {
+            return Err(format!("bash compound command drifted:\n{markdown}"));
+        }
         // The disclosure names the command; no powershell fence is emitted for
         // it.
         let disclosure =
             "PowerShell form unavailable for compound commands: `cargo test a && cargo test b`\n\n";
-        assert!(
-            markdown.contains(disclosure),
-            "compound disclosure missing:\n{markdown}"
-        );
-        assert!(
-            !markdown.contains("```powershell\ncargo test a"),
-            "compound command must not gain a powershell fence:\n{markdown}"
-        );
+        if !markdown.contains(disclosure) {
+            return Err(format!("compound disclosure missing:\n{markdown}"));
+        }
+        if markdown.contains("```powershell\ncargo test a") {
+            return Err(format!(
+                "compound command must not gain a powershell fence:\n{markdown}"
+            ));
+        }
         let bash_fence = markdown
             .find(bash_form)
             .ok_or_else(|| format!("bash fence must exist: {markdown}"))?;
         let disclosure_at = markdown
             .find(disclosure)
             .ok_or_else(|| format!("disclosure must exist: {markdown}"))?;
-        assert!(
-            bash_fence < disclosure_at,
-            "bash form must be presented before the disclosure"
-        );
+        if bash_fence >= disclosure_at {
+            return Err("bash form must be presented before the disclosure".to_string());
+        }
         Ok(())
     }
 
@@ -791,29 +786,27 @@ mod tests {
 
         // Bash-only form is still offered, byte-identical.
         let bash_form = "```bash\ncargo run --bin replay < input.json\n```\n\n";
-        assert!(
-            markdown.contains(bash_form),
-            "bash input-redirect command drifted:\n{markdown}"
-        );
+        if !markdown.contains(bash_form) {
+            return Err(format!("bash input-redirect command drifted:\n{markdown}"));
+        }
         let disclosure = "PowerShell form unavailable for compound commands: `cargo run --bin replay < input.json`\n\n";
-        assert!(
-            markdown.contains(disclosure),
-            "input-redirect disclosure missing:\n{markdown}"
-        );
-        assert!(
-            !markdown.contains("```powershell\ncargo run --bin replay"),
-            "input-redirect command must not gain a powershell fence:\n{markdown}"
-        );
+        if !markdown.contains(disclosure) {
+            return Err(format!("input-redirect disclosure missing:\n{markdown}"));
+        }
+        if markdown.contains("```powershell\ncargo run --bin replay") {
+            return Err(format!(
+                "input-redirect command must not gain a powershell fence:\n{markdown}"
+            ));
+        }
         let bash_fence = markdown
             .find(bash_form)
             .ok_or_else(|| format!("bash fence must exist: {markdown}"))?;
         let disclosure_at = markdown
             .find(disclosure)
             .ok_or_else(|| format!("disclosure must exist: {markdown}"))?;
-        assert!(
-            bash_fence < disclosure_at,
-            "bash form must be presented before the disclosure"
-        );
+        if bash_fence >= disclosure_at {
+            return Err("bash form must be presented before the disclosure".to_string());
+        }
         Ok(())
     }
 
