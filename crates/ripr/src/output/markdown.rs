@@ -292,6 +292,26 @@ mod tests {
         }
     }
 
+    macro_rules! check {
+        ($condition:expr $(, $message:expr)*) => {
+            if !$condition {
+                return Err(format!("assertion failed: {}", stringify!($condition)));
+            }
+        };
+    }
+
+    macro_rules! check_eq {
+        ($left:expr, $right:expr $(, $message:tt)*) => {
+            if $left != $right {
+                return Err(format!(
+                    "assertion failed: {} != {}",
+                    stringify!($left),
+                    stringify!($right)
+                ));
+            }
+        };
+    }
+
     struct TempDirGuard(std::path::PathBuf);
 
     impl Drop for TempDirGuard {
@@ -301,25 +321,28 @@ mod tests {
     }
 
     #[test]
-    fn markdown_text_escapes_backslashes() {
-        assert_eq!(markdown_text("a\\b"), "a\\\\b");
-        assert_eq!(markdown_text("no backslash"), "no backslash");
+    fn markdown_text_escapes_backslashes() -> Result<(), String> {
+        check_eq!(markdown_text("a\\b"), "a\\\\b");
+        check_eq!(markdown_text("no backslash"), "no backslash");
+        Ok(())
     }
 
     #[test]
-    fn render_string_section_lists_values_or_none() {
+    fn render_string_section_lists_values_or_none() -> Result<(), String> {
         let mut out = String::new();
         render_string_section(&mut out, "Example", &[]);
-        assert_eq!(out, "\n## Example\n\n- none\n");
+        check_eq!(out, "\n## Example\n\n- none\n");
 
         let mut out = String::new();
         render_string_section(&mut out, "Example", &["a\\b".to_string()]);
-        assert_eq!(out, "\n## Example\n\n- a\\\\b\n");
+        check_eq!(out, "\n## Example\n\n- a\\\\b\n");
+        check_eq!(out, "\n## Example\n\n- a\\\\b\n");
+        Ok(())
     }
 
     #[test]
     fn powershell_command_handles_unredirected_quoted_and_unicode_commands() -> Result<(), String> {
-        assert_eq!(
+        check_eq!(
             powershell_command("ripr check --root 'a > b'"),
             Some("& ripr check --root 'a > b'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
@@ -331,15 +354,16 @@ mod tests {
     }
 
     #[test]
-    fn powershell_command_preserves_quoted_redirect_tokens_without_a_write() {
+    fn powershell_command_preserves_quoted_redirect_tokens_without_a_write() -> Result<(), String> {
         for command in [
             "cargo test \"a > b\"",
             "cargo test \"owner's > case\"",
             "cargo test 'a \" > b'",
             "cargo test \"résumé > café\"",
         ] {
-            assert_eq!(powershell_command(command).as_deref(), Some(format!("& {command}; if ($LASTEXITCODE -ne 0) {{ throw \"native command exited with code $($LASTEXITCODE)\" }}").as_str()));
+            check_eq!(powershell_command(command).as_deref(), Some(format!("& {command}; if ($LASTEXITCODE -ne 0) {{ throw \"native command exited with code $($LASTEXITCODE)\" }}").as_str()));
         }
+        Ok(())
     }
 
     #[test]
@@ -366,12 +390,13 @@ mod tests {
     /// the same pasted text changes meaning across shells, so a
     /// double-quoted backslash under-emits to bash-only.
     #[test]
-    fn powershell_command_rejects_double_quoted_backslash_escapes() {
-        assert_eq!(
+    fn powershell_command_rejects_double_quoted_backslash_escapes() -> Result<(), String> {
+        check_eq!(
             powershell_command("echo \"\\$(Write-Output injected)\""),
             None
         );
-        assert_eq!(powershell_command("echo \"a\\b\""), None);
+        check_eq!(powershell_command("echo \"a\\b\""), None);
+        Ok(())
     }
 
     /// The PowerShell single-quote round-trip: bash's close-escape-reopen idiom
@@ -379,17 +404,18 @@ mod tests {
     /// PowerShell reads `it''s` back as the original bytes `it's`. An embedded
     /// quote left as `'\''` would be a syntax error at the copy site.
     #[test]
-    fn powershell_command_round_trips_embedded_quotes_through_doubling() {
+    fn powershell_command_round_trips_embedded_quotes_through_doubling() -> Result<(), String> {
         let bash = "ripr receipt write --gap 'it'\\''s'";
-        assert_eq!(
+        check_eq!(
             powershell_command(bash),
             Some("& ripr receipt write --gap 'it''s'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
         // A quoted `>` inside an argument must not be mistaken for a redirect.
-        assert_eq!(
+        check_eq!(
             powershell_command("ripr receipt write --gap 'gap > file'"),
             Some("& ripr receipt write --gap 'gap > file'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
+        Ok(())
     }
 
     /// PowerShell parses method-call arguments in expression mode, where a
@@ -417,7 +443,7 @@ mod tests {
     /// through with its interior `''` doubling intact.
     #[test]
     fn powershell_command_redirect_target_escapes_embedded_quotes() -> Result<(), String> {
-        assert_eq!(powershell_command("ripr check --root . > it's.json"), None);
+        check_eq!(powershell_command("ripr check --root . > it's.json"), None);
         let rendered = powershell_command("ripr check --root . > 'it'\\''s.json'")
             .ok_or_else(|| "redirect command was withheld".to_string())?;
         require_contains(&rendered, "$target = 'it''s.json'")
@@ -442,19 +468,19 @@ mod tests {
         .ok_or_else(|| "simple command must translate".to_string())?;
         // The write is textually inside the success branch, and the failure
         // branch throws with the invocation's exit status instead of exiting.
-        assert!(
+        check!(
             line.contains("Start-Process -FilePath 'ripr' -ArgumentList @('agent', 'packet', '--root', '.', '--json') -RedirectStandardOutput $staging"),
             "write must be guarded by the success branch:\n{line}"
         );
-        assert!(
+        check!(
             line.contains("$process.ExitCode -ne 0") && line.contains("throw"),
             "failure must remain visible:\n{line}"
         );
-        assert!(
+        check!(
             !line.contains("exit $LASTEXITCODE"),
             "exit would terminate an interactive session:\n{line}"
         );
-        assert!(
+        check!(
             !line.contains("Out-String") && !line.contains("WriteAllText"),
             "PowerShell must not normalize stdout through text conversion:\n{line}"
         );
@@ -478,46 +504,47 @@ mod tests {
     /// simple: `;` inside a single-quoted token is data, and `&&` inside a
     /// double-quoted token is data.
     #[test]
-    fn powershell_command_rejects_compound_commands() {
-        assert_eq!(powershell_command("cmd1 && cmd2"), None);
-        assert_eq!(powershell_command("cmd1 || cmd2"), None);
-        assert_eq!(powershell_command("cmd1 & cmd2"), None);
-        assert_eq!(powershell_command("cargo test | tee evidence.txt"), None);
-        assert_eq!(powershell_command("cmd1; cmd2"), None);
-        assert_eq!(powershell_command("cmd1 <<EOF"), None);
-        assert_eq!(powershell_command("ripr check --diff < input.json"), None);
-        assert_eq!(powershell_command("cmd1 <input.json"), None);
-        assert_eq!(powershell_command(r"echo a\;b"), None);
-        assert_eq!(powershell_command("cmd1 $(whoami)"), None);
-        assert_eq!(powershell_command("cmd1 `whoami`"), None);
-        assert_eq!(powershell_command("ripr check >output.json"), None);
-        assert_eq!(powershell_command("ripr check >> output.json"), None);
-        assert_eq!(
+    fn powershell_command_rejects_compound_commands() -> Result<(), String> {
+        check_eq!(powershell_command("cmd1 && cmd2"), None);
+        check_eq!(powershell_command("cmd1 || cmd2"), None);
+        check_eq!(powershell_command("cmd1 & cmd2"), None);
+        check_eq!(powershell_command("cargo test | tee evidence.txt"), None);
+        check_eq!(powershell_command("cmd1; cmd2"), None);
+        check_eq!(powershell_command("cmd1 <<EOF"), None);
+        check_eq!(powershell_command("ripr check --diff < input.json"), None);
+        check_eq!(powershell_command("cmd1 <input.json"), None);
+        check_eq!(powershell_command(r"echo a\;b"), None);
+        check_eq!(powershell_command("cmd1 $(whoami)"), None);
+        check_eq!(powershell_command("cmd1 `whoami`"), None);
+        check_eq!(powershell_command("ripr check >output.json"), None);
+        check_eq!(powershell_command("ripr check >> output.json"), None);
+        check_eq!(
             powershell_command("ripr check > first.json > second.json"),
             None
         );
-        assert_eq!(powershell_command("$RIPR_ROOT > output.json"), None);
-        assert_eq!(powershell_command("ripr check>output.json"), None);
-        assert_eq!(
+        check_eq!(powershell_command("$RIPR_ROOT > output.json"), None);
+        check_eq!(powershell_command("ripr check>output.json"), None);
+        check_eq!(
             powershell_command("ripr receipt write --gap 'a;b'"),
             Some("& ripr receipt write --gap 'a;b'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
-        assert_eq!(
+        check_eq!(
             powershell_command("cargo test \"a && b\""),
             Some("& cargo test \"a && b\"; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
         // The `'\''` idiom keeps translating: its `\'` is quoting, not a
         // compound escape.
-        assert_eq!(
+        check_eq!(
             powershell_command("ripr receipt write --gap 'it'\\''s'"),
             Some("& ripr receipt write --gap 'it''s'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
+        Ok(())
     }
 
     /// A bare line separator is not an argv character: it can delimit a
     /// second command, including after the first command's redirect target.
     #[test]
-    fn powershell_command_rejects_unquoted_line_separators() {
+    fn powershell_command_rejects_unquoted_line_separators() -> Result<(), String> {
         for separator in ["\n", "\r\n", "\r"] {
             for command in [
                 format!("cargo test{separator}ripr check"),
@@ -526,19 +553,20 @@ mod tests {
                 format!("cargo test \"owner's case\"{separator}ripr check"),
                 format!("ripr check --root 'café'{separator}cargo test"),
             ] {
-                assert_eq!(
+                check_eq!(
                     powershell_command(&command),
                     None,
                     "must withhold a compound translation: {command:?}"
                 );
             }
         }
+        Ok(())
     }
 
     /// Newlines inside either supported quote form are literal argument data,
     /// not command boundaries; rejecting every multiline string is too broad.
     #[test]
-    fn powershell_command_preserves_quoted_line_separators() {
+    fn powershell_command_preserves_quoted_line_separators() -> Result<(), String> {
         for separator in ["\n", "\r\n", "\r"] {
             for command in [
                 format!("cargo test 'first{separator}second'"),
@@ -550,9 +578,10 @@ mod tests {
                 let expected = format!(
                     "& {command}; if ($LASTEXITCODE -ne 0) {{ throw \"native command exited with code $($LASTEXITCODE)\" }}"
                 );
-                assert_eq!(rendered.as_deref(), Some(expected.as_str()));
+                check_eq!(rendered.as_deref(), Some(expected.as_str()));
             }
         }
+        Ok(())
     }
 
     /// Literal multiline data must not hide the real redirect that follows it.
