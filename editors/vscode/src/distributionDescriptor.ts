@@ -86,7 +86,7 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
   if (!isChannel(channel)) {
     throw new Error(`unsupported release descriptor channel: ${channel}`);
   }
-  if (!/^\d+\.\d+\.\d+$/.test(productVersion)) {
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(productVersion)) {
     throw new Error('release descriptor product version is not semantic');
   }
   if (manifestFile !== `ripr-server-manifest-v${productVersion}.json`) {
@@ -240,7 +240,7 @@ function validatePlacement(productVersion: string, placement: DistributionPlacem
   if (placement.channel === 'stable' && placement.releaseTag !== `v${productVersion}`) {
     throw new Error('stable channel requires a stable release tag');
   }
-  if (placement.channel === 'rc' && !new RegExp(`^v${escapeRegExp(productVersion)}-rc\\.\\d+$`).test(placement.releaseTag)) {
+  if (placement.channel === 'rc' && !new RegExp(`^v${escapeRegExp(productVersion)}-rc\\.(0|[1-9]\\d*)$`).test(placement.releaseTag)) {
     throw new Error('RC channel requires an RC release tag');
   }
 }

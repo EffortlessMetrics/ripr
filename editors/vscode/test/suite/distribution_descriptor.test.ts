@@ -118,6 +118,27 @@ suite('distribution descriptor', () => {
     assert.match(request.catalogIdentity, /^sha256:[0-9a-f]{64}$/);
   });
 
+  test('rejects leading-zero product and numeric RC versions', () => {
+    for (const productVersion of ['01.11.0', '0.01.0', '0.11.00']) {
+      assert.throws(() => parseDistributionDescriptor(JSON.stringify({
+        ...stable, productVersion,
+        releaseTag: `v${productVersion}`, releaseRef: `refs/tags/v${productVersion}`,
+        manifestFile: `ripr-server-manifest-v${productVersion}.json`
+      })), /product version is not semantic/);
+    }
+    assert.throws(() => parseDistributionDescriptor(JSON.stringify({
+      ...rc, releaseTag: 'v0.11.0-rc.01', releaseRef: 'refs/tags/v0.11.0-rc.01'
+    })), /RC channel requires an RC release tag/);
+    for (const productVersion of ['0.0.0', '1.0.10']) {
+      const parsed = parseDistributionDescriptor(JSON.stringify({
+        ...stable, productVersion,
+        releaseTag: `v${productVersion}`, releaseRef: `refs/tags/v${productVersion}`,
+        manifestFile: `ripr-server-manifest-v${productVersion}.json`
+      }));
+      assert.strictEqual(parsed.productVersion, productVersion);
+    }
+  });
+
   test('uses one generation identity across exact stable and RC placements', () => {
     const rcRequest = resolveDistributionRequest('0.11.0', rc);
     const stableRequest = resolveDistributionRequest('0.11.0', stable);
