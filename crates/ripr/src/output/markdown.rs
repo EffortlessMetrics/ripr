@@ -7,7 +7,7 @@
 /// `agent_workflow` disclosure so every generated-command surface states the
 /// same contract. Shared here — beside the translation it describes — so the
 /// fenced command surfaces do not fork one disclosure per module.
-pub(crate) const COMMAND_SHELL_DISCLOSURE: &str = "Each command includes Bash and PowerShell 7.6 forms (native proof run on PowerShell 7.6.5). The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and staged native byte-preserving redirection. cmd.exe and Windows PowerShell 5.1 are not supported. On Windows, use Git Bash or the tested PowerShell 7.6 route. WSL bash is not a drop-in substitute: paths keep their Windows drive-letter prefix, which WSL resolves as a relative path.\n\n";
+pub(crate) const COMMAND_SHELL_DISCLOSURE: &str = "Commands include Bash forms and, where supported, PowerShell 7.6 forms (native proof run on PowerShell 7.6.5); unavailable variants are disclosed. The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and staged native byte-preserving redirection. cmd.exe and Windows PowerShell 5.1 are not supported. On Windows, use Git Bash or the tested PowerShell 7.6 route. WSL bash is not a drop-in substitute: paths keep their Windows drive-letter prefix, which WSL resolves as a relative path.\n\n";
 
 pub(crate) fn render_string_section(out: &mut String, title: &str, values: &[String]) {
     out.push_str(&format!("\n## {title}\n\n"));
