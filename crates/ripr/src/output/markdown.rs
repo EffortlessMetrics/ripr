@@ -219,6 +219,7 @@ fn is_compound_bash_command(command: &str) -> bool {
                     return true;
                 }
                 '*' | '?' | '[' | ']' => return true,
+                '{' | '}' => return true,
                 '~' if index == 0
                     || chars
                         .get(index - 1)
@@ -309,7 +310,7 @@ mod tests {
     }
 
     macro_rules! check {
-        ($condition:expr $(, $message:expr)*) => {
+        ($condition:expr $(,)?) => {
             if !$condition {
                 return Err(format!("assertion failed: {}", stringify!($condition)));
             }
@@ -317,7 +318,7 @@ mod tests {
     }
 
     macro_rules! check_eq {
-        ($left:expr, $right:expr $(, $message:tt)*) => {
+        ($left:expr, $right:expr $(,)?) => {
             if $left != $right {
                 return Err(format!(
                     "assertion failed: {} != {}",
@@ -488,20 +489,10 @@ mod tests {
         // branch throws with the invocation's exit status instead of exiting.
         check!(
             line.contains("Start-Process -FilePath 'ripr' -ArgumentList @('agent', 'packet', '--root', '.', '--json') -RedirectStandardOutput $staging"),
-            "write must be guarded by the success branch:\n{line}"
         );
-        check!(
-            line.contains("$process.ExitCode -ne 0") && line.contains("throw"),
-            "failure must remain visible:\n{line}"
-        );
-        check!(
-            !line.contains("exit $LASTEXITCODE"),
-            "exit would terminate an interactive session:\n{line}"
-        );
-        check!(
-            !line.contains("Out-String") && !line.contains("WriteAllText"),
-            "PowerShell must not normalize stdout through text conversion:\n{line}"
-        );
+        check!(line.contains("$process.ExitCode -ne 0") && line.contains("throw"),);
+        check!(!line.contains("exit $LASTEXITCODE"),);
+        check!(!line.contains("Out-String") && !line.contains("WriteAllText"),);
         require_contains(
             &line,
             "Move-Item -LiteralPath $staging -Destination $target -Force -ErrorAction Stop",
@@ -544,6 +535,7 @@ mod tests {
         check_eq!(powershell_command("ripr check>output.json"), None);
         check_eq!(powershell_command("ripr check # diagnostic"), None);
         check_eq!(powershell_command("ripr check *.rs"), None);
+        check_eq!(powershell_command("ripr check {a,b}"), None);
         check_eq!(powershell_command("ripr check ~"), None);
         check_eq!(
             powershell_command("ripr check > first.json second.json"),
@@ -560,6 +552,10 @@ mod tests {
         check_eq!(
             powershell_command("cargo test \"a && b\""),
             Some("& cargo test \"a && b\"; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
+        );
+        check_eq!(
+            powershell_command("cargo test '{a,b}'"),
+            Some("& cargo test '{a,b}'; if ($LASTEXITCODE -ne 0) { throw \"native command exited with code $($LASTEXITCODE)\" }".to_string())
         );
         // The `'\''` idiom keeps translating: its `\'` is quoting, not a
         // compound escape.
@@ -582,11 +578,7 @@ mod tests {
                 format!("cargo test \"owner's case\"{separator}ripr check"),
                 format!("ripr check --root 'café'{separator}cargo test"),
             ] {
-                check_eq!(
-                    powershell_command(&command),
-                    None,
-                    "must withhold a compound translation: {command:?}"
-                );
+                check_eq!(powershell_command(&command), None);
             }
         }
         Ok(())
@@ -729,6 +721,9 @@ fn main() {
         }
         let sentinel = root.join("artifact.bin.ripr-staging");
         fs::write(&sentinel, b"preexisting-user-file").map_err(|error| error.to_string())?;
+        let unrelated_staging = root.join(".ripr-unrelated0000.tmp");
+        fs::write(&unrelated_staging, b"preexisting-unrelated-file")
+            .map_err(|error| error.to_string())?;
         fs::write(&artifact, b"prior-valid").map_err(|error| error.to_string())?;
         let failure_command = format!(
             "{} 'fail' > {}",
@@ -754,6 +749,12 @@ fn main() {
         if sentinel_bytes != b"preexisting-user-file" {
             return Err(format!(
                 "failed command removed unrelated staging file: {sentinel_bytes:?}"
+            ));
+        }
+        let unrelated_bytes = fs::read(&unrelated_staging).map_err(|error| error.to_string())?;
+        if unrelated_bytes != b"preexisting-unrelated-file" {
+            return Err(format!(
+                "failed command removed unrelated staging pattern file: {unrelated_bytes:?}"
             ));
         }
         fs::remove_file(&artifact).map_err(|error| error.to_string())?;
