@@ -316,13 +316,11 @@ mod tests {
             .ok_or_else(|| format!("disclosure must name Git Bash: {rendered}"))?;
         assert!(
             git_bash < wsl,
-            "Git Bash must be the recommendation the reader meets first, \
-             with WSL qualified afterwards: {rendered}"
+            "Git Bash must be the recommendation the reader meets first, with WSL qualified afterwards: {rendered}"
         );
         assert!(
             rendered.contains("/mnt/"),
-            "the WSL caveat must name the translation a reader has to perform, \
-             not merely discourage it: {rendered}"
+            "the WSL caveat must name the translation a reader has to perform, not merely discourage it: {rendered}"
         );
         Ok(())
     }
