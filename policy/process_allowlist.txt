@@ -43,6 +43,8 @@ editors/vscode/src/downloader.ts|cp.execFile|1|lsp/editor|Downloader invokes tar
 editors/vscode/src/serverResolver.ts|child_process|1|lsp/editor|Server resolver probes candidate ripr binaries.
 editors/vscode/src/serverResolver.ts|cp.spawn|1|lsp/editor|Server resolver runs ripr --version without shell expansion.
 editors/vscode/test/runTest.ts|child_process|1|vscode-packaged-integration|#2528: packaged Electron proof creates an isolated external Git fixture and launches the opt-in trust-boundary host through bounded child-process calls; no shell expansion.
+xtask/src/cargo_driver_tests.rs|Command::new|1|xtask-driver-lifecycle|#1687: embedded no-dependency fixture driver invokes the compiler-selected Cargo binary to rebuild only its isolated workspace while the driver remains alive; the existing bounded capture owner controls the outer fixture process and no production spawn owner changes.
+xtask/src/cargo_driver_tests.rs|use std::process::Command|1|xtask-driver-lifecycle|#1687: Command import belongs to the embedded native Cargo lifecycle fixture source, not the xtask production module; bounded fixture execution covers success, gate failure and Windows executable replacement controls.
 xtask/src/main.rs|Command::new|1|gate-runner|#2343: diff-aware gate runner reads changed files via git diff
 xtask/src/reports/release_scope.rs|Command::new|2|release-scope|RIPR-SPEC-0145: candidate-only scope reconciliation invokes bounded git probes for current ref, commit, path, and preserved-path verification; no arbitrary command execution.
 xtask/src/reports/release_scope.rs|use std::process::Command|1|release-scope|RIPR-SPEC-0145: release-scope imports Command for bounded Git observation only.
