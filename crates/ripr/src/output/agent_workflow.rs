@@ -109,7 +109,7 @@ mod markdown {
         lines.push(String::new());
         lines.push("This workflow packet is advisory and source-edit-free. It gives a human or agent the static context and commands for one focused test loop.".to_string());
         lines.push(String::new());
-        lines.push("Generated commands include Bash forms and, where supported, PowerShell 7.6 forms; unavailable variants are disclosed. Bash uses POSIX single-quote quoting and `>` redirection; PowerShell 7.6 uses the paired native form. cmd.exe and Windows PowerShell 5.1 are not supported. WSL bash is not a drop-in substitute: paths here keep their Windows drive-letter prefix, which WSL resolves as a relative path, so running them there requires rewriting each path under `/mnt/` and having ripr available inside WSL.".to_string());
+        lines.push("Generated commands include Bash forms and, where supported, PowerShell 7.6 forms; unavailable variants are disclosed. Bash uses POSIX single-quote quoting and `>` redirection; PowerShell 7.6 uses the paired native form. cmd.exe and Windows PowerShell 5.1 are not supported. On Windows, use Git Bash or the tested PowerShell 7.6 route. WSL bash is not a drop-in substitute: paths here keep their Windows drive-letter prefix, which WSL resolves as a relative path, so running them there requires rewriting each path under `/mnt/` and having ripr available inside WSL.".to_string());
         lines.push(String::new());
     }
 
@@ -280,7 +280,7 @@ mod tests {
         // imported from production would make this test agree with whatever the
         // renderer happens to emit.
         let disclosure = rendered
-            .find("Generated commands are bash command lines.")
+            .find("Generated commands include Bash forms")
             .ok_or_else(|| format!("commands.md must disclose the bash assumption: {rendered}"))?;
         let first_fence = rendered
             .find("```bash")
