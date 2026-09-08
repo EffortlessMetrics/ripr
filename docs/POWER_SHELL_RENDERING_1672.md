@@ -12,7 +12,7 @@ approval.
   `d3011ff036583cd751e2c8395bcee2f26c1a188a`.
 - Donor ancestry was carried and adapted from merged PRs in the
   `EffortlessMetrics/ripr-swarm` repository: #3617 at
-  `140b2de76a7b43462e2212b005b6ac84142e08d`, #3625 at
+  `140b2de76a7b43462e2212b005b6ac84142e08d6`, #3625 at
   `58ff4e2368f0bfa9e7b95958f8cda7109072ba77`, #3661 at
   `25dad053cc6596bb3dcbca0b0f0245d5f7dad680`, and #3662 at
   `6ffb8c9ea4391ea07edf73674ca762233ebc8acd`. Those are donor references,
