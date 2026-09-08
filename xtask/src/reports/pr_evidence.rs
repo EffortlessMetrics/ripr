@@ -453,6 +453,10 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
     let expected = [
         ("schema_version", "ripr.pr_check_subject.v1".to_string()),
         (
+            "root_identity",
+            ripr::review_input::canonical_root_identity(&repo.join(&options.root)),
+        ),
+        (
             "base_sha",
             resolve_revision(repo, &options.base, "commit").unwrap_or_default(),
         ),
@@ -531,6 +535,13 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
             }
             match serde_json::from_slice::<ripr::review_input::ReviewInputV1>(&review_bytes) {
                 Ok(review) => {
+                    if Some(review.root_identity.as_str())
+                        != subject.get("root_identity").and_then(Value::as_str)
+                    {
+                        violations.push(format!(
+                            "{PR_REVIEW_INPUT_JSON} root_identity does not match the current PR evidence subject"
+                        ));
+                    }
                     if let Ok(expected_projection) =
                         ripr::review_input::canonical_projection_from_index(&index)
                         && review.findings != expected_projection
@@ -1848,8 +1859,35 @@ mod tests {
                         }
                     }
                 }
+                for artifact in [
+                    PR_EVIDENCE_JSON,
+                    PR_EVIDENCE_MD,
+                    PR_CHECK_JSON,
+                    PR_CHECK_SUBJECT_JSON,
+                    PR_REVIEW_INPUT_JSON,
+                ] {
+                    let destination = other.join(artifact);
+                    if let Some(parent) = destination.parent() {
+                        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+                    }
+                    fs::copy(repo.join(artifact), destination)
+                        .map_err(|error| error.to_string())?;
+                }
                 for root in [&repo, &canonical, &repo.join("."), &other] {
                     let admitted = root != &other;
+                    let validation = check_pr_evidence(root, &options);
+                    if admitted {
+                        validation?;
+                    } else {
+                        match validation {
+                            Err(error) if error.contains("root_identity") => {}
+                            result => {
+                                return Err(format!(
+                                    "compatibility checker accepted replay or rejected for wrong reason: {result:?}"
+                                ));
+                            }
+                        }
+                    }
                     let out = parent.join("review.json");
                     let args = vec![
                         "review-comments".into(),
@@ -1908,6 +1946,55 @@ mod tests {
                         ));
                     }
                 }
+            }
+            for selected_root in ["src".to_string(), repo.join("src").display().to_string()] {
+                let rooted_options = PrEvidenceOptions {
+                    root: selected_root,
+                    ..options.clone()
+                };
+                write_pr_evidence_from_check_json(&repo, &rooted_options, &check)?;
+                check_pr_evidence(&repo, &rooted_options)?;
+            }
+            write_pr_evidence_from_check_json(&repo, &options, &check)?;
+            let review_path = repo.join(PR_REVIEW_INPUT_JSON);
+            let mut review: Value =
+                serde_json::from_slice(&fs::read(&review_path).map_err(|error| error.to_string())?)
+                    .map_err(|error| error.to_string())?;
+            let review_object = review
+                .as_object_mut()
+                .ok_or("review input must be an object")?;
+            review_object.insert(
+                "root_identity".into(),
+                Value::String("different-root".into()),
+            );
+            fs::write(
+                &review_path,
+                serde_json::to_vec(&review).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let subject_path = repo.join(PR_CHECK_SUBJECT_JSON);
+            let mut subject: Value = serde_json::from_slice(
+                &fs::read(&subject_path).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let (digest, bytes) = digest_file(&review_path)?;
+            let subject_object = subject.as_object_mut().ok_or("subject must be an object")?;
+            subject_object.insert("review_input_sha256".into(), Value::String(digest));
+            subject_object.insert("review_input_byte_count".into(), Value::from(bytes));
+            fs::write(
+                subject_path,
+                serde_json::to_vec(&subject).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let violations = check_subject_violations(&repo, &options);
+            if violations.len() != 1
+                || !violations
+                    .iter()
+                    .any(|error| error.contains("review-input.json root_identity"))
+            {
+                return Err(format!(
+                    "review identity mismatch must be the sole violation: {violations:?}"
+                ));
             }
             Ok(())
         })();
