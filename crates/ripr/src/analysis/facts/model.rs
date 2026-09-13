@@ -528,6 +528,31 @@ impl FunctionSourceRole {
     }
 }
 
+/// One shadow-shaped binding name captured from a `let` pattern (#3727
+/// Slice A). Produced by the parser-backed summarizer only: the lexical
+/// fallback emits no binding facts at all, so an empty set on a
+/// parser-backed file is a real "no binding" result, not missing data.
+///
+/// Scanner-equivalent granularity, deliberately (see
+/// `analysis::extract::shadow`): `line` is the 0-based line of the `let`
+/// token RELATIVE TO the function body start, and `name` is one whole-word
+/// identifier token extracted from the binding's pattern text with the same
+/// ASCII word class the shared lexical authority
+/// (`extract::shadow::pattern_contains_word`) uses. No scope extents, no
+/// columns: a binding defeats uses at and after its own body-relative line.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LetBindingFact {
+    /// 0-based line of the `let` token relative to the enclosing function's
+    /// body start (the same body-relative line math the lexical shadow
+    /// scanners use).
+    pub line: usize,
+    /// One whole-word identifier from the binding's pattern (`x` for
+    /// `let mut x = ..`, `a` and `b` for `let (a, b) = ..`). Extracted with
+    /// the lexical authority's whole-word semantics so the fact-derived and
+    /// lexical shadow decisions stay equivalent.
+    pub name: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FunctionFact {
     pub id: SymbolId,
@@ -546,6 +571,22 @@ pub struct FunctionFact {
     /// without re-reading the file. The lexical fallback path
     /// populates this as empty.
     pub attrs: Vec<String>,
+    /// Names of `fn` items nested inside this function's body (#3727 Slice
+    /// A), sorted and deduplicated. A nested `fn <callee>` item is hoisted
+    /// and defeats whole-body shadow decisions (see
+    /// `analysis::extract::shadow`). Parser-backed only — the lexical
+    /// fallback leaves this empty. Empty on a parser-backed file is a real
+    /// "no nested fn" result.
+    #[serde(default)]
+    pub nested_fn_names: Vec<String>,
+    /// Shadow-shaped binding facts from the `let` statements in this
+    /// function's body (#3727 Slice A), one entry per whole-word pattern
+    /// name, sorted by (line, name). Initializer-less declarations
+    /// (`let flag;`) produce no entries, mirroring the lexical scanner's
+    /// `;` bound. Parser-backed only — the lexical fallback leaves this
+    /// empty.
+    #[serde(default)]
+    pub let_bindings: Vec<LetBindingFact>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -563,6 +604,16 @@ pub struct TestFact {
     /// case-driven tests so value resolution can map case literals to
     /// test parameters.
     pub attrs: Vec<String>,
+    /// Shadow facts for the test body, mirroring `FunctionFact`
+    /// (#3727 Slice A): nested `fn` item names and `let` binding facts,
+    /// both body-relative. Parser-backed only; the lexical fallback leaves
+    /// them empty.
+    #[serde(default)]
+    pub nested_fn_names: Vec<String>,
+    /// Body-relative `let` binding facts, mirroring
+    /// `FunctionFact.let_bindings` (#3727 Slice A).
+    #[serde(default)]
+    pub let_bindings: Vec<LetBindingFact>,
 }
 
 /// Whether a selector route is known for one harness subject (#3532).

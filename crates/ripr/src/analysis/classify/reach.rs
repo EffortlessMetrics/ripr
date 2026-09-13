@@ -151,6 +151,8 @@ mod tests {
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 
@@ -165,6 +167,8 @@ mod tests {
             assertions: Vec::new(),
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 }

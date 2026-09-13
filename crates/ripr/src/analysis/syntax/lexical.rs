@@ -89,6 +89,13 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
                 // iterator, so attrs stay empty. Value-extraction-v2's
                 // rstest support is parser-only.
                 attrs: Vec::new(),
+                // #3727 Slice A: shadow facts are parser-only, mirroring
+                // probe_shapes. Consumers route this file's shadow decisions
+                // through the lexical scanners because
+                // `used_lexical_fallback` is true — the flag, not the
+                // emptiness, is the discriminator.
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
             };
             if pending_test {
                 tests.push(TestFact {
@@ -101,6 +108,10 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
                     assertions: extract_assertions(&body, start_line),
                     literals,
                     attrs: Vec::new(),
+                    // Parser-only shadow facts (#3727 Slice A): empty under
+                    // the lexical fallback, like `FunctionFact` above.
+                    nested_fn_names: Vec::new(),
+                    let_bindings: Vec::new(),
                 });
             }
             functions.push(function);

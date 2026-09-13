@@ -2592,6 +2592,8 @@ fn demote_harness_target_functions_drops_differently_named_test_facts()
         literals: Vec::new(),
         source_role: FunctionSourceRole::TestAttribute,
         attrs: vec!["#[test]".to_string()],
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
     };
     let test_fact = TestFact {
         name: "differently_named_test_case".to_string(),
@@ -2603,6 +2605,8 @@ fn demote_harness_target_functions_drops_differently_named_test_facts()
         assertions: Vec::new(),
         literals: Vec::new(),
         attrs: vec!["#[test]".to_string()],
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
     };
     let file_facts = FileFacts {
         path: target.to_path_buf(),

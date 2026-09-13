@@ -7,7 +7,7 @@ use super::patterns::{
     is_mock_expectation_line, is_side_effect_observer_assertion, is_snapshot_assertion,
     is_unwrap_err_bound_error_assertion,
 };
-use crate::analysis::extract::body_shadows_callee_at_line;
+use crate::analysis::extract::ShadowAuthority;
 use crate::analysis::extract::mask_comments_and_strings;
 use crate::analysis::extract::text::extract_identifier_tokens;
 
@@ -157,7 +157,32 @@ pub(crate) struct GuardedResultMatchScan {
 /// qualified scrutinee (`helpers::parse`) cannot be shadowed by a local
 /// binding and skips the defeat; its owner confirmation stays unverified
 /// downstream (#3727 tracks qualified-path identity resolution).
+///
+/// This entry point runs the LEXICAL authority over the masked body — the
+/// fallback path of the #3727 flag law. Parser-backed callers (the
+/// rust-analyzer summarizer) pass their per-function facts through
+/// [`guarded_result_match_scan_with_shadow_authority`] instead, so both
+/// paths keep one shadow authority
+/// (`analysis::extract::shadow::ShadowAuthority`).
 pub(crate) fn guarded_result_match_scan(body: &str, start_line: usize) -> GuardedResultMatchScan {
+    guarded_result_match_scan_with_shadow_authority(
+        body,
+        start_line,
+        ShadowAuthority::LexicalMaskedBody,
+    )
+}
+
+/// [`guarded_result_match_scan`] with the caller's shadow authority (#3727
+/// Slice A): parser-backed summarizers pass
+/// [`ShadowAuthority::ParserBodyFacts`] carrying the scanned function's
+/// parser-produced body facts, and the lexical fallback keeps
+/// [`ShadowAuthority::LexicalMaskedBody`] — byte-identical to the
+/// pre-#3727 scan.
+pub(crate) fn guarded_result_match_scan_with_shadow_authority(
+    body: &str,
+    start_line: usize,
+    shadow_authority: ShadowAuthority<'_>,
+) -> GuardedResultMatchScan {
     // Comments and string contents are erased before scanning so a
     // commented-out match, or an arm body mentioning `panic!` inside a
     // diagnostic string, never becomes evidence. Masking preserves the byte
@@ -190,9 +215,12 @@ pub(crate) fn guarded_result_match_scan(body: &str, start_line: usize) -> Guarde
         };
         // A shadowed callee name is not the resolved helper (#3714 authority,
         // shared via extract::shadow): without this defeat the oracle would
-        // bind a local binding's result to the owner's seam. The masked
-        // body keeps the check string/comment-safe; the match's own
-        // body-relative line is the use site for the positional let rule.
+        // bind a local binding's result to the owner's seam. The caller's
+        // #3727 authority decides: the masked body keeps the lexical check
+        // string/comment-safe, and parser-backed facts were produced from
+        // real syntax so they never saw comments or strings in the first
+        // place. The match's own body-relative line is the use site for the
+        // positional let rule.
         // The defeat applies only to a BARE one-segment scrutinee: local
         // bindings cannot shadow an explicitly qualified path
         // (`let parse = ..` never shadows `helpers::parse`), so a shadow
@@ -201,7 +229,7 @@ pub(crate) fn guarded_result_match_scan(body: &str, start_line: usize) -> Guarde
         // imported same-named callees — stays unresolvable here and is the
         // #3727 follow-up; reveal keeps those observations unverified.
         if match_shape.path == match_shape.callee
-            && body_shadows_callee_at_line(&masked, &match_shape.callee, offset)
+            && shadow_authority.body_shadows_callee_at_line(&masked, &match_shape.callee, offset)
         {
             continue;
         }

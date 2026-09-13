@@ -2803,6 +2803,8 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
         literals: Vec::new(),
         source_role: FunctionSourceRole::Production,
         attrs: Vec::new(),
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
     };
     let test = TestSummary {
         name: "discounted_total_helper".to_string(),
@@ -2814,6 +2816,8 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
         assertions: Vec::new(),
         literals: Vec::new(),
         attrs: Vec::new(),
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
     };
     let mut index = RustIndex::default();
     index.files.insert(
@@ -10792,6 +10796,8 @@ fn assertion_targets_seam_returns_false_for_empty_token_list() {
         assertions: Vec::new(),
         literals: Vec::new(),
         attrs: Vec::new(),
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
     };
     assert!(!assertion_targets_seam(&test, &[]));
 }
@@ -11491,6 +11497,8 @@ fn closure_boundary_operand_route_ignores_comment_only_closure_pattern() {
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
 
     assert!(!boundary_operand_is_closure_derived(&owner, "amount"));
@@ -12541,6 +12549,8 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 literals: Vec::new(),
                 source_role: FunctionSourceRole::Production,
                 attrs: Vec::new(),
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
             }, FunctionSummary {
                 id: crate::domain::SymbolId("src/pricing.rs::case_at_threshold".to_string()),
                 name: "case_at_threshold".to_string(),
@@ -12557,6 +12567,8 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 literals: Vec::new(),
                 source_role: FunctionSourceRole::Production,
                 attrs: Vec::new(),
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
             }],
             tests: vec![TestSummary {
                 name: "unit_test_uses_same_file_helper".to_string(),
@@ -12579,6 +12591,8 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 }],
                 literals: Vec::new(),
                 attrs: Vec::new(),
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
             }],
             ..RustIndex::default()
         };

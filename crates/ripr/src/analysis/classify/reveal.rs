@@ -2235,6 +2235,8 @@ return Err(\"typed pin\".into());
             assertions,
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 

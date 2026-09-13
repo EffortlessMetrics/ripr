@@ -69,10 +69,10 @@ pub(crate) use harness_registry::validated_file_wide_harness_targets;
 pub(crate) use includes::compilation_unit_path_from_parents;
 pub use model::{
     CallFact, FileFacts, FunctionFact, FunctionSourceRole, FunctionSummary, HarnessLimitationFact,
-    HarnessSelectorCapability, HarnessSubjectClaim, HarnessSubjectFact, LiteralFact,
-    ModuleDeclarationFact, ModulePathTarget, OracleFact, ProbeShapeFact, ResolvedIncludeParent,
-    ReturnFact, RustIncludeLimitation, RustIndex, SourceRoleProvenance, SourceRoleProvenanceEdge,
-    SourceRoleProvenanceEdgeKind, TestFact, TestSummary,
+    HarnessSelectorCapability, HarnessSubjectClaim, HarnessSubjectFact, LetBindingFact,
+    LiteralFact, ModuleDeclarationFact, ModulePathTarget, OracleFact, ProbeShapeFact,
+    ResolvedIncludeParent, ReturnFact, RustIncludeLimitation, RustIndex, SourceRoleProvenance,
+    SourceRoleProvenanceEdge, SourceRoleProvenanceEdgeKind, TestFact, TestSummary,
 };
 #[cfg(test)]
 pub(crate) use model::{WorkspaceFileAuthority, WorkspaceRootAuthority};

@@ -762,6 +762,8 @@ mod tests {
                         literals: vec![],
                         source_role: FunctionSourceRole::Production,
                         attrs: vec![],
+                        nested_fn_names: Vec::new(),
+                        let_bindings: Vec::new(),
                     }],
                     probe_shapes: vec![ProbeShapeFact {
                         start_line: 3,
@@ -844,6 +846,8 @@ mod tests {
                         literals: vec![],
                         source_role: FunctionSourceRole::Production,
                         attrs: vec![],
+                        nested_fn_names: Vec::new(),
+                        let_bindings: Vec::new(),
                     }],
                     probe_shapes: vec![ProbeShapeFact {
                         start_line: 10,
@@ -985,6 +989,8 @@ mod tests {
                         literals: vec![],
                         source_role,
                         attrs: vec![],
+                        nested_fn_names: Vec::new(),
+                        let_bindings: Vec::new(),
                     }],
                     ..FileFacts::default()
                 },
@@ -1164,6 +1170,8 @@ mod tests {
                         literals: vec![],
                         source_role: FunctionSourceRole::Production,
                         attrs: vec![],
+                        nested_fn_names: Vec::new(),
+                        let_bindings: Vec::new(),
                     }],
                     ..FileFacts::default()
                 },
@@ -1435,6 +1443,8 @@ mod tests {
                         literals: vec![],
                         source_role: FunctionSourceRole::Production,
                         attrs: vec![],
+                        nested_fn_names: Vec::new(),
+                        let_bindings: Vec::new(),
                     }],
                     ..FileFacts::default()
                 },
@@ -1504,6 +1514,8 @@ mod tests {
                         literals: vec![],
                         source_role: FunctionSourceRole::Production,
                         attrs: vec![],
+                        nested_fn_names: Vec::new(),
+                        let_bindings: Vec::new(),
                     }],
                     ..FileFacts::default()
                 },
@@ -1563,6 +1575,8 @@ mod tests {
                         literals: vec![],
                         source_role: FunctionSourceRole::Production,
                         attrs: vec![],
+                        nested_fn_names: Vec::new(),
+                        let_bindings: Vec::new(),
                     }],
                     ..FileFacts::default()
                 },

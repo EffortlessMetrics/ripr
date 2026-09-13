@@ -270,7 +270,7 @@ pub(crate) enum ResolvedOperand {
     /// whose return value is evaluated over the row's bound inputs
     /// (#3296 boolean-predicate helper family).
     Call {
-        callee: crate::analysis::facts::FunctionSummary,
+        callee: Box<crate::analysis::facts::FunctionSummary>,
         arguments: Vec<String>,
     },
 }
@@ -335,7 +335,7 @@ pub(crate) fn resolve_direct_call(
         .find(|function| function.name == callee_name)?;
     let arguments = super::helper_transfer::split_call_arguments_text(trimmed, &callee_name)?;
     Some(ResolvedOperand::Call {
-        callee: callee.clone(),
+        callee: Box::new(callee.clone()),
         arguments,
     })
 }
@@ -1475,6 +1475,8 @@ mod tests {
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
         let test = TestSummary {
             name: "absent_delimiter_boundary".to_string(),
@@ -1490,6 +1492,8 @@ mod tests {
             assertions: Vec::new(),
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
         let probe = Probe {
             id: ProbeId("probe:src_lib.rs:predicate:eval".to_string()),
@@ -1880,6 +1884,8 @@ assert_eq!(input.amount, 100);"#
             )],
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
 
         let facts = value_facts_for_test(&test, None);
@@ -1937,6 +1943,8 @@ assert_eq!(input.amount, 100);"#
             assertions: Vec::new(),
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
 
         let facts = value_facts_for_test(&test, Some(&owner));
@@ -2005,6 +2013,8 @@ assert_eq!(input.amount, 100);"#
             assertions: Vec::new(),
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
 
         assert!(owner_call_parameter_values(&[&test], "", &["amount".to_string()]).is_empty());
@@ -2094,6 +2104,8 @@ assert_eq!(input.amount, 100);"#
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 
@@ -2112,6 +2124,8 @@ assert_eq!(input.amount, 100);"#
             assertions: Vec::new(),
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 
@@ -2126,6 +2140,8 @@ assert_eq!(input.amount, 100);"#
             assertions: vec![oracle_fact(assertion, kind)],
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 

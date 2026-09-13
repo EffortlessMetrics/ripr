@@ -13,7 +13,7 @@ pub(crate) use patterns::{
 pub(crate) use scan::unwrap_err_bound_variables;
 pub(crate) use scan::{
     err_return_guard_oracles, extract_assertions, extract_line_scanned_oracles,
-    guarded_result_match_scan,
+    guarded_result_match_scan_with_shadow_authority,
 };
 
 #[cfg(test)]

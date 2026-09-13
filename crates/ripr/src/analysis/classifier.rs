@@ -139,6 +139,8 @@ mod tests {
                     value: "\"discount_threshold\"".to_string(),
                 }],
                 attrs: vec![],
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
             }],
             ..RustIndex::default()
         };
@@ -188,6 +190,8 @@ mod tests {
                     value: "100".to_string(),
                 }],
                 attrs: vec![],
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
             }],
             ..RustIndex::default()
         };
@@ -1781,6 +1785,8 @@ mod tests {
             literals: vec![],
             source_role: FunctionSourceRole::Production,
             attrs: vec![],
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 
@@ -1812,6 +1818,8 @@ mod tests {
                 value: "1".to_string(),
             }],
             attrs: vec![],
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 

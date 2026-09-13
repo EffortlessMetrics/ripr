@@ -108,6 +108,10 @@ fn test_fact(function: &FunctionFact) -> TestFact {
             .unwrap_or_else(|| extract_assertions(&function.body, function.start_line)),
         literals,
         attrs: function.attrs.clone(),
+        // #3727 Slice A: the promotion mirrors the source function's
+        // parser-produced shadow facts — same body, same decisions.
+        nested_fn_names: function.nested_fn_names.clone(),
+        let_bindings: function.let_bindings.clone(),
     }
 }
 

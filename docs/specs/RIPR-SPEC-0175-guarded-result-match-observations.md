@@ -15,6 +15,7 @@ Linked plan:
 Linked issues:
 
 - #3709 (derive owner-bound guarded Result observations)
+- #3727 (parser-backed shadow/item facts for seam-callee defeat — Slice A)
 - #1528 (downstream qualification parent; the #13162 comparison)
 - #3284 / RIPR-SPEC-0154 (the Err-return guard family this extends; that spec
   excluded match-arm Err forms as a non-goal)
@@ -34,6 +35,17 @@ Policy impact:
   pinned in `policy/output_contracts.txt` and `docs/OUTPUT_SCHEMA.md`).
 - The file-fact cache generation is bumped so warm pre-extension caches
   cannot reuse the old oracle semantics.
+- #3727 Slice A adds parser-produced `nested_fn_names`/`let_bindings` fact
+  fields to `FunctionFact`/`TestFact` and switches both shadow consumers to
+  a flag-law authority (`analysis/extract/shadow.rs::ShadowAuthority`);
+  another file-fact cache generation bump keeps warm pre-extension caches
+  from serving parser-backed files WITHOUT the fact fields (on such files
+  the flag law reads empty facts as real "no shadow", so a stale envelope
+  could silently retire the lexical scanners' defeats). The classified-seam
+  generations move with it (outer `1.12`, sharded `0.18`, compact `0.19`):
+  the classified cache loads BEFORE any file-fact rebuild, so only its own
+  generation bump can keep a warm hit from replaying pre-#3727 shadow
+  classification.
 
 ## Problem
 
@@ -185,6 +197,34 @@ the #13162 `expect_response` comparison shape.
   the defeat does not apply to it; its owner confirmation stays
   unverified downstream (#3727 tracks qualified-path identity
   resolution).
+- #3727 Slice A gives the shadow authority a PARSER-BACKED decision path
+  with the same rules at line granularity. The parser producer
+  (`analysis/syntax/ra.rs`) descends each function's syntax tree and
+  records `nested_fn_names` (names of `fn` items nested in the body,
+  hoisted — they defeat the whole body) and `let_bindings` (one
+  `{line, name}` entry per whole-word identifier in every initialized
+  `let` binding's pattern, `line` body-relative and 0-based; the
+  initializer-less `;` bound and the positional at-or-after rule carry
+  over unchanged). Both fields live on `FunctionFact` and mirror on
+  `TestFact`; the lexical fallback producer leaves them empty, mirroring
+  `probe_shapes`. Consumers switch on the FILE'S `used_lexical_fallback`
+  FLAG — never on set emptiness: parser-backed files decide from the
+  facts (empty sets are real "no shadow" results); fallback files, and
+  files absent from the index, run the byte-level lexical scanners
+  byte-identically (`ShadowAuthority::LexicalMaskedBody`). Equivalence
+  law: on parser-backed files the fact-derived decisions must equal the
+  lexical scanners' decisions on the same masked body — pattern names are
+  extracted with the scanner's own whole-word ASCII vocabulary, so
+  realistic Rust decides identically through either authority (a pinned
+  fixture battery enforces it). Named residuals: shadow shapes inside
+  macro definitions or exotic whitespace spellings are real syntax or
+  text the OTHER authority sees but this one does not (macro token trees
+  carry no `fn`/`let` nodes; the byte scanner can see whole-word shapes
+  in non-ASCII identifier spellings the ASCII fact vocabulary does not
+  tokenize), and the lexical byte scanner also defeats on a `let`/`fn`
+  keyword split across lines that real parsing accepts — all
+  under-defeat/over-defeat residuals bounded to inputs outside the
+  equivalence battery, never a vocabulary or outcome change.
 - The Ok-arm bodies are sliced at extraction time and the fact carries
   whether they OBSERVE the unwrapped success value (`ok_value_observed`;
   #3731 observation authority): the decision is true when any Ok-arm body
@@ -287,6 +327,12 @@ the #13162 `expect_response` comparison shape.
   propagation witness still holds the finding at `weakly_exposed`.
 - No per-language variants beyond Rust; no generalized semantic engine.
 - No mutation-runtime outcome vocabulary.
+- #3727 Slice A non-goals (later slices or refinements): wrapper-seam
+  callee identity from probe-expression provenance (Slice B), a
+  parser-derived `CallFact` with receiver/path/column (Slice C), lexical
+  scope extents or column-precise shadow attribution, and any change to
+  the shadow semantics that would move a golden — the fact path is
+  deliberately scanner-equivalent, not more precise.
 
 ## Required Evidence
 
@@ -370,6 +416,27 @@ the #13162 `expect_response` comparison shape.
 - Parser-path test: exactly one guarded-match oracle for the routing
   form and no mock-expectation duplicate through
   `extract_parser_oracles`.
+- #3727 Slice A scanner-equivalence battery: for fixture bodies covering
+  the #3722/#3728 pin families (string/comment/char-literal/multiline-
+  string shapes, initializer-less `;` bound, positional `let` rule,
+  same-line conservative defeat, `let mut`/`ref`/typed/destructuring/
+  let-else patterns, nested fns and nested blocks, prefix-coincidence
+  names), the parser fact decisions and the lexical scanner decisions on
+  the same masked body agree for every probed callee, through both the
+  descent helper and the real `summarize_file_with_parser` test facts;
+  the guarded-match scan driven with parser facts emits exactly what the
+  lexical entry point emits on the same bodies.
+- #3727 Slice A flag-law and removal controls: a parser-backed file's
+  facts defeat the shadowed seam-callee admit; deleting the facts (file
+  absent from the index) or marking the file `used_lexical_fallback`
+  (fact fields empty) falls back to the lexical scanners and still
+  defeats — no over-credit; a parser-backed file with genuinely empty
+  fact sets keeps a clean callee call related (emptiness is a real
+  "no shadow", never a discriminator); a producer control requires
+  non-empty facts for a shadow-bearing body; and the parser path defeats
+  a fact-shadowed guarded match after attribute lines (line-index
+  alignment), while the lexical fallback path keeps its existing
+  shadow-defeat pins.
 
 ## Acceptance Examples
 
@@ -410,6 +477,13 @@ the #13162 `expect_response` comparison shape.
 
 - `crates/ripr/src/analysis/extract/oracles/scan.rs::guarded_result_match_tests`
 - `crates/ripr/src/analysis/syntax/ra.rs::guard_pipeline_debug_tests::parser_path_credits_guarded_routing_match_in_test_facts`
+- `crates/ripr/src/analysis/syntax/ra.rs::guard_pipeline_debug_tests::parser_path_shadow_defeats_guarded_match_through_facts`
+- `crates/ripr/src/analysis/syntax/ra.rs::shadow_fact_equivalence_tests`
+- `crates/ripr/src/analysis/extract/shadow.rs::fact_authority_tests`
+- `crates/ripr/src/analysis/classify/related_tests.rs::tests::given_parser_backed_file_when_facts_shadow_callee_then_no_seam_callee_call`
+- `crates/ripr/src/analysis/classify/related_tests.rs::tests::given_parser_facts_deleted_when_wrapper_probe_then_lexical_fallback_still_defeats`
+- `crates/ripr/src/analysis/classify/related_tests.rs::tests::given_lexical_fallback_file_when_wrapper_probe_then_lexical_scanners_still_defeats`
+- `crates/ripr/src/analysis/classify/related_tests.rs::tests::given_parser_backed_file_with_no_shadow_facts_then_seam_callee_call_stays_related`
 - `crates/ripr/src/analysis/classify/reveal.rs::tests::guarded_result_match_*`
 - `crates/ripr/src/analysis/test_grip_evidence/tests.rs::guarded_result_match_*`
 - `crates/ripr/src/output/agent_seam_packets.rs::tests::kind_gate_error_variant_seam_with_guarded_result_match_strong_test_is_nominated`
@@ -431,24 +505,53 @@ the #13162 `expect_response` comparison shape.
 - `crates/ripr/src/analysis/extract/oracles/scan.rs` —
   `guarded_result_match_scan` and the arm/discriminator grammar, plus the
   Ok-arm body slicing and the `ok_arms_observe_value` containment rule
-  behind the fact's `ok_value_observed` decision.
-- `crates/ripr/src/analysis/extract/calls.rs` — reused shadow authority
-  (`test_body_shadows_callee`, moved from `classify/related_tests.rs`).
+  behind the fact's `ok_value_observed` decision; #3727 Slice A adds
+  `guarded_result_match_scan_with_shadow_authority` (the lexical entry
+  point delegates with `ShadowAuthority::LexicalMaskedBody`).
+- `crates/ripr/src/analysis/extract/shadow.rs` — the single shadow
+  authority (moved from `classify/related_tests.rs`, then
+  `extract/calls.rs`): the byte-level lexical scanners plus the #3727
+  Slice A fact twins (`fact_body_defines_callee_fn`,
+  `fact_body_let_shadow_line`, `fact_body_shadows_callee_at_line`,
+  `extract_pattern_words`) and the `ShadowAuthority` flag-law switch both
+  consumers call.
+- `crates/ripr/src/analysis/extract/oracles/scan.rs` —
+  `guarded_result_match_scan` and the arm/discriminator grammar, plus the
+  Ok-arm body slicing and the `ok_arms_observe_value` containment rule
+  behind the fact's `ok_value_observed` decision; #3727 Slice A adds
+  `guarded_result_match_scan_with_shadow_authority` (the lexical entry
+  point delegates with `ShadowAuthority::LexicalMaskedBody`).
+- `crates/ripr/src/analysis/extract/calls.rs` — call-fact extraction
+  feeding the seam-callee relation.
 - `crates/ripr/src/analysis/syntax/ra.rs` — parser-path ingestion and
-  statement-joiner suppression.
+  statement-joiner suppression; #3727 Slice A adds the
+  `collect_body_shadow_facts` descent (nested `ast::Fn` names plus
+  initialized `ast::LetStmt` pattern facts, body-relative through the
+  `LineIndex`), wires the parser-backed authority into
+  `extract_parser_oracles`, and mirrors the fields into the
+  `FunctionFact`/`TestFact` summaries.
+- `crates/ripr/src/analysis/syntax/lexical.rs` — the fallback producer
+  leaves the #3727 shadow-fact fields empty and sets
+  `used_lexical_fallback` (#2698 flag discipline).
+- `crates/ripr/src/analysis/facts/model.rs` — the `OracleFact` fact gains
+  `ok_value_observed` (the guarded-match Ok-arm observation decision;
+  `None` for every other oracle kind); #3727 Slice A adds
+  `LetBindingFact` and the `nested_fn_names`/`let_bindings` fields on
+  `FunctionFact` and `TestFact` (`#[serde(default)]`).
+- `crates/ripr/src/analysis/classify/related_tests.rs` — the
+  `SeamCalleeCall` relation routes its shadow decision through the
+  #3727 `ShadowAuthority` flag law (facts on parser-backed files,
+  lexical scanners under fallback or absent index entries).
+- `crates/ripr/src/analysis/facts/build.rs` — `package_names` from the
+  root manifest (the `[package] name` plus the `[lib] name` target, each
+  in raw and crate-identifier form), feeding the own-crate side of the
+  import gate.
 - `crates/ripr/src/analysis/classify/reveal.rs` — `owner_callee` context,
   the producer-owned confirmation (including the Ok-arm observation gate
   for success-payload return-value probes), and
   `file_imports_foreign_callee_name` (the F11/F22 import-defeat scanner,
   a bounded lexical `use` scan over the masked file source at any brace
   depth).
-- `crates/ripr/src/analysis/facts/model.rs` — the `OracleFact` fact gains
-  `ok_value_observed` (the guarded-match Ok-arm observation decision;
-  `None` for every other oracle kind).
-- `crates/ripr/src/analysis/facts/build.rs` — `package_names` from the
-  root manifest (the `[package] name` plus the `[lib] name` target, each
-  in raw and crate-identifier form), feeding the own-crate side of the
-  import gate.
 - `crates/ripr/src/analysis/classifier/evidence.rs` — the caller-supplied
   per-test defeat closures threading `FileFacts.source` (the F11/F22
   same-name-import defeat) and `RustIndex.functions` with the shared
@@ -473,7 +576,11 @@ the #13162 `expect_response` comparison shape.
   if-form termination, per-pin truncation with an untruncated join);
   1.6 -> 1.7 for the Ok-arm observation decision (Ok-arm bodies sliced
   at extraction and the fact carries whether they observe the unwrapped
-  success value); classified `CACHE_SCHEMA_VERSION` 1.6 -> 1.7 -> 1.8
+  success value); 1.7 -> 1.8 for the #3727 Slice A parser-backed shadow
+  facts (`nested_fn_names`/`let_bindings` plus the flag-law authority
+  switch in both consumers — a warm pre-bump hit would serve parser-backed
+  files without the fact fields, and the flag law reads empty facts on
+  those files as real "no shadow"); classified `CACHE_SCHEMA_VERSION` 1.6 -> 1.7 -> 1.8
   -> 1.9 -> 1.10 -> 1.11, sharded 0.12 -> 0.13 -> 0.14 -> 0.15 -> 0.16
   -> 0.17, and compact 0.13 -> 0.14 -> 0.15 -> 0.16 -> 0.17 -> 0.18
   (the second-to-last steps for the round-4 through round-6 fixes,

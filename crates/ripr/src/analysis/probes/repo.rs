@@ -103,6 +103,8 @@ mod tests {
                         literals: vec![],
                         source_role: FunctionSourceRole::Production,
                         attrs: vec![],
+                        nested_fn_names: Vec::new(),
+                        let_bindings: Vec::new(),
                     }],
                     probe_shapes: vec![
                         ProbeShapeFact {
@@ -177,6 +179,8 @@ mod tests {
                         literals: vec![],
                         source_role: FunctionSourceRole::Production,
                         attrs: vec![],
+                        nested_fn_names: Vec::new(),
+                        let_bindings: Vec::new(),
                     }],
                     probe_shapes: vec![ProbeShapeFact {
                         start_line: 2,

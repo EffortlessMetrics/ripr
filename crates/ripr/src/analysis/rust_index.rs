@@ -14,7 +14,7 @@ pub(crate) use super::extract::{
     PROBE_SHAPE_RETURN_VALUE, PROBE_SHAPE_SIDE_EFFECT, classify_assertion,
     err_return_guard_oracles, extract_assertions, extract_call_facts, extract_identifier_tokens,
     extract_line_scanned_oracles, extract_literal_facts, extract_literals, extract_return_facts,
-    guarded_result_match_scan, has_oracle_text_shape, is_known_probe_shape,
+    guarded_result_match_scan_with_shadow_authority, has_oracle_text_shape, is_known_probe_shape,
     is_unwrap_err_bound_error_assertion, unwrap_err_bound_variables,
 };
 use super::facts::ModulePathTarget;

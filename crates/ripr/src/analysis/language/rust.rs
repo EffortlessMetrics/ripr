@@ -3966,6 +3966,8 @@ fn absent_delimiter_boundary_returns_head() {
             assertions: Vec::new(),
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         });
         assert!(is_binary_source_path(Path::new("src/main.rs")));
         assert!(super::find_subprocess_binary_test(&index, Path::new("src/main.rs")).is_some());
@@ -4262,6 +4264,8 @@ let _ = (result, note, raw);"##,
                 },
             ],
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 
@@ -4327,6 +4331,8 @@ let _ = (result, note, raw);"##,
             literals: vec![],
             source_role: FunctionSourceRole::Production,
             attrs: attrs.into_iter().map(|s| s.to_string()).collect(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 

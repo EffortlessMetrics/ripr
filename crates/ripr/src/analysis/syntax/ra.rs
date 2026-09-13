@@ -7,8 +7,11 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use super::super::extract::PROBE_SHAPE_UNSAFE_BOUNDARY;
+use super::super::extract::ShadowAuthority;
+use super::super::extract::extract_pattern_words;
 use super::super::facts::FileFacts;
 use super::super::facts::FunctionSourceRole;
+use super::super::facts::LetBindingFact;
 use super::super::facts::ModuleDeclarationFact;
 use super::super::facts::ModulePathTarget;
 use super::super::facts::SourceRoleProvenance;
@@ -20,7 +23,8 @@ use crate::analysis::rust_index::{
     PROBE_SHAPE_RETURN_VALUE, PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, TestFact,
     classify_assertion, err_return_guard_oracles, extract_call_facts, extract_identifier_tokens,
     extract_line_scanned_oracles, extract_literal_facts, extract_return_facts,
-    guarded_result_match_scan, is_unwrap_err_bound_error_assertion, unwrap_err_bound_variables,
+    guarded_result_match_scan_with_shadow_authority, is_unwrap_err_bound_error_assertion,
+    unwrap_err_bound_variables,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -233,6 +237,14 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
             FunctionSourceRole::Production
         };
         let attrs = collect_attr_syntax(&function);
+        // #3727 Slice A: parser-backed test-body shadow facts. Nested `fn`
+        // item names and `let` binding facts over this function's body,
+        // body-relative (relative to the `fn` keyword line, which is also
+        // where the stored `body` slice starts). The lexical fallback
+        // producer leaves both fields empty; on parser-backed files an
+        // empty set is a real "no definition" result.
+        let (nested_fn_names, let_bindings) =
+            collect_body_shadow_facts(&function, &|offset| line_index.line(offset), start_line);
 
         file_calls.extend(calls.clone());
         file_returns.extend(returns.clone());
@@ -251,6 +263,8 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
             literals: literals.clone(),
             source_role,
             attrs: attrs.clone(),
+            nested_fn_names: nested_fn_names.clone(),
+            let_bindings: let_bindings.clone(),
         };
 
         if has_test_attribute {
@@ -264,6 +278,8 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
                 assertions: extract_parser_oracles(&function, text, &line_index),
                 literals,
                 attrs,
+                nested_fn_names,
+                let_bindings,
             });
         }
 
@@ -357,6 +373,108 @@ fn module_declaration_facts(
     declarations.sort_by(|left, right| left.line.cmp(&right.line).then(left.name.cmp(&right.name)));
     declarations.dedup();
     declarations
+}
+
+/// Collects the parser-backed test-body shadow facts for one function
+/// (#3727 Slice A): the names of `fn` items nested inside the function's
+/// body, and one [`LetBindingFact`] per whole-word name in every
+/// initialized `let` binding's pattern, line-relative to the function's
+/// `fn` keyword line.
+///
+/// The semantics are deliberately scanner-equivalent at line granularity
+/// (see `analysis::extract::shadow`): a nested `fn <callee>` item is
+/// hoisted and defeats the whole body, and a binding defeats uses at and
+/// after its own body-relative line. No scope extents, no columns. The
+/// pattern names are extracted with the shared lexical authority's
+/// whole-word vocabulary (`extract_pattern_words`), so the fact-derived
+/// decisions equal the lexical scanners' decisions on the same masked body
+/// for realistic Rust — the equivalence battery in this module pins it.
+///
+/// `line_of` maps a tree offset to a 1-based line, and `fn_line` is the
+/// 1-based line of the function's `fn` keyword — the two inputs that make
+/// this helper reusable over the file text (the summarizer) and over a
+/// standalone function text (re-extraction), each with its own
+/// [`LineIndex`].
+fn collect_body_shadow_facts(
+    function: &ast::Fn,
+    line_of: &impl Fn(TextSize) -> usize,
+    fn_line: usize,
+) -> (Vec<String>, Vec<LetBindingFact>) {
+    let mut nested_fn_names: Vec<String> = Vec::new();
+    for nested_fn in function.syntax().descendants().filter_map(ast::Fn::cast) {
+        // Descendants include the function itself; text ranges uniquely
+        // identify nodes within the tree, so this drops exactly the self
+        // entry.
+        if nested_fn.syntax().text_range() == function.syntax().text_range() {
+            continue;
+        }
+        if let Some(name) = nested_fn.name() {
+            nested_fn_names.push(name.text().to_string());
+        }
+    }
+    nested_fn_names.sort();
+    nested_fn_names.dedup();
+
+    let mut let_bindings: Vec<LetBindingFact> = Vec::new();
+    for let_stmt in function
+        .syntax()
+        .descendants()
+        .filter_map(ast::LetStmt::cast)
+    {
+        // The initializer-less `;` bound (#3728 round-5): `let flag;` has
+        // no initializer, produces no binding fact, and can never shadow.
+        if let_stmt.initializer().is_none() {
+            continue;
+        }
+        let Some(pattern) = let_stmt.pat() else {
+            continue;
+        };
+        let let_line = let_stmt
+            .let_token()
+            .map(|token| line_of(token.text_range().start()))
+            .unwrap_or_else(|| line_of(let_stmt.syntax().text_range().start()));
+        let Some(body_relative_line) = let_line.checked_sub(fn_line) else {
+            continue;
+        };
+        for name in extract_pattern_words(&pattern.syntax().text().to_string()) {
+            let_bindings.push(LetBindingFact {
+                line: body_relative_line,
+                name,
+            });
+        }
+    }
+    let_bindings.sort_by(|left, right| left.line.cmp(&right.line).then(left.name.cmp(&right.name)));
+    let_bindings.dedup();
+    (nested_fn_names, let_bindings)
+}
+
+/// Parser-backed shadow facts (#3727 Slice A) for a bare body text that is
+/// not necessarily a `fn` item — harness-subject invocation spans and
+/// merged evidence bodies. The text is wrapped in a synthetic `fn` item
+/// whose braces share the body's first line, so every wrapped fact's
+/// body-relative line equals its line relative to the ORIGINAL body text
+/// and needs no offset repair. Empty facts when the wrapped text does not
+/// parse cleanly: the descent only ever sees real syntax, and the
+/// consumers' flag law routes fallback decisions off these fields.
+pub(crate) fn shadow_facts_for_body_text(body: &str) -> (Vec<String>, Vec<LetBindingFact>) {
+    // The wrapper must be a COMPLETE fn item: an unclosed brace makes
+    // `SourceFile::parse` report errors and the fail-closed branch below
+    // return empty facts for every body — the exact producer regression
+    // the non-empty-facts tests pin (#3739 review). The closing brace sits
+    // on its own line after the body, so the opening line — and every
+    // body-relative offset — is unchanged.
+    let wrapped = format!("fn __ripr_shadow_facts__() {{ {body}\n}}");
+    let parse = SourceFile::parse(&wrapped, Edition::CURRENT);
+    if !parse.errors().is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    let Some(function) = parse.tree().syntax().descendants().find_map(ast::Fn::cast) else {
+        return (Vec::new(), Vec::new());
+    };
+    let line_index = LineIndex::new(&wrapped);
+    // The `fn` keyword sits at offset 0, i.e. line 1 — exactly the base
+    // that makes `line - fn_line` body-relative for the original text.
+    collect_body_shadow_facts(&function, &|offset| line_index.line(offset), 1)
 }
 
 /// Classifies the `#[path]` attributes of one declaration into the bounded
@@ -1056,11 +1174,35 @@ fn extract_parser_oracles(
     for oracle in err_return_guard_oracles(&function_text, function_start) {
         assertions.push(oracle);
     }
+    // #3727 Slice A: parser-backed shadow facts over the scanned text. The
+    // guarded scan runs over `function_text` (the AST node text, which
+    // includes the attribute lines) and its use-site coordinate counts
+    // 0-based lines from the TOP of that text, so the facts must share
+    // that base: `line_of` maps to function_text lines and the base is
+    // line 1, making `LetBindingFact.line` a 0-based function_text line —
+    // the same verdict the lexical scanner over the same text would reach
+    // (#3739 review, coderabbit h6cfG: with a fn-keyword base, attribute
+    // lines shifted the let coordinates and a binding AFTER a guarded
+    // match could suppress that earlier oracle).
+    let node_start = function.syntax().text_range().start();
+    let local_line_index = LineIndex::new(&function_text);
+    let (nested_fn_names, let_bindings) = collect_body_shadow_facts(
+        function,
+        &|offset| local_line_index.line(offset - node_start),
+        1,
+    );
     // #3709: guarded Result matches over direct callee results are extracted
     // by the dedicated scanner, which owns the whole statement — the
     // line-scanned statement joiner must not also swallow the match block
     // through the `expect_` name sniff.
-    let guarded_matches = guarded_result_match_scan(&function_text, function_start);
+    let guarded_matches = guarded_result_match_scan_with_shadow_authority(
+        &function_text,
+        function_start,
+        ShadowAuthority::ParserBodyFacts {
+            nested_fn_names: &nested_fn_names,
+            let_bindings: &let_bindings,
+        },
+    );
     for oracle in
         extract_line_scanned_oracles(&function.syntax().text().to_string(), function_start)
             .into_iter()
@@ -1853,6 +1995,104 @@ mod guard_pipeline_debug_tests {
         );
         Ok(())
     }
+
+    /// #3727 Slice A: on the parser path the guarded-match shadow defeat
+    /// derives from the parser-produced body facts. The `let` shadow sits
+    /// BEFORE the match, so the positional rule defeats under either
+    /// coordinate base; the base itself is pinned by
+    /// `parser_path_shadow_facts_share_the_scan_text_coordinate_base`,
+    /// which puts the binding after a compact match under the same
+    /// attribute lines. The clean control above proves the same shape
+    /// credits when no shadow exists.
+    #[test]
+    fn parser_path_shadow_defeats_guarded_match_through_facts() -> Result<(), String> {
+        let source = concat!(
+            "use routes_fixture::expect_ready;\n",
+            "\n",
+            "#[test]\n",
+            "fn rejects_unready_kind() {\n",
+            "    let expect_ready = build();\n",
+            "    match expect_ready(\"busy\", 12) {\n",
+            "        Err(error) if error.kind() == io::ErrorKind::InvalidData => {}\n",
+            "        result => bail!(\"accepted: {result:?}\"),\n",
+            "    }\n",
+            "}\n",
+        );
+        let facts = RaRustSyntaxAdapter
+            .summarize_file(std::path::Path::new("tests/routes.rs"), source)
+            .map_err(|error| error.to_string())?;
+        let test = facts
+            .tests
+            .iter()
+            .find(|test| test.name == "rejects_unready_kind")
+            .ok_or_else(|| format!("test missing: {:?}", facts.tests))?;
+        assert!(
+            test.let_bindings
+                .iter()
+                .any(|binding| binding.name == "expect_ready" && binding.line == 1),
+            "the shadow binding fact is body-relative line 1: {:?}",
+            test.let_bindings
+        );
+        assert!(
+            !test
+                .assertions
+                .iter()
+                .any(|oracle| oracle.kind == crate::domain::OracleKind::GuardedResultMatch),
+            "a fact-shadowed bare scrutinee must not credit through the parser path: {:?}",
+            test.assertions
+        );
+        Ok(())
+    }
+
+    /// #3739 review (coderabbit h6cfG): the guarded scan's use-site
+    /// coordinate counts 0-based lines from the TOP of `function_text`
+    /// (attributes included), so the parser facts fed to the shadow
+    /// authority must share that base. The pre-fix fn-keyword base made a
+    /// `let` AFTER a guarded match defeat that earlier oracle whenever
+    /// attribute lines sat above the `fn` — one attribute line suffices
+    /// when the match is compact enough for the binding to follow within
+    /// the attribute count. The positional rule must keep crediting the
+    /// match here; the sibling test above pins the let-BEFORE defeat.
+    #[test]
+    fn parser_path_shadow_facts_share_the_scan_text_coordinate_base() -> Result<(), String> {
+        let source = concat!(
+            "use routes_fixture::expect_ready;\n",
+            "\n",
+            "#[test]\n",
+            "fn rejects_unready_kind() {\n",
+            "    match expect_ready(\"busy\", 12) { Err(error) if error.kind() == io::ErrorKind::InvalidData => {} result => bail!(\"accepted: {result:?}\") }\n",
+            "    let expect_ready = build();\n",
+            "}\n",
+        );
+        let facts = RaRustSyntaxAdapter
+            .summarize_file(std::path::Path::new("tests/routes.rs"), source)
+            .map_err(|error| error.to_string())?;
+        let test = facts
+            .tests
+            .iter()
+            .find(|test| test.name == "rejects_unready_kind")
+            .ok_or_else(|| format!("test missing: {:?}", facts.tests))?;
+        assert!(
+            test.let_bindings
+                .iter()
+                .any(|binding| binding.name == "expect_ready" && binding.line == 2),
+            "the summarizer's binding fact is fn-relative line 2: {:?}",
+            test.let_bindings
+        );
+        let guarded: Vec<_> = test
+            .assertions
+            .iter()
+            .filter(|oracle| oracle.kind == crate::domain::OracleKind::GuardedResultMatch)
+            .collect();
+        assert_eq!(
+            guarded.len(),
+            1,
+            "a binding AFTER the match must never suppress the earlier oracle \
+             (shadow coordinates share the scan text's base): {:?}",
+            test.assertions
+        );
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1892,6 +2132,340 @@ mod nested { include!("nested.rs"); }
         assert_eq!(directives.len(), 6);
         assert!(directives[4].literal_path.is_none());
         assert!(!directives[5].is_file_level);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod shadow_fact_equivalence_tests {
+    //! #3727 Slice A: the parser-produced body facts must decide the shared
+    //! shadow authority EXACTLY like the lexical scanners decide the same
+    //! masked body, so switching consumers between the two authorities
+    //! cannot move a verdict. The battery pins scanner equivalence over the
+    //! #3722/#3728 pin families plus the positional and same-line rules.
+
+    use super::*;
+    use crate::analysis::extract::{
+        ShadowAuthority, fact_body_defines_callee_fn, fact_body_let_shadow_line,
+        mask_comments_and_strings, test_body_defines_callee_fn, test_body_let_shadow_line,
+    };
+
+    /// The callees every battery body is probed against: shadowing names,
+    /// prefix-coincidence names, and absent names.
+    const CALLEES: [&str; 5] = [
+        "try_parse_summary",
+        "expect_response",
+        "parse_summary",
+        "try_parse_summary_result",
+        "score",
+    ];
+
+    fn parser_facts(source: &str) -> Result<(Vec<String>, Vec<LetBindingFact>), String> {
+        let parse = SourceFile::parse(source, Edition::CURRENT);
+        assert!(
+            parse.errors().is_empty(),
+            "battery source must parse cleanly: {source}"
+        );
+        let function = parse
+            .tree()
+            .syntax()
+            .descendants()
+            .find_map(ast::Fn::cast)
+            .ok_or_else(|| format!("battery source carries no fn item: {source}"))?;
+        let line_index = LineIndex::new(source);
+        let fn_token = function
+            .fn_token()
+            .ok_or_else(|| format!("battery fn carries no fn token: {source}"))?;
+        let fn_line = line_index.line(fn_token.text_range().start());
+        Ok(collect_body_shadow_facts(
+            &function,
+            &|offset| line_index.line(offset),
+            fn_line,
+        ))
+    }
+
+    fn assert_scanner_equivalent(source: &str) -> Result<(), String> {
+        let (nested_fn_names, let_bindings) = parser_facts(source)?;
+        let masked = mask_comments_and_strings(source);
+        for callee in CALLEES {
+            assert_eq!(
+                fact_body_defines_callee_fn(&nested_fn_names, callee),
+                test_body_defines_callee_fn(&masked, callee),
+                "fn-defeat verdicts must agree for `{callee}` in:\n{source}"
+            );
+            assert_eq!(
+                fact_body_let_shadow_line(&let_bindings, callee),
+                test_body_let_shadow_line(&masked, callee),
+                "let-shadow verdicts must agree for `{callee}` in:\n{source}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn battery_plain_fn_and_let_shadows_are_equivalent() -> Result<(), String> {
+        assert_scanner_equivalent(
+            "fn probe() {\n    fn try_parse_summary(raw: &str) -> usize { raw.len() }\n    let r = try_parse_summary(\"x\");\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    let result = parse_summary(\"@bad\");\n    let try_parse_summary = build();\n    let r = try_parse_summary;\n}\n",
+        )?;
+        assert_scanner_equivalent("fn probe() {\n    score(1);\n}\n")?;
+        Ok(())
+    }
+
+    #[test]
+    fn battery_let_mut_ref_typed_and_destructuring_are_equivalent() -> Result<(), String> {
+        assert_scanner_equivalent(
+            "fn probe() {\n    let mut expect_response = mock();\n    expect_response();\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    let ref parse_summary = owner();\n    let _ = parse_summary;\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    let try_parse_summary: Vec<u8> = build();\n    drop(try_parse_summary);\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    let (a, try_parse_summary) = pair();\n    drop((a, try_parse_summary));\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    let Summary { name, expect_response } = make();\n    drop((name, expect_response));\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    let Some(score) = opt() else { return };\n    drop(score);\n}\n",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn battery_initializer_less_binding_is_equivalent() -> Result<(), String> {
+        // #3728 round-5: `let flag;` has no initializer and is not a
+        // shadow — the parser facts must skip it exactly like the lexical
+        // `;` bound, and must NOT borrow a LATER binding's `=`.
+        assert_scanner_equivalent(
+            "fn probe() {\n    let flag;\n    flag = true;\n    let try_parse_summary = build();\n    drop(try_parse_summary);\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    let typed: expect_response;\n    drop(typed);\n}\n",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn battery_string_comment_char_and_multiline_shapes_are_equivalent() -> Result<(), String> {
+        // #3722/#3728 pins: shadow-shaped text inside strings, comments,
+        // char literals, and multiline strings never defeats — the parser
+        // facts never see those bytes as syntax at all.
+        assert_scanner_equivalent(
+            "fn probe() {\n    let text = \"let try_parse_summary = 1;\";\n    let note = \"fn expect_response() {}\";\n    real();\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    // fn try_parse_summary(raw: &str) {}\n    // let expect_response = build();\n    real();\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    /* let parse_summary = 1; */\n    real();\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    let quote = '\"';\n    fn try_parse_summary() {}\n    try_parse_summary();\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    let doc = \"let score = 1;\nfn parse_summary() {}\";\n    real();\n}\n",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn battery_positional_and_same_line_rules_are_equivalent() -> Result<(), String> {
+        // A call BEFORE the binding precedes the shadow: no defeat in
+        // either authority.
+        assert_scanner_equivalent(
+            "fn probe() {\n    let r = try_parse_summary(\"x\");\n    let try_parse_summary = build();\n    drop(r);\n}\n",
+        )?;
+        // Same-line conservative defeat: the binding and the use share a
+        // line, and both authorities defeat.
+        assert_scanner_equivalent(
+            "fn probe() {\n    let try_parse_summary = build(); let r = try_parse_summary();\n}\n",
+        )?;
+        // A use BEFORE the binding line is not defeated; one at or after
+        // it is.
+        assert_scanner_equivalent(
+            "fn probe() {\n    let r = expect_response(&mut cursor, 12);\n    let expect_response = build();\n    drop((r, expect_response));\n}\n",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn battery_nested_fns_and_nested_blocks_are_equivalent() -> Result<(), String> {
+        assert_scanner_equivalent(
+            "fn probe() {\n    fn outer() {\n        fn try_parse_summary() {}\n    }\n    try_parse_summary();\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    if ready {\n        let expect_response = build();\n        expect_response();\n    }\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    let closure = |raw: &str| {\n        let parse_summary = raw.len();\n        parse_summary\n    };\n    drop(closure);\n}\n",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn battery_prefix_coincidence_names_are_equivalent() -> Result<(), String> {
+        // `let try_parse_summary_result = ..` is a DIFFERENT binding; a
+        // `fn try_parse_summary_result` is a DIFFERENT item. Neither
+        // defeats a `try_parse_summary` callee in either authority.
+        assert_scanner_equivalent(
+            "fn probe() {\n    let try_parse_summary_result = build();\n    let r = real();\n    drop((try_parse_summary_result, r));\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    fn try_parse_summary_result() {}\n    real();\n}\n",
+        )?;
+        assert_scanner_equivalent(
+            "fn probe() {\n    fn score_board() {}\n    let scoring = 1;\n    real(scoring);\n}\n",
+        )?;
+        Ok(())
+    }
+
+    /// Removal control at the producer boundary (#3727 acceptance): a
+    /// shadow-bearing body MUST produce non-empty facts on the parser
+    /// path. A producer regression that silently stops populating the
+    /// fields fails here instead of quietly letting parser-backed
+    /// consumers read "no shadow" and over-credit.
+    #[test]
+    fn producer_populates_shadow_facts_for_shadow_bearing_bodies() -> Result<(), String> {
+        let (nested, bindings) = parser_facts(
+            "fn probe() {\n    fn try_parse_summary() {}\n    let expect_response = build();\n    drop(expect_response);\n}\n",
+        )?;
+        assert!(nested.contains(&"try_parse_summary".to_string()));
+        assert!(
+            bindings
+                .iter()
+                .any(|binding| binding.name == "expect_response" && binding.line == 2)
+        );
+        Ok(())
+    }
+
+    /// #3739 review (devin h0fZ1, codex h6Z9y, gemini h6ZRp, coderabbit
+    /// h6cfM): the synthetic wrapper in [`shadow_facts_for_body_text`] must
+    /// CLOSE the fn item it opens. The pre-fix wrapper left the brace
+    /// unterminated, `SourceFile::parse` reported errors on every input,
+    /// and the fail-closed branch returned empty facts for every harness
+    /// body — parser-backed harness subjects then read "no shadow" and a
+    /// closure-local binding could impersonate the wrapper seam's callee.
+    /// These controls fail empty: a harness-style closure body with a
+    /// shadow-bearing `let` and a nested `fn` must produce the non-empty
+    /// facts its consumers' flag law reads.
+    #[test]
+    fn body_text_wrapper_produces_non_empty_facts_for_harness_bodies() {
+        let (nested, bindings) = shadow_facts_for_body_text(
+            "|| {\n    let try_parse_summary = fake;\n    try_parse_summary(input)\n}",
+        );
+        assert!(
+            bindings
+                .iter()
+                .any(|binding| binding.name == "try_parse_summary" && binding.line == 1),
+            "the harness body's shadow-bearing let must become a fact: {bindings:?}"
+        );
+        assert!(nested.is_empty(), "a closure body defines no fn items");
+
+        let (nested, bindings) = shadow_facts_for_body_text("{\n    fn fake_helper() {}\n}");
+        assert!(
+            nested.contains(&"fake_helper".to_string()),
+            "a nested fn item in a harness body must become a fact: {nested:?}"
+        );
+        assert!(bindings.is_empty(), "no let bindings in this body");
+    }
+
+    /// The stored `TestFact` fields are body-relative to the `fn` keyword
+    /// line — the same base `test.body` gives the lexical scanners — so a
+    /// parser-backed summary and a lexical scan of the same body agree
+    /// through the real summarizer, not just the descent helper.
+    #[test]
+    fn summarizer_facts_decide_like_the_lexical_scanners_on_test_body() -> Result<(), String> {
+        let source = concat!(
+            "use fixture::try_parse_summary;\n",
+            "\n",
+            "#[test]\n",
+            "fn misc_edge_case() {\n",
+            "    let try_parse_summary = build();\n",
+            "    let r = try_parse_summary;\n",
+            "}\n",
+        );
+        let facts = summarize_file_with_parser(std::path::Path::new("tests/fixture.rs"), source)
+            .map_err(|error| error.to_string())?;
+        let test = facts
+            .tests
+            .iter()
+            .find(|test| test.name == "misc_edge_case")
+            .ok_or_else(|| format!("test fact missing: {:?}", facts.tests))?;
+        let masked = mask_comments_and_strings(&test.body);
+        for callee in CALLEES {
+            assert_eq!(
+                fact_body_defines_callee_fn(&test.nested_fn_names, callee),
+                test_body_defines_callee_fn(&masked, callee),
+                "stored facts must equal the lexical scan of `test.body` for `{callee}`"
+            );
+            assert_eq!(
+                fact_body_let_shadow_line(&test.let_bindings, callee),
+                test_body_let_shadow_line(&masked, callee),
+                "stored let facts must equal the lexical scan of `test.body` for `{callee}`"
+            );
+        }
+        assert!(
+            test.let_bindings
+                .iter()
+                .any(|binding| binding.name == "try_parse_summary" && binding.line == 1),
+            "the binding sits on body-relative line 1: {:?}",
+            test.let_bindings
+        );
+        Ok(())
+    }
+
+    /// Consumer-side equivalence for the guarded-match scanner: driving
+    /// `guarded_result_match_scan_with_shadow_authority` with the parser
+    /// facts of a body must emit exactly what the lexical entry point
+    /// emits on the same body.
+    #[test]
+    fn guarded_match_scan_with_parser_facts_matches_lexical_scan() -> Result<(), String> {
+        let bodies = [
+            // Clean guarded match: credited through both authorities.
+            "fn probe() {\n    match expect_response(\"busy\", 12) {\n        Ok(v) => assert_eq!(v, 12),\n        Err(e) => panic!(\"{e}\"),\n    }\n}\n",
+            // Let-shadowed callee: defeated through both authorities.
+            "fn probe() {\n    let expect_response = build();\n    match expect_response(\"busy\", 12) {\n        Ok(v) => assert_eq!(v, 12),\n        Err(e) => panic!(\"{e}\"),\n    }\n}\n",
+            // fn-shadowed callee: defeated through both authorities.
+            "fn probe() {\n    fn expect_response(a: &str, b: u8) -> Result<u8, String> { Ok(b) }\n    match expect_response(\"busy\", 12) {\n        Ok(v) => assert_eq!(v, 12),\n        Err(e) => panic!(\"{e}\"),\n    }\n}\n",
+            // Shadow-shaped text in a string never defeats in either.
+            "fn probe() {\n    let note = \"let expect_response = build();\";\n    match expect_response(\"busy\", 12) {\n        Ok(v) => assert_eq!(v, 12),\n        Err(e) => panic!(\"{e}\"),\n    }\n}\n",
+        ];
+        for body in bodies {
+            let (nested, bindings) = parser_facts(body)?;
+            let lexical = guarded_result_match_scan_with_shadow_authority(
+                body,
+                1,
+                ShadowAuthority::LexicalMaskedBody,
+            );
+            let parser_backed = guarded_result_match_scan_with_shadow_authority(
+                body,
+                1,
+                ShadowAuthority::ParserBodyFacts {
+                    nested_fn_names: &nested,
+                    let_bindings: &bindings,
+                },
+            );
+            assert_eq!(
+                lexical.oracles.len(),
+                parser_backed.oracles.len(),
+                "oracle counts must agree for:\n{body}"
+            );
+            for (left, right) in lexical.oracles.iter().zip(parser_backed.oracles.iter()) {
+                assert_eq!(left.line, right.line);
+                assert_eq!(left.text, right.text);
+                assert_eq!(left.kind, right.kind);
+            }
+            assert_eq!(
+                lexical.match_start_lines, parser_backed.match_start_lines,
+                "owned-statement lines must agree for:\n{body}"
+            );
+        }
         Ok(())
     }
 }

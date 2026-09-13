@@ -84,7 +84,9 @@ use crate::analysis::rust_index::{
     OracleFact, classify_assertion, extract_assertions, extract_call_facts,
     extract_identifier_tokens, extract_literal_facts,
 };
-use crate::analysis::syntax::ra::{LineIndex, parser_oracles_for_function, slice_text};
+use crate::analysis::syntax::ra::{
+    LineIndex, parser_oracles_for_function, shadow_facts_for_body_text, slice_text,
+};
 use crate::analysis::workspace::{CargoHarnessVerdict, ManifestInventory};
 use crate::config::{TestHarnessAdapter, TestHarnessKind, TestHarnessRegistration};
 use crate::domain::{OracleKind, OracleStrength};
@@ -508,6 +510,12 @@ fn apply_libtest_mimic_target(
             });
             literals.dedup_by(|left, right| left.line == right.line && left.value == right.value);
         }
+        // #3727 Slice A: parser-backed shadow facts over the merged evidence
+        // body text (an invocation span, not a fn item, so the facts are
+        // wrap-parse best-effort). The relation-side flag law routes this
+        // synthesized test through the fact fields on parser-backed files,
+        // so the facts must describe this body, not stay empty.
+        let (nested_fn_names, let_bindings) = shadow_facts_for_body_text(&body);
         pending.push(PendingSubject {
             subject: HarnessSubjectFact {
                 registration_id: registration.registration_id.clone(),
@@ -536,6 +544,8 @@ fn apply_libtest_mimic_target(
                 assertions,
                 literals,
                 attrs: Vec::new(),
+                nested_fn_names,
+                let_bindings,
             },
             span_start: position,
             span_end: close_index,
@@ -1735,6 +1745,10 @@ fn registered_attribute_test_fact(function: &FunctionFact) -> TestFact {
             }),
         literals: function.literals.clone(),
         attrs: function.attrs.clone(),
+        // #3727 Slice A: the promotion mirrors the source function's
+        // parser-produced shadow facts — same body, same decisions.
+        nested_fn_names: function.nested_fn_names.clone(),
+        let_bindings: function.let_bindings.clone(),
     }
 }
 

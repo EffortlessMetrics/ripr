@@ -356,6 +356,8 @@ fn cfg_function_fact(name: &str, start_line: usize) -> FunctionFact {
         // Models the parser producer's evidence-only cfg-test-module output.
         source_role: FunctionSourceRole::CfgTestModule,
         attrs: Vec::new(),
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
     }
 }
 

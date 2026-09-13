@@ -142,6 +142,10 @@ fn test_fact_from_function(function: &FunctionFact) -> TestFact {
         assertions: extract_assertions(&function.body, function.start_line),
         literals: function.literals.clone(),
         attrs: function.attrs.clone(),
+        // #3727 Slice A: the reconciled test mirrors the function's shadow
+        // facts — same body, same decisions.
+        nested_fn_names: function.nested_fn_names.clone(),
+        let_bindings: function.let_bindings.clone(),
     }
 }
 

@@ -2,6 +2,7 @@ use super::super::rust_index::{
     FunctionSummary, RustIndex, TestSummary, extract_identifier_tokens,
 };
 use crate::analysis::extract::{
+    ShadowAuthority, fact_body_defines_callee_fn, fact_body_let_shadow_line,
     mask_comments_and_strings, test_body_defines_callee_fn, test_body_let_shadow_line,
 };
 use crate::analysis::seam_cache::PathDependencySection;
@@ -259,6 +260,26 @@ pub(in crate::analysis) fn find_related_tests<'a>(
         // devin): comments and string contents are masked before the scans
         // so mentioned shapes never defeat real calls, and the shadow scans
         // run only after a callee-named captured call exists.
+        // #3727 Slice A: the shadow AUTHORITY follows the file's producer
+        // flag — parser-backed files decide from the test's parser-produced
+        // fact fields; fallback files (or tests whose file is absent from
+        // the index) run the byte-level lexical scanners byte-identically.
+        // THE FLAG — not set emptiness — is the discriminator: a
+        // parser-backed file can legitimately contain zero bindings, and
+        // empty fact sets on parser-backed files are real "no shadow"
+        // results.
+        let test_file_is_parser_backed = index
+            .files
+            .get(&test.file)
+            .is_some_and(|file_facts| !file_facts.used_lexical_fallback);
+        let shadow_authority = if test_file_is_parser_backed {
+            ShadowAuthority::ParserBodyFacts {
+                nested_fn_names: &test.nested_fn_names,
+                let_bindings: &test.let_bindings,
+            }
+        } else {
+            ShadowAuthority::LexicalMaskedBody
+        };
         let calls_seam_callee = !calls_owner
             && seam_callee.as_deref().is_some_and(|callee| {
                 // Lazy gate (#3728 round-3 review, gemini): the shadow scans
@@ -273,10 +294,23 @@ pub(in crate::analysis) fn find_related_tests<'a>(
                 // erased by a stray quote byte (#3728 round-3 review,
                 // coderabbit + devin round-4). Masking preserves byte
                 // layout, so body-relative shadow lines still align with
-                // `test.start_line`-relative call lines.
+                // `test.start_line`-relative call lines. The parser-backed
+                // authority ignores the masked body: its facts came from
+                // real syntax, so comments and strings never became facts.
                 let body = mask_comments_and_strings(&test.body);
-                let fn_shadows = test_body_defines_callee_fn(&body, callee);
-                let let_shadow_line = test_body_let_shadow_line(&body, callee);
+                let (fn_shadows, let_shadow_line) = match shadow_authority {
+                    ShadowAuthority::ParserBodyFacts {
+                        nested_fn_names,
+                        let_bindings,
+                    } => (
+                        fact_body_defines_callee_fn(nested_fn_names, callee),
+                        fact_body_let_shadow_line(let_bindings, callee),
+                    ),
+                    ShadowAuthority::LexicalMaskedBody => (
+                        test_body_defines_callee_fn(&body, callee),
+                        test_body_let_shadow_line(&body, callee),
+                    ),
+                };
                 test.calls.iter().any(|call| {
                     call.name == callee
                         // Defeat only when a shadow PRECEDES the call: fn
@@ -1127,6 +1161,8 @@ mod tests {
                 assertions: Vec::new(),
                 literals: Vec::new(),
                 attrs: Vec::new(),
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
             }],
             ..RustIndex::default()
         };
@@ -2417,6 +2453,8 @@ fn crate_c_score_test() {
             assertions: Vec::new(),
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
         let index = RustIndex {
             tests: vec![macro_test],
@@ -2445,6 +2483,8 @@ fn crate_c_score_test() {
             assertions: Vec::new(),
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
         let index = RustIndex {
             tests: vec![call_test],
@@ -2504,6 +2544,8 @@ fn crate_c_score_test() {
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 
@@ -2522,6 +2564,8 @@ fn crate_c_score_test() {
             assertions: Vec::new(),
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 
@@ -2709,6 +2753,132 @@ let r = try_parse_summary(\"x\");",
             related.is_empty(),
             "a mutable local binding shadowing the callee must not establish SeamCalleeCall"
         );
+    }
+
+    // --- #3727 Slice A: parser-backed shadow authority (flag law) ---
+    //
+    // The relation consumes the test's parser-produced fact fields on
+    // parser-backed files and the byte-level lexical scanners under
+    // fallback. Each test below summarizes a REAL test file through the
+    // parser producer and then varies only the fallback condition on the
+    // file's `FileFacts` (or drops the entry entirely), so the two
+    // authorities face byte-identical inputs.
+
+    /// Wrapper-seam scenario over one real test-file source: the index is
+    /// built from the parser producer, then `adapt` varies the fallback
+    /// condition on the file's `FileFacts`.
+    fn shadow_flag_law_index(
+        source: &str,
+        adapt: impl FnOnce(&mut FileFacts),
+    ) -> Result<(RustIndex, Probe), String> {
+        let mut file_facts = crate::analysis::syntax::ra::summarize_file_with_parser(
+            std::path::Path::new("tests/utils.rs"),
+            source,
+        )
+        .map_err(|error| error.to_string())?;
+        adapt(&mut file_facts);
+        let owner = function("src/lib.rs", "parse_summary");
+        let index = RustIndex {
+            functions: vec![owner],
+            tests: file_facts.tests.clone(),
+            files: std::iter::once((PathBuf::from("tests/utils.rs"), file_facts)).collect(),
+            ..RustIndex::default()
+        };
+        let probe = wrapper_error_probe("src/lib.rs", "try_parse_summary(raw).map_err(Into::into)");
+        Ok((index, probe))
+    }
+
+    // #3739 review (coderabbit h6ce-): the shadowing binding's use must be
+    // a CAPTURED CALL (`try_parse_summary()`), not a bare read —
+    // `extract_call_facts` records only call expressions, so a bare read
+    // never reaches the exact-name call gate and the negative tests below
+    // would pass vacuously, before either shadow authority runs. The
+    // binding stays initialized and names the callee, so the gate is
+    // reached and BOTH authorities must then defeat it.
+    const SHADOWING_TEST_SOURCE: &str = "fn build() -> usize { 0 }\n\n#[test]\nfn misc_edge_case() {\n    let try_parse_summary = || build();\n    let r = try_parse_summary();\n}\n";
+
+    #[test]
+    fn given_parser_backed_file_when_facts_shadow_callee_then_no_seam_callee_call()
+    -> Result<(), String> {
+        let (index, probe) = shadow_flag_law_index(SHADOWING_TEST_SOURCE, |_facts| {})?;
+        let owner = index.functions[0].clone();
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+
+        assert!(
+            related.is_empty(),
+            "parser-backed facts must defeat the shadowed seam-callee admit: {related:?}"
+        );
+        Ok(())
+    }
+
+    /// Removal control (#3727 acceptance): with the parser-path facts
+    /// DELETED — the file absent from the index — the consumer falls back
+    /// to the lexical scanners and the #3728 pin still holds (defeat, no
+    /// over-credit).
+    #[test]
+    fn given_parser_facts_deleted_when_wrapper_probe_then_lexical_fallback_still_defeats()
+    -> Result<(), String> {
+        let (mut index, probe) = shadow_flag_law_index(SHADOWING_TEST_SOURCE, |_facts| {})?;
+        assert!(
+            index
+                .files
+                .remove(&PathBuf::from("tests/utils.rs"))
+                .is_some(),
+            "the removal control deletes the parser-backed file facts"
+        );
+        let owner = index.functions[0].clone();
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+
+        assert!(
+            related.is_empty(),
+            "with facts deleted the lexical fallback must still defeat the shadowed admit"
+        );
+        Ok(())
+    }
+
+    /// Removal control variant: the file falls back explicitly
+    /// (`used_lexical_fallback = true`, fact fields empty, exactly what the
+    /// lexical producer emits) — the lexical scanners decide and the pin
+    /// still holds.
+    #[test]
+    fn given_lexical_fallback_file_when_wrapper_probe_then_lexical_scanners_still_defeats()
+    -> Result<(), String> {
+        let (index, probe) = shadow_flag_law_index(SHADOWING_TEST_SOURCE, |facts| {
+            facts.used_lexical_fallback = true;
+            for test in &mut facts.tests {
+                test.nested_fn_names = Vec::new();
+                test.let_bindings = Vec::new();
+            }
+        })?;
+        let owner = index.functions[0].clone();
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+
+        assert!(
+            related.is_empty(),
+            "a fallback file must route through the lexical scanners, which still defeat"
+        );
+        Ok(())
+    }
+
+    /// Empty fact sets on a parser-backed file are REAL "no shadow"
+    /// results: a clean wrapper-callee call stays related through the
+    /// fact authority (the flag — not set emptiness — is the
+    /// discriminator).
+    #[test]
+    fn given_parser_backed_file_with_no_shadow_facts_then_seam_callee_call_stays_related()
+    -> Result<(), String> {
+        let clean_source = "#[test]\nfn misc_edge_case() {\n    let result = try_parse_summary(\"@bad;\");\n    assert!(result.is_err());\n}\n";
+        let (index, probe) = shadow_flag_law_index(clean_source, |_facts| {})?;
+        let owner = index.functions[0].clone();
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+
+        assert_eq!(related.len(), 1, "a clean callee call must stay related");
+        assert_eq!(related[0].1, RelationReason::SeamCalleeCall);
+        Ok(())
     }
 
     // #3714 round-2 review (coderabbit hGkkh, critical): a `let ` occurrence
@@ -3119,6 +3289,8 @@ try_parse_summary(raw).map_err(Into::into)"
             assertions: Vec::new(),
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 
@@ -3180,6 +3352,8 @@ try_parse_summary(raw).map_err(Into::into)"
             assertions,
             literals: Vec::new(),
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         }
     }
 

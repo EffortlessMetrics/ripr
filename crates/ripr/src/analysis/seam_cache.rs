@@ -157,7 +157,16 @@ pub(crate) struct CachedSeamLimitInfo {
 /// routing form and payload-ignoring Ok arms stop confirming. Old
 /// classified entries would serve stale guarded discrimination for warm
 /// workspaces.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.11";
+/// `1.11` -> `1.12`: the parser-backed shadow facts (#3727 Slice A,
+/// RIPR-SPEC-0175) switch the shadow authority behind the `SeamCalleeCall`
+/// relation and the guarded-match oracle on the file's
+/// `used_lexical_fallback` flag, changing which defeats and admits the
+/// classification sees on parser-backed files. This cache loads BEFORE any
+/// file-fact rebuild — a warm hit returns classified seams without
+/// re-reading a single file — so the file-fact generation bump alone
+/// cannot reach it: old classified entries would serve pre-#3727
+/// shadow classification for warm workspaces indefinitely.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.12";
 /// `0.2` → `0.3`: same semantic transition as the outer cache (#3273 /
 /// #3286) — sharded entries derive from the same facts and cannot bypass
 /// the outer generation bump.
@@ -194,7 +203,10 @@ pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.11";
 /// `0.16` -> `0.17`: the guarded facts gain the Ok-arm observation
 /// decision (RIPR-SPEC-0175) — same semantic transition as the outer
 /// classified-seam cache.
-const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.17";
+/// `0.17` -> `0.18`: the parser-backed shadow facts (#3727 Slice A) change
+/// which shadow defeats the classification sees — same semantic transition
+/// as the outer classified-seam cache.
+const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.18";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
@@ -237,7 +249,10 @@ const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.17";
 /// `0.17` -> `0.18`: the guarded facts gain the Ok-arm observation
 /// decision (RIPR-SPEC-0175) — same semantic transition as the outer
 /// classified-seam cache.
-pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.18";
+/// `0.18` -> `0.19`: the parser-backed shadow facts (#3727 Slice A) change
+/// which shadow defeats the classification sees — same semantic transition
+/// as the outer classified-seam cache.
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.19";
 
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only
@@ -320,6 +335,14 @@ pub(crate) const COUNT_CACHE_SCHEMA_VERSION: &str = "0.2";
 /// WITHOUT the decision — return-value confirmations would read the
 /// missing decision as unobserved and silently under-credit (or, worse,
 /// a future default flip would over-credit) — as live facts.
+/// `1.7` -> `1.8`: the parser-backed shadow facts (#3727 Slice A,
+/// RIPR-SPEC-0175): `FunctionFact`/`TestFact` gain `nested_fn_names` and
+/// `let_bindings`, and both shadow consumers (the `SeamCalleeCall`
+/// relation and the guarded-match scanner) switch their shadow authority
+/// on `used_lexical_fallback` — a warm pre-bump hit would serve
+/// parser-backed files WITHOUT the fact fields, and on those files the
+/// flag law reads empty facts as real "no shadow", so the pre-extension
+/// envelope could silently retire the lexical scanners' defeats.
 ///
 /// Still no bump for #3603/#3608/#3636 themselves: per-file parser
 /// facts are unchanged by the harness registry — it applies
@@ -327,7 +350,7 @@ pub(crate) const COUNT_CACHE_SCHEMA_VERSION: &str = "0.2";
 /// build against the current manifests, and the #3636 reachability
 /// authority runs inside that re-application — so a warm hit cannot
 /// bypass either validation or reachability classification.
-pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.7";
+pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.8";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
 /// analysis into an unbounded post-analysis stall on large repos. Larger live
@@ -2779,7 +2802,14 @@ mod tests {
         // decision (RIPR-SPEC-0175), so a warm pre-bump hit would serve
         // routing-form and payload-ignoring facts without the decision as
         // live facts.
-        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.7");
+        // 1.7 -> 1.8: the parser-backed shadow facts (#3727 Slice A,
+        // RIPR-SPEC-0175) — `nested_fn_names`/`let_bindings` on
+        // `FunctionFact`/`TestFact` plus the flag-law shadow-authority
+        // switch in both consumers. A warm pre-bump hit would serve
+        // parser-backed files without the fact fields, and the flag law
+        // reads empty facts on those files as real "no shadow" — silently
+        // retiring the lexical scanners' defeats.
+        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.8");
         // 1.4 -> 1.5: metadata-sourced harness validation (#3634) flips
         // verdicts for workspaces the manifest emulation approximated.
         // 1.5 -> 1.6: the #3636 reachability authority excludes
@@ -2799,12 +2829,22 @@ mod tests {
         // 1.10 -> 1.11: the guarded facts gain the Ok-arm observation
         // decision (RIPR-SPEC-0175) and the confirmation gates require it
         // for success-payload return-value probes and seams.
-        assert_eq!(CACHE_SCHEMA_VERSION, "1.11");
+        // 1.11 -> 1.12: the parser-backed shadow facts (#3727 Slice A,
+        // RIPR-SPEC-0175) switch the shadow authority behind the
+        // `SeamCalleeCall` relation and the guarded-match oracle on the
+        // file's `used_lexical_fallback` flag. The classified cache loads
+        // BEFORE any file-fact rebuild, so the 1.8 file-fact bump cannot
+        // reach it — a warm pre-bump classified hit would serve pre-#3727
+        // shadow classification for warm workspaces indefinitely.
+        assert_eq!(CACHE_SCHEMA_VERSION, "1.12");
         // 0.12 -> 0.13 through 0.14 / 0.15 / 0.16 / 0.17 / 0.18: same
         // #3731 semantic transition as the outer classified-seam cache,
         // for the sharded and compact envelopes.
-        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.17");
-        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.18");
+        // 0.18 (sharded) / 0.19 (compact): the #3727 Slice A shadow
+        // authority transition — same semantic transition as the outer
+        // classified-seam cache.
+        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.18");
+        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.19");
     }
 
     #[test]
@@ -5484,6 +5524,69 @@ mod generation_transition_tests {
         // satisfies current analysis identity: it can only be reached by
         // the previous key, which current code never constructs.
         match cache.load_file_facts(&previous_key) {
+            CacheLoad::Hit(_) => {}
+            other => {
+                return Err(format!(
+                    "seed sanity: previous key should still read its own envelope, got {other:?}"
+                ));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn classified_generation_before_parser_backed_shadow_facts_is_a_miss() -> Result<(), String> {
+        // #3739 review (codex h6Z9w): the parser-backed shadow facts
+        // (#3727 Slice A) change the shadow authority behind the
+        // `SeamCalleeCall` relation and the guarded-match oracle, and the
+        // classified-seam cache loads BEFORE any file-fact rebuild — a warm
+        // hit returns classified seams without re-reading a single file —
+        // so the file-fact generation bump alone cannot invalidate it. A
+        // classified envelope seeded under the pre-#3727 1.11 generation
+        // with identical identity fields must miss the current generation's
+        // key, or warm workspaces would replay pre-#3727 shadow
+        // classification indefinitely.
+        let dir = isolated_dir("gen-shadow-facts-classified");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoSeamFactCache::at_dir(dir.clone());
+        let previous_key = RepoSeamCacheKey {
+            schema_version: "1.11".to_string(),
+            analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
+            workspace_root_hash: hash_str("/ws"),
+            files_content_hash: hash_str("corpus"),
+            cfg_features_hash: hash_str(""),
+            config_hash: hash_str(""),
+            test_intent_hash: hash_str(""),
+            suppressions_hash: hash_str(""),
+            workspace_manifests_hash: hash_str("manifests"),
+            lockfile_hash: hash_str("lock"),
+            toolchain_hash: hash_str("toolchain"),
+            seam_limit_key: "unlimited".to_string(),
+        };
+        cache.store_classified_seams_with_limit(
+            &previous_key,
+            &[],
+            None,
+            CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+        )?;
+        // The stale envelope stays on disk...
+        assert!(cache.entry_path(&previous_key).exists());
+
+        // ...but the current-generation key with identical identity fields
+        // must miss — through the single AND the sharded fallback path.
+        let mut current_key = previous_key.clone();
+        current_key.schema_version = CACHE_SCHEMA_VERSION.to_string();
+        assert_ne!(previous_key.schema_version, current_key.schema_version);
+        match cache.load_classified_seams_with_fallback(&current_key) {
+            CacheLoad::Miss => {}
+            other => {
+                return Err(format!(
+                    "expected Miss across the pre-#3727 classified generation, got {other:?}"
+                ));
+            }
+        }
+        match cache.load_classified_seams_with_fallback(&previous_key) {
             CacheLoad::Hit(_) => {}
             other => {
                 return Err(format!(
