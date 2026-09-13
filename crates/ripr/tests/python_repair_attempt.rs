@@ -1506,3 +1506,499 @@ fn another_discriminator() {
     }
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Verification phase (#3570)
+// ---------------------------------------------------------------------------
+
+const RECEIPT_PATH: &str = "target/ripr/workflow/python-repair-driver-verification.json";
+
+fn run_verify(
+    fixture: &TempFixture,
+    attempt_id: &str,
+    authority: Option<&str>,
+    rollback: bool,
+) -> Result<Output, String> {
+    let mut args: Vec<String> = vec![
+        "agent".to_string(),
+        "repair".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--attempt".to_string(),
+        attempt_id.to_string(),
+        "--phase".to_string(),
+        "verify".to_string(),
+    ];
+    if let Some(authority) = authority {
+        args.push("--verify-authorized".to_string());
+        args.push("--verify-authority".to_string());
+        args.push(authority.to_string());
+    }
+    if rollback {
+        args.push("--verify-rollback".to_string());
+    }
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_ripr(&fixture.root, &borrowed)
+}
+
+fn verification_receipt(fixture: &TempFixture) -> Result<Value, String> {
+    let text = std::fs::read_to_string(fixture.root.join(RECEIPT_PATH))
+        .map_err(|error| format!("read verification receipt: {error}"))?;
+    parse_json(&text, "verification receipt")
+}
+
+/// Writes the accepted selection manifest naming one attempt whose native
+/// identity matches the analyzer's exact seam spelling for the sample's
+/// boundary predicate, so the verification movement join resolves.
+fn write_verify_trust_manifest(
+    root: &Path,
+    attempt_id: &str,
+    target_path: &str,
+) -> Result<(), String> {
+    write_verify_trust_manifest_named(
+        root,
+        attempt_id,
+        target_path,
+        "target/ripr/trust-manifest.json",
+    )
+}
+
+fn write_verify_trust_manifest_named(
+    root: &Path,
+    attempt_id: &str,
+    target_path: &str,
+    manifest_path: &str,
+) -> Result<(), String> {
+    let head = current_head(root)?;
+    let row = serde_json::json!({
+        "attempt_id": attempt_id,
+        "case_id": format!("case-{attempt_id}"),
+        "subject_id": "fixture-subject",
+        "repository": "https://example.com/fixture-subject",
+        "base": "1111111111111111111111111111111111111111",
+        "head": head,
+        "selection_reason": "behavior changed in the diff and the case discriminates it",
+        "diversity_stratum": "pytest_library",
+        "family": "predicate_boundary",
+        "owner": "src/lib.rs::price",
+        "discriminator": "amount >= discount_threshold",
+        "relation": "test calls owner directly",
+        "oracle": "assert exact boundary value",
+        "expected_direction": "should_gap",
+        "claim_boundary": "static exposure evidence only",
+        "target_path": target_path,
+        "target_state": "existing",
+        "selected_at": "2026-09-10T00:00:00Z",
+        "selector": "campaign-selector",
+        "authority_snapshot_digest": "2020202020202020202020202020202020202020202020202020202020202020",
+    });
+    let digest = canonical_row_digest(&row)?;
+    let mut stored = row;
+    if let Some(object) = stored.as_object_mut() {
+        object.insert("selection_digest".to_string(), Value::String(digest));
+    }
+    let manifest = serde_json::json!({
+        "schema_version": "0.1",
+        "kind": "python_repair_trust_manifest",
+        "spec": "RIPR-SPEC-0176",
+        "description": "python repair verification fixture",
+        "selections": [stored],
+    });
+    let text = serde_json::to_string_pretty(&manifest)
+        .map_err(|error| format!("serialize fixture manifest: {error}"))?;
+    let path = root.join(manifest_path);
+    std::fs::write(&path, text).map_err(|error| format!("write {}: {error}", path.display()))
+}
+
+/// Drives prepare -> edit -> apply for one attempt and returns its durable
+/// identity, so every verification test starts from the same applied state.
+fn prepare_edit_apply(fixture: &TempFixture, label: &str) -> Result<String, String> {
+    let seam_id = find_seam_for_target(&fixture.root, TARGET_TEST_FILE)?;
+    write_verify_trust_manifest(&fixture.root, label, TARGET_TEST_FILE)?;
+    let args: Vec<String> = vec![
+        "agent".to_string(),
+        "repair".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--seam-id".to_string(),
+        seam_id,
+        "--phase".to_string(),
+        "before".to_string(),
+        "--python-repair-trust-manifest".to_string(),
+        "target/ripr/trust-manifest.json".to_string(),
+        "--python-repair-trust-attempt".to_string(),
+        label.to_string(),
+        "--edit-authorized".to_string(),
+        "--edit-authority".to_string(),
+        AUTHORITY.to_string(),
+    ];
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let prepared = run_ripr(&fixture.root, &borrowed)?;
+    require_success(&prepared, "bound before phase")?;
+    let attempt_id = sole_attempt(fixture)?;
+    edit_target_file(fixture)?;
+    let applied = run_apply(fixture, &attempt_id, Some(AUTHORITY))?;
+    require_success(&applied, "bound after phase")?;
+    Ok(attempt_id)
+}
+
+#[test]
+fn verification_phase_records_execution_and_movement_separately() -> Result<(), String> {
+    let fixture = build_fixture("verify-clean")?;
+    let attempt_id = prepare_edit_apply(&fixture, "att-verify")?;
+
+    let verified = run_verify(&fixture, &attempt_id, Some(AUTHORITY), false)?;
+    require_success(&verified, "verify phase")?;
+    let receipt = verification_receipt(&fixture)?;
+
+    if receipt.get("kind").and_then(Value::as_str) != Some("python_repair_verification_receipt") {
+        return Err("the receipt kind is wrong".to_string());
+    }
+    if receipt.get("spec").and_then(Value::as_str) != Some("RIPR-SPEC-0176") {
+        return Err("the receipt does not carry the RIPR-SPEC-0176 identity".to_string());
+    }
+    if receipt.get("durable_attempt_id").and_then(Value::as_str) != Some(attempt_id.as_str()) {
+        return Err("the receipt does not name the durable attempt".to_string());
+    }
+
+    // Execution axis: this fixture's packet carries no producer-owned typed
+    // verify route (the sample is a Rust seam, and verification routes are
+    // producer-owned), so the run is typed unavailable with its reason — and
+    // nothing else about the receipt changes. A run through a real route
+    // would retain exit status plus stdout/stderr commitments in the same
+    // block, independently of the movement block below.
+    let execution = receipt
+        .get("execution")
+        .and_then(Value::as_object)
+        .ok_or("the receipt carries no execution block")?;
+    if execution.get("state").and_then(Value::as_str) != Some("unavailable") {
+        return Err(format!(
+            "a packet with no producer route must record the typed unavailable state: {execution:?}"
+        ));
+    }
+    if execution
+        .get("reason")
+        .and_then(Value::as_str)
+        .map(str::is_empty)
+        .unwrap_or(true)
+    {
+        return Err("the unavailable execution must retain its reason".to_string());
+    }
+
+    // Movement axis: computed from the native-identity before/after join,
+    // never from the run — an unavailable execution must NOT force the
+    // movement to degrade, and here it stays a confident classification.
+    let movement = receipt
+        .get("movement")
+        .and_then(Value::as_object)
+        .ok_or("the receipt carries no movement block")?;
+    let movement_state = movement
+        .get("state")
+        .and_then(Value::as_str)
+        .ok_or("the movement block carries no state")?;
+    // A trust-bound clean edit over the focused seam must produce a
+    // confident, comparable movement: the join resolved exactly once in both
+    // snapshots, so stale/uncertain/limited would mean the join failed.
+    if !matches!(
+        movement_state,
+        "closed" | "improved" | "unchanged" | "regressed"
+    ) {
+        return Err(format!(
+            "the movement join did not resolve confidently: {movement:?}"
+        ));
+    }
+    let identity = movement
+        .get("identity")
+        .and_then(Value::as_object)
+        .ok_or("the movement block carries no native identity")?;
+    if identity.get("owner").and_then(Value::as_str) != Some("src/lib.rs::price")
+        || identity.get("discriminator").and_then(Value::as_str)
+            != Some("amount >= discount_threshold")
+    {
+        return Err(format!(
+            "the movement identity does not restate the binding's native identity: {identity:?}"
+        ));
+    }
+
+    // Separation: both axes ride as independent blocks with their own
+    // evidence, and no lifecycle/acceptance field exists anywhere.
+    for forbidden in [
+        "states",
+        "lifecycle",
+        "accepted",
+        "verified",
+        "reviewed",
+        "closure",
+    ] {
+        if receipt.get(forbidden).is_some() {
+            return Err(format!(
+                "the receipt carries the lifecycle field `{forbidden}`"
+            ));
+        }
+    }
+    let rollback = receipt
+        .get("rollback")
+        .and_then(Value::as_object)
+        .ok_or("the receipt carries no rollback block")?;
+    if rollback.get("state").and_then(Value::as_str) != Some("not_run") {
+        return Err("an unrequested rollback must be recorded not_run".to_string());
+    }
+    let non_claims = receipt
+        .get("non_claims")
+        .and_then(Value::as_array)
+        .ok_or("the receipt carries no non_claims")?;
+    if non_claims.len() != 3 {
+        return Err(format!(
+            "the receipt carries {} non-claims, expected 3",
+            non_claims.len()
+        ));
+    }
+
+    // The verification run leaves no intermediate staging residue: the fresh
+    // after snapshot is published atomically and its staging file is removed.
+    let workflow = fixture.root.join("target/ripr/workflow");
+    let mut residue = Vec::new();
+    for entry in std::fs::read_dir(&workflow)
+        .map_err(|error| format!("read {}: {error}", workflow.display()))?
+    {
+        let entry = entry.map_err(|error| format!("read workflow entry: {error}"))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with("after-verification.repo-exposure.json.tmp-") {
+            residue.push(name);
+        }
+    }
+    if !residue.is_empty() {
+        return Err(format!(
+            "the verification run left staging residue: {residue:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn verification_without_or_with_wrong_authority_refused() -> Result<(), String> {
+    let fixture = build_fixture("verify-auth")?;
+    let attempt_id = prepare_edit_apply(&fixture, "att-verify-auth")?;
+
+    // No verification authorization at all.
+    let refused = run_verify(&fixture, &attempt_id, None, false)?;
+    require_failure(
+        &refused,
+        "verify without authorization",
+        "--verify-authorized",
+    )?;
+    if fixture.root.join(RECEIPT_PATH).exists() {
+        return Err("an unauthorized verification wrote a receipt".to_string());
+    }
+
+    // The flag without the authority identity is refused at parse time.
+    let args = vec![
+        "agent".to_string(),
+        "repair".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--attempt".to_string(),
+        attempt_id.clone(),
+        "--phase".to_string(),
+        "verify".to_string(),
+        "--verify-authorized".to_string(),
+    ];
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let refused = run_ripr(&fixture.root, &borrowed)?;
+    require_failure(
+        &refused,
+        "verify with a flag but no authority",
+        "--verify-authority",
+    )?;
+
+    // A different authority than the retained edit authorization is refused:
+    // the verify invocation must re-affirm the retained authority.
+    let refused = run_verify(&fixture, &attempt_id, Some("someone-else"), false)?;
+    require_failure(
+        &refused,
+        "verify with the wrong authority",
+        "does not match the retained authorization authority",
+    )?;
+    if fixture.root.join(RECEIPT_PATH).exists() {
+        return Err("a refused verification wrote a receipt".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn verification_refuses_a_stale_tree() -> Result<(), String> {
+    let fixture = build_fixture("verify-stale-tree")?;
+    let attempt_id = prepare_edit_apply(&fixture, "att-verify-stale")?;
+
+    // Move the repository HEAD after the apply: the exact post-edit tree is
+    // gone, so the phase refuses before executing anything.
+    std::fs::write(fixture.root.join("DRIFT.md"), "drifted\n")
+        .map_err(|error| format!("write drift file: {error}"))?;
+    run_git(&fixture.root, &["add", "DRIFT.md"])?;
+    run_git(&fixture.root, &["commit", "-qm", "drift"])?;
+    let refused = run_verify(&fixture, &attempt_id, Some(AUTHORITY), false)?;
+    require_failure(&refused, "verify over a moved HEAD", "stale tree")?;
+    if fixture.root.join(RECEIPT_PATH).exists() {
+        return Err("a stale-tree verification wrote a receipt".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn verification_refuses_a_stale_command_packet() -> Result<(), String> {
+    let fixture = build_fixture("verify-stale-packet")?;
+    let attempt_id = prepare_edit_apply(&fixture, "att-verify-cmd")?;
+
+    // Tamper the retained packet: its digest is pinned by the durable
+    // attempt manifest, so the command identity check refuses before any run.
+    let packet_path = fixture
+        .root
+        .join("target/ripr/repair-attempts")
+        .join(attempt_id.as_str())
+        .join("artifacts/agent-packet.json");
+    let original = std::fs::read_to_string(&packet_path)
+        .map_err(|error| format!("read retained packet: {error}"))?;
+    std::fs::write(
+        &packet_path,
+        original.replacen('{', "{\n  \"smuggled\": true,", 1),
+    )
+    .map_err(|error| format!("write tampered packet: {error}"))?;
+    let refused = run_verify(&fixture, &attempt_id, Some(AUTHORITY), false)?;
+    require_failure(
+        &refused,
+        "verify over a tampered packet",
+        "artifact binding failed",
+    )?;
+    if fixture.root.join(RECEIPT_PATH).exists() {
+        return Err("a stale-command verification wrote a receipt".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn verification_receipt_is_immutable() -> Result<(), String> {
+    let fixture = build_fixture("verify-immutable")?;
+    let attempt_id = prepare_edit_apply(&fixture, "att-verify-immutable")?;
+    let first = run_verify(&fixture, &attempt_id, Some(AUTHORITY), false)?;
+    require_success(&first, "first verify phase")?;
+    let second = run_verify(&fixture, &attempt_id, Some(AUTHORITY), false)?;
+    require_failure(
+        &second,
+        "second verify phase over an existing receipt",
+        "already exists",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn verification_rollback_restores_the_tree_and_records_the_proof() -> Result<(), String> {
+    let fixture = build_fixture("verify-rollback")?;
+    let attempt_id = prepare_edit_apply(&fixture, "att-verify-rollback")?;
+
+    let verified = run_verify(&fixture, &attempt_id, Some(AUTHORITY), true)?;
+    require_success(&verified, "verify phase with rollback")?;
+    let receipt = verification_receipt(&fixture)?;
+    let rollback = receipt
+        .get("rollback")
+        .and_then(Value::as_object)
+        .ok_or("the receipt carries no rollback block")?;
+    if rollback.get("state").and_then(Value::as_str) != Some("proved") {
+        return Err(format!(
+            "the rollback proof was not recorded as proved: {rollback:?}"
+        ));
+    }
+    // The proof must land on the exact head the receipt pins: a proof at any
+    // other head is not a rollback demonstration.
+    let recorded_head = rollback
+        .get("post_rollback_head")
+        .and_then(Value::as_str)
+        .ok_or("the rollback proof does not name the restored head")?;
+    let receipt_head = receipt
+        .get("repository_head")
+        .and_then(Value::as_str)
+        .ok_or("the receipt carries no repository head")?;
+    if recorded_head != receipt_head {
+        return Err(format!(
+            "the rollback proof head {recorded_head} does not match the receipt's pinned head {receipt_head}"
+        ));
+    }
+    if rollback
+        .get("post_rollback_head")
+        .and_then(Value::as_str)
+        .map(str::len)
+        != Some(40)
+    {
+        return Err("the rollback proof does not name the restored head".to_string());
+    }
+    // No tracked file may carry the applied edit anymore (the fixture's
+    // target/ workflow directory is untracked and is not the edit).
+    let status = Command::new("git")
+        .current_dir(&fixture.root)
+        .args(["status", "--porcelain", "--untracked-files=no"])
+        .output()
+        .map_err(|error| format!("spawn git status failed: {error}"))?;
+    if !status.status.success() || !String::from_utf8_lossy(&status.stdout).trim().is_empty() {
+        return Err(format!(
+            "the rollback left worktree residue: {}",
+            String::from_utf8_lossy(&status.stdout)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn verification_refuses_an_earlier_attempt_after_a_later_apply() -> Result<(), String> {
+    let fixture = build_fixture("verify-latest-apply")?;
+    // Both attempts are prepared on the same seam BEFORE any edit, so each
+    // binds the same packet-selected target from the same clean tree. Each
+    // attempt keeps its own manifest file: the retained binding pins the
+    // manifest digest, so the file one binding points at must never change
+    // under it.
+    let seam_id = find_seam_for_target(&fixture.root, TARGET_TEST_FILE)?;
+    for (label, manifest_path) in [
+        ("att-a", "target/ripr/trust-manifest-a.json"),
+        ("att-b", "target/ripr/trust-manifest-b.json"),
+    ] {
+        write_verify_trust_manifest_named(&fixture.root, label, TARGET_TEST_FILE, manifest_path)?;
+        let prepared = run_ripr(
+            &fixture.root,
+            &prepare_args(&seam_id, manifest_path, label)
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+        )?;
+        require_success(&prepared, &format!("bound before phase for {label}"))?;
+    }
+    let attempt_a = attempt_ids(&fixture)?
+        .first()
+        .cloned()
+        .ok_or("attempt A was not published")?;
+    let attempt_b = attempt_ids(&fixture)?
+        .into_iter()
+        .find(|id| id != &attempt_a)
+        .ok_or("attempt B was not published")?;
+
+    // Apply A, then apply B: each finish measures only its own edit against
+    // its own baseline, and the global apply record now names B.
+    edit_target_file(&fixture)?;
+    let applied_a = run_apply(&fixture, &attempt_a, Some(AUTHORITY))?;
+    require_success(&applied_a, "bound after phase for attempt A")?;
+    edit_target_file(&fixture)?;
+    let applied_b = run_apply(&fixture, &attempt_b, Some(AUTHORITY))?;
+    require_success(&applied_b, "bound after phase for attempt B")?;
+
+    // Verifying A refuses: the latest-apply projection no longer names A.
+    // The refusal is the documented fail-closed boundary (the phase verifies
+    // only the repository's latest applied attempt), and it never writes a
+    // receipt for an attempt it could not revalidate.
+    let refused = run_verify(&fixture, &attempt_a, Some(AUTHORITY), false)?;
+    require_failure(
+        &refused,
+        "verify of an earlier attempt after a later apply",
+        "the apply record names durable attempt",
+    )?;
+    if fixture.root.join(RECEIPT_PATH).exists() {
+        return Err("a refused earlier-attempt verification wrote a receipt".to_string());
+    }
+    Ok(())
+}

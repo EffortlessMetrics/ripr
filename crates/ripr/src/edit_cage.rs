@@ -127,6 +127,26 @@ impl AttemptBaseline {
     pub(crate) fn policy(&self) -> &EditCagePolicy {
         &self.policy
     }
+
+    /// The baseline index entry metadata (`git ls-files --stage` shape) for
+    /// one path, for consumers that must verify the index copy a checkout
+    /// would restore is still the baseline's index copy.
+    pub(crate) fn index_entry(&self, path: &str) -> Option<&str> {
+        self.paths
+            .get(path)
+            .and_then(|state| state.index_entry.as_deref())
+    }
+
+    /// The baseline worktree content digest (sha256 hex) for one path when the
+    /// baseline captured it as a regular file.
+    pub(crate) fn worktree_digest(&self, path: &str) -> Option<&str> {
+        self.paths
+            .get(path)
+            .and_then(|state| match &state.worktree_identity {
+                WorktreeIdentity::File { digest, .. } => Some(digest.as_str()),
+                _ => None,
+            })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

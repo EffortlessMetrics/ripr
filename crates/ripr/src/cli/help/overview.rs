@@ -39,6 +39,8 @@ What are you trying to do?
   Repair one named gap  ripr agent repair --seam-id ID --phase before
                         # edit one focused test
                         ripr agent repair --attempt ID --phase after
+                        # verify the applied attempt
+                        ripr agent repair --attempt ID --phase verify
   Compose PR evidence   ripr first-pr --root . --base origin/main --head HEAD
   Work in an editor     ripr lsp --stdio
   Adopt advisory CI     ripr init --ci github
@@ -69,7 +71,7 @@ Task map:
   Diagnose setup        ripr doctor
   Inspect one change    ripr check --base origin/main
   Guided repo adoption  ripr pilot --root .
-  Repair one named gap  ripr agent repair --seam-id ID --phase before|after
+  Repair one named gap  ripr agent repair --seam-id ID --phase before|after|verify
   Compose PR evidence   ripr first-pr --root . --base origin/main --head HEAD
   Adopt advisory CI     ripr init --ci github
 
@@ -93,7 +95,7 @@ Analysis:
 Editor & Agent:
   ripr lsp [--stdio]
   ripr mcp --stdio [--root PATH]
-  ripr agent repair --root . --seam-id ID --phase before|after
+  ripr agent repair --root . --seam-id ID --phase before|after|verify
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
   ripr agent packet --root . --seam-id ID --json

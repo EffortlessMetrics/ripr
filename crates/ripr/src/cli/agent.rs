@@ -107,12 +107,19 @@ pub(super) struct AgentRepairOptions {
     /// Explicit operator/agent edit authorization. Both signals are required
     /// together whenever a trust binding is prepared or re-verified.
     pub(super) edit_authorization: crate::app::python_repair_binding::EditAuthorization,
+    /// Explicit operator/agent verification authorization (#3570). Both
+    /// signals are required together for the verify phase; the phase
+    /// re-affirms the retained binding's authority against it.
+    pub(super) verify_authorization: crate::app::python_repair_verification::VerifyAuthorization,
+    /// Request the rollback proof as part of the verify phase (#3570).
+    pub(super) verify_rollback: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum AgentRepairPhase {
     Before,
     After,
+    Verify,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -228,6 +235,9 @@ fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
     let mut trust_attempt: Option<String> = None;
     let mut edit_authorized = false;
     let mut edit_authority: Option<String> = None;
+    let mut verify_authorized = false;
+    let mut verify_authority: Option<String> = None;
+    let mut verify_rollback = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -287,15 +297,33 @@ fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
                 }
                 edit_authority = Some(value.to_string());
             }
+            "--verify-authorized" => {
+                verify_authorized = true;
+            }
+            "--verify-authority" => {
+                i += 1;
+                let value = expect_value(args, i, "--verify-authority")?;
+                if value.trim().is_empty() {
+                    return Err(
+                        "agent repair --verify-authority requires a non-empty operator or agent identity"
+                            .to_string(),
+                    );
+                }
+                verify_authority = Some(value.to_string());
+            }
+            "--verify-rollback" => {
+                verify_rollback = true;
+            }
             "--phase" => {
                 i += 1;
                 let value = expect_value(args, i, "--phase")?;
                 phase = Some(match value {
                     "before" => AgentRepairPhase::Before,
                     "after" => AgentRepairPhase::After,
+                    "verify" => AgentRepairPhase::Verify,
                     other => {
                         return Err(format!(
-                            "unknown --phase {other:?}; expected `before` or `after`"
+                            "unknown --phase {other:?}; expected `before`, `after`, or `verify`"
                         ));
                     }
                 });
@@ -311,9 +339,9 @@ fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
     // manifest path.
     let python_repair_trust = match (trust_manifest, trust_attempt) {
         (Some(manifest_path), Some(trust_attempt_id)) => {
-            if phase == AgentRepairPhase::After {
+            if phase != AgentRepairPhase::Before {
                 return Err(
-                    "agent repair --python-repair-trust-manifest/--python-repair-trust-attempt are only valid with --phase before; the after phase re-verifies the attempt's retained binding"
+                    "agent repair --python-repair-trust-manifest/--python-repair-trust-attempt are only valid with --phase before; the after and verify phases re-verify the attempt's retained binding"
                         .to_string(),
                 );
             }
@@ -374,10 +402,56 @@ fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
         _ => {}
     }
 
+    // The verification authorization is a pair and belongs to the verify
+    // phase only; the verify phase never consumes the edit pair.
+    let verify_authorization = crate::app::python_repair_verification::VerifyAuthorization {
+        authorized: verify_authorized,
+        authority: verify_authority,
+    };
+    if verify_authorization.authority.is_some() && !verify_authorization.authorized {
+        return Err(
+            "agent repair --verify-authority requires --verify-authorized; the driver accepts only the explicit pair"
+                .to_string(),
+        );
+    }
+    if verify_authorization.authorized && verify_authorization.authority.is_none() {
+        return Err(
+            "agent repair --verify-authorized requires --verify-authority <identity>; the driver never authorizes a verification automatically"
+                .to_string(),
+        );
+    }
+    // The rollback demand belongs to the verify phase exactly like the
+    // authorization pair: accepting it on another phase would silently drop
+    // the operator's requested rollback.
+    if (verify_authorized || verify_rollback) && phase != AgentRepairPhase::Verify {
+        return Err(
+            "agent repair --verify-authorized/--verify-authority/--verify-rollback are only valid with --phase verify"
+                .to_string(),
+        );
+    }
+    if phase == AgentRepairPhase::Verify && edit_authorization.authorized {
+        return Err(
+            "agent repair --edit-authorized/--edit-authority are only valid with --phase before; the verify phase takes --verify-authorized and --verify-authority <identity>"
+                .to_string(),
+        );
+    }
+    if phase == AgentRepairPhase::Verify && verify_rollback && !verify_authorized {
+        // Unreachable through the pair rules above (an authority without the
+        // flag is already refused); kept as an explicit guard so a rollback
+        // demand can never ride on an absent verification authorization.
+        return Err(
+            "agent repair --verify-rollback requires --verify-authorized and --verify-authority <identity>"
+                .to_string(),
+        );
+    }
+
     match phase {
         AgentRepairPhase::Before => {
             if attempt_id.is_some() {
-                return Err("agent repair --attempt is only valid with --phase after".to_string());
+                return Err(
+                    "agent repair --attempt is only valid with --phase after or --phase verify"
+                        .to_string(),
+                );
             }
             if seam_id.is_none() {
                 return Err("agent repair --phase before requires --seam-id <id>".to_string());
@@ -398,6 +472,17 @@ fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
             }
             _ => {}
         },
+        AgentRepairPhase::Verify => {
+            if seam_id.is_some() {
+                return Err(
+                    "agent repair --phase verify accepts only --attempt <id>; a verification selects the exact durable attempt"
+                        .to_string(),
+                );
+            }
+            if attempt_id.is_none() {
+                return Err("agent repair --phase verify requires --attempt <id>".to_string());
+            }
+        }
     }
     Ok(AgentCommand::Repair(AgentRepairOptions {
         root,
@@ -406,6 +491,8 @@ fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
         phase,
         python_repair_trust,
         edit_authorization,
+        verify_authorization,
+        verify_rollback,
     }))
 }
 
@@ -1030,6 +1117,12 @@ mod tests {
                         authorized: false,
                         authority: None,
                     },
+                verify_authorization:
+                    super::super::super::app::python_repair_verification::VerifyAuthorization {
+                        authorized: false,
+                        authority: None,
+                    },
+                verify_rollback: false,
             }))
         );
         assert_eq!(
@@ -1053,6 +1146,12 @@ mod tests {
                         authorized: false,
                         authority: None,
                     },
+                verify_authorization:
+                    super::super::super::app::python_repair_verification::VerifyAuthorization {
+                        authorized: false,
+                        authority: None,
+                    },
+                verify_rollback: false,
             }))
         );
     }
@@ -1168,8 +1267,65 @@ mod tests {
                     authorized: false,
                     authority: None,
                 },
+                verify_authorization: crate::app::python_repair_verification::VerifyAuthorization {
+                    authorized: false,
+                    authority: None,
+                },
+                verify_rollback: false,
             }))
         );
+    }
+
+    #[test]
+    fn agent_repair_refuses_verify_rollback_outside_the_verify_phase() -> Result<(), String> {
+        // A rollback demand on another phase must be refused at parse time,
+        // never silently consumed and dropped.
+        for argv in [
+            vec![
+                "repair",
+                "--seam-id",
+                "seam:sample",
+                "--phase",
+                "before",
+                "--verify-rollback",
+            ],
+            vec![
+                "repair",
+                "--attempt",
+                "repair-attempt-0123456789abcdef01234567",
+                "--phase",
+                "after",
+                "--verify-rollback",
+            ],
+            vec!["repair", "--seam-id", "seam:sample", "--verify-rollback"],
+        ] {
+            let error = match parse_agent_args(&args(&argv)) {
+                Ok(parsed) => return Err(format!("expected {argv:?} to fail, got {parsed:?}")),
+                Err(error) => error,
+            };
+            assert!(
+                error.contains("only valid with --phase verify"),
+                "{argv:?} reported {error}"
+            );
+        }
+        // On the verify phase itself, a rollback without the authorization
+        // pair still refuses with its own named guard.
+        let error = match parse_agent_args(&args(&[
+            "repair",
+            "--attempt",
+            "repair-attempt-0123456789abcdef01234567",
+            "--phase",
+            "verify",
+            "--verify-rollback",
+        ])) {
+            Ok(parsed) => return Err(format!("expected verify rollback to fail, got {parsed:?}")),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("--verify-rollback requires --verify-authorized"),
+            "verify-phase rollback reported {error}"
+        );
+        Ok(())
     }
 
     #[test]
@@ -1182,7 +1338,7 @@ mod tests {
                     "--attempt",
                     "repair-attempt-0123456789abcdef01234567",
                 ],
-                "only valid with --phase after",
+                "only valid with --phase after or --phase verify",
             ),
             (
                 vec!["repair", "--phase", "after"],

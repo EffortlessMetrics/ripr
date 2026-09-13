@@ -28,6 +28,7 @@ mod proof_preflight;
 mod proof_route;
 mod python_repair_driver;
 mod python_repair_trust;
+mod python_repair_verification;
 mod receipts;
 mod recommendation;
 pub(crate) mod release;

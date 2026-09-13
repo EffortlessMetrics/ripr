@@ -42,6 +42,9 @@ Policy impact:
 - New `python-repair-trust check-driver` subcommand registered in the command
   mutability catalog as a non-mutating check writing only
   `target/ripr/reports/python-repair-driver-check.{json,md}`.
+- New `python-repair-trust check-verification` subcommand registered in the
+  command mutability catalog as a non-mutating check writing only
+  `target/ripr/reports/python-repair-verification-check.{json,md}`.
 
 ## Problem
 
@@ -366,6 +369,91 @@ The driver executes no arbitrary command: its edits are performed by the
 human or external agent between the phases, and the driver itself only
 writes its own artifacts.
 
+### Verification phase (issue #3570)
+
+The verification/acceptance phase closes the prepare→apply→verify chain for
+one trust-bound attempt. `ripr agent repair --phase verify --attempt <id>`
+requires the explicit pair `--verify-authorized` +
+`--verify-authority <identity>` (the same authority that authorized the edit)
+and optionally `--verify-rollback`. The phase, in order:
+
+1. revalidates attempt, worktree, source-tree, patch, config, input, target,
+   and command identities against the retained #3569 apply record and the
+   #3568 binding — digest recomputes plus exact identity agreement,
+   re-affirming the retained authorization; any drift refuses with a typed
+   error naming the drifted identity BEFORE anything runs. The apply record
+   is a repository-global compatibility projection of the LATEST apply, so
+   the phase verifies only the repository's latest applied attempt: verifying
+   an earlier ready attempt after a later apply refuses with the typed
+   apply-record identity error (fail-closed; per-attempt immutable apply
+   records would be a new #3569 publication model). The patch identity is an
+   agreement between retained records — the durable verdict digest and the
+   apply-record pin — not a fresh content re-derivation: the finish-time
+   digest binds the whole-repository delta, which the attempt's own workflow
+   artifacts legitimately change afterwards, so the applied surface is
+   re-derived by exact path names plus cage compliance, and the fresh
+   after-snapshot digest (step 4) is the verify-time content binding. This
+   is a disclosed limit, not a claimed content equality;
+2. executes ONLY the producer-owned typed `CommandSpec` the retained packet
+   declares, through the bounded execution rails (cwd/root confinement,
+   disclosed environment floor, timeout, bounded output, owned-child
+   termination, cancellation, no-secret handling). Shell reconstruction is
+   forbidden; a packet that declares no canonical typed route records the
+   typed `unavailable` execution and runs nothing;
+3. retains the exit/disposition plus stdout/stderr commitments (sha256 over
+   the bounded captured bytes; no secrets, no host-local semantic identity
+   in the receipt). The rails' typed response is the single mapping source:
+   when the rails executed the route but could not commit the observation
+   artifact, the observation and its commitments stay in the receipt and the
+   commit failure is named in the execution reason — a run that happened is
+   never recorded as one that did not. A completed observation terminated by
+   signal retains `failed` with the exit signal; a completed observation
+   carrying neither an exit status nor a signal is a typed failure;
+4. reruns the current RIPR analysis against the exact post-edit state,
+   binding the current binary/config/input identities;
+5. compares the intended native Python behavior/gap evidence before and
+   after by EXACT native identity (owner + discriminator against the
+   analyzer's seam records): zero and multiple joins fail closed to
+   `uncertain`, a join that no longer names the packet's seam fails closed
+   to `stale`, and a partial after analysis discloses `limited`;
+6. publishes ONE immutable candidate receipt
+   (`target/ripr/workflow/python-repair-driver-verification.json` — never
+   overwritten) whose `execution` and `movement` blocks are separate
+   observations with no derivation between them and no lifecycle field
+   anywhere in the schema; unrelated actionable movement stays visible in
+   its own block;
+7. supports a rollback proof: the applied edit is restored through the
+   bounded git rail and the proof requires the re-evaluated edit surface to
+   carry no residue at the attempt's unchanged head (the post-rollback HEAD
+   must equal the head the revalidation pinned). Before any destructive
+   command, the restore refuses — typed `blocked`, worktree untouched — any
+   path whose baseline the cage records as already modified against its
+   index entry (a pre-attempt dirty target whose pre-attempt worktree bytes
+   exist nowhere git can restore) or whose index entry moved since the
+   baseline; any other failure is a typed `blocked` disposition, and an
+   unrequested rollback records `not_run`.
+
+The offline `python-repair-trust check-verification` validator re-checks the
+manifest/selection digest anchors, the native-identity and target agreement,
+the closed execution (`passed`/`failed`/`timed_out`/`cancelled`/
+`unavailable`/`not_run`/`invalid`) and movement (`closed`/`improved`/
+`unchanged`/`regressed`/`limited`/`stale`/`uncertain`) vocabularies bound to
+their retained process dispositions, output commitments on real runs, the
+producer-owned execution scalars' types (signed `exit_status`/`exit_signal`,
+non-negative `duration_ms`, boolean truncation/cancellation flags), the
+movement join shapes (a confident state requires the complete before/after
+joins on the receipt's own seam and a recorded state equal to the one its
+headline/oracle transition table implies; `stale`, `uncertain`, and
+`limited` carry only their documented partial shapes with typed reasons),
+the unrelated-finding block's row-derived consistency, the rollback
+evidence, and the standing non-claims plus the standing claim boundary
+verbatim. No rule derives movement from execution or execution from
+movement: `passed`+`unchanged`, `failed`+`improved`,
+`unavailable`+`uncertain`, `passed` riding a stale join, and `closed` next
+to an unrelated regression all remain representable, and a passing execution
+alone can never mark an attempt accepted or closed because the schema admits
+no lifecycle state at all.
+
 ## Acceptance Examples
 
 - A corpus with six selections across four strata and six attempt rows —
@@ -398,7 +486,17 @@ writes its own artifacts.
   zero and ambiguous target matches, denied surfaces, outside-root manifest,
   missing or mismatched authorization, tampered retained binding, cage escape
   and production/generated edits, deterministic preparation, state
-  distinctness). Listed in `.ripr/traceability.toml` under this spec.
+  distinctness) plus the verification-phase case matrix (execution/movement
+  separation with staging-residue cleanliness, authorization refusals, stale
+  tree, stale command packet, receipt immutability, rollback proof with head
+  pin and worktree preservation, the latest-apply verification boundary).
+  Listed in `.ripr/traceability.toml` under this spec.
+- `xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics`
+  — the verification-receipt validator test module (the issue's example
+  execution/movement pairs, every execution state, disposition agreement,
+  output commitments, degradation reasons, unrelated visibility, rollback
+  evidence, lifecycle-field denial, verdict precedence). Listed in
+  `.ripr/traceability.toml` under this spec.
 
 ## Implementation Mapping
 
@@ -408,9 +506,16 @@ writes its own artifacts.
 - `xtask/src/command.rs` — `python-repair-trust` parse arm, command-catalog
   entry, and help listing.
 - `xtask/src/dispatch.rs` — dispatch to the reports adapter.
+- `xtask/src/reports/python_repair_verification.rs` — the receipt validator
+  (`check-verification` entry point, closed schemas, digest anchors, report
+  rendering).
 - `crates/ripr/src/app/python_repair_binding.rs` — the crate-side binding
   authority: selection-manifest verification, prepare-record rendering,
   apply-phase re-verification and apply-record publication.
+- `crates/ripr/src/app/python_repair_verification.rs` — the crate-side
+  verification phase: identity revalidation, bounded execution, after
+  analysis, native-identity movement comparison, rollback proof, and the
+  immutable receipt.
 - `crates/ripr/src/cli/agent.rs`, `crates/ripr/src/cli/mod.rs`,
   `crates/ripr/src/cli/commands/agent.rs` — the driver CLI surface (trust and
   authorization flags, before-phase publication hook, after-phase
@@ -421,5 +526,8 @@ writes its own artifacts.
 - `python_repair_trust_check_verdict` — the disclosed verdict
   (`valid`/`incomplete`/`not_run`) written to the check report; descriptive
   only, never a gate input.
+- `python_repair_verification_check_verdict` — the disclosed verdict
+  (`valid`/`inconsistent`/`not_run`) written to the verification-receipt
+  check report; descriptive only, never a gate input.
 - No rates are derived: no denominator-based rate is meaningful for
   metadata-only validation, and none is emitted.

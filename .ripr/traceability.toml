@@ -9094,16 +9094,43 @@ tests = [
   "crates/ripr/tests/python_repair_attempt.rs::deterministic_preparation_is_byte_identical",
   "crates/ripr/tests/python_repair_attempt.rs::driver_claims_no_verification_movement_or_closure",
   "crates/ripr/tests/python_repair_attempt.rs::states_remain_distinct_across_one_repository",
+  "crates/ripr/tests/python_repair_attempt.rs::verification_phase_records_execution_and_movement_separately",
+  "crates/ripr/tests/python_repair_attempt.rs::verification_without_or_with_wrong_authority_refused",
+  "crates/ripr/tests/python_repair_attempt.rs::verification_refuses_a_stale_tree",
+  "crates/ripr/tests/python_repair_attempt.rs::verification_refuses_a_stale_command_packet",
+  "crates/ripr/tests/python_repair_attempt.rs::verification_receipt_is_immutable",
+  "crates/ripr/tests/python_repair_attempt.rs::verification_rollback_restores_the_tree_and_records_the_proof",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::accepts_the_clean_passed_receipt",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::every_execution_state_stays_representable",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::the_issue_pair_matrix_stays_representable",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::rejects_a_stale_manifest_digest",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::rejects_a_replaced_selection_row_digest",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::rejects_an_unknown_trust_attempt",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::rejects_rewritten_identity_copies",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::rejects_disagreement_between_execution_state_and_disposition",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::rejects_a_passed_run_without_output_commitments",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::rejects_movement_outside_the_closed_vocabulary_and_unreasoned_degradation",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::rejects_a_confident_movement_carrying_a_degradation_reason",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::rejects_hand_edited_unrelated_flags",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::rejects_incomplete_rollback_dispositions",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::rejects_dropped_extra_or_non_string_non_claims",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::lifecycle_fields_are_denied_so_a_pass_cannot_mark_acceptance",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::malformed_shapes_fail_with_the_field_named",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::not_run_is_never_a_pass",
+  "xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics::invalid_only_receipts_fail_closed_as_inconsistent",
 ]
 fixtures = []
 code = [
   "xtask/src/reports/python_repair_trust.rs",
   "xtask/src/reports/python_repair_driver.rs",
+  "xtask/src/reports/python_repair_verification.rs",
   "crates/ripr/src/app/python_repair_binding.rs",
+  "crates/ripr/src/app/python_repair_verification.rs",
   "crates/ripr/src/app/repair_attempt.rs",
 ]
 outputs = [
 ]
 metrics = [
   "python_repair_trust_check_verdict",
+  "python_repair_verification_check_verdict",
 ]

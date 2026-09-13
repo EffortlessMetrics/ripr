@@ -310,8 +310,8 @@ const DISCARD_TERMINALS: [&str; 3] = ["stale", "rejected", "abandoned"];
 const COMPLETED_STATES: [&str; 3] = ["verified", "reviewed", "accepted"];
 
 /// Terminal static movement vocabulary (issue #3568). Separate axis from the
-/// lifecycle and from execution.
-const MOVEMENTS: [&str; 7] = [
+/// lifecycle and from execution. Shared with the #3570 receipt validator.
+pub(crate) const MOVEMENTS: [&str; 7] = [
     "closed",
     "improved",
     "unchanged",
@@ -326,8 +326,9 @@ const MOVEMENTS: [&str; 7] = [
 const COMPLETED_MOVEMENTS: [&str; 2] = ["closed", "improved"];
 
 /// Verification execution vocabulary (issue #3568). Separate axis from
-/// static movement: neither implies the other.
-const EXECUTIONS: [&str; 7] = [
+/// static movement: neither implies the other. Shared with the #3570
+/// receipt validator.
+pub(crate) const EXECUTIONS: [&str; 7] = [
     "passed",
     "failed",
     "timed_out",
@@ -2534,6 +2535,9 @@ pub(crate) fn python_repair_trust(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("check") => run_check(&args[1..]),
         Some("check-driver") => super::python_repair_driver::run_check_driver(&args[1..]),
+        Some("check-verification") => {
+            super::python_repair_verification::run_check_verification(&args[1..])
+        }
         Some(other) => Err(format!(
             "unknown python-repair-trust subcommand: {other}\nusage: cargo xtask python-repair-trust check [--manifest <path>] [--attempts <dir-or-file>]\nrerun: {RERUN_COMMAND}"
         )),

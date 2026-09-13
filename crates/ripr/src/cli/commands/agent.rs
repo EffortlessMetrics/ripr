@@ -432,6 +432,8 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
         // (see `persist_before_repair_attempt`).
         python_repair_trust: _,
         edit_authorization,
+        verify_authorization,
+        verify_rollback,
     } = options;
 
     match phase {
@@ -662,6 +664,39 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
             apply_record_result?;
 
             eprintln!("ripr: after phase complete. Review the receipt and status output.");
+            Ok(())
+        }
+        AgentRepairPhase::Verify => {
+            ensure_command_root(&root, "agent repair --phase verify")?;
+            let attempt_id = attempt_id.as_deref().ok_or_else(|| {
+                "agent repair --phase verify lost its parsed attempt identity".to_string()
+            })?;
+            eprintln!(
+                "ripr: agent repair --phase verify for attempt `{attempt_id}` at {}",
+                root.display()
+            );
+            let receipt_path = app::python_repair_verification::run_verification_phase(
+                app::python_repair_verification::VerificationOptions {
+                    root: &root,
+                    attempt_id,
+                    authorization: app::python_repair_verification::VerifyAuthorization {
+                        authorized: verify_authorization.authorized,
+                        authority: verify_authorization.authority.clone(),
+                    },
+                    rollback: verify_rollback,
+                },
+            )?;
+            let rendered = std::fs::read_to_string(&receipt_path).map_err(|error| {
+                format!(
+                    "read verification receipt {} failed: {error}",
+                    receipt_path.display()
+                )
+            })?;
+            print!("{rendered}");
+            eprintln!(
+                "ripr: verification receipt: {} (immutable; execution and static movement are separate observations)",
+                receipt_path.display()
+            );
             Ok(())
         }
     }

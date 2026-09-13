@@ -378,6 +378,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "check-python-judged-panel",
         "python-repair-trust check [--manifest <path>] [--attempts <dir-or-file>]",
         "python-repair-trust check-driver [--manifest <path>] --bindings <dir-or-file>",
+        "python-repair-trust check-verification [--manifest <path>] --receipts <dir-or-file>",
         "test-oracle-report",
         "check-test-oracles",
         "test-efficiency-report",
@@ -816,6 +817,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             false,
             false,
             "Validates retained two-phase driver binding records (#3569) against the accepted selection manifest offline (RIPR-SPEC-0176): manifest digest staleness, canonical selection digest anchors, target identity agreement, explicit-operator-flags authorization, the standing no-verification/no-movement/no-closure non-claims, denied edit surfaces, and the apply-phase durable-attempt and patch identities. It executes no external command and makes no support-tier or repair-correctness claim.",
+        ),
+        command_entry(
+            "python-repair-trust check-verification [--manifest <path>] --receipts <dir-or-file>",
+            "non_mutating_check",
+            "target/ripr/reports/python-repair-verification-check.{json,md}",
+            false,
+            false,
+            "Validates retained #3570 verification candidate receipts against the accepted selection manifest offline (RIPR-SPEC-0176): manifest and selection-digest staleness, native-identity and target agreement, the closed execution and movement vocabularies bound to their retained process dispositions, output commitments on real runs, typed reasons for stale/uncertain/limited movements, unrelated-finding visibility, rollback evidence, and the standing non-claims. No rule derives movement from execution or execution from movement, and the schema admits no lifecycle field, so a passing execution alone can never mark an attempt accepted or closed. It executes no external command and makes no support-tier or repair-correctness claim.",
         ),
         command_entry(
             "test-oracle-report",

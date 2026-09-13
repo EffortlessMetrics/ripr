@@ -3,7 +3,7 @@ pub(super) const AGENT_HELP: &str = r#"Create a bounded repair transaction for a
 Usage: ripr agent <subcommand>
 
 Primary workflow:
-  repair    Run the two-phase before/edit/after repair transaction for one seam.
+  repair    Run the before/edit/after repair transaction and its verification phase for one seam.
   status    Report existing agent-loop artifacts and the exact next command.
 
 Advanced and compatibility workflows:
@@ -188,17 +188,21 @@ present, and local CI artifact state into a compact review packet. It remains
 advisory and static; it does not run analysis, mutation testing, generate
 tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
 "#;
-pub(super) const AGENT_REPAIR_HELP: &str = r#"Run the primary two-phase repair transaction for one named gap.
+pub(super) const AGENT_REPAIR_HELP: &str = r#"Run the before/edit/after repair transaction and its verification phase for one named gap.
 
 Usage: ripr agent repair [--root PATH] --seam-id ID --phase before
        ripr agent repair [--root PATH] (--attempt ID|--seam-id ID) --phase after
+       ripr agent repair [--root PATH] --attempt ID --phase verify
+           [--verify-authorized --verify-authority ID] [--verify-rollback]
 
 Options:
   --root PATH          Workspace root. Defaults to current directory.
   --seam-id ID         Select one visible seam by ID; required for `before` and
                        the compatibility selector for `after`.
-  --attempt ID         Select one durable repair attempt; valid only for `after`.
-  --phase before|after Which half of the repair loop to run.
+  --attempt ID         Select one durable repair attempt; valid for `after`
+                       and `verify` (verify accepts only `--attempt`).
+  --phase before|after|verify
+                       Which phase of the repair loop to run.
   --python-repair-trust-manifest PATH
                        Bind this attempt to an accepted Python repair-trust
                        selection manifest (RIPR-SPEC-0176); `before` only.
@@ -209,6 +213,15 @@ Options:
                        this attempt; requires an authority.
   --edit-authority ID  The operator or agent identity the authorization is
                        recorded under; requires --edit-authorized.
+  --verify-authorized  Explicitly authorize the bounded verification run for
+                       this attempt; `verify` only; requires an authority.
+  --verify-authority ID
+                       The operator or agent identity the verification is
+                       re-affirmed under (the same authority that authorized
+                       the edit); requires --verify-authorized.
+  --verify-rollback    After the observation, restore the applied edit and
+                       record the rollback proof; `verify` only; requires the
+                       verification authorization.
 
 The ordinary repair path is:
 
@@ -234,6 +247,16 @@ drift, ambiguity, unsafe surface, or missing authorization fails before any
 edit is recorded; repository HEAD drift between the phases is instead owned
 by the durable finish, which records the typed stale state. The driver
 records no verification result, no static movement, and no closure.
+
+The verify phase (--attempt ID --phase verify --verify-authorized
+--verify-authority ID) revalidates every retained identity of the applied
+trust-bound attempt, executes only the packet's producer-owned typed verify
+route through the bounded execution rails, reruns the analysis against the
+exact post-edit state, compares the native-identity movement before/after,
+optionally proves the rollback, and publishes one immutable candidate
+receipt. Execution and static movement stay separate observations; the
+receipt claims no lifecycle, acceptance, or closure state and no repair
+correctness.
 
 Lower-level `start`, `brief`, `packet`, `verify`, `receipt`, `status`, and
 `review-summary` commands remain available for explicit control and debugging.
