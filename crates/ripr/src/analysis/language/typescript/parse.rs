@@ -71,6 +71,12 @@ pub(crate) fn unsupported_syntax_finding(
     let repair_route =
         "fix or isolate the unsupported syntax before relying on repair guidance".to_string();
     let recommended = "TypeScript preview advisory: static limit `unsupported_syntax`; Repair route: fix or isolate the unsupported syntax before relying on repair guidance; no actionable repair packet is emitted.".to_string();
+    // Resolved from the probe's own delta evidence (#3281) before the probe
+    // moves into the finding.
+    let source_currentness = crate::domain::SourceCurrentness::from_probe_delta(
+        probe.before.as_deref(),
+        probe.after.as_deref(),
+    );
 
     Finding {
         id: probe.id.0.clone(),
@@ -120,5 +126,6 @@ pub(crate) fn unsupported_syntax_finding(
         observed_sink: None,
         oracle_alignment: None,
         alignment_reason: None,
+        source_currentness,
     }
 }

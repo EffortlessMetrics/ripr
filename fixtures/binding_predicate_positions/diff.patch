@@ -1,0 +1,28 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,8 +1,8 @@
+ pub fn admission(capacity: usize) -> &'static str {
+-    let open = true;
++    let open = false;
+     if open {
+         "welcome"
+     } else {
+         "full"
+     }
+ }
+@@ -10,7 +10,7 @@
+ pub fn band_label(score: usize) -> &'static str {
+-    let band = 2;
++    let band = 1;
+     match band {
+         2 => "high",
+         _ => "low",
+     }
+ }
+@@ -18,4 +18,4 @@
+ pub fn within(limit: usize, value: usize) -> bool {
+-    let margin = 10;
++    let margin = 12;
+     margin > value
+ }

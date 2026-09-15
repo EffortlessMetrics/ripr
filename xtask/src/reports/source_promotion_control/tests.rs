@@ -1717,7 +1717,7 @@ pub(crate) mod source_promotion_control_tests {
     fn qualification_lane_documentation_matches_production_order() -> Result<(), String> {
         let _cwd_guard = crate::acquire_test_cwd_read_guard();
         // Intentional independent mirror of the normative denominator in
-        // RIPR-SPEC-0150; do not derive this oracle from the production constant.
+        // RIPR-SPEC-0177; do not derive this oracle from the production constant.
         const NORMATIVE_QUALIFICATION_LANES: &[&str] = &[
             "editor_package_linux",
             "editor_package_windows",
@@ -1801,7 +1801,7 @@ pub(crate) mod source_promotion_control_tests {
             .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
         for (contract_path, start, end, expected_definition) in [
             (
-                "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+                "docs/specs/RIPR-SPEC-0177-source-promotion-ci-contract.md",
                 "- `published` means",
                 "- `published_but_invalidated`",
                 "- `published` means the guarded push's machine-readable status reported an actual update of the exact target ref, the remote target was reread at the exact constructed join, and all post-push authority rereads remained valid;",
@@ -1835,7 +1835,7 @@ pub(crate) mod source_promotion_control_tests {
         }
         for (contract_path, start, end, expected_definition) in [
             (
-                "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+                "docs/specs/RIPR-SPEC-0177-source-promotion-ci-contract.md",
                 "- `published_but_invalidated` means",
                 "- `publication_state_unknown`",
                 "- `published_but_invalidated` means the remote target was observed at the exact join but a bound source, W7, packet, object, or URL authority invalidated during publication, or the post-push local candidate-ref observation was unavailable; and",
@@ -1869,7 +1869,7 @@ pub(crate) mod source_promotion_control_tests {
         }
         for (contract_path, start, end, expected_definition) in [
             (
-                "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+                "docs/specs/RIPR-SPEC-0177-source-promotion-ci-contract.md",
                 "- `publication_state_unknown` means",
                 "\n\n`rejected`",
                 "- `publication_state_unknown` means the final remote state could not be observed, or it equals the join without an actual target-update attribution; an exit-zero up-to-date/no-op push is not publication attribution.",
@@ -1914,7 +1914,7 @@ pub(crate) mod source_promotion_control_tests {
             .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?;
         let expected = "An unavailable final remote observation immediately rolls back only the local candidate ref behind an exact-state guard, then records every mandatory post-push authority reread before returning `publication_state_unknown`; remote state remains unknown and is never rolled back.";
         for path in [
-            "docs/specs/RIPR-SPEC-0150-source-promotion-ci-contract.md",
+            "docs/specs/RIPR-SPEC-0177-source-promotion-ci-contract.md",
             "docs/SOURCE_PROMOTION.md",
             "docs/OUTPUT_SCHEMA.md",
         ] {

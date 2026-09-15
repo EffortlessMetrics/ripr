@@ -4,17 +4,17 @@
   "mode": "fast",
   "root": "fixtures/unwrap_err_variant_single_line/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":2,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:2738dd3c3b7c83a81c82896861deec7fe8f1d6eeeac62d61b664e0fd03e514ec","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:2738dd3c3b7c83a81c82896861deec7fe8f1d6eeeac62d61b664e0fd03e514ec","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
       "id": "probe:src_lib.rs:error_path:e4b7f445",
-      "classification": "exposed",
+      "classification": "weakly_exposed",
       "severity": "warning",
-      "confidence": 1.00,
+      "confidence": 0.66,
       "probe": {
         "id": "probe:src_lib.rs:error_path:e4b7f445",
         "family": "error_path",
@@ -26,15 +26,15 @@
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach validate: too_long_name_rejected_with_exact_variant"},
         "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
-        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)"},
+        "propagate": {"state":"weak","confidence":"low","summary":"No complete owner-bound propagation witness found for error variant: Result::Err(ParseError::TooLong)"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact error variant assertion"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach validate: too_long_name_rejected_with_exact_variant", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact error variant assertion", "local flow reaches error variant: Result::Err(ParseError::TooLong) (line 12)", "related test tests/errors.rs:4 too_long_name_rejected_with_exact_variant uses strong exact error variant oracle: assert_eq!(err, ParseError::TooLong(12));", "observed assertion argument value 12 at line 4", "observed builder method value \"aaaaaaaaaaaa\" at line 4", "observed builder method value 12 at line 4", "observed enum variant value ParseError::TooLong at line 4", "observed function argument value name = \"aaaaaaaaaaaa\" at line 4"],
+      "evidence_path": ["reach yes: Related tests appear to reach validate: too_long_name_rejected_with_exact_variant", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for error variant: Result::Err(ParseError::TooLong)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact error variant assertion", "local flow reaches error variant: Result::Err(ParseError::TooLong) (line 12)", "related test tests/errors.rs:4 too_long_name_rejected_with_exact_variant uses strong exact error variant oracle: assert_eq!(err, ParseError::TooLong(12));", "observed assertion argument value 12 at line 4", "observed builder method value \"aaaaaaaaaaaa\" at line 4", "observed builder method value 12 at line 4", "observed enum variant value ParseError::TooLong at line 4", "observed function argument value name = \"aaaaaaaaaaaa\" at line 4"],
       "flow_sinks": [
         {"kind":"error_variant","text":"Result::Err(ParseError::TooLong)","line":12}
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach validate: too_long_name_rejected_with_exact_variant", "Strong oracle found: exact error variant assertion"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "No complete owner-bound propagation witness found for error variant: Result::Err(ParseError::TooLong)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach validate: too_long_name_rejected_with_exact_variant", "Strong oracle found: exact error variant assertion", "static limitation: exact oracle established; no assertion repair is indicated"],
       "missing": [],
       "assertion_texts": {
         "4": "assert_eq!(err, ParseError::TooLong(12));"
@@ -49,12 +49,14 @@
           {
             "line": 4,
             "value": "\"aaaaaaaaaaaa\"",
-            "context": "builder_method"
+            "context": "builder_method",
+            "provenance": "fn too_long_name_rejected_with_exact_variant() { let err = validate(\"aaaaaaaaaaaa\").unwrap_err(); assert_eq!(err, ParseError::TooLong(12)); }"
           },
           {
             "line": 4,
             "value": "12",
-            "context": "builder_method"
+            "context": "builder_method",
+            "provenance": "fn too_long_name_rejected_with_exact_variant() { let err = validate(\"aaaaaaaaaaaa\").unwrap_err(); assert_eq!(err, ParseError::TooLong(12)); }"
           },
           {
             "line": 4,
@@ -64,7 +66,8 @@
           {
             "line": 4,
             "value": "name = \"aaaaaaaaaaaa\"",
-            "context": "function_argument"
+            "context": "function_argument",
+            "provenance": "fn too_long_name_rejected_with_exact_variant() { let err = validate(\"aaaaaaaaaaaa\").unwrap_err(); assert_eq!(err, ParseError::TooLong(12)); }"
           }
         ],
         "missing_discriminators": [
@@ -79,12 +82,14 @@
         {
           "line": 4,
           "value": "\"aaaaaaaaaaaa\"",
-          "context": "builder_method"
+          "context": "builder_method",
+          "provenance": "fn too_long_name_rejected_with_exact_variant() { let err = validate(\"aaaaaaaaaaaa\").unwrap_err(); assert_eq!(err, ParseError::TooLong(12)); }"
         },
         {
           "line": 4,
           "value": "12",
-          "context": "builder_method"
+          "context": "builder_method",
+          "provenance": "fn too_long_name_rejected_with_exact_variant() { let err = validate(\"aaaaaaaaaaaa\").unwrap_err(); assert_eq!(err, ParseError::TooLong(12)); }"
         },
         {
           "line": 4,
@@ -94,7 +99,8 @@
         {
           "line": 4,
           "value": "name = \"aaaaaaaaaaaa\"",
-          "context": "function_argument"
+          "context": "function_argument",
+          "provenance": "fn too_long_name_rejected_with_exact_variant() { let err = validate(\"aaaaaaaaaaaa\").unwrap_err(); assert_eq!(err, ParseError::TooLong(12)); }"
         }
       ],
       "missing_discriminators": [
@@ -117,13 +123,14 @@
       "oracle_strength": "strong",
       "recommended_next_step": "",
       "suggested_next_action": "",
-      "language": "rust"
+      "language": "rust",
+      "source_currentness": "candidate_current"
     },
     {
       "id": "probe:src_lib.rs:return_value:11e230b4",
-      "classification": "exposed",
+      "classification": "weakly_exposed",
       "severity": "warning",
-      "confidence": 1.00,
+      "confidence": 0.66,
       "probe": {
         "id": "probe:src_lib.rs:return_value:11e230b4",
         "family": "return_value",
@@ -135,15 +142,15 @@
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach validate: too_long_name_rejected_with_exact_variant"},
         "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
-        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)"},
+        "propagate": {"state":"weak","confidence":"low","summary":"No complete owner-bound propagation witness found for error variant: Result::Err(ParseError::TooLong)"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact error variant assertion"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach validate: too_long_name_rejected_with_exact_variant", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact error variant assertion", "local flow reaches error variant: Result::Err(ParseError::TooLong) (line 12)", "related test tests/errors.rs:4 too_long_name_rejected_with_exact_variant uses strong exact error variant oracle: assert_eq!(err, ParseError::TooLong(12));", "observed assertion argument value 12 at line 4", "observed builder method value \"aaaaaaaaaaaa\" at line 4", "observed builder method value 12 at line 4", "observed enum variant value ParseError::TooLong at line 4", "observed function argument value name = \"aaaaaaaaaaaa\" at line 4"],
+      "evidence_path": ["reach yes: Related tests appear to reach validate: too_long_name_rejected_with_exact_variant", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for error variant: Result::Err(ParseError::TooLong)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact error variant assertion", "local flow reaches error variant: Result::Err(ParseError::TooLong) (line 12)", "related test tests/errors.rs:4 too_long_name_rejected_with_exact_variant uses strong exact error variant oracle: assert_eq!(err, ParseError::TooLong(12));", "observed assertion argument value 12 at line 4", "observed builder method value \"aaaaaaaaaaaa\" at line 4", "observed builder method value 12 at line 4", "observed enum variant value ParseError::TooLong at line 4", "observed function argument value name = \"aaaaaaaaaaaa\" at line 4"],
       "flow_sinks": [
         {"kind":"error_variant","text":"Result::Err(ParseError::TooLong)","line":12}
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach validate: too_long_name_rejected_with_exact_variant", "Strong oracle found: exact error variant assertion"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "No complete owner-bound propagation witness found for error variant: Result::Err(ParseError::TooLong)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach validate: too_long_name_rejected_with_exact_variant", "Strong oracle found: exact error variant assertion", "static limitation: exact oracle established; no assertion repair is indicated"],
       "missing": [],
       "assertion_texts": {
         "4": "assert_eq!(err, ParseError::TooLong(12));"
@@ -158,12 +165,14 @@
           {
             "line": 4,
             "value": "\"aaaaaaaaaaaa\"",
-            "context": "builder_method"
+            "context": "builder_method",
+            "provenance": "fn too_long_name_rejected_with_exact_variant() { let err = validate(\"aaaaaaaaaaaa\").unwrap_err(); assert_eq!(err, ParseError::TooLong(12)); }"
           },
           {
             "line": 4,
             "value": "12",
-            "context": "builder_method"
+            "context": "builder_method",
+            "provenance": "fn too_long_name_rejected_with_exact_variant() { let err = validate(\"aaaaaaaaaaaa\").unwrap_err(); assert_eq!(err, ParseError::TooLong(12)); }"
           },
           {
             "line": 4,
@@ -173,7 +182,8 @@
           {
             "line": 4,
             "value": "name = \"aaaaaaaaaaaa\"",
-            "context": "function_argument"
+            "context": "function_argument",
+            "provenance": "fn too_long_name_rejected_with_exact_variant() { let err = validate(\"aaaaaaaaaaaa\").unwrap_err(); assert_eq!(err, ParseError::TooLong(12)); }"
           }
         ],
         "missing_discriminators": [
@@ -188,12 +198,14 @@
         {
           "line": 4,
           "value": "\"aaaaaaaaaaaa\"",
-          "context": "builder_method"
+          "context": "builder_method",
+          "provenance": "fn too_long_name_rejected_with_exact_variant() { let err = validate(\"aaaaaaaaaaaa\").unwrap_err(); assert_eq!(err, ParseError::TooLong(12)); }"
         },
         {
           "line": 4,
           "value": "12",
-          "context": "builder_method"
+          "context": "builder_method",
+          "provenance": "fn too_long_name_rejected_with_exact_variant() { let err = validate(\"aaaaaaaaaaaa\").unwrap_err(); assert_eq!(err, ParseError::TooLong(12)); }"
         },
         {
           "line": 4,
@@ -203,7 +215,8 @@
         {
           "line": 4,
           "value": "name = \"aaaaaaaaaaaa\"",
-          "context": "function_argument"
+          "context": "function_argument",
+          "provenance": "fn too_long_name_rejected_with_exact_variant() { let err = validate(\"aaaaaaaaaaaa\").unwrap_err(); assert_eq!(err, ParseError::TooLong(12)); }"
         }
       ],
       "missing_discriminators": [
@@ -226,7 +239,8 @@
       "oracle_strength": "strong",
       "recommended_next_step": "",
       "suggested_next_action": "",
-      "language": "rust"
+      "language": "rust",
+      "source_currentness": "candidate_current"
     }
   ]
 }

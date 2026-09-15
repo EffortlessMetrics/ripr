@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.effortlessmetrics.dev/ripr/ripr-agent-capability.schema.json",
   "title": "RIPR riprAgent capability",
-  "description": "Versioned, fail-closed capability discovery for generic headless clients.",
+  "description": "Versioned, fail-closed capability discovery for generic headless clients. The shape is derived from the live producer (crates/ripr/src/lsp/agent_protocol.rs server_capability): capability vocabularies stay closed, while the implemented surface (supported_requests/supported_profiles) and the boolean progress surfaces describe what a slice may advertise as handlers land.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -26,12 +26,22 @@
   ],
   "properties": {
     "protocol_version": { "const": "0.1" },
-    "schema_version": { "const": "0.1" },
-    "implementation_state": { "const": "capability_only" },
+    "schema_version": { "const": "0.2" },
+    "implementation_state": { "enum": ["capability_only", "implemented"] },
     "supported_requests": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": [] }
+      "items": {
+        "enum": [
+          "ripr/workspaceStatus",
+          "ripr/refreshAnalysis",
+          "ripr/listActionableItems",
+          "ripr/getRepairPacket",
+          "ripr/getEvidenceContext",
+          "ripr/getTopLimitation",
+          "ripr/getReceiptStatus"
+        ]
+      }
     },
     "reserved_requests": {
       "type": "array",
@@ -51,7 +61,7 @@
     "supported_profiles": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": [] }
+      "items": { "enum": ["actionable", "full"] }
     },
     "reserved_profiles": {
       "type": "array",
@@ -62,10 +72,10 @@
       "type": "array",
       "const": ["push"]
     },
-    "snapshot_handles": { "const": false },
-    "continuations": { "const": false },
-    "work_done_progress": { "const": false },
-    "cancellation": { "const": false },
+    "snapshot_handles": { "type": "boolean" },
+    "continuations": { "type": "boolean" },
+    "work_done_progress": { "type": "boolean" },
+    "cancellation": { "type": "boolean" },
     "source_edit_capability": { "const": "none" },
     "analysis_status_notification": { "const": "ripr/analysisStatus" },
     "compatibility_commands": {

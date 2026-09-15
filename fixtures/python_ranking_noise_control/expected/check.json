@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":0,"probes":4,"findings":4,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1,"changed_files_by_language":[{"language":"python","files":4},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:01058c4c44a9d7fda8a6efc78ef26af8ca66c55517c3dda4d4865e121819e5fb","snapshot_identity":null},"counts":{"changed_file_count":4,"changed_line_count":4,"candidate_line_count":4,"probe_count":4,"finding_count":4},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:01058c4c44a9d7fda8a6efc78ef26af8ca66c55517c3dda4d4865e121819e5fb","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":4,"changed_line_count":4,"candidate_line_count":4,"probe_count":4,"finding_count":4},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -130,7 +130,8 @@
       "owner_kind": "function",
       "changed_sink": "amount, threshold",
       "oracle_alignment": "unknown",
-      "alignment_reason": "no_strong_oracle"
+      "alignment_reason": "no_strong_oracle",
+      "source_currentness": "candidate_current"
     },
     {
       "id": "probe:src_b_observed.py:python_preview:3c7333c2",
@@ -205,7 +206,8 @@
       "changed_sink": "amount",
       "observed_sink": "assert calculate_fee(100) == 105",
       "oracle_alignment": "direct",
-      "alignment_reason": "strong_oracle_observes_owner_name"
+      "alignment_reason": "strong_oracle_observes_owner_name",
+      "source_currentness": "candidate_current"
     },
     {
       "id": "probe:src_d_isolated.py:python_preview:557fe7cf",
@@ -271,7 +273,8 @@
       "owner_kind": "function",
       "changed_sink": "amount",
       "oracle_alignment": "unknown",
-      "alignment_reason": "no_strong_oracle"
+      "alignment_reason": "no_strong_oracle",
+      "source_currentness": "candidate_current"
     },
     {
       "id": "probe:src_a_dynamic.py:python_preview:01f806b7",
@@ -333,7 +336,8 @@
       "static_limit_kind": "dynamic_dispatch",
       "changed_sink": "getattr, client, method_name",
       "oracle_alignment": "unknown",
-      "alignment_reason": "no_strong_oracle"
+      "alignment_reason": "no_strong_oracle",
+      "source_currentness": "candidate_current"
     }
   ],
   "preview_languages": [

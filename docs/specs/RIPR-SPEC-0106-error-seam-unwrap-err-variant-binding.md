@@ -156,6 +156,43 @@ Implementation:
 - Test uses `assert!(authenticate("").is_err())` with no `unwrap_err()` binding
 - Expected: `error_path` remains `weakly_exposed` (no regression from this PR)
 
+### Fixture 5 — BOXED WRAPPER DOWNCAST WITNESS / TYPED BINDING LIMITATION (error_variant_boxed_wrapper_downcast_witness, #3700)
+
+Final semantics (#3700 design decision): whether a wrapper error conversion
+(`callee(..).map_err(..)` over `Box<dyn Error>`) faithfully carries the
+converted callee's error variant is **not statically establishable** by
+lexical analysis. Three review rounds of lexical binding heuristics each
+produced new over/under-credit edge cases, so the fail-closed end state the
+issue sanctions is the typed static limitation
+(`wrapper_error_binding_unresolved`), not a binding heuristic.
+
+- Positive (parseable-variant path, unchanged main behavior): the typed
+  `try_parse_summary` seam `return Err(ParseSummaryError::MalformedSource);`
+  classifies `exposed` with `exact_error_variant` / `strong` — credited only
+  through the pre-existing variant-bound path, with no wrapper heuristics.
+- Wrapper `map_err(Into::into)` seam: classifies `weakly_exposed`, never
+  `exposed`; lexical confirmation is refused by construction (every overlap
+  between the seam expression and witness text is token coincidence), and the
+  finding carries `static_limit_kind: wrapper_error_binding_unresolved` with
+  limitation evidence naming the unresolved `Into`/`From`-through-`Box` edge.
+  The downcast witness and the typed sibling test are still listed as related,
+  but the emitted guidance no longer prescribes an assertion the suite may
+  already contain.
+- Fail-closed companions in the same input stay `weakly_exposed` trivially: a
+  wrong-sibling downcast witness, an unrelated-enum downcast witness, a broad
+  `is_err()`-only observer, a stringified conversion
+  (`map_err(|error| error.to_string().into())`), and an ignored `matches!`
+  result.
+- Companion fixtures: `fixtures/error_variant_boxed_wrapper_fail_closed`
+  (all-weak source for the wrong-sibling and unrelated-enum shapes) and
+  `fixtures/error_variant_wrapper_{callee_only_pin,foreign_pin,
+  wrong_receiver_pin}`. All are pinned under RIPR-SPEC-0108 with
+  `must_emit_limitation` (`wrapper_error_binding_unresolved`),
+  `must_not_promote`, and `maximum_class: weakly_exposed`.
+- Follow-up: modeling `Into`/`From`-through-`Box` conversions so a faithful
+  typed conversion can be credited is tracked as a follow-up slice (#1617
+  family); until then the limitation is the honest output.
+
 ## Unit Tests
 
 Tests in `crates/ripr/src/analysis/extract/oracles/` and

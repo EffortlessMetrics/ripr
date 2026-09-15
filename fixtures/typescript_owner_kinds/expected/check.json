@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":0,"probes":4,"findings":4,"exposed":1,"weakly_exposed":3,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:5eb4ccefde3dbe458db63004066f11d50aef8e7f18a73dda749b63ee89a16491","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":8,"candidate_line_count":4,"probe_count":4,"finding_count":4},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:5eb4ccefde3dbe458db63004066f11d50aef8e7f18a73dda749b63ee89a16491","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":8,"candidate_line_count":4,"probe_count":4,"finding_count":4},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -126,7 +126,8 @@
       "suggested_next_action": "TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
       "language": "typescript",
       "language_status": "preview",
-      "owner_kind": "arrow_function"
+      "owner_kind": "arrow_function",
+      "source_currentness": "candidate_current"
     },
     {
       "id": "probe:src_owners.ts:typescript_preview:bd728bcd",
@@ -264,7 +265,8 @@
       "suggested_next_action": "TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `return value == this.items.length + 1`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
       "language": "typescript",
       "language_status": "preview",
-      "owner_kind": "method"
+      "owner_kind": "method",
+      "source_currentness": "candidate_current"
     },
     {
       "id": "probe:src_owners.ts:typescript_preview:3416313c",
@@ -402,7 +404,8 @@
       "suggested_next_action": "TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `return value == new Cart({ tracked: true })`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
       "language": "typescript",
       "language_status": "preview",
-      "owner_kind": "class_method"
+      "owner_kind": "class_method",
+      "source_currentness": "candidate_current"
     },
     {
       "id": "probe:src_owners.ts:typescript_preview:961b59c7",
@@ -527,7 +530,8 @@
       "suggested_next_action": "TypeScript preview advisory: related module-initializer observer reaches `DEFAULT_RATE` but no safe target shape is available; add an exact value assertion for the exported value and keep the finding advisory until repair-card fields are complete.",
       "language": "typescript",
       "language_status": "preview",
-      "owner_kind": "module_function"
+      "owner_kind": "module_function",
+      "source_currentness": "candidate_current"
     }
   ],
   "preview_languages": [

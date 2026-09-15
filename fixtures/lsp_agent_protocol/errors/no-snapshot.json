@@ -1,6 +1,6 @@
 {
   "protocol_version": "0.1",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "request": "ripr/listActionableItems",
   "status": "error",
   "error": { "kind": "no_snapshot", "retryable": true, "recovery_route": "refresh", "snapshot_id": null },

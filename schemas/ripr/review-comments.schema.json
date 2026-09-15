@@ -71,6 +71,9 @@
     "analysis_outcome": {
       "$ref": "#/$defs/analysis_outcome_projection"
     },
+    "static_gap_fallback": {
+      "$ref": "#/$defs/static_gap_fallback"
+    },
     "causal_comparison": {
       "type": "object",
       "additionalProperties": false,
@@ -320,6 +323,32 @@
         "findings": { "type": "array" }
       }
     },
+    "static_gap_fallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "seams", "claim_boundary"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "seams": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "classification", "family", "file", "line"],
+            "properties": {
+              "id": { "type": ["string", "null"] },
+              "classification": {
+                "enum": ["weakly_exposed", "reachable_unrevealed", "no_static_path"]
+              },
+              "family": { "type": ["string", "null"] },
+              "file": { "type": ["string", "null"] },
+              "line": { "type": ["integer", "null"], "minimum": 1 }
+            }
+          }
+        },
+        "claim_boundary": { "type": "string", "minLength": 1 }
+      }
+    },
     "analysis_outcome_projection": {
       "type": "object",
       "additionalProperties": false,
@@ -437,7 +466,8 @@
         "config_identity",
         "base_revision",
         "input_identity",
-        "snapshot_identity"
+        "snapshot_identity",
+        "git_candidate_subject"
       ],
       "properties": {
         "repository_identity": { "type": ["string", "null"] },
@@ -445,7 +475,23 @@
         "config_identity": { "type": ["string", "null"] },
         "base_revision": { "type": ["string", "null"] },
         "input_identity": { "type": ["string", "null"] },
-        "snapshot_identity": { "type": ["string", "null"] }
+        "snapshot_identity": { "type": ["string", "null"] },
+        "git_candidate_subject": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["subject_kind", "base_tree", "candidate_tree", "diff_identity"],
+              "properties": {
+                "subject_kind": { "type": "string" },
+                "base_tree": { "type": "string" },
+                "candidate_tree": { "type": "string" },
+                "diff_identity": { "type": "string" }
+              }
+            }
+          ]
+        }
       }
     },
     "analysis_outcome_counts": {

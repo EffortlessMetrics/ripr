@@ -6,11 +6,14 @@ mod command_spec;
 pub mod context_packet;
 mod diagnostic_witness;
 mod evidence;
+mod finding_test_evidence;
 mod fix_instruction;
+mod git_candidate;
 mod language;
 mod probe;
 mod summary;
 mod support;
+mod test_evidence_identity;
 mod test_evidence_summary;
 mod verification_result;
 
@@ -41,11 +44,15 @@ pub use evidence::{
     RiprEvidence, StageEvidence, StageState,
 };
 pub use fix_instruction::{FixInstructionState, FixInstructionSummary};
+pub use git_candidate::{
+    GitCandidateBase, GitCandidateDiffSemantics, GitCandidateSubject, GitCandidateSubjectError,
+    GitHashFormat, GitObjectId, GitTreeish,
+};
 pub use language::{LanguageId, LanguageStatus, OwnerKind, StaticLimitKind};
 pub use probe::{
     ActivationEvidence, DeltaKind, Finding, FindingCanonicalGap, FlowSinkFact, FlowSinkKind,
-    MissingDiscriminatorFact, ORACLE_ALIGNMENT_VALUES, Probe, ProbeFamily, RelatedTest, StopReason,
-    ValueContext, ValueFact,
+    MissingDiscriminatorFact, ORACLE_ALIGNMENT_VALUES, Probe, ProbeFamily, RelatedTest,
+    SOURCE_CURRENTNESS_VALUES, SourceCurrentness, StopReason, ValueContext, ValueFact,
 };
 // Internal formatting convention, not library API: `lib.rs` re-exports
 // `pub mod domain`, so this stays crate-private.

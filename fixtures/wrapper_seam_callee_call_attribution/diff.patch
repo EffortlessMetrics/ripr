@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -11,7 +11,7 @@ pub fn try_parse_summary(raw: &str) -> Result<usize, ParseSummaryError> {
+ }
+
+ pub fn parse_summary(raw: &str) -> Result<usize, Box<dyn std::error::Error>> {
+-    try_parse_summary(raw).map_err(Into::into)
++    try_parse_summary(raw).map_err(|error| error.to_string().into())
+ }
+
+ macro_rules! fixture_error {

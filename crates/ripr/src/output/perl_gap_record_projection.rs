@@ -218,6 +218,7 @@ pub(crate) fn perl_gap_record_for(finding: &Finding) -> Option<GapRecord> {
     );
 
     Some(GapRecord {
+        source_currentness: Some(finding.source_currentness.as_str().to_string()),
         gap_id: finding.id.clone(),
         canonical_gap_id,
         seam_id: None,
@@ -455,6 +456,7 @@ mod tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 

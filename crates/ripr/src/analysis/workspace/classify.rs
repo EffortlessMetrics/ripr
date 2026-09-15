@@ -1,40 +1,16 @@
+//! Package-root and path normalization helpers.
+//!
+//! The pre-#3285 production-path predicate (`is_production_rust_path`)
+//! is retired: every consumer — diff seeding, repo production sets, the
+//! seam inventory, and the LSP scope partition — routes through the
+//! producer-owned source-role model in `source_role.rs`, which carries
+//! the same exclusions forward plus declared-target and opt-in context
+//! (#3283/#3285). The production-contract carry-over pin lives in
+//! `source_role.rs::tests::repo_production_contract_carries_over_exactly`.
+
 use std::path::Path;
 
-pub fn is_production_rust_path(path: &Path) -> bool {
-    if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-        return false;
-    }
-
-    let normalized = normalize_path(path);
-    let components = normalized.split('/').collect::<Vec<_>>();
-
-    if !components.iter().any(|c| c == &"src") {
-        return false;
-    }
-
-    let exclude_components = [
-        "tests",
-        "examples",
-        "benches",
-        "target",
-        "fixtures",
-        "editors",
-        "node_modules",
-        "xtask",
-    ];
-    if components.iter().any(|c| exclude_components.contains(c)) {
-        return false;
-    }
-
-    let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    if file_stem == "tests" {
-        return false;
-    }
-
-    true
-}
-
-pub fn package_root(path: &Path) -> Option<String> {
+pub(crate) fn package_root(path: &Path) -> Option<String> {
     let normalized = normalize_path(path);
     if normalized.starts_with("src/")
         || normalized.starts_with("tests/")
@@ -60,56 +36,9 @@ pub fn package_root(path: &Path) -> Option<String> {
     None
 }
 
-pub fn normalize_path(path: &Path) -> String {
+pub(crate) fn normalize_path(path: &Path) -> String {
     path.to_string_lossy()
         .replace('\\', "/")
         .trim_start_matches("./")
         .to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-
-    #[test]
-    fn classify_functions_are_callable() {
-        let path = PathBuf::from("src/lib.rs");
-        assert!(is_production_rust_path(&path));
-        assert_eq!(package_root(&path), Some(String::new()));
-        let normalized = normalize_path(&path);
-        assert_eq!(normalized, "src/lib.rs");
-    }
-
-    #[test]
-    fn production_path_excludes_repository_automation_fixture_and_non_production_trees() {
-        for excluded in [
-            "xtask/src/main.rs",
-            "fixtures/boundary_gap/input/src/lib.rs",
-            "editors/vscode/src/extension.rs",
-            "target/debug/build/example/src/lib.rs",
-            "node_modules/ripr/src/lib.rs",
-            "tests/pricing.rs",
-            "examples/demo/src/lib.rs",
-            "benches/exposure.rs",
-            "src/tests.rs",
-            "README.md",
-        ] {
-            assert!(
-                !is_production_rust_path(&PathBuf::from(excluded)),
-                "expected repo-mode production filter to exclude {excluded}"
-            );
-        }
-
-        for included in [
-            "src/lib.rs",
-            "crates/ripr/src/lib.rs",
-            "tools/audit/src/main.rs",
-        ] {
-            assert!(
-                is_production_rust_path(&PathBuf::from(included)),
-                "expected repo-mode production filter to include {included}"
-            );
-        }
-    }
 }

@@ -354,7 +354,7 @@ fn contains_member_call_name(body_text: &str, object_name: &str, method_name: &s
 ///
 /// - table-form test with `has_dynamic_matcher_arg = true` →
 ///   `typescript_table_case_unresolved`
-///   Real producer: `tests_extract.rs::test_callee_is_each` accepts array-form
+///   Real producer: `tests_extract.rs::call_callee_is_active_each_declaration` accepts array-form
 ///   `test.each(...)` / `it.each(...)` calls and stores the call source in
 ///   `TypeScriptTest::body_text`. When the matcher expected value is a row
 ///   variable, syntax-only preview evidence cannot bind the row to a concrete

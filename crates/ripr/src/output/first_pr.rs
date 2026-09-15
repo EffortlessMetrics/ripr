@@ -1,5 +1,8 @@
+use crate::agent::command_specs::report_regeneration_command_spec_from_display;
 use crate::agent::loop_commands::{check_repo_exposure_command, display_path, shell_arg};
 use crate::config::detect_python_project;
+use crate::domain::CommandSpec;
+use crate::output::gap_decision_ledger::projection_eligible_from_value;
 use crate::output::receipt_lifecycle::receipt_lifecycle_state;
 use crate::output::receipt_write::receipt_write_command;
 use crate::output::start_here_state::{
@@ -308,12 +311,7 @@ fn render_start_here_packet_with_selection(
             "agent_packet",
             "Agent repair packet",
             &options.agent_packet,
-            selection.agent_packet_command().or_else(|| {
-                Some(format!(
-                    "ripr agent packet --root {} --gap-ledger {} --gap-id <gap-id> --json > {}",
-                    options.root, options.gap_ledger, options.agent_packet
-                ))
-            }),
+            selection.agent_packet_command(),
         ),
         artifact_status(
             root,
@@ -606,6 +604,9 @@ enum Selection {
         label: String,
         path: String,
         regeneration_command: String,
+        // Boxed to keep the variant small: CommandSpec is a wide struct
+        // and `Selection` is matched by value on the render paths.
+        command_spec: Option<Box<CommandSpec>>,
     },
     Blocked {
         state: String,
@@ -620,12 +621,19 @@ enum Selection {
 }
 
 impl Selection {
-    fn missing_artifact(id: &str, label: &str, path: &str, regeneration_command: String) -> Self {
+    fn missing_artifact(
+        id: &str,
+        label: &str,
+        path: &str,
+        regeneration_command: String,
+        command_spec: Option<CommandSpec>,
+    ) -> Self {
         Self::MissingArtifact {
             id: id.to_string(),
             label: label.to_string(),
             path: path.to_string(),
             regeneration_command,
+            command_spec: command_spec.map(Box::new),
         }
     }
 
@@ -718,17 +726,28 @@ impl Selection {
                 label,
                 path,
                 regeneration_command,
-            } => json!({
-                "state": "missing_artifact",
-                "output_state": normalize_start_here_output_state("missing_artifact"),
-                "artifact": {
-                    "id": id,
-                    "label": label,
-                    "path": path
-                },
-                "next_action": "regenerate_missing_artifact",
-                "regeneration_command": regeneration_command
-            }),
+                command_spec,
+            } => {
+                // FIX #1617 slice 2: the typed spec is additive beside the
+                // legacy string; the `commands` map stays string-only.
+                let mut value = json!({
+                    "state": "missing_artifact",
+                    "output_state": normalize_start_here_output_state("missing_artifact"),
+                    "artifact": {
+                        "id": id,
+                        "label": label,
+                        "path": path
+                    },
+                    "next_action": "regenerate_missing_artifact",
+                    "regeneration_command": regeneration_command
+                });
+                if let Some(spec) = command_spec
+                    && let Ok(spec_value) = serde_json::to_value(spec)
+                {
+                    value["regeneration_command_spec"] = spec_value;
+                }
+                value
+            }
             Self::Blocked {
                 state,
                 message,
@@ -898,11 +917,12 @@ fn select_from_gap_ledger(gap_ledger: &Value, root: &Path, options: &FirstPrOpti
 
 fn missing_gap_ledger_selection(root: &Path, options: &FirstPrOptions) -> Selection {
     if uses_check_output_gap_ledger(root) {
-        return Selection::missing_artifact(
+        return missing_gap_ledger_artifact(
             "gap_ledger",
             "Gap decision ledger",
             &options.gap_ledger,
-            regenerate_gap_ledger_command(root, options),
+            root,
+            options,
         );
     }
 
@@ -910,12 +930,28 @@ fn missing_gap_ledger_selection(root: &Path, options: &FirstPrOptions) -> Select
     if !repo_exposure.exists() {
         return missing_repo_exposure_selection(root, options);
     }
-    Selection::missing_artifact(
+    missing_gap_ledger_artifact(
         "gap_ledger",
         "Gap decision ledger",
         &options.gap_ledger,
-        regenerate_gap_ledger_command(root, options),
+        root,
+        options,
     )
+}
+
+/// FIX #1617 slice 2: attach the typed spec recovered from the display. The
+/// compound `&&` form fails the exact-shape recovery and stays
+/// legacy-string-only.
+fn missing_gap_ledger_artifact(
+    id: &str,
+    label: &str,
+    path: &str,
+    root: &Path,
+    options: &FirstPrOptions,
+) -> Selection {
+    let regeneration_command = regenerate_gap_ledger_command(root, options);
+    let command_spec = report_regeneration_command_spec_from_display(&regeneration_command);
+    Selection::missing_artifact(id, label, path, regeneration_command, command_spec)
 }
 
 fn missing_repo_exposure_selection(root: &Path, options: &FirstPrOptions) -> Selection {
@@ -935,11 +971,14 @@ fn missing_repo_exposure_selection(root: &Path, options: &FirstPrOptions) -> Sel
             Some(repo_exposure_latency_report_command(&options.root)),
         );
     }
+    let regeneration_command = regenerate_repo_exposure_command(&options.root);
+    let command_spec = report_regeneration_command_spec_from_display(&regeneration_command);
     Selection::missing_artifact(
         "repo_exposure",
         "Repo exposure report",
         DEFAULT_REPO_EXPOSURE,
-        regenerate_repo_exposure_command(&options.root),
+        regeneration_command,
+        command_spec,
     )
 }
 
@@ -1077,6 +1116,13 @@ fn is_first_run_repairable_gap(record: &&Value) -> bool {
             .is_some_and(|value| value == "new" || value == "reintroduced")
         && record.get("repair_route").is_some()
         && first_string_array_item(record, &["verification_commands"]).is_some()
+        && (!matches!(
+            (
+                string_path(record, &["language"]).as_deref(),
+                string_path(record, &["language_status"]).as_deref(),
+            ),
+            (Some("python"), Some("preview"))
+        ) || projection_eligible_from_value(record, "agent_packet"))
 }
 
 fn first_pr_language_is_supported(record: &Value) -> bool {
@@ -1175,7 +1221,10 @@ fn top_gap_from_record(record: &Value, root: &Path, options: &FirstPrOptions) ->
         static_limit_detail: string_path(record, &["static_limit_detail"]),
         agent_packet_command: format!(
             "ripr agent packet --root {} --gap-ledger {} --gap-id {} --json > {}",
-            options.root, options.gap_ledger, gap_id, options.agent_packet
+            shell_arg(&options.root),
+            shell_arg(&options.gap_ledger),
+            shell_arg(&gap_id),
+            shell_arg(&options.agent_packet)
         ),
     }
 }
@@ -1834,6 +1883,114 @@ mod tests {
         cleanup(&repo)
     }
 
+    /// The start-here markdown must present the receipt command for both
+    /// shells: the bash form stays byte-identical, and the PowerShell form
+    /// round-trips an embedded quote through PowerShell's doubled-quote idiom
+    /// via the shared `powershell_command` translation (#2628).
+    #[test]
+    fn start_here_markdown_offers_receipt_command_powershell_variant() -> Result<(), String> {
+        let packet = json!({
+            "status": "actionable",
+            "selected": {
+                "state": "top_gap",
+                "kind": "MissingBoundaryAssertion",
+                "receipt_command": "ripr receipt write --gap 'it'\\''s' --verify-command 'cargo test' --status not_run",
+            },
+        });
+        let markdown = render_start_here_markdown(&packet);
+
+        let bash_form = "Receipt command:\n`ripr receipt write --gap 'it'\\''s' --verify-command 'cargo test' --status not_run`\n\n";
+        assert!(
+            markdown.contains(bash_form),
+            "bash receipt command drifted:\n{markdown}"
+        );
+        let powershell_form = "Receipt command (PowerShell):\n`ripr receipt write --gap 'it''s' --verify-command 'cargo test' --status not_run`";
+        assert!(
+            markdown.contains(powershell_form),
+            "powershell receipt command missing or drifted:\n{markdown}"
+        );
+        let bash_label = markdown
+            .find("Receipt command:\n")
+            .ok_or_else(|| format!("bash receipt label must exist: {markdown}"))?;
+        let powershell_label = markdown
+            .find("Receipt command (PowerShell):\n")
+            .ok_or_else(|| format!("powershell receipt label must exist: {markdown}"))?;
+        assert!(
+            bash_label < powershell_label,
+            "bash form must be presented before the PowerShell variant"
+        );
+        assert!(
+            markdown.contains("The first form is written for Bash; cmd.exe is not supported."),
+            "receipt presentation must state the cmd.exe boundary:\n{markdown}"
+        );
+        Ok(())
+    }
+
+    /// The start-here markdown must present the verify and agent packet
+    /// commands for both shells (#2628): the bash forms stay byte-identical,
+    /// the PowerShell forms round-trip an embedded quote (verify) and the
+    /// packet redirect (agent packet) through the shared `powershell_command`
+    /// translation, and each block states the cmd.exe boundary.
+    #[test]
+    fn start_here_markdown_offers_verify_and_agent_packet_powershell_variants() -> Result<(), String>
+    {
+        let packet = json!({
+            "status": "actionable",
+            "selected": {
+                "state": "top_gap",
+                "kind": "MissingBoundaryAssertion",
+                "verify_command": "cargo test 'it'\\''s'",
+                "agent_packet_command": "ripr agent packet --root 'repo root' --gap-id gap:pr:pricing --json > target/ripr/workflow/agent-packet.json",
+            },
+        });
+        let markdown = render_start_here_markdown(&packet);
+
+        let bash_verify = "Verify command:\n`cargo test 'it'\\''s'`\n\n";
+        assert!(
+            markdown.contains(bash_verify),
+            "bash verify command drifted:\n{markdown}"
+        );
+        let powershell_verify = "Verify command (PowerShell):\n`cargo test 'it''s'`";
+        assert!(
+            markdown.contains(powershell_verify),
+            "powershell verify command missing or drifted:\n{markdown}"
+        );
+        let bash_packet = "Agent packet command:\n`ripr agent packet --root 'repo root' --gap-id gap:pr:pricing --json > target/ripr/workflow/agent-packet.json`\n\n";
+        assert!(
+            markdown.contains(bash_packet),
+            "bash agent packet command drifted:\n{markdown}"
+        );
+        let powershell_packet = "Agent packet command (PowerShell):\n`$ripr = ((ripr agent packet --root 'repo root' --gap-id gap:pr:pricing --json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/workflow/agent-packet.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }`";
+        assert!(
+            markdown.contains(powershell_packet),
+            "powershell agent packet command missing or drifted:\n{markdown}"
+        );
+        let bash_verify_at = markdown
+            .find(bash_verify)
+            .ok_or_else(|| format!("bash verify label must exist: {markdown}"))?;
+        let powershell_verify_at = markdown
+            .find(powershell_verify)
+            .ok_or_else(|| format!("powershell verify label must exist: {markdown}"))?;
+        let bash_packet_at = markdown
+            .find(bash_packet)
+            .ok_or_else(|| format!("bash agent packet label must exist: {markdown}"))?;
+        let powershell_packet_at = markdown
+            .find(powershell_packet)
+            .ok_or_else(|| format!("powershell agent packet label must exist: {markdown}"))?;
+        assert!(
+            bash_verify_at < powershell_verify_at && bash_packet_at < powershell_packet_at,
+            "bash form must be presented before the PowerShell variant:\n{markdown}"
+        );
+        assert_eq!(
+            markdown
+                .matches("The first form is written for Bash; cmd.exe is not supported.")
+                .count(),
+            2,
+            "each presented block must state the cmd.exe boundary:\n{markdown}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn top_gap_contract_requires_changed_behavior() {
         let selected = json!({
@@ -2207,6 +2364,69 @@ mod tests {
         assert_eq!(packet["commands"]["regenerate_gap_ledger"], command);
         assert_eq!(packet["artifacts"][0]["regeneration_command"], command);
         check_first_pr(&repo, &options)?;
+        cleanup(&repo)
+    }
+
+    /// FIX #1617 slice 2: a missing-artifact selection carries the typed
+    /// regeneration spec beside the legacy string only when the display is
+    /// a simple canonical route; the compound `&&` route stays
+    /// legacy-string-only, and the `commands` map stays string-only.
+    #[test]
+    fn missing_gap_ledger_selection_carries_typed_spec_only_for_simple_routes() -> Result<(), String>
+    {
+        let repo = temp_python_repo("first-pr-python-ledger-spec-recovery")?;
+
+        let simple_options = FirstPrOptions {
+            check_output: Some(DEFAULT_CHECK_OUTPUT.to_string()),
+            ..FirstPrOptions::default()
+        };
+        let simple = missing_gap_ledger_selection(&repo, &simple_options);
+        let simple_json = simple.to_json();
+        let command = simple_json["regeneration_command"]
+            .as_str()
+            .ok_or("missing-artifact selection must keep the legacy regeneration command")?;
+        assert!(
+            command.starts_with("ripr reports gap-ledger --check-output"),
+            "unexpected simple bridge command: {command}"
+        );
+        let spec = simple_json
+            .get("regeneration_command_spec")
+            .ok_or("a simple route display must carry a typed regeneration spec")?;
+        assert_eq!(spec["command_id"], "ripr:reports:gap-ledger");
+        assert_eq!(spec["role"], "regeneration");
+        assert_eq!(spec["execution_mode"], "direct");
+        assert_eq!(spec["expected_writes"][0], DEFAULT_GAP_LEDGER);
+        let commands = simple.commands_json(&repo, &simple_options);
+        assert!(
+            commands["next"].is_string(),
+            "the commands map must stay legacy-string-only"
+        );
+
+        let compound = missing_gap_ledger_selection(&repo, &FirstPrOptions::default());
+        let compound_json = compound.to_json();
+        assert!(
+            compound_json.get("regeneration_command_spec").is_none(),
+            "a compound && route must stay legacy-string-only"
+        );
+        assert!(
+            compound_json["regeneration_command"]
+                .as_str()
+                .is_some_and(|command| command.contains(" && ")),
+            "expected the compound default bridge command"
+        );
+
+        let repo_exposure = missing_repo_exposure_selection(&repo, &FirstPrOptions::default());
+        let repo_exposure_json = repo_exposure.to_json();
+        let spec = repo_exposure_json
+            .get("regeneration_command_spec")
+            .ok_or("the repo-exposure route display must carry a typed spec")?;
+        assert_eq!(spec["command_id"], "ripr:check:repo-exposure");
+        assert_eq!(spec["execution_mode"], "shell_required");
+        assert_eq!(
+            spec["expected_writes"][0],
+            "target/ripr/reports/repo-exposure.json"
+        );
+
         cleanup(&repo)
     }
 
@@ -2668,6 +2888,10 @@ mod tests {
         let ledger = read_packet(&repo.join(DEFAULT_GAP_LEDGER))?;
         assert_eq!(ledger["inputs"]["source_kind"], "check_output");
         assert_eq!(ledger["inputs"]["records"], DEFAULT_CHECK_OUTPUT);
+        assert_eq!(
+            ledger["records"][0]["projection_eligibility"]["agent_packet"]["eligible"],
+            true
+        );
         let ledger_receipt_cmd = ledger["records"][0]["receipt_command"]
             .as_str()
             .unwrap_or("");
@@ -2697,9 +2921,35 @@ mod tests {
             !packet_receipt_cmd.contains("ripr outcome"),
             "packet receipt_command must not contain ripr outcome, got: {packet_receipt_cmd}"
         );
+        // The gap id carries shell metacharacters (`>=`), so both presented
+        // forms must quote it: unquoted, bash truncates the argument at `>`
+        // and redirects to a file literally named `=threshold` (PR #3625
+        // review round 3, coderabbit).
         assert_eq!(
             packet["selected"]["agent_packet_command"],
-            "ripr agent packet --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --gap-id gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold --json > target/ripr/workflow/agent-packet.json"
+            "ripr agent packet --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --gap-id 'gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold' --json > target/ripr/workflow/agent-packet.json"
+        );
+        let quoted_id = "gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold";
+        let markdown = render_start_here_markdown(&packet);
+        assert!(
+            markdown.contains(&format!("--gap-id '{quoted_id}' --json >")),
+            "rendered bash form must quote the gap id:\n{markdown}"
+        );
+        assert!(
+            markdown.contains(&format!("--gap-id '{quoted_id}' --json) | Out-String")),
+            "rendered powershell form must quote the gap id:\n{markdown}"
+        );
+        let packet_artifact = packet["artifacts"]
+            .as_array()
+            .and_then(|artifacts| {
+                artifacts
+                    .iter()
+                    .find(|artifact| artifact["id"] == "agent_packet")
+            })
+            .ok_or_else(|| "agent-packet artifact missing".to_string())?;
+        assert_eq!(
+            packet_artifact["regeneration_command"],
+            packet["selected"]["agent_packet_command"]
         );
         assert!(repo.join(DEFAULT_GAP_LEDGER).is_file());
         assert!(
@@ -2708,6 +2958,121 @@ mod tests {
         );
         check_first_pr(&repo, &options)?;
         cleanup(&repo)
+    }
+
+    #[test]
+    fn python_wrong_owner_check_output_is_not_selected_for_start_here() -> Result<(), String> {
+        let repo = temp_python_repo("first-pr-python-wrong-owner")?;
+        write_json(
+            &repo.join(DEFAULT_CHECK_OUTPUT),
+            serde_json::from_str(include_str!(
+                "../../../../fixtures/python_adversarial_same_method_other_class/expected/check.json"
+            ))
+            .map_err(|error| format!("parse wrong-owner Python fixture: {error}"))?,
+        )?;
+
+        let options = FirstPrOptions {
+            check_output: Some(DEFAULT_CHECK_OUTPUT.to_string()),
+            ..FirstPrOptions::default()
+        };
+        write_first_pr(&repo, &options)?;
+
+        let ledger = read_packet(&repo.join(DEFAULT_GAP_LEDGER))?;
+        assert_eq!(ledger["records"].as_array().map(Vec::len), Some(1));
+        assert_eq!(ledger["records"][0]["language"], "python");
+        assert_eq!(ledger["records"][0]["language_status"], "preview");
+        assert_eq!(
+            ledger["records"][0]["projection_eligibility"]["agent_packet"]["eligible"],
+            false
+        );
+        assert!(ledger["records"][0]["receipt_command"].is_null());
+        assert_eq!(ledger["summary"]["projection_agent_packet_eligible"], 0);
+
+        let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
+        assert_eq!(packet["status"], "no_action");
+        assert_eq!(packet["selected"]["state"], "no_action");
+        assert_eq!(packet["selected"]["output_state"], "no_actionable_gap");
+        assert!(packet["selected"]["gap_id"].is_null());
+        assert!(packet["selected"]["receipt_command"].is_null());
+        assert!(packet["selected"]["agent_packet_command"].is_null());
+        let packet_artifact = packet["artifacts"]
+            .as_array()
+            .and_then(|artifacts| {
+                artifacts
+                    .iter()
+                    .find(|artifact| artifact["id"] == "agent_packet")
+            })
+            .ok_or_else(|| "agent-packet artifact missing".to_string())?;
+        assert!(packet_artifact["regeneration_command"].is_null());
+        assert!(packet["commands"]["agent_packet"].is_null());
+        assert!(packet["commands"]["verify"].is_null());
+        assert!(packet["commands"]["receipt"].is_null());
+        let markdown = fs::read_to_string(repo.join(DEFAULT_OUT_DIR).join(START_HERE_MD))
+            .map_err(|error| format!("read wrong-owner start-here Markdown: {error}"))?;
+        assert!(!markdown.contains("ripr agent packet"));
+        assert!(!markdown.contains("ripr receipt write"));
+        cleanup(&repo)
+    }
+
+    #[test]
+    fn python_no_strong_oracle_check_output_is_selected_for_start_here() -> Result<(), String> {
+        let repo = temp_python_repo("first-pr-python-no-strong-oracle")?;
+        write_json(
+            &repo.join(DEFAULT_CHECK_OUTPUT),
+            serde_json::from_str(include_str!(
+                "../../../../fixtures/python_boundary_gap/expected/check.json"
+            ))
+            .map_err(|error| format!("parse boundary Python fixture: {error}"))?,
+        )?;
+        let options = FirstPrOptions {
+            check_output: Some(DEFAULT_CHECK_OUTPUT.to_string()),
+            ..FirstPrOptions::default()
+        };
+        write_first_pr(&repo, &options)?;
+
+        let ledger = read_packet(&repo.join(DEFAULT_GAP_LEDGER))?;
+        if ledger["records"][0]["projection_eligibility"]["agent_packet"]["eligible"] != true
+            || ledger["summary"]["projection_agent_packet_eligible"] != 1
+            || ledger["records"][0]["receipt_command"].is_null()
+        {
+            return Err(
+                "boundary fixture did not materialize eligible receipt-backed ledger record"
+                    .to_string(),
+            );
+        }
+        let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
+        if packet["status"] != "actionable"
+            || packet["selected"]["state"] != "top_gap"
+            || packet["commands"]["agent_packet"].is_null()
+            || packet["commands"]["verify"].is_null()
+            || packet["commands"]["receipt"].is_null()
+        {
+            return Err(
+                "boundary fixture did not produce a concrete first-PR packet route".to_string(),
+            );
+        }
+        cleanup(&repo)
+    }
+
+    #[test]
+    fn python_preview_projection_eligibility_fails_closed() {
+        let mut record = ledger_with_python_repairable_gap()["records"][0].clone();
+        let record_ref = &record;
+        assert!(is_first_run_repairable_gap(&record_ref));
+
+        record["projection_eligibility"]["agent_packet"]["eligible"] = json!(false);
+        let record_ref = &record;
+        assert!(!is_first_run_repairable_gap(&record_ref));
+
+        if let Some(object) = record.as_object_mut() {
+            object.remove("projection_eligibility");
+        }
+        let record_ref = &record;
+        assert!(!is_first_run_repairable_gap(&record_ref));
+
+        record["projection_eligibility"] = json!("malformed");
+        let record_ref = &record;
+        assert!(!is_first_run_repairable_gap(&record_ref));
     }
 
     #[test]
@@ -2928,6 +3293,7 @@ mod tests {
             "records": [
                 {
                     "gap_id": "gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+                    "source_currentness": "candidate_current",
                     "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
                     "kind": "MissingBoundaryAssertion",
                     "language": "python",
@@ -2941,6 +3307,12 @@ mod tests {
                     "repairability": "repairable",
                     "static_limit_kind": "python_preview",
                     "static_limit_detail": "Python repair cards are preview advisory evidence.",
+                    "projection_eligibility": {
+                        "agent_packet": {
+                            "eligible": true,
+                            "reason": "direct Python oracle alignment is eligible for preview packet projection"
+                        }
+                    },
                     "anchor": {
                         "file": "app/pricing.py",
                         "line": 2,
@@ -2976,7 +3348,11 @@ mod tests {
             "findings": [
                 {
                     "id": "probe:app_pricing.py:2:python_preview",
+                    "source_currentness": "candidate_current",
                     "classification": "weakly_exposed",
+                    "source_currentness": "candidate_current",
+                    "oracle_alignment": "direct",
+                    "alignment_reason": "strong_oracle_observes_owner_name",
                     "probe": {
                         "file": "app/pricing.py",
                         "line": 2,

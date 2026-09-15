@@ -1,6 +1,7 @@
 use super::io::file_state;
 use super::model::JsonInput;
 use super::util::{md_escape, string_field, summary_bool, summary_string_or_null, summary_u64};
+use crate::output::markdown::{COMMAND_SHELL_DISCLOSURE, powershell_command};
 use serde_json::Value;
 use std::path::Path;
 
@@ -489,8 +490,16 @@ pub fn render_evidence_summary_md(s: &super::model::PrEvidenceSummaryJson) -> St
     out.push('\n');
 
     out.push_str("## Local Reproduction Commands\n\n");
+    out.push_str(COMMAND_SHELL_DISCLOSURE);
     for cmd in &s.local_reproduction_commands {
-        out.push_str(&format!("```\n{cmd}\n```\n\n"));
+        out.push_str(&format!("```bash\n{cmd}\n```\n\n"));
+        match powershell_command(cmd) {
+            Some(line) => out.push_str(&format!("```powershell\n{line}\n```\n\n")),
+            None => out.push_str(&format!(
+                "{}: `{cmd}`\n\n",
+                crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE
+            )),
+        }
     }
 
     out.push_str(

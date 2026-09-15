@@ -1299,7 +1299,7 @@ fn today_date_string() -> String {
 }
 
 /// Convert seconds-since-epoch to `YYYY-MM-DD` using the civil calendar
-/// algorithm (Howard Hinnant, http://howardhinnant.github.io/date_algorithms.html).
+/// algorithm (Howard Hinnant, <http://howardhinnant.github.io/date_algorithms.html>).
 fn date_from_secs(secs: u64) -> String {
     let days = secs / 86_400;
     let z = days as i64 + 719_468; // days from 0000-03-01

@@ -14,6 +14,7 @@ cargo xtask precommit
 
 Runs: `cargo fmt --check`, `check-static-language`, `check-no-panic-family`,
 `check-allow-attributes`, `check-local-context`, `check-file-policy`,
+`check-covered-by`,
 `check-executable-files`, `check-workflows`, `check-spec-format`,
 `check-fixture-contracts`, `check-traceability`, `check-capabilities`,
 `check-workspace-shape`, `check-architecture`, `check-public-api`,
@@ -40,7 +41,7 @@ Cost: 1–2 LEM.
 - `cargo fmt --check`
 - `cargo test --workspace`
 - Policy gates: `check-no-panic-family`, `check-allow-attributes`,
-  `check-file-policy`, `check-workflows`, `check-static-language`,
+  `check-file-policy`, `check-covered-by`, `check-workflows`, `check-static-language`,
   `check-output-contracts`, `check-doc-index`, `check-workspace-shape`,
   `check-architecture`, `check-public-api`, `check-dependencies`,
   `check-supply-chain`.

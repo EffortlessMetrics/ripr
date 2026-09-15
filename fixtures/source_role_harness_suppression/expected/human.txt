@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/source_role_harness_suppression/input
+
+Summary: 3 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 3 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 2 changed file(s), 31 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
+
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/source_role_harness_suppression/input/src/lib.rs:2
+  Static exposure: propagation_unknown (note, confidence 0.66)
+  Why propagation_unknown: the path from the changed behavior to an observable sink is not statically clear
+  Changed behavior: amount >= threshold
+  Analyzer limit: No clear propagation path from changed behavior to an observable sink
+  Related test: tests/contract.rs:19 contract_journey
+  Next step: Escalate to real mutation testing or deep static analysis for this probe.
+  Evidence:
+    - reach yes: Related tests appear to reach price: contract_journey
+    - infection yes: Detected related test input at the changed boundary
+    - 14 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/source_role_harness_suppression/input --diff fixtures/source_role_harness_suppression/diff.patch --mode fast probe:src_lib.rs:predicate:34000fd8
+  ripr context --root fixtures/source_role_harness_suppression/input --diff fixtures/source_role_harness_suppression/diff.patch --mode fast --at probe:src_lib.rs:predicate:34000fd8
+
+Hidden:
+  2 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

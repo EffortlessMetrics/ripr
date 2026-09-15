@@ -738,12 +738,12 @@ pub(crate) fn release_temp_root() -> Result<PathBuf, String> {
     let configured = std::env::temp_dir();
     let current = std::env::current_dir()
         .map_err(|err| format!("read current directory for release fixture failed: {err}"))?;
-    let current = fs::canonicalize(&current).map_err(|err| {
+    let current = strip_verbatim_prefix(fs::canonicalize(&current).map_err(|err| {
         format!("canonicalize current directory for release fixture failed: {err}")
-    })?;
-    let mut candidate = fs::canonicalize(&configured).map_err(|err| {
+    })?);
+    let mut candidate = strip_verbatim_prefix(fs::canonicalize(&configured).map_err(|err| {
         format!("canonicalize temporary directory for release fixture failed: {err}")
-    })?;
+    })?);
     for _ in 0..64 {
         if candidate != current && !candidate.starts_with(&current) {
             return Ok(candidate);
@@ -754,6 +754,23 @@ pub(crate) fn release_temp_root() -> Result<PathBuf, String> {
             .ok_or_else(|| "configured temporary directory has no external parent".to_string())?;
     }
     Err("could not find an external release fixture directory within 64 parent steps".to_string())
+}
+
+/// Strip the Windows verbatim (`\?\`) prefix `fs::canonicalize` adds.
+/// Downstream `cargo install --path` rejects verbatim paths
+/// ("invalid path url" / manifest resolved at the drive root), and the
+/// plain form is otherwise equivalent.
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let text = path.as_os_str().to_string_lossy();
+    // A verbatim UNC path (\\?\UNC\server\share) must stay a UNC path
+    // (\\server\share), not collapse into a drive-relative fragment.
+    if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{unc}"));
+    }
+    if let Some(stripped) = text.strip_prefix(r"\\?\") {
+        return PathBuf::from(stripped.to_owned());
+    }
+    path
 }
 
 fn create_external_doctor_fixture(root: &Path) -> Result<PathBuf, String> {
@@ -3506,11 +3523,16 @@ mod tests {
     fn release_fixture_root_is_canonical_and_external() -> Result<(), String> {
         let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let root = super::release_temp_root()?;
-        let current = fs::canonicalize(
-            std::env::current_dir()
-                .map_err(|err| format!("read current directory failed: {err}"))?,
-        )
-        .map_err(|err| format!("canonicalize current directory failed: {err}"))?;
+        // Mirror the production containment comparison: both sides must be
+        // verbatim-normalized or a `\?\`-rooted temp can false-negative.
+        let root = super::strip_verbatim_prefix(root);
+        let current = super::strip_verbatim_prefix(
+            fs::canonicalize(
+                std::env::current_dir()
+                    .map_err(|err| format!("read current directory failed: {err}"))?,
+            )
+            .map_err(|err| format!("canonicalize current directory failed: {err}"))?,
+        );
         if root == current || root.starts_with(&current) {
             return Err(format!(
                 "release fixture root {} is not external to {}",

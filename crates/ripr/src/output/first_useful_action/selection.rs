@@ -1,3 +1,6 @@
+mod gap_command_projection;
+
+use self::gap_command_projection::with_gap_verify_command_spec;
 use super::{
     ActionInputs, FirstUsefulActionInput, FirstUsefulActionReport, ParsedSources,
     acknowledged_report, actionable_report, baseline_only_report, gap_record_report,
@@ -24,7 +27,7 @@ pub(super) fn select_report(
     } else if let Some(report) = waived_report(input, parsed, inputs, generated_at) {
         report
     } else if let Some(report) = gap_record_report(input, parsed, inputs, generated_at) {
-        report
+        with_gap_verify_command_spec(report, parsed)
     } else if let Some(report) = missing_assistant_proof_report(input, parsed, inputs, generated_at)
     {
         report

@@ -55,6 +55,7 @@ cargo xtask check-droid-review-config
 cargo xtask check-evidence-promotion-honesty [--pinned-external] [--clone] [--case <id>] [--checkout-root <path>] [--timeout-secs <n>]
 cargo xtask check-executable-files
 cargo xtask check-file-policy
+cargo xtask check-covered-by
 cargo xtask check-fixture-contracts
 cargo xtask check-generated
 cargo xtask check-generated-clean

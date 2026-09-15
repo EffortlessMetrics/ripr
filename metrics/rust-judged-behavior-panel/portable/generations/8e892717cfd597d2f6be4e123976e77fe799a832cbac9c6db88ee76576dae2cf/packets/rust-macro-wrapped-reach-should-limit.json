@@ -1,0 +1,150 @@
+{
+  "schema_version": "0.1",
+  "kind": "rust_judged_panel_portable_packet",
+  "case_id": "rust-macro-wrapped-reach-should-limit",
+  "semantic": {
+    "manifest_sha256": "sha256:e6d2a31d0ef736e0ad6472aa8cf9066281d7066eea42afd5e6f17411f6ce17fb",
+    "subjects_sha256": "sha256:aaa5cba9532e2aa2a8f134d71f2160e9b868606a3c248a6e0c310ed3628d78b8",
+    "subject_id": "macro-wrapped-reach",
+    "repository": "synthetic-rust-macro-tests",
+    "expected_direction": "should_limit",
+    "repository_base": "0e3a5e98d0b4d95fde6de1d8246150a1e8cd55f2",
+    "repository_head": "7b70d1fef3e009f702a2df260eea7095a7a6819d",
+    "repository_tree": "590e9862bcff37f1576da42b9e74f0a4889a12f2",
+    "producer_source_head": "ff5077908e65dc55b50264d66953dd749e7839d0",
+    "producer_source_tree": "c85ea2dccc592f520652dd3d74a73e3b255d44d3",
+    "producer_cargo_toml_sha256": "sha256:fe9bb75b2914a444bc36199708d4fd97b7c1533227bf1c85c6f91b9b477a6c75",
+    "producer_cargo_lock_sha256": "sha256:3c4fa636c9147a4ab44e90c1dca2872612a27ffd44ce63c777972096b77da95d",
+    "producer_version": "ripr 0.10.0",
+    "profile": "dev",
+    "features": [
+      "default"
+    ],
+    "argv": [
+      "check",
+      "--root",
+      "<materialized-subject>",
+      "--base",
+      "0e3a5e98d0b4d95fde6de1d8246150a1e8cd55f2",
+      "--mode",
+      "draft",
+      "--json"
+    ],
+    "mode": "draft",
+    "format": "json",
+    "config_path": "ripr.toml",
+    "config_sha256": "sha256:c4811fb83c906f4806b6a02f92a04d7cfdf74e1b3edec3be0bd715189d54e8b1",
+    "diff_path": "metrics/rust-judged-behavior-panel/diffs/macro_wrapped_reach_limit.diff",
+    "diff_sha256": "sha256:d9e108e7eb7ccefd9c56005f83c6e1be1fef215a0ed5ae6c312df9f5829b0cd8",
+    "executed_diff_identity": "sha256:794650eb8aecf6be60300fe4745362528c5a73ae89b6cd4e93625822f7d2be02",
+    "subject_inputs": [
+      {
+        "role": "cargo_toml",
+        "source_path": "metrics/rust-judged-behavior-panel/subjects/macro-wrapped-reach/Cargo.toml",
+        "repository_path": "Cargo.toml",
+        "sha256": "sha256:b0eedfa2adf5715984148aeae8f3dfb1cfd2154639cb57fddb7dd301b85c49b0"
+      },
+      {
+        "role": "cargo_lock",
+        "source_path": "metrics/rust-judged-behavior-panel/subjects/macro-wrapped-reach/Cargo.lock",
+        "repository_path": "Cargo.lock",
+        "sha256": "sha256:400b1cc22c1518362ba919983a60ffcc263360708b33f3bc5056378386ef7018"
+      },
+      {
+        "role": "config",
+        "source_path": "metrics/rust-judged-behavior-panel/subjects/macro-wrapped-reach/ripr.toml",
+        "repository_path": "ripr.toml",
+        "sha256": "sha256:c4811fb83c906f4806b6a02f92a04d7cfdf74e1b3edec3be0bd715189d54e8b1"
+      },
+      {
+        "role": "source_before",
+        "source_path": "metrics/rust-judged-behavior-panel/subjects/macro-wrapped-reach/source.before.rs",
+        "repository_path": "src/lib.rs",
+        "sha256": "sha256:73b259d7dd942ec6ea7247c6c6ffa623791b1d90aff771788fe8f3f80a7d656d"
+      },
+      {
+        "role": "source_after",
+        "source_path": "metrics/rust-judged-behavior-panel/subjects/macro-wrapped-reach/source.after.rs",
+        "repository_path": "src/lib.rs",
+        "sha256": "sha256:38ba7cbbad1a67c6136255a3511c8cd9a5815d5df6e43673a287f4c800a193ca"
+      },
+      {
+        "role": "diff",
+        "source_path": "metrics/rust-judged-behavior-panel/diffs/macro_wrapped_reach_limit.diff",
+        "repository_path": "selected.diff",
+        "sha256": "sha256:d9e108e7eb7ccefd9c56005f83c6e1be1fef215a0ed5ae6c312df9f5829b0cd8"
+      },
+      {
+        "role": "test",
+        "source_path": "metrics/rust-judged-behavior-panel/subjects/macro-wrapped-reach/tests/normalization.rs",
+        "repository_path": "tests/normalization.rs",
+        "sha256": "sha256:515fb202476639120051d55607e11a037f63cf3483bb15dbfbdef84936c0bd8e"
+      }
+    ],
+    "anchor": {
+      "file": "src/lib.rs",
+      "line": 2,
+      "owner": "normalize_score",
+      "behavior_family": "return_value",
+      "expression": "value.max(1)"
+    },
+    "observed": {
+      "finding_id": "probe:src_lib.rs:return_value:c68d5137",
+      "analysis_complete": true,
+      "outcome_kind": "complete_with_findings",
+      "classification": "no_static_path",
+      "probe_family": "return_value",
+      "probe_file": "src/lib.rs",
+      "probe_line": 2,
+      "probe_expression": "value.max(1)",
+      "expected_actionability": "inspect_static_limitation",
+      "actionability_source": "governed_manifest_subject_contract",
+      "missing": [
+        "No relevant oracle was detected",
+        "No static test path reaches the changed owner",
+        "No strong discriminator was detected"
+      ],
+      "recommendation": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "static_limit_kind": "rust_macro_wrapped_test_call_unresolved"
+    }
+  },
+  "semantic_sha256": "sha256:c86951c6597cfbaba3fa77a83a7eabe66af96c20dc768483dbe13698b2887c6d",
+  "host_evidence": {
+    "availability": "host_bound_not_committed",
+    "host_target": "x86_64-pc-windows-msvc",
+    "binary_sha256": "sha256:4f2cf5432d0f1a343cb12867043e2843103886ade2b15081c71aa533ee96f939",
+    "run_id": "ff5077908e65-1015836-0",
+    "current_ref": "target/ripr/rust-judged-panel/current.json",
+    "current_sha256": "sha256:baa056761ce56888da7509ec680f895126748b94bcd2fdc286f87e1b4be552f5",
+    "index_ref": "target/ripr/rust-judged-panel/runs/ff5077908e65-1015836-0/run-index.json",
+    "index_sha256": "sha256:b3b95bd3039eed185331306d149292da1ae0177e4bbb12d9cf88c1e841a2f16b",
+    "receipt_ref": "target/ripr/rust-judged-panel/runs/ff5077908e65-1015836-0/cases/rust-macro-wrapped-reach-should-limit/receipt.json",
+    "receipt_sha256": "sha256:74dcc58af955f85b855016b441f3199bc8ed622408cf922c631a227fe00a1cab",
+    "stdout_ref": "target/ripr/rust-judged-panel/runs/ff5077908e65-1015836-0/cases/rust-macro-wrapped-reach-should-limit/stdout.bin",
+    "stdout_sha256": "sha256:e1377697acb373146db6eab1c06448def029d1f6017518a81fbb225b4b9bce97",
+    "stderr_ref": "target/ripr/rust-judged-panel/runs/ff5077908e65-1015836-0/cases/rust-macro-wrapped-reach-should-limit/stderr.bin",
+    "stderr_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "analyzer_input_identity": "sha256:794650eb8aecf6be60300fe4745362528c5a73ae89b6cd4e93625822f7d2be02"
+  },
+  "judgment": {
+    "disposition": "unjudged",
+    "structural_judgment": null,
+    "false_actionable": null,
+    "false_exposed": null,
+    "static_under_credit": null,
+    "wrong_target": null,
+    "limitation_correct": null,
+    "source": null,
+    "judged_at": null,
+    "judged_by": []
+  },
+  "runtime_calibration": {
+    "status": "not_run",
+    "outcome": null,
+    "evidence_ref": null
+  },
+  "non_claims": [
+    "bounded static projection only; no independent semantic judgment",
+    "no runtime mutation calibration, accuracy rate, badge, gate, or support claim"
+  ]
+}

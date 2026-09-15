@@ -1,6 +1,7 @@
 /target
 /a.out
 fixtures/**/target/
+/xtask/target/
 .ripr/release/
 *.profraw
 .DS_Store

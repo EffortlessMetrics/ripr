@@ -33,7 +33,7 @@ Evidence
   - infection yes: Changed Python expression can alter preview-classified predicate behavior: `def render(name, verbose=True):`
   - propagation weak: Changed Python fallback expression can propagate through selected behavior; preview evidence does not prove the concrete downstream sink.
   - observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.
   - local flow reaches unknown sink: def render(name, verbose=True): (line 1)
   - related test tests/test_render.py:4 test_render_explicit_verbose_false uses strong exact value oracle: assert render("Sam", verbose=False) == "Sam"
 

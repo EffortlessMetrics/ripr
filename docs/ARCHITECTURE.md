@@ -65,3 +65,11 @@ See also:
 - [Output schema](OUTPUT_SCHEMA.md)
 - [Engineering rules](ENGINEERING.md)
 - [Spec-test-code traceability](SPEC_TEST_CODE.md)
+
+## Repository convergence control plane
+
+Continuous source-to-swarm convergence is repository automation, not product
+analysis behavior and not a new published crate. Its accepted hexagonal
+boundary, capability split, source-of-truth direction, and mechanical guards
+are defined by
+[RIPR-SPEC-0167](specs/RIPR-SPEC-0167-convergence-architecture.md).

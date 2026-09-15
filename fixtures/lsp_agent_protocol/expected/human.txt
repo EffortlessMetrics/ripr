@@ -14,7 +14,7 @@ Start here:
   Static exposure: static_unknown (note, confidence 0.50)
   Why static_unknown: the analysis could not determine a static exposure state
   Changed behavior: value + 2
-  Missing discriminator: No strong discriminator was detected
+  Analyzer limit: No strong discriminator was detected
   Related test: src/lib.rs:10 boundary_is_observed
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
   Evidence:

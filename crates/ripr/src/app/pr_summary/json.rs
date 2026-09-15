@@ -666,6 +666,157 @@ mod tests {
         Ok(())
     }
 
+    /// Local Reproduction Commands must offer both shells (#2628): each
+    /// command is fenced `bash` (byte-identical command bytes) followed by its
+    /// `powershell` translation, and a redirect in the verify command becomes
+    /// the UTF-8 .NET write with the target as a quoted literal, guarded by
+    /// `$LASTEXITCODE` so a failed run cannot publish the artifact (PR #3625
+    /// review, codex P1).
+    #[test]
+    fn evidence_summary_md_local_reproduction_commands_have_powershell_variants()
+    -> Result<(), String> {
+        let start_here = serde_json::json!({
+            "selected": {
+                "state": "top_gap",
+                "verify_command": "cargo test boundary > evidence.txt"
+            }
+        });
+        let s = build_pr_evidence_summary(Some(&start_here), None, None, None, None, None);
+        let markdown = super::super::render_evidence_summary_md(&s);
+
+        assert!(
+            markdown.contains("## Local Reproduction Commands\n\n"),
+            "section missing:\n{markdown}"
+        );
+        assert!(
+            markdown.contains("cmd.exe is not supported."),
+            "command presentation must state the cmd.exe boundary:\n{markdown}"
+        );
+        // The default derived commands keep byte-identical bash bytes and gain
+        // their PowerShell pairs.
+        assert!(
+            markdown.contains("```bash\nripr check --base origin/main\n```\n\n"),
+            "bash form drifted:\n{markdown}"
+        );
+        assert!(
+            markdown.contains("```powershell\nripr check --base origin/main\n```\n\n"),
+            "powershell form missing or drifted:\n{markdown}"
+        );
+        // A redirecting verify command round-trips through the shared
+        // translation: bash bytes unchanged, PowerShell gets the guarded
+        // .NET write.
+        let bash_form = "```bash\ncargo test boundary > evidence.txt\n```\n\n";
+        assert!(
+            markdown.contains(bash_form),
+            "bash verify command drifted:\n{markdown}"
+        );
+        let powershell_form = "```powershell\n$ripr = ((cargo test boundary) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('evidence.txt', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }\n```\n\n";
+        assert!(
+            markdown.contains(powershell_form),
+            "powershell verify command missing or drifted:\n{markdown}"
+        );
+        let bash_fence = markdown
+            .find(bash_form)
+            .ok_or_else(|| format!("bash fence must exist: {markdown}"))?;
+        let powershell_fence = markdown
+            .find(powershell_form)
+            .ok_or_else(|| format!("powershell fence must exist: {markdown}"))?;
+        assert!(
+            bash_fence < powershell_fence,
+            "bash form must be presented before the PowerShell variant"
+        );
+        Ok(())
+    }
+
+    /// A compound artifact-provided command must under-emit (PR #3625 review,
+    /// devin BUG): the bash fence stays, and the PowerShell fence is replaced
+    /// by the availability disclosure instead of an invalid translation.
+    #[test]
+    fn evidence_summary_md_compound_command_under_emits_to_disclosure() -> Result<(), String> {
+        let start_here = serde_json::json!({
+            "selected": {
+                "state": "top_gap",
+                "verify_command": "cargo test a && cargo test b"
+            }
+        });
+        let s = build_pr_evidence_summary(Some(&start_here), None, None, None, None, None);
+        let markdown = super::super::render_evidence_summary_md(&s);
+
+        // Bash-only form is still offered, byte-identical.
+        let bash_form = "```bash\ncargo test a && cargo test b\n```\n\n";
+        assert!(
+            markdown.contains(bash_form),
+            "bash compound command drifted:\n{markdown}"
+        );
+        // The disclosure names the command; no powershell fence is emitted for
+        // it.
+        let disclosure =
+            "PowerShell form unavailable for compound commands: `cargo test a && cargo test b`\n\n";
+        assert!(
+            markdown.contains(disclosure),
+            "compound disclosure missing:\n{markdown}"
+        );
+        assert!(
+            !markdown.contains("```powershell\ncargo test a"),
+            "compound command must not gain a powershell fence:\n{markdown}"
+        );
+        let bash_fence = markdown
+            .find(bash_form)
+            .ok_or_else(|| format!("bash fence must exist: {markdown}"))?;
+        let disclosure_at = markdown
+            .find(disclosure)
+            .ok_or_else(|| format!("disclosure must exist: {markdown}"))?;
+        assert!(
+            bash_fence < disclosure_at,
+            "bash form must be presented before the disclosure"
+        );
+        Ok(())
+    }
+
+    /// Bash input redirection `<` is a PowerShell parse error (no `<`
+    /// operator), so the command under-emits the same way as a compound form
+    /// (PR #3625 follow-up review): bash-only fence plus the availability
+    /// disclosure, no powershell fence.
+    #[test]
+    fn evidence_summary_md_input_redirect_command_under_emits_to_disclosure() -> Result<(), String>
+    {
+        let start_here = serde_json::json!({
+            "selected": {
+                "state": "top_gap",
+                "verify_command": "cargo run --bin replay < input.json"
+            }
+        });
+        let s = build_pr_evidence_summary(Some(&start_here), None, None, None, None, None);
+        let markdown = super::super::render_evidence_summary_md(&s);
+
+        // Bash-only form is still offered, byte-identical.
+        let bash_form = "```bash\ncargo run --bin replay < input.json\n```\n\n";
+        assert!(
+            markdown.contains(bash_form),
+            "bash input-redirect command drifted:\n{markdown}"
+        );
+        let disclosure = "PowerShell form unavailable for compound commands: `cargo run --bin replay < input.json`\n\n";
+        assert!(
+            markdown.contains(disclosure),
+            "input-redirect disclosure missing:\n{markdown}"
+        );
+        assert!(
+            !markdown.contains("```powershell\ncargo run --bin replay"),
+            "input-redirect command must not gain a powershell fence:\n{markdown}"
+        );
+        let bash_fence = markdown
+            .find(bash_form)
+            .ok_or_else(|| format!("bash fence must exist: {markdown}"))?;
+        let disclosure_at = markdown
+            .find(disclosure)
+            .ok_or_else(|| format!("disclosure must exist: {markdown}"))?;
+        assert!(
+            bash_fence < disclosure_at,
+            "bash form must be presented before the disclosure"
+        );
+        Ok(())
+    }
+
     #[test]
     fn typed_incomplete_diff_outcome_is_preserved_and_not_reported_complete() {
         let diff = serde_json::json!({

@@ -1,11 +1,19 @@
 use super::related_tests::context::*;
 use super::related_tests::*;
 use super::*;
+use crate::analysis::facts::{FunctionSourceRole, WorkspaceRootAuthority, build_index};
 use crate::analysis::rust_index::{RaRustSyntaxAdapter, RustSyntaxAdapter};
 use crate::analysis::seam_inventory::inventory_seams_from_index;
 use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass};
+use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::symlink as symlink_file;
+#[cfg(windows)]
+use std::os::windows::fs::symlink_file;
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-fn index_from_files(files: &[(PathBuf, &str)]) -> Result<RustIndex, String> {
+fn index_from_files(files: &[(PathBuf, &str)]) -> Result<FixtureIndex, String> {
     let adapter = RaRustSyntaxAdapter;
     let mut index = RustIndex::default();
     for (path, source) in files {
@@ -14,7 +22,748 @@ fn index_from_files(files: &[(PathBuf, &str)]) -> Result<RustIndex, String> {
         index.functions.extend(facts.functions.iter().cloned());
         index.files.insert(path.clone(), facts);
     }
-    Ok(index)
+    let root = std::env::temp_dir().join(format!(
+        "ripr-3410-memory-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos()
+    ));
+    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    let fixture_root = AuthorityFixtureRoot(root);
+    fs::write(
+        fixture_root.join("Cargo.toml"),
+        "[package]\nname = \"memory-fixture\"\nversion = \"0.1.0\"\n",
+    )
+    .map_err(|error| error.to_string())?;
+    for (path, source) in files {
+        let full = fixture_root.join(path);
+        if let Some(parent) = full.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        fs::write(full, source).map_err(|error| error.to_string())?;
+    }
+    index.workspace_authority = Some(WorkspaceRootAuthority::from_index(
+        &fixture_root,
+        &index.files,
+    ));
+    Ok(FixtureIndex {
+        index,
+        _fixture_root: fixture_root,
+    })
+}
+
+struct AuthorityFixtureRoot(PathBuf);
+
+impl std::ops::Deref for AuthorityFixtureRoot {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Drop for AuthorityFixtureRoot {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+struct FixtureIndex {
+    index: RustIndex,
+    _fixture_root: AuthorityFixtureRoot,
+}
+
+impl std::ops::Deref for FixtureIndex {
+    type Target = RustIndex;
+
+    fn deref(&self) -> &Self::Target {
+        &self.index
+    }
+}
+
+impl std::ops::DerefMut for FixtureIndex {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.index
+    }
+}
+
+fn authority_fixture_root(label: &str) -> Result<AuthorityFixtureRoot, String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("ripr-3410-{label}-{stamp}"));
+    fs::create_dir_all(root.join("src")).map_err(|error| error.to_string())?;
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn score(amount: i32, threshold: i32) -> i32 { if amount >= threshold { 1 } else { 0 } }\n#[cfg(test)]\nmod tests { #[test] fn score_boundary() { assert_eq!(super::score(1, 1), 1); } }\n",
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(AuthorityFixtureRoot(root))
+}
+
+fn authority_fixture_target(root: &Path) -> Result<(RustIndex, RepoSeam, String), String> {
+    let file = PathBuf::from("src/lib.rs");
+    let index = build_index(root, std::slice::from_ref(&file))?;
+    let seam = inventory_seams_from_index(std::slice::from_ref(&file), &index)
+        .into_iter()
+        .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+        .ok_or_else(|| "expected fixture predicate seam".to_string())?;
+    Ok((
+        index,
+        seam,
+        fs::read_to_string(root.join(file)).map_err(|error| error.to_string())?,
+    ))
+}
+
+#[test]
+fn production_manifestless_directories_keep_distinct_package_identity() -> Result<(), String> {
+    struct FixtureCleanup(PathBuf);
+    impl Drop for FixtureCleanup {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("ripr-3410-manifestless-{stamp}"));
+    let _cleanup = FixtureCleanup(root.clone());
+    let first = PathBuf::from("first/lib.rs");
+    let second = PathBuf::from("second/lib.rs");
+    for (path, source) in [
+        (&first, "pub fn first() -> i32 { 1 }\n"),
+        (&second, "pub fn second() -> i32 { 2 }\n"),
+    ] {
+        let full = root.join(path);
+        fs::create_dir_all(
+            full.parent()
+                .ok_or_else(|| "fixture parent missing".to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        fs::write(full, source).map_err(|error| error.to_string())?;
+    }
+    let index = build_index(&root, &[first.clone(), second.clone()])?;
+    let authority = index
+        .workspace_authority
+        .as_ref()
+        .ok_or_else(|| "missing workspace authority".to_string())?;
+    let first_identity = authority
+        .files
+        .get(&first)
+        .ok_or_else(|| "missing first authority".to_string())?
+        .package_identity
+        .clone();
+    let second_identity = authority
+        .files
+        .get(&second)
+        .ok_or_else(|| "missing second authority".to_string())?
+        .package_identity
+        .clone();
+    if first_identity == second_identity {
+        return Err(format!(
+            "unrelated manifest-less directories collapsed to {first_identity:?}"
+        ));
+    }
+    if authority.validates_target(&first, &second, "pub fn first() -> i32 { 1 }\n") {
+        return Err(
+            "manifest-less files in unrelated directories shared target identity".to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn production_target_evidence_carries_portable_root_and_currentness_authority() -> Result<(), String>
+{
+    let root = authority_fixture_root("positive")?;
+    let (index, seam, _) = authority_fixture_target(&root)?;
+    let evidence = evidence_for_seam(&seam, &index);
+    let target = evidence
+        .related_tests
+        .iter()
+        .find_map(|related| related.test_target.as_ref())
+        .ok_or_else(|| "current indexed target must be accepted".to_string())?;
+    if target.workspace_identity.is_empty()
+        || target.currentness != TestTargetCurrentness::Current
+        || target.file != Path::new("src/lib.rs")
+    {
+        return Err(format!("unexpected authority evidence: {target:?}"));
+    }
+
+    let relocated = authority_fixture_root("relocated")?;
+    fs::write(
+        relocated.join("src/lib.rs"),
+        fs::read_to_string(root.join("src/lib.rs")).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    let (relocated_index, relocated_seam, _) = authority_fixture_target(&relocated)?;
+    let relocated_target = evidence_for_seam(&relocated_seam, &relocated_index)
+        .related_tests
+        .into_iter()
+        .find_map(|related| related.test_target)
+        .ok_or_else(|| "relocated fixture must remain accepted".to_string())?;
+    if relocated_target.workspace_identity != target.workspace_identity {
+        return Err("relocation changed portable workspace identity".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn production_target_evidence_rejects_authority_failures() -> Result<(), String> {
+    let root = authority_fixture_root("negative")?;
+    let (mut index, seam, source) = authority_fixture_target(&root)?;
+    let file = PathBuf::from("src/lib.rs");
+    let test = index
+        .files
+        .get(&file)
+        .and_then(|facts| facts.tests.first())
+        .cloned()
+        .ok_or_else(|| "missing fixture test".to_string())?;
+    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_none() {
+        return Err("baseline authority target unexpectedly missing".to_string());
+    }
+
+    fs::write(root.join(&file), format!("{source}// stale\n"))
+        .map_err(|error| error.to_string())?;
+    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
+        return Err("stale source was accepted".to_string());
+    }
+    fs::write(root.join(&file), &source).map_err(|error| error.to_string())?;
+    fs::remove_file(root.join(&file)).map_err(|error| error.to_string())?;
+    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
+        return Err("missing source was accepted".to_string());
+    }
+    fs::write(root.join(&file), &source).map_err(|error| error.to_string())?;
+
+    index
+        .workspace_authority
+        .as_mut()
+        .ok_or_else(|| "missing authority".to_string())?
+        .root = root.join("wrong-root");
+    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
+        return Err("wrong root authority was accepted".to_string());
+    }
+    index
+        .workspace_authority
+        .as_mut()
+        .ok_or_else(|| "missing authority".to_string())?
+        .root = root.to_path_buf();
+    let original_package = index
+        .workspace_authority
+        .as_ref()
+        .and_then(|authority| authority.files.get(&file))
+        .map(|file| file.package_identity.clone())
+        .ok_or_else(|| "missing file authority".to_string())?;
+    index
+        .workspace_authority
+        .as_mut()
+        .ok_or_else(|| "missing authority".to_string())?
+        .files
+        .insert(
+            PathBuf::from("src/other.rs"),
+            crate::analysis::facts::WorkspaceFileAuthority {
+                source_digest: "sha256:other".to_string(),
+                package_identity: "other-package".to_string(),
+                valid: true,
+            },
+        );
+    let mismatch_seam = RepoSeam::new(
+        "src/other.rs",
+        seam.owner(),
+        seam.kind(),
+        seam.byte_offset(),
+        seam.display_line(),
+        seam.expression(),
+        seam.required_discriminator().clone(),
+        seam.expected_sink(),
+    );
+    if test_target_evidence(
+        &index,
+        &mismatch_seam,
+        &test,
+        RelationReason::DirectOwnerCall,
+    )
+    .is_some()
+    {
+        return Err("package mismatch was accepted".to_string());
+    }
+    index
+        .workspace_authority
+        .as_mut()
+        .ok_or_else(|| "missing authority".to_string())?
+        .files
+        .remove(PathBuf::from("src/other.rs").as_path());
+    index
+        .workspace_authority
+        .as_mut()
+        .ok_or_else(|| "missing authority".to_string())?
+        .files
+        .get_mut(&file)
+        .ok_or_else(|| "missing file authority".to_string())?
+        .package_identity = original_package;
+    let duplicate = index
+        .files
+        .get(&file)
+        .and_then(|facts| {
+            facts
+                .functions
+                .iter()
+                .find(|function| function.source_role.is_evidence_role())
+                .cloned()
+        })
+        .ok_or_else(|| "missing test function".to_string())?;
+    index
+        .files
+        .get_mut(&file)
+        .ok_or_else(|| "missing file facts".to_string())?
+        .functions
+        .push(duplicate);
+    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
+        return Err("duplicate target identity was accepted".to_string());
+    }
+
+    let mut traversal = test.clone();
+    traversal.file = PathBuf::from("../src/lib.rs");
+    let authority = index
+        .workspace_authority
+        .as_ref()
+        .ok_or_else(|| "missing authority".to_string())?;
+    if authority.validates_target(&traversal.file, seam.file(), &source) {
+        return Err("authority accepted traversal target".to_string());
+    }
+    if test_target_evidence(&index, &seam, &traversal, RelationReason::DirectOwnerCall).is_some() {
+        return Err("traversal target was accepted".to_string());
+    }
+    let mut absolute = test;
+    absolute.file = root.join("src/lib.rs");
+    if authority.validates_target(&absolute.file, seam.file(), &source) {
+        return Err("authority accepted absolute target".to_string());
+    }
+    if test_target_evidence(&index, &seam, &absolute, RelationReason::DirectOwnerCall).is_some() {
+        return Err("absolute target was accepted".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn production_target_evidence_rejects_symlink_escape() -> Result<(), String> {
+    let root = authority_fixture_root("symlink")?;
+    let outside = authority_fixture_root("symlink-outside")?;
+    let link = root.join("src/escaped.rs");
+    if let Err(error) = symlink_file(outside.join("src/lib.rs"), &link) {
+        // Unprivileged Windows hosts report ERROR_PRIVILEGE_NOT_HELD
+        // (os error 1314) instead of PermissionDenied, so both mean "this
+        // host cannot create the fixture" and skip the containment check.
+        let privilege_missing = error.kind() == std::io::ErrorKind::PermissionDenied
+            || error.raw_os_error() == Some(1314);
+        if privilege_missing {
+            eprintln!(
+                "skipping symlink containment check: fixture creation is not permitted ({error})"
+            );
+            return Ok(());
+        }
+        return Err(format!(
+            "symlink containment fixture could not be created: {error}"
+        ));
+    }
+    let relative = PathBuf::from("src/escaped.rs");
+    let index = build_index(&root, std::slice::from_ref(&relative))?;
+    let seam = inventory_seams_from_index(std::slice::from_ref(&relative), &index)
+        .into_iter()
+        .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+        .ok_or_else(|| "expected symlink predicate seam".to_string())?;
+    let evidence = evidence_for_seam(&seam, &index);
+    if evidence
+        .related_tests
+        .iter()
+        .any(|related| related.test_target.is_some())
+    {
+        return Err("symlink escape target was accepted".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_function_import_aliases_follow_nested_lexical_scopes() -> Result<(), String> {
+    let aliases = direct_function_import_aliases(
+        r#"
+use crate::child::{
+    compute as run,
+    unique,
+};
+
+fn outer_before() {
+    run();
+}
+
+mod nested {
+    use crate::other::compute as run;
+
+    fn nested_call() {
+        run();
+    }
+}
+
+fn outer_after() {
+    run();
+}
+"#,
+    );
+    let run = aliases
+        .get("run")
+        .ok_or_else(|| "run alias should be indexed".to_string())?;
+    assert!(
+        aliases.contains_key("unique"),
+        "grouped direct import should retain unique alias"
+    );
+    let before = run
+        .binding_at(5)
+        .ok_or_else(|| "outer binding before nested module".to_string())?;
+    let nested = run
+        .binding_at(12)
+        .ok_or_else(|| "nested binding inside nested module".to_string())?;
+    let after = run
+        .binding_at(21)
+        .ok_or_else(|| "outer binding after nested module".to_string())?;
+    assert_eq!(
+        (before.module_path.as_str(), before.name.as_str()),
+        ("child", "compute")
+    );
+    assert_eq!(
+        (nested.module_path.as_str(), nested.name.as_str()),
+        ("other", "compute")
+    );
+    assert_eq!(
+        (after.module_path.as_str(), after.name.as_str()),
+        ("child", "compute")
+    );
+    let conflicts = direct_function_import_aliases(
+        "use crate::child::compute as run;\nuse crate::other::compute as run;\nfn call() { run(); }",
+    );
+    assert!(
+        conflicts
+            .get("run")
+            .and_then(|alias| alias.binding_at(2))
+            .is_none(),
+        "same-scope conflicting aliases must fail closed"
+    );
+    let before_import =
+        direct_function_import_aliases("fn before() { run(); }\nuse crate::child::compute as run;");
+    assert_eq!(
+        before_import
+            .get("run")
+            .and_then(|alias| alias.binding_at(1))
+            .map(|binding| (binding.module_path.as_str(), binding.name.as_str())),
+        Some(("child", "compute")),
+        "same-scope use bindings apply before their textual import line"
+    );
+    let grouped_conflict = direct_function_import_aliases(
+        "use crate::child::{compute as run, unique as run};\nfn call() { run(); }",
+    );
+    assert!(
+        grouped_conflict
+            .get("run")
+            .and_then(|alias| alias.binding_at(2))
+            .is_none(),
+        "duplicate aliases in one grouped declaration must fail closed"
+    );
+    let one_line_block = direct_function_import_aliases(
+        "fn outer_before() { run(); }\nmod nested {\n    use crate::other::compute as run; let closing = '}'; run(); }\nfn outer_after() { run(); }\nuse crate::child::compute as run;",
+    );
+    let inline_run = one_line_block
+        .get("run")
+        .ok_or_else(|| "one-line block run alias should be indexed".to_string())?;
+    assert_eq!(
+        inline_run
+            .binding_at(1)
+            .map(|binding| (binding.module_path.as_str(), binding.name.as_str())),
+        Some(("child", "compute"))
+    );
+    assert_eq!(
+        inline_run
+            .binding_at(3)
+            .map(|binding| (binding.module_path.as_str(), binding.name.as_str())),
+        Some(("other", "compute"))
+    );
+    assert_eq!(
+        inline_run
+            .binding_at(4)
+            .map(|binding| (binding.module_path.as_str(), binding.name.as_str())),
+        Some(("child", "compute")),
+        "one-line block closing brace must not leak nested alias"
+    );
+    assert_eq!(
+        strip_comments_and_strings("    let closing = '}';"),
+        "    let closing = ;",
+        "braces in character literals must be ignored before scope tracking"
+    );
+    assert_eq!(
+        strip_comments_and_strings("    let smile = '\\u{1F600}';"),
+        "    let smile = ;",
+        "braces in Unicode character escapes must be ignored before scope tracking"
+    );
+    assert_eq!(
+        strip_comments_and_strings("fn nested<'a>() { 'outer: loop {} }"),
+        "fn nested<'a>() { 'outer: loop {} }",
+        "lifetimes and loop labels must not be mistaken for character literals"
+    );
+    let nested_group =
+        direct_function_import_aliases("use crate::a::{b::compute as run};\nfn call() { run(); }");
+    assert!(
+        nested_group
+            .get("run")
+            .and_then(|alias| alias.binding_at(2))
+            .is_none(),
+        "nested grouped import paths must fail closed"
+    );
+    let stale_use = direct_function_import_aliases(
+        "mod nested {\n    use crate::other::compute as run\n    fn nested() { run(); }\n}\nuse crate::child::compute as run;\nfn outer() { run(); }",
+    );
+    assert_eq!(
+        stale_use
+            .get("run")
+            .and_then(|alias| alias.binding_at(6))
+            .map(|binding| (binding.module_path.as_str(), binding.name.as_str())),
+        Some(("child", "compute")),
+        "unterminated use fragments must not consume later items"
+    );
+    Ok(())
+}
+
+#[test]
+fn module_import_aliases_follow_nested_lexical_scopes() -> Result<(), String> {
+    let aliases = module_import_aliases(
+        r#"
+use crate::outer_owner as pipe;
+use crate::only_here as unique;
+
+fn outer_before() {
+    pipe::compute();
+}
+
+mod nested {
+    use crate::nested_owner as pipe;
+
+    fn nested_call() {
+        pipe::compute();
+    }
+}
+
+fn outer_after() {
+    pipe::compute();
+}
+"#,
+    );
+    let pipe = aliases
+        .get("pipe")
+        .ok_or_else(|| "pipe alias should be indexed".to_string())?;
+    assert_eq!(
+        pipe.module_path_at(6),
+        Some("outer_owner"),
+        "outer binding before the nested module"
+    );
+    assert_eq!(
+        pipe.module_path_at(13),
+        Some("nested_owner"),
+        "nested module resolves its nearest binding"
+    );
+    assert_eq!(
+        pipe.module_path_at(18),
+        Some("outer_owner"),
+        "outer binding after the nested module"
+    );
+    assert_eq!(
+        aliases
+            .get("unique")
+            .and_then(|alias| alias.module_path_at(13)),
+        None,
+        "an outer module alias must not leak into a nested module"
+    );
+
+    let conflicts = module_import_aliases(
+        "use crate::child as pipe;\nuse crate::other as pipe;\nfn call() { pipe::compute(); }",
+    );
+    assert!(
+        conflicts
+            .get("pipe")
+            .and_then(|alias| alias.module_path_at(3))
+            .is_none(),
+        "same-scope conflicting module aliases must fail closed"
+    );
+
+    // An inline one-liner `mod nested { ... }` records the parent module
+    // depth before its opening brace, so the alias must fail closed on that
+    // line rather than credit the parent binding (#3544 review).
+    let inline_nested = module_import_aliases(
+        "use crate::only_here as unique;
+mod nested { fn call() { unique::compute(); } }
+fn outer_call() { unique::compute(); }",
+    );
+    let inline_unique = inline_nested
+        .get("unique")
+        .ok_or_else(|| "inline nested alias should be indexed".to_string())?;
+    assert!(
+        inline_unique.module_path_at(2).is_none(),
+        "an inline nested-module opening line must not resolve the parent alias"
+    );
+    assert_eq!(
+        inline_unique.module_path_at(3),
+        Some("only_here"),
+        "calls after the inline module still resolve the parent alias"
+    );
+
+    // The shared lexical scanner narrows a block-local module alias to its
+    // own block instead of publishing it file-wide.
+    let block_local = module_import_aliases(
+        "fn outer() {\n    use crate::child as pipe;\n    pipe::compute();\n}\nfn sibling() { pipe::compute(); }",
+    );
+    let block_pipe = block_local
+        .get("pipe")
+        .ok_or_else(|| "block-local alias should be indexed".to_string())?;
+    assert_eq!(block_pipe.module_path_at(3), Some("child"));
+    assert!(
+        block_pipe.module_path_at(5).is_none(),
+        "a block-local module alias must not leak to a sibling function"
+    );
+
+    // The shared scanner also joins continuation lines, so a multi-line
+    // self-alias import is recognized rather than dropped.
+    let multi_line = module_import_aliases(
+        "use crate::pipeline::{\n    self as pipe,\n};\nfn call() { pipe::compute(); }",
+    );
+    assert_eq!(
+        multi_line
+            .get("pipe")
+            .and_then(|alias| alias.module_path_at(4)),
+        Some("pipeline"),
+        "a multi-line self-alias import resolves through the shared scanner"
+    );
+
+    let platform_gated = module_import_aliases(
+        "#[cfg(unix)]\nuse crate::unix_owner as pipe;\n#[cfg(windows)]\nuse crate::windows_owner as pipe;\nfn call() { pipe::compute(); }",
+    );
+    assert!(
+        platform_gated
+            .get("pipe")
+            .and_then(|alias| alias.module_path_at(5))
+            .is_none(),
+        "cfg-gated platform imports of one alias must stay unresolved"
+    );
+
+    let repeated =
+        module_import_aliases("use crate::child as pipe;\nuse crate::child as pipe;\nfn call() {}");
+    assert_eq!(
+        repeated
+            .get("pipe")
+            .and_then(|alias| alias.module_path_at(3)),
+        Some("child"),
+        "a repeated identical import is not an ambiguity"
+    );
+
+    let sibling_modules = module_import_aliases(
+        "mod first {\n    use crate::child as pipe;\n    fn call() { pipe::compute(); }\n}\nmod second {\n    use crate::other as pipe;\n    fn call() { pipe::compute(); }\n}",
+    );
+    let sibling_pipe = sibling_modules
+        .get("pipe")
+        .ok_or_else(|| "sibling module alias should be indexed".to_string())?;
+    assert_eq!(sibling_pipe.module_path_at(3), Some("child"));
+    assert_eq!(sibling_pipe.module_path_at(7), Some("other"));
+    Ok(())
+}
+
+#[test]
+fn alias_resolution_fails_closed_when_a_scope_closes_mid_line() -> Result<(), String> {
+    // #3487 review (Codex P1): a block can close part-way through a line with
+    // a call after the brace. Rust binds that call to the outer alias, but a
+    // line coordinate cannot say which side of the brace the call sits on, so
+    // neither binding may be credited.
+    let source = "fn f() {\n    {\n        use crate::child as pipe;\n        helper();\n    } pipe::compute();\n}\nuse crate::outer as pipe;";
+    let pipe = module_import_aliases(source)
+        .get("pipe")
+        .cloned()
+        .ok_or_else(|| "pipe alias should be indexed".to_string())?;
+    assert_eq!(
+        pipe.module_path_at(3),
+        Some("child"),
+        "a line fully inside the block still resolves to the block binding"
+    );
+    assert!(
+        pipe.module_path_at(5).is_none(),
+        "a call on a line where the scope closes mid-line must stay unresolved"
+    );
+    assert_eq!(
+        pipe.module_path_at(7),
+        Some("outer"),
+        "a line after the block resolves to the outer binding"
+    );
+
+    let function_source = "fn f() {\n    {\n        use crate::child::compute as run;\n        helper();\n    } run();\n}\nuse crate::outer::compute as run;";
+    let run = direct_function_import_aliases(function_source)
+        .get("run")
+        .cloned()
+        .ok_or_else(|| "run alias should be indexed".to_string())?;
+    assert_eq!(
+        run.binding_at(3)
+            .map(|binding| binding.module_path.as_str()),
+        Some("child")
+    );
+    assert!(
+        run.binding_at(5).is_none(),
+        "the direct-function path must fail closed on the same layout"
+    );
+
+    // A brace that closes at end of line, with only a statement terminator
+    // after it, carries no call and stays resolvable.
+    let terminated =
+        "fn f() {\n    {\n        use crate::child as pipe;\n        pipe::compute();\n    };\n}";
+    assert_eq!(
+        module_import_aliases(terminated)
+            .get("pipe")
+            .and_then(|alias| alias.module_path_at(5)),
+        Some("child"),
+        "a closing brace with only a statement terminator after it stays resolvable"
+    );
+    Ok(())
+}
+
+#[test]
+fn direct_helper_import_aliases_fail_closed_on_same_scope_alias_conflicts() {
+    let allowed =
+        std::collections::BTreeSet::from(["outer_owner".to_string(), "nested_owner".to_string()]);
+    let conflicting = direct_helper_import_aliases(
+        "use crate::outer_owner::compute as run;\nuse crate::nested_owner::compute as run;\n",
+        &allowed,
+    );
+    assert!(
+        !conflicting.contains_key("run"),
+        "two file-scope imports of one alias name different targets: {conflicting:?}"
+    );
+    let repeated = direct_helper_import_aliases(
+        "use crate::outer_owner::compute as run;\nuse crate::outer_owner::compute as run;\n",
+        &allowed,
+    );
+    assert!(
+        repeated.contains_key("run"),
+        "a repeated identical helper import is not an ambiguity: {repeated:?}"
+    );
+    let distinct = direct_helper_import_aliases(
+        "use crate::outer_owner::compute as run;\nuse crate::nested_owner::compute as other;\n",
+        &allowed,
+    );
+    assert_eq!(
+        distinct.len(),
+        2,
+        "distinct aliases stay credited: {distinct:?}"
+    );
 }
 
 #[test]
@@ -115,14 +864,14 @@ fn oracle_semantics_keeps_exact_value_without_extra_upgrade() {
 #[test]
 fn oracle_semantics_covers_supported_oracle_families() {
     let cases = [
+        // #3731 review (coderabbit): a STRONG oracle gets no upgrade
+        // suggestion — the same kind at medium-or-below keeps one.
         (
             OracleKind::ExactErrorVariant,
             OracleStrength::Strong,
             SeamKind::ErrorVariant,
             "the exact error variant",
-            Some(
-                "assert the payload inside the matched error variant when payload behavior changed",
-            ),
+            None,
         ),
         (
             OracleKind::WholeObjectEquality,
@@ -175,6 +924,33 @@ fn oracle_semantics_covers_supported_oracle_families() {
         assert_eq!(semantics.observes, observes);
         assert_eq!(semantics.upgrade_suggestion.as_deref(), upgrade);
     }
+}
+
+// #3731 review (coderabbit): the upgrade suggestion is gated on strength —
+// a STRONG oracle already discriminates, so the same kind at strong carries
+// no suggestion while medium-or-below keeps it (both branches).
+#[test]
+fn strong_oracle_carries_no_upgrade_suggestion_but_weaker_strength_keeps_it() {
+    let strong = oracle_semantics_for(
+        &OracleKind::ExactErrorVariant,
+        &OracleStrength::Strong,
+        SeamKind::ErrorVariant,
+    );
+    assert!(
+        strong.upgrade_suggestion.is_none(),
+        "a strong oracle must not suggest an upgrade: {:?}",
+        strong.upgrade_suggestion
+    );
+    let medium = oracle_semantics_for(
+        &OracleKind::ExactErrorVariant,
+        &OracleStrength::Medium,
+        SeamKind::ErrorVariant,
+    );
+    assert_eq!(
+        medium.upgrade_suggestion.as_deref(),
+        Some("assert the payload inside the matched error variant when payload behavior changed"),
+        "medium-or-below keeps the upgrade suggestion"
+    );
 }
 
 #[test]
@@ -501,6 +1277,53 @@ fn given_opaque_error_variant_without_payload_evidence_then_discrimination_stays
 }
 
 #[test]
+fn given_boxed_wrapper_seam_when_seam_carries_no_variant_identity_then_variant_authority_stays_fail_closed()
+-> Result<(), String> {
+    // #3700: the diff-mode wrapper credit flows through the ErrorPath family
+    // fall-through, not through this repo-mode variant authority. The wrapper
+    // seam expression carries no parseable variant identity, so the authority
+    // must refuse to bind a downcast oracle — including the exact variant the
+    // wrapper really propagates. If this binding ever starts returning true
+    // for an unparseable wrapper identity, the fail-closed boundary has moved.
+    let seam = crate::analysis::seams::RepoSeam::new(
+        "src/lib.rs",
+        "parse_summary",
+        SeamKind::ErrorVariant,
+        0,
+        1,
+        "try_parse_summary(raw).map_err(Into::into)",
+        RequiredDiscriminator::ErrorVariant {
+            variant: "try_parse_summary(raw).map_err(Into::into)".to_string(),
+        },
+        ExpectedSink::ErrorChannel,
+    );
+    assert!(!super::error_variant_oracle_matches_seam_variant(
+        &seam,
+        "matches!(error.downcast_ref::<ParseSummaryError>(), Some(ParseSummaryError::MalformedSource))"
+    ));
+
+    // Positive control: the same downcast oracle binds once the seam carries
+    // the producer-resolved variant identity of the typed callee.
+    let typed_seam = crate::analysis::seams::RepoSeam::new(
+        "src/lib.rs",
+        "try_parse_summary",
+        SeamKind::ErrorVariant,
+        0,
+        1,
+        "return Err(ParseSummaryError::MalformedSource);",
+        RequiredDiscriminator::ErrorVariant {
+            variant: "ParseSummaryError::MalformedSource".to_string(),
+        },
+        ExpectedSink::ErrorChannel,
+    );
+    assert!(super::error_variant_oracle_matches_seam_variant(
+        &typed_seam,
+        "matches!(error.downcast_ref::<ParseSummaryError>(), Some(ParseSummaryError::MalformedSource))"
+    ));
+    Ok(())
+}
+
+#[test]
 fn given_error_constructor_payload_seam_when_test_asserts_exact_payload_then_discriminate_evidence_is_yes()
 -> Result<(), String> {
     let prod = PathBuf::from("src/entry_validation.rs");
@@ -551,6 +1374,101 @@ fn duplicate_allow_id_reports_exact_error_payload() {
         return Err(format!(
             "expected discriminate=Yes for exact constructor payload assertion, got {} ({})",
             evidence.discriminate.state.as_str(),
+            evidence.discriminate.summary
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn given_tuple_variant_seam_when_test_asserts_same_payload_then_discriminate_evidence_is_yes()
+-> Result<(), String> {
+    // #3244 review: end-to-end positive for the tuple-variant payload guard.
+    // The seam constructs `LedgerError::InsufficientFunds("account 42")`;
+    // the oracle must observe the same variant with the same payload.
+    let prod = PathBuf::from("src/ledger.rs");
+    let prod_src = r#"
+#[derive(Debug, PartialEq, Eq)]
+pub enum LedgerError { InsufficientFunds(String), Unknown }
+
+pub fn withdraw(balance: i32) -> Result<i32, LedgerError> {
+    if balance < 0 {
+        return Err(LedgerError::InsufficientFunds("account 42".to_string()));
+    }
+    Ok(balance)
+}
+"#;
+    let tests = PathBuf::from("tests/ledger_tests.rs");
+    let tests_src = r#"
+use ledger::{LedgerError, withdraw};
+
+#[test]
+fn negative_balance_reports_the_frozen_account() {
+    let err = withdraw(-1).expect_err("negative balance must fail");
+    assert_eq!(err, LedgerError::InsufficientFunds("account 42".to_string()));
+}
+"#;
+    let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/ledger.rs")], &index);
+    let error_seam = seams
+        .iter()
+        .find(|seam| {
+            seam.kind() == SeamKind::ErrorVariant && seam.expression().contains("InsufficientFunds")
+        })
+        .ok_or_else(|| "expected InsufficientFunds error_variant seam".to_string())?;
+
+    let evidence = evidence_for_seam(error_seam, &index);
+    if evidence.discriminate.state != StageState::Yes {
+        return Err(format!(
+            "expected discriminate=Yes for exact tuple-variant payload assertion, got {} ({})",
+            evidence.discriminate.state.as_str(),
+            evidence.discriminate.summary
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn given_tuple_variant_seam_when_test_asserts_wrong_payload_then_credit_is_withheld()
+-> Result<(), String> {
+    // #3244 review: the negative codex demanded. Same variant identity, wrong
+    // payload literal — identity coincidence must not receive discriminating
+    // credit through the variant-identity route.
+    let prod = PathBuf::from("src/ledger.rs");
+    let prod_src = r#"
+#[derive(Debug, PartialEq, Eq)]
+pub enum LedgerError { InsufficientFunds(String), Unknown }
+
+pub fn withdraw(balance: i32) -> Result<i32, LedgerError> {
+    if balance < 0 {
+        return Err(LedgerError::InsufficientFunds("account 42".to_string()));
+    }
+    Ok(balance)
+}
+"#;
+    let tests = PathBuf::from("tests/ledger_tests.rs");
+    let tests_src = r#"
+use ledger::{LedgerError, withdraw};
+
+#[test]
+fn negative_balance_reports_some_frozen_account() {
+    let err = withdraw(-1).expect_err("negative balance must fail");
+    assert_eq!(err, LedgerError::InsufficientFunds("account 99".to_string()));
+}
+"#;
+    let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/ledger.rs")], &index);
+    let error_seam = seams
+        .iter()
+        .find(|seam| {
+            seam.kind() == SeamKind::ErrorVariant && seam.expression().contains("InsufficientFunds")
+        })
+        .ok_or_else(|| "expected InsufficientFunds error_variant seam".to_string())?;
+
+    let evidence = evidence_for_seam(error_seam, &index);
+    if evidence.discriminate.state == StageState::Yes {
+        return Err(format!(
+            "wrong-payload tuple-variant assertion must not be discriminating credit, summary: {}",
             evidence.discriminate.summary
         ));
     }
@@ -1883,8 +2801,10 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
         calls: Vec::new(),
         returns: Vec::new(),
         literals: Vec::new(),
-        is_test: false,
+        source_role: FunctionSourceRole::Production,
         attrs: Vec::new(),
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
     };
     let test = TestSummary {
         name: "discounted_total_helper".to_string(),
@@ -1896,6 +2816,8 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
         assertions: Vec::new(),
         literals: Vec::new(),
         attrs: Vec::new(),
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
     };
     let mut index = RustIndex::default();
     index.files.insert(
@@ -1909,6 +2831,8 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
             literals: Vec::new(),
             probe_shapes: Vec::new(),
             used_lexical_fallback: false,
+            module_declarations: Vec::new(),
+            role_provenance: Default::default(),
             source: "fn discounted_total_helper() {}".to_string(),
         },
     );
@@ -3625,6 +4549,236 @@ fn aliased_wrapper_observes_pipeline_call_target() {
 }
 
 #[test]
+fn given_call_presence_when_a_module_alias_is_ambiguous_then_no_relation_is_credited()
+-> Result<(), String> {
+    let pipeline = PathBuf::from("src/pipeline.rs");
+    let pipeline_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+pub fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+    let report = PathBuf::from("src/report.rs");
+    let report_src = r#"
+pub fn render_report(input: &str) -> String {
+    format_report(input)
+}
+
+pub fn exercise_pipeline() -> String {
+    render_report("beta")
+}
+
+fn format_report(input: &str) -> String {
+    input.to_string()
+}
+"#;
+    // #3487 review: same-scope ambiguity was pinned at the resolver only. Two
+    // `#[cfg]`-gated file-scope imports bind one alias to different owners —
+    // the compiling case — and no static reading can choose between them.
+    let ambiguous = PathBuf::from("tests/ambiguous_tests.rs");
+    let ambiguous_src = r#"
+#[cfg(unix)]
+use crate::pipeline as pipe;
+#[cfg(windows)]
+use crate::report as pipe;
+
+#[test]
+fn ambiguous_alias_must_not_credit_an_owner() {
+    let format_output = pipe::exercise_pipeline();
+    assert_eq!(format_output, "alpha");
+}
+"#;
+    // Positive control in the same index: without it, an absent relation could
+    // mean the fixture never reached the production path at all.
+    let unique = PathBuf::from("tests/unique_tests.rs");
+    let unique_src = r#"
+use crate::pipeline as clear;
+
+#[test]
+fn unique_alias_is_credited() {
+    let format_output = clear::exercise_pipeline();
+    assert_eq!(format_output, "alpha");
+}
+"#;
+    let index = index_from_files(&[
+        (pipeline, pipeline_src),
+        (report, report_src),
+        (ambiguous, ambiguous_src),
+        (unique, unique_src),
+    ])?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+    let call_presence = seams
+        .iter()
+        .find(|s| {
+            s.kind() == SeamKind::CallPresence
+                && s.owner().ends_with("::render_pipeline")
+                && s.expression().contains("format_output")
+        })
+        .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+
+    let evidence = evidence_for_seam(call_presence, &index);
+    let credited = evidence
+        .related_tests
+        .iter()
+        .filter(|test| test.relation_reason == RelationReason::HelperOwnerCall)
+        .map(|test| test.test_name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        credited,
+        vec!["unique_alias_is_credited"],
+        "an ambiguous same-scope alias must not credit an owner, while a unique \
+         alias in the same index still does: {:?}",
+        evidence.related_tests
+    );
+    Ok(())
+}
+
+#[test]
+fn given_call_presence_when_nested_test_module_rebinds_a_module_alias_then_each_relation_keeps_its_own_target()
+-> Result<(), String> {
+    let pipeline = PathBuf::from("src/pipeline.rs");
+    let pipeline_src = r#"
+pub fn render_pipeline(input: &str) -> String {
+    format_output(input)
+}
+
+pub fn exercise_pipeline() -> String {
+    render_pipeline("alpha")
+}
+
+fn format_output(input: &str) -> String {
+    input.to_string()
+}
+"#;
+    let report = PathBuf::from("src/report.rs");
+    let report_src = r#"
+pub fn render_report(input: &str) -> String {
+    format_report(input)
+}
+
+pub fn exercise_pipeline() -> String {
+    render_report("beta")
+}
+
+fn format_report(input: &str) -> String {
+    input.to_string()
+}
+"#;
+    let tests = PathBuf::from("tests/contract_tests.rs");
+    // #3413: the outer alias binds `pipe` to `report`; the nested test module
+    // rebinds the same alias to `pipeline`. Neither binding may overwrite the
+    // other, and neither test may be credited against the other's target.
+    let tests_src = r#"
+use crate::report as pipe;
+
+#[test]
+fn outer_module_test_observes_report_target() {
+    let format_report = pipe::exercise_pipeline();
+    assert_eq!(format_report, "beta");
+}
+
+mod nested {
+    use crate::pipeline as pipe;
+
+    #[test]
+    fn nested_module_test_observes_pipeline_target() {
+        let format_output = pipe::exercise_pipeline();
+        assert_eq!(format_output, "alpha");
+    }
+}
+"#;
+    let index = index_from_files(&[
+        (pipeline, pipeline_src),
+        (report, report_src),
+        (tests.clone(), tests_src),
+    ])?;
+
+    let pipeline_seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+    let pipeline_call_presence = pipeline_seams
+        .iter()
+        .find(|s| {
+            s.kind() == SeamKind::CallPresence
+                && s.owner().ends_with("::render_pipeline")
+                && s.expression().contains("format_output")
+        })
+        .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+    let pipeline_evidence = evidence_for_seam(pipeline_call_presence, &index);
+    let pipeline_related = pipeline_evidence
+        .related_tests
+        .iter()
+        .filter(|test| test.relation_reason == RelationReason::HelperOwnerCall)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        pipeline_related
+            .iter()
+            .map(|test| test.test_name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["nested_module_test_observes_pipeline_target"],
+        "only the nested rebinding may reach the pipeline owner: {:?}",
+        pipeline_evidence.related_tests
+    );
+    let nested_related = pipeline_related
+        .first()
+        .ok_or_else(|| "expected nested pipeline helper owner-call relation".to_string())?;
+    assert_eq!(nested_related.file, tests);
+    let nested_target = nested_related
+        .test_target
+        .as_ref()
+        .ok_or_else(|| "nested pipeline relation lost its indexed test target".to_string())?;
+    let nested_function = index
+        .tests
+        .iter()
+        .find(|test| test.name == "nested_module_test_observes_pipeline_target")
+        .ok_or_else(|| "nested test must be indexed".to_string())?;
+    // Bind the claimed producer-owned symbol identity, not only a
+    // reconstructable path/name/line tuple.
+    assert_eq!(
+        nested_target.symbol_id().to_string(),
+        "tests/contract_tests.rs::nested::nested_module_test_observes_pipeline_target",
+        "the indexed identity must retain the nested module path"
+    );
+    assert_eq!(nested_target.line(), nested_function.start_line);
+    assert_eq!(nested_target.file(), nested_function.file);
+    assert_eq!(
+        pipeline_call_presence.owner(),
+        "src/pipeline.rs::render_pipeline",
+        "the credited relation must belong to the pipeline owner seam"
+    );
+    assert_eq!(pipeline_evidence.activate.state, StageState::Yes);
+
+    let report_seams = inventory_seams_from_index(&[PathBuf::from("src/report.rs")], &index);
+    let report_call_presence = report_seams
+        .iter()
+        .find(|s| {
+            s.kind() == SeamKind::CallPresence
+                && s.owner().ends_with("::render_report")
+                && s.expression().contains("format_report")
+        })
+        .ok_or_else(|| "expected render_report call_presence seam".to_string())?;
+    let report_evidence = evidence_for_seam(report_call_presence, &index);
+    assert_eq!(
+        report_evidence
+            .related_tests
+            .iter()
+            .filter(|test| test.relation_reason == RelationReason::HelperOwnerCall)
+            .map(|test| test.test_name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["outer_module_test_observes_report_target"],
+        "the outer alias must stay bound to the report owner: {:?}",
+        report_evidence.related_tests
+    );
+    assert_eq!(report_evidence.activate.state, StageState::Yes);
+    Ok(())
+}
+
+#[test]
 fn given_call_presence_when_bare_aliased_module_wrapper_has_target_affinity_then_activation_stays_unknown()
 -> Result<(), String> {
     let pipeline = PathBuf::from("src/pipeline.rs");
@@ -4946,7 +6100,7 @@ fn given_call_presence_when_aliased_direct_imported_support_helper_calls_owner_t
 -> Result<(), String> {
     let pipeline = PathBuf::from("src/pipeline.rs");
     let pipeline_src = r#"
-pub fn render_pipeline(input: &str) -> String {
+pub fn calculate(input: &str) -> String {
     format_output(input)
 }
 
@@ -4956,7 +6110,7 @@ fn format_output(input: &str) -> String {
 "#;
     let report = PathBuf::from("src/report.rs");
     let report_src = r#"
-pub fn render_report(input: &str) -> String {
+pub fn summarize(input: &str) -> String {
     format_report(input)
 }
 
@@ -4966,63 +6120,317 @@ fn format_report(input: &str) -> String {
 "#;
     let support_a = PathBuf::from("tests/support_a.rs");
     let support_a_src = r#"
-use pipeline::render_pipeline;
+pub fn exercise_support() -> String {
+    run("alpha")
+}
 
-pub fn exercise_pipeline() -> String {
-    render_pipeline("alpha")
+use crate::pipeline::calculate as run;
+
+#[cfg(test)]
+mod nested_shadow {
+use crate::report::summarize as run;
+
+    pub fn nested_exercise() -> String {
+        run("beta")
+    }
+}
+
+pub fn exercise_after() -> String {
+    run("gamma")
 }
 "#;
     let support_b = PathBuf::from("tests/support_b.rs");
     let support_b_src = r#"
-use report::render_report;
+use report::summarize;
 
-pub fn exercise_pipeline() -> String {
-    render_report("beta")
+pub fn exercise() -> String {
+    summarize("beta")
 }
 "#;
     let tests = PathBuf::from("tests/pipeline_tests.rs");
     let tests_src = r#"
-use support_a::exercise_pipeline as exercise;
+use support_a::{
+    exercise_support as exercise,
+    exercise_after as after,
+};
 
 #[test]
 fn aliased_direct_imported_support_helper_reaches_pipeline() {
     let rendered = exercise();
     assert_eq!(rendered, "alpha");
+    assert_eq!(support_a::exercise_support(), "alpha");
+    assert_eq!(after(), "gamma");
+    assert_eq!(support_a::nested_shadow::nested_exercise(), "beta");
 }
 "#;
+    let scoped_aliases = direct_function_import_aliases(support_a_src);
+    let run = scoped_aliases
+        .get("run")
+        .ok_or_else(|| "support alias run should be indexed".to_string())?;
+    let binding_for = |needle: &str| -> Result<(&str, &str), String> {
+        let line = support_a_src
+            .lines()
+            .position(|line| line.contains(needle))
+            .map(|line| line + 1)
+            .ok_or_else(|| format!("missing support call {needle}"))?;
+        let binding = run
+            .binding_at(line)
+            .ok_or_else(|| format!("unresolved support alias at {needle}"))?;
+        Ok((binding.module_path.as_str(), binding.name.as_str()))
+    };
+    assert_eq!(binding_for("run(\"alpha\")")?, ("pipeline", "calculate"));
+    assert_eq!(binding_for("run(\"beta\")")?, ("report", "summarize"));
+    assert_eq!(binding_for("run(\"gamma\")")?, ("pipeline", "calculate"));
     let index = index_from_files(&[
         (pipeline, pipeline_src),
         (report, report_src),
-        (support_a, support_a_src),
+        (support_a.clone(), support_a_src),
         (support_b, support_b_src),
         (tests, tests_src),
     ])?;
+    for (helper, argument) in [
+        ("exercise_support", "alpha"),
+        ("nested_exercise", "beta"),
+        ("exercise_after", "gamma"),
+    ] {
+        let function = index
+            .functions
+            .iter()
+            .find(|function| {
+                function.name == helper
+                    && function.file.as_path() == Path::new("tests/support_a.rs")
+            })
+            .ok_or_else(|| format!("missing helper identity {helper}"))?;
+        assert!(
+            function
+                .calls
+                .iter()
+                .any(|call| call.name == "run" && call.text.contains(argument)),
+            "helper {helper} must retain its direct aliased call to {argument}"
+        );
+    }
+    let aliases_by_file = direct_function_import_aliases_by_file(&index);
+    let owner_names_by_module_path = production_owner_names_by_module_path(&index);
+    let owner_names = owner_names_by_module_path
+        .values()
+        .flat_map(|names| names.iter().cloned())
+        .collect::<std::collections::BTreeSet<_>>();
+    let unambiguous_owner_names = unambiguous_production_owner_names_by_package(&index)
+        .values()
+        .flat_map(|names| names.iter().cloned())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(unambiguous_owner_names.contains("calculate"));
+    assert!(unambiguous_owner_names.contains("summarize"));
+    assert!(
+        owner_names_by_module_path
+            .get("pipeline")
+            .is_some_and(|names| names.contains("calculate"))
+            && owner_names_by_module_path
+                .get("report")
+                .is_some_and(|names| names.contains("summarize")),
+        "pipeline/report fixture must expose distinct indexed owners"
+    );
+    assert_ne!(
+        owner_names_by_module_path.get("pipeline"),
+        owner_names_by_module_path.get("report")
+    );
+    for (helper, expected_owner, expected_module) in [
+        ("exercise_support", "calculate", "pipeline"),
+        ("nested_exercise", "summarize", "report"),
+        ("exercise_after", "calculate", "pipeline"),
+    ] {
+        let function = index
+            .functions
+            .iter()
+            .find(|function| {
+                function.name == helper
+                    && function.file.as_path() == Path::new("tests/support_a.rs")
+            })
+            .ok_or_else(|| format!("missing helper identity {helper}"))?;
+        let owners = direct_imported_owner_calls_for_function(
+            function,
+            aliases_by_file.get(&support_a),
+            Some(&owner_names),
+            &owner_names_by_module_path,
+        );
+        assert_eq!(
+            owners,
+            std::collections::BTreeSet::from([expected_owner.to_string()]),
+            "helper {helper} must resolve exactly to {expected_owner}"
+        );
+        let call = function
+            .calls
+            .iter()
+            .find(|call| call.name == "run")
+            .ok_or_else(|| format!("missing aliased call for {helper}"))?;
+        let binding = aliases_by_file
+            .get(&support_a)
+            .and_then(|aliases| aliases.get("run"))
+            .and_then(|alias| alias.binding_at(call.line))
+            .ok_or_else(|| format!("missing binding for {helper}"))?;
+        assert_eq!(
+            binding.module_path, expected_module,
+            "helper {helper} must resolve through the expected owner module"
+        );
+    }
     let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
     let call_presence = seams
         .iter()
         .find(|s| {
             s.kind() == SeamKind::CallPresence
-                && s.owner().ends_with("::render_pipeline")
+                && s.owner().ends_with("::calculate")
                 && s.expression().contains("format_output")
         })
-        .ok_or_else(|| "expected render_pipeline call_presence seam".to_string())?;
+        .ok_or_else(|| "expected calculate call_presence seam".to_string())?;
 
     let evidence = evidence_for_seam(call_presence, &index);
 
     assert_eq!(evidence.reach.state, StageState::Yes);
     assert_eq!(evidence.activate.state, StageState::Yes);
-    assert!(
-        evidence
-            .related_tests
-            .iter()
-            .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
-        "expected aliased direct imported support helper owner-call relation, got {:?}",
-        evidence.related_tests
+    let pipeline_related = evidence
+        .related_tests
+        .iter()
+        .find(|test| test.relation_reason == RelationReason::HelperOwnerCall)
+        .ok_or_else(|| "expected pipeline helper owner-call relation".to_string())?;
+    assert_eq!(
+        pipeline_related.test_name,
+        "aliased_direct_imported_support_helper_reaches_pipeline"
     );
+    assert_eq!(
+        pipeline_related.file,
+        PathBuf::from("tests/pipeline_tests.rs")
+    );
+    assert!(
+        pipeline_related.test_target.is_some(),
+        "pipeline helper relation must retain exact indexed test identity"
+    );
+    let pipeline_target = pipeline_related.test_target.as_ref().ok_or_else(|| {
+        "pipeline helper relation lost its indexed test target after presence check".to_string()
+    })?;
+    let pipeline_function = index
+        .functions
+        .iter()
+        .find(|function| {
+            function.source_role.is_evidence_role()
+                && function.name == pipeline_related.test_name
+                && function.file == pipeline_related.file
+        })
+        .ok_or_else(|| "missing indexed pipeline test target".to_string())?;
+    assert_eq!(
+        pipeline_target.symbol_id().0,
+        pipeline_function.id.0,
+        "pipeline evidence must retain the exact indexed test symbol"
+    );
+    assert_eq!(pipeline_target.file(), pipeline_function.file.as_path());
+    assert_eq!(pipeline_target.line(), pipeline_function.start_line);
     assert!(
         evidence.observed_values.is_empty(),
         "aliased direct imported support helper activation must not invent values: {:?}",
         evidence.observed_values
+    );
+
+    let report_seams = inventory_seams_from_index(&[PathBuf::from("src/report.rs")], &index);
+    let report_call_presence = report_seams
+        .iter()
+        .find(|s| {
+            s.kind() == SeamKind::CallPresence
+                && s.owner().ends_with("::summarize")
+                && s.expression().contains("format_report")
+        })
+        .ok_or_else(|| "expected report summarize call_presence seam".to_string())?;
+    let report_evidence = evidence_for_seam(report_call_presence, &index);
+    let report_related = report_evidence
+        .related_tests
+        .iter()
+        .find(|test| test.relation_reason == RelationReason::HelperOwnerCall)
+        .ok_or_else(|| "expected report helper owner-call relation".to_string())?;
+    assert_eq!(
+        report_related.test_name,
+        "aliased_direct_imported_support_helper_reaches_pipeline"
+    );
+    assert_eq!(
+        report_related.file,
+        PathBuf::from("tests/pipeline_tests.rs")
+    );
+    assert!(
+        report_related.test_target.is_some(),
+        "report helper relation must retain exact indexed test identity"
+    );
+    let report_target = report_related.test_target.as_ref().ok_or_else(|| {
+        "report helper relation lost its indexed test target after presence check".to_string()
+    })?;
+    let report_function = index
+        .functions
+        .iter()
+        .find(|function| {
+            function.source_role.is_evidence_role()
+                && function.name == report_related.test_name
+                && function.file == report_related.file
+        })
+        .ok_or_else(|| "missing indexed report test target".to_string())?;
+    assert_eq!(
+        report_target.symbol_id().0,
+        report_function.id.0,
+        "report evidence must retain the exact indexed test symbol"
+    );
+    assert_eq!(report_target.file(), report_function.file.as_path());
+    assert_eq!(report_target.line(), report_function.start_line);
+    Ok(())
+}
+
+#[test]
+fn same_name_production_owner_is_excluded_from_unambiguous_candidates() -> Result<(), String> {
+    let index = index_from_files(&[
+        (
+            PathBuf::from("src/one.rs"),
+            "pub fn calculate(input: &str) -> String { input.to_string() }",
+        ),
+        (
+            PathBuf::from("src/two.rs"),
+            "pub fn calculate(input: &str) -> String { input.to_string() }",
+        ),
+    ])?;
+    let unambiguous = unambiguous_production_owner_names_by_package(&index);
+    assert!(
+        !unambiguous
+            .values()
+            .any(|names| names.contains("calculate"))
+    );
+    Ok(())
+}
+
+#[test]
+fn wrong_binding_mutation_is_exposed_by_full_production_evidence_path() -> Result<(), String> {
+    let index = index_from_files(&[
+        (
+            PathBuf::from("src/pipeline.rs"),
+            "pub fn calculate(input: &str) -> String { input.to_string() }",
+        ),
+        (
+            PathBuf::from("src/report.rs"),
+            "pub fn summarize(input: &str) -> String { input.to_string() }",
+        ),
+        (
+            PathBuf::from("tests/support_a.rs"),
+            "pub fn exercise() -> String { run(\"mutated\") }\nuse crate::report::summarize as run;",
+        ),
+        (
+            PathBuf::from("tests/pipeline_tests.rs"),
+            "use support_a::exercise;\n#[test] fn mutated_binding_is_not_pipeline_evidence() { assert_eq!(exercise(), \"mutated\"); }",
+        ),
+    ])?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/pipeline.rs")], &index);
+    let seam = seams
+        .iter()
+        .find(|seam| seam.kind() == SeamKind::CallPresence && seam.expression().contains("input"))
+        .ok_or_else(|| "missing mutated pipeline call seam".to_string())?;
+    let evidence = evidence_for_seam(seam, &index);
+    assert_ne!(evidence.activate.state, StageState::Yes);
+    assert!(
+        !evidence
+            .related_tests
+            .iter()
+            .any(|test| test.relation_reason == RelationReason::HelperOwnerCall)
     );
     Ok(())
 }
@@ -5215,7 +6623,7 @@ fn sibling_without_import_mentions_pipeline() {
     let index = index_from_files(&[
         (pipeline, pipeline_src),
         (report, report_src),
-        (support_a, support_a_src),
+        (support_a.clone(), support_a_src),
         (support_b, support_b_src),
         (tests, tests_src),
     ])?;
@@ -5298,7 +6706,7 @@ fn qualified_support_helper_reaches_pipeline() {
     let index = index_from_files(&[
         (pipeline, pipeline_src),
         (report, report_src),
-        (support_a, support_a_src),
+        (support_a.clone(), support_a_src),
         (support_b, support_b_src),
         (tests, tests_src),
     ])?;
@@ -5382,7 +6790,7 @@ fn qualified_support_helper_reaches_report() {
     let index = index_from_files(&[
         (pipeline, pipeline_src),
         (report, report_src),
-        (support_a, support_a_src),
+        (support_a.clone(), support_a_src),
         (support_b, support_b_src),
         (tests, tests_src),
     ])?;
@@ -5464,7 +6872,7 @@ fn crate_qualified_support_helper_reaches_pipeline() {
     let index = index_from_files(&[
         (pipeline, pipeline_src),
         (report, report_src),
-        (support_a, support_a_src),
+        (support_a.clone(), support_a_src),
         (support_b, support_b_src),
         (tests, tests_src),
     ])?;
@@ -5550,7 +6958,7 @@ mod nested {
     let index = index_from_files(&[
         (pipeline, pipeline_src),
         (report, report_src),
-        (support_a, support_a_src),
+        (support_a.clone(), support_a_src),
         (support_b, support_b_src),
         (tests, tests_src),
     ])?;
@@ -8184,7 +9592,7 @@ fn format_output(input: &str) -> String {
     input.to_string()
 }
 
-#[cfg(test)]
+#[cfg(all(feature = "slow", test))]
 mod tests {
     fn exercise_pipeline() -> String {
         "shadow".to_string()
@@ -8900,6 +10308,99 @@ fn given_same_module_test_without_direct_call_when_related_tests_are_ranked_then
     Ok(())
 }
 
+#[test]
+fn given_foreign_separator_paths_when_grip_associates_then_same_test_file_still_matches()
+-> Result<(), String> {
+    // #3469: a path carrying the other platform's separator (facts
+    // materialized on Windows, analyzed on Linux, or vice versa) broke
+    // the SameTestFile relation in two stacked places: the owner lookup
+    // compared the seam's `/`-normalized file identity against raw
+    // host-separator index keys (`Path` component equality only
+    // absorbs this on `\`-native hosts), and both association stems
+    // were derived with the host-native `Path::file_stem`. Every
+    // separator combination must associate; the test body stays free
+    // of owner/discriminator identifiers so SameTestFile is the only
+    // reason that can fire.
+    let prod_src = "pub fn apply_discount(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+    let test_src = "#[test] fn bounds_smoke() { assert_eq!(1, 1); }\n";
+    let combinations = [
+        ("src/pricing.rs", "tests/pricing_test.rs"),
+        ("src\\pricing.rs", "tests\\pricing_test.rs"),
+        ("src/pricing.rs", "tests\\pricing_test.rs"),
+        ("src\\pricing.rs", "tests/pricing_test.rs"),
+    ];
+    for (owner_path, test_path) in combinations {
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from(owner_path), prod_src),
+            (PathBuf::from(test_path), test_src),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from(owner_path)], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        let context = CompactGripContext::new(&index);
+        let owner_fn = crate::analysis::rust_index::find_owner_function(
+            &index,
+            predicate.file(),
+            predicate.display_line(),
+        );
+        let ctx_tests: Vec<String> = context
+            .tests
+            .iter()
+            .map(|t| t.test.file.to_string_lossy().to_string())
+            .collect();
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|grip| grip.relation_reason == RelationReason::SameTestFile),
+            "same-test-file association must hold for owner `{owner_path}` / test \
+             `{test_path}`; got {:?} | diag: index_files={:?} index_tests={} \
+             ctx_tests={ctx_tests:?} stem_keys={:?} seam_file={:?} seam_line={} \
+             owner={owner_fn:?} owner_stem_norm={:?} owner_stem_native={:?} \
+             test_stem_norm={:?} test_stem_native={:?}",
+            evidence.related_tests,
+            index.files.keys().collect::<Vec<_>>(),
+            index.tests.len(),
+            context.tests_by_file_stem.keys().collect::<Vec<_>>(),
+            predicate.file(),
+            predicate.display_line(),
+            normalized_file_stem_to_string(Path::new(owner_path)),
+            Path::new(owner_path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string()),
+            normalized_file_stem_to_string(Path::new(test_path)),
+            Path::new(test_path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string()),
+        );
+    }
+    Ok(())
+}
+
+fn normalized_file_stem_to_string(path: &Path) -> String {
+    super::related_tests::normalized_file_stem(path)
+}
+
+#[test]
+#[cfg(unix)]
+fn given_non_utf8_stems_when_grip_associates_then_lossy_collision_fails_closed() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+    // Two distinct non-UTF-8 names can share one lossy rendering;
+    // deriving stems through lossy conversion would fabricate a
+    // same-test-file relation between unrelated entities, so stem
+    // extraction must fail closed instead.
+    let first = Path::new(OsStr::from_bytes(b"tests/pricing_\xff.rs"));
+    let second = Path::new(OsStr::from_bytes(b"tests/pricing_\xfe.rs"));
+    assert_eq!(normalized_file_stem(first), "");
+    assert_eq!(normalized_file_stem(second), "");
+}
+
 // -- helper coverage ---------------------------------------------
 //
 // Targeted unit tests for the small private helpers introduced by
@@ -9295,6 +10796,8 @@ fn assertion_targets_seam_returns_false_for_empty_token_list() {
         assertions: Vec::new(),
         literals: Vec::new(),
         attrs: Vec::new(),
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
     };
     assert!(!assertion_targets_seam(&test, &[]));
 }
@@ -9992,8 +11495,10 @@ fn closure_boundary_operand_route_ignores_comment_only_closure_pattern() {
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
-            is_test: false,
+            source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
 
     assert!(!boundary_operand_is_closure_derived(&owner, "amount"));
@@ -11042,8 +12547,10 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 calls: Vec::new(),
                 returns: Vec::new(),
                 literals: Vec::new(),
-                is_test: false,
+                source_role: FunctionSourceRole::Production,
                 attrs: Vec::new(),
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
             }, FunctionSummary {
                 id: crate::domain::SymbolId("src/pricing.rs::case_at_threshold".to_string()),
                 name: "case_at_threshold".to_string(),
@@ -11058,8 +12565,10 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 }],
                 returns: Vec::new(),
                 literals: Vec::new(),
-                is_test: false,
+                source_role: FunctionSourceRole::Production,
                 attrs: Vec::new(),
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
             }],
             tests: vec![TestSummary {
                 name: "unit_test_uses_same_file_helper".to_string(),
@@ -11078,9 +12587,12 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                     strength: OracleStrength::Strong,
                     text: "assert_eq!(case_at_threshold(), 90)".to_string(),
                     observed_tokens: Vec::new(),
+                    ok_value_observed: None,
                 }],
                 literals: Vec::new(),
                 attrs: Vec::new(),
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
             }],
             ..RustIndex::default()
         };
@@ -11104,16 +12616,25 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
 }
 
 // RIPR-SPEC-0103 fixture 5: parity table for oracle_kind_matches_seam_kind.
-// ErrorVariant accepts ONLY ExactErrorVariant; rejects all value/mock oracles.
-// Value seams accept ExactValue/WholeObjectEquality/Snapshot/RelationalCheck.
+// ErrorVariant accepts ExactErrorVariant and, since #3731, GuardedResultMatch
+// (whose exact-variant comparison happens in oracle_discriminates_seam);
+// it rejects all value/mock oracles.
+// Value seams accept ExactValue/WholeObjectEquality/Snapshot/RelationalCheck
+// (and, since #3731, ReturnValue also accepts GuardedResultMatch).
 // SideEffect/CallPresence accept ONLY MockExpectation.
 #[test]
-fn oracle_kind_matches_seam_kind_error_variant_accepts_only_exact_error_variant() {
+fn oracle_kind_matches_seam_kind_error_variant_accepts_exact_and_guarded_result() {
     use crate::domain::OracleKind;
     // ErrorVariant + ExactErrorVariant → true
     assert!(
         oracle_kind_matches_seam_kind(SeamKind::ErrorVariant, &OracleKind::ExactErrorVariant),
         "ErrorVariant must accept ExactErrorVariant"
+    );
+    // #3731: ErrorVariant + GuardedResultMatch → true (discrimination is
+    // variant-gated in oracle_discriminates_seam)
+    assert!(
+        oracle_kind_matches_seam_kind(SeamKind::ErrorVariant, &OracleKind::GuardedResultMatch),
+        "ErrorVariant must accept GuardedResultMatch"
     );
     // ErrorVariant rejects all other kinds
     for rejected in [
@@ -11130,6 +12651,317 @@ fn oracle_kind_matches_seam_kind_error_variant_accepts_only_exact_error_variant(
             "ErrorVariant must reject {rejected:?}"
         );
     }
+}
+
+// #3731: a guarded Result match kind-matches return-value and error seams.
+#[test]
+fn oracle_kind_matches_seam_kind_guarded_result_matches_result_defined_seams() {
+    use crate::domain::OracleKind;
+    assert!(
+        oracle_kind_matches_seam_kind(SeamKind::ReturnValue, &OracleKind::GuardedResultMatch),
+        "ReturnValue must accept GuardedResultMatch"
+    );
+    assert!(
+        oracle_kind_matches_seam_kind(SeamKind::ErrorVariant, &OracleKind::GuardedResultMatch),
+        "ErrorVariant must accept GuardedResultMatch"
+    );
+    for other_seam in [
+        SeamKind::PredicateBoundary,
+        SeamKind::MatchArm,
+        SeamKind::FieldConstruction,
+        SeamKind::SideEffect,
+        SeamKind::CallPresence,
+    ] {
+        assert!(
+            !oracle_kind_matches_seam_kind(other_seam, &OracleKind::GuardedResultMatch),
+            "{other_seam:?} must reject GuardedResultMatch"
+        );
+    }
+}
+
+// #3731: guarded-match discrimination on repo seams — the exact pin credits,
+// a sibling or type-only pin does not, and a return-value seam without an
+// Err-construction change credits through the kind match.
+#[test]
+fn guarded_result_match_discrimination_follows_the_exact_variant() -> Result<(), String> {
+    use crate::analysis::facts::OracleFact;
+    use crate::analysis::seams::RequiredDiscriminator;
+    use crate::domain::OracleStrength;
+
+    fn guarded_oracle(text: &str, strength: OracleStrength) -> OracleFact {
+        OracleFact {
+            line: 3,
+            text: text.to_string(),
+            kind: OracleKind::GuardedResultMatch,
+            strength,
+            observed_tokens: crate::analysis::rust_index::extract_identifier_tokens(text),
+            ok_value_observed: Some(true),
+        }
+    }
+
+    fn error_seam_with(variant: &str, expression: &str) -> RepoSeam {
+        RepoSeam::new(
+            std::path::PathBuf::from("src/lib.rs"),
+            "src/lib.rs::parse",
+            SeamKind::ErrorVariant,
+            7,
+            14,
+            expression.to_string(),
+            RequiredDiscriminator::ErrorVariant {
+                variant: variant.to_string(),
+            },
+            ExpectedSink::ErrorChannel,
+        )
+    }
+
+    // Matching pin credits discrimination.
+    let seam = error_seam_with(
+        "ParseError::InvalidData",
+        "return Err(ParseError::InvalidData);",
+    );
+    let matching = guarded_oracle(
+        "match parse(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }",
+        OracleStrength::Strong,
+    );
+    assert!(
+        oracle_discriminates_seam(&seam, &matching),
+        "the exact-variant guarded pin must discriminate: {}",
+        matching.text
+    );
+    // Sibling pin does not.
+    let sibling = guarded_oracle(
+        "match parse(..) { Ok(..) => .., Err(..) => ParseError::UnexpectedEof }",
+        OracleStrength::Strong,
+    );
+    assert!(
+        !oracle_discriminates_seam(&seam, &sibling),
+        "a sibling-variant guarded pin must not discriminate: {}",
+        sibling.text
+    );
+    // Type-only (medium) pin does not.
+    let type_only = guarded_oracle(
+        "match parse(..) { Ok(..) => .., Err(..) => .downcast_ref::<ParseError> }",
+        OracleStrength::Medium,
+    );
+    assert!(
+        !oracle_discriminates_seam(&seam, &type_only),
+        "a type-only guarded pin must not discriminate an exact-variant seam: {}",
+        type_only.text
+    );
+    // Routing form with the exact pin credits.
+    let routing = guarded_oracle(
+        "match parse(..) { Err(..) => ParseError::InvalidData, _ => .. }",
+        OracleStrength::Strong,
+    );
+    assert!(
+        oracle_discriminates_seam(&seam, &routing),
+        "the routing form's exact pin must discriminate: {}",
+        routing.text
+    );
+    Ok(())
+}
+
+#[test]
+fn guarded_result_match_on_return_value_seam_compares_the_changed_variant() -> Result<(), String> {
+    use crate::analysis::facts::OracleFact;
+    use crate::domain::OracleStrength;
+
+    fn guarded_oracle(text: &str) -> OracleFact {
+        OracleFact {
+            line: 3,
+            text: text.to_string(),
+            kind: OracleKind::GuardedResultMatch,
+            strength: OracleStrength::Strong,
+            observed_tokens: crate::analysis::rust_index::extract_identifier_tokens(text),
+            ok_value_observed: Some(true),
+        }
+    }
+
+    fn return_seam(expression: &str) -> RepoSeam {
+        RepoSeam::new(
+            std::path::PathBuf::from("src/lib.rs"),
+            "src/lib.rs::parse",
+            SeamKind::ReturnValue,
+            7,
+            14,
+            expression.to_string(),
+            RequiredDiscriminator::ReturnValue {
+                description: expression.to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        )
+    }
+
+    // A return-value seam whose changed expression constructs an exact
+    // variant: the guarded pin must name it exactly.
+    let variant_seam = return_seam("return Err(ParseError::InvalidData);");
+    assert!(oracle_discriminates_seam(
+        &variant_seam,
+        &guarded_oracle("match parse(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }")
+    ));
+    assert!(
+        !oracle_discriminates_seam(
+            &variant_seam,
+            &guarded_oracle(
+                "match parse(..) { Ok(..) => .., Err(..) => ParseError::UnexpectedEof }"
+            )
+        ),
+        "a sibling-variant guard must not discriminate the changed variant"
+    );
+    // Without an Err-construction change, the kind match is the
+    // discriminator (same rule as the reveal-side `is_none_or` gate).
+    let plain_seam = return_seam("value + 1");
+    assert!(oracle_discriminates_seam(
+        &plain_seam,
+        &guarded_oracle("match parse(..) { Ok(..) => .., Err(..) => ParseError::UnexpectedEof }")
+    ));
+    Ok(())
+}
+
+// RIPR-SPEC-0175 observation authority: a return-value seam whose changed
+// value is the SUCCESS payload is discriminated only when the guarded
+// oracle reports an observing Ok arm — the routing form (no Ok arm) and a
+// payload-ignoring `Ok(_) => ..` arm never observe a changed Ok value, so
+// they stop discriminating (fail closed, under-credit). Error-side
+// comparisons (an ErrorVariant seam, and a ReturnValue seam on an exact Err
+// construction) are unchanged.
+#[test]
+fn guarded_result_match_on_success_payload_return_value_seam_requires_ok_observation()
+-> Result<(), String> {
+    use crate::analysis::facts::OracleFact;
+    use crate::domain::OracleStrength;
+
+    fn guarded_oracle(text: &str, ok_value_observed: Option<bool>) -> OracleFact {
+        OracleFact {
+            line: 3,
+            text: text.to_string(),
+            kind: OracleKind::GuardedResultMatch,
+            strength: OracleStrength::Strong,
+            observed_tokens: crate::analysis::rust_index::extract_identifier_tokens(text),
+            ok_value_observed,
+        }
+    }
+
+    fn return_seam(expression: &str) -> RepoSeam {
+        RepoSeam::new(
+            std::path::PathBuf::from("src/lib.rs"),
+            "src/lib.rs::parse",
+            SeamKind::ReturnValue,
+            7,
+            14,
+            expression.to_string(),
+            RequiredDiscriminator::ReturnValue {
+                description: expression.to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        )
+    }
+
+    let seam = return_seam("value + 1");
+    let routing_form = "match parse(..) { Err(..) => ParseError::InvalidData, _ => .. }";
+    let payload_ignoring = "match parse(..) { Ok(..) => .., Err(..) => ParseError::UnexpectedEof }";
+    assert!(
+        !oracle_discriminates_seam(&seam, &guarded_oracle(routing_form, Some(false))),
+        "a routing form never observes the changed success value"
+    );
+    assert!(
+        !oracle_discriminates_seam(&seam, &guarded_oracle(payload_ignoring, Some(false))),
+        "an Ok arm that ignores the payload never discriminates it"
+    );
+    assert!(
+        !oracle_discriminates_seam(&seam, &guarded_oracle(payload_ignoring, None)),
+        "a missing observation decision fails closed"
+    );
+    assert!(
+        oracle_discriminates_seam(&seam, &guarded_oracle(payload_ignoring, Some(true))),
+        "an observing Ok arm discriminates the success payload"
+    );
+    // The error side is unchanged: a ReturnValue seam on an exact Err
+    // construction keeps the pin comparison regardless of the Ok arm.
+    let err_seam = return_seam("return Err(ParseError::InvalidData);");
+    assert!(oracle_discriminates_seam(
+        &err_seam,
+        &guarded_oracle(routing_form, Some(false))
+    ));
+    Ok(())
+}
+
+// #3731 review round 4: repo discrimination requires CALLEE identity — a
+// guarded match whose scrutinee calls a different function observes someone
+// else's result, so it never discriminates the seam even when it pins the
+// exact same variant.
+#[test]
+fn wrong_callee_guarded_oracle_does_not_discriminate_the_seam() -> Result<(), String> {
+    use crate::analysis::facts::OracleFact;
+    use crate::analysis::seams::RequiredDiscriminator;
+    use crate::domain::OracleStrength;
+
+    fn guarded_oracle(text: &str) -> OracleFact {
+        OracleFact {
+            line: 3,
+            text: text.to_string(),
+            kind: OracleKind::GuardedResultMatch,
+            strength: OracleStrength::Strong,
+            observed_tokens: crate::analysis::rust_index::extract_identifier_tokens(text),
+            ok_value_observed: Some(true),
+        }
+    }
+
+    let seam = RepoSeam::new(
+        std::path::PathBuf::from("src/lib.rs"),
+        "src/lib.rs::expect_response",
+        SeamKind::ErrorVariant,
+        7,
+        14,
+        "return Err(ParseError::InvalidData);".to_string(),
+        RequiredDiscriminator::ErrorVariant {
+            variant: "ParseError::InvalidData".to_string(),
+        },
+        ExpectedSink::ErrorChannel,
+    );
+
+    // Wrong callee, exact same variant pin: no discrimination credit.
+    let wrong_callee = guarded_oracle(
+        "match other_callee(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }",
+    );
+    assert!(
+        !oracle_discriminates_seam(&seam, &wrong_callee),
+        "a guarded match over a different callee must not discriminate the seam: {}",
+        wrong_callee.text
+    );
+
+    // Positive control: the same pin over the seam's own callee credits.
+    let own_callee = guarded_oracle(
+        "match expect_response(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }",
+    );
+    assert!(
+        oracle_discriminates_seam(&seam, &own_callee),
+        "the seam's own callee with the exact pin must discriminate: {}",
+        own_callee.text
+    );
+
+    // A qualified scrutinee sharing the owner's terminal name does NOT
+    // bind the seam (F20): repo discrimination requires a BARE scrutinee,
+    // the same rule the reveal side applies — the terminal-segment match
+    // was the token-coincidence family.
+    let qualified = guarded_oracle(
+        "match helpers::expect_response(..) { Err(..) => ParseError::InvalidData, _ => .. }",
+    );
+    assert!(
+        !oracle_discriminates_seam(&seam, &qualified),
+        "a qualified scrutinee with a matching terminal name must not discriminate: {}",
+        qualified.text
+    );
+
+    // A text without a recognizable plain-path scrutinee fails closed.
+    let unrecognizable =
+        guarded_oracle("match { Ok(..) => .., Err(..) => ParseError::InvalidData }");
+    assert!(
+        !oracle_discriminates_seam(&seam, &unrecognizable),
+        "an unrecognizable scrutinee must not discriminate: {}",
+        unrecognizable.text
+    );
+    Ok(())
 }
 
 #[test]
@@ -11642,5 +13474,597 @@ fn lower_ast_has_unrelated_storage_local() {
             evidence.discriminate.state
         ));
     }
+    Ok(())
+}
+
+#[test]
+fn given_full_evidence_when_cfg_test_module_helper_calls_owner_then_relation_is_retained()
+-> Result<(), String> {
+    // #3286 regression shape: #3273 marks plain helpers inside inline
+    // `#[cfg(test)]` modules as evidence-role (now the typed
+    // `source_role`, #3531), and the helper-relation graph excluded every
+    // evidence-role function — silently dropping the
+    // #[test] -> cfg(test) helper -> owner evidence path. The helper must
+    // stay out of production subjects while still mediating evidence.
+    let source = PathBuf::from("src/labels.rs");
+    let source_src = r#"
+pub fn device_labels() -> Vec<&'static str> {
+  Vec::new()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn exercise_device_labels() -> Vec<&'static str> {
+    device_labels()
+  }
+
+  #[test]
+  fn helper_reaches_device_labels() {
+    let labels = exercise_device_labels();
+    assert!(labels.is_empty());
+  }
+}
+"#;
+    let index = index_from_files(&[(source, source_src)])?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/labels.rs")], &index);
+    let return_seam = seams
+        .iter()
+        .find(|s| {
+            s.kind() == SeamKind::ReturnValue
+                && s.owner().ends_with("::device_labels")
+                && s.expression().contains("Vec::new()")
+        })
+        .ok_or_else(|| "expected Vec::new return_value seam".to_string())?;
+
+    let evidence = evidence_for_seam(return_seam, &index);
+
+    assert_eq!(evidence.reach.state, StageState::Yes);
+    let helper_relation = evidence
+        .related_tests
+        .iter()
+        .find(|test| test.relation_reason == RelationReason::HelperOwnerCall)
+        .ok_or_else(|| {
+            format!(
+                "cfg(test)-module helper must keep mediating the helper owner-call relation: {:?}",
+                evidence.related_tests
+            )
+        })?;
+    assert_eq!(helper_relation.test_name, "helper_reaches_device_labels");
+    assert_eq!(helper_relation.oracle_kind, OracleKind::RelationalCheck);
+    assert_eq!(helper_relation.oracle_strength, OracleStrength::Weak);
+    assert!(
+        !index
+            .tests
+            .iter()
+            .any(|test| test.name == "exercise_device_labels"),
+        "a plain helper must not become an executable TestFact selector"
+    );
+    assert!(
+        index.functions.iter().any(|function| {
+            function.name == "exercise_device_labels"
+                && function.source_role == FunctionSourceRole::CfgTestModule
+        }),
+        "the helper keeps its #3273 evidence-role classification"
+    );
+    Ok(())
+}
+
+#[test]
+fn given_same_file_test_and_helper_names_the_exact_identity_key_distinguishes_them()
+-> Result<(), String> {
+    // #3286 collision control: a `#[test]` fn and a plain helper sharing
+    // (file, name) must not collapse — the plain helper stays admitted to
+    // the evidence graph on its own start_line identity, and the test
+    // stays excluded from helper admission.
+    let source = PathBuf::from("src/labels.rs");
+    let source_src = r#"
+pub fn device_labels() -> Vec<&'static str> {
+  Vec::new()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn exercise_device_labels() -> Vec<&'static str> {
+    device_labels()
+  }
+
+  #[test]
+  fn helper_reaches_device_labels() {
+    let labels = exercise_device_labels();
+    assert!(labels.is_empty());
+  }
+}
+
+#[cfg(test)]
+mod other {
+  use super::*;
+
+  #[test]
+  fn exercise_device_labels() {
+    let labels = super::device_labels();
+    assert!(labels.is_empty());
+  }
+}
+"#;
+    let index = index_from_files(&[(source, source_src)])?;
+    assert_eq!(
+        index
+            .tests
+            .iter()
+            .filter(|test| test.name == "exercise_device_labels")
+            .count(),
+        1,
+        "only the attribute-bearing fn is a TestFact"
+    );
+    assert_eq!(
+        index
+            .functions
+            .iter()
+            .filter(|function| function.name == "exercise_device_labels")
+            .count(),
+        2,
+        "both the plain helper and the test are indexed functions"
+    );
+
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/labels.rs")], &index);
+    let return_seam = seams
+        .iter()
+        .find(|s| s.kind() == SeamKind::ReturnValue && s.owner().ends_with("::device_labels"))
+        .ok_or_else(|| "expected return_value seam".to_string())?;
+    let evidence = evidence_for_seam(return_seam, &index);
+    assert!(
+        evidence
+            .related_tests
+            .iter()
+            .any(|test| test.relation_reason == RelationReason::HelperOwnerCall),
+        "the same-named plain helper keeps mediating evidence despite the test-name collision: {:?}",
+        evidence.related_tests
+    );
+    Ok(())
+}
+
+/// #3413: Rust does not carry a `use` across a module boundary, so a bare
+/// call in a nested `mod` that never imported the alias must stay
+/// uncredited rather than borrowing the enclosing module's binding.
+/// Ordinary blocks are not module boundaries and still resolve.
+#[test]
+fn nested_module_without_its_own_import_stays_uncredited() -> Result<(), String> {
+    let bare = direct_function_import_aliases(concat!(
+        "use crate::alpha::compute as run;\n",
+        "fn outer() { run(); }\n",
+        "mod child {\n",
+        "    fn inner() { run(); }\n",
+        "}\n",
+        "fn tail() { run(); }\n",
+    ));
+    let bare_run = bare
+        .get("run")
+        .ok_or_else(|| "run alias should be indexed".to_string())?;
+    assert_eq!(
+        bare_run
+            .binding_at(2)
+            .map(|binding| binding.module_path.as_str()),
+        Some("alpha"),
+        "the enclosing module's own call must still resolve"
+    );
+    assert!(
+        bare_run.binding_at(4).is_none(),
+        "a nested module that never imported the alias must stay uncredited"
+    );
+    assert_eq!(
+        bare_run
+            .binding_at(6)
+            .map(|binding| binding.module_path.as_str()),
+        Some("alpha"),
+        "the outer binding must resume after the nested module closes"
+    );
+
+    // A `super::` re-export is legal Rust but is not chained to its target.
+    let reexport = direct_function_import_aliases(concat!(
+        "use crate::alpha::compute as run;\n",
+        "mod child {\n",
+        "    use super::run;\n",
+        "    fn inner() { run(); }\n",
+        "}\n",
+    ));
+    assert!(
+        reexport
+            .get("run")
+            .and_then(|alias| alias.binding_at(4))
+            .is_none(),
+        "a super re-export must stay uncredited rather than invent a target"
+    );
+
+    // Blocks, `impl` bodies, and `fn` bodies are not module boundaries: a
+    // function-local `use` shadows the file-level one inside its own block
+    // and stops applying once that block closes.
+    let blocks = direct_function_import_aliases(concat!(
+        "use crate::alpha::compute as run;\n",
+        "fn holder() {\n",
+        "    use crate::beta::compute as run;\n",
+        "    if true { run(); }\n",
+        "}\n",
+        "fn after() { run(); }\n",
+    ));
+    let block_run = blocks
+        .get("run")
+        .ok_or_else(|| "run alias should be indexed".to_string())?;
+    assert_eq!(
+        block_run
+            .binding_at(4)
+            .map(|binding| binding.module_path.as_str()),
+        Some("beta"),
+        "the nearest enclosing block binding must win inside its own block"
+    );
+    assert_eq!(
+        block_run
+            .binding_at(6)
+            .map(|binding| binding.module_path.as_str()),
+        Some("alpha"),
+        "a block-local binding must not leak past its closing brace"
+    );
+    Ok(())
+}
+
+/// #3413: lexical alias ancestry must survive nested test modules. Each
+/// module that rebinds the alias owns only its own body; a nested module
+/// that never imported it stays uncredited rather than inheriting, a
+/// sibling module never borrows another's target, and the outer binding
+/// resumes after the nested blocks close.
+#[test]
+fn nested_test_module_alias_ancestry_resolves_through_production_path() -> Result<(), String> {
+    let alpha = PathBuf::from("src/alpha.rs");
+    let alpha_src = r#"
+pub fn compute_alpha(input: &str) -> String {
+    normalize_alpha(input)
+}
+
+fn normalize_alpha(input: &str) -> String {
+    input.to_string()
+}
+"#;
+    let beta = PathBuf::from("src/beta.rs");
+    let beta_src = r#"
+pub fn compute_beta(input: &str) -> String {
+    normalize_beta(input)
+}
+
+fn normalize_beta(input: &str) -> String {
+    input.to_string()
+}
+"#;
+    let gamma = PathBuf::from("src/gamma.rs");
+    let gamma_src = r#"
+pub fn compute_gamma(input: &str) -> String {
+    normalize_gamma(input)
+}
+
+fn normalize_gamma(input: &str) -> String {
+    input.to_string()
+}
+"#;
+    let delta = PathBuf::from("src/delta.rs");
+    let delta_src = r#"
+pub fn compute_delta(input: &str) -> String {
+    normalize_delta(input)
+}
+
+fn normalize_delta(input: &str) -> String {
+    input.to_string()
+}
+"#;
+    let support = PathBuf::from("tests/support_nested.rs");
+    let support_src = r#"
+use crate::alpha::compute_alpha as run;
+
+pub fn exercise_outer() -> String {
+    run("outer")
+}
+
+#[cfg(test)]
+mod middle {
+    use crate::beta::compute_beta as run;
+
+    pub fn exercise_middle() -> String {
+        run("middle")
+    }
+
+    #[cfg(test)]
+    mod inner_inherits {
+        pub fn exercise_inner_inherits() -> String {
+            run("inner")
+        }
+    }
+
+    #[cfg(test)]
+    mod inner_rebinds {
+        use crate::gamma::compute_gamma as run;
+
+        pub fn exercise_inner_rebinds() -> String {
+            run("rebound")
+        }
+    }
+}
+
+#[cfg(test)]
+mod sibling {
+    use crate::delta::compute_delta as run;
+
+    pub fn exercise_sibling() -> String {
+        run("sibling")
+    }
+}
+
+pub fn exercise_tail() -> String {
+    run("tail")
+}
+"#;
+    let tests = PathBuf::from("tests/nested_alias_tests.rs");
+    let tests_src = r#"
+use support_nested::exercise_outer;
+
+#[test]
+fn nested_alias_ancestry_reaches_every_indexed_owner() {
+    assert_eq!(exercise_outer(), "outer");
+    assert_eq!(support_nested::exercise_tail(), "tail");
+    assert_eq!(support_nested::middle::exercise_middle(), "middle");
+    assert_eq!(
+        support_nested::middle::inner_inherits::exercise_inner_inherits(),
+        "inner"
+    );
+    assert_eq!(
+        support_nested::middle::inner_rebinds::exercise_inner_rebinds(),
+        "rebound"
+    );
+    assert_eq!(support_nested::sibling::exercise_sibling(), "sibling");
+}
+"#;
+    let index = index_from_files(&[
+        (alpha, alpha_src),
+        (beta, beta_src),
+        (gamma, gamma_src),
+        (delta, delta_src),
+        (support.clone(), support_src),
+        (tests.clone(), tests_src),
+    ])?;
+
+    let aliases_by_file = direct_function_import_aliases_by_file(&index);
+    let owner_names_by_module_path = production_owner_names_by_module_path(&index);
+    let owner_names = owner_names_by_module_path
+        .values()
+        .flat_map(|names| names.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    for (module_path, owner) in [
+        ("alpha", "compute_alpha"),
+        ("beta", "compute_beta"),
+        ("gamma", "compute_gamma"),
+        ("delta", "compute_delta"),
+    ] {
+        assert!(
+            owner_names_by_module_path
+                .get(module_path)
+                .is_some_and(|names| names.contains(owner)),
+            "fixture must index {module_path}::{owner} as a distinct production owner"
+        );
+    }
+
+    // Each helper sits at a different lexical depth but reuses the alias
+    // `run`. The nearest enclosing `use` decides its target.
+    for (helper, expected_owner, expected_module) in [
+        ("exercise_outer", "compute_alpha", "alpha"),
+        ("exercise_middle", "compute_beta", "beta"),
+        ("exercise_inner_inherits", "", ""),
+        ("exercise_inner_rebinds", "compute_gamma", "gamma"),
+        ("exercise_sibling", "compute_delta", "delta"),
+        ("exercise_tail", "compute_alpha", "alpha"),
+    ] {
+        let function = index
+            .functions
+            .iter()
+            .find(|function| function.name == helper && function.file == support)
+            .ok_or_else(|| format!("missing helper identity {helper}"))?;
+        let owners = direct_imported_owner_calls_for_function(
+            function,
+            aliases_by_file.get(&support),
+            Some(&owner_names),
+            &owner_names_by_module_path,
+        );
+        let expected_owners = if expected_owner.is_empty() {
+            BTreeSet::new()
+        } else {
+            BTreeSet::from([expected_owner.to_string()])
+        };
+        assert_eq!(
+            owners, expected_owners,
+            "helper {helper} must resolve exactly to {expected_owner}"
+        );
+        let call = function
+            .calls
+            .iter()
+            .find(|call| call.name == "run")
+            .ok_or_else(|| format!("missing aliased call for {helper}"))?;
+        if expected_owner.is_empty() {
+            assert!(
+                aliases_by_file
+                    .get(&support)
+                    .and_then(|aliases| aliases.get("run"))
+                    .and_then(|alias| alias.binding_at(call.line))
+                    .is_none(),
+                "helper {helper} must have no cross-module binding"
+            );
+            continue;
+        }
+        let binding = aliases_by_file
+            .get(&support)
+            .and_then(|aliases| aliases.get("run"))
+            .and_then(|alias| alias.binding_at(call.line))
+            .ok_or_else(|| format!("missing binding for {helper}"))?;
+        assert_eq!(
+            binding.module_path, expected_module,
+            "helper {helper} must resolve through the {expected_module} owner module"
+        );
+    }
+
+    // End-to-end: the seam in the deepest rebinding module's target must
+    // carry the exact helper-owner-call relation and indexed test target.
+    let gamma_seams = inventory_seams_from_index(&[PathBuf::from("src/gamma.rs")], &index);
+    let gamma_seam = gamma_seams
+        .iter()
+        .find(|seam| {
+            seam.kind() == SeamKind::CallPresence
+                && seam.owner().ends_with("::compute_gamma")
+                && seam.expression().contains("normalize_gamma")
+        })
+        .ok_or_else(|| "expected compute_gamma call_presence seam".to_string())?;
+    let evidence = evidence_for_seam(gamma_seam, &index);
+    let related = evidence
+        .related_tests
+        .iter()
+        .find(|test| test.relation_reason == RelationReason::HelperOwnerCall)
+        .ok_or_else(|| {
+            format!(
+                "expected doubly-nested helper owner-call relation, got {:?}",
+                evidence
+                    .related_tests
+                    .iter()
+                    .map(|test| (test.test_name.as_str(), test.relation_reason))
+                    .collect::<Vec<_>>()
+            )
+        })?;
+    assert_eq!(
+        related.test_name,
+        "nested_alias_ancestry_reaches_every_indexed_owner"
+    );
+    assert_eq!(related.file, tests);
+    let target = related
+        .test_target
+        .as_ref()
+        .ok_or_else(|| "nested helper relation lost its indexed test target".to_string())?;
+    let test_function = index
+        .functions
+        .iter()
+        .find(|function| {
+            function.source_role.is_evidence_role()
+                && function.name == related.test_name
+                && function.file == related.file
+        })
+        .ok_or_else(|| "missing indexed nested-alias test target".to_string())?;
+    assert_eq!(
+        target.symbol_id().0,
+        test_function.id.0,
+        "nested-alias evidence must retain the exact indexed test symbol"
+    );
+    assert_eq!(target.file(), test_function.file.as_path());
+    assert_eq!(target.line(), test_function.start_line);
+    assert!(
+        evidence.observed_values.is_empty(),
+        "nested-alias helper activation must not invent values: {:?}",
+        evidence.observed_values
+    );
+    Ok(())
+}
+
+/// #3413: a same-scope alias collision inside a nested test module must
+/// fail closed for that module alone. The valid outer binding is not
+/// discarded, and the conflicted nested helper is credited to nothing.
+#[test]
+fn nested_test_module_alias_conflict_fails_closed_without_discarding_outer_binding()
+-> Result<(), String> {
+    let alpha = PathBuf::from("src/alpha.rs");
+    let alpha_src = r#"
+pub fn compute_alpha(input: &str) -> String {
+    normalize_alpha(input)
+}
+
+fn normalize_alpha(input: &str) -> String {
+    input.to_string()
+}
+"#;
+    let beta = PathBuf::from("src/beta.rs");
+    let beta_src = r#"
+pub fn compute_beta(input: &str) -> String {
+    normalize_beta(input)
+}
+
+fn normalize_beta(input: &str) -> String {
+    input.to_string()
+}
+"#;
+    let gamma = PathBuf::from("src/gamma.rs");
+    let gamma_src = r#"
+pub fn compute_gamma(input: &str) -> String {
+    normalize_gamma(input)
+}
+
+fn normalize_gamma(input: &str) -> String {
+    input.to_string()
+}
+"#;
+    let support = PathBuf::from("tests/support_conflict.rs");
+    let support_src = r#"
+use crate::alpha::compute_alpha as run;
+
+pub fn exercise_outer() -> String {
+    run("outer")
+}
+
+#[cfg(test)]
+mod conflicted {
+    use crate::beta::compute_beta as run;
+    use crate::gamma::compute_gamma as run;
+
+    pub fn exercise_conflicted() -> String {
+        run("conflicted")
+    }
+}
+
+pub fn exercise_tail() -> String {
+    run("tail")
+}
+"#;
+    let index = index_from_files(&[
+        (alpha, alpha_src),
+        (beta, beta_src),
+        (gamma, gamma_src),
+        (support.clone(), support_src),
+    ])?;
+    let aliases_by_file = direct_function_import_aliases_by_file(&index);
+    let owner_names_by_module_path = production_owner_names_by_module_path(&index);
+    let owner_names = owner_names_by_module_path
+        .values()
+        .flat_map(|names| names.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    let owners_for = |helper: &str| -> Result<BTreeSet<String>, String> {
+        let function = index
+            .functions
+            .iter()
+            .find(|function| function.name == helper && function.file == support)
+            .ok_or_else(|| format!("missing helper identity {helper}"))?;
+        Ok(direct_imported_owner_calls_for_function(
+            function,
+            aliases_by_file.get(&support),
+            Some(&owner_names),
+            &owner_names_by_module_path,
+        ))
+    };
+    assert_eq!(
+        owners_for("exercise_conflicted")?,
+        BTreeSet::new(),
+        "a same-scope alias collision inside a nested module must stay uncredited"
+    );
+    assert_eq!(
+        owners_for("exercise_outer")?,
+        BTreeSet::from(["compute_alpha".to_string()]),
+        "the nested collision must not discard the valid outer binding"
+    );
+    assert_eq!(
+        owners_for("exercise_tail")?,
+        BTreeSet::from(["compute_alpha".to_string()]),
+        "the outer binding must still apply after the conflicted nested module"
+    );
     Ok(())
 }

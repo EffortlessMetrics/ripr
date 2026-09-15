@@ -18,6 +18,7 @@
   "findings": [
     {
       "id": "probe:app_pricing.py:2:python_preview",
+      "source_currentness": "candidate_current",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.7,

@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on the complete evidence-health report field and limitation accounting contract.
+
 ## Problem
 
 Lane 1 owns RIPR's analyzer evidence graph: seams, related tests, observed

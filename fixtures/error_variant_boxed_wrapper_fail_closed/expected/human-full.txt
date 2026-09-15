@@ -1,0 +1,208 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/error_variant_boxed_wrapper_fail_closed/input
+
+Summary: 4 probe(s), 0 exposed, 4 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 4 changed line(s), 2 candidate line(s), 4 probe(s), 4 finding(s).
+
+WARNING fixtures/error_variant_boxed_wrapper_fail_closed/input/src/lib.rs:29
+
+Changed
+  before: try_checksum_summary(payload).map_err(|error| error.to_string().into())
+  after:  try_checksum_summary(payload).map_err(Into::into)
+
+Probe
+  family: error_path
+  delta:  value
+  owner:  src/lib.rs::checksum_summary
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach checksum_summary: checksum_summary_pins_wrong_sibling_variant
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Complete propagation witness reaches error variant: try_checksum_summary(payload).map_err(Into::into)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches error variant: try_checksum_summary(payload).map_err(Into::into) (line 29)
+  - related test tests/errors.rs:4 checksum_summary_pins_wrong_sibling_variant uses strong exact value oracle: if !matches!(
+error.downcast_ref::<ChecksumError>(),
+Some(ChecksumError::MalformedPayload)
+) {
+return Err("checksum witness pinned the malformed-payload sibling".into());
+}
+  - related test tests/errors.rs:4 checksum_summary_pins_wrong_sibling_variant uses strong exact value oracle: matches!(
+        error.downcast_ref::<ChecksumError>(),
+        Some(ChecksumError::MalformedPayload)
+    )
+  - observed function argument value payload = "payload?" at line 5
+  - observed enum variant value ChecksumError::MalformedPayload at line 8
+  - observed enum variant value ChecksumError::MalformedPayload at line 8
+
+Weakness
+  - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
+
+Static limitation
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+
+Limitation detail
+  last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
+  first unresolved edge: whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers
+  analyzer route: analysis/wrapper-error-binding
+  non-claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test
+
+Next step
+  Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+
+WARNING fixtures/error_variant_boxed_wrapper_fail_closed/input/src/lib.rs:29
+
+Changed
+  before: try_checksum_summary(payload).map_err(|error| error.to_string().into())
+  after:  try_checksum_summary(payload).map_err(Into::into)
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::checksum_summary
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach checksum_summary: checksum_summary_pins_wrong_sibling_variant
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Complete propagation witness reaches returned value: try_checksum_summary(payload).map_err(Into::into)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches returned value: try_checksum_summary(payload).map_err(Into::into) (line 29)
+  - related test tests/errors.rs:4 checksum_summary_pins_wrong_sibling_variant uses strong exact value oracle: if !matches!(
+error.downcast_ref::<ChecksumError>(),
+Some(ChecksumError::MalformedPayload)
+) {
+return Err("checksum witness pinned the malformed-payload sibling".into());
+}
+  - related test tests/errors.rs:4 checksum_summary_pins_wrong_sibling_variant uses strong exact value oracle: matches!(
+        error.downcast_ref::<ChecksumError>(),
+        Some(ChecksumError::MalformedPayload)
+    )
+  - observed function argument value payload = "payload?" at line 5
+  - observed enum variant value ChecksumError::MalformedPayload at line 8
+  - observed enum variant value ChecksumError::MalformedPayload at line 8
+
+Weakness
+  - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
+
+Static limitation
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+
+Limitation detail
+  last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
+  first unresolved edge: whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers
+  analyzer route: analysis/wrapper-error-binding
+  non-claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test
+
+Next step
+  Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+
+WARNING fixtures/error_variant_boxed_wrapper_fail_closed/input/src/lib.rs:43
+
+Changed
+  before: try_render_summary(raw).map_err(|error| error.to_string().into())
+  after:  try_render_summary(raw).map_err(Into::into)
+
+Probe
+  family: error_path
+  delta:  value
+  owner:  src/lib.rs::render_summary
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach render_summary: render_summary_observes_other_enum_variant
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Complete propagation witness reaches error variant: try_render_summary(raw).map_err(Into::into)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches error variant: try_render_summary(raw).map_err(Into::into) (line 43)
+  - related test tests/errors.rs:18 render_summary_observes_other_enum_variant uses strong exact value oracle: if !matches!(
+error.downcast_ref::<ParseSummaryError>(),
+Some(ParseSummaryError::MalformedSource)
+) {
+return Err("render witness pinned the parse-summary variant instead".into());
+}
+  - related test tests/errors.rs:18 render_summary_observes_other_enum_variant uses strong exact value oracle: matches!(
+        error.downcast_ref::<ParseSummaryError>(),
+        Some(ParseSummaryError::MalformedSource)
+    )
+  - observed function argument value raw = "zhex" at line 19
+  - observed enum variant value ParseSummaryError::MalformedSource at line 22
+  - observed enum variant value ParseSummaryError::MalformedSource at line 22
+
+Weakness
+  - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
+
+Static limitation
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+
+Limitation detail
+  last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
+  first unresolved edge: whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers
+  analyzer route: analysis/wrapper-error-binding
+  non-claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test
+
+Next step
+  Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+
+WARNING fixtures/error_variant_boxed_wrapper_fail_closed/input/src/lib.rs:43
+
+Changed
+  before: try_render_summary(raw).map_err(|error| error.to_string().into())
+  after:  try_render_summary(raw).map_err(Into::into)
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::render_summary
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach render_summary: render_summary_observes_other_enum_variant
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Complete propagation witness reaches returned value: try_render_summary(raw).map_err(Into::into)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches returned value: try_render_summary(raw).map_err(Into::into) (line 43)
+  - related test tests/errors.rs:18 render_summary_observes_other_enum_variant uses strong exact value oracle: if !matches!(
+error.downcast_ref::<ParseSummaryError>(),
+Some(ParseSummaryError::MalformedSource)
+) {
+return Err("render witness pinned the parse-summary variant instead".into());
+}
+  - related test tests/errors.rs:18 render_summary_observes_other_enum_variant uses strong exact value oracle: matches!(
+        error.downcast_ref::<ParseSummaryError>(),
+        Some(ParseSummaryError::MalformedSource)
+    )
+  - observed function argument value raw = "zhex" at line 19
+  - observed enum variant value ParseSummaryError::MalformedSource at line 22
+  - observed enum variant value ParseSummaryError::MalformedSource at line 22
+
+Weakness
+  - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
+
+Static limitation
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+
+Limitation detail
+  last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
+  first unresolved edge: whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers
+  analyzer route: analysis/wrapper-error-binding
+  non-claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test
+
+Next step
+  Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.

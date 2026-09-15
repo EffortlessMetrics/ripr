@@ -1,0 +1,38 @@
+{
+  "schema_version": "0.1",
+  "kind": "rust_judged_panel_portable_index",
+  "publication_state": "complete",
+  "generation_id": "8e892717cfd597d2f6be4e123976e77fe799a832cbac9c6db88ee76576dae2cf",
+  "manifest_sha256": "sha256:e6d2a31d0ef736e0ad6472aa8cf9066281d7066eea42afd5e6f17411f6ce17fb",
+  "subjects_sha256": "sha256:aaa5cba9532e2aa2a8f134d71f2160e9b868606a3c248a6e0c310ed3628d78b8",
+  "packets": [
+    {
+      "case_id": "rust-boundary-exact-equality-should-stay-quiet",
+      "packet_path": "metrics/rust-judged-behavior-panel/portable/generations/8e892717cfd597d2f6be4e123976e77fe799a832cbac9c6db88ee76576dae2cf/packets/rust-boundary-exact-equality-should-stay-quiet.json",
+      "packet_sha256": "sha256:5e82a19a897c5cda4cce94002a27a0f02f7d96e3221a51c44df2d4b9c33b2f10",
+      "semantic_sha256": "sha256:dfd94c3990d626825c21e43ba1d9795a5fbc3c88dc0d933f3dbcc78b6c8bda88",
+      "attestation_path": "metrics/rust-judged-behavior-panel/portable/generations/8e892717cfd597d2f6be4e123976e77fe799a832cbac9c6db88ee76576dae2cf/attestations/rust-boundary-exact-equality-should-stay-quiet.json",
+      "attestation_sha256": "sha256:253901d88b525e219abb21cd8e193b535b397cc80bb9d7bc3b0eae2889de895e"
+    },
+    {
+      "case_id": "rust-boundary-missing-equality-should-gap",
+      "packet_path": "metrics/rust-judged-behavior-panel/portable/generations/8e892717cfd597d2f6be4e123976e77fe799a832cbac9c6db88ee76576dae2cf/packets/rust-boundary-missing-equality-should-gap.json",
+      "packet_sha256": "sha256:b596e0ac397f5baddabad3d489e5ad825105eb33ca42864e66c00589d0c7a1b7",
+      "semantic_sha256": "sha256:0aafe11a107c108e2a350017b12e337ff8d0ca3b2b8dc32f1877545697f309a4",
+      "attestation_path": "metrics/rust-judged-behavior-panel/portable/generations/8e892717cfd597d2f6be4e123976e77fe799a832cbac9c6db88ee76576dae2cf/attestations/rust-boundary-missing-equality-should-gap.json",
+      "attestation_sha256": "sha256:4b587fec53a2adb57c05613d4275a06ff59df72aa9b87810dd39a4c2d7ae78fe"
+    },
+    {
+      "case_id": "rust-macro-wrapped-reach-should-limit",
+      "packet_path": "metrics/rust-judged-behavior-panel/portable/generations/8e892717cfd597d2f6be4e123976e77fe799a832cbac9c6db88ee76576dae2cf/packets/rust-macro-wrapped-reach-should-limit.json",
+      "packet_sha256": "sha256:b0e257d1ce1434c8ee2fe3e1f8702e3be92923dcf0dee4c9528b9a38dd544ee7",
+      "semantic_sha256": "sha256:c86951c6597cfbaba3fa77a83a7eabe66af96c20dc768483dbe13698b2887c6d",
+      "attestation_path": "metrics/rust-judged-behavior-panel/portable/generations/8e892717cfd597d2f6be4e123976e77fe799a832cbac9c6db88ee76576dae2cf/attestations/rust-macro-wrapped-reach-should-limit.json",
+      "attestation_sha256": "sha256:52e021a024dc69a686401d756607ae01695ca76ccce4eea07199dee9a5dc33e8"
+    }
+  ],
+  "non_claims": [
+    "bounded static projection only; no independent semantic judgment",
+    "no runtime mutation calibration, accuracy rate, badge, gate, or support claim"
+  ]
+}

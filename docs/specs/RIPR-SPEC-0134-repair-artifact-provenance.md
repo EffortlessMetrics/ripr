@@ -77,12 +77,23 @@ advisory output with one of:
 
 The pair token states what each side of the pair is (#3027): a dirty side is
 named (`dirty_before`, `dirty_after`, or `dirty_both`) rather than every mixed
-pair collapsing into one dirty label, and the clean expected transaction —
-the repository moved past the before artifact while the after artifact is
-current — is `historical_before_current_after`. A fully current pair fails
-the movement gate and a current-before/historical-after pair fails the
-lineage gate, so `current` and `current_before_historical_after` close the
-vocabulary without being reachable verify outcomes today.
+pair collapsing into one dirty label. `historical_before_current_after` is
+the expected before/after transaction shape — the repository moved past the
+before artifact while the after artifact is bound to the current HEAD. It is
+a revision-movement disclosure, not a cleanliness certificate: a historical
+side is classified by head mismatch alone, and the worktree state remembered
+at production time does not participate in that classification, so a
+historical artifact produced on a dirty worktree still renders a
+`historical_*` pair token (#3229).
+
+Reachability (#3229): a fully current pair (both artifacts current at the
+same clean revision) fails the movement gate before output, so `current`
+closes the vocabulary without being a reachable successful verify outcome.
+`current_before_historical_after` is reachable and accepted today: when the
+checked-out HEAD is the before artifact's revision and the after artifact is
+bound to a descendant revision, the lineage gate passes (the before head is
+an ancestor of the after head) and the movement gate passes (the revisions
+differ), so the pair is disclosed with that token rather than rejected.
 
 When Git identity is unavailable, the producer discloses `unavailable` in the
 artifact and the verifier rejects it as unsuitable evidence.
@@ -136,7 +147,9 @@ after movement succeeds but discloses `historical_noncurrent`.
 - Producer output tests cover identity and streaming output.
 - CLI smoke tests cover a valid bound pair, a historical comparable pair,
   mixed pair-currentness disclosure (historical-before/current-after,
-  dirty-before, dirty-after, and dirty-both, #3027), tampered bytes,
+  current-before/historical-after descendant acceptance, dirty-before,
+  dirty-after, and dirty-both, #3027, #3229), the historical-declared-dirty
+  non-certification pair (#3229), tampered bytes,
   incomparable input identities,
   unsupported schema, malformed typed seam, plausible uncommitted JSON,
   fabricated verify JSON, altered verify movement, incomparable base revision,
@@ -175,10 +188,27 @@ after movement succeeds but discloses `historical_noncurrent`.
 
 ### Historical-before/current-after bound pair
 
-A before snapshot bound to a superseded revision and an after snapshot bound to
-the current HEAD — the expected clean before/after transaction — produce
-advisory movement with
-`artifact_currentness = "historical_before_current_after"` (#3027).
+A before snapshot bound to a superseded revision and an after snapshot bound
+to the current HEAD produce advisory movement with
+`artifact_currentness = "historical_before_current_after"` (#3027). The token
+discloses the revision movement; it does not certify that the worktree was
+clean when the historical before artifact was produced (#3229).
+
+### Current-before/historical-after descendant pair
+
+A before snapshot bound to the checked-out HEAD and an after snapshot bound
+to a descendant revision — for example, the worktree is checked out at an
+earlier commit after the after snapshot was recorded — passes both the
+lineage and movement gates and discloses
+`artifact_currentness = "current_before_historical_after"`. This is a
+reachable accepted outcome, not a lineage failure (#3229).
+
+### Fully current pair
+
+Two artifacts that are both current at the same clean revision cannot
+contain movement and are rejected by the movement gate before any advisory
+output is rendered, so `artifact_currentness = "current"` never appears in
+successful verify output.
 
 ### Tampered or fabricated input
 
@@ -205,7 +235,11 @@ an unsupported schema fails before movement calculation.
   against mutated artifact bytes, tampered pair-binding digests and status,
   older/newer verify schema versions, stale verify replay after repository
   movement, an absent receipt target, and the unmoved-retained-target
-  projection honesty case.
+  projection honesty case. Pair-currentness disclosure is pinned end to end
+  (#3229): the reachable current-before/historical-after descendant pair is
+  accepted with its token, and a before artifact that declares a dirty
+  worktree still renders `historical_before_current_after` once the
+  repository moves past it.
 - `xtask/src/reports/release_negative.rs` (#2824) is the integrated
   installed-candidate negative corpus: it shares the release-readiness
   package/install and authentic-journey helpers (the installed binary stays

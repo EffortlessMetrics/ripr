@@ -80,7 +80,7 @@ mod tests {
     "outcome": {
       "schema_version": "0.1",
       "kind": "no_scope",
-      "identity": {"base_revision": "origin/main"},
+      "identity": {"base_revision": "origin/main", "git_candidate_subject": null},
       "counts": {
         "changed_file_count": 0,
         "changed_line_count": 0,
@@ -337,7 +337,7 @@ mod tests {
     "outcome": {
       "schema_version": "0.1",
       "kind": "unsupported_input",
-      "identity": {"base_revision": "origin/main"},
+      "identity": {"base_revision": "origin/main", "git_candidate_subject": null},
       "counts": {
         "changed_file_count": 1,
         "changed_line_count": 2,
@@ -503,7 +503,7 @@ mod tests {
     "outcome": {
       "schema_version": "0.1",
       "kind": "complete_no_findings",
-      "identity": {"base_revision": "origin/main"},
+      "identity": {"base_revision": "origin/main", "git_candidate_subject": null},
       "counts": {
         "changed_file_count": 0,
         "changed_line_count": 0,
@@ -526,7 +526,6 @@ mod tests {
             &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
             r#"{"schema_version":"0.5","tool":"ripr","status":"advisory","provenance":{"before_class":"weakly_gripped","after_class":"weakly_gripped","movement":"unchanged","verify_artifact":{"path":"target/ripr/workflow/agent-verify.json","sha256":"sha256:verify"}},"seam":{"seam_id":"seam-stale","file":"src/pricing.rs","line":42,"seam_kind":"predicate_boundary","before":"weakly_gripped","after":"weakly_gripped","change":"unchanged","grip_class":"weakly_gripped"},"summary":{"remaining_gap":"Fixture-controlled static review state.","next_recommendation":"Add the missing discriminator or stronger assertion named by the packet.","next_action":{"kind":"unchanged","summary":"Static grip did not improve.","recommended_action":"Add the missing discriminator or stronger assertion named by the packet."}}}"#,
         )?;
-        std::thread::sleep(std::time::Duration::from_millis(25));
         write_file(
             &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
             &serde_json::to_string_pretty(&serde_json::json!({
@@ -537,9 +536,28 @@ mod tests {
             }))
             .map_err(|err| format!("render verify fixture: {err}"))?,
         )?;
-        std::thread::sleep(std::time::Duration::from_millis(25));
         write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
         write_file(&root.join(WORKFLOW_AFTER_SNAPSHOT_ARTIFACT), "{}")?;
+        // Pin artifact mtimes explicitly. The stale-artifact warnings compare
+        // mtime order, and sleep-separated writes flake on coarse filesystem
+        // timestamp granularity; explicit stamps keep the pinned stale state
+        // (receipt older than verify older than the snapshots) deterministic.
+        let stale_base = std::time::UNIX_EPOCH + std::time::Duration::from_hours(500_000);
+        for (relative, offset_secs) in [
+            (WORKFLOW_AGENT_RECEIPT_ARTIFACT, 0),
+            (WORKFLOW_AGENT_VERIFY_ARTIFACT, 10),
+            (WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, 20),
+            (WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, 20),
+        ] {
+            let path = root.join(relative);
+            std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .and_then(|file| {
+                    file.set_modified(stale_base + std::time::Duration::from_secs(offset_secs))
+                })
+                .map_err(|err| format!("pin mtime {}: {err}", path.display()))?;
+        }
         assert_review_summary_matches_fixture(&root, Path::new("."), "stale-artifact")?;
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
@@ -738,6 +756,48 @@ mod tests {
         assert!(rendered.contains("Next command:"));
         assert!(rendered.contains("ripr check --root . --mode draft --format repo-exposure-json"));
         assert!(rendered.contains("No generated tests."));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// The review-summary Next command block must offer both shells (#2628):
+    /// the bash fence stays byte-identical, the PowerShell fence derives
+    /// through the shared `powershell_command` translation, and the cmd.exe
+    /// boundary is stated.
+    #[test]
+    fn agent_review_summary_markdown_next_command_offers_powershell_variant() -> Result<(), String>
+    {
+        let root = unique_agent_review_summary_test_dir("markdown-next-command-powershell");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_markdown(&report);
+
+        let bash_form = "```bash\nripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json\n```\n";
+        assert!(
+            rendered.contains(bash_form),
+            "bash next command drifted:\n{rendered}"
+        );
+        let powershell_form = "```powershell\n$ripr = ((ripr check --root . --mode draft --format repo-exposure-json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/workflow/before.repo-exposure.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }\n```\n";
+        assert!(
+            rendered.contains(powershell_form),
+            "powershell next command missing or drifted:\n{rendered}"
+        );
+        let bash_fence = rendered
+            .find(bash_form)
+            .ok_or_else(|| format!("bash fence must exist: {rendered}"))?;
+        let powershell_fence = rendered
+            .find(powershell_form)
+            .ok_or_else(|| format!("powershell fence must exist: {rendered}"))?;
+        assert!(
+            bash_fence < powershell_fence,
+            "bash form must be presented before the PowerShell variant"
+        );
+        assert!(
+            rendered.contains("cmd.exe is not supported."),
+            "next command presentation must state the cmd.exe boundary:\n{rendered}"
+        );
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())

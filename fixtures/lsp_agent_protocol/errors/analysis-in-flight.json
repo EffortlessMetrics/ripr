@@ -1,6 +1,6 @@
 {
   "protocol_version": "0.1",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "request": "ripr/workspaceStatus",
   "status": "error",
   "error": { "kind": "analysis_in_flight", "retryable": true, "recovery_route": "retry", "snapshot_id": null },

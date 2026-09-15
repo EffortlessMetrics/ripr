@@ -243,3 +243,81 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0151: additive per-finding source_currentness disposition (#3280); removed-only Rust probes record the base-side line coordinate
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_positive --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0152: preview findings resolve candidate_current from head-side delta evidence; base-deleted findings gain the human revision label and leave actionable projections
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_positive --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0152: hidden-count denominator keeps non-current findings; mutation candidates and review-comment authority require candidate_current
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_positive --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0159: the outer->inner chain is genuinely resolvable under the typed transfer (unique callee, positional argument binding, workspace-complete index), so the probe relates its tests and promotes past no_static_path; the 0114 lexical walk stays fail-closed
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_positive --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0159: a second function named inner makes the callee non-unique, so the typed transfer refuses this chain and the RIPR-SPEC-0114 lexical-walk limitation stays the pinned outcome (corpus case preserved)
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_positive --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0160: the additive git_candidate_subject identity field (null for ordinary runs) in the check JSON identity block
+
+Command:
+`cargo xtask goldens bless rust_transitive_reach_positive --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

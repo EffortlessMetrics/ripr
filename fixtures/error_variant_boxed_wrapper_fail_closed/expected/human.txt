@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/error_variant_boxed_wrapper_fail_closed/input
+
+Summary: 4 probe(s), 0 exposed, 4 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 4 changed line(s), 2 candidate line(s), 4 probe(s), 4 finding(s).
+
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/error_variant_boxed_wrapper_fail_closed/input/src/lib.rs:29
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: try_checksum_summary(payload).map_err(Into::into)
+  Missing discriminator: Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
+  Related test: tests/errors.rs:4 checksum_summary_pins_wrong_sibling_variant
+  Next step: Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing e…
+  Evidence:
+    - reach yes: Related tests appear to reach checksum_summary: checksum_summary_pins_wrong_sibling_variant
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 9 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_fail_closed/input --diff fixtures/error_variant_boxed_wrapper_fail_closed/diff.patch --mode fast probe:src_lib.rs:error_path:51fc5156
+  ripr context --root fixtures/error_variant_boxed_wrapper_fail_closed/input --diff fixtures/error_variant_boxed_wrapper_fail_closed/diff.patch --mode fast --at probe:src_lib.rs:error_path:51fc5156
+
+Hidden:
+  3 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

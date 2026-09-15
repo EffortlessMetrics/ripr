@@ -137,6 +137,10 @@ says it was re-blessed to."
     - `expected_limitation_route` with `route`
     - `must_not_claim_no_tests_found`
     - `must_see_changed_file` with `path`
+   Every `must_not_promote` charter must also declare
+   `must_not_report_clean`. Classification ceilings alone are vacuous when a
+   re-blessed artifact has no findings; the independent non-clean assertion
+   keeps disappearance of the governed subject fail-closed.
 3. `must_remain_non_promoted` cases: asserts NO finding's `classification` is
    `exposed`. Also checks that no finding exceeds `expected_max_class` on the
    severity ordering `exposed > weakly_exposed > reachable_unrevealed/no_static_path > *_unknown`.
@@ -148,8 +152,14 @@ says it was re-blessed to."
    `limitations[]`, or a named `static_limit_kind`. This guards against a
    re-bless that makes a known unresolved edge or incomplete scope disappear
    into a clean-looking empty result.
-4c. `must_emit_limitation` cases (additive, RIPR-SPEC-0114/0115): asserts at
-   least one finding carries `static_limit_kind == expected_limit_kind`. This is
+4c. `must_emit_limitation` cases (additive, RIPR-SPEC-0114/0115; surfaces
+   extended by #3636): asserts the expected limitation kind was emitted on a
+   supported surface — at least one finding carries
+   `static_limit_kind == expected_limit_kind`, or the check output's
+   `test_harnesses[].limitations[].code` emits it (harness-limitation kinds
+   such as `registration_unreachable` live only in the harness projection).
+   `must_not_emit_limitation` symmetrically forbids non-empty harness
+   projections. This is
    an independent assertion (a case may combine it with `must_remain_non_promoted`)
    and guards against a re-bless that silently drops a named limitation back to a
    bare class — e.g. dropping `rust_transitive_reach_unresolved` so a transitive
@@ -413,8 +423,8 @@ gate-specific artifacts.
 | ts_t_unknown_method_unknown_oracle | typescript | typescript_t_unknown_method_no_oracle | execution_context_unknown_method_not_credited (also `expected_oracle=unknown/unknown`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | ts_negated_t_oracle | typescript | typescript_negated_t_oracle | negated_equality_not_exact_value (also `expected_oracle=relational_check/weak`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, and no repair packet or receipt command) |
 | ts_complete_repair_packet_contract | typescript | ts_repair_packet_complete | complete TypeScript repair packet stays weakly_exposed, packet-ready, command-bearing, detail-complete, exact-targeted, and free of blocked packet messaging rather than promoted to exposed |
-| rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle |
-| rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path |
+| rust_weak_error_oracle | rust | weak_error_oracle | non_variant_observing_error_oracle (also `expected_class=weakly_exposed` and `must_not_report_clean`) |
+| rust_error_path_sibling_oracle | rust | error_path_sibling_oracle_fake_clean | sibling_oracle_does_not_confirm_error_path (also `expected_class=weakly_exposed` and `must_not_report_clean`) |
 | rust_integration_public_api_path_named_limitation | rust | rust_transitive_reach_positive | integration_public_api_path_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_integration_public_api_path_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
 | rust_integration_public_api_test_helper_chain_named_limitation | rust | rust_transitive_reach_test_helper_chain | test_helper_public_api_path_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_integration_public_api_path_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-public-api-transitive-reach` + `must_not_claim_no_tests_found`) |
 | rust_macro_reach_named_limitation | rust | rust_macro_reach_limitation | macro_reach_named_not_silently_clean (also `must_not_report_clean` + `must_disclose_scope` + `must_emit_limitation: rust_macro_reach_unresolved` + `must_not_emit_repair_packet` + no verify/receipt commands + `must_disclose_witness` + `must_disclose_limitation_detail` + `expected_limitation_detail` + `expected_limitation_route: analysis/rust-macro-aware-reach` + `must_not_claim_no_tests_found`) |
@@ -437,10 +447,10 @@ gate-specific artifacts.
 | ts_owner_identity_after_insertion | typescript | typescript_adversarial_owner_identity_after_insertion | stale_line_owner_identity_after_insertion (also `maximum_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
 | perl_same_sub_other_package | perl | reports/perl_same_sub_other_package.json | same_sub_name_other_package_package_reference_downgrade (also `expected_oracle=exact_value/strong`, `expected_class=reachable_unrevealed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
 | perl_import_alias_defining_package | perl | reports/perl_import_alias_defining_package.json | imported_alias_defining_package_mismatch_package_reference_downgrade (also `expected_oracle=exact_value/strong`, `expected_class=reachable_unrevealed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
-| perl_moose_accessor_indirection | perl | reports/perl_moose_accessor_indirection.json | moose_accessor_generated_symbol_boundary_named_limitation (also `must_emit_limitation: dynamic_dispatch`, `expected_class=static_unknown`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
-| perl_monkeypatch_symbol_table | perl | reports/perl_monkeypatch_symbol_table.json | monkeypatch_or_symbol_patch_boundary_named_limitation (also `must_emit_limitation: dynamic_dispatch`, `expected_class=static_unknown`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| perl_moose_accessor_indirection | perl | reports/perl_moose_accessor_indirection.json | moose_accessor_generated_symbol_boundary_named_limitation (also `must_emit_limitation: metaprogramming`, `expected_class=static_unknown`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| perl_monkeypatch_symbol_table | perl | reports/perl_monkeypatch_symbol_table.json | monkeypatch_or_symbol_patch_boundary_named_limitation (also `must_emit_limitation: metaprogramming`, `expected_class=static_unknown`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
 | perl_mocked_module_unrelated_assertion | perl | reports/perl_mocked_module_unrelated_assertion.json | mocked_module_strong_oracle_observes_unrelated_sink (also `expected_oracle=exact_value/strong`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
-| perl_dynamic_require_eval_dispatch | perl | reports/perl_dynamic_require_eval_dispatch.json | dynamic_require_eval_dispatch_boundary_named_limitation (also `must_emit_limitation: dynamic_dispatch`, `expected_class=static_unknown`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
+| perl_dynamic_require_eval_dispatch | perl | reports/perl_dynamic_require_eval_dispatch.json | dynamic_require_eval_dispatch_boundary_named_limitation (also `must_emit_limitation: metaprogramming`, `expected_class=static_unknown`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
 | perl_token_substring | perl | reports/perl_token_substring.json | token_substring_observed_sink_not_aligned (also `expected_oracle=exact_value/strong`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
 | perl_fixture_setup_no_discrimination | perl | reports/perl_fixture_setup_no_discrimination.json | fixture_harness_reaches_not_discriminates_fixture_setup_downgrade (also `expected_oracle=exact_value/strong`, `expected_class=reachable_unrevealed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
 | perl_direct_owner_advisory_positive | perl | reports/perl_direct_owner_advisory_positive.json | direct_owner_call_relation_fires_advisory_only (also `expected_oracle=exact_value/strong`, `expected_class=weakly_exposed`, `must_not_report_clean`, `must_disclose_scope`, no verify/receipt commands, and no repair packet) |
@@ -512,10 +522,10 @@ or tampered fingerprint at ingestion.
 |---|---|---|
 | same sub/method name in another package | `perl_same_sub_other_package` | `reachable_unrevealed` (package-reference downgrade) |
 | imported alias vs defining package | `perl_import_alias_defining_package` | `reachable_unrevealed` (package-reference downgrade) |
-| Moose/accessor indirection | `perl_moose_accessor_indirection` | `static_unknown` + `must_emit_limitation: dynamic_dispatch` (generated-symbol boundary) |
-| monkey patch / symbol-table mutation | `perl_monkeypatch_symbol_table` | `static_unknown` + `must_emit_limitation: dynamic_dispatch` |
+| Moose/accessor indirection | `perl_moose_accessor_indirection` | `static_unknown` + `must_emit_limitation: metaprogramming` (generated-symbol boundary) |
+| monkey patch / symbol-table mutation | `perl_monkeypatch_symbol_table` | `static_unknown` + `must_emit_limitation: metaprogramming` |
 | mocked module / unrelated strong assertion | `perl_mocked_module_unrelated_assertion` | `weakly_exposed` (observed sink does not align to the changed observable) |
-| dynamic require/eval dispatch | `perl_dynamic_require_eval_dispatch` | `static_unknown` + `must_emit_limitation: dynamic_dispatch` |
+| dynamic require/eval dispatch | `perl_dynamic_require_eval_dispatch` | `static_unknown` + `must_emit_limitation: metaprogramming` |
 | token substring collision | `perl_token_substring` | `weakly_exposed` (sink alignment requires exact equality) |
 | fixture/harness test reaches but does not discriminate | `perl_fixture_setup_no_discrimination` | `reachable_unrevealed` (fixture-setup relations are advisory-only) |
 

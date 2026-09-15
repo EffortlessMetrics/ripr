@@ -8,10 +8,10 @@
     "propagation_unknown": 0,
     "reachable_unrevealed": 0,
     "seams_total": 1,
-    "strongly_gripped": 0,
+    "strongly_gripped": 1,
     "suppressed": 0,
     "ungripped": 0,
-    "weakly_gripped": 1
+    "weakly_gripped": 0
   },
   "before": {
     "activation_unknown": 0,
@@ -31,20 +31,65 @@
     "after": "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
     "before": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json"
   },
-  "moved": [],
+  "moved": [
+    {
+      "activate_delta": null,
+      "after": "strongly_gripped",
+      "before": "weakly_gripped",
+      "direction": "improved",
+      "discriminate_delta": null,
+      "evidence_delta": [
+        "grip class moved from weakly_gripped to strongly_gripped",
+        "missing discriminator no longer reported: discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate)",
+        "new observed value: 100",
+        "related test count increased by 1"
+      ],
+      "evidence_source": "legacy_fields",
+      "file": "src/lib.rs",
+      "gap_movement": "closed",
+      "line": 2,
+      "missing_discriminators_reopened": [],
+      "missing_discriminators_resolved": [
+        "discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate)"
+      ],
+      "no_movement_reason": null,
+      "observe_delta": null,
+      "observed_values_added": [
+        "100"
+      ],
+      "observed_values_removed": [],
+      "oracle_strength_delta": null,
+      "propagate_delta": null,
+      "reach_delta": null,
+      "related_test_delta": 1,
+      "seam_id": "67fc764ba37d77bd",
+      "seam_kind": "predicate_boundary"
+    }
+  ],
   "new": [],
   "regressed": [],
   "removed": [],
   "review_receipt": {
     "focused_proof_added": [
-      "predicate_boundary at src/lib.rs:2 shows static evidence movement for focused proof outside RIPR: new observed value: 100; related test count increased by 1."
+      "predicate_boundary at src/lib.rs:2 shows static evidence movement for focused proof outside RIPR: missing discriminator no longer reported: discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate); new observed value: 100; related test count increased by 1."
     ],
+    "gap_movement": {
+      "changed": 0,
+      "closed": 1,
+      "new": 0,
+      "opened": 0,
+      "removed": 0,
+      "strengthened": 0,
+      "unchanged": 0,
+      "weakened": 0
+    },
     "movement_after_verification": [
-      "0 improved, 0 changed without ranking higher, 0 regressed, 1 unchanged.",
-      "predicate_boundary at src/lib.rs:2 kept weakly_gripped but evidence changed: new observed value: 100; related test count increased by 1."
+      "1 improved, 0 changed without ranking higher, 0 regressed, 0 unchanged.",
+      "Gap movement: 1 closed, 0 opened, 0 strengthened, 0 weakened, 0 unchanged, 0 new, 0 removed, 0 changed.",
+      "predicate_boundary at src/lib.rs:2 moved weakly_gripped -> strongly_gripped (improved)."
     ],
     "remaining_weak_or_unknown": [
-      "predicate_boundary remains weakly_gripped at src/lib.rs:2."
+      "No weak or unknown after-snapshot seams were present in the compared artifacts."
     ],
     "reviewer_may_believe": [
       "RIPR compared only the listed static snapshots: fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json and fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json.",
@@ -68,48 +113,28 @@
     ],
     "what_changed": [
       "Compared before snapshot fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json with after snapshot fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json.",
-      "Static seam movement: 0 moved, 1 unchanged, 0 regressed, 0 new, 0 removed."
+      "Static seam movement: 1 moved, 0 unchanged, 0 regressed, 0 new, 0 removed."
     ]
   },
   "schema_version": "0.1",
   "status": "advisory",
   "summary": {
-    "moved": 0,
+    "gap_movement": {
+      "changed": 0,
+      "closed": 1,
+      "new": 0,
+      "opened": 0,
+      "removed": 0,
+      "strengthened": 0,
+      "unchanged": 0,
+      "weakened": 0
+    },
+    "moved": 1,
     "new": 0,
     "regressed": 0,
     "removed": 0,
-    "unchanged": 1
+    "unchanged": 0
   },
   "tool": "ripr",
-  "unchanged": [
-    {
-      "activate_delta": null,
-      "after": "weakly_gripped",
-      "before": "weakly_gripped",
-      "direction": "unchanged",
-      "discriminate_delta": null,
-      "evidence_delta": [
-        "new observed value: 100",
-        "related test count increased by 1"
-      ],
-      "evidence_source": "legacy_fields",
-      "file": "src/lib.rs",
-      "gap_movement": "unchanged",
-      "line": 2,
-      "missing_discriminators_reopened": [],
-      "missing_discriminators_resolved": [],
-      "no_movement_reason": null,
-      "observe_delta": null,
-      "observed_values_added": [
-        "100"
-      ],
-      "observed_values_removed": [],
-      "oracle_strength_delta": null,
-      "propagate_delta": null,
-      "reach_delta": null,
-      "related_test_delta": 1,
-      "seam_id": "67fc764ba37d77bd",
-      "seam_kind": "predicate_boundary"
-    }
-  ]
+  "unchanged": []
 }

@@ -1,7 +1,15 @@
+use crate::analysis::extract::mask_comments_and_strings;
 use crate::domain::ProbeFamily;
 
 pub fn classify_changed_line(text: &str) -> Vec<ProbeFamily> {
     let text = text.trim_start();
+    // Masked once: comments between `pub` and `const` (`pub /* note */`)
+    // must not hide a declaration, and string/comment contents must not
+    // mint behavioral families downstream.
+    let masked = mask_comments_and_strings(text);
+    if is_constant_declaration(&masked) {
+        return classify_constant_declaration(&masked);
+    }
     let mut out = Vec::new();
     if has_predicate_shape(text) {
         out.push(ProbeFamily::Predicate);
@@ -30,6 +38,68 @@ pub fn classify_changed_line(text: &str) -> Vec<ProbeFamily> {
     out.sort_by(|a, b| a.as_str().cmp(b.as_str()));
     out.dedup_by(|a, b| a.as_str() == b.as_str());
     out
+}
+
+/// Classify a constant (`const`/`static`) declaration line. `text` is the
+/// string/comment-masked line, so literal data and comments never reach
+/// the matchers.
+///
+/// FIX #3719: declaration syntax never reads as behavior — the
+/// `pub(crate)` parens and `: Type` colon are gated absolutely, so no
+/// `call_deletion` or `field_construction` family ever attaches, whatever
+/// the initializer. Behavioral families come from the initializer span
+/// only (masked text after the top-level `=`), so a type annotation such
+/// as `NoneType` cannot mint `ReturnValue` while a genuine threshold
+/// (`a > b`) still reads `Predicate`. `StaticUnknown` is always added
+/// for the declared-flow limitation.
+fn classify_constant_declaration(text: &str) -> Vec<ProbeFamily> {
+    let scan = initializer_span(text);
+    let mut out = Vec::new();
+    if has_predicate_shape(scan) {
+        out.push(ProbeFamily::Predicate);
+    }
+    if has_error_shape(scan) {
+        out.push(ProbeFamily::ErrorPath);
+    }
+    if has_return_shape(scan) {
+        out.push(ProbeFamily::ReturnValue);
+    }
+    if has_effect_shape(scan) {
+        out.push(ProbeFamily::SideEffect);
+    }
+    if scan.starts_with("match ") || scan.contains("=>") {
+        out.push(ProbeFamily::MatchArm);
+    }
+    out.push(ProbeFamily::StaticUnknown);
+    out.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    out.dedup_by(|a, b| a.as_str() == b.as_str());
+    out
+}
+
+/// Span of a constant initializer: masked text after the declaration's
+/// top-level `=`. Depth-tracked so `==`, `=>`, `>=`, `<=`, `!=`, and
+/// bracketed `=` never split. Falls back to the whole line when no
+/// top-level `=` exists (same as matching the full line).
+fn initializer_span(masked: &str) -> &str {
+    let bytes = masked.as_bytes();
+    let mut depth = 0usize;
+    let mut index = 0usize;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' if depth > 0 => depth -= 1,
+            b'=' if depth == 0
+                && bytes.get(index + 1) != Some(&b'=')
+                && bytes.get(index + 1) != Some(&b'>')
+                && (index == 0 || !matches!(bytes[index - 1], b'=' | b'!' | b'>' | b'<')) =>
+            {
+                return &masked[index + 1..];
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    masked
 }
 
 fn has_predicate_shape(text: &str) -> bool {
@@ -152,7 +222,8 @@ fn is_assertion_macro(text: &str) -> bool {
 }
 
 fn has_call_shape(text: &str) -> bool {
-    text.contains('(')
+    !is_constant_declaration(text)
+        && text.contains('(')
         && text.contains(')')
         && !is_function_signature(text)
         && !text.contains("assert")
@@ -181,7 +252,10 @@ fn call_prefix_is_named(text: &str) -> bool {
 }
 
 fn has_field_shape(text: &str) -> bool {
-    text.contains(':') && !text.contains("::") && !is_function_signature(text)
+    !is_constant_declaration(text)
+        && text.contains(':')
+        && !text.contains("::")
+        && !is_function_signature(text)
 }
 
 fn is_function_signature(text: &str) -> bool {
@@ -224,6 +298,30 @@ fn strip_extern_abi(text: &str) -> &str {
     after_quote
 }
 
+/// FIX #3719: a `const`/`static` declaration (with any visibility, including
+/// `pub(crate)`) is a named value binding — its `pub(crate)` parentheses and
+/// `: Type` colon are declaration syntax, not call or field-construction
+/// behavior. Without this gate, `pub(crate) const X: u32 = 3;` misclassified
+/// as both call_deletion and field_construction (#3719).
+fn is_constant_declaration(text: &str) -> bool {
+    let mut rest = text.trim_start();
+
+    if let Some(next) = rest.strip_prefix("pub") {
+        // Tolerates `pub(crate)`, `pub (crate)`, and bare `pub const`.
+        let after_pub = next.trim_start();
+        if let Some(rest_after_vis) = after_pub.strip_prefix('(') {
+            let Some((_, after_visibility)) = rest_after_vis.split_once(')') else {
+                return false;
+            };
+            rest = after_visibility.trim_start();
+        } else {
+            rest = after_pub;
+        }
+    }
+
+    rest.starts_with("const ") || rest.starts_with("static ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,6 +348,130 @@ mod tests {
                 expected.as_str()
             );
         }
+    }
+
+    /// FIX #3719: a constant declaration must not acquire call_deletion or
+    /// field_construction behavior from its `pub(crate)` parentheses or its
+    /// `: Type` colon. It falls through to StaticUnknown, which the canonical
+    /// alignment maps to the static_limitation canonical item.
+    #[test]
+    fn constant_declarations_do_not_acquire_call_or_field_shapes() {
+        for text in [
+            "pub(crate) const OBSERVATION_SCHEMA_GENERATION: u32 = 3;",
+            "pub const MAX_RETRIES: usize = 5;",
+            "const CACHE_TTL_SECS: u64 = 60;",
+            "static ACTIVE: AtomicUsize = AtomicUsize::new(0);",
+            "pub static INSTANCE: OnceLock<Config> = OnceLock::new();",
+        ] {
+            let families = classify_changed_line(text);
+            assert!(
+                !families.contains(&ProbeFamily::CallDeletion),
+                "{text} must not classify as call_deletion"
+            );
+            assert!(
+                !families.contains(&ProbeFamily::FieldConstruction),
+                "{text} must not classify as field_construction"
+            );
+            assert!(
+                families.contains(&ProbeFamily::StaticUnknown),
+                "{text} should fall through to static_unknown"
+            );
+        }
+    }
+
+    /// Review (#3720, devin BUG thread): declarations with behavioral-shape
+    /// initializers keep the initializer family alongside StaticUnknown —
+    /// the threshold comparison still reads Predicate, the Err initializer
+    /// still reads ErrorPath — while declaration syntax never reads as
+    /// call/field behavior.
+    #[test]
+    fn constant_declarations_keep_initializer_behavior_alongside_unknown() {
+        for (text, expected) in [
+            (
+                "const VALUE: Result<(), Error> = Err(error);",
+                ProbeFamily::ErrorPath,
+            ),
+            (
+                "pub(crate) const READY: bool = a > b;",
+                ProbeFamily::Predicate,
+            ),
+        ] {
+            let families = classify_changed_line(text);
+            assert!(
+                families.contains(&expected),
+                "{text} must keep {} from its initializer",
+                expected.as_str()
+            );
+            assert!(
+                families.contains(&ProbeFamily::StaticUnknown),
+                "{text} must record the declared-flow limitation"
+            );
+            assert!(
+                !families.contains(&ProbeFamily::CallDeletion),
+                "{text} must not read declaration syntax as call_deletion"
+            );
+            assert!(
+                !families.contains(&ProbeFamily::FieldConstruction),
+                "{text} must not read declaration syntax as field_construction"
+            );
+        }
+    }
+
+    /// Review (#3720, devin BUG thread): operator/match tokens inside
+    /// string literals are data, not behavior — they must not mint
+    /// threshold or match families on a declaration line.
+    #[test]
+    fn constant_string_literals_do_not_mint_behavioral_families() {
+        for text in [
+            "const OPERATOR: &str = \" > \";",
+            "const ARROW: &str = \"=>\";",
+            "pub(crate) const MSG: &str = \"Err(not real)\";",
+        ] {
+            let families = classify_changed_line(text);
+            assert_eq!(
+                families,
+                vec![ProbeFamily::StaticUnknown],
+                "{text} must classify as static_unknown alone"
+            );
+        }
+    }
+
+    /// Review (#3720, coderabbit Major threads): comments between `pub`
+    /// and `const` must not hide the declaration, and the type annotation
+    /// must not mint behavioral families — only the initializer span can.
+    #[test]
+    fn constant_declaration_gate_ignores_comments_and_annotations() {
+        for text in [
+            "pub /* note */ const VALUE: u32 = 3;",
+            "const VALUE: NoneType = value;",
+        ] {
+            let families = classify_changed_line(text);
+            assert_eq!(
+                families,
+                vec![ProbeFamily::StaticUnknown],
+                "{text} must classify as static_unknown alone"
+            );
+        }
+    }
+
+    /// Controls: actual deletable calls and actual field constructions keep
+    /// their families, and a const with a function-call initializer stays
+    /// out of call_deletion (the initializer call is not the declaration).
+    #[test]
+    fn call_and_field_controls_keep_their_families() {
+        assert!(
+            classify_changed_line("send_invoice(invoice)").contains(&ProbeFamily::CallDeletion)
+        );
+        assert!(
+            classify_changed_line("total: discounted_total")
+                .contains(&ProbeFamily::FieldConstruction)
+        );
+        let initializer =
+            classify_changed_line("pub(crate) const LIMIT: usize = compute_limit(64);");
+        assert!(
+            !initializer.contains(&ProbeFamily::CallDeletion),
+            "const initializer call must not classify the declaration as call_deletion"
+        );
     }
 
     #[test]

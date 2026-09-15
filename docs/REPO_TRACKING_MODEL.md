@@ -2,8 +2,7 @@
 
 This is `ripr`'s agent-neutral, repo-owned tracking model. It is the
 centralized source of truth for proposals, behavior contracts, architectural
-decisions, multi-PR campaigns, the currently active campaign, scoped review
-units, and closeouts.
+decisions, multi-PR campaigns, scoped review units, and closeouts.
 
 External agents have their own goal or task systems — Codex `/goal`, Kiro
 specs/tasks, Claude Code's task tools, Cursor rules, and so on. Those are
@@ -46,7 +45,7 @@ namespace:
 | Spec | `docs/specs/RIPR-SPEC-*` |
 | ADR | `docs/adr/` |
 | Implementation plan | `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, and `plans/` |
-| Active goal manifest | Retired (`.ripr/goals/` deleted in #1701 PR 3); live work selection comes from GitHub and the local worktree. |
+| Agent-local execution state | External agent task systems only; live work selection comes from GitHub and the local worktree. |
 | Support tiers | `docs/status/SUPPORT_TIERS.md` |
 | Policy ledgers | `policy/*.toml`, `.ripr/traceability.toml`, `docs/CAPABILITY_MATRIX.md`, and `metrics/capabilities.toml` |
 | Closeout | `docs/handoffs/` |
@@ -54,8 +53,8 @@ namespace:
 
 This file is the repo-native source-of-truth control-plane guide for RIPR's
 existing artifacts. Its role is to explain and link the repo-owned artifacts,
-not to replace the execution manifest, support-tier files, traceability ledger,
-or campaign history.
+not to replace agent-local execution state, support-tier files, traceability
+ledgers, or campaign history.
 
 ## Lifecycle
 
@@ -111,11 +110,10 @@ To prevent overloading individual docs:
 - A campaign ledger entry sequences PRs. It must not redefine specs or
   duplicate proposal reasoning.
 - A campaign-specific plan adds operational detail for one campaign slice. It
-  must not redefine specs, ADRs, or active manifest state.
-- The active manifest names the current execution campaign. It may stay on a
-  closed campaign only when the manifest also declares
-  `successor = "<campaign-id>"` or `no_current_goal = true`. Closed manifests
-  also move to the archive.
+  must not redefine specs or live execution state.
+- GitHub issues and PRs, together with the local worktree, identify live
+  execution. Campaign ledgers and plans provide sequence and context but do
+  not select the current worker or issue.
 - A scoped PR is the smallest reviewable unit. It must not bundle unrelated
   contracts.
 - A closeout records what happened. It must not invent new contracts; new
@@ -124,9 +122,9 @@ To prevent overloading individual docs:
 When in doubt about where something belongs, ask which question the reader
 will be asking when they reach for the doc. A reader asking "why does this
 exist?" wants the proposal. A reader asking "what must `ripr` do?" wants
-the spec. A reader asking "what is the agent doing right now?" wants the
-active manifest. A reader asking "what shipped last week?" wants the
-handoffs.
+the spec. A reader asking "what is being worked on right now?" wants the
+live GitHub/worktree state. A reader asking "what shipped last week?" wants
+the handoffs.
 
 ## Agent neutrality
 

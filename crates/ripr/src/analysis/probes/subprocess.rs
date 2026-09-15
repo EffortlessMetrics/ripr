@@ -78,6 +78,7 @@ fn looks_like_subprocess_builder_line(text: &str) -> bool {
 mod tests {
     use super::*;
     use crate::analysis::diff::{ChangedFile, ChangedLine};
+    use crate::analysis::facts::FunctionSourceRole;
     use crate::analysis::rust_index::{FileFacts, FunctionFact};
     use crate::domain::SymbolId;
     use std::collections::BTreeMap;
@@ -95,7 +96,10 @@ mod tests {
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
-            is_test: false,
+            source_role: FunctionSourceRole::Production,
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+
             attrs: Vec::new(),
         };
         RustIndex {

@@ -142,6 +142,26 @@ pub(crate) struct AnalysisIdentity {
     pub(crate) base_revision: Option<String>,
     pub(crate) input_identity: Option<String>,
     pub(crate) snapshot_identity: Option<String>,
+    /// #3237/#3278: the immutable Git candidate subject this run
+    /// analyzed, when the input was a typed subject. Additive; ordinary
+    /// inputs leave it absent.
+    pub(crate) git_candidate_subject: Option<GitCandidateSubjectIdentity>,
+}
+
+/// Machine-visible identity of an analyzed immutable Git candidate
+/// (#3278 R3). Every field binds directly to the R2 producer's resolved
+/// state — never inferred from command construction.
+#[derive(Clone, Debug, Default, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub(crate) struct GitCandidateSubjectIdentity {
+    /// `subject_kind`: `tree_to_tree`.
+    pub(crate) subject_kind: String,
+    /// The resolved base tree object ID (the empty tree carries the
+    /// repository's real per-format empty-tree OID).
+    pub(crate) base_tree: String,
+    /// The exact candidate tree object ID whose blobs were analyzed.
+    pub(crate) candidate_tree: String,
+    /// SHA-256 of the derived base→candidate unified diff.
+    pub(crate) diff_identity: String,
 }
 
 impl AnalysisIdentity {
@@ -155,6 +175,16 @@ impl AnalysisIdentity {
             ("snapshot_identity", &mut self.snapshot_identity),
         ] {
             normalize_optional_bounded_text(field, value)?;
+        }
+        if let Some(subject) = self.git_candidate_subject.as_mut() {
+            for (field, value) in [
+                ("subject_kind", &mut Some(subject.subject_kind.clone())),
+                ("base_tree", &mut Some(subject.base_tree.clone())),
+                ("candidate_tree", &mut Some(subject.candidate_tree.clone())),
+                ("diff_identity", &mut Some(subject.diff_identity.clone())),
+            ] {
+                normalize_optional_bounded_text(field, value)?;
+            }
         }
         Ok(())
     }

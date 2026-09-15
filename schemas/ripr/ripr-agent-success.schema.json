@@ -29,12 +29,16 @@
     "must_not_change",
     "verify_route",
     "receipt_route",
+    "verify_route_readiness",
+    "receipt_route_readiness",
+    "verify_command_spec",
+    "receipt_command_spec",
     "limitations",
     "non_claims"
   ],
   "properties": {
     "protocol_version": { "const": "0.1" },
-    "schema_version": { "const": "0.1" },
+    "schema_version": { "const": "0.2" },
     "request": { "$ref": "ripr-agent-request.schema.json#/properties/request" },
     "kind": {
       "enum": [
@@ -70,7 +74,231 @@
     },
     "verify_route": { "type": ["string", "null"], "minLength": 1 },
     "receipt_route": { "type": ["string", "null"], "minLength": 1 },
+    "verify_route_readiness": {
+      "description": "Closed readiness vocabulary for the verify_route slot (#1617 slice 4). Null exactly when verify_route is null. typed_direct/typed_shell_required require a producer-owned verify_command_spec; legacy_string_only means only the display string exists; manual means the route is described by a validated spec that is not automatically executable. Slot↔spec role matching (verify vs receipt) is beyond cross-field JSON Schema and is enforced by the Rust resolver in crates/ripr/src/lsp/agent_protocol.rs.",
+      "enum": [
+        "typed_direct",
+        "typed_shell_required",
+        "manual",
+        "legacy_string_only",
+        null
+      ]
+    },
+    "receipt_route_readiness": {
+      "description": "Closed readiness vocabulary for the receipt_route slot (#1617 slice 4). Null exactly when receipt_route is null. Slot↔spec role matching is enforced by the Rust resolver.",
+      "enum": [
+        "typed_direct",
+        "typed_shell_required",
+        "manual",
+        "legacy_string_only",
+        null
+      ]
+    },
+    "verify_command_spec": {
+      "description": "Producer-owned typed verify route carried in full, or null. The definition is reused from the published repair-assurance CommandSpec contract; the role must be `verify` (enforced by the Rust resolver) and the readiness must match execution_mode.",
+      "oneOf": [{ "type": "null" }, { "$ref": "repair-assurance.schema.json#/$defs/command_spec" }]
+    },
+    "receipt_command_spec": {
+      "description": "Producer-owned typed receipt route carried in full, or null. The role must be `receipt` (enforced by the Rust resolver) and the readiness must match execution_mode.",
+      "oneOf": [{ "type": "null" }, { "$ref": "repair-assurance.schema.json#/$defs/command_spec" }]
+    },
     "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "non_claims": { "type": "array", "items": { "type": "string", "minLength": 1 } }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "verify_route_readiness": {
+            "enum": ["typed_direct", "typed_shell_required", "manual"]
+          }
+        },
+        "required": ["verify_route_readiness"]
+      },
+      "then": {
+        "properties": { "verify_command_spec": { "type": "object" } },
+        "required": ["verify_command_spec"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "receipt_route_readiness": {
+            "enum": ["typed_direct", "typed_shell_required", "manual"]
+          }
+        },
+        "required": ["receipt_route_readiness"]
+      },
+      "then": {
+        "properties": { "receipt_command_spec": { "type": "object" } },
+        "required": ["receipt_command_spec"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "verify_command_spec": { "type": "object" } },
+        "required": ["verify_command_spec"]
+      },
+      "then": {
+        "properties": {
+          "verify_route": { "type": "string", "minLength": 1 },
+          "verify_route_readiness": {
+            "enum": ["typed_direct", "typed_shell_required", "manual"]
+          }
+        },
+        "required": ["verify_route", "verify_route_readiness"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "receipt_command_spec": { "type": "object" } },
+        "required": ["receipt_command_spec"]
+      },
+      "then": {
+        "properties": {
+          "receipt_route": { "type": "string", "minLength": 1 },
+          "receipt_route_readiness": {
+            "enum": ["typed_direct", "typed_shell_required", "manual"]
+          }
+        },
+        "required": ["receipt_route", "receipt_route_readiness"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verify_command_spec": {
+            "type": "object",
+            "properties": { "execution_mode": { "const": "direct" } },
+            "required": ["execution_mode"]
+          }
+        },
+        "required": ["verify_command_spec"]
+      },
+      "then": {
+        "properties": { "verify_route_readiness": { "const": "typed_direct" } },
+        "required": ["verify_route_readiness"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verify_command_spec": {
+            "type": "object",
+            "properties": { "execution_mode": { "const": "shell_required" } },
+            "required": ["execution_mode"]
+          }
+        },
+        "required": ["verify_command_spec"]
+      },
+      "then": {
+        "properties": { "verify_route_readiness": { "const": "typed_shell_required" } },
+        "required": ["verify_route_readiness"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verify_command_spec": {
+            "type": "object",
+            "properties": { "execution_mode": { "const": "manual" } },
+            "required": ["execution_mode"]
+          }
+        },
+        "required": ["verify_command_spec"]
+      },
+      "then": {
+        "properties": { "verify_route_readiness": { "const": "manual" } },
+        "required": ["verify_route_readiness"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "receipt_command_spec": {
+            "type": "object",
+            "properties": { "execution_mode": { "const": "direct" } },
+            "required": ["execution_mode"]
+          }
+        },
+        "required": ["receipt_command_spec"]
+      },
+      "then": {
+        "properties": { "receipt_route_readiness": { "const": "typed_direct" } },
+        "required": ["receipt_route_readiness"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "receipt_command_spec": {
+            "type": "object",
+            "properties": { "execution_mode": { "const": "shell_required" } },
+            "required": ["execution_mode"]
+          }
+        },
+        "required": ["receipt_command_spec"]
+      },
+      "then": {
+        "properties": { "receipt_route_readiness": { "const": "typed_shell_required" } },
+        "required": ["receipt_route_readiness"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "receipt_command_spec": {
+            "type": "object",
+            "properties": { "execution_mode": { "const": "manual" } },
+            "required": ["execution_mode"]
+          }
+        },
+        "required": ["receipt_command_spec"]
+      },
+      "then": {
+        "properties": { "receipt_route_readiness": { "const": "manual" } },
+        "required": ["receipt_route_readiness"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "verify_route": { "type": "string" } },
+        "required": ["verify_route"]
+      },
+      "then": {
+        "properties": { "verify_route_readiness": { "type": "string" } },
+        "required": ["verify_route_readiness"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "verify_route_readiness": { "type": "string" } },
+        "required": ["verify_route_readiness"]
+      },
+      "then": {
+        "properties": { "verify_route": { "type": "string" } },
+        "required": ["verify_route"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "receipt_route": { "type": "string" } },
+        "required": ["receipt_route"]
+      },
+      "then": {
+        "properties": { "receipt_route_readiness": { "type": "string" } },
+        "required": ["receipt_route_readiness"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "receipt_route_readiness": { "type": "string" } },
+        "required": ["receipt_route_readiness"]
+      },
+      "then": {
+        "properties": { "receipt_route": { "type": "string" } },
+        "required": ["receipt_route"]
+      }
+    }
+  ]
 }

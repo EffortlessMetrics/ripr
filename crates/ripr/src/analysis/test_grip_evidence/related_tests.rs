@@ -60,12 +60,8 @@ impl OwnerContext {
         let name = owner_fn.map(|f| f.name.as_str()).unwrap_or("").to_string();
         let name_lower = name.to_ascii_lowercase();
         let owner_file = owner_fn.map(|f| f.file.as_path());
-        let file_stem = owner_file
-            .and_then(|p| p.file_stem())
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
-        let module_path = owner_file.and_then(module_path_for);
+        let file_stem = owner_file.map(normalized_file_stem).unwrap_or_default();
+        let module_path = owner_file.and_then(|file| module_path_for_index(context.index, file));
         let prefix = owner_fn.and_then(|f| package_prefix(&f.file));
         let fixture_names = owner_file
             .and_then(|file| context.index.files.get(file))
@@ -518,7 +514,10 @@ pub(super) fn fixture_names_for_owner_file(facts: &rust_index::FileFacts) -> BTr
     facts
         .functions
         .iter()
-        .filter(|f| !f.is_test && (is_fixture_named(&f.name) || f.body.contains("#[fixture]")))
+        .filter(|f| {
+            !f.source_role.is_evidence_role()
+                && (is_fixture_named(&f.name) || f.body.contains("#[fixture]"))
+        })
         .map(|f| f.name.clone())
         .collect()
 }
@@ -566,10 +565,10 @@ pub(super) fn assertion_targets_seam(test: &TestSummary, tokens: &[String]) -> b
 
 #[cfg(test)]
 pub(super) fn same_test_file(test_file: &Path, owner_stem: &str) -> bool {
-    let stem = match test_file.file_stem().and_then(|s| s.to_str()) {
-        Some(s) => s,
-        None => return false,
-    };
+    let stem = normalized_file_stem(test_file);
+    if stem.is_empty() {
+        return false;
+    }
     if stem == owner_stem {
         return true;
     }
@@ -613,6 +612,10 @@ pub(super) fn module_path_for(file: &Path) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+pub(super) fn module_path_for_index(index: &RustIndex, file: &Path) -> Option<String> {
+    module_path_for(&rust_index::compilation_unit_path(index, file))
 }
 
 /// Two files share a module if any non-leaf segment of the owner's
@@ -694,25 +697,53 @@ pub(super) fn strip_comments_and_strings(line: &str) -> String {
     };
     let mut out = String::with_capacity(without_comment.len());
     let mut in_string = false;
+    let mut in_char = false;
     let mut escaped = false;
-    for ch in without_comment.chars() {
-        if in_string {
+    let mut chars = without_comment.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if in_string || in_char {
             if escaped {
                 escaped = false;
                 continue;
             }
             match ch {
                 '\\' => escaped = true,
-                '"' => in_string = false,
+                '"' if in_string => in_string = false,
+                '\'' if in_char => in_char = false,
                 _ => {}
             }
             continue;
         }
-        if ch == '"' {
-            in_string = true;
-            continue;
+        match ch {
+            '"' => in_string = true,
+            '\'' => {
+                let mut lookahead = chars.clone();
+                let is_char_literal = match lookahead.next() {
+                    Some('\\') => {
+                        if lookahead.next() == Some('u') {
+                            if lookahead.next() == Some('{') {
+                                for next in lookahead.by_ref() {
+                                    if next == '}' {
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            lookahead.next();
+                        }
+                        lookahead.next() == Some('\'')
+                    }
+                    Some(_) => lookahead.next() == Some('\''),
+                    None => false,
+                };
+                if is_char_literal {
+                    in_char = true;
+                } else {
+                    out.push(ch);
+                }
+            }
+            _ => out.push(ch),
         }
-        out.push(ch);
     }
     out
 }
@@ -734,6 +765,27 @@ pub(super) fn normalize_path(path: &Path) -> String {
     path.to_string_lossy()
         .replace('\\', "/")
         .trim_start_matches("./")
+        .to_string()
+}
+
+/// Extract a source-file stem after normalizing separators from either
+/// host. Grip inputs can carry paths produced on a different platform
+/// than the host resolving the association (#3469); a foreign separator
+/// makes [`std::path::Path::file_stem`] treat an entire relative path as
+/// one file name, so same-test-file lookups miss on exactly one host.
+/// Non-UTF-8 paths fail closed: lossy replacement characters could
+/// collapse distinct file names into one stem and fabricate a
+/// same-test-file relation (the #3545 `cross_host_stem` guard).
+pub(super) fn normalized_file_stem(path: &Path) -> String {
+    let Some(text) = path.to_str() else {
+        return String::new();
+    };
+    let unified = text.replace('\\', "/");
+    let file = unified.rsplit('/').next().unwrap_or_default();
+    Path::new(file)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or_default()
         .to_string()
 }
 
