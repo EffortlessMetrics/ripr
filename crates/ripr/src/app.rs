@@ -5,6 +5,7 @@ pub(crate) mod agent_review_summary;
 pub(crate) mod agent_status;
 pub(crate) mod agent_workflow;
 pub(crate) mod analysis_outcome_artifact;
+pub(crate) mod analysis_subject;
 pub(crate) mod annotations;
 pub(crate) mod causal_projection;
 mod check;
@@ -13,11 +14,15 @@ mod context;
 mod explain;
 pub(crate) mod impacted_evidence;
 mod navigation;
-pub(crate) mod pr_evidence;
+pub mod pr_evidence;
+pub use pr_evidence::reject_pr_evidence_error_packet;
 /// Shared PR-evidence summary projection used by the `ripr` binary and the
 /// compatibility `xtask` route.
 pub mod pr_summary;
+pub(crate) mod python_repair_binding;
+pub(crate) mod python_repair_verification;
 pub(crate) mod receipt;
+pub(crate) mod repair_attempt;
 pub(crate) mod review_comments;
 pub(crate) mod ripr_plus;
 mod selector;
@@ -99,6 +104,13 @@ pub struct CheckInput {
     /// `RIPR_GIT_TIMEOUT` env var (default: 5 minutes); the LSP refresh path
     /// populates it from the `gitTimeoutMs` session option.
     pub git_timeout: Option<std::time::Duration>,
+    /// Immutable Git candidate subject (#3237 / #3276 R1). When `Some`, the
+    /// run must consume base and candidate bytes from the named Git tree
+    /// objects — never the worktree or live index. Mutually exclusive with
+    /// `diff_file` and `base`. The object producer (#3277) executes the
+    /// subject in diff mode; worktree and repo modes fail closed with a
+    /// named error rather than falling back to worktree analysis.
+    pub git_candidate: Option<crate::domain::GitCandidateSubject>,
 }
 
 impl Default for CheckInput {
@@ -113,6 +125,7 @@ impl Default for CheckInput {
             perl_facts_path: None,
             suppression_policy: None,
             git_timeout: None,
+            git_candidate: None,
         }
     }
 }
@@ -177,6 +190,11 @@ impl Mode {
 pub struct CheckOutput {
     /// Output schema version for machine consumers.
     pub schema_version: String,
+    /// Test-harness registry projections (#3532): what each exact
+    /// registration established for this run. Empty when the repository
+    /// has no registrations, so every existing consumer output is
+    /// unchanged.
+    pub harness_projections: Vec<crate::analysis::harness_projection::TestHarnessProjection>,
     /// Tool identifier.
     pub tool: String,
     /// Mode used for this analysis.

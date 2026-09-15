@@ -25,7 +25,8 @@ Linked issues:
 
 Linked PRs:
 
-- None yet
+- [ripr-swarm#1046](https://github.com/EffortlessMetrics/ripr-swarm/pull/1046) — initial spec and rail-alignment table.
+- [unsafe-review-swarm#1521](https://github.com/EffortlessMetrics/unsafe-review-swarm/pull/1521) — consumer-side rail review and field-mapping confirmation.
 
 Support-tier impact:
 
@@ -164,8 +165,8 @@ to a ripr field or a named gap so the two documents cannot drift:
 | skip metadata: reason, limit, observed count | `run_limitations[]` rows carry first-class `observed_seams`, `cache_limit`, `run_status`, and `downstream_consumable` fields plus `runtime_status.limitation_category`; the rail's motivating example (`skipped_large_entry_seams_411564_limit_20000`) maps to `lane1_repo_exposure_cache_store_skipped_large_entry`, which populates both structured fields; the residual gap is the `lane1_repo_exposure_large_cache_preflight_skip` category, which reports cache footprint (bytes, files) in prose only with null `observed_seams` / `cache_limit` (see Failure Modes) |
 | skip remediation as a supported command | `runtime_status.repair_route`, item `verify_command`, and `GapRecord.regeneration_commands[]`; remediation text names real commands, not invented flags |
 | cache persistence by hash, version, mode | not yet a public output-contract field; named gap — ripr must not claim cache reuse it cannot show (see Failure Modes) |
-| rail per-seam `source_route` | not yet a ripr field; named gap — consumers must not synthesize a route label from grip fields (see Failure Modes) |
-| rail per-seam `stable_byte_family` | not yet a first-class ripr field; named gap — the nearest anchors are the configured-route metadata on `bun_cross_language_grip` and the configured bridge inventory; consumers must not synthesize the label (see Failure Modes) |
+| rail per-seam `source_route` | consumer-owned downstream classification; unsafe-review synthesizes it from configured-route metadata and the stable-byte family (see Failure Modes) |
+| rail per-seam `stable_byte_family` | consumer-owned downstream classification; unsafe-review maps configured-route metadata and bridge inventory to its stable-byte family taxonomy (see Failure Modes) |
 | mixed-language route context preserved | `bun_cross_language_grip`: `state`, `rust_seam.{file, owner, boundary}`, `typescript_evidence.{test_file, verdict, bridge_confidence, missing_discriminators[]}`, `raw_evidence_refs[]` legs (`rust_seam`, `binding_edge`, `external_callsite`, `external_oracle`); the flat names (`rust_file`, `ts_test_file`, and siblings) appear in public JSON only inside the nested `advisory_packet` object |
 | rail `proof_mode` field | `proof_mode.mode`: `observable_red_green`, `mutation_plus_miri`, `helper_gated`, `bridge_unknown`, `static_limitation` |
 | rail `oracle_language` / `oracle_path` / `oracle_kind` | card `language`, `bun_cross_language_grip.typescript_evidence.test_file`, card `oracle_kind` and `oracle_strength` |
@@ -232,11 +233,12 @@ Downstream surfaces that render ripr evidence must pair these:
 - No default blocking policy for any downstream tool.
 - No support-tier promotion for TypeScript/JavaScript, Bun routes, or
   any preview surface.
-- No guarantee that every rail requirement is already satisfied; the
-  named gaps in the rail table (preflight-skip structured counts,
-  cache-persistence contract, per-seam `source_route`, per-seam
-  `stable_byte_family`, report-level diff-first `mode`) stay visible
-  until closed by their own slices.
+- No guarantee that every rail requirement is already implemented; the
+  remaining named gaps in the rail table (preflight-skip structured counts,
+  cache-persistence contract, and report-level diff-first encoding) stay
+  visible until closed by their own slices. The consumer-owned
+  `source_route` and `stable_byte_family` classifications are confirmed
+  downstream responsibilities, not missing ripr fields.
 
 ## Required Evidence
 
@@ -352,10 +354,10 @@ prefix.
 - Reject-list coverage: count of reject-list states pinned by a
   fixture (target: all nine).
 - Rail alignment: count of rail requirements mapped to a ripr field
-  versus named gaps (currently five named gaps: preflight-skip
-  structured counts, cache-persistence contract, per-seam
-  `source_route`, per-seam `stable_byte_family`, report-level
-  diff-first `mode`).
+  versus named gaps (currently three named gaps: preflight-skip
+  structured counts, cache-persistence contract, and report-level
+  diff-first encoding; `source_route` and `stable_byte_family` are
+  consumer-owned classifications).
 - Limited-run honesty: count of artifacts with `run_status =
   "limited_*"` that carry a limitation category and repair route
   (target: all of them).
@@ -387,10 +389,11 @@ prefix.
 - Cache-persistence gap: the rail wants reuse keyed by file hash, tool
   version, and scan mode as visible contract; ripr makes no such
   public claim yet, and downstream docs must not assert it.
-- Unmapped rail fields: per-seam `source_route` and
-  `stable_byte_family` and the report-level diff-first `mode` labels
-  have no ripr field today; consumers must not synthesize them from
-  grip fields or scope labels until their slices land.
+- Remaining unmapped rail field: the illustrative report-level diff-first
+  `mode` label has no literal ripr field today; `analysis_scope` is the
+  stable encoding. The per-seam `source_route` and `stable_byte_family`
+  labels are consumer-owned and may be synthesized only under the
+  confirmed rules in the unsafe-review rail.
 - Consumer parses `findings[]` directly: out of contract; the fix is a
   contract change request, not a parser.
 - A limited run's counts quoted as repo totals: rejected by the

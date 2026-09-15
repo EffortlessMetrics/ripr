@@ -41,9 +41,9 @@
     "external_provider": false
   },
   "evidence_movement": {
-    "state": "unchanged",
+    "state": "improved",
     "before_class": "weakly_gripped",
-    "after_class": "weakly_gripped",
+    "after_class": "strongly_gripped",
     "source": "agent_receipt",
     "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
   },
@@ -53,9 +53,7 @@
     "gate_decision": null,
     "pass_fail_authority": "gate decision when explicitly configured"
   },
-  "warnings": [
-    "current replay fixture preserves actual analyzer output: the focused-test snapshot remains weakly_gripped; dogfood receipt work records live movement separately"
-  ],
+  "warnings": [],
   "limits": {
     "advisory": true,
     "source_edits": false,

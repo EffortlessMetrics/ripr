@@ -33,7 +33,7 @@ Evidence
   - infection yes: Changed Python field or attribute construction can alter object state: `return {"host": "localhost", "port": 9090}`
   - propagation weak: Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved.
   - observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.
   - local flow reaches constructed field: return {"host": "localhost", "port": 9090} (line 2)
   - related test tests/test_conf.py:4 test_host uses strong exact value oracle: assert build_config()["host"] == "localhost"
 

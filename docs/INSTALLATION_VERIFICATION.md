@@ -132,7 +132,7 @@ cargo publish -p ripr --dry-run
 ```
 
 The authoritative packaged-crate install proof is produced by
-`cargo xtask release-readiness --version <version>`. It packages the requested
+`VERSION="0.11.0" cargo xtask release-readiness --version "$VERSION"`. It packages the requested
 crate, extracts it outside the source checkout, installs from that extracted
 source, compares the installed binary with the workspace build, and exercises
 `ripr doctor --root <external-fixture> --json`. It then runs the installed
@@ -176,7 +176,7 @@ On Windows, use `target\ripr\install-smoke-path\bin\ripr.exe`.
 Also confirm the generated CI and editor first-run front doors before release:
 
 ```bash
-cargo xtask release-readiness --version 0.7.0
+VERSION="0.11.0" cargo xtask release-readiness --version "$VERSION"
 ```
 
 The readiness report must show that generated GitHub CI includes `#### First-run

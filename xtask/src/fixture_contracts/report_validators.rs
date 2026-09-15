@@ -340,6 +340,7 @@ pub(crate) fn validate_pr_review_front_panel_fixture_corpus_at(
         "blocked",
         "missing_proof",
         "coverage_flat_grip_improved",
+        "stale_same_path_receipt_fails_closed",
     ];
     let mut seen_cases = BTreeSet::new();
 

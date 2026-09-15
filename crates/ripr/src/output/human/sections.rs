@@ -65,8 +65,19 @@ pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &Ripr
         // label it as observed advisory evidence so the header does not
         // contradict the machine state. Rust `exposed` findings never carry a
         // `missing` entry, so this switch only affects advisory preview output.
+        // #3317 follow-up: the unknown-class `missing` entry is
+        // analyzer-limitation prose ("No clear propagation path…"), not a
+        // discriminator a test could supply. Label it as the limitation it
+        // is when no real discriminator is missing; keep the
+        // discriminator label whenever one exists.
         let label = if finding.class == ExposureClass::Exposed {
             "Discriminator (observed, advisory)"
+        } else if matches!(
+            finding.class,
+            ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown
+        ) && finding.activation.missing_discriminators.is_empty()
+        {
+            "Analyzer limit"
         } else {
             "Missing discriminator"
         };
@@ -200,6 +211,15 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         out.push_str(&wrapped_fragment("  after:  ", after));
     } else {
         out.push_str(&wrapped_fragment("  expr:   ", &finding.probe.expression));
+    }
+    // Revision labelling (#3281): base-side evidence stays visible here —
+    // the human surface explicitly supports historical context — but is
+    // labelled non-actionable so it cannot read as a current obligation.
+    if !finding.is_candidate_actionable() {
+        out.push_str(&format!(
+            "  source:  {} — base-side evidence, not a candidate edit target\n",
+            finding.source_currentness.as_str()
+        ));
     }
 
     out.push_str("\nProbe\n");
@@ -879,7 +899,8 @@ fn classification_hint(class: &ExposureClass, reveal: &RevealEvidence) -> Option
                 .to_string(),
         ),
         ExposureClass::PropagationUnknown => Some(
-            "the change propagates but the downstream effect is unknown statically".to_string(),
+            "the path from the changed behavior to an observable sink is not statically clear"
+                .to_string(),
         ),
         ExposureClass::StaticUnknown => {
             Some("the analysis could not determine a static exposure state".to_string())

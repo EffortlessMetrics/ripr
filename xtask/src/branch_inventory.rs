@@ -1821,7 +1821,9 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     era * 146_097 + day_of_era - 719_468
 }
 
-fn civil_from_days(days: i64) -> (i64, i64, i64) {
+/// Shared with the #3555 adjudication lane: UTC timestamps for recorded
+/// judgments are rendered through the same civil-calendar conversion.
+pub(crate) fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let shifted = days + 719_468;
     let era = if shifted >= 0 {
         shifted
@@ -1843,7 +1845,7 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
     (if month <= 2 { year + 1 } else { year }, month, day)
 }
 
-fn parse_rfc3339_epoch_seconds(text: &str) -> Result<i64, String> {
+pub(crate) fn parse_rfc3339_epoch_seconds(text: &str) -> Result<i64, String> {
     let bytes = text.as_bytes();
     if bytes.len() < 20 {
         return Err(format!("RFC3339 timestamp `{text}` is too short"));
@@ -1868,10 +1870,52 @@ fn parse_rfc3339_epoch_seconds(text: &str) -> Result<i64, String> {
     let hour = number(11..13, "hour")?;
     let minute = number(14..16, "minute")?;
     let second = number(17..19, "second")?;
+    // FIX (#3674 review round 5): `days_from_civil` normalizes out-of-range
+    // fields, so a structurally valid string like `2026-02-30` would silently
+    // become March 2 and enter stored provenance as a real instant. Every
+    // field is therefore range-checked against the calendar before the math.
+    if !(1..=12).contains(&month) {
+        return Err(format!(
+            "RFC3339 timestamp `{text}` has month `{month}` outside 01-12"
+        ));
+    }
+    let month_start = days_from_civil(year, month, 1);
+    let next_month_start = days_from_civil(year, if month == 12 { 13 } else { month + 1 }, 1);
+    let days_in_month = next_month_start - month_start;
+    if !(1..=days_in_month).contains(&day) {
+        return Err(format!(
+            "RFC3339 timestamp `{text}` has day `{day}` outside 01-{days_in_month} for {year}-{month:02}"
+        ));
+    }
+    if !(0..=23).contains(&hour) {
+        return Err(format!(
+            "RFC3339 timestamp `{text}` has hour `{hour}` outside 00-23"
+        ));
+    }
+    if !(0..=59).contains(&minute) {
+        return Err(format!(
+            "RFC3339 timestamp `{text}` has minute `{minute}` outside 00-59"
+        ));
+    }
+    // RFC 3339 section 5.7 permits `:60` as a leap second. Its placement
+    // follows the UTC instant — a numeric offset shifts the local wall clock,
+    // so `1990-12-31T15:59:60-08:00` is the same leap second as
+    // `1990-12-31T23:59:60Z` (round-8 review). The check therefore runs after
+    // offset normalization below; the instant itself equals the next minute
+    // boundary, so the epoch math needs no special case.
+    let leap_second = second == 60;
+    if !(0..=60).contains(&second) {
+        return Err(format!(
+            "RFC3339 timestamp `{text}` has second `{second}` outside 00-60"
+        ));
+    }
     let tail = &text[19..];
     let offset_seconds: i64 = if tail == "Z" {
         0
-    } else if tail.len() == 6 && (tail.starts_with('+') || tail.starts_with('-')) {
+    } else if tail.len() == 6
+        && (tail.starts_with('+') || tail.starts_with('-'))
+        && tail.as_bytes()[3] == b':'
+    {
         let sign: i64 = if tail.starts_with('-') { -1 } else { 1 };
         let offset_hours = tail
             .get(1..3)
@@ -1881,19 +1925,39 @@ fn parse_rfc3339_epoch_seconds(text: &str) -> Result<i64, String> {
             .get(4..6)
             .and_then(|part| part.parse::<i64>().ok())
             .ok_or_else(|| format!("RFC3339 timestamp `{text}` has invalid offset minutes"))?;
+        if !(0..=23).contains(&offset_hours) {
+            return Err(format!(
+                "RFC3339 timestamp `{text}` has offset hours `{offset_hours}` outside 00-23"
+            ));
+        }
+        if !(0..=59).contains(&offset_minutes) {
+            return Err(format!(
+                "RFC3339 timestamp `{text}` has offset minutes `{offset_minutes}` outside 00-59"
+            ));
+        }
         sign * (offset_hours * 3600 + offset_minutes * 60)
     } else {
         return Err(format!(
             "RFC3339 timestamp `{text}` must end in `Z` or a `+hh:mm` offset"
         ));
     };
+    if leap_second {
+        // The minute holding the leap second must be `23:59` in UTC.
+        let utc_second_of_day = (hour * 3600 + minute * 60 - offset_seconds).rem_euclid(86_400);
+        if utc_second_of_day != 23 * 3600 + 59 * 60 {
+            return Err(format!(
+                "RFC3339 timestamp `{text}` has leap second `{second}` outside a `23:59:60` UTC instant"
+            ));
+        }
+    }
     Ok(
         days_from_civil(year, month, day) * 86_400 + hour * 3600 + minute * 60 + second
             - offset_seconds,
     )
 }
 
-fn rfc3339_from_epoch_seconds(epoch: i64) -> String {
+/// Shared with the #3555 adjudication lane: renders one UTC RFC3339 stamp.
+pub(crate) fn rfc3339_from_epoch_seconds(epoch: i64) -> String {
     let days = epoch.div_euclid(86_400);
     let seconds_of_day = epoch.rem_euclid(86_400);
     let (year, month, day) = civil_from_days(days);
@@ -2772,6 +2836,59 @@ mod tests {
             parse_rfc3339_epoch_seconds("not a date").is_err(),
             "invalid timestamps must be rejected",
         )?;
+        Ok(())
+    }
+
+    /// FIX (#3674 review round 5): `days_from_civil` normalizes out-of-range
+    /// calendar fields, so the parser must reject them semantically — a
+    /// normalized non-instant like `2026-02-30` must never enter stored
+    /// provenance as a real time.
+    #[test]
+    fn branch_inventory_rfc3339_rejects_semantically_impossible_dates() -> Result<(), String> {
+        // Control: the real leap day parses, and normalizes back identically.
+        let leap = parse_rfc3339_epoch_seconds("2024-02-29T00:00:00Z")?;
+        ensure(
+            rfc3339_from_epoch_seconds(leap) == "2024-02-29T00:00:00Z",
+            "the leap-day control must round-trip",
+        )?;
+        // RFC 3339 section 5.7: `23:59:60` is a valid leap-second stamp; its
+        // instant equals the next minute boundary (the real 2016-12-31 one).
+        let leap_second = parse_rfc3339_epoch_seconds("2016-12-31T23:59:60Z")?;
+        let next_minute = parse_rfc3339_epoch_seconds("2017-01-01T00:00:00Z")?;
+        ensure(
+            leap_second == next_minute,
+            "the leap second must resolve to the next minute boundary",
+        )?;
+        // Round-8 review: the placement follows the UTC instant, so a numeric
+        // offset may carry the `:60` at a shifted local wall clock.
+        let offset_leap = parse_rfc3339_epoch_seconds("1990-12-31T15:59:60-08:00")?;
+        let utc_form = parse_rfc3339_epoch_seconds("1990-12-31T23:59:60Z")?;
+        ensure(
+            offset_leap == utc_form,
+            "an offset-shifted leap second must equal its UTC form",
+        )?;
+        for impossible in [
+            "1990-12-31T16:59:60-08:00", // offset does not reach the UTC minute
+            "2026-02-30T00:00:00Z",      // day overflow (normalized by the math)
+            "2026-02-29T00:00:00Z",      // non-leap year
+            "2026-13-01T00:00:00Z",      // month 13
+            "2026-00-10T00:00:00Z",      // month 0
+            "2026-09-04T24:00:00Z",      // hour 24
+            "2026-09-04T00:60:00Z",      // minute 60
+            "2026-09-04T00:00:60Z",      // second 60 outside 23:59:60
+            "2016-12-31T12:59:60Z",      // leap second at the wrong local hour
+            "2026-09-04T00:00:61Z",      // second 61
+            "2026-09-04T00:00:-1Z",      // negative second (round-7 catch)
+            "2026-09-04T00:00:00+24:00", // offset hours 24
+            "2026-09-04T00:00:00+99:99", // both offset parts out of range
+            "2026-09-04T00:00:00+0200",  // missing offset colon
+        ] {
+            let parsed = parse_rfc3339_epoch_seconds(impossible);
+            ensure(
+                parsed.is_err(),
+                &format!("`{impossible}` must be rejected, got {parsed:?}"),
+            )?;
+        }
         Ok(())
     }
 

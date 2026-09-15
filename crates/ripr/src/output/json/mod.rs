@@ -270,7 +270,7 @@ mod tests {
             file_budget: 2,
             line_budget: 100,
             budget_disclosures: vec![
-                "RIPR_PARTIAL_DIFF_LINE_BUDGET=2001 exceeds the hard analysis-cost guard (2000); clamped to 2000".to_string(),
+                "RIPR_PARTIAL_DIFF_LINE_BUDGET=2001 exceeds the effective analysis-cost limit (2000); clamped to 2000".to_string(),
             ],
             selected_files: vec!["src/a.rs".to_string()],
             selected_changed_lines: 60,
@@ -386,6 +386,7 @@ mod tests {
     #[test]
     fn render_adds_presentation_text_finding_alignment_when_supported() -> Result<(), String> {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -488,6 +489,7 @@ mod tests {
             relation_confidence: None,
         };
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -622,6 +624,7 @@ mod tests {
             relation_confidence: None,
         };
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -1358,6 +1361,7 @@ mod tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 
@@ -1367,6 +1371,7 @@ mod tests {
 
     fn sample_output(base: Option<String>) -> CheckOutput {
         CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -1501,6 +1506,7 @@ mod tests {
             .collect();
 
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -1550,6 +1556,7 @@ mod tests {
         // When no_scope_provided=true the JSON output must include the
         // scope_disclosures additive field with scope_status=no_scope_provided.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -1607,6 +1614,7 @@ mod tests {
         // When no_scope_provided=false (scope was provided) the scope_disclosures
         // field must be absent — this is a real analyzed-empty result.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -1643,6 +1651,7 @@ mod tests {
         // --format repo-exposure-md and NOT --mode fast.
         // --mode is a speed tier; --format repo-exposure-md is the real full-repo scope.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,

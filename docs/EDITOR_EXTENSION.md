@@ -13,7 +13,7 @@ Open VSX extension:
   EffortlessMetrics.ripr
 ```
 
-The `0.7.x` extension is a universal VSIX preview client. It resolves the
+The extension is a universal VSIX preview client. It resolves the
 server in this order:
 
 ```text
@@ -53,12 +53,24 @@ Use one of these surfaces:
 - VS Code Marketplace: install `EffortlessMetrics.ripr`.
 - Open VSX: install `EffortlessMetrics.ripr`.
 - Local VSIX smoke: run `npm run package`, then install
-  `editors/vscode/dist/ripr-0.7.0.vsix`.
+  `editors/vscode/dist/ripr-VERSION.vsix` (replace `VERSION` with the release version).
 
 On activation, the extension resolves a configured, bundled, cached,
 downloaded, or PATH server and writes the selected source to the `ripr` output
 channel. `cargo install ripr` remains the manual fallback for offline, pinned,
 or controlled environments.
+
+Managed downloads are admitted to the cache only after a unique sibling
+staging directory has passed manifest-version, archive-digest, executable
+probe, executable-digest, and completed-receipt validation. Promotion to the
+version/target cache path is an atomic rename guarded by a per-version/target
+install lock, so concurrent extension hosts converge on one completed install
+and interrupted installs are not launch candidates. A failed install of a new
+version does not disturb an already completed prior version.
+
+The receipt records local installation integrity; it is not a release
+provenance attestation. Producer-owned provenance verification remains a
+separate supply-chain boundary.
 
 ## First Use
 
@@ -428,7 +440,8 @@ npm ci
 npm run compile
 npm run package
 npm run test:e2e
-code --install-extension dist/ripr-0.7.0.vsix --force
+VERSION=0.11.0
+code --install-extension "dist/ripr-${VERSION}.vsix" --force
 ```
 
 Manual smoke:
@@ -488,9 +501,9 @@ LSP diagnostics include a stable JSON `data` payload for editor commands:
 }
 ```
 
-Diagnostics remain advisory. `exposed`, `propagation_unknown`, and
-`static_unknown` findings are informational; weak or missing exposure findings
-are warnings.
+Diagnostics remain advisory. `exposed` and weak or missing exposure
+findings render as warnings; `propagation_unknown` and `static_unknown`
+are informational.
 
 ## Hover Content
 

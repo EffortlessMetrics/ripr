@@ -1,6 +1,6 @@
 # Golden Output Changes
 
-## Pending
+## Pending — propagate_value_returned (1)
 
 Reason:
 initial golden for fix B control: returned call stays weakly_exposed
@@ -12,7 +12,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending
+## Pending — propagate_value_returned (2)
 
 Reason:
 re-bless after merging origin/main (#1216): discriminate message now observation_unverified; classification weakly_exposed unchanged
@@ -24,7 +24,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending
+## Pending — propagate_value_returned (3)
 
 Reason:
 bound default human output to start-here triage; human-full preserves exhaustive evidence
@@ -36,7 +36,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending
+## Pending — propagate_value_returned (4)
 
 Reason:
 changed semantic heads use canonical parser expressions and content-addressed probe identities
@@ -48,7 +48,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending
+## Pending — propagate_value_returned (5)
 
 Reason:
 restrict CallDeletion probes to standalone call statements; refresh affected goldens and record intentional output changes
@@ -60,7 +60,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending
+## Pending — propagate_value_returned (6)
 
 Reason:
 #2103: additive changed_files_by_language field and changed_rust_files now Rust-only count
@@ -72,7 +72,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending
+## Pending — propagate_value_returned (7)
 
 Reason:
 #2567: default human render no longer prints a 'Hidden: 0 lower-priority finding(s) omitted' block when nothing was omitted; the format pointers now sit under a 'More:' heading. Formatting-only drift; no evidence, class, or JSON change.
@@ -84,7 +84,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending
+## Pending — propagate_value_returned (8)
 
 Reason:
 Issue #2598: default human output now exposes bounded explain and context follow-up commands for the selected finding.
@@ -96,7 +96,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending
+## Pending — propagate_value_returned (9)
 
 Reason:
 Issue #2659: finding navigation commands now preserve the analyzed root, diff or artifact scope and shell-safe identity.
@@ -108,7 +108,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending
+## Pending — propagate_value_returned (10)
 
 Reason:
 RIPR-SPEC-0147: publish typed analysis outcome in human and JSON output.
@@ -120,7 +120,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending
+## Pending — propagate_value_returned (11)
 
 Reason:
 RIPR-SPEC-0147: align fixture outputs with the typed incomplete-outcome and unquoted human outcome contract.
@@ -132,10 +132,45 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending
+## Pending — propagate_value_returned (12)
 
 Reason:
 RIPR-SPEC-0023: classification hint added to digest (#2614)
+
+Command:
+`cargo xtask goldens bless propagate_value_returned --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — propagate_value_returned (13)
+
+Reason:
+RIPR-SPEC-0151: rebless check JSON for the additive source_currentness field; classifications, stages, confidence, counts, and recorded coordinates remain unchanged.
+
+Command:
+`cargo xtask goldens bless propagate_value_returned --reason "..."`
+
+Updated:
+- `expected/check.json`
+
+## Pending — propagate_value_returned (14)
+
+Reason:
+RIPR-SPEC-0160: the additive git_candidate_subject identity field (null for ordinary runs) in the check JSON identity block
+
+Command:
+`cargo xtask goldens bless propagate_value_returned --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — propagate_value_returned (15)
+
+Reason:
+RIPR-SPEC-0001: #3161 PR-B production witness gate upgrades complete direct-flow propagate evidence and fails incomplete flows closed
 
 Command:
 `cargo xtask goldens bless propagate_value_returned --reason "..."`

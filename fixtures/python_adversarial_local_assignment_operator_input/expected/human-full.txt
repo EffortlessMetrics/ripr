@@ -33,7 +33,7 @@ Evidence
   - infection yes: Changed Python expression can alter preview-classified predicate behavior: `total = base - bonus`
   - propagation weak: Changed Python fallback expression can propagate through selected behavior; preview evidence does not prove the concrete downstream sink.
   - observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.
   - local flow reaches unknown sink: total = base - bonus (line 2)
   - related test tests/test_calc.py:4 test_base_unchanged uses strong exact value oracle: assert base == 10
 

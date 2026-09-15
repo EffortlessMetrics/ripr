@@ -7,9 +7,14 @@ pub(crate) use arguments::equality_assertion_arguments;
 pub(crate) use classify::classify_assertion;
 #[cfg(test)]
 pub(crate) use patterns::contains_macro_invocation;
-pub(crate) use patterns::is_unwrap_err_bound_error_assertion;
+pub(crate) use patterns::{
+    OracleTextShape, has_oracle_text_shape, is_unwrap_err_bound_error_assertion,
+};
 pub(crate) use scan::unwrap_err_bound_variables;
-pub(crate) use scan::{extract_assertions, extract_line_scanned_oracles};
+pub(crate) use scan::{
+    err_return_guard_oracles, extract_assertions, extract_line_scanned_oracles,
+    guarded_result_match_scan_with_shadow_authority,
+};
 
 #[cfg(test)]
 mod tests {

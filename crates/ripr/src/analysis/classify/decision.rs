@@ -1,4 +1,5 @@
 use super::super::rust_index::{FunctionSummary, TestSummary};
+use super::reveal::wrapper_error_seam_expression;
 use crate::domain::*;
 
 pub(in crate::analysis) fn ensure_unknown_stop_reason(
@@ -136,7 +137,21 @@ pub(in crate::analysis) fn missing_evidence(
         missing.push("No relevant oracle was detected".to_string());
     }
     if discriminate.state != StageState::Yes {
-        if matches!(probe.family, ProbeFamily::ErrorPath) {
+        if matches!(
+            probe.family,
+            ProbeFamily::ErrorPath | ProbeFamily::ReturnValue
+        ) && wrapper_error_seam_expression(&[probe.expression.as_str()])
+        {
+            // #3700 (final consolidation): for a wrapper error seam the
+            // typed static limitation — not an exact-variant prescription —
+            // is the honest outcome. The witnesses may already
+            // downcast-and-pin the variant; what ripr cannot statically
+            // establish is whether the boxed conversion carries that variant.
+            missing.push(
+                "Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established"
+                    .to_string(),
+            );
+        } else if matches!(probe.family, ProbeFamily::ErrorPath) {
             missing.push("No exact error variant discriminator was detected".to_string());
         } else {
             missing.push("No strong discriminator was detected".to_string());
@@ -211,10 +226,43 @@ pub(in crate::analysis) fn recommended_next_step(
     }
     match class {
         ExposureClass::Exposed => None,
-        ExposureClass::WeaklyExposed => {
-            Some(weakly_exposed_guidance_for_family(&probe.family).to_string())
+        ExposureClass::WeaklyExposed => Some(
+            if matches!(probe.family, ProbeFamily::ErrorPath | ProbeFamily::ReturnValue)
+                && wrapper_error_seam_expression(&[probe.expression.as_str()])
+            {
+                // #3700 (final consolidation): do not prescribe an assertion
+                // the suite may already contain. The typed limitation names
+                // what static analysis cannot establish; discriminating this
+                // seam needs real mutation testing or deeper conversion
+                // modeling (Into/From through Box).
+                "Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling."
+            } else if matches!(probe.family, ProbeFamily::ReturnValue)
+                && super::exact_error_variant(&probe.expression).is_some()
+            {
+                // A changed `Err(...)` construction is not a "broad assertion"
+                // gap: the related test may already assert an exact (sibling)
+                // variant. The missing discriminator is an input that reaches
+                // the changed error path plus an assertion pinning this exact
+                // variant (RIPR-SPEC-0106).
+                "Add a test input that reaches the changed error path and assert the exact error variant it returns."
+            } else {
+                weakly_exposed_guidance_for_family(&probe.family)
+            }
+            .to_string(),
+        ),
+        ExposureClass::ReachableUnrevealed => {
+            if matches!(probe.family, ProbeFamily::ErrorPath | ProbeFamily::ReturnValue)
+                && super::exact_error_variant(&probe.expression).is_some()
+            {
+                // A changed `Err(...)` construction with no observing
+                // assertion: the actionable missing discriminator is the
+                // exact variant (RIPR-SPEC-0106), not generic assertion
+                // advice.
+                Some("Add a test input that reaches the changed error path and assert the exact error variant it returns.".to_string())
+            } else {
+                Some("Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.".to_string())
+            }
         }
-        ExposureClass::ReachableUnrevealed => Some("Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.".to_string()),
         ExposureClass::NoStaticPath => Some(crate::domain::NO_STATIC_PATH_NEXT_STEP.to_string()),
         ExposureClass::InfectionUnknown => Some("Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.".to_string()),
         ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown => Some("Escalate to real mutation testing or deep static analysis for this probe.".to_string()),
@@ -376,6 +424,39 @@ mod tests {
         );
         assert_eq!(
             return_value.as_deref(),
+            Some(
+                "Replace broad assertions with exact equality or a property that constrains the changed returned value."
+            )
+        );
+    }
+
+    // XQFi: a return-value probe on an `Err(...)` construction is weakly
+    // exposed because the changed error path is not discriminated — not
+    // because the oracle is "broad". The sibling-variant fixture asserts an
+    // exact `CalcError::Negative` while the change constructs `TooLarge`, so
+    // the guidance must ask for a reaching input and the exact constructed
+    // variant instead of repeating the broad-assertion advice.
+    #[test]
+    fn return_value_error_construction_guidance_names_the_missing_discriminator() {
+        let error_construction = recommended_next_step(
+            &probe(ProbeFamily::ReturnValue, "return Err(CalcError::TooLarge);"),
+            &ExposureClass::WeaklyExposed,
+            false,
+        );
+        assert_eq!(
+            error_construction.as_deref(),
+            Some(
+                "Add a test input that reaches the changed error path and assert the exact error variant it returns."
+            )
+        );
+        // A plain (non-Err) return value keeps the exact-equality guidance.
+        let plain_value = recommended_next_step(
+            &probe(ProbeFamily::ReturnValue, "Ok(amount)"),
+            &ExposureClass::WeaklyExposed,
+            false,
+        );
+        assert_eq!(
+            plain_value.as_deref(),
             Some(
                 "Replace broad assertions with exact equality or a property that constrains the changed returned value."
             )

@@ -2614,9 +2614,9 @@ pub(crate) fn dogfood_report_packet_index_run(
     })
 }
 
-pub(crate) const GENERATED_CI_FIRST_ACTION_REPAIR: &str = "Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md`";
+pub(crate) const GENERATED_CI_FIRST_ACTION_REPAIR: &str = "Safe next action: run `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md` after attaching at least one explicit input.";
 pub(crate) const GENERATED_CI_FIRST_PR_REPAIR: &str = "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --first-action target/ripr/reports/first-useful-action.json --review-comments target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-packet.json --gate-decision target/ripr/reports/gate-decision.json --receipts-dir target/ripr/receipts --out-dir target/ripr/reports";
-pub(crate) const GENERATED_CI_FRONT_PANEL_REPAIR: &str = "Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`";
+pub(crate) const GENERATED_CI_FRONT_PANEL_REPAIR: &str = "Safe next action: run `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md` after attaching at least one explicit input.";
 pub(crate) const GENERATED_CI_PACKET_INDEX_REPAIR: &str = "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`.";
 
 pub(crate) fn dogfood_generated_ci_cockpit_run() -> Result<DogfoodGeneratedCiCockpitRun, String> {
@@ -2764,7 +2764,7 @@ pub(crate) fn dogfood_language_preview_scenarios() -> Vec<DogfoodLanguagePreview
             1usize,
             0usize,
             1usize,
-            vec!["exposed"],
+            vec!["static_unknown"],
             vec!["missing_import_graph"],
             true,
             "Python preview finding keeps preview metadata and missing-import-graph static limit.",
@@ -3003,6 +3003,10 @@ pub(crate) fn dogfood_language_preview_run(
         && !human_output
             .to_ascii_lowercase()
             .contains(&format!("{} preview", scenario.language))
+        && !human_output.to_ascii_lowercase().contains(&format!(
+            "language: {}\n  language status: preview",
+            scenario.language
+        ))
     {
         errors.push(format!(
             "human output should label {} preview evidence",

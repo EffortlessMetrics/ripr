@@ -9,7 +9,7 @@
     "agent_packet": "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json",
     "before": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
     "after": "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
-    "receipt": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+    "receipt": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-receipt.json",
     "ledger": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
     "coverage_frontier": null,
     "gate_decision": "fixtures/boundary_gap/expected/gate-adoption/visible-only/gate-decision.json",
@@ -42,7 +42,7 @@
     "before_class": "weakly_gripped",
     "after_class": "weakly_gripped",
     "source": "agent_receipt",
-    "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
+    "artifact": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-receipt.json"
   },
   "ci_projection": {
     "ledger": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",

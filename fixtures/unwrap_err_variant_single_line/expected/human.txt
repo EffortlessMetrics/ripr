@@ -2,16 +2,17 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/unwrap_err_variant_single_line/input
 
-Summary: 2 probe(s), 2 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 Start here:
-  State: no_actionable_gap
-  Safe next action: no non-exposed diff finding was selected. This is not runtime proof, coverage adequacy, or mutation confirmation.
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/unwrap_err_variant_single_line/input/src/lib.rs:12
-  Static exposure: exposed (warning, confidence 1.00)
+  Static exposure: weakly_exposed (warning, confidence 0.66)
+  Why weakly_exposed: the evidence path is partially complete — see full form for details
   Changed behavior: return Err(ParseError::TooLong(name.len()))
   Related test: tests/errors.rs:4 too_long_name_rejected_with_exact_variant
   Evidence:

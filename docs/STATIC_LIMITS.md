@@ -34,6 +34,8 @@ rust_integration_public_api_path_unresolved
 rust_macro_reach_unresolved
 rust_macro_wrapped_test_call_unresolved
 rust_macro_wrapped_assertion_unresolved
+rust_value_propagation_unresolved
+rust_subprocess_binary_reach_unresolved
 ```
 
 When `static_limit_kind` is absent but stable static-limit text is present,
@@ -59,6 +61,8 @@ action.
 | `rust_macro_reach_unresolved` | A Rust test appears to call an entry point whose path toward the changed owner stops at a same-repo macro invocation RIPR does not expand. | Inspect the macro path manually or improve macro-aware reach. Do not treat the macro mention as evidence that the test observes the change. |
 | `rust_macro_wrapped_test_call_unresolved` | A Rust test directly invokes a same-repo macro whose definition mentions the changed owner, but RIPR does not expand that macro. | Treat this as first-run evidence that RIPR saw the test-body macro call but could not cross it. It is not a clean result, reach claim, or repair packet. |
 | `rust_macro_wrapped_assertion_unresolved` | A Rust test reaches the changed owner, but the visible assertion-like custom macro is not classified as an oracle. | Treat this as first-run evidence that RIPR saw a candidate assertion macro but could not confirm its discriminator. It is not a clean result, oracle claim, or repair packet. |
+| `rust_value_propagation_unresolved` | A changed Rust `let` binding uses a bounded `find`/`rfind` or `len_utf8` operation normalized through `map_or`, but syntax-first analysis cannot carry that value into a same-owner equality predicate. | Treat this as a named `static_unknown` analyzer limitation. Do not add a duplicate discriminator test or infer coverage, repair readiness, or a runtime result. |
+| `rust_subprocess_binary_reach_unresolved` | An integration test invokes a Cargo-built binary, but ripr does not yet map that executable back to the changed owner. | Treat this as a named `no_static_path` limitation. Inspect the subprocess test and binary target manually; do not infer reach, receipt validity, coverage, or repair readiness. |
 
 ## What Static Limits Do Not Mean
 

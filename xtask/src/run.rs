@@ -52,8 +52,24 @@ pub(crate) fn capture_process_output(
     args: &[String],
     envs: &[(&str, &str)],
 ) -> Result<Vec<u8>, ProcessError> {
+    capture_process_output_isolated(program, args, &[], &[], envs)
+}
+
+pub(crate) fn capture_process_output_isolated(
+    program: &str,
+    args: &[String],
+    inherited_envs: &[(&str, &str)],
+    removed_envs: &[&str],
+    envs: &[(&str, &str)],
+) -> Result<Vec<u8>, ProcessError> {
     let mut command = Command::new(program);
     command.args(args);
+    for (name, value) in inherited_envs {
+        command.env(name, value);
+    }
+    for name in removed_envs {
+        command.env_remove(name);
+    }
     for (name, value) in envs {
         command.env(name, value);
     }
@@ -101,6 +117,14 @@ pub(crate) struct TimedOutput {
     pub(crate) status: Option<ExitStatus>,
     pub(crate) stdout: String,
     pub(crate) stderr: String,
+    pub(crate) duration: Duration,
+    pub(crate) timed_out: bool,
+}
+
+pub(crate) struct TimedBytesOutput {
+    pub(crate) status: Option<ExitStatus>,
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) stderr: Vec<u8>,
     pub(crate) duration: Duration,
     pub(crate) timed_out: bool,
 }
@@ -490,6 +514,64 @@ pub(crate) fn capture_output_with_timeout(
     )?;
 
     Ok(TimedOutput {
+        status: Some(wait_outcome.status),
+        stdout,
+        stderr,
+        duration: wait_outcome.duration,
+        timed_out: wait_outcome.timed_out,
+    })
+}
+
+pub(crate) fn capture_bytes_in_dir_with_timeout(
+    program: &Path,
+    args: &[String],
+    cwd: &Path,
+    envs: &[(&str, &str)],
+    env_remove: &[&str],
+    timeout: Duration,
+    error_context: &str,
+) -> Result<TimedBytesOutput, String> {
+    let started = Instant::now();
+    let mut command = Command::new(program);
+    command.args(args).current_dir(cwd);
+    configure_timed_child_command(&mut command);
+    for name in env_remove {
+        command.env_remove(name);
+    }
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| format!("failed to capture stdout for {error_context}"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| format!("failed to capture stderr for {error_context}"))?;
+    let (stdout_handle, stdout_rx) = spawn_byte_reader_channel(stdout);
+    let (stderr_handle, stderr_rx) = spawn_byte_reader_channel(stderr);
+    let wait_outcome = wait_for_child_with_timeout(&mut child, started, timeout, error_context)?;
+    let stdout = drain_byte_reader_bounded(
+        stdout_rx,
+        stdout_handle,
+        POST_KILL_DRAIN_GRACE,
+        "stdout",
+        error_context,
+    )?;
+    let stderr = drain_byte_reader_bounded(
+        stderr_rx,
+        stderr_handle,
+        POST_KILL_DRAIN_GRACE,
+        "stderr",
+        error_context,
+    )?;
+    Ok(TimedBytesOutput {
         status: Some(wait_outcome.status),
         stdout,
         stderr,
@@ -907,6 +989,14 @@ fn read_stream<T: Read>(mut stream: T) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
+fn read_stream_bytes<T: Read>(mut stream: T) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    stream
+        .read_to_end(&mut bytes)
+        .map_err(|err| format!("failed to read process output: {err}"))?;
+    Ok(bytes)
+}
+
 fn stream_to_file<T: Read>(mut stream: T, mut file: fs::File) -> Result<usize, String> {
     let mut total = 0usize;
     let mut buf = [0u8; 64 * 1024];
@@ -966,6 +1056,20 @@ fn spawn_stream_reader_channel<T: Read + Send + 'static>(
     (handle, rx)
 }
 
+fn spawn_byte_reader_channel<T: Read + Send + 'static>(
+    stream: T,
+) -> (
+    thread::JoinHandle<()>,
+    mpsc::Receiver<Result<Vec<u8>, String>>,
+) {
+    let (tx, rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        let result = read_stream_bytes(stream);
+        let _ = tx.send(result);
+    });
+    (handle, rx)
+}
+
 /// Spawn a latency-progress stream reader that delivers over a channel.
 fn spawn_latency_stream_reader_channel<T: Read + Send + 'static>(
     stream: T,
@@ -1013,6 +1117,26 @@ fn drain_stream_reader_bounded(
                 grace_secs = grace.as_secs(),
             ))
         }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!(
+            "{stream_name} reader thread disconnected while running {error_context}"
+        )),
+    }
+}
+
+fn drain_byte_reader_bounded(
+    rx: mpsc::Receiver<Result<Vec<u8>, String>>,
+    _handle: thread::JoinHandle<()>,
+    grace: Duration,
+    stream_name: &str,
+    error_context: &str,
+) -> Result<Vec<u8>, String> {
+    match rx.recv_timeout(grace) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => Ok(format!(
+            "[ripr-xtask: {stream_name} drain exceeded post-kill grace ({}s) for {error_context}; output truncated]",
+            grace.as_secs()
+        )
+        .into_bytes()),
         Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!(
             "{stream_name} reader thread disconnected while running {error_context}"
         )),

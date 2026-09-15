@@ -1,0 +1,137 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/scanner_positive/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:666dcf4e5419b211286fdd0361fe4bc03da2f83d25fc129cc7b15669b2f1d2a1","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:93752988",
+      "classification": "exposed",
+      "severity": "warning",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:93752988",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/scanner_positive/input/src/lib.rs",
+        "line": 16,
+        "expression": "if final_state == \"text\" {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach classify: plain_word_is_word, trailing_space_is_blank"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: \"word\""},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach classify: plain_word_is_word, trailing_space_is_blank", "infection yes: Detected related test input at the changed boundary", "propagation yes: Changed behavior appears to influence returned value: \"word\"", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: \"word\" (line 17)", "related test tests/classify.rs:4 plain_word_is_word uses strong exact value oracle: assert_eq!(classify(\"ab\"), \"word\");", "related test tests/classify.rs:9 trailing_space_is_blank uses strong exact value oracle: assert_eq!(classify(\"ab \"), \"blank\");", "observed assertion argument value \"word\" at line 5", "observed function argument value input = \"ab\" at line 5", "observed assertion argument value \"blank\" at line 10", "observed function argument value final_state == \"text\" at line 10", "observed function argument value input = \"ab \" at line 10"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"\"word\"","line":17}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: \"word\"", "Detected related test input at the changed boundary", "Related tests appear to reach classify: plain_word_is_word, trailing_space_is_blank", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "5": "assert_eq!(classify(\"ab\"), \"word\");",
+        "10": "assert_eq!(classify(\"ab \"), \"blank\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "\"word\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "input = \"ab\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "\"blank\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "final_state == \"text\"",
+            "context": "function_argument",
+            "provenance": "assert_eq!(classify(\"ab \"), \"blank\"); | scan_state = \"text\" via helper return of `scan_state` over bound inputs (1 hop); literal operand \"text\" = \"text\""
+          },
+          {
+            "line": 10,
+            "value": "input = \"ab \"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "\"word\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "input = \"ab\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "\"blank\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "final_state == \"text\"",
+          "context": "function_argument",
+          "provenance": "assert_eq!(classify(\"ab \"), \"blank\"); | scan_state = \"text\" via helper return of `scan_state` over bound inputs (1 hop); literal operand \"text\" = \"text\""
+        },
+        {
+          "line": 10,
+          "value": "input = \"ab \"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "plain_word_is_word",
+          "file": "tests/classify.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(classify(\"ab\"), \"word\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "trailing_space_is_blank",
+          "file": "tests/classify.rs",
+          "line": 9,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(classify(\"ab \"), \"blank\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

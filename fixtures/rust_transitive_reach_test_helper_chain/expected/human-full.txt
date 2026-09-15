@@ -65,12 +65,12 @@ Probe
   owner:  src/eval.rs::matches_greater
 
 Static exposure
-  no_static_path (warning, confidence 0.48)
+  no_static_path (warning, confidence 0.40)
 
 Evidence
   - reach no: No static test path found for the changed owner
   - infection unknown: No reachable tests were found, so infection cannot be established
-  - propagation yes: Changed behavior appears to influence returned value: value > limit
+  - propagation weak: Propagation witness is incomplete for returned value: value > limit
   - observation no: No reachable test oracle found
   - discriminator no: No assertion can discriminate the changed behavior without a reachable test
   - local flow reaches returned value: value > limit (line 3)

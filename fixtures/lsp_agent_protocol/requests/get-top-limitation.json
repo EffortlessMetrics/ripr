@@ -1,6 +1,6 @@
 {
   "protocol_version": "0.1",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "request": "ripr/getTopLimitation",
   "mode": "read_only",
   "snapshot_id": "snapshot:6",

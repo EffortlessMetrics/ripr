@@ -18,11 +18,16 @@ use super::RiprSwarmCommand;
 use super::RiprSwarmReadinessInput;
 use super::XtaskCommand;
 use super::dispatch;
+use super::is_network_policy_candidate;
 use super::lane1_runtime_status_full;
 use super::network_policy_patterns;
+use super::next_pending_heading;
 use super::policy::droid_review::{
     active_yaml_lines, check_droid_action_refs, check_droid_common,
     check_droid_security_scan_config, forbids_active_line, has_active_line, strip_yaml_comment,
+};
+use super::reports::{
+    test_oracle_report_impl_for_roots, test_oracle_report_json, test_oracle_report_markdown,
 };
 use super::ripr_swarm_attempt_ledger_latest_attempts;
 use super::ripr_swarm_attempt_ledger_repair_route_quality;
@@ -35,6 +40,7 @@ use super::run::{
     TimedFileOutput, TimedOutput, capture_output, command_success_owned, run, run_output,
     run_output_optional, run_output_owned,
 };
+use super::scratch_gc_concurrency_violations;
 use super::validate_bless_reason;
 use super::{
     BUN_UB_CROSS_LANGUAGE_DOGFOOD_REQUIRED_CASES, BadgeArtifactJob, BadgeBasisReport,
@@ -180,9 +186,8 @@ use super::{
     static_language_allowlist_covers, static_language_violation_message, suggested_fixes_patch,
     suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
     targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
-    test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
-    test_oracle_tests_in_text, traceability_recommended_fixes, unknown_command_message,
-    user_surface_projection_required_run_status_violations,
+    test_efficiency_report_markdown, test_oracle_tests_in_text, traceability_recommended_fixes,
+    unknown_command_message, user_surface_projection_required_run_status_violations,
     validate_actionable_gap_outcomes_fixture_case, validate_actionable_gap_outcomes_fixture_corpus,
     validate_local_context_allowlist, validate_swarm_plan_packet_fixture_case,
     validate_swarm_plan_packet_fixture_corpus, vscode_compile_command, vscode_extension_dir,
@@ -270,6 +275,83 @@ fn write_evidence_promotion_check_json(fixture: &Path, check_json: Value) -> Res
     write(
         &fixture.join("expected/check.json"),
         &serde_json::to_string_pretty(&check_json).map_err(|err| err.to_string())?,
+    );
+    Ok(())
+}
+
+#[test]
+fn evidence_promotion_honesty_rejects_vacuous_non_promotion_charter() -> Result<(), String> {
+    let root = temp_dir("evidence-promotion-honesty-non-vacuity");
+    let corpus = root.join("corpus.json");
+    let py_fixture = root.join("fixtures/py-empty");
+    let ts_fixture = root.join("fixtures/ts");
+    let rust_fixture = root.join("fixtures/rust");
+    let rust_control_fixture = root.join("fixtures/rust-control");
+    let ts_control_fixture = root.join("fixtures/ts-control");
+
+    write_evidence_promotion_check_json(
+        &py_fixture,
+        serde_json::json!({
+            "summary": {"findings": 0},
+            "findings": []
+        }),
+    )?;
+    for fixture in [&ts_fixture, &rust_fixture] {
+        write_evidence_promotion_check(fixture, "weakly_exposed")?;
+    }
+    for fixture in [&rust_control_fixture, &ts_control_fixture] {
+        write_evidence_promotion_check(fixture, "exposed")?;
+    }
+
+    let guarded_non_promotion = |id: &str, language: &str, source_fixture: &Path| {
+        serde_json::json!({
+            "id": id,
+            "language": language,
+            "tier": "pure",
+            "source_fixture": source_fixture,
+            "assertions": [
+                {"type": "must_not_report_clean"},
+                {"type": "must_not_promote"}
+            ]
+        })
+    };
+    let promoted_control = |id: &str, language: &str, source_fixture: &Path| {
+        serde_json::json!({
+            "id": id,
+            "language": language,
+            "tier": "pure",
+            "source_fixture": source_fixture,
+            "assertions": [{"type": "must_promote"}]
+        })
+    };
+    let corpus_json = serde_json::json!({
+        "cases": [
+            {
+                "id": "py_vacuous_non_promotion",
+                "language": "python",
+                "tier": "pure",
+                "source_fixture": py_fixture,
+                "assertions": [{"type": "must_not_promote"}]
+            },
+            guarded_non_promotion("ts_guarded", "typescript", &ts_fixture),
+            guarded_non_promotion("rust_guarded", "rust", &rust_fixture),
+            promoted_control("rust_control", "rust", &rust_control_fixture),
+            promoted_control("ts_control", "typescript", &ts_control_fixture)
+        ]
+    });
+    write(
+        &corpus,
+        &serde_json::to_string_pretty(&corpus_json).map_err(|err| err.to_string())?,
+    );
+
+    let mut violations = Vec::new();
+    super::validate_evidence_promotion_honesty_corpus_at(&corpus, &mut violations)?;
+    let report = violations.join("\n");
+    assert!(
+        report.contains("py_vacuous_non_promotion")
+            && report.contains("`must_not_promote` requires `must_not_report_clean`")
+            && report.contains("cannot pass vacuously"),
+        "expected the manifest-level non-vacuity violation, got {violations:?}"
     );
     Ok(())
 }
@@ -644,6 +726,7 @@ fn evidence_promotion_honesty_accepts_typed_assertion_vocabulary() -> Result<(),
                 "tier": "pure",
                 "source_fixture": py_fixture,
                 "assertions": [
+                    {"type": "must_not_report_clean"},
                     {"type": "must_not_promote"},
                     {"type": "maximum_class", "class": "weakly_exposed"}
                 ]
@@ -654,6 +737,7 @@ fn evidence_promotion_honesty_accepts_typed_assertion_vocabulary() -> Result<(),
                 "tier": "pure",
                 "source_fixture": ts_fixture,
                 "assertions": [
+                    {"type": "must_not_report_clean"},
                     {"type": "must_not_promote"},
                     {"type": "maximum_class", "class": "weakly_exposed"}
                 ]
@@ -967,6 +1051,56 @@ fn evidence_promotion_semantic_assertions_accept_expected_changed_rust_files() {
 
     assert!(report.contains("expected_changed_rust_files"), "{report}");
     assert!(report.contains("<missing>"), "{report}");
+}
+
+#[test]
+fn evidence_promotion_semantic_assertions_pin_zero_findings() {
+    let assertions = vec![
+        super::EvidencePromotionSemanticAssertion::MustNotPromote,
+        super::EvidencePromotionSemanticAssertion::ExpectedFindingCount { count: 0 },
+    ];
+    let clean = serde_json::json!({
+        "schema_version": "0.2",
+        "tool": "ripr",
+        "mode": "fast",
+        "root": "fixtures/no_behavior/input",
+        "base": "origin/main",
+        "summary": {"findings": 0},
+        "findings": []
+    });
+    let violations = super::evidence_promotion_semantic_violations(
+        "zero_findings",
+        Some("fixtures/no_behavior"),
+        &assertions,
+        &clean,
+        None,
+        false,
+    );
+    assert!(
+        violations.is_empty(),
+        "an exact zero-finding no-behavior case should be non-vacuous: {violations:?}"
+    );
+
+    let regressed = serde_json::json!({
+        "schema_version": "0.2",
+        "tool": "ripr",
+        "mode": "fast",
+        "root": "fixtures/no_behavior/input",
+        "base": "origin/main",
+        "summary": {"findings": 1},
+        "findings": [{"id": "false-exposed", "classification": "exposed"}]
+    });
+    let report = super::evidence_promotion_semantic_violations(
+        "zero_findings",
+        Some("fixtures/no_behavior"),
+        &assertions,
+        &regressed,
+        None,
+        false,
+    )
+    .join("\n");
+    assert!(report.contains("expected_finding_count"), "{report}");
+    assert!(report.contains("promoted to exposed"), "{report}");
 }
 
 #[test]
@@ -2747,6 +2881,91 @@ fn evidence_promotion_pinned_external_semantics_accept_semver_limitation_shape()
     );
 }
 
+fn harness_limitation_case(
+    assertions: Vec<super::EvidencePromotionSemanticAssertion>,
+) -> super::EvidencePromotionExternalCase {
+    super::EvidencePromotionExternalCase {
+        id: "rust_harness_dead_construction_no_exposed_credit".to_string(),
+        language: "rust".to_string(),
+        external_repo: String::new(),
+        external_commit: String::new(),
+        external_patch: PathBuf::new(),
+        external_command: String::new(),
+        runtime_budget_seconds: 0,
+        artifact_budget_bytes: 0,
+        assertions,
+    }
+}
+
+fn harness_check_json(limitation_code: Option<&str>) -> serde_json::Value {
+    let limitations = limitation_code
+        .map(|code| serde_json::json!([{"code": code, "file": "tests/mimic.rs", "line": 5}]))
+        .unwrap_or_else(|| serde_json::json!([]));
+    serde_json::json!({
+        "findings": [],
+        "test_harnesses": [
+            {"registration_id": "mimic-suite", "limitations": limitations}
+        ]
+    })
+}
+
+/// Dispatch-level coverage for the harness-projection surface (#3636):
+/// `must_emit_limitation` must accept the kind from
+/// `test_harnesses[].limitations[].code` through the same semantic
+/// dispatch the corpus gate uses, not only through the helper predicate.
+#[test]
+fn evidence_promotion_semantics_accept_harness_limitation_kind() {
+    let case = harness_limitation_case(vec![
+        super::EvidencePromotionSemanticAssertion::MustNotReportClean,
+        super::EvidencePromotionSemanticAssertion::MustEmitLimitation {
+            expected_limit_kind: "registration_unreachable".to_string(),
+        },
+    ]);
+    let violations = super::evidence_promotion_external_semantic_violations(
+        &case,
+        &harness_check_json(Some("registration_unreachable")),
+    );
+    assert!(
+        violations.is_empty(),
+        "expected the harness projection kind to satisfy must_emit_limitation, got {violations:?}"
+    );
+}
+
+#[test]
+fn evidence_promotion_semantics_reject_missing_harness_limitation_kind() {
+    let case = harness_limitation_case(vec![
+        super::EvidencePromotionSemanticAssertion::MustNotReportClean,
+        super::EvidencePromotionSemanticAssertion::MustEmitLimitation {
+            expected_limit_kind: "registration_unreachable".to_string(),
+        },
+    ]);
+    let violations =
+        super::evidence_promotion_external_semantic_violations(&case, &harness_check_json(None));
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.contains("expected limitation kind")),
+        "expected the stripped limitations to fail must_emit_limitation, got {violations:?}"
+    );
+}
+
+#[test]
+fn evidence_promotion_must_not_emit_limitation_forbids_harness_projection() {
+    let case = harness_limitation_case(vec![
+        super::EvidencePromotionSemanticAssertion::MustNotEmitLimitation,
+    ]);
+    let violations = super::evidence_promotion_external_semantic_violations(
+        &case,
+        &harness_check_json(Some("registration_unreachable")),
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.contains("test_harnesses limitations")),
+        "expected the harness projection to fail must_not_emit_limitation, got {violations:?}"
+    );
+}
+
 #[test]
 fn evidence_promotion_pinned_external_semantics_reject_false_clean_and_packet() {
     let case = semver_external_case_for_test();
@@ -2770,7 +2989,7 @@ fn evidence_promotion_pinned_external_semantics_reject_false_clean_and_packet() 
 
     let report =
         super::evidence_promotion_external_semantic_violations(&case, &check_json).join("\n");
-    assert!(report.contains("expected static_limit_kind"), "{report}");
+    assert!(report.contains("expected limitation kind"), "{report}");
     assert!(report.contains("repair_packet_ready=true"), "{report}");
     assert!(report.contains("must_disclose_witness"), "{report}");
     assert!(report.contains("promoted to exposed"), "{report}");
@@ -3584,6 +3803,7 @@ fn evidence_promotion_honesty_catches_dishonest_perl_advisory_rebless() -> Resul
                 "tier": "pure",
                 "source_report": perl_report,
                 "assertions": [
+                    {"type": "must_not_report_clean"},
                     {"type": "must_not_promote"},
                     {"type": "expected_class", "class": "weakly_exposed"}
                 ]
@@ -4625,6 +4845,7 @@ fn write_pr_review_front_panel_corpus(
         "blocked",
         "missing_proof",
         "coverage_flat_grip_improved",
+        "stale_same_path_receipt_fails_closed",
     ]
     .into_iter()
     .map(|id| {
@@ -5257,6 +5478,63 @@ fn pr_review_front_panel_fixture_corpus_guard_reports_contract_drift() -> Result
     assert!(report.contains("Markdown must use the PR review heading"));
     assert!(report.contains("Markdown must pin status blocked"));
     assert!(report.contains("blocked Markdown must name gate authority"));
+    Ok(())
+}
+
+#[test]
+fn pr_review_front_panel_fixture_corpus_guard_rejects_stale_case_removal() -> Result<(), String> {
+    let root = temp_dir("pr-review-front-panel-stale-case-removal");
+    let base = root.join("pr-review-front-panel");
+    let report = root.join("pr-review-front-panel.json");
+    let markdown = root.join("pr-review-front-panel.md");
+    write_pr_review_front_panel_corpus(&base, &report, &markdown, "advisory", 0);
+    write(
+        &report,
+        r#"{
+  "kind": "pr_review_front_panel",
+  "status": "advisory",
+  "summary": {
+    "top_issue_state": "actionable",
+    "policy_state": "new_policy_eligible",
+    "placement": "changed_line",
+    "movement_state": "unknown",
+    "coverage_grip_state": "not_available",
+    "new_policy_eligible": 1,
+    "baseline_resolved": 0,
+    "blocking_candidates": 0,
+    "warnings": 0
+  },
+  "artifacts": [{"group": "start_here"}],
+  "limits": ["Static RIPR evidence only."]
+}
+"#,
+    );
+    write(&markdown, "# RIPR PR Review\n\nStatus: advisory\n");
+
+    let corpus_path = base.join("corpus.json");
+    let corpus_text = fs::read_to_string(&corpus_path)
+        .map_err(|err| format!("read temporary front-panel corpus failed: {err}"))?;
+    let mut corpus: serde_json::Value = serde_json::from_str(&corpus_text)
+        .map_err(|err| format!("parse temporary front-panel corpus failed: {err}"))?;
+    corpus["cases"]
+        .as_array_mut()
+        .ok_or_else(|| "temporary front-panel corpus cases missing".to_string())?
+        .retain(|case| {
+            case.get("id").and_then(serde_json::Value::as_str)
+                != Some("stale_same_path_receipt_fails_closed")
+        });
+    write(
+        &corpus_path,
+        &serde_json::to_string_pretty(&corpus)
+            .map_err(|err| format!("render temporary front-panel corpus failed: {err}"))?,
+    );
+
+    let mut violations = Vec::new();
+    super::validate_pr_review_front_panel_fixture_corpus_at(&base, &mut violations)?;
+    assert_contains_error(
+        &violations,
+        "corpus is missing required case stale_same_path_receipt_fails_closed",
+    );
     Ok(())
 }
 
@@ -6454,6 +6732,202 @@ fn perl_real_repo_eval_fixture_guard_reports_contract_drift() -> Result<(), Stri
             "Perl real-repo eval case cpan_alpha_actionable_real_exporter_eval must have expected_outcome actionable, got limited"
         ));
     Ok(())
+}
+
+use super::fixture_contracts::{
+    validate_perl_packet_contract_migration_corpus,
+    validate_perl_packet_contract_migration_corpus_at,
+};
+
+fn perl_packet_contract_migration_corpus_path() -> Result<PathBuf, String> {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "xtask manifest must have workspace parent".to_string())?;
+    Ok(repo_root.join("fixtures/perl_packet_contract_migration/corpus.json"))
+}
+
+fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), String> {
+    fs::create_dir_all(destination).map_err(|err| err.to_string())?;
+    for entry in fs::read_dir(source).map_err(|err| err.to_string())? {
+        let entry = entry.map_err(|err| err.to_string())?;
+        let target = destination.join(entry.file_name());
+        if entry.file_type().map_err(|err| err.to_string())?.is_dir() {
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else {
+            fs::copy(entry.path(), &target).map_err(|err| err.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// Copies the committed perl packet contract migration fixture into the temp
+/// cwd under `fixtures/...` so the corpus's repo-root-relative paths resolve
+/// against the copy, then returns the copied fixture root.
+fn copy_perl_packet_contract_migration_fixture(root: &Path) -> Result<PathBuf, String> {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let fixture_root = root.join("fixtures/perl_packet_contract_migration");
+    copy_dir_recursive(
+        &repo_root.join("fixtures/perl_packet_contract_migration"),
+        &fixture_root,
+    )?;
+    Ok(fixture_root)
+}
+
+#[test]
+fn perl_packet_contract_migration_fixture_corpus_is_valid() -> Result<(), String> {
+    with_repo_cwd(|| {
+        let corpus = perl_packet_contract_migration_corpus_path()?;
+        let mut violations = Vec::new();
+        validate_perl_packet_contract_migration_corpus_at(&corpus, &mut violations)?;
+        assert_eq!(violations, Vec::<String>::new());
+
+        let mut root_violations = Vec::new();
+        validate_perl_packet_contract_migration_corpus(&mut root_violations)?;
+        assert_eq!(root_violations, Vec::<String>::new());
+        Ok(())
+    })
+}
+
+#[test]
+fn perl_packet_contract_migration_fixture_guard_reports_packet_tamper() -> Result<(), String> {
+    with_temp_cwd("perl-packet-contract-migration-packet-tamper", |root| {
+        let fixture_root = copy_perl_packet_contract_migration_fixture(root)?;
+        let packet = fixture_root.join("producer-packets/v1/ordinary_discount.json");
+        let mut bytes = fs::read(&packet).map_err(|err| err.to_string())?;
+        bytes.push(b' ');
+        fs::write(&packet, &bytes).map_err(|err| err.to_string())?;
+
+        let mut violations = Vec::new();
+        validate_perl_packet_contract_migration_corpus_at(
+            &fixture_root.join("corpus.json"),
+            &mut violations,
+        )?;
+        let report = violations.join("\n");
+        assert!(report.contains("packet digest drift"));
+        Ok(())
+    })
+}
+
+#[test]
+fn perl_packet_contract_migration_fixture_guard_reports_row_removal() -> Result<(), String> {
+    with_temp_cwd("perl-packet-contract-migration-row-removal", |root| {
+        let fixture_root = copy_perl_packet_contract_migration_fixture(root)?;
+        let contradictions_path = fixture_root.join("expected/contradictions.v1.json");
+        let mut contradictions: Value = serde_json::from_str(
+            &fs::read_to_string(&contradictions_path).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| err.to_string())?;
+        // Remove a row whose id the corpus REQUIRES, not the first
+        // serialized row: row order is not part of the corpus contract.
+        let corpus: Value = serde_json::from_str(
+            &fs::read_to_string(fixture_root.join("corpus.json")).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| err.to_string())?;
+        let required = corpus
+            .get("required_contradiction_ids")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "required_contradiction_ids is missing".to_string())?;
+        let required_first = required[0]
+            .as_str()
+            .ok_or_else(|| "required id is not a string".to_string())?;
+        let rows = contradictions
+            .get_mut("contradictions")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "contradictions array is missing".to_string())?;
+        let position = rows
+            .iter()
+            .position(|row| row.get("id").and_then(Value::as_str) == Some(required_first))
+            .ok_or_else(|| format!("required row `{required_first}` not found"))?;
+        rows.remove(position);
+        write(
+            &contradictions_path,
+            &serde_json::to_string_pretty(&contradictions).map_err(|err| err.to_string())?,
+        );
+
+        let mut violations = Vec::new();
+        validate_perl_packet_contract_migration_corpus_at(
+            &fixture_root.join("corpus.json"),
+            &mut violations,
+        )?;
+        let report = violations.join("\n");
+        assert!(report.contains("missing required contradiction row"));
+        Ok(())
+    })
+}
+
+#[test]
+fn perl_packet_contract_migration_fixture_guard_reports_input_inventory_drift() -> Result<(), String>
+{
+    with_temp_cwd("perl-packet-contract-migration-inventory-drift", |root| {
+        let fixture_root = copy_perl_packet_contract_migration_fixture(root)?;
+        let unlisted = fixture_root.join("producer-inputs/ordinary_discount/lib/App/Extra.pm");
+        write(
+            &unlisted,
+            "package App::Extra;
+1;
+",
+        );
+
+        let mut violations = Vec::new();
+        validate_perl_packet_contract_migration_corpus_at(
+            &fixture_root.join("corpus.json"),
+            &mut violations,
+        )?;
+        let report = violations.join(
+            "
+",
+        );
+        assert!(report.contains("input inventory drift"));
+        assert!(report.contains("no pinned digest"));
+        Ok(())
+    })
+}
+
+#[test]
+fn perl_packet_contract_migration_fixture_guard_reports_disposition_authority_flip()
+-> Result<(), String> {
+    with_temp_cwd("perl-packet-contract-migration-authority-flip", |root| {
+        let fixture_root = copy_perl_packet_contract_migration_fixture(root)?;
+        let dispositions_path = fixture_root.join("expected/consumer-dispositions.v1.json");
+        let mut dispositions: Value = serde_json::from_str(
+            &fs::read_to_string(&dispositions_path).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| err.to_string())?;
+        dispositions["pipeline"]["canonical_gap_emitted"] = Value::Bool(true);
+        write(
+            &dispositions_path,
+            &serde_json::to_string_pretty(&dispositions).map_err(|err| err.to_string())?,
+        );
+
+        let mut violations = Vec::new();
+        validate_perl_packet_contract_migration_corpus_at(
+            &fixture_root.join("corpus.json"),
+            &mut violations,
+        )?;
+        let report = violations.join("\n");
+        assert!(report.contains("must stay false"));
+        Ok(())
+    })
+}
+
+#[test]
+fn perl_packet_contract_migration_fixture_guard_reports_input_digest_drift() -> Result<(), String> {
+    with_temp_cwd("perl-packet-contract-migration-input-drift", |root| {
+        let fixture_root = copy_perl_packet_contract_migration_fixture(root)?;
+        let input = fixture_root.join("producer-inputs/ordinary_discount/lib/App/Discount.pm");
+        let mut bytes = fs::read(&input).map_err(|err| err.to_string())?;
+        bytes.push(b' ');
+        fs::write(&input, &bytes).map_err(|err| err.to_string())?;
+
+        let mut violations = Vec::new();
+        validate_perl_packet_contract_migration_corpus_at(
+            &fixture_root.join("corpus.json"),
+            &mut violations,
+        )?;
+        let report = violations.join("\n");
+        assert!(report.contains("digest drift"));
+        Ok(())
+    })
 }
 
 fn gap_decision_ledger_corpus_path() -> Result<PathBuf, String> {
@@ -9895,6 +10369,51 @@ jobs:
 }
 
 #[test]
+fn scratch_gc_concurrency_policy_accepts_per_pool_matrix_queue() {
+    let workflow = r#"
+jobs:
+  scratch-gc:
+    strategy:
+      matrix:
+        pool: [cx43, cpx42, cx53]
+    concurrency:
+      group: scratch-gc-${{ github.repository }}-${{ matrix.pool }}
+      cancel-in-progress: false
+"#;
+
+    assert!(
+        scratch_gc_concurrency_violations(".github/workflows/scratch-gc.yml", workflow,).is_empty()
+    );
+}
+
+#[test]
+fn scratch_gc_concurrency_policy_rejects_workflow_queue() {
+    let workflow = r#"
+concurrency:
+  group: scratch-gc-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  scratch-gc:
+    strategy:
+      matrix:
+        pool: [cx43, cpx42, cx53]
+    concurrency:
+      group: scratch-gc-${{ github.repository }}-${{ matrix.pool }}
+      cancel-in-progress: true
+  unrelated:
+    concurrency:
+      cancel-in-progress: false
+"#;
+
+    let violations =
+        scratch_gc_concurrency_violations(".github/workflows/scratch-gc.yml", workflow);
+
+    assert_eq!(violations.len(), 2);
+    assert!(violations[0].contains("workflow-level concurrency"));
+    assert!(violations[1].contains("matrix.pool"));
+}
+
+#[test]
 fn routed_rust_workflow_contract_accepts_github_hosted_shape() -> Result<(), String> {
     // Use the actual actionlint-checked workflow as the positive oracle. The
     // former partial string referenced undefined jobs and steps and omitted
@@ -11482,6 +12001,44 @@ fn parse_reason_rejects_missing_or_malformed_spec_ids() {
     }
 }
 
+// XQFg: pending changelog headings must be unique so the accumulated blessing
+// log does not trip MD024 (no-duplicate-heading), including against legacy
+// plain `## Pending` headings left by earlier blesses.
+#[test]
+fn pending_changelog_headings_stay_unique_across_blesses() {
+    assert_eq!(
+        next_pending_heading("# Golden Output Changes\n", "my_fixture"),
+        "## Pending — my_fixture (1)"
+    );
+    let after_first = "# Golden Output Changes\n\n## Pending — my_fixture (1)\n\nReason:\nx\n";
+    assert_eq!(
+        next_pending_heading(after_first, "my_fixture"),
+        "## Pending — my_fixture (2)"
+    );
+    let legacy = "# Golden Output Changes\n\n## Pending\n\nReason:\ny\n";
+    assert_eq!(
+        next_pending_heading(legacy, "my_fixture"),
+        "## Pending — my_fixture (2)"
+    );
+}
+
+// XnB: a deleted or hand-edited entry must not cause a duplicate heading —
+// the first UNUSED number wins, not count+1.
+#[test]
+fn pending_changelog_headings_skip_used_numbers() {
+    let gapped = "# Golden Output Changes\n\n## Pending — a (1)\n\nx\n\n## Pending — b (3)\n\ny\n";
+    assert_eq!(
+        next_pending_heading(gapped, "my_fixture"),
+        "## Pending — my_fixture (2)"
+    );
+    let used_all =
+        "# Golden Output Changes\n\n## Pending — a (1)\n\nx\n\n## Pending — b (2)\n\ny\n";
+    assert_eq!(
+        next_pending_heading(used_all, "my_fixture"),
+        "## Pending — my_fixture (3)"
+    );
+}
+
 #[test]
 fn validate_bless_reason_rejects_unknown_spec_ids() -> Result<(), String> {
     with_repo_cwd(|| {
@@ -11637,6 +12194,371 @@ fn weak_contains() {
     assert!(markdown.contains("BDD-shaped names: 0 / 1"));
     assert!(json.contains("\"advisory\": true"));
     assert!(json.contains("\"weak\": 1"));
+}
+
+#[test]
+fn test_oracle_discarded_matches_is_not_an_observing_oracle() {
+    let source = r#"
+#[test]
+fn unused_matches() {
+    let _ = matches!(actual, Some(42));
+}
+"#;
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].name, "unused_matches");
+    assert_eq!(tests[0].class, TestOracleClass::Smoke);
+    assert!(
+        tests[0]
+            .observations
+            .iter()
+            .all(|observation| observation.pattern == "no assertion"),
+        "a discarded predicate must not contribute observing-oracle evidence"
+    );
+}
+
+#[test]
+fn test_oracle_assertion_spelling_in_string_is_not_an_observing_oracle() {
+    let source = r##"
+#[test]
+fn assertion_in_string() {
+    let example = "assert_eq!(actual, expected);";
+}
+
+#[test]
+fn assertion_in_raw_string() {
+    let example = r#"assert_eq!(actual, expected);"#;
+}
+"##;
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 2);
+    assert_eq!(tests[0].name, "assertion_in_string");
+    assert_eq!(tests[1].name, "assertion_in_raw_string");
+    for test in &tests {
+        assert_eq!(test.class, TestOracleClass::Smoke);
+        assert!(
+            test.observations
+                .iter()
+                .all(|observation| observation.pattern == "no assertion"),
+            "inert string text must not contribute observing-oracle evidence"
+        );
+    }
+}
+
+#[test]
+fn test_oracle_assertion_spelling_in_block_comment_is_not_an_observing_oracle() {
+    let source = r#"
+#[test]
+fn assertion_in_block_comment() {
+    /* assert_eq!(actual, expected); */
+}
+"#;
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].class, TestOracleClass::Smoke);
+    assert!(
+        tests[0]
+            .observations
+            .iter()
+            .all(|observation| observation.pattern == "no assertion"),
+        "block-comment text must not contribute observing-oracle evidence"
+    );
+}
+
+#[test]
+fn test_oracle_asserted_matches_keeps_its_evidence() {
+    let source = r#"
+#[test]
+fn asserted_variant() {
+    assert!(matches!(actual, Some(42)));
+}
+"#;
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].class, TestOracleClass::Strong);
+}
+
+#[test]
+fn test_oracle_same_line_discarded_matches_earns_nothing() {
+    let source = r#"
+#[test]
+fn same_line_discard() {
+    let _ = matches!(actual, Some(1)); assert!(true);
+}
+"#;
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].class, TestOracleClass::Weak);
+    assert!(
+        tests[0]
+            .observations
+            .iter()
+            .all(|observation| observation.pattern != "matches!"),
+        "a discarded matches! sharing a line with an unrelated assert must not credit Strong"
+    );
+}
+
+#[test]
+fn test_oracle_matches_mention_in_assert_message_earns_nothing() {
+    let source = r#"
+#[test]
+fn message_mention() {
+    assert!(ready, "matches!(actual, Some(1))");
+}
+"#;
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].class, TestOracleClass::Weak);
+    assert!(
+        tests[0]
+            .observations
+            .iter()
+            .all(|observation| observation.pattern != "matches!"),
+        "a matches! spelling confined to an assertion message must not credit Strong"
+    );
+}
+
+#[test]
+fn test_oracle_multiline_asserted_matches_keeps_its_evidence() {
+    let source = r#"
+#[test]
+fn multiline_asserted_variant() {
+    assert!(
+        matches!(actual, Some(1))
+    );
+}
+"#;
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].class, TestOracleClass::Strong);
+    assert!(
+        tests[0]
+            .observations
+            .iter()
+            .any(|observation| observation.pattern == "matches!"),
+        "a split assert!(matches!(..)) form must keep exactly one Strong observation"
+    );
+    assert_eq!(
+        tests[0]
+            .observations
+            .iter()
+            .filter(|observation| observation.pattern == "matches!")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn test_oracle_brace_inside_string_does_not_truncate_the_body() {
+    let source = r#"
+#[test]
+fn brace_string_before_real_end() {
+    let template = "value: } assert_eq!(a, b);";
+    let _ = template.len();
+}
+"#;
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].class, TestOracleClass::Smoke);
+    assert!(
+        tests[0]
+            .observations
+            .iter()
+            .all(|observation| observation.pattern == "no assertion"),
+        "a brace inside a string must not truncate the body into the unfiltered fallback"
+    );
+}
+
+#[test]
+fn test_oracle_brace_inside_block_comment_does_not_truncate_the_body() {
+    let source = r#"
+#[test]
+fn brace_comment_before_real_end() {
+    /* } assert_eq!(a, b); */
+    let _ = 1;
+}
+"#;
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].class, TestOracleClass::Smoke);
+}
+
+#[test]
+fn test_oracle_real_assert_after_brace_string_survives() {
+    let source = r#"
+#[test]
+fn real_assert_after_brace_string() {
+    let template = "value: }";
+    assert_eq!(compute(template), 1);
+}
+"#;
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].class, TestOracleClass::Strong);
+}
+
+#[test]
+fn test_oracle_macro_nested_test_is_selected() {
+    let source = "proptest! {\n    #[test]\n    fn generated_case(seed: u32) {\n        assert_eq!(seed % 2, 0);\n    }\n}\n";
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].name, "generated_case");
+    assert_eq!(tests[0].class, TestOracleClass::Strong);
+}
+
+#[test]
+fn test_oracle_macro_nested_test_inside_fn_body_stays_invisible() {
+    let source = "fn outer() {\n    harness! {\n        #[test]\n        fn inner() {\n            assert_eq!(1, 1);\n        }\n    }\n}\n";
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert!(tests.is_empty());
+}
+
+#[test]
+fn test_oracle_unparseable_file_keeps_legacy_selection() {
+    // Missing closing brace: the syntax path declines and the legacy scan
+    // still selects the test with prior classification behavior.
+    let source = "#[test]\nfn truncated_body() {\n    assert_eq!(actual, expected);\n";
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].name, "truncated_body");
+    assert_eq!(tests[0].class, TestOracleClass::Strong);
+}
+
+#[test]
+fn test_oracle_rejected_inputs_agree_across_json_and_markdown() -> Result<(), String> {
+    let source = r#"
+#[test]
+fn unused_matches() {
+    let _ = matches!(actual, Some(42));
+}
+
+#[test]
+fn assertion_in_string() {
+    let example = "assert_eq!(actual, expected);";
+}
+"#;
+    let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+    assert_eq!(tests.len(), 2);
+    let markdown = test_oracle_report_markdown(&tests);
+    let json = test_oracle_report_json(&tests);
+    for name in ["unused_matches", "assertion_in_string"] {
+        assert!(
+            !markdown
+                .lines()
+                .filter(|line| line.contains(name))
+                .any(|line| line.contains("`strong`")),
+            "markdown must not credit {name} as strong"
+        );
+        let report: Value =
+            serde_json::from_str(&json).map_err(|err| format!("oracle json must parse: {err}"))?;
+        let tests_array = report
+            .get("tests")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "oracle json must carry tests".to_string())?;
+        let entry = tests_array
+            .iter()
+            .find(|test| test.get("name").and_then(Value::as_str) == Some(name))
+            .ok_or_else(|| format!("rejected test {name} must appear in json"))?;
+        assert_eq!(
+            entry.get("class").and_then(Value::as_str),
+            Some("smoke"),
+            "json must not credit {name} as strong"
+        );
+    }
+    assert!(markdown.contains("Status: warn"));
+    assert!(json.contains("\"status\": \"warn\""));
+    for test in &tests {
+        let entry = test_efficiency_entry(test);
+        assert_eq!(
+            entry.oracle_strength, "smoke",
+            "the efficiency consumer must not retain strong-oracle credit"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn test_oracle_command_reports_empty_selection_as_not_run() -> Result<(), String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("clock before unix epoch: {err}"))?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "ripr-xtask-test-oracle-empty-{}-{stamp}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root)
+        .map_err(|err| format!("failed to create empty oracle test directory: {err}"))?;
+    let missing_root = root.join("no-selected-tests");
+    let report_dir = root.join("reports");
+    let result = (|| {
+        test_oracle_report_impl_for_roots(&[missing_root.as_path()], &report_dir)?;
+
+        let markdown = fs::read_to_string(report_dir.join("test-oracles.md"))
+            .map_err(|err| format!("failed to read empty oracle markdown: {err}"))?;
+        let json = fs::read_to_string(report_dir.join("test-oracles.json"))
+            .map_err(|err| format!("failed to read empty oracle JSON: {err}"))?;
+
+        if !markdown.contains("Status: not_run") {
+            return Err("empty oracle markdown did not report not_run".to_string());
+        }
+        if !markdown.contains("Explanation: No tests were selected") {
+            return Err("empty oracle markdown omitted the explanation".to_string());
+        }
+        if !markdown.contains("BDD-shaped names: 0 / 0") {
+            return Err("empty oracle markdown omitted the zero denominator".to_string());
+        }
+        let value: Value = serde_json::from_str(&json)
+            .map_err(|err| format!("empty oracle JSON is invalid: {err}"))?;
+        if value.get("status").and_then(Value::as_str) != Some("not_run") {
+            return Err("empty oracle JSON did not report not_run".to_string());
+        }
+        if value.get("explanation").and_then(Value::as_str)
+            != Some("No tests were selected; oracle evidence was not established for this report.")
+        {
+            return Err("empty oracle JSON omitted the explanation".to_string());
+        }
+        if value.get("tests").and_then(Value::as_array).map(Vec::len) != Some(0) {
+            return Err("empty oracle JSON did not contain zero tests".to_string());
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&root)
+        .map_err(|err| format!("failed to clean empty oracle test directory: {err}"));
+    result.and(cleanup)
+}
+
+#[test]
+fn test_oracle_report_status_preserves_nonempty_controls() -> Result<(), String> {
+    let strong = test_oracle_tests_in_text(
+        Path::new("crates/ripr/tests/strong.rs"),
+        "#[test]\nfn exact() { assert_eq!(actual, expected); }\n",
+    );
+    let warning = test_oracle_tests_in_text(
+        Path::new("crates/ripr/tests/warning.rs"),
+        "#[test]\nfn broad() { assert!(actual.is_ok()); }\n",
+    );
+    if strong.len() != 1 || warning.len() != 1 {
+        return Err(format!(
+            "controls selected unexpected test counts: strong={}, warning={}",
+            strong.len(),
+            warning.len()
+        ));
+    }
+
+    let strong_json = test_oracle_report_json(&strong);
+    let strong_markdown = test_oracle_report_markdown(&strong);
+    if !strong_json.contains("\"status\": \"pass\"") || !strong_markdown.contains("Status: pass") {
+        return Err("strong oracle control lost its positive status".to_string());
+    }
+
+    let warning_json = test_oracle_report_json(&warning);
+    let warning_markdown = test_oracle_report_markdown(&warning);
+    if !warning_json.contains("\"status\": \"warn\"") || !warning_markdown.contains("Status: warn")
+    {
+        return Err("weak oracle control lost its warning status".to_string());
+    }
+    Ok(())
 }
 
 #[test]
@@ -21358,7 +22280,7 @@ linked_spec = "RIPR-SPEC-0001"
     );
     write_support_tier_fixture(
         root,
-        "| Source-of-truth artifact graph | `stable building block` | docs | `cargo xtask check-doc-artifacts` | Registered graph only. |\n| Source-of-truth workflow | `stable building block` | CI | `cargo xtask check-doc-artifacts` | Workflow contract only. |\n",
+        "| Rust gap repair loop | `usable alpha` | CLI and editor | `cargo xtask rust-repair-trust-report` | Governed promotion authority is incomplete. |\n| Source-of-truth artifact graph | `stable building block` | docs | `cargo xtask check-doc-artifacts` | Registered graph only. |\n| Source-of-truth workflow | `stable building block` | CI | `cargo xtask check-doc-artifacts` | Workflow contract only. |\n",
     );
 
     if include_active_goal {
@@ -22684,7 +23606,7 @@ fn support_tiers_accept_valid_fixture() -> Result<(), String> {
     with_temp_cwd("support-tiers-valid", |root| {
         write_support_tier_fixture(
             root,
-            "| Source-of-truth artifact graph | `stable building block` | docs | `cargo xtask check-doc-artifacts` | Registered graph only. |\n",
+            "| Rust gap repair loop | `usable alpha` | CLI and editor | `cargo xtask rust-repair-trust-report` | Governed promotion authority is incomplete. |\n| Source-of-truth artifact graph | `stable building block` | docs | `cargo xtask check-doc-artifacts` | Registered graph only. |\n",
         );
 
         let violations = super::support_tier_violations(root, &root.join(SUPPORT_TIERS_PATH))?;
@@ -22698,7 +23620,7 @@ fn support_tiers_command_accepts_valid_fixture() -> Result<(), String> {
     with_temp_cwd("support-tiers-command-valid", |root| {
         write_support_tier_fixture(
             root,
-            "| Source-of-truth artifact graph | `stable building block` | docs | `cargo xtask check-doc-artifacts` | Registered graph only. |\n",
+            "| Rust gap repair loop | `usable alpha` | CLI and editor | `cargo xtask rust-repair-trust-report` | Governed promotion authority is incomplete. |\n| Source-of-truth artifact graph | `stable building block` | docs | `cargo xtask check-doc-artifacts` | Registered graph only. |\n",
         );
 
         check_support_tiers()
@@ -22750,6 +23672,104 @@ fn support_tiers_reject_stable_claim_with_only_markdown_links() -> Result<(), St
 }
 
 #[test]
+fn support_tiers_reject_usable_rust_repair_claim_without_promotion_authority() -> Result<(), String>
+{
+    with_temp_cwd("support-tiers-rust-repair-no-promotion-authority", |root| {
+        write_support_tier_fixture(
+            root,
+            "| Rust gap repair loop | `usable` | CLI and editor | `cargo xtask rust-repair-trust-report` | Governed evidence required. |\n",
+        );
+
+        let violations = super::support_tier_violations(root, &root.join(SUPPORT_TIERS_PATH))?;
+        assert!(
+            violations.iter().any(|violation| {
+                violation.contains("Rust gap repair loop")
+                    && violation.contains("cannot claim `usable`")
+                    && violation.contains("trust report alone is not promotion authority")
+            }),
+            "{violations:#?}"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn rust_repair_complete_report_with_real_movement_does_not_bypass_interim_cap() {
+    let report = serde_json::json!({
+        "status": "complete",
+        "eligible_attempt_count": 20,
+        "requirements": {"minimum_attempts": 20},
+        "movement_counts": {"closed": 1, "improved": 4}
+    });
+    let violation = super::rust_gap_repair_interim_cap_violation("usable", Some(&report));
+    assert!(
+        violation.as_deref().is_some_and(|violation| {
+            violation.contains("exceeds the interim `usable alpha` cap")
+                && violation.contains("`complete` with 20 eligible, 4 improved, and 1 closed")
+                && violation.contains("trust report alone is not promotion authority")
+                && violation.contains("#1702")
+        }),
+        "{violation:#?}"
+    );
+}
+
+#[test]
+fn support_tiers_reject_stronger_rust_repair_tier_bypass() -> Result<(), String> {
+    with_temp_cwd("support-tiers-rust-repair-stable-bypass", |root| {
+        write_support_tier_fixture(
+            root,
+            "| Rust gap repair loop | `stable building block` | CLI and editor | `cargo xtask rust-repair-trust-report` | Interim cap applies. |\n",
+        );
+        let violations = super::support_tier_violations(root, &root.join(SUPPORT_TIERS_PATH))?;
+        assert!(
+            violations.iter().any(|violation| violation
+                .contains("`stable building block` exceeds the interim `usable alpha` cap")),
+            "{violations:#?}"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn support_tiers_require_unique_canonical_rust_repair_row() -> Result<(), String> {
+    for (name, rows, expected) in [
+        (
+            "missing",
+            "| Source-of-truth artifact graph | `stable building block` | docs | `cargo xtask check-doc-artifacts` | Registered graph only. |\n",
+            "row is missing or renamed",
+        ),
+        (
+            "renamed",
+            "| Rust repair loop | `usable alpha` | CLI | `cargo xtask rust-repair-trust-report` | Renamed identity. |\n",
+            "row is missing or renamed",
+        ),
+        (
+            "duplicate",
+            "| Rust gap repair loop | `usable alpha` | CLI | `cargo xtask rust-repair-trust-report` | First. |\n| Rust gap repair loop | `usable alpha` | editor | `cargo xtask rust-repair-trust-report` | Second. |\n",
+            "found 2 rows",
+        ),
+    ] {
+        with_temp_cwd(
+            &format!("support-tiers-rust-repair-{name}"),
+            |root| -> Result<(), String> {
+                write_support_tier_fixture(root, rows);
+                let violations =
+                    super::support_tier_violations(root, &root.join(SUPPORT_TIERS_PATH))?;
+                assert!(
+                    violations.iter().any(|violation| {
+                        violation.contains("exactly one canonical support-tier row")
+                            && violation.contains(expected)
+                    }),
+                    "{name}: {violations:#?}"
+                );
+                Ok(())
+            },
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn support_tiers_reject_unknown_xtask_proof_command() -> Result<(), String> {
     with_temp_cwd("support-tiers-unknown-command", |root| {
         write_support_tier_fixture(
@@ -22774,7 +23794,7 @@ fn support_tiers_resolve_workflow_proof_relative_to_root() -> Result<(), String>
         let nested = root.join("nested-repo");
         write_support_tier_fixture(
             &nested,
-            "| Source-of-truth workflow | `stable building block` | CI | `.github/workflows/source-of-truth.yml` | Workflow file exists in repo. |\n",
+            "| Rust gap repair loop | `usable alpha` | CLI and editor | `cargo xtask rust-repair-trust-report` | Governed promotion authority is incomplete. |\n| Source-of-truth workflow | `stable building block` | CI | `.github/workflows/source-of-truth.yml` | Workflow file exists in repo. |\n",
         );
         write(
             &nested.join(".github/workflows/source-of-truth.yml"),
@@ -22792,7 +23812,7 @@ fn support_tiers_require_specs_with_impact_to_link_status_doc() -> Result<(), St
     with_temp_cwd("support-tiers-spec-link", |root| {
         write_support_tier_fixture(
             root,
-            "| Source-of-truth artifact graph | `stable building block` | docs | `cargo xtask check-doc-artifacts` | Registered graph only. |\n",
+            "| Rust gap repair loop | `usable alpha` | CLI and editor | `cargo xtask rust-repair-trust-report` | Governed promotion authority is incomplete. |\n| Source-of-truth artifact graph | `stable building block` | docs | `cargo xtask check-doc-artifacts` | Registered graph only. |\n",
         );
         write(
             &root.join("docs/specs/RIPR-SPEC-0001-alpha.md"),
@@ -22820,7 +23840,7 @@ fn support_tiers_allow_specs_with_no_support_tier_impact() -> Result<(), String>
     with_temp_cwd("support-tiers-spec-none", |root| {
         write_support_tier_fixture(
             root,
-            "| Source-of-truth artifact graph | `stable building block` | docs | `cargo xtask check-doc-artifacts` | Registered graph only. |\n",
+            "| Rust gap repair loop | `usable alpha` | CLI and editor | `cargo xtask rust-repair-trust-report` | Governed promotion authority is incomplete. |\n| Source-of-truth artifact graph | `stable building block` | docs | `cargo xtask check-doc-artifacts` | Registered graph only. |\n",
         );
         write(
             &root.join("docs/specs/RIPR-SPEC-0001-alpha.md"),
@@ -22878,6 +23898,20 @@ fn repo_contract_report_command_writes_indexable_report_files() -> Result<(), St
         assert_eq!(value["schema_version"], "0.1");
         assert_eq!(value["report_id"], "source_of_truth_graph");
         assert_eq!(value["status"], "pass");
+        let rust_repair_rows = value["support_tiers"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|row| row["capability"] == "Rust gap repair loop")
+            .collect::<Vec<_>>();
+        assert_eq!(rust_repair_rows.len(), 1, "{value:#}");
+        assert_eq!(
+            rust_repair_rows
+                .first()
+                .and_then(|row| row.get("tier"))
+                .and_then(Value::as_str),
+            Some("`usable alpha`")
+        );
         Ok(())
     })
 }
@@ -23053,6 +24087,66 @@ state = "unchanged"
     if validate_slice(&with_live_state).is_ok() {
         return Err("slice carrying branch state must be rejected".to_string());
     }
+    Ok(())
+}
+
+#[test]
+fn committed_spec_review_receipts_validate() -> Result<(), String> {
+    // Every committed receipt must parse under SpecReviewReceiptV1 and carry
+    // no keys outside the enumerated contract (#3466). An empty or absent
+    // reviews directory is valid: this slice commits no receipts, and the
+    // first real batch belongs to the backlog adjudication follow-up.
+    let reviews_dir = slice_test_repo_root().join(".allow/spec-system/reviews");
+    if !reviews_dir.exists() {
+        return Ok(());
+    }
+    let mut validated = 0;
+    let entries =
+        std::fs::read_dir(&reviews_dir).map_err(|err| format!("read reviews directory: {err}"))?;
+    for entry in entries {
+        let path = entry.map_err(|err| format!("receipt entry: {err}"))?.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("toml") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path)
+            .map_err(|err| format!("read receipt {}: {err}", path.display()))?;
+        crate::reports::validate_receipt(&text)
+            .map_err(|reason| format!("{}: rejected ({reason})", path.display()))?;
+        for line in text.lines() {
+            let Some(key) = line.split('=').next() else {
+                continue;
+            };
+            let key = key.trim();
+            const RECEIPT_KEYS: [&str; 18] = [
+                "schema_version",
+                "producer",
+                "spec_id",
+                "spec_path",
+                "content_digest",
+                "status_observed",
+                "observed_at",
+                "reviewed_by",
+                "disposition",
+                "waived_until",
+                "disposition_detail",
+                "reasons_inspected",
+                "evidence_refs",
+                "limitations",
+                "receipt_id",
+                "predecessor_receipt_id",
+                "claim_boundary",
+                "non_claims",
+            ];
+            if !key.is_empty() && !RECEIPT_KEYS.contains(&key) {
+                return Err(format!(
+                    "{}: receipt carries key `{key}` outside the contract enumeration",
+                    path.display()
+                ));
+            }
+        }
+        validated += 1;
+    }
+    let _ = validated;
     Ok(())
 }
 
@@ -26871,6 +27965,76 @@ fn policy_checker_facade_runs_current_repo_checks() -> Result<(), String> {
         check_droid_review_config()?;
         check_process_policy()?;
         check_network_policy()
+    })
+}
+
+#[test]
+fn network_policy_candidate_extensions_cover_supported_script_sources() {
+    for path in [
+        "src/client.rs",
+        "src/client.ts",
+        "src/client.tsx",
+        "src/client.py",
+        "src/client.js",
+        "src/client.jsx",
+        "scripts/check.sh",
+        "scripts/check.ps1",
+        ".github/workflows/check.yml",
+        ".github/workflows/check.yaml",
+    ] {
+        assert!(
+            is_network_policy_candidate(path),
+            "expected network-policy candidate: {path}"
+        );
+    }
+
+    assert!(!is_network_policy_candidate("docs/network-policy.md"));
+}
+
+#[test]
+fn network_policy_rejects_fetch_in_tsx_and_accepts_clean_jsx() -> Result<(), String> {
+    with_temp_cwd("network-policy-jsx-tsx", |root| {
+        write(&root.join("policy/network_allowlist.txt"), "");
+        write(
+            &root.join("src/networked.tsx"),
+            concat!("export const load = () => fet", "ch('/api/data');\n"),
+        );
+        write(
+            &root.join("src/presentational.jsx"),
+            "export const Label = () => <span>ready</span>;\n",
+        );
+
+        let init = run("git", &["init", "--quiet"])?;
+        if !init.success() {
+            return Err(format!("temporary git init failed with {init}"));
+        }
+        let add = run(
+            "git",
+            &[
+                "add",
+                "policy/network_allowlist.txt",
+                "src/networked.tsx",
+                "src/presentational.jsx",
+            ],
+        )?;
+        if !add.success() {
+            return Err(format!("temporary git add failed with {add}"));
+        }
+
+        let failure = check_network_policy()
+            .expect_err("an unallowlisted fetch in tracked TSX must fail network policy");
+        assert!(
+            failure.contains(concat!(
+                "src/networked.tsx contains `fet",
+                "ch(` 1 time(s), allowed 0"
+            )),
+            "unexpected network-policy failure: {failure}"
+        );
+        assert!(
+            !failure.contains("src/presentational.jsx"),
+            "clean JSX control must not be reported: {failure}"
+        );
+        Ok(())
     })
 }
 
@@ -46967,7 +48131,9 @@ fn routed_rust_workflow_text() -> Result<String, String> {
 fn review_comments_cross_check_covers_every_live_consumer() -> Result<(), String> {
     let root = repo_root()?;
     let workflows = [
-        (".github/workflows/ci.yml", 2usize),
+        // ci.yml carries two review-comments producers: the merged
+        // release-proof job and the restored source-side rust job (J5).
+        (".github/workflows/ci.yml", 4usize),
         (".github/workflows/routed-rust.yml", 4usize),
     ];
     let mut consumers = 0usize;
@@ -46989,9 +48155,9 @@ fn review_comments_cross_check_covers_every_live_consumer() -> Result<(), String
         }
         consumers += found;
     }
-    if consumers != 6 {
+    if consumers != 8 {
         return Err(format!(
-            "expected six live consumer commands, found {consumers}"
+            "expected eight live consumer commands, found {consumers}"
         ));
     }
     Ok(())

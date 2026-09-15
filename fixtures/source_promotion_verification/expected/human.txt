@@ -11,7 +11,7 @@ Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/source_promotion_verification/input/xtask/src/reports/source_promotion_verify.rs:9
-  Static exposure: no_static_path (warning, confidence 0.48)
+  Static exposure: no_static_path (warning, confidence 0.40)
   Why no_static_path: the changed behavior could not be traced to an observable output
   Changed behavior: Ok(())
   Missing discriminator: No relevant oracle was detected

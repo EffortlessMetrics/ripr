@@ -142,7 +142,8 @@
         "config_identity",
         "base_revision",
         "input_identity",
-        "snapshot_identity"
+        "snapshot_identity",
+        "git_candidate_subject"
       ],
       "properties": {
         "repository_identity": { "$ref": "#/$defs/nullable_string" },
@@ -150,7 +151,23 @@
         "config_identity": { "$ref": "#/$defs/nullable_string" },
         "base_revision": { "$ref": "#/$defs/nullable_string" },
         "input_identity": { "$ref": "#/$defs/nullable_string" },
-        "snapshot_identity": { "$ref": "#/$defs/nullable_string" }
+        "snapshot_identity": { "$ref": "#/$defs/nullable_string" },
+        "git_candidate_subject": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["subject_kind", "base_tree", "candidate_tree", "diff_identity"],
+              "properties": {
+                "subject_kind": { "type": "string" },
+                "base_tree": { "type": "string" },
+                "candidate_tree": { "type": "string" },
+                "diff_identity": { "type": "string" }
+              }
+            }
+          ]
+        }
       }
     },
     "analysis_counts": {

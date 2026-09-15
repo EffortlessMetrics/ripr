@@ -5,6 +5,7 @@ pub const PROBE_SHAPE_CALL_DELETION: &str = "call_deletion";
 pub const PROBE_SHAPE_FIELD_CONSTRUCTION: &str = "field_construction";
 pub const PROBE_SHAPE_SIDE_EFFECT: &str = "side_effect";
 pub const PROBE_SHAPE_MATCH_ARM: &str = "match_arm";
+pub const PROBE_SHAPE_UNSAFE_BOUNDARY: &str = "unsafe_boundary";
 
 /// All known probe shape names, in canonical order.
 pub const KNOWN_PROBE_SHAPES: &[&str] = &[
@@ -15,6 +16,7 @@ pub const KNOWN_PROBE_SHAPES: &[&str] = &[
     PROBE_SHAPE_FIELD_CONSTRUCTION,
     PROBE_SHAPE_SIDE_EFFECT,
     PROBE_SHAPE_MATCH_ARM,
+    PROBE_SHAPE_UNSAFE_BOUNDARY,
 ];
 
 /// Returns true when `name` is exactly one of the known probe shapes.

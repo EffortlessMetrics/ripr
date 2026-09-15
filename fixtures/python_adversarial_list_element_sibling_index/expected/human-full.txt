@@ -33,7 +33,7 @@ Evidence
   - infection yes: Changed Python return expression can alter the owner return value: `return ["index", "browse", "detail"]`
   - propagation yes: Changed Python return value is already at the owner output boundary.
   - observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.
   - local flow reaches returned value: return ["index", "browse", "detail"] (line 2)
   - related test tests/test_routes.py:4 test_first uses strong exact value oracle: assert route_order()[0] == "index"
 

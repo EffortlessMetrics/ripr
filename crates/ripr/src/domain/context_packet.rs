@@ -6,6 +6,10 @@ pub struct ContextPacket {
     pub tool: &'static str,
     pub canonical_gap_id: Option<String>,
     pub probe: ContextPacketProbe,
+    /// Which revision owns the packet finding's source (#3281): agent
+    /// consumers must not treat `base_deleted` / `moved_or_renamed` /
+    /// `unresolved_subject` packets as candidate edit targets.
+    pub source_currentness: &'static str,
     pub ripr: ContextPacketRipr,
     pub related_tests: Vec<RelatedTest>,
     pub observed_values: Vec<ValueFact>,
@@ -53,6 +57,7 @@ impl ContextPacket {
                 line: finding.probe.location.line,
                 changed_expression: finding.probe.expression.clone(),
             },
+            source_currentness: finding.source_currentness.as_str(),
             ripr: ContextPacketRipr {
                 reach: finding.ripr.reach.state.as_str().to_string(),
                 infect: finding.ripr.infect.state.as_str().to_string(),
@@ -216,6 +221,7 @@ mod tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 

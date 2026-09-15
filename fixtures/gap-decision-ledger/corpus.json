@@ -74,6 +74,7 @@
       "static_unknown_only": false,
       "expected_gap_record": {
         "gap_id": "gap:pr:pricing:threshold-boundary",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
         "seam_id": "seam:pricing:threshold-boundary",
         "kind": "MissingBoundaryAssertion",
@@ -168,6 +169,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:pr:parser:error-path",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:parser:parse:error-path",
         "kind": "MissingErrorDiscriminator",
         "language": "rust",
@@ -252,6 +254,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:pr:invoice:rounding-value",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:invoice:round:exact-value",
         "kind": "MissingValueAssertion",
         "language": "rust",
@@ -336,6 +339,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:pr:notify:side-effect",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:notify:send:side-effect",
         "kind": "MissingSideEffectObserver",
         "language": "rust",
@@ -420,6 +424,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:pr:help-text:missing-golden",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:cli:help:output-contract",
         "kind": "MissingOutputContract",
         "language": "rust",
@@ -504,6 +509,7 @@
       "static_unknown_only": true,
       "expected_gap_record": {
         "gap_id": "gap:pr:macro:static-limit",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:macro:static-limit",
         "kind": "StaticLimitation",
         "language": "rust",
@@ -581,6 +587,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:baseline:pricing:threshold-boundary",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
         "kind": "MissingBoundaryAssertion",
         "language": "rust",
@@ -663,6 +670,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:repo:invoice:waived-value",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:invoice:round:exact-value",
         "kind": "MissingValueAssertion",
         "language": "rust",
@@ -740,6 +748,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:repo:parser:suppressed-error",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:parser:parse:error-path",
         "kind": "MissingErrorDiscriminator",
         "language": "rust",
@@ -817,6 +826,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:pr:notify:acknowledged-side-effect",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:notify:send:side-effect",
         "kind": "MissingSideEffectObserver",
         "language": "rust",
@@ -894,6 +904,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:repo:pricing:resolved-boundary",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
         "kind": "NoActionAlreadyObserved",
         "language": "rust",
@@ -970,6 +981,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:internal:index:note",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:internal:index:note",
         "kind": "NoActionInternal",
         "language": "rust",
@@ -1046,6 +1058,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:pr:unknown:human-design",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:unknown:human-design",
         "kind": "Unknown",
         "language": "rust",
@@ -1123,6 +1136,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:repo:pricing:reintroduced-boundary",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
         "kind": "MissingBoundaryAssertion",
         "language": "rust",
@@ -1206,6 +1220,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:pr:ts:format-value",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:typescript:format:value",
         "kind": "MissingValueAssertion",
         "language": "typescript",
@@ -1288,6 +1303,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:artifact:pr-guidance-missing",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:artifact:pr-guidance-missing",
         "kind": "Unknown",
         "language": "rust",
@@ -1370,6 +1386,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:receipt:pricing:improved",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
         "kind": "NoActionAlreadyObserved",
         "language": "rust",
@@ -1449,6 +1466,7 @@
       ],
       "expected_gap_record": {
         "gap_id": "gap:receipt:invoice:unchanged",
+        "source_currentness": "candidate_current",
         "canonical_gap_id": "gap:rust:invoice:round:exact-value",
         "kind": "MissingValueAssertion",
         "language": "rust",

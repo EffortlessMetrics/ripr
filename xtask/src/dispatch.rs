@@ -1,7 +1,29 @@
 use crate::command::{XtaskCommand, print_help, unknown_command_message};
 
+#[path = "check_fast_strict.rs"]
+mod check_fast_strict;
+#[path = "command/front_door.rs"]
+mod front_door;
 #[path = "precommit_v2.rs"]
 mod precommit_v2;
+
+fn print_help_route(args: &[String]) -> Result<(), String> {
+    match args {
+        [] => front_door::print(),
+        [flag] if flag == "--all" => {
+            // The existing empty-query renderer remains the exhaustive catalog
+            // authority. Progressive disclosure changes only the CLI route.
+            print_help(&[])?;
+            println!("\nRun `cargo xtask help` for common starting points.");
+            Ok(())
+        }
+        _ => print_help(args),
+    }
+}
+
+fn unknown_command_error(command: &str) -> String {
+    unknown_command_message(command)
+}
 
 pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
     match command {
@@ -17,17 +39,23 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::BranchInventory(args) => super::branch_inventory::run(&args),
         XtaskCommand::GhPrStatus(args) => super::reports::gh_pr_status(&args),
         XtaskCommand::CiBudget(args) => super::reports::ci_budget(&args),
+        XtaskCommand::PerlMigrationRefresh(args) => super::reports::perl_migration_refresh(&args),
         XtaskCommand::ModuleHealth(args) => super::reports::module_health(&args),
         XtaskCommand::WindowsAdvisorySummary(args) => super::windows_advisory::run(&args),
         XtaskCommand::EvalSweep(args) => super::reports::eval_sweep(&args),
         XtaskCommand::SuggestedFixes => super::suggested_fixes(),
         XtaskCommand::Precommit => precommit_v2::run(),
-        XtaskCommand::CheckFast => super::check_fast(),
+        XtaskCommand::CheckFast => check_fast_strict::run(),
         XtaskCommand::CheckPr => super::check_pr(),
         XtaskCommand::Fixtures(args) => super::reports::fixtures_with_args(&args),
         XtaskCommand::Goldens(args) => super::reports::goldens(&args),
         XtaskCommand::Metrics => super::reports::metrics_report(),
         XtaskCommand::RustRepairTrustReport => super::reports::rust_repair_trust_report(),
+        XtaskCommand::RustJudgedPanel(args) => super::rust_judged_panel::run(&args),
+        XtaskCommand::CheckRustJudgedPanel => super::check_rust_judged_panel(),
+        XtaskCommand::PythonJudgedPanel(args) => super::python_judged_panel::run(&args),
+        XtaskCommand::CheckPythonJudgedPanel => super::check_python_judged_panel(),
+        XtaskCommand::PythonRepairTrust(args) => super::reports::python_repair_trust(&args),
         XtaskCommand::TestOracleReport => super::reports::test_oracle_report(),
         XtaskCommand::TestEfficiencyReport => super::reports::test_efficiency_report(),
         XtaskCommand::BadgeArtifacts => super::reports::badge_artifacts(),
@@ -140,6 +168,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckAllowAttributes => super::check_allow_attributes(),
         XtaskCommand::CheckLocalContext => super::check_local_context(),
         XtaskCommand::CheckFilePolicy => super::check_file_policy(),
+        XtaskCommand::CheckCoveredBy => super::check_covered_by(),
         XtaskCommand::RustConversionCandidates => super::rust_conversion_candidates(),
         XtaskCommand::CheckExecutableFiles => super::check_executable_files(),
         XtaskCommand::CheckWorkflows => super::check_workflows(),
@@ -154,6 +183,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckCapabilities => super::check_capabilities(),
         XtaskCommand::CheckWorkspaceShape => super::check_workspace_shape(),
         XtaskCommand::CheckArchitecture => super::check_architecture(),
+        XtaskCommand::CheckSourceRoleAuthority => super::check_rust_source_role_authority(),
         XtaskCommand::CheckPublicApi => super::check_public_api(),
         XtaskCommand::CheckOutputContracts => super::check_output_contracts(),
         XtaskCommand::CheckDocArtifacts => super::check_doc_artifacts(),
@@ -191,8 +221,11 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
             super::run("cargo", &["publish", "-p", "ripr", "--dry-run"]).map(|_| ())
         }
         XtaskCommand::IssueIntake(args) => super::reports::issue_intake(&args),
-        XtaskCommand::Help(args) => print_help(&args),
-        XtaskCommand::Unknown(command) => Err(unknown_command_message(&command)),
+        XtaskCommand::Help(args) => print_help_route(&args),
+        XtaskCommand::Unknown(command) if matches!(command.as_str(), "--help" | "-h") => {
+            front_door::print()
+        }
+        XtaskCommand::Unknown(command) => Err(unknown_command_error(&command)),
     }
 }
 

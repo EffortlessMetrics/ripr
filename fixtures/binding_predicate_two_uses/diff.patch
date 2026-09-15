@@ -1,0 +1,9 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,4 +1,4 @@
+ pub fn classify(count: usize) -> &'static str {
+-    let ceiling = 50;
++    let ceiling = 60;
+     if count > ceiling {
+         "over"

@@ -36,11 +36,26 @@ Repair:
 Verify command:
 `jest tests/discount.test.ts`
 
+Verify command (PowerShell):
+`jest tests/discount.test.ts`
+
+The first form is written for Bash; cmd.exe is not supported.
+
 Receipt command:
 `ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command "jest tests/discount.test.ts" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json`
 
+Receipt command (PowerShell):
+`ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command "jest tests/discount.test.ts" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json`
+
+The first form is written for Bash; cmd.exe is not supported.
+
 Agent packet command:
 `ripr agent packet --root fixtures/first_successful_pr/typescript-preview-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:typescript:typescript_preview:2396aec1 --json > target/ripr/workflow/agent-packet.json`
+
+Agent packet command (PowerShell):
+`$ripr = ((ripr agent packet --root fixtures/first_successful_pr/typescript-preview-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:typescript:typescript_preview:2396aec1 --json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/workflow/agent-packet.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw "ripr exited with code $LASTEXITCODE" }`
+
+The first form is written for Bash; cmd.exe is not supported.
 
 ## Artifacts
 

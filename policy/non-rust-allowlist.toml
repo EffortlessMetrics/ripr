@@ -331,6 +331,15 @@ reason = "PR-local ImplementationSliceV1 scope/claim records (current-v2; no liv
 covered_by = ["cargo test -p xtask implementation_slices_validate_and_coexist"]
 
 [[allow]]
+glob = ".allow/spec-system/reviews/*.toml"
+kind = "policy_metadata"
+owner = "product-swarm"
+surface = "repo"
+classification = "metadata"
+reason = "Per-spec SpecReviewReceiptV1 content-bound maintenance review records (advisory; no live execution state)."
+covered_by = ["cargo test -p xtask committed_spec_review_receipts_validate"]
+
+[[allow]]
 glob = ".ripr/*.toml"
 kind = "policy_metadata"
 owner = "repo-policy"
@@ -374,6 +383,34 @@ surface = "repo"
 classification = "metadata"
 reason = "Machine-readable capability and metrics metadata."
 covered_by = ["cargo xtask check-capabilities"]
+
+[[allow]]
+glob = "metrics/rust-judged-behavior-panel/*.json"
+kind = "judged_panel_metadata"
+owner = "ripr/evidence-quality"
+surface = "repo"
+classification = "metadata"
+reason = "Selected, unjudged Rust behavior-panel denominator; null labels remain non-results."
+covered_by = ["cargo xtask check-file-policy", "cargo xtask rust-judged-panel check"]
+
+[[allow]]
+glob = "metrics/rust-judged-behavior-panel/subjects/**"
+kind = "judged_panel_subject"
+owner = "ripr/evidence-quality"
+surface = "fixtures"
+classification = "fixture"
+reason = "Checked deterministic source, test, config, and Git materialization inputs for the three-case Rust judged panel."
+covered_by = ["cargo xtask rust-judged-panel check", "cargo test -p xtask rust_judged_panel::subject"]
+
+[[allow]]
+glob = "metrics/rust-judged-behavior-panel/portable/**/*.json"
+kind = "judged_panel_portable_evidence"
+owner = "ripr/evidence-quality"
+surface = "repo"
+classification = "generated"
+reason = "Bounded portable semantic projections from validated host-bound Rust judged-panel receipts; null judgment and not-run runtime remain non-results."
+generated_by = "cargo xtask rust-judged-panel packet --host-current target/ripr/rust-judged-panel/current.json"
+covered_by = ["cargo xtask rust-judged-panel check", "cargo test -p xtask --locked --offline rust_judged_panel::packet::tests", "cargo xtask check-file-policy"]
 
 [[allow]]
 glob = "metrics/rust-repair-trust/*.json"
@@ -510,7 +547,7 @@ owner = "analysis/causal-attribution"
 surface = "fixtures"
 classification = "fixture"
 reason = "Fixture-backed base/head attribution rules for canonical evidence comparison."
-covered_by = ["cargo test -p ripr causal_delta", "cargo xtask check-file-policy"]
+covered_by = ["cargo test -p ripr --test causal_delta_fixture", "cargo xtask check-file-policy"]
 
 [[allow]]
 glob = "tests/fixtures/source_promotion_contract/*.json"

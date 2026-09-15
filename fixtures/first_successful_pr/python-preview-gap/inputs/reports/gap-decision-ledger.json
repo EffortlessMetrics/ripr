@@ -6,6 +6,7 @@
   "records": [
     {
       "gap_id": "gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+      "source_currentness": "candidate_current",
       "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
       "kind": "MissingBoundaryAssertion",
       "language": "python",
@@ -19,6 +20,12 @@
       "repairability": "repairable",
       "static_limit_kind": "python_preview",
       "static_limit_detail": "Python repair cards are preview advisory evidence.",
+      "projection_eligibility": {
+        "agent_packet": {
+          "eligible": true,
+          "reason": "direct Python oracle alignment is eligible for preview packet projection"
+        }
+      },
       "anchor": {
         "file": "app/pricing.py",
         "line": 2,

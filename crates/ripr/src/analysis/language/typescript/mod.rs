@@ -54,6 +54,8 @@ mod static_limit;
 #[cfg(test)]
 mod tests;
 mod tests_extract;
+#[cfg(test)]
+mod tests_extract_tests;
 pub(crate) mod tsconfig;
 mod types;
 
@@ -292,6 +294,7 @@ impl LanguageAdapter for TypeScriptAdapter {
             .collect::<Result<Vec<_>, String>>()?;
         Ok(LanguageDiffResult {
             findings,
+            harness_projections: Vec::new(),
             changed_files: changed_count,
             candidate_line_count: 0,
             changed_files_by_language,
@@ -314,12 +317,14 @@ impl LanguageAdapter for TypeScriptAdapter {
         // `typescript_diff_first` limitation entry for TS/JS-only
         // workspaces, so a TypeScript-only run is not entirely warning-
         // free — but the empty adapter result itself is silent. See
-        // docs/LANGUAGE_ADAPTER_PREVIEW.md § "Repo-Mode Analysis Is
-        // Rust-Only" for the limitation contract.
+        // docs/LANGUAGE_ADAPTER_PREVIEW.md § "Repo-Mode Analysis" for
+        // the limitation contract.
         Ok(LanguageRepoResult {
             findings: Vec::new(),
+            harness_projections: Vec::new(),
             production_files: 0,
             skipped_files: 0,
+            partial_reason: None,
         })
     }
 }
