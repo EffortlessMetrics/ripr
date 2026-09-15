@@ -24,7 +24,7 @@ Static exposure
 Evidence
   - reach yes: Related tests appear to reach compute: negative_input_rejects_with_negative_error
   - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence error variant: Result::Err(CalcError::Negative)
+  - propagation yes: Complete propagation witness reaches error variant: Result::Err(CalcError::Negative)
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator yes: Strong oracle found: exact error variant assertion
   - local flow reaches error variant: Result::Err(CalcError::Negative) (line 8)
@@ -49,7 +49,7 @@ Static exposure
 Evidence
   - reach yes: Related tests appear to reach compute: negative_input_rejects_with_negative_error
   - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence error variant: Result::Err(CalcError::Negative)
+  - propagation yes: Complete propagation witness reaches error variant: Result::Err(CalcError::Negative)
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator yes: Strong oracle found: exact error variant assertion
   - local flow reaches error variant: Result::Err(CalcError::Negative) (line 8)

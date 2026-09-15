@@ -30,8 +30,16 @@ ripr check --root fixtures/unwrap_err_variant_single_line/input \
 
 `ripr` should detect the `unwrap_err`-bound exact-variant oracle even though the
 `let` binding does not begin a source line (it sits mid-line after `{`). The
-`error_path` seam is credited `exposed` with discriminator state `yes`, and
-`ParseError::TooLong` is **not** listed as a missing discriminator.
+`error_path` seam carries discriminator state `yes`, and `ParseError::TooLong`
+is **not** listed as a missing discriminator.
+
+Because the complete owner-bound propagation witness cannot be established for
+this tuple-payload variant (the changed payload `name.len()` does not resolve to
+the `Result::Err(ParseError::TooLong)` sink identity), the seam stays
+`weakly_exposed` rather than `exposed`: reach plus a strong oracle never credits
+`exposed` without an established propagation path (RIPR-SPEC-0096 fail-closed;
+`#3161` PR-B witness contract). The exact-variant oracle still suppresses the
+assertion-repair guidance on both seams.
 
 Binding detection is statement-oriented, not line-oriented, so a discriminated
 seam never carries a contradictory `missing_discriminators` entry purely because
@@ -39,8 +47,8 @@ the test body was not split onto multiple lines.
 
 ## Must Not
 
-- List `ParseError::TooLong` as a missing discriminator while the same seam is
-  reported `exposed` / discriminate `yes` (the self-contradiction this guards).
+- List `ParseError::TooLong` as a missing discriminator while the same seam
+  discriminates `yes` (the self-contradiction this guards).
 - Require multi-line test formatting for the `unwrap_err` variant binding to be
   recognized.
 - Use mutation-runtime outcome vocabulary reserved for real mutation execution.

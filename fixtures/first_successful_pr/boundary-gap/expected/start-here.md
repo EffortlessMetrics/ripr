@@ -35,11 +35,26 @@ Repair:
 Verify command:
 `cargo xtask fixtures boundary_gap`
 
+Verify command (PowerShell):
+`cargo xtask fixtures boundary_gap`
+
+The first form is written for Bash; cmd.exe is not supported.
+
 Receipt command:
 `ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command 'cargo xtask fixtures boundary_gap' --status not_run --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json`
 
+Receipt command (PowerShell):
+`ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command 'cargo xtask fixtures boundary_gap' --status not_run --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json`
+
+The first form is written for Bash; cmd.exe is not supported.
+
 Agent packet command:
 `ripr agent packet --root fixtures/first_successful_pr/boundary-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:pricing:threshold-boundary --json > target/ripr/workflow/agent-packet.json`
+
+Agent packet command (PowerShell):
+`$ripr = ((ripr agent packet --root fixtures/first_successful_pr/boundary-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:pricing:threshold-boundary --json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/workflow/agent-packet.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw "ripr exited with code $LASTEXITCODE" }`
+
+The first form is written for Bash; cmd.exe is not supported.
 
 ## Artifacts
 

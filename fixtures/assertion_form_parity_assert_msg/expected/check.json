@@ -1,0 +1,663 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/assertion_form_parity_assert_msg/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":2,"probes":7,"findings":7,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":6,"changed_files_by_language":[{"language":"rust","files":2}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:a39173abbffe77fe8468c5cbfaeb4f7f7cc66e368e537816942160141261b934","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":2,"changed_line_count":15,"candidate_line_count":7,"probe_count":7,"finding_count":7},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:static_unknown:571b9a20",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:571b9a20",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/assertion_form_parity_assert_msg/input/src/lib.rs",
+        "line": 1,
+        "expression": "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: boundary_matches_expected"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: boundary_matches_expected", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches unknown sink: unknown sink (line 1)", "related test tests/pricing.rs:4 boundary_matches_expected uses unknown relational check oracle: assert!(actual == expected, \"actual={actual:?}\");", "observed function argument value amount = 100 at line 5", "observed function argument value discount_threshold = 100 at line 5", "observed assertion argument value \"actual={actual:?}\" at line 7"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":1}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed syntax is not mapped to a high-confidence probe family", "No propagation model is available for this changed syntax", "Related tests appear to reach discounted_total: boundary_matches_expected"],
+      "missing": ["No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "5": "let actual = discounted_total(100, 100);",
+        "7": "assert!(actual == expected, \"actual={actual:?}\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "discount_threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"actual={actual:?}\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "discount_threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"actual={actual:?}\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "boundary_matches_expected",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(actual == expected, \"actual={actual:?}\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:c80557eb",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:c80557eb",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/assertion_form_parity_assert_msg/input/src/lib.rs",
+        "line": 2,
+        "expression": "amount >= discount_threshold"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: boundary_matches_expected"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: amount - 10"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"high","summary":"Only relational oracle found; it may not discriminate the changed value exactly"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: boundary_matches_expected", "infection yes: Detected related test input at the changed boundary", "propagation yes: Changed behavior appears to influence returned value: amount - 10", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly", "local flow reaches returned value: amount - 10 (line 3)", "related test tests/pricing.rs:4 boundary_matches_expected uses weak relational check oracle: assert!(actual == expected, \"actual={actual:?}\");", "observed function argument value amount = 100 at line 5", "observed function argument value amount == discount_threshold at line 5", "observed function argument value discount_threshold = 100 at line 5", "observed assertion argument value \"actual={actual:?}\" at line 7"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"amount - 10","line":3}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: amount - 10", "Detected related test input at the changed boundary", "Only relational oracle found; it may not discriminate the changed value exactly", "Related tests appear to reach discounted_total: boundary_matches_expected"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "let actual = discounted_total(100, 100);",
+        "7": "assert!(actual == expected, \"actual={actual:?}\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "amount == discount_threshold",
+            "context": "function_argument",
+            "provenance": "let actual = discounted_total(100, 100); | exact input amount = 100; exact input discount_threshold = 100"
+          },
+          {
+            "line": 5,
+            "value": "discount_threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"actual={actual:?}\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "amount == discount_threshold",
+          "context": "function_argument",
+          "provenance": "let actual = discounted_total(100, 100); | exact input amount = 100; exact input discount_threshold = 100"
+        },
+        {
+          "line": 5,
+          "value": "discount_threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"actual={actual:?}\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "boundary_matches_expected",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(actual == expected, \"actual={actual:?}\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:static_unknown:71494b13",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:71494b13",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/assertion_form_parity_assert_msg/input/src/lib.rs",
+        "line": 3,
+        "expression": "amount - 10"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: boundary_matches_expected"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: boundary_matches_expected", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches unknown sink: unknown sink (line 3)", "related test tests/pricing.rs:4 boundary_matches_expected uses unknown relational check oracle: assert!(actual == expected, \"actual={actual:?}\");", "observed function argument value amount = 100 at line 5", "observed function argument value discount_threshold = 100 at line 5", "observed assertion argument value \"actual={actual:?}\" at line 7"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":3}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed syntax is not mapped to a high-confidence probe family", "No propagation model is available for this changed syntax", "Related tests appear to reach discounted_total: boundary_matches_expected"],
+      "missing": ["No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "5": "let actual = discounted_total(100, 100);",
+        "7": "assert!(actual == expected, \"actual={actual:?}\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "discount_threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"actual={actual:?}\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "discount_threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"actual={actual:?}\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "boundary_matches_expected",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(actual == expected, \"actual={actual:?}\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:static_unknown:9d7f6720",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:9d7f6720",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/assertion_form_parity_assert_msg/input/src/lib.rs",
+        "line": 4,
+        "expression": "} else {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: boundary_matches_expected"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: boundary_matches_expected", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches unknown sink: unknown sink (line 4)", "related test tests/pricing.rs:4 boundary_matches_expected uses unknown relational check oracle: assert!(actual == expected, \"actual={actual:?}\");", "observed function argument value amount = 100 at line 5", "observed function argument value discount_threshold = 100 at line 5", "observed assertion argument value \"actual={actual:?}\" at line 7"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":4}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed syntax is not mapped to a high-confidence probe family", "No propagation model is available for this changed syntax", "Related tests appear to reach discounted_total: boundary_matches_expected"],
+      "missing": ["No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "5": "let actual = discounted_total(100, 100);",
+        "7": "assert!(actual == expected, \"actual={actual:?}\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "discount_threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"actual={actual:?}\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "discount_threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"actual={actual:?}\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "boundary_matches_expected",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(actual == expected, \"actual={actual:?}\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:static_unknown:77d2f649",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:77d2f649",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/assertion_form_parity_assert_msg/input/src/lib.rs",
+        "line": 5,
+        "expression": "amount"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: boundary_matches_expected"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: boundary_matches_expected", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches unknown sink: unknown sink (line 5)", "related test tests/pricing.rs:4 boundary_matches_expected uses unknown relational check oracle: assert!(actual == expected, \"actual={actual:?}\");", "observed function argument value amount = 100 at line 5", "observed function argument value discount_threshold = 100 at line 5", "observed assertion argument value \"actual={actual:?}\" at line 7"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":5}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed syntax is not mapped to a high-confidence probe family", "No propagation model is available for this changed syntax", "Related tests appear to reach discounted_total: boundary_matches_expected"],
+      "missing": ["No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "5": "let actual = discounted_total(100, 100);",
+        "7": "assert!(actual == expected, \"actual={actual:?}\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "discount_threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"actual={actual:?}\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "discount_threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"actual={actual:?}\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "boundary_matches_expected",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(actual == expected, \"actual={actual:?}\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:static_unknown:d49e4be6",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:d49e4be6",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/assertion_form_parity_assert_msg/input/src/lib.rs",
+        "line": 6,
+        "expression": "}"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: boundary_matches_expected"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: boundary_matches_expected", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches unknown sink: unknown sink (line 6)", "related test tests/pricing.rs:4 boundary_matches_expected uses unknown relational check oracle: assert!(actual == expected, \"actual={actual:?}\");", "observed function argument value amount = 100 at line 5", "observed function argument value discount_threshold = 100 at line 5", "observed assertion argument value \"actual={actual:?}\" at line 7"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":6}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed syntax is not mapped to a high-confidence probe family", "No propagation model is available for this changed syntax", "Related tests appear to reach discounted_total: boundary_matches_expected"],
+      "missing": ["No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "5": "let actual = discounted_total(100, 100);",
+        "7": "assert!(actual == expected, \"actual={actual:?}\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "discount_threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"actual={actual:?}\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "discount_threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"actual={actual:?}\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "boundary_matches_expected",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(actual == expected, \"actual={actual:?}\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:static_unknown:d49e4be6.2",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:d49e4be6.2",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/assertion_form_parity_assert_msg/input/src/lib.rs",
+        "line": 7,
+        "expression": "}"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: boundary_matches_expected"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: boundary_matches_expected", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches unknown sink: unknown sink (line 7)", "related test tests/pricing.rs:4 boundary_matches_expected uses unknown relational check oracle: assert!(actual == expected, \"actual={actual:?}\");", "observed function argument value amount = 100 at line 5", "observed function argument value discount_threshold = 100 at line 5", "observed assertion argument value \"actual={actual:?}\" at line 7"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":7}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed syntax is not mapped to a high-confidence probe family", "No propagation model is available for this changed syntax", "Related tests appear to reach discounted_total: boundary_matches_expected"],
+      "missing": ["No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "5": "let actual = discounted_total(100, 100);",
+        "7": "assert!(actual == expected, \"actual={actual:?}\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "amount = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "discount_threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"actual={actual:?}\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "amount = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "discount_threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"actual={actual:?}\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "boundary_matches_expected",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(actual == expected, \"actual={actual:?}\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

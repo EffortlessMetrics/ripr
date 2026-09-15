@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on the complete work-loop artifact provenance, command-template, and boundary contract.
+
 ## Problem
 
 Campaign 10 made the editor-agent evidence loop real: saved-workspace

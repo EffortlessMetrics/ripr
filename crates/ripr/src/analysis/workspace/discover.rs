@@ -116,6 +116,52 @@ mod tests {
         Ok(())
     }
 
+    /// #3235: the related-test package guard depends on file identities
+    /// staying repo-relative from discovery through classification. Discovery
+    /// is the authority that strips the workspace root (the RustAdapter
+    /// selects from these paths and passes them into the index unchanged), so
+    /// pin it here: every discovered identity is relative on every host.
+    #[test]
+    fn discover_rust_files_returns_repo_relative_identities()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-discover-relative-{:?}",
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("src"))?;
+        fs::write(dir.join("src/lib.rs"), "pub fn one() -> i32 { 1 }")?;
+        fs::create_dir_all(dir.join("tests"))?;
+        fs::write(
+            dir.join("tests/it.rs"),
+            "#[test] fn t() { assert_eq!(1, 1); }",
+        )?;
+
+        let result = discover_rust_files(&dir)?;
+        assert!(
+            result.iter().any(|p| p.ends_with("src/lib.rs")),
+            "fixture must be discovered"
+        );
+        for path in &result {
+            let text = path.to_string_lossy();
+            assert!(
+                !path.is_absolute(),
+                "discovered identity must stay repo-relative: {text}"
+            );
+            assert!(
+                !text.starts_with('/'),
+                "discovered identity leaked a Unix root: {text}"
+            );
+            assert!(
+                text.as_bytes().get(1) != Some(&b':'),
+                "discovered identity leaked a drive prefix: {text}"
+            );
+        }
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
     #[test]
     fn discover_skips_default_excluded_directories() -> Result<(), Box<dyn std::error::Error>> {
         let dir = std::env::temp_dir().join(format!(

@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":1,"propagation_unknown":1,"static_unknown":1,"changed_files_by_language":[{"language":"rust","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:4075aa30c7c9fa7c2415bfb2c49a0ad6098832db4f1142893a4a44112c6011ce","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":4,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:4075aa30c7c9fa7c2415bfb2c49a0ad6098832db4f1142893a4a44112c6011ce","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":4,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -26,15 +26,15 @@
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach process: process_returns_amount_unchanged"},
         "infect": {"state":"unknown","confidence":"low","summary":"Changed value is bound to a discard pattern; it cannot infect a sink"},
-        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence constructed field: let _ : i32 = compute_fee(amount * 9)"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches constructed field: let _ : i32 = compute_fee(amount * 9)"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach process: process_returns_amount_unchanged", "infection unknown: Changed value is bound to a discard pattern; it cannot infect a sink", "propagation yes: Changed behavior appears to influence constructed field: let _ : i32 = compute_fee(amount * 9)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches constructed field: let _ : i32 = compute_fee(amount * 9) (line 2)", "related test tests/process_tests.rs:4 process_returns_amount_unchanged uses strong exact value oracle: assert_eq!(process(42), 42);", "observed assertion argument value 42 at line 5", "observed function argument value amount = 42 at line 5", "missing discriminator let _ : i32 = compute_fee(amount * 9);: No field-value assertion observes the constructed field: let _ : i32 = compute_fee(amount * 9);"],
+      "evidence_path": ["reach yes: Related tests appear to reach process: process_returns_amount_unchanged", "infection unknown: Changed value is bound to a discard pattern; it cannot infect a sink", "propagation yes: Complete propagation witness reaches constructed field: let _ : i32 = compute_fee(amount * 9)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches constructed field: let _ : i32 = compute_fee(amount * 9) (line 2)", "related test tests/process_tests.rs:4 process_returns_amount_unchanged uses strong exact value oracle: assert_eq!(process(42), 42);", "observed assertion argument value 42 at line 5", "observed function argument value amount = 42 at line 5", "missing discriminator let _ : i32 = compute_fee(amount * 9);: No field-value assertion observes the constructed field: let _ : i32 = compute_fee(amount * 9);"],
       "flow_sinks": [
         {"kind":"struct_field","text":"let _ : i32 = compute_fee(amount * 9)","line":2}
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence constructed field: let _ : i32 = compute_fee(amount * 9)", "Changed value is bound to a discard pattern; it cannot infect a sink", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Related tests appear to reach process: process_returns_amount_unchanged"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed value is bound to a discard pattern; it cannot infect a sink", "Complete propagation witness reaches constructed field: let _ : i32 = compute_fee(amount * 9)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Related tests appear to reach process: process_returns_amount_unchanged"],
       "missing": ["Changed value is bound to a discard pattern; it cannot infect a sink", "Missing discriminator value: let _ : i32 = compute_fee(amount * 9);", "No strong discriminator was detected"],
       "assertion_texts": {
         "5": "assert_eq!(process(42), 42);"
@@ -97,7 +97,8 @@
       "oracle_strength": "strong",
       "recommended_next_step": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.",
       "suggested_next_action": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.",
-      "language": "rust"
+      "language": "rust",
+      "source_currentness": "candidate_current"
     },
     {
       "id": "probe:src_lib.rs:static_unknown:655908b8",
@@ -176,7 +177,8 @@
       "oracle_strength": "unknown",
       "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
       "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
-      "language": "rust"
+      "language": "rust",
+      "source_currentness": "candidate_current"
     },
     {
       "id": "probe:src_lib.rs:return_value:d0b06139",
@@ -255,7 +257,8 @@
       "oracle_strength": "strong",
       "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
       "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
-      "language": "rust"
+      "language": "rust",
+      "source_currentness": "candidate_current"
     }
   ]
 }

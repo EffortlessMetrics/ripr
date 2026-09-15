@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:e1919bdec4a86505262509b72145a029f77b1eb6a6e30d20517e73ac811c38a0","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:e1919bdec4a86505262509b72145a029f77b1eb6a6e30d20517e73ac811c38a0","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -25,16 +25,16 @@
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach check_score_invariants: validate_score_accepts_in_range_values"},
-        "infect": {"state":"weak","confidence":"medium","summary":"Tests have literals [50], but no detected value matches changed boundary [0]"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
         "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"high","summary":"Only relational oracle found; it may not discriminate the changed value exactly"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach check_score_invariants: validate_score_accepts_in_range_values", "infection weak: Tests have literals [50], but no detected value matches changed boundary [0]", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly", "related test tests/scores.rs:4 validate_score_accepts_in_range_values uses weak relational check oracle: assert!(validate_score(50));", "observed assertion argument value 50 at line 5"],
+      "evidence_path": ["reach yes: Related tests appear to reach check_score_invariants: validate_score_accepts_in_range_values", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly", "related test tests/scores.rs:4 validate_score_accepts_in_range_values uses weak relational check oracle: assert!(validate_score(50));", "observed assertion argument value 50 at line 5", "missing discriminator let clamped = if value == 0: No related test call uses let clamped = if value equal to 0; observed let clamped = if value values: unknown; target 0 value: 0"],
       "flow_sinks": [
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Only relational oracle found; it may not discriminate the changed value exactly", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach check_score_invariants: validate_score_accepts_in_range_values", "Tests have literals [50], but no detected value matches changed boundary [0]"],
-      "missing": ["No clear propagation path from changed behavior to an observable sink", "No detected boundary input for the changed predicate", "No strong discriminator was detected"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Only relational oracle found; it may not discriminate the changed value exactly", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach check_score_invariants: validate_score_accepts_in_range_values", "Related tests contain input values, but the equality-boundary discriminator is missing"],
+      "missing": ["Missing discriminator value: let clamped = if value == 0", "No clear propagation path from changed behavior to an observable sink", "No strong discriminator was detected"],
       "assertion_texts": {
         "5": "assert!(validate_score(50));"
       },
@@ -47,6 +47,11 @@
           }
         ],
         "missing_discriminators": [
+          {
+            "value": "let clamped = if value == 0",
+            "reason": "No related test call uses let clamped = if value equal to 0; observed let clamped = if value values: unknown; target 0 value: 0",
+            "flow_sink": null
+          }
         ]
       },
       "observed_values": [
@@ -57,6 +62,11 @@
         }
       ],
       "missing_discriminators": [
+        {
+          "value": "let clamped = if value == 0",
+          "reason": "No related test call uses let clamped = if value equal to 0; observed let clamped = if value values: unknown; target 0 value: 0",
+          "flow_sink": null
+        }
       ],
       "related_tests_total": 1,
       "related_tests": [
@@ -76,7 +86,8 @@
       "oracle_strength": "weak",
       "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
       "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
-      "language": "rust"
+      "language": "rust",
+      "source_currentness": "candidate_current"
     }
   ]
 }

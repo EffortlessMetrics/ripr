@@ -7,7 +7,7 @@
   "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:81a6772b215577d3a5f535a8dc65ca0e2e1b9f9021d4ac551a28c09c0313e247","snapshot_identity":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:81a6772b215577d3a5f535a8dc65ca0e2e1b9f9021d4ac551a28c09c0313e247","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -26,15 +26,15 @@
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach process_order: process_order_succeeds"},
         "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
-        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: notifier.send(order_id)"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: notifier.send(order_id)"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach process_order: process_order_succeeds", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence returned value: notifier.send(order_id)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: notifier.send(order_id) (line 11)", "related test tests/process_tests.rs:4 process_order_succeeds uses weak relational check oracle: assert!(result);", "observed function argument value order_id = \"order-1\" at line 6"],
+      "evidence_path": ["reach yes: Related tests appear to reach process_order: process_order_succeeds", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: notifier.send(order_id)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: notifier.send(order_id) (line 11)", "related test tests/process_tests.rs:4 process_order_succeeds uses weak relational check oracle: assert!(result);", "observed function argument value order_id = \"order-1\" at line 6"],
       "flow_sinks": [
         {"kind":"return_value","text":"notifier.send(order_id)","line":11}
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: notifier.send(order_id)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach process_order: process_order_succeeds"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: notifier.send(order_id)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach process_order: process_order_succeeds"],
       "missing": ["No strong discriminator was detected"],
       "assertion_texts": {
         "6": "let result = process_order(&notifier, \"order-1\");"
@@ -77,7 +77,8 @@
       "oracle_strength": "weak",
       "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
       "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
-      "language": "rust"
+      "language": "rust",
+      "source_currentness": "candidate_current"
     },
     {
       "id": "probe:src_lib.rs:side_effect:95da2a37",
@@ -146,7 +147,8 @@
       "oracle_strength": "weak",
       "recommended_next_step": "Add a mock expectation, event receiver assertion, persisted-state check, or metric assertion for the changed effect.",
       "suggested_next_action": "Add a mock expectation, event receiver assertion, persisted-state check, or metric assertion for the changed effect.",
-      "language": "rust"
+      "language": "rust",
+      "source_currentness": "candidate_current"
     }
   ]
 }

@@ -1,5 +1,6 @@
 use super::render_helpers::push_path_field;
 use crate::output::json::escape as json_escape;
+use crate::output::markdown::powershell_command;
 use crate::output::path::display_path;
 use crate::output::pilot::commands::PilotCommands;
 use crate::output::pilot::{PILOT_SUMMARY_SCHEMA_VERSION, PilotSummaryContext};
@@ -115,9 +116,22 @@ pub(crate) fn render_pilot_timeout_summary_md(context: PilotSummaryContext<'_>) 
 
     out.push_str("## Next Command\n\n");
     out.push_str("Rerun with a larger explicit budget:\n\n");
+    out.push_str(super::COMMAND_SHELL_DISCLOSURE);
     out.push_str("```bash\n");
     out.push_str(&commands.retry);
     out.push_str("\n```\n");
+    match powershell_command(&commands.retry) {
+        Some(line) => {
+            out.push_str("\n```powershell\n");
+            out.push_str(&line);
+            out.push_str("\n```\n");
+        }
+        None => out.push_str(&format!(
+            "{}: `{}`\n",
+            crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE,
+            commands.retry
+        )),
+    }
     out
 }
 

@@ -1,5 +1,6 @@
 mod allow_attributes;
 mod ci_lane_whitelist;
+mod covered_by;
 mod dependency_expiry;
 mod doc_roles;
 pub(crate) mod droid_review;
@@ -14,10 +15,12 @@ mod product_copy;
 pub(crate) mod proof_packs;
 mod release_targets;
 mod static_language;
+mod test_inventory;
 mod workflows;
 
 pub(crate) use allow_attributes::check_allow_attributes;
 pub(crate) use ci_lane_whitelist::check_ci_lane_whitelist;
+pub(crate) use covered_by::check_covered_by;
 pub(crate) use dependency_expiry::check_dependency_suppression_expiry;
 pub(crate) use doc_roles::check_doc_roles;
 pub(crate) use droid_review::check_droid_review_config;

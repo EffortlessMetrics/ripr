@@ -1,6 +1,8 @@
 use crate::agent::command_specs;
 use crate::agent::loop_commands;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::path::Path;
 
 mod json;
 mod markdown;
@@ -135,6 +137,17 @@ fn receipt_report(
 ) -> Option<FirstUsefulActionReport> {
     let receipt = parsed.receipt.as_ref()?;
     let movement = receipt_movement(receipt)?;
+    if let Err(reason) = validate_receipt_projection(input, receipt, &movement) {
+        return Some(missing_required_report(
+            input,
+            inputs,
+            generated_at,
+            "receipt verify/artifact evidence",
+            vec![format!(
+                "receipt movement `{movement}` is not promotable: {reason}"
+            )],
+        ));
+    }
     match movement.as_str() {
         "improved" | "resolved" => Some(base_report(
             input,
@@ -202,6 +215,304 @@ fn receipt_report(
         )),
         _ => None,
     }
+}
+
+/// A movement token is only a projection of a completed, identity-bound verify
+/// transaction.  Keep this gate local to first-action routing: it does not
+/// redesign receipt production or broaden the receipt schema.
+fn validate_receipt_projection(
+    input: &FirstUsefulActionInput,
+    receipt: &Value,
+    movement: &str,
+) -> Result<(), String> {
+    if !matches!(movement, "improved" | "resolved" | "unchanged") {
+        return Ok(());
+    }
+    let provenance = receipt
+        .get("provenance")
+        .ok_or_else(|| "missing typed provenance".to_string())?;
+    if receipt.get("schema_version").and_then(Value::as_str)
+        != Some(crate::output::agent_receipt::AGENT_RECEIPT_SCHEMA_VERSION)
+    {
+        return Err("receipt has unsupported schema_version".to_string());
+    }
+    if receipt.get("status").and_then(Value::as_str) != Some("advisory")
+        || receipt
+            .get("analysis_outcome_status")
+            .and_then(Value::as_str)
+            != Some("complete")
+        || receipt.get("analysis_outcome").is_none_or(Value::is_null)
+    {
+        return Err("receipt does not contain a complete analysis outcome".to_string());
+    }
+    let root = Path::new(&input.root);
+    let declared_root = provenance
+        .get("repo_root")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "missing provenance.repo_root".to_string())?;
+    let expected_root =
+        std::fs::canonicalize(root).map_err(|err| format!("cannot resolve report root: {err}"))?;
+    let receipt_root = std::fs::canonicalize(if Path::new(declared_root).is_absolute() {
+        Path::new(declared_root).to_path_buf()
+    } else if declared_root == "." || declared_root == input.root {
+        // The producer records the exact --root argument.  When the command
+        // was invoked from a parent directory (`--root repo`), joining that
+        // argument to the already-selected root would incorrectly produce
+        // `repo/repo`.
+        root.to_path_buf()
+    } else {
+        root.join(declared_root)
+    })
+    .map_err(|err| format!("cannot resolve receipt repo_root: {err}"))?;
+    if receipt_root != expected_root {
+        return Err("receipt repo_root does not match first-action root".to_string());
+    }
+    let seam_id = provenance
+        .get("seam_id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "missing provenance.seam_id".to_string())?;
+
+    let inputs = receipt
+        .get("inputs")
+        .ok_or_else(|| "missing typed inputs".to_string())?;
+    let verify_path = inputs
+        .get("agent_verify_json")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "missing inputs.agent_verify_json".to_string())?;
+    let verify_file = canonical_first_action_path(root, verify_path, "verify artifact")?;
+    let verify_raw = std::fs::read_to_string(&verify_file)
+        .map_err(|err| format!("cannot read verify artifact `{verify_path}`: {err}"))?;
+    let verify_sha = provenance
+        .get("verify_artifact")
+        .and_then(|value| value.get("sha256"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| "missing provenance.verify_artifact.sha256".to_string())?;
+    if sha256_bytes(verify_raw.as_bytes()) != verify_sha {
+        return Err("verify artifact commitment does not match receipt".to_string());
+    }
+    let validated =
+        crate::app::agent_receipt::validate_agent_receipt_verify_json(root, &verify_raw)?;
+    let analysis_path =
+        crate::app::analysis_outcome_artifact::analysis_outcome_artifact_path_for_verify(
+            &verify_file,
+        )?;
+    let root_display = crate::output::outcome::display_path(root);
+    let analysis_outcome =
+        crate::app::analysis_outcome_artifact::read_analysis_outcome_artifact_at(
+            root,
+            &root_display,
+            &analysis_path,
+        )
+        .map_err(|error| format!("analysis outcome artifact is unavailable: {error}"))?;
+    let receipt_analysis_digest = receipt
+        .pointer("/analysis_outcome/semantic_digest")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "receipt is missing analysis outcome semantic digest".to_string())?;
+    let analysis_digest = analysis_outcome.semantic_digest()?;
+    if receipt_analysis_digest != analysis_digest {
+        return Err(
+            "analysis outcome semantic digest commitment does not match receipt".to_string(),
+        );
+    }
+    if !analysis_outcome.kind.is_complete()
+        || receipt
+            .pointer("/analysis_outcome/analysis_complete")
+            .and_then(Value::as_bool)
+            != Some(true)
+    {
+        return Err("receipt analysis outcome is incomplete".to_string());
+    }
+    let verify = &validated.verify;
+    for (label, value) in [
+        ("provenance.movement", provenance.get("movement")),
+        ("seam.change", receipt.pointer("/seam/change")),
+        (
+            "summary.next_action.kind",
+            receipt.pointer("/summary/next_action/kind"),
+        ),
+    ] {
+        if let Some(value) = value.and_then(Value::as_str)
+            && value != movement
+        {
+            return Err(format!(
+                "{label} disagrees with receipt movement `{movement}`"
+            ));
+        }
+    }
+    let before_path =
+        canonical_first_action_path(root, &validated.input_paths.before, "before artifact")?;
+    let after_path =
+        canonical_first_action_path(root, &validated.input_paths.after, "after artifact")?;
+    let receipt_before = receipt_artifact_path(root, provenance, "before_artifact")?;
+    let receipt_after = receipt_artifact_path(root, provenance, "after_artifact")?;
+    if receipt_before != before_path || receipt_after != after_path {
+        return Err("receipt artifact paths do not match canonical verify inputs".to_string());
+    }
+    let receipt_verify = receipt_artifact_path(root, provenance, "verify_artifact")?;
+    if receipt_verify != verify_file {
+        return Err("receipt verify path does not match inputs.agent_verify_json".to_string());
+    }
+    for (name, path) in [
+        ("before_artifact", &before_path),
+        ("after_artifact", &after_path),
+    ] {
+        let declared = provenance
+            .get(name)
+            .and_then(|value| value.get("sha256"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("missing provenance.{name}.sha256"))?;
+        let raw = std::fs::read(path).map_err(|err| format!("cannot read {name}: {err}"))?;
+        if sha256_bytes(&raw) != declared {
+            return Err(format!("{name} commitment does not match receipt"));
+        }
+    }
+    let currentness = verify
+        .get("artifact_currentness")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "verify artifact is missing currentness".to_string())?;
+    if !matches!(
+        currentness,
+        "current" | "dirty_both" | "dirty_before" | "dirty_after"
+    ) {
+        return Err(format!(
+            "verify artifact is stale or unsupported ({currentness})"
+        ));
+    }
+    let verify_seam = |array: &str| {
+        verify
+            .get(array)
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                items.iter().any(|item| {
+                    item.get("seam_id").and_then(Value::as_str) == Some(seam_id)
+                        && item.get("change").and_then(Value::as_str) == Some(movement)
+                        && receipt.pointer("/seam/before").and_then(Value::as_str)
+                            == item.get("before").and_then(Value::as_str)
+                        && receipt.pointer("/seam/after").and_then(Value::as_str)
+                            == item.get("after").and_then(Value::as_str)
+                        && (movement != "resolved"
+                            || (provenance.get("before_class").and_then(Value::as_str)
+                                == item.get("grip_class").and_then(Value::as_str)
+                                && item.get("after").is_none()))
+                        && (movement == "resolved"
+                            || (provenance.get("before_class").and_then(Value::as_str)
+                                == item.get("before").and_then(Value::as_str)
+                                && provenance.get("after_class").and_then(Value::as_str)
+                                    == item.get("after").and_then(Value::as_str)))
+                        && receipt
+                            .pointer("/seam/grip_class")
+                            .and_then(Value::as_str)
+                            .is_none_or(|value| {
+                                Some(value)
+                                    == if movement == "resolved" {
+                                        item.get("grip_class").and_then(Value::as_str)
+                                    } else {
+                                        item.get("after").and_then(Value::as_str)
+                                    }
+                            })
+                        && receipt
+                            .get("current_evidence_strength")
+                            .and_then(Value::as_str)
+                            .is_none_or(|value| {
+                                current_evidence_strength_for_selection(
+                                    None,
+                                    item.get("after").and_then(Value::as_str),
+                                    item.get("seam_kind").and_then(Value::as_str),
+                                )
+                                .as_deref()
+                                    == Some(value)
+                            })
+                        && receipt
+                            .pointer("/seam/current_evidence_strength")
+                            .and_then(Value::as_str)
+                            .is_none_or(|value| {
+                                current_evidence_strength_for_selection(
+                                    None,
+                                    item.get("after").and_then(Value::as_str),
+                                    item.get("seam_kind").and_then(Value::as_str),
+                                )
+                                .as_deref()
+                                    == Some(value)
+                            })
+                })
+            })
+    };
+    let array = match movement {
+        "unchanged" => "unchanged_seams",
+        "resolved" => "resolved_gaps",
+        _ => "changed_seams",
+    };
+    if !verify_seam(array) {
+        return Err(format!(
+            "verify artifact has no `{movement}` record for seam {seam_id}"
+        ));
+    }
+    if movement == "unchanged"
+        && verify
+            .pointer("/summary/unchanged")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+            == 0
+    {
+        return Err("verify artifact summary does not confirm unchanged movement".to_string());
+    }
+    if matches!(movement, "improved" | "resolved")
+        && verify
+            .pointer("/summary/improved")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+            + verify
+                .pointer("/summary/resolved")
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+            == 0
+    {
+        return Err("verify artifact summary does not confirm improved movement".to_string());
+    }
+    Ok(())
+}
+
+fn canonical_first_action_path(
+    root: &Path,
+    path: &str,
+    label: &str,
+) -> Result<std::path::PathBuf, String> {
+    let root = root
+        .canonicalize()
+        .map_err(|err| format!("cannot resolve first-action root: {err}"))?;
+    let candidate = if Path::new(path).is_absolute() {
+        Path::new(path).to_path_buf()
+    } else {
+        root.join(path)
+    };
+    let canonical = candidate
+        .canonicalize()
+        .map_err(|err| format!("cannot resolve {label} `{path}`: {err}"))?;
+    if !canonical.starts_with(&root) {
+        return Err(format!("{label} `{path}` is outside first-action root"));
+    }
+    Ok(canonical)
+}
+
+fn receipt_artifact_path(
+    root: &Path,
+    provenance: &Value,
+    name: &str,
+) -> Result<std::path::PathBuf, String> {
+    let path = provenance
+        .get(name)
+        .and_then(|value| value.get("path"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("missing provenance.{name}.path"))?;
+    canonical_first_action_path(root, path, name)
+}
+
+fn sha256_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let digest = hasher.finalize();
+    format!("sha256:{digest:x}")
 }
 
 fn suppressed_report(

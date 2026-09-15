@@ -248,6 +248,29 @@ The line to hold: *input-specific old/new equivalence is a runtime floor; a
 syntactically nameable missing discriminator stays in scope as a gap.* `exposed`
 should never silently mean "the mutant survives for this input."
 
+## Repository-local Rust includes
+
+Rust analysis treats a parser-recognized, file-level repository-local literal
+`include!("path.rs")` as part of its parent file's compilation unit. Functions
+from the included fragment therefore use the parent's semantic owner identity,
+while findings retain the fragment's real path and line for review. This keeps
+private parent state and nearby parent tests visible without rewriting the
+source into synthetic modules.
+
+Resolution is deliberately bounded and fail-closed. Nested module contexts,
+dynamic expressions, missing or ambiguous targets, repository or symlink
+escapes, cycles, excessive depth, more than 512 include edges, and included
+files over 4 MiB remain unsupported. Human-facing analysis routes disclose
+these boundaries with stable `rust_include_*` reason codes; parser fallback
+retains the analyzer's existing lexical-fallback disclosure. Included files
+must also be present in the selected analysis scope, so `instant` mode can
+disclose an unindexed target while `ready` mode supplies workspace-wide
+evidence.
+
+This support does not expand macros or claim compiler-equivalent name
+resolution. It preserves the analyzer's syntax-first boundary while avoiding
+the previous false standalone-module identity for the bounded literal form.
+
 ## Finding Shape
 
 A useful finding should include:

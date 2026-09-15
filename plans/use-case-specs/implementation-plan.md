@@ -845,10 +845,14 @@ authors, and they carry no runtime claim of any kind.
 
 ## Downstream Export Gaps (RIPR-SPEC-0070)
 
-RIPR-SPEC-0070's rail alignment table names five gaps between ripr output
-and the unsafe-review requirements rail. Each is either routed to the
-queued follow-up slice below or held as an explicit deferral; none is
-silently absorbed into the maintainer-fixed sequence:
+RIPR-SPEC-0070's rail alignment table names three remaining gaps between
+ripr output and the unsafe-review requirements rail. The per-seam
+`source_route` and `stable_byte_family` labels are consumer-owned
+classifications, confirmed by the reciprocal unsafe-review rail review;
+they are not missing ripr fields and must not be synthesized by ripr.
+Each remaining ripr gap is either routed to the queued follow-up slice
+below or held as an explicit deferral; none is silently absorbed into the
+maintainer-fixed sequence:
 
 - Preflight-skip structured counts — residual, narrowed gap. The structured
   `observed_seams` / `cache_limit` fields exist on `run_limitations[]` rows
@@ -868,14 +872,14 @@ silently absorbed into the maintainer-fixed sequence:
   its own scoped slice plus a `docs/OUTPUT_SCHEMA.md` contract update, and
   issue #1041 owns the consumer-side re-confirmation. Downstream docs must
   not assert cache reuse until then.
-- Per-seam `source_route` — explicit deferral. No ripr field exists today;
-  consumers must not synthesize a route label from grip fields. Deferred
-  pending issue #1041 rail alignment.
-- Per-seam `stable_byte_family` — explicit deferral. ripr's nearest anchors
-  are the configured-route metadata on `bun_cross_language_grip` and the
-  configured bridge inventory; no first-class field exists. Deferred
-  pending issue #1041 rail alignment; consumers must not synthesize the
-  label from grip fields.
+- Per-seam `source_route` — consumer-owned classification. unsafe-review
+  derives it from its configured-route metadata and stable-byte-family
+  taxonomy under the reciprocal rail's rules; ripr does not emit or
+  authorize a ripr-side route label.
+- Per-seam `stable_byte_family` — consumer-owned classification.
+  unsafe-review maps configured-route metadata and bridge inventory to its
+  stable-byte-family taxonomy; ripr does not emit or authorize the
+  downstream label.
 - Report-level diff-first `mode` (`mode: diff_first` /
   `changed_seams_first` rail rows) — explicit deferral. The closest current
   encodings are `analysis_scope.run_status = "limited_diff_scope"` and the
@@ -892,8 +896,9 @@ canonical-item example, the limited-run example, the per-grip-state Bun
 examples, the nine reject-list fixtures, the check-JSON `analysis_scope`
 planned delta, the preflight-skip structured-count closure, and the
 recorded cache-persistence gap disposition. It gates RIPR-SPEC-0070's
-promotion to accepted together with issue #1041 closure and the consumer's
-re-confirmation of the remaining named gaps.
+promotion to accepted together with the fixture-backed contract evidence
+and consumer confirmation of the remaining named ripr gaps; the
+consumer-owned classifications are not ripr promotion prerequisites.
 
 ## Plan Non-Goals
 

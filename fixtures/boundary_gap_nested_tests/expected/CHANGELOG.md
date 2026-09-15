@@ -227,3 +227,26 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0151: rebless check JSON for the additive source_currentness field; classifications, stages, confidence, counts, and recorded coordinates remain unchanged.
+
+Command:
+`cargo xtask goldens bless boundary_gap_nested_tests --reason "..."`
+
+Updated:
+- `expected/check.json`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0160: the additive git_candidate_subject identity field (null for ordinary runs) in the check JSON identity block
+
+Command:
+`cargo xtask goldens bless boundary_gap_nested_tests --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

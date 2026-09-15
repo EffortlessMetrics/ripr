@@ -322,7 +322,91 @@ pub struct Finding {
     /// Stable snake_case reason token explaining the `oracle_alignment` value.
     /// Additive optional per RIPR-SPEC-0028.
     pub alignment_reason: Option<String>,
+    /// Producer-owned resolution of this finding's source against the
+    /// candidate (head-side) revision (#3212 / #3280). Set by the producer
+    /// that observed the diff evidence; `UnresolvedSubject` is the explicit
+    /// unknown for surfaces that do not resolve it and the
+    /// backward-compatibility default for artifacts written before the
+    /// field existed. A `BaseDeleted` finding is base-side evidence; a
+    /// `MovedOrRenamed` finding carries unresolved movement evidence.
+    /// Neither is a candidate edit target.
+    #[serde(default)]
+    pub source_currentness: SourceCurrentness,
 }
+
+/// Typed source-currentness disposition for a [`Finding`] (#3212 / #3280).
+///
+/// The vocabulary is deliberately conservative: the producer states which
+/// revision owns the actionable source, or states that it could not tell.
+/// It never claims a deleted-side record is current.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceCurrentness {
+    /// The finding's source expression is present in the candidate source
+    /// at the recorded location; the location is a candidate edit target.
+    CandidateCurrent,
+    /// The expression was removed on the candidate side. The retained
+    /// evidence is base-side and is not a candidate edit target. In the C1
+    /// producer slice, the recorded probe coordinate remains the projected
+    /// new-side coordinate; consumer re-coordination is owned by #3281.
+    BaseDeleted,
+    /// Movement evidence exists (the same expression re-appears elsewhere
+    /// in the candidate file), but the producer cannot prove the candidate
+    /// identity of the exact source. Not a candidate edit target.
+    MovedOrRenamed,
+    /// The producing surface does not resolve source currentness; the
+    /// disposition is explicitly unknown, never fabricated. Also the
+    /// deserialize default for pre-#3280 artifacts.
+    #[default]
+    UnresolvedSubject,
+}
+
+impl SourceCurrentness {
+    /// Stable wire label (matches the serde form).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::CandidateCurrent => "candidate_current",
+            Self::BaseDeleted => "base_deleted",
+            Self::MovedOrRenamed => "moved_or_renamed",
+            Self::UnresolvedSubject => "unresolved_subject",
+        }
+    }
+
+    /// Delta-only resolution for producers that seed probes from head-side
+    /// lines and never produce removed-only probes (#3281). A probe whose
+    /// expression is candidate-side code (`after` present) is
+    /// `CandidateCurrent`; a producer with no delta evidence at all (the
+    /// Perl fact-packet path) stays the explicit unknown. Removed-only
+    /// probes need the diff-level resolver in
+    /// `analysis::probes` (movement evidence), not this helper.
+    pub fn from_probe_delta(before: Option<&str>, after: Option<&str>) -> Self {
+        match (before, after) {
+            (_, Some(_)) => Self::CandidateCurrent,
+            (None, None) => Self::UnresolvedSubject,
+            // A before-only probe from a delta-only producer carries no
+            // movement evidence; the diff-level resolver owns that case.
+            (Some(_), None) => Self::UnresolvedSubject,
+        }
+    }
+
+    /// Whether this disposition may drive current candidate-side
+    /// obligations (repair routes, gate candidates, diagnostics, agent
+    /// actions). Only established candidate currentness qualifies: base-side
+    /// evidence and the explicit unknown are never silently upgraded
+    /// because classification or severity suggests action (#3281).
+    pub fn permits_candidate_action(&self) -> bool {
+        matches!(self, Self::CandidateCurrent)
+    }
+}
+
+/// Controlled enum values for [`Finding::source_currentness`]. Registered in
+/// `policy/output_contracts.txt` and documented in `docs/OUTPUT_SCHEMA.md`.
+pub const SOURCE_CURRENTNESS_VALUES: [&str; 4] = [
+    "candidate_current",
+    "base_deleted",
+    "moved_or_renamed",
+    "unresolved_subject",
+];
 
 /// Controlled enum values for [`Finding::oracle_alignment`]. Registered in
 /// `policy/output_contracts.txt` and documented in `docs/OUTPUT_SCHEMA.md`.
@@ -346,6 +430,19 @@ impl Finding {
         StopReason::for_unknown_class(&self.class)
             .into_iter()
             .collect()
+    }
+
+    /// The single candidate-actionable eligibility authority (#3281, C2 of
+    /// #3212): every count, gate candidate, repair route, diagnostic, and
+    /// agent action derived from a finding must flow through this
+    /// predicate. A finding qualifies only when its producer proved the
+    /// source is candidate-current; `base_deleted` and `moved_or_renamed`
+    /// are base-side evidence, and `unresolved_subject` (the Perl
+    /// fact-packet path today, and pre-#3280 artifacts) is not established
+    /// current. Classifications, severity, and repair readiness never
+    /// upgrade a non-current finding.
+    pub fn is_candidate_actionable(&self) -> bool {
+        self.source_currentness.permits_candidate_action()
     }
 }
 
@@ -417,5 +514,72 @@ mod tests {
         for (context, value) in cases {
             assert_eq!(context.as_str(), value);
         }
+    }
+}
+
+#[cfg(test)]
+mod source_currentness_tests {
+    use super::{SOURCE_CURRENTNESS_VALUES, SourceCurrentness};
+
+    #[test]
+    fn source_currentness_labels_are_the_controlled_vocabulary() {
+        // The wire form is pinned where JSON is allowed to be known
+        // (`app::check_artifact` tests); here the stable labels themselves
+        // are the contract.
+        for (value, label) in [
+            (SourceCurrentness::CandidateCurrent, "candidate_current"),
+            (SourceCurrentness::BaseDeleted, "base_deleted"),
+            (SourceCurrentness::MovedOrRenamed, "moved_or_renamed"),
+            (SourceCurrentness::UnresolvedSubject, "unresolved_subject"),
+        ] {
+            assert_eq!(value.as_str(), label);
+            assert!(SOURCE_CURRENTNESS_VALUES.contains(&label));
+        }
+    }
+}
+
+#[cfg(test)]
+mod candidate_actionable_predicate_tests {
+    use super::SourceCurrentness;
+
+    #[test]
+    fn only_proven_candidate_currentness_permits_action() {
+        // RIPR-SPEC-0152: the single eligibility authority. Class and
+        // severity never upgrade a non-current finding.
+        for (value, eligible) in [
+            (SourceCurrentness::CandidateCurrent, true),
+            (SourceCurrentness::BaseDeleted, false),
+            (SourceCurrentness::MovedOrRenamed, false),
+            (SourceCurrentness::UnresolvedSubject, false),
+        ] {
+            assert_eq!(value.permits_candidate_action(), eligible, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn delta_rule_resolves_head_side_probes_only() {
+        use SourceCurrentness::{BaseDeleted, CandidateCurrent, UnresolvedSubject};
+        assert_eq!(
+            SourceCurrentness::from_probe_delta(None, Some("head text")),
+            CandidateCurrent
+        );
+        assert_eq!(
+            SourceCurrentness::from_probe_delta(Some("base"), Some("head")),
+            CandidateCurrent
+        );
+        assert_eq!(
+            SourceCurrentness::from_probe_delta(None, None),
+            UnresolvedSubject
+        );
+        // The delta-only helper never claims base_deleted: removed-only
+        // probes need the diff-level resolver with movement evidence.
+        assert_eq!(
+            SourceCurrentness::from_probe_delta(Some("base"), None),
+            UnresolvedSubject
+        );
+        assert_ne!(
+            SourceCurrentness::from_probe_delta(Some("base"), None),
+            BaseDeleted
+        );
     }
 }

@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on the config/policy evidence item shape and must-not-claim coverage.
+
 ## Problem
 
 RIPR can already align presentation-text changes into canonical items, but

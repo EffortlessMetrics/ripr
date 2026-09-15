@@ -12,6 +12,7 @@ use crate::cli::commands_context::{ensure_command_root, load_root_input_and_conf
 use crate::cli::help;
 use crate::cli::parse::expect_value;
 use crate::cli::suggest::unknown_argument;
+use crate::domain::{CommandExecutionMode, CommandSpec, CommandSpecDigest};
 use crate::output::gap_decision_ledger::{GapRecord, parse_gap_record_source_json};
 use crate::output::outcome::{TargetedRerunStaticSeam, targeted_rerun_movement_from_json};
 #[cfg(feature = "lang-typescript")]
@@ -127,6 +128,73 @@ struct TargetedRerunGraphProvenance {
     feature_graph_detail: Option<String>,
     external_dependency_graph_status: String,
     external_dependency_graph_detail: String,
+    /// #2969 slice B: the forward/reverse path-dependency adjacency built
+    /// from captured edges, disclosed per manifest with its build status.
+    /// Disclosure only: this section still does not contribute to
+    /// `input_changed` naming or parity input mismatches. Slice C (#2970)
+    /// gave the graph its first analysis consumer — reverse-dependency
+    /// diff-scope expansion in the Rust adapter — which rebuilds the
+    /// adjacency from current provenance on every run, so hash-stability
+    /// naming for this section remains deliberately deferred rather than
+    /// implied by that consumption. `serde(default)` keeps before artifacts
+    /// written before this section deserializable.
+    #[serde(default)]
+    path_dependency_graph: TargetedRerunPathDependencyGraph,
+}
+
+/// Per-manifest forward/reverse neighbor lists, sorted.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, serde::Deserialize)]
+struct TargetedRerunPathDependencyNeighbors {
+    forward: Vec<String>,
+    reverse: Vec<String>,
+}
+
+/// Serialized path-dependency adjacency disclosure. `status` is `complete`,
+/// `limited`, or `unavailable`; an empty adjacency with status `complete`
+/// means no path dependencies were declared, never an omitted analysis.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, serde::Deserialize)]
+struct TargetedRerunPathDependencyGraph {
+    status: String,
+    detail: Option<String>,
+    edge_count: usize,
+    connected_edge_count: usize,
+    /// Forward and reverse neighbors per participating manifest, keyed by
+    /// repo-relative manifest path, sorted. Crates with no path-dependency
+    /// edges are absent: they are isolated from the path-dep graph.
+    adjacency: BTreeMap<String, TargetedRerunPathDependencyNeighbors>,
+}
+
+impl From<&crate::analysis::seam_cache::WorkspaceGraphProvenance>
+    for TargetedRerunPathDependencyGraph
+{
+    fn from(provenance: &crate::analysis::seam_cache::WorkspaceGraphProvenance) -> Self {
+        let adjacency = crate::analysis::PathDependencyAdjacency::build(provenance);
+        Self {
+            status: adjacency.status().as_str().to_string(),
+            detail: adjacency.detail().map(str::to_string),
+            edge_count: adjacency.edge_count(),
+            connected_edge_count: adjacency.connected_edge_count(),
+            adjacency: adjacency
+                .nodes()
+                .iter()
+                .map(|manifest| {
+                    (
+                        manifest.clone(),
+                        TargetedRerunPathDependencyNeighbors {
+                            forward: adjacency
+                                .forward_neighbors(manifest)
+                                .map(|set| set.iter().cloned().collect())
+                                .unwrap_or_default(),
+                            reverse: adjacency
+                                .reverse_neighbors(manifest)
+                                .map(|set| set.iter().cloned().collect())
+                                .unwrap_or_default(),
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
 }
 
 impl From<&crate::analysis::seam_cache::RepoSeamCacheKey> for TargetedRerunInputFingerprint {
@@ -161,6 +229,7 @@ impl From<&crate::analysis::seam_cache::WorkspaceGraphProvenance> for TargetedRe
             feature_graph_detail: provenance.feature_graph_detail.clone(),
             external_dependency_graph_status: provenance.external_dependency_graph_status.clone(),
             external_dependency_graph_detail: provenance.external_dependency_graph_detail.clone(),
+            path_dependency_graph: TargetedRerunPathDependencyGraph::from(provenance),
         }
     }
 }
@@ -239,6 +308,15 @@ struct TargetedRerunParityMismatch {
 struct TargetedRerunRoute {
     verify_commands: Vec<String>,
     receipt_command: Option<String>,
+    /// FIX #1617 slice 3: producer-owned typed routes carried beside the
+    /// legacy display strings — the machine-facing authority. Deduplicated
+    /// by semantic digest (same-id specs with different arguments both
+    /// survive); only present when the matching ledger records carry typed
+    /// specs.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    verify_command_specs: Vec<CommandSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    receipt_command_spec: Option<CommandSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     receipt_command_conflict: Option<TargetedRerunLimitation>,
 }
@@ -1012,10 +1090,66 @@ fn route_from_gap_records(records: &[(usize, GapRecord)]) -> TargetedRerunRoute 
             receipt_commands.len()
         ),
     });
+    // FIX #1617 slice 3: typed specs ride beside the legacy strings. The
+    // specs are producer-owned and already validated at ledger
+    // deserialization; dedup by semantic digest keeps distinct invocations
+    // that reuse a command id.
+    let verify_command_specs = stable_unique_specs(
+        records
+            .iter()
+            .filter_map(|(_, record)| record.command_specs.as_ref())
+            .flat_map(|specs| specs.verify.iter().cloned()),
+    );
+    let mut receipt_specs = stable_unique_specs(
+        records
+            .iter()
+            .filter_map(|(_, record)| record.command_specs.as_ref())
+            .flat_map(|specs| specs.receipt.iter().cloned()),
+    );
+    // FIX (round-1 review): a typed receipt spec is only unambiguous when
+    // exactly one distinct receipt route matches AND the legacy string side
+    // agrees on a single route. A conflicting set must not keep a machine
+    // route while the string side discloses the conflict; records with no
+    // legacy receipt route stay legacy-string-only.
+    let receipt_command_spec = if receipt_command.is_some() && receipt_specs.len() == 1 {
+        Some(receipt_specs.remove(0))
+    } else {
+        None
+    };
     TargetedRerunRoute {
         verify_commands,
         receipt_command,
+        verify_command_specs,
+        receipt_command_spec,
         receipt_command_conflict,
+    }
+}
+
+/// FIX (round-1 review): producers reuse command ids across argument sets
+/// (every receipt spec id is `ripr:agent:receipt`), so distinct typed
+/// invocations must not collapse. Dedupe by the full semantic identity —
+/// the sha256 digest over the serialized spec — keeping the first
+/// occurrence. A spec whose digest cannot be computed has no stable
+/// identity and stays legacy-string-only (fail closed).
+fn stable_unique_specs(specs: impl IntoIterator<Item = CommandSpec>) -> Vec<CommandSpec> {
+    let mut seen = BTreeSet::new();
+    let mut unique = Vec::new();
+    for spec in specs {
+        let Ok(digest) = spec.command_spec_sha256() else {
+            continue;
+        };
+        if seen.insert(digest) {
+            unique.push(spec);
+        }
+    }
+    unique
+}
+
+fn execution_mode_label(mode: CommandExecutionMode) -> &'static str {
+    match mode {
+        CommandExecutionMode::Direct => "direct",
+        CommandExecutionMode::ShellRequired => "shell_required",
+        CommandExecutionMode::Manual => "manual",
     }
 }
 
@@ -1725,8 +1859,22 @@ fn render_human(report: &TargetedRerunReport) -> String {
         if !route.verify_commands.is_empty() {
             lines.push(format!("Verify: {}", route.verify_commands.join(" && ")));
         }
+        for spec in &route.verify_command_specs {
+            lines.push(format!(
+                "Verify (typed, {}): `{}`",
+                execution_mode_label(spec.execution_mode),
+                spec.display
+            ));
+        }
         if let Some(receipt_command) = route.receipt_command.as_deref() {
             lines.push(format!("Receipt: {receipt_command}"));
+        }
+        if let Some(spec) = route.receipt_command_spec.as_ref() {
+            lines.push(format!(
+                "Receipt (typed, {}): `{}`",
+                execution_mode_label(spec.execution_mode),
+                spec.display
+            ));
         }
         if let Some(conflict) = route.receipt_command_conflict.as_ref() {
             lines.push(format!(
@@ -1756,6 +1904,7 @@ mod tests {
     use super::{
         RerunSelector, ResolvedRerunScope, TargetedRerunCache, TargetedRerunGraphProvenance,
         TargetedRerunInputFingerprint, TargetedRerunMissingDiscriminator, TargetedRerunMovement,
+        TargetedRerunPathDependencyGraph, TargetedRerunPathDependencyNeighbors,
         TargetedRerunRelatedTest, TargetedRerunReport, TargetedRerunSeam, TargetedRerunSelector,
         cache_from, compare_selector_scoped_seams, entry_matches_selected_gap,
         graph_provenance_unavailable_fields, input_fingerprint_changes, parity_mismatch_fields,
@@ -1811,6 +1960,28 @@ mod tests {
             receipt_command: receipt_command.map(str::to_string),
             ..GapRecord::default()
         }
+    }
+
+    fn gap_record_with_specs(
+        canonical_gap_id: &str,
+        file: Option<&str>,
+        owner: Option<&str>,
+        verification_commands: &[&str],
+        receipt_command: Option<&str>,
+        verify_spec: Option<crate::domain::CommandSpec>,
+        receipt_spec: Option<crate::domain::CommandSpec>,
+    ) -> GapRecord {
+        let mut record = gap_record(
+            canonical_gap_id,
+            file,
+            owner,
+            verification_commands,
+            receipt_command,
+        );
+        let specs = record.command_specs.get_or_insert_with(Default::default);
+        specs.verify = verify_spec.into_iter().collect();
+        specs.receipt = receipt_spec.into_iter().collect();
+        record
     }
 
     #[cfg(feature = "lang-typescript")]
@@ -2417,6 +2588,372 @@ mod tests {
         Ok(())
     }
 
+    /// FIX #1617 slice 3: producer-owned typed specs ride the targeted-rerun
+    /// route beside the legacy strings — specs dedupe by semantic digest
+    /// (same-id different-args invocations both survive), an unambiguous
+    /// receipt spec carries, and conflicting receipt specs drop the typed
+    /// receipt while the string conflict stays explicit.
+    /// Builds one verify CommandSpec with overridable id/display/args — the
+    /// shared fixture for the typed-route tests.
+    fn verify_spec_fixture(
+        command_id: &str,
+        display: &str,
+        args: Vec<String>,
+    ) -> crate::domain::CommandSpec {
+        crate::domain::CommandSpec {
+            schema_version: crate::domain::CommandSpec::SCHEMA_VERSION.to_string(),
+            command_id: command_id.to_string(),
+            role: crate::domain::CommandRole::Verify,
+            execution_mode: crate::domain::CommandExecutionMode::Direct,
+            program: "ripr".to_string(),
+            args,
+            cwd: ".".to_string(),
+            env_set: Vec::new(),
+            env_passthrough: Vec::new(),
+            environment_policy: crate::domain::EnvironmentPolicy::Clean,
+            stdin: crate::domain::StdinPolicy::Null,
+            timeout_ms: 120_000,
+            cancellation: crate::domain::CancellationPolicy::Allowed,
+            network_policy: crate::domain::NetworkPolicy::Forbidden,
+            expected_result_parser: crate::domain::ExpectedResultParser::DeclaredJson,
+            expected_exit_codes: vec![0],
+            expected_writes: Vec::new(),
+            cost_class: crate::domain::CommandCostClass::Unknown,
+            platforms: vec![
+                crate::domain::CommandPlatform::Linux,
+                crate::domain::CommandPlatform::Macos,
+                crate::domain::CommandPlatform::Windows,
+            ],
+            display: display.to_string(),
+            authority_boundary: crate::domain::CommandAuthorityBoundary::VerificationRouteOnly,
+        }
+    }
+
+    #[test]
+    fn targeted_rerun_route_carries_typed_specs() -> Result<(), String> {
+        let verify_spec = verify_spec_fixture(
+            "ripr:agent:verify",
+            "ripr agent verify --json",
+            vec![
+                "agent".to_string(),
+                "verify".to_string(),
+                "--json".to_string(),
+            ],
+        );
+        let receipt_spec = crate::domain::CommandSpec {
+            schema_version: crate::domain::CommandSpec::SCHEMA_VERSION.to_string(),
+            command_id: "ripr:agent:receipt".to_string(),
+            role: crate::domain::CommandRole::Receipt,
+            authority_boundary: crate::domain::CommandAuthorityBoundary::ReceiptRouteOnly,
+            display: "ripr agent receipt --json".to_string(),
+            ..verify_spec.clone()
+        };
+        let records = resolve_gap_records(
+            vec![
+                gap_record_with_specs(
+                    "gap:typed",
+                    Some("src/lib.rs"),
+                    Some("crate::price"),
+                    &["cargo test price"],
+                    Some("ripr agent receipt --json"),
+                    Some(verify_spec.clone()),
+                    Some(receipt_spec.clone()),
+                ),
+                gap_record_with_specs(
+                    "gap:typed",
+                    Some("src/lib.rs"),
+                    Some("crate::price"),
+                    &["cargo test price"],
+                    Some("ripr agent receipt --json"),
+                    Some(verify_spec.clone()),
+                    Some(receipt_spec.clone()),
+                ),
+            ],
+            "gap:typed",
+        )
+        .map_err(|limitation| limitation.message)?;
+        let route = route_from_gap_records(&records);
+        if route.verify_command_specs.len() != 1
+            || route.verify_command_specs[0].command_id != "ripr:agent:verify"
+        {
+            return Err(format!(
+                "duplicate verify specs did not collapse to one typed route: {:?}",
+                route.verify_command_specs
+            ));
+        }
+        if route
+            .receipt_command_spec
+            .as_ref()
+            .map(|spec| spec.command_id.as_str())
+            != Some("ripr:agent:receipt")
+        {
+            return Err(format!(
+                "the unambiguous receipt spec did not carry: {:?}",
+                route
+                    .receipt_command_spec
+                    .map(|spec| spec.command_id.clone())
+            ));
+        }
+        // The legacy strings stay beside the typed routes.
+        if route.verify_commands != vec!["cargo test price".to_string()]
+            || route.receipt_command.as_deref() != Some("ripr agent receipt --json")
+        {
+            return Err(format!(
+                "legacy strings were dropped when typed specs carried: {:?}",
+                (route.verify_commands, route.receipt_command)
+            ));
+        }
+
+        let report = super::report(
+            "current_state_only",
+            TargetedRerunSelector {
+                kind: "canonical_gap",
+                changed_test: None,
+                canonical_gap_id: Some("gap:typed".to_string()),
+                gap_ledger: None,
+                matched_record_count: None,
+                recomputed_scope_count: None,
+                selected_test_count: 0,
+                direct_call_names: Vec::new(),
+            },
+            TargetedRerunCache {
+                schema_version: "ripr-targeted-rerun-cache-v1",
+                reuse_state: "full_reuse",
+                file_fact_status: String::new(),
+                hits: 0,
+                misses: 0,
+                corrupt_ignored: 0,
+                stores: 0,
+                store_errors: 0,
+                recomputation_reasons: Vec::new(),
+                invalidation_status: String::new(),
+                input_fingerprint: None,
+            },
+            Vec::new(),
+            Some(route),
+            None,
+            Vec::new(),
+        );
+        let rendered = super::render_human(&report);
+        for needle in [
+            "Verify (typed, direct): `ripr agent verify --json`",
+            "Receipt (typed, direct): `ripr agent receipt --json`",
+        ] {
+            if !rendered.contains(needle) {
+                return Err(format!("missing {needle:?} in:\n{rendered}"));
+            }
+        }
+        Ok(())
+    }
+
+    /// FIX (round-1 review): dedupe is by full semantic digest, not command
+    /// id — producers reuse ids across argument sets, so two specs with the
+    /// same id but different args must both survive in order, while
+    /// byte-identical specs collapse to one.
+    #[test]
+    fn targeted_rerun_specs_dedupe_by_digest_not_command_id() -> Result<(), String> {
+        let verify_spec = verify_spec_fixture(
+            "ripr:agent:verify",
+            "ripr agent verify --json",
+            vec![
+                "agent".to_string(),
+                "verify".to_string(),
+                "--json".to_string(),
+            ],
+        );
+        let mut different_args = verify_spec.clone();
+        different_args.args = vec![
+            "agent".to_string(),
+            "verify".to_string(),
+            "--root".to_string(),
+            "target/other".to_string(),
+            "--json".to_string(),
+        ];
+        different_args.display = "ripr agent verify --root target/other --json".to_string();
+        let records = resolve_gap_records(
+            vec![
+                gap_record_with_specs(
+                    "gap:digest",
+                    Some("src/lib.rs"),
+                    Some("crate::price"),
+                    &["cargo test price"],
+                    None,
+                    Some(verify_spec.clone()),
+                    None,
+                ),
+                gap_record_with_specs(
+                    "gap:digest",
+                    Some("src/lib.rs"),
+                    Some("crate::price"),
+                    &["cargo test validate"],
+                    None,
+                    Some(different_args),
+                    None,
+                ),
+                gap_record_with_specs(
+                    "gap:digest",
+                    Some("src/lib.rs"),
+                    Some("crate::price"),
+                    &["cargo test price"],
+                    None,
+                    Some(verify_spec.clone()),
+                    None,
+                ),
+            ],
+            "gap:digest",
+        )
+        .map_err(|limitation| limitation.message)?;
+        let route = route_from_gap_records(&records);
+        let displays = route
+            .verify_command_specs
+            .iter()
+            .map(|spec| spec.display.as_str())
+            .collect::<Vec<_>>();
+        if displays
+            != [
+                "ripr agent verify --json",
+                "ripr agent verify --root target/other --json",
+            ]
+        {
+            return Err(format!(
+                "same-id different-arg specs collapsed or reordered: {displays:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// FIX (round-1 review): conflicting legacy receipt strings must drop
+    /// the typed receipt spec — a conflicting set must not keep a machine
+    /// route while the string side discloses the conflict.
+    #[test]
+    fn conflicted_legacy_receipts_drop_the_typed_receipt_spec() -> Result<(), String> {
+        let verify_spec = verify_spec_fixture(
+            "ripr:agent:verify",
+            "ripr agent verify --json",
+            vec![
+                "agent".to_string(),
+                "verify".to_string(),
+                "--json".to_string(),
+            ],
+        );
+        let receipt_spec = crate::domain::CommandSpec {
+            schema_version: crate::domain::CommandSpec::SCHEMA_VERSION.to_string(),
+            command_id: "ripr:agent:receipt".to_string(),
+            role: crate::domain::CommandRole::Receipt,
+            authority_boundary: crate::domain::CommandAuthorityBoundary::ReceiptRouteOnly,
+            display: "ripr agent receipt --json".to_string(),
+            ..verify_spec.clone()
+        };
+        let records = resolve_gap_records(
+            vec![
+                gap_record_with_specs(
+                    "gap:conflict",
+                    Some("src/lib.rs"),
+                    Some("crate::price"),
+                    &["cargo test price"],
+                    Some("ripr agent receipt --json"),
+                    Some(verify_spec.clone()),
+                    Some(receipt_spec.clone()),
+                ),
+                gap_record_with_specs(
+                    "gap:conflict",
+                    Some("src/lib.rs"),
+                    Some("crate::price"),
+                    &["cargo test price"],
+                    Some("ripr receipt write --gap gap:conflict"),
+                    Some(verify_spec),
+                    Some(receipt_spec),
+                ),
+            ],
+            "gap:conflict",
+        )
+        .map_err(|limitation| limitation.message)?;
+        let route = route_from_gap_records(&records);
+        if route.receipt_command.is_some() {
+            return Err("a conflicting receipt set must not select a legacy route".to_string());
+        }
+        if route.receipt_command_spec.is_some() {
+            return Err("a conflicting receipt set must drop the typed receipt spec".to_string());
+        }
+        let conflict = route
+            .receipt_command_conflict
+            .as_ref()
+            .ok_or("the receipt conflict was not disclosed")?;
+        if conflict.kind != "receipt_command_conflict" {
+            return Err(format!("unexpected conflict kind: {}", conflict.kind));
+        }
+        Ok(())
+    }
+
+    /// FIX (round-2 review): a typed spec whose argv/display differs from
+    /// the legacy strings is a legitimate producer divergence - both forms
+    /// are published (the typed form is the machine authority, the legacy
+    /// string the human display), and neither is rejected or rewritten.
+    #[test]
+    fn typed_spec_divergence_from_legacy_strings_is_published_as_is() -> Result<(), String> {
+        let verify_spec = crate::domain::CommandSpec {
+            schema_version: crate::domain::CommandSpec::SCHEMA_VERSION.to_string(),
+            command_id: "ripr:agent:verify".to_string(),
+            role: crate::domain::CommandRole::Verify,
+            execution_mode: crate::domain::CommandExecutionMode::Direct,
+            program: "ripr".to_string(),
+            args: vec![
+                "agent".to_string(),
+                "verify".to_string(),
+                "--json".to_string(),
+            ],
+            cwd: ".".to_string(),
+            env_set: Vec::new(),
+            env_passthrough: Vec::new(),
+            environment_policy: crate::domain::EnvironmentPolicy::Clean,
+            stdin: crate::domain::StdinPolicy::Null,
+            timeout_ms: 120_000,
+            cancellation: crate::domain::CancellationPolicy::Allowed,
+            network_policy: crate::domain::NetworkPolicy::Forbidden,
+            expected_result_parser: crate::domain::ExpectedResultParser::DeclaredJson,
+            expected_exit_codes: vec![0],
+            expected_writes: Vec::new(),
+            cost_class: crate::domain::CommandCostClass::Unknown,
+            platforms: vec![
+                crate::domain::CommandPlatform::Linux,
+                crate::domain::CommandPlatform::Macos,
+                crate::domain::CommandPlatform::Windows,
+            ],
+            display: "ripr agent verify --json --typed".to_string(),
+            authority_boundary: crate::domain::CommandAuthorityBoundary::VerificationRouteOnly,
+        };
+        let records = resolve_gap_records(
+            vec![gap_record_with_specs(
+                "gap:divergent",
+                Some("src/lib.rs"),
+                Some("crate::price"),
+                &["cargo test price -- --exact"],
+                Some("ripr agent receipt --json"),
+                Some(verify_spec),
+                None,
+            )],
+            "gap:divergent",
+        )
+        .map_err(|limitation| limitation.message)?;
+        let route = route_from_gap_records(&records);
+        if route.verify_commands != vec!["cargo test price -- --exact".to_string()]
+            || route.verify_command_specs.len() != 1
+            || route.verify_command_specs[0].display != "ripr agent verify --json --typed"
+            || route.verify_command_specs[0].args
+                != vec![
+                    "agent".to_string(),
+                    "verify".to_string(),
+                    "--json".to_string(),
+                ]
+        {
+            return Err(format!(
+                "divergent forms must both be published as-is: {:?}",
+                route.verify_command_specs
+            ));
+        }
+        Ok(())
+    }
+
     #[test]
     fn failed_root_canonicalizations_do_not_compare_equal() -> Result<(), String> {
         let missing = Path::new("target/ripr/missing-rerun-root");
@@ -2763,6 +3300,112 @@ mod tests {
         Ok(())
     }
 
+    /// #2969 slice B: the fingerprint discloses the path-dependency adjacency
+    /// (status, counts, per-manifest forward/reverse neighbors), and a before
+    /// artifact written before the section existed still deserializes via the
+    /// section default instead of failing artifact compatibility.
+    #[test]
+    fn path_dependency_graph_section_is_disclosed_in_the_fingerprint() -> Result<(), String> {
+        let provenance = crate::analysis::seam_cache::WorkspaceGraphProvenance {
+            package_graph_status: "complete".to_string(),
+            external_dependency_graph_status: "unavailable".to_string(),
+            external_dependency_graph_detail: "external dependency metadata is not resolved"
+                .to_string(),
+            path_dependency_edges: vec![crate::analysis::seam_cache::PathDependencyEdge {
+                from_manifest: "a/Cargo.toml".to_string(),
+                section: crate::analysis::seam_cache::PathDependencySection::Dependencies,
+                target: None,
+                dependency_name: "b".to_string(),
+                declared_path: Some("../b".to_string()),
+                resolved_path: Some("b".to_string()),
+                resolution: crate::analysis::seam_cache::PathDependencyResolution::Resolved,
+                source: crate::analysis::seam_cache::PathDependencySource::Package,
+            }],
+            ..crate::analysis::seam_cache::WorkspaceGraphProvenance::default()
+        };
+        let mut fingerprint = sample_input_fingerprint();
+        fingerprint.graph_provenance = (&provenance).into();
+        let graph = &fingerprint.graph_provenance.path_dependency_graph;
+        assert_eq!(graph.status, "complete");
+        assert_eq!(graph.edge_count, 1);
+        assert_eq!(graph.connected_edge_count, 1);
+        let a = graph
+            .adjacency
+            .get("a/Cargo.toml")
+            .ok_or_else(|| "a must appear in the disclosed adjacency".to_string())?;
+        assert_eq!(a.forward, vec!["b/Cargo.toml".to_string()]);
+        assert!(a.reverse.is_empty());
+        let b = graph
+            .adjacency
+            .get("b/Cargo.toml")
+            .ok_or_else(|| "b must appear in the disclosed adjacency".to_string())?;
+        assert_eq!(b.reverse, vec!["a/Cargo.toml".to_string()]);
+        assert!(b.forward.is_empty());
+
+        let value = serde_json::to_value(&fingerprint)
+            .map_err(|err| format!("serialize fingerprint: {err}"))?;
+        let section = value
+            .get("graph_provenance")
+            .and_then(|graph| graph.get("path_dependency_graph"))
+            .ok_or_else(|| "path_dependency_graph must serialize".to_string())?;
+        assert_eq!(
+            section.get("status").and_then(|status| status.as_str()),
+            Some("complete")
+        );
+        assert_eq!(
+            section
+                .get("adjacency")
+                .and_then(|adjacency| adjacency.get("a/Cargo.toml"))
+                .and_then(|a| a.get("forward"))
+                .and_then(|forward| forward.as_array())
+                .map(|forward| forward.len()),
+            Some(1)
+        );
+
+        // Legacy compatibility: a fingerprint JSON without the section still
+        // deserializes; the default carries an empty (not fabricated) graph.
+        let mut legacy = value.clone();
+        legacy
+            .get_mut("graph_provenance")
+            .and_then(|graph| graph.as_object_mut())
+            .ok_or_else(|| "graph_provenance should serialize as an object".to_string())?
+            .remove("path_dependency_graph");
+        let deserialized: TargetedRerunInputFingerprint = serde_json::from_value(legacy)
+            .map_err(|err| format!("deserialize legacy fingerprint: {err}"))?;
+        assert_eq!(
+            deserialized.graph_provenance.path_dependency_graph.status, "",
+            "a legacy artifact has no recorded path-dependency graph; the empty default must not invent a status"
+        );
+        Ok(())
+    }
+
+    /// Slice-B boundary: the disclosed adjacency is not yet an input-change
+    /// discriminator because workspace scope expansion does not consume the
+    /// graph yet (#2970). Pinning this keeps before/after receipts honest —
+    /// a path-dependency edit must not be named as an input change until the
+    /// analysis actually depends on it.
+    #[test]
+    fn path_dependency_graph_differences_are_not_named_as_input_changes() {
+        let before = sample_input_fingerprint();
+        let mut current = before.clone();
+        current.graph_provenance.path_dependency_graph.status = "limited".to_string();
+        current
+            .graph_provenance
+            .path_dependency_graph
+            .adjacency
+            .insert(
+                "a/Cargo.toml".to_string(),
+                TargetedRerunPathDependencyNeighbors {
+                    forward: vec!["b/Cargo.toml".to_string()],
+                    reverse: Vec::new(),
+                },
+            );
+        assert!(
+            input_fingerprint_changes(&before, &current).is_empty(),
+            "path-dependency disclosure differences are not input changes in slice B"
+        );
+    }
+
     fn sample_input_fingerprint() -> TargetedRerunInputFingerprint {
         TargetedRerunInputFingerprint {
             schema_version: "0.3".to_string(),
@@ -2788,6 +3431,7 @@ mod tests {
                 external_dependency_graph_status: "unavailable".to_string(),
                 external_dependency_graph_detail: "external dependency metadata is not resolved"
                     .to_string(),
+                path_dependency_graph: TargetedRerunPathDependencyGraph::default(),
             },
         }
     }

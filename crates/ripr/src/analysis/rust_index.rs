@@ -1,24 +1,30 @@
+#[cfg(test)]
+use super::facts::RustIncludeLimitation;
 use crate::config::OraclePolicy;
 #[cfg(test)]
 use crate::domain::{OracleKind, OracleStrength};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 #[cfg(test)]
 pub(crate) use super::extract::contains_macro_invocation;
 pub(crate) use super::extract::{
-    PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_FIELD_CONSTRUCTION,
-    PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
-    PROBE_SHAPE_SIDE_EFFECT, classify_assertion, extract_assertions, extract_call_facts,
-    extract_identifier_tokens, extract_line_scanned_oracles, extract_literal_facts,
-    extract_literals, extract_return_facts, is_known_probe_shape,
+    OracleTextShape, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH,
+    PROBE_SHAPE_FIELD_CONSTRUCTION, PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE,
+    PROBE_SHAPE_RETURN_VALUE, PROBE_SHAPE_SIDE_EFFECT, classify_assertion,
+    err_return_guard_oracles, extract_assertions, extract_call_facts, extract_identifier_tokens,
+    extract_line_scanned_oracles, extract_literal_facts, extract_literals, extract_return_facts,
+    guarded_result_match_scan_with_shadow_authority, has_oracle_text_shape, is_known_probe_shape,
     is_unwrap_err_bound_error_assertion, unwrap_err_bound_variables,
 };
-pub(crate) use super::facts::build_index_from_loaded_files_with_cache;
+use super::facts::ModulePathTarget;
+pub(crate) use super::facts::build_index_from_loaded_files_with_cache_and_test_harnesses;
+pub(crate) use super::facts::validated_file_wide_harness_targets;
 #[cfg(test)]
 pub use super::facts::{CallFact, LiteralFact, ReturnFact};
 pub use super::facts::{
     FileFacts, FunctionFact, FunctionSummary, OracleFact, ProbeShapeFact, RustIndex, TestFact,
-    TestSummary, build_index,
+    TestSummary, build_index, build_index_with_test_harnesses,
 };
 #[cfg(test)]
 use super::syntax::LexicalRustSyntaxAdapter;
@@ -73,6 +79,72 @@ pub(crate) fn lexical_fallback_disclosure(index: &RustIndex) -> Option<String> {
     lexical_fallback_disclosure_for_files(&lexical_fallback_files(index))
 }
 
+pub(crate) fn compilation_unit_path(index: &RustIndex, file: &Path) -> PathBuf {
+    super::facts::compilation_unit_path_from_parents(&index.include_parents, file)
+}
+
+pub(crate) fn include_resolution_disclosure(index: &RustIndex) -> Option<String> {
+    if index.include_limitations.is_empty() {
+        return None;
+    }
+    let details = index
+        .include_limitations
+        .iter()
+        .map(|limitation| {
+            format!(
+                "{}:{}:{}",
+                escaped_path_display(&limitation.parent),
+                limitation.line,
+                limitation.reason_code
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!(
+        "ripr: {} Rust include boundary limitation(s): {details}; affected compilation-unit relations remain fail-closed.",
+        index.include_limitations.len()
+    ))
+}
+
+/// Returns a stable disclosure when Rust module composition failed closed
+/// (#3533): a file whose composed context chain could not be resolved
+/// (ambiguous ownership, cycle or depth bound, context conflict), or a
+/// `mod` declaration whose target is a typed unknown (dynamic or
+/// conditionally introduced `#[path]`). Without this, module-side stop
+/// reasons were invisible outside the per-file provenance while include-side
+/// limitations were disclosed.
+pub(crate) fn module_composition_disclosure(index: &RustIndex) -> Option<String> {
+    let mut details = BTreeSet::new();
+    let mut count = 0usize;
+    for (file, facts) in &index.files {
+        if let Some(reason) = &facts.role_provenance.earliest_unresolved_reason
+            && reason.starts_with("rust_module_")
+        {
+            details.insert(format!("{}:{reason}", escaped_path_display(file)));
+            count += 1;
+        }
+        for declaration in &facts.module_declarations {
+            if declaration.path_target == ModulePathTarget::Unknown {
+                let inserted = details.insert(format!(
+                    "{}:{}:rust_module_unresolved_target",
+                    escaped_path_display(file),
+                    declaration.line
+                ));
+                if inserted {
+                    count += 1;
+                }
+            }
+        }
+    }
+    if count == 0 {
+        return None;
+    }
+    Some(format!(
+        "ripr: {count} Rust module composition limitation(s): {}; affected module contexts remain fail-closed.",
+        details.into_iter().collect::<Vec<_>>().join(", ")
+    ))
+}
+
 pub(crate) fn apply_oracle_policy(index: &mut RustIndex, policy: &OraclePolicy) {
     for test in &mut index.tests {
         apply_oracle_policy_to_assertions(&mut test.assertions, policy);
@@ -107,13 +179,42 @@ pub fn find_owner_function<'a>(
     file: &Path,
     line: usize,
 ) -> Option<&'a FunctionSummary> {
-    index.files.get(file).and_then(|summary| {
-        summary
-            .functions
-            .iter()
-            .filter(|f| f.start_line <= line && line <= f.end_line)
-            .max_by_key(|f| f.start_line)
+    find_file_facts(index, file)?
+        .functions
+        .iter()
+        .filter(|f| f.start_line <= line && line <= f.end_line)
+        .max_by_key(|f| f.start_line)
+}
+
+pub(crate) fn find_file_facts<'a>(index: &'a RustIndex, file: &Path) -> Option<&'a FileFacts> {
+    if let Some(summary) = index.files.get(file) {
+        return Some(summary);
+    }
+    // Repo seams normalize their file identity to `/` separators
+    // (#3469 family) while index keys keep the producing host's
+    // separators. On the opposite-separator host the component-wise
+    // lookup above misses (`src\pricing.rs` is a single component on
+    // Linux), so fall back to matching normalized key forms. The scan
+    // only runs after the direct lookup missed, so native-separator
+    // inputs keep the exact-lookup cost. Non-UTF-8 paths fail closed:
+    // lossy replacement characters can collapse distinct names into
+    // one form and attribute the wrong owner, so neither side of the
+    // comparison may pass through lossy conversion.
+    let target = file.to_str()?.replace('\\', "/");
+    index.files.iter().find_map(|(key, summary)| {
+        let key_text = key.to_str()?;
+        (key_text.replace('\\', "/") == target).then_some(summary)
     })
+}
+
+/// `/`-separated display form of a path, independent of the host's
+/// native separator. Used by [`is_test_file`] to judge the normalized
+/// form; lossy text is safe here because replacement characters can
+/// never become separators. The [`find_owner_function`] fallback does
+/// NOT use this helper — identity attribution must not pass through
+/// lossy conversion.
+fn normalize_display(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 pub fn changed_nodes_for_lines(
@@ -137,16 +238,64 @@ pub fn changed_nodes_for_lines(
 }
 
 pub(crate) fn is_test_file(path: &Path) -> bool {
-    path.starts_with("tests")
-        || path
-            .to_string_lossy()
-            .replace('\\', "/")
-            .contains("/tests/")
+    let normalized = normalize_display(path);
+    normalized == "tests" || normalized.starts_with("tests/") || normalized.contains("/tests/")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn find_owner_function_resolves_normalized_seam_paths() {
+        let facts = summarize_file(
+            PathBuf::from("src\\pricing.rs"),
+            "fn apply_discount(amount: i32, threshold: i32) -> i32 { \
+                 if amount >= threshold { amount - 10 } else { amount } }\n"
+                .to_string(),
+        );
+        let mut index = RustIndex::default();
+        index.files.insert(PathBuf::from("src\\pricing.rs"), facts);
+        // Repo seams carry `/`-normalized file identity; on Linux this is
+        // not component-equal to the `\`-separator index key, so the
+        // direct lookup misses and the normalized fallback must resolve.
+        let owner = find_owner_function(&index, Path::new("src/pricing.rs"), 1);
+        assert_eq!(owner.map(|f| f.name.as_str()), Some("apply_discount"));
+    }
+
+    #[test]
+    fn is_test_file_judges_foreign_separator_forms_like_native_ones() {
+        assert!(is_test_file(Path::new("tests\\pricing_test.rs")));
+        assert!(is_test_file(Path::new("tests/pricing_test.rs")));
+        assert!(is_test_file(Path::new("crates\\demo\\tests\\main.rs")));
+        assert!(!is_test_file(Path::new("src\\pricing.rs")));
+        // A `tests`-prefixed sibling directory name stays production.
+        assert!(!is_test_file(Path::new("testing\\pricing.rs")));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn find_owner_function_fails_closed_on_non_utf8_fallback() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        let facts = summarize_file(
+            PathBuf::from(OsStr::from_bytes(b"src/pricing_\xff.rs")),
+            "fn apply_discount(amount: i32) -> i32 { amount }\n".to_string(),
+        );
+        let mut index = RustIndex::default();
+        index.files.insert(
+            PathBuf::from(OsStr::from_bytes(b"src/pricing_\xff.rs")),
+            facts,
+        );
+        // A query whose lossy rendering collides with the indexed key
+        // must not attribute the owner through lossy text: the fallback
+        // requires valid UTF-8 on both sides.
+        let colliding = Path::new(OsStr::from_bytes(b"src\\pricing_\xfe.rs"));
+        assert_eq!(
+            find_owner_function(&index, colliding, 1).map(|f| f.name.as_str()),
+            None
+        );
+    }
 
     #[test]
     fn finds_tests_and_assertions() {
@@ -799,5 +948,80 @@ fn feature_gated_test() {}
                 "ripr: lexical fallback was used for 2 Rust file(s): src/line\\nreturn\\r\\t\\x1b[31m.rs, src/unit\\u{0007}.rs; repo seam inventory may under-credit these files because lexical fallback emits no probe shapes."
             )
         );
+    }
+
+    #[test]
+    fn include_resolution_disclosure_names_stable_reason_and_source() {
+        let index = RustIndex {
+            include_limitations: vec![RustIncludeLimitation {
+                parent: PathBuf::from("src/lib.rs"),
+                line: 7,
+                expression: "include!(concat!(...))".to_string(),
+                reason_code: "rust_include_dynamic_expression".to_string(),
+            }],
+            ..RustIndex::default()
+        };
+
+        assert_eq!(
+            include_resolution_disclosure(&index).as_deref(),
+            Some(
+                "ripr: 1 Rust include boundary limitation(s): src/lib.rs:7:rust_include_dynamic_expression; affected compilation-unit relations remain fail-closed."
+            )
+        );
+    }
+
+    #[test]
+    fn module_composition_disclosure_names_stop_reasons_and_unknown_targets() -> Result<(), String>
+    {
+        let no_disclosure = || String::from("module limitations must be disclosed");
+        let mut index = RustIndex::default();
+        // A file whose composed context chain failed closed (ambiguous
+        // ownership), and a declaration whose target is a typed unknown.
+        index.files.insert(
+            PathBuf::from("src/shared.rs"),
+            FileFacts {
+                role_provenance: crate::analysis::facts::SourceRoleProvenance {
+                    edges: Vec::new(),
+                    earliest_unresolved_reason: Some("rust_module_ambiguous_parent".to_string()),
+                },
+                ..FileFacts::default()
+            },
+        );
+        index.files.insert(
+            PathBuf::from("src/lib.rs"),
+            FileFacts {
+                module_declarations: vec![crate::analysis::facts::ModuleDeclarationFact {
+                    name: "generated".to_string(),
+                    line: 4,
+                    path_target: ModulePathTarget::Unknown,
+                    requires_test: false,
+                }],
+                ..FileFacts::default()
+            },
+        );
+        // A clean file must not appear.
+        index
+            .files
+            .insert(PathBuf::from("src/plain.rs"), FileFacts::default());
+
+        let disclosure = module_composition_disclosure(&index).ok_or_else(no_disclosure)?;
+        assert!(
+            disclosure.contains("2 Rust module composition limitation(s)"),
+            "both limitation kinds are counted: {disclosure}"
+        );
+        assert!(
+            disclosure.contains("src/lib.rs:4:rust_module_unresolved_target"),
+            "typed-unknown targets are named with their line: {disclosure}"
+        );
+        assert!(
+            disclosure.contains("src/shared.rs:rust_module_ambiguous_parent"),
+            "composed-chain stop reasons are named: {disclosure}"
+        );
+        assert!(!disclosure.contains("src/plain.rs"));
+
+        // No limitations: no disclosure.
+        let clean = RustIndex::default();
+        assert_eq!(module_composition_disclosure(&clean), None);
+        Ok(())
     }
 }

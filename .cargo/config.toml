@@ -6,7 +6,9 @@ build-lld = [
     "target.x86_64-unknown-linux-gnu.rustflags=['-C','link-arg=-fuse-ld=lld']",
     "build",
 ]
-xtask = "run -p xtask --"
+# Keep the live driver outside the workspace products it rebuilds on Windows.
+# Share intermediate artifacts instead of compiling a second dependency cache.
+xtask = "run --target-dir target/xtask-driver --config build.build-dir='target' -p xtask --"
 
 [env]
 TEMP = { value = "target", relative = true, force = true }

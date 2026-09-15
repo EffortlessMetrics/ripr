@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on the downstream presentation-text evidence record and must-not-claim fixtures.
+
 ## Problem
 
 RIPR can currently expose changed presentation or help text as raw line-local

@@ -9,6 +9,7 @@ use crate::agent::loop_commands::{
     agent_status_command, agent_status_markdown_command, agent_verify_command,
     check_analysis_outcome_command, check_repo_exposure_command, display_path,
 };
+use crate::output::markdown::{COMMAND_SHELL_DISCLOSURE, powershell_command};
 use serde_json::Value;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -207,9 +208,22 @@ pub(crate) fn render_agent_status_markdown(report: &AgentStatusReport) -> String
     if let Some(next) = report.missing_commands.first() {
         rendered.push_str("\n## Next Command\n\n");
         rendered.push_str(&format!("{}\n\n", next.reason));
+        rendered.push_str(COMMAND_SHELL_DISCLOSURE);
         rendered.push_str("```bash\n");
         rendered.push_str(&next.command);
         rendered.push_str("\n```\n");
+        match powershell_command(&next.command) {
+            Some(line) => {
+                rendered.push_str("\n```powershell\n");
+                rendered.push_str(&line);
+                rendered.push_str("\n```\n");
+            }
+            None => rendered.push_str(&format!(
+                "{}: `{}`\n",
+                crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE,
+                next.command
+            )),
+        }
     } else {
         rendered.push_str("\nNo missing agent-loop artifacts were detected.\n");
     }
@@ -670,6 +684,48 @@ mod tests {
         assert!(rendered.contains("ripr check --root . --mode draft"));
         assert!(rendered.contains("No runtime mutation execution."));
         assert!(rendered.contains("No generated tests."));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// The agent-status Next Command block must offer both shells (#2628): the
+    /// bash fence stays byte-identical, the PowerShell fence derives through
+    /// the shared `powershell_command` translation (redirect becomes a UTF-8
+    /// .NET write; the quoted root survives as a single-quoted literal), and
+    /// the cmd.exe boundary is stated.
+    #[test]
+    fn agent_status_markdown_next_command_offers_powershell_variant() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("markdown-powershell");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        let report = build_agent_status_report(&root, Path::new("repo root"));
+        let rendered = render_agent_status_markdown(&report);
+
+        let bash_form = "```bash\nripr check --root 'repo root' --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json\n```\n";
+        assert!(
+            rendered.contains(bash_form),
+            "bash next command drifted:\n{rendered}"
+        );
+        let powershell_form = "```powershell\n$ripr = ((ripr check --root 'repo root' --mode draft --format repo-exposure-json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/workflow/before.repo-exposure.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }\n```\n";
+        assert!(
+            rendered.contains(powershell_form),
+            "powershell next command missing or drifted:\n{rendered}"
+        );
+        let bash_fence = rendered
+            .find(bash_form)
+            .ok_or_else(|| format!("bash fence must exist: {rendered}"))?;
+        let powershell_fence = rendered
+            .find(powershell_form)
+            .ok_or_else(|| format!("powershell fence must exist: {rendered}"))?;
+        assert!(
+            bash_fence < powershell_fence,
+            "bash form must be presented before the PowerShell variant"
+        );
+        assert!(
+            rendered.contains("cmd.exe is not supported."),
+            "next command presentation must state the cmd.exe boundary:\n{rendered}"
+        );
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())

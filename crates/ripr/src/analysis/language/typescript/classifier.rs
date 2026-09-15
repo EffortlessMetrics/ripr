@@ -695,6 +695,13 @@ pub(crate) fn classify_change(
             candidate.test.name
         ));
     }
+    // Resolved from the probe's own delta evidence (#3281) before the probe
+    // moves into the finding: TypeScript probes are seeded from head-side
+    // added lines.
+    let source_currentness = crate::domain::SourceCurrentness::from_probe_delta(
+        probe.before.as_deref(),
+        probe.after.as_deref(),
+    );
     Some(Finding {
         id: probe.id.0.clone(),
         canonical_gap: None,
@@ -728,6 +735,8 @@ pub(crate) fn classify_change(
         observed_sink: None,
         oracle_alignment: None,
         alignment_reason: None,
+        // Resolved above, before the probe moved into the finding (#3281).
+        source_currentness,
     })
 }
 

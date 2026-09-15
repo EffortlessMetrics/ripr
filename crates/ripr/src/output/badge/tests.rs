@@ -72,6 +72,7 @@ fn finding(class: ExposureClass, related: Vec<RelatedTest>) -> Finding {
         observed_sink: None,
         oracle_alignment: None,
         alignment_reason: None,
+        source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
     }
 }
 
@@ -91,6 +92,7 @@ fn related_test(name: &str, file: &str, line: usize) -> RelatedTest {
 fn check_output(findings: Vec<Finding>) -> CheckOutput {
     let defaults = CheckInput::default();
     CheckOutput {
+        harness_projections: Vec::new(),
         schema_version: "0.1".to_string(),
         tool: "ripr".to_string(),
         mode: Mode::Draft,
@@ -308,6 +310,7 @@ fn gap_ledger_badge_summary_counts_projection_targets() -> Result<(), String> {
           "gap_records": [
             {
               "gap_id": "gap:repo:pricing:reintroduced-boundary",
+              "source_currentness": "candidate_current",
               "kind": "MissingBoundaryAssertion",
               "language": "rust",
               "language_status": "stable",
@@ -322,6 +325,7 @@ fn gap_ledger_badge_summary_counts_projection_targets() -> Result<(), String> {
             },
             {
               "gap_id": "gap:repo:waived",
+              "source_currentness": "candidate_current",
               "kind": "MissingValueAssertion",
               "language": "rust",
               "language_status": "stable",
@@ -1642,6 +1646,7 @@ fn check_output_with_preview_advisory(
 ) -> CheckOutput {
     let defaults = CheckInput::default();
     CheckOutput {
+        harness_projections: Vec::new(),
         schema_version: "0.1".to_string(),
         tool: "ripr".to_string(),
         mode: Mode::Draft,
@@ -1847,4 +1852,42 @@ fn preview_skipped_field_always_present_in_native_json() {
         json.contains("\"preview_skipped\":"),
         "native JSON must always contain preview_skipped field"
     );
+}
+
+#[test]
+fn base_deleted_findings_never_count_as_exposure_gaps() {
+    // RIPR-SPEC-0152 recurrence test: base-side evidence is visible in the
+    // findings array but is never a badge obligation; the candidate-current
+    // twin keeps its gap. Removing the shared predicate from this surface
+    // makes this test fail.
+    let mut deleted = finding(ExposureClass::WeaklyExposed, Vec::new());
+    deleted.source_currentness = crate::domain::SourceCurrentness::BaseDeleted;
+    let current = finding(ExposureClass::WeaklyExposed, Vec::new());
+    let output = check_output(vec![deleted, current.clone()]);
+
+    let summary = ripr_badge_summary_with_suppressions(
+        &output,
+        &[],
+        "2026-01-01",
+        crate::output::badge::BadgePolicy::default(),
+    );
+
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 1);
+    assert_eq!(
+        summary.counts.analyzed_findings, 2,
+        "denominator keeps every finding"
+    );
+
+    let mut deleted_again = finding(ExposureClass::WeaklyExposed, Vec::new());
+    deleted_again.source_currentness = crate::domain::SourceCurrentness::BaseDeleted;
+    let only_deleted = check_output(vec![deleted_again]);
+    let summary = ripr_badge_summary_with_suppressions(
+        &only_deleted,
+        &[],
+        "2026-01-01",
+        crate::output::badge::BadgePolicy::default(),
+    );
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 0);
+    assert_eq!(summary.counts.unknowns, 0);
+    assert_eq!(summary.counts.analyzed_findings, 1);
 }

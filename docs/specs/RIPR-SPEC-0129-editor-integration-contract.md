@@ -105,6 +105,29 @@ Consumes everything in Layer 1, plus:
 - Managed server provisioning (#1624)
 - Workspace Trust enforcement (#1623)
 
+Before activation, the trusted VS Code extension admits a resolved server only
+after a bounded, standard JSON-RPC 2.0 `initialize` → `initialized` →
+`shutdown` → `exit` exchange over LSP stdio. Admission requires the exact
+surface the active client consumes: full saved-document synchronization,
+UTF-16 positions, hover, code actions, pull diagnostics, workspace folders,
+and the complete current server-executed `ripr.collect*`/refresh command set.
+`codeAction/resolve` and work-done progress remain optional because their
+absence has an existing client fallback. A response must carry JSON-RPC 2.0,
+the active request id, no method, and exactly one of `result` or a structurally
+valid error; initialize must carry its required result structure and shutdown
+must return `result: null`. Missing, dual, malformed, or wrong envelopes,
+framing errors, timeouts, crashes, identity mismatch, and omitted required
+capabilities fail closed so resolution can try the next allowed channel.
+
+The probe never runs for an untrusted workspace. Both the preceding version
+probe and the LSP session own unconditional, idempotent process-tree cleanup on
+every terminal path, even after the direct child exits first. POSIX uses a
+fresh process group; Windows uses a kill-on-close Job Object with raw stdio
+relay plus an explicit tree-kill fallback. The real
+packaged proof stages the worktree-built server through the release archive
+shape, extracts it, verifies digest identity, and probes that extracted member;
+an arbitrary `RIPR_TEST_SERVER_PATH` is not packaged-identity evidence.
+
 ### Layer 3 — Headless `riprAgent`
 
 A programmatic agent client (Codex, CI tooling) that drives the typed
@@ -269,6 +292,16 @@ does not advertise fails the parity tests.
   the unsaved buffer as the current diagnostics authority.
 - `agent_protocol.rs` tests verify the fail-closed `supported_requests: []`
   invariant.
+- `editors/vscode/test/suite/lsp_compatibility.test.ts` rejects invalid
+  framing, dual result/error payloads, malformed errors, wrong ids, non-null
+  shutdown results, and each active-client capability omission. It asserts
+  descendant death after version success/failure and LSP timeout, crash,
+  protocol failure, and normal shutdown, and admits the digest-verified server
+  member extracted from the test release archive.
+- `editors/vscode/test/suite/server_resolver_compatibility.test.ts` proves an
+  incompatible candidate falls through to the next allowed channel;
+  `workspace_trust_runtime.test.ts` proves an untrusted activation performs
+  zero resolver or process work.
 
 ## Implementation Mapping
 
@@ -286,6 +319,9 @@ does not advertise fails the parity tests.
 - `crates/ripr/src/lsp/client_features.rs` — negotiated
   `ClientFeatureProfile` consumed by the code-action command filter (#1776)
 - `editors/vscode/src/client.ts` — VS Code client capability advertisement
+- `editors/vscode/src/lspCompatibility.ts` — bounded standard-LSP admission
+- `editors/vscode/src/serverResolver.ts` — version/protocol sequencing and
+  fallback across allowed server channels
 - `editors/vscode/package.json` — `capabilities.untrustedWorkspaces`
 
 ## Metrics

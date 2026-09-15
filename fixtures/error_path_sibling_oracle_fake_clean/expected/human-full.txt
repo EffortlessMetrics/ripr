@@ -24,7 +24,7 @@ Static exposure
 Evidence
   - reach yes: Related tests appear to reach validate_or_default: valid_input_returns_valid
   - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)
+  - propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::TooLong)
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(ParseError::TooLong) (line 10)
@@ -56,7 +56,7 @@ Static exposure
 Evidence
   - reach yes: Related tests appear to reach validate_or_default: valid_input_returns_valid
   - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence error variant: Result::Err(ParseError::TooLong)
+  - propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::TooLong)
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(ParseError::TooLong) (line 10)
@@ -69,4 +69,4 @@ Weakness
   - missing discriminator ParseError::TooLong: No exact error variant assertion for ParseError::TooLong
 
 Next step
-  Replace broad assertions with exact equality or a property that constrains the changed returned value.
+  Add a test input that reaches the changed error path and assert the exact error variant it returns.

@@ -1,8 +1,8 @@
 {
   "protocol_version": "0.1",
-  "schema_version": "0.1",
-  "implementation_state": "capability_only",
-  "supported_requests": [],
+  "schema_version": "0.2",
+  "implementation_state": "implemented",
+  "supported_requests": ["ripr/listActionableItems"],
   "reserved_requests": [
     "ripr/workspaceStatus",
     "ripr/refreshAnalysis",
@@ -12,13 +12,13 @@
     "ripr/getTopLimitation",
     "ripr/getReceiptStatus"
   ],
-  "supported_profiles": [],
+  "supported_profiles": ["actionable"],
   "reserved_profiles": ["actionable", "full"],
   "diagnostic_modes": ["push"],
-  "snapshot_handles": false,
+  "snapshot_handles": true,
   "continuations": false,
   "work_done_progress": false,
-  "cancellation": false,
+  "cancellation": true,
   "source_edit_capability": "none",
   "analysis_status_notification": "ripr/analysisStatus",
   "compatibility_commands": [
@@ -45,5 +45,5 @@
     "cancelled",
     "superseded"
   ],
-  "claim_boundary": "Capability negotiation only; no riprAgent requests are implemented by this slice."
+  "claim_boundary": "ripr/listActionableItems is implemented; all other riprAgent requests remain reserved."
 }

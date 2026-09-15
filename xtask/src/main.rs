@@ -6,6 +6,8 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use ra_ap_syntax::ast::{self, HasAttrs, HasName};
+use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind};
 use serde_json::Value;
 
 use ripr::output::receipt_lifecycle::{
@@ -21,16 +23,25 @@ use ripr::output::start_here_state::{
 mod agent_skills;
 mod branch_inventory;
 mod cache;
+#[cfg(test)]
+mod cargo_driver_tests;
 mod command;
+pub mod convergence;
 mod dispatch;
 mod dogfood;
+mod driver;
 mod evidence_audit;
 mod evidence_promotion;
 mod evidence_quality;
 mod fixture_contracts;
 mod no_panic;
 mod policy;
+mod product_gate_plan;
 mod public_api_surface;
+mod python_judged_panel;
+mod python_judged_panel_feedback;
+mod python_judged_panel_replay;
+mod python_judged_panel_report;
 mod repo_readiness;
 mod schema_pattern;
 mod types;
@@ -38,6 +49,8 @@ pub(crate) use types::*;
 mod reports;
 mod ripr_swarm;
 mod run;
+mod rust_judged_panel;
+mod rust_region_scan;
 mod verification_contracts;
 mod version;
 mod windows_advisory;
@@ -231,10 +244,11 @@ use no_panic::{
     strip_toml_value_comment,
 };
 use policy::{
-    check_allow_attributes, check_ci_lane_whitelist, check_doc_roles, check_droid_review_config,
-    check_executable_files, check_file_policy, check_local_context, check_network_policy,
-    check_no_panic_family, check_positioning_language, check_process_policy, check_product_copy,
-    check_proof_packs, check_release_targets, check_static_language, check_workflows,
+    check_allow_attributes, check_ci_lane_whitelist, check_covered_by, check_doc_roles,
+    check_droid_review_config, check_executable_files, check_file_policy, check_local_context,
+    check_network_policy, check_no_panic_family, check_positioning_language, check_process_policy,
+    check_product_copy, check_proof_packs, check_release_targets, check_static_language,
+    check_workflows,
 };
 use public_api_surface::public_api_surface;
 #[cfg(test)]
@@ -245,11 +259,12 @@ use repo_readiness::{
 };
 #[cfg(test)]
 pub(crate) use reports::release_server::{
-    ReleaseServerAsset, create_zip_archive, normalize_release_version, release_server_archive,
-    release_server_assets, release_server_manifest, release_server_readme, required_release_arg,
-    sha256_file, validate_configured_release_server_targets, validate_release_server_receipts,
+    ReleaseServerAsset, normalize_release_version, release_server_archive, release_server_assets,
+    release_server_manifest, release_server_readme, required_release_arg,
+    validate_configured_release_server_targets, validate_release_server_receipts,
     validate_release_server_staging_inventory, write_release_server_outputs_transactional,
 };
+use reports::release_server::{create_zip_archive, sha256_file};
 #[cfg(test)]
 pub(crate) use reports::{
     BADGE_ENDPOINT_FILES, BadgeArtifactJob, BadgeBasisReport, BadgeBasisSignal,
@@ -284,8 +299,8 @@ pub(crate) use reports::{
     GoldenDriftEntry, GoldenDriftSemantics, first_line_difference, fixture_cache_dir,
     fixture_contract_violations, golden_assistant_loop_health_contract_violations_at,
     golden_drift_semantics, golden_drift_type, goldens_check_failure_message,
-    json_string_values_for_key, normalize_golden_text, parse_reason, run_fixture,
-    run_fixture_outputs, validate_bless_reason,
+    json_string_values_for_key, next_pending_heading, normalize_golden_text, parse_reason,
+    run_fixture, run_fixture_outputs, validate_bless_reason,
 };
 #[cfg(test)]
 pub(crate) use reports::{
@@ -298,7 +313,7 @@ pub(crate) use reports::{
 };
 use reports::{
     check_badge_diff_policy, dogfood, fixtures, metrics_report, pr_summary, receipts_write,
-    reports_index, test_oracle_report,
+    reports_index, rust_repair_trust_report_value_at, test_oracle_report,
 };
 #[cfg(test)]
 use reports::{lsp_cockpit_report, targeted_test_outcome};
@@ -484,6 +499,7 @@ pub(crate) fn acquire_test_cwd_read_guard() -> CwdReadGuard<'static> {
 }
 
 fn main() {
+    driver::bootstrap();
     let command = XtaskCommand::parse(std::env::args().skip(1));
     let result = dispatch::execute(command);
     if let Err(err) = result {
@@ -516,16 +532,20 @@ const PRECOMMIT_GATE_COMMANDS: &[&str] = &[
     "check-allow-attributes",
     "check-local-context",
     "check-file-policy",
+    "check-covered-by",
     "check-executable-files",
     "check-workflows",
     "check-droid-review-config",
     "check-spec-format",
     "check-spec-numbering",
     "check-fixture-contracts",
+    "check-rust-judged-panel",
+    "check-python-judged-panel",
     "check-traceability",
     "check-capabilities",
     "check-workspace-shape",
     "check-architecture",
+    "check-rust-source-role-authority",
     "check-public-api",
     "check-output-contracts",
     "check-doc-artifacts",
@@ -553,16 +573,20 @@ fn precommit() -> Result<(), String> {
     check_allow_attributes()?;
     check_local_context()?;
     check_file_policy()?;
+    check_covered_by()?;
     check_executable_files()?;
     check_workflows()?;
     check_droid_review_config()?;
     check_spec_format()?;
     check_spec_numbering()?;
     check_fixture_contracts()?;
+    check_rust_judged_panel()?;
+    check_python_judged_panel()?;
     check_traceability()?;
     check_capabilities()?;
     check_workspace_shape()?;
     check_architecture()?;
+    check_rust_source_role_authority()?;
     check_public_api()?;
     check_output_contracts()?;
     check_doc_artifacts()?;
@@ -584,12 +608,33 @@ fn precommit() -> Result<(), String> {
     write_report("precommit.md", &body)
 }
 
+fn check_rust_judged_panel() -> Result<(), String> {
+    rust_judged_panel::check_canonical()
+}
+
+fn check_python_judged_panel() -> Result<(), String> {
+    python_judged_panel::check_canonical()
+}
+
 /// Diff-aware fast gate runner (#2343). Runs only the gates relevant to
 /// changed files, plus a cheap always-run floor. Target: sub-30s for
 /// doc-only changes, ~2min for Rust source changes.
 pub(crate) fn check_fast() -> Result<(), String> {
+    check_fast_in(Path::new("."))
+}
+
+/// `check_fast` with an injectable repository root, so the fail-closed
+/// selector branch is exercisable without mutating the process cwd
+/// (#3549 review).
+fn check_fast_in(repository_root: &Path) -> Result<(), String> {
     ensure_reports_dir()?;
-    let changed = changed_files_vs_origin_main().unwrap_or_default();
+    let changed = match changed_files_vs_base(repository_root) {
+        Ok(changed) => changed,
+        Err(error) => {
+            write_report("check-fast.md", &check_fast_selector_failure_report(&error))?;
+            return Err(check_fast_selector_failure(&error));
+        }
+    };
     let categories = categorize_changed_files(&changed);
     let mut ran = Vec::new();
     let mut skipped = Vec::new();
@@ -637,6 +682,8 @@ pub(crate) fn check_fast() -> Result<(), String> {
     }
 
     if categories.policy {
+        check_covered_by()?;
+        ran.push("check-covered-by");
         check_process_policy()?;
         ran.push("check-process-policy");
         check_network_policy()?;
@@ -670,7 +717,7 @@ pub(crate) fn check_fast() -> Result<(), String> {
     );
 
     let body = format!(
-        "# check-fast report\n\nStatus: pass\n\nRan:\n{}\n\nSkipped:\n{}\n",
+        "# check-fast report\n\nStatus: pass\n\nSelector: passed\nBase: origin/main\n\nRan:\n{}\n\nSkipped:\n{}\n",
         ran.iter()
             .map(|g| format!("- {g}"))
             .collect::<Vec<_>>()
@@ -708,18 +755,149 @@ fn categorize_changed_files(files: &[String]) -> ChangedFileCategories {
     }
 }
 
-fn changed_files_vs_origin_main() -> Result<Vec<String>, String> {
+fn changed_files_vs_base(root: &Path) -> Result<Vec<String>, String> {
     let output = std::process::Command::new("git")
+        .current_dir(root)
         .args(["diff", "--name-only", "origin/main...HEAD"])
         .output()
         .map_err(|err| format!("git diff --name-only failed: {err}"))?;
     if !output.status.success() {
-        return Err(
-            "git diff --name-only origin/main...HEAD failed; if origin/main is not available, run `git fetch origin main` first".to_string(),
-        );
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let detail = if stderr.is_empty() {
+            format!("exit status {}", output.status)
+        } else {
+            stderr
+        };
+        return Err(format!(
+            "git diff --name-only origin/main...HEAD failed: {detail};              if origin/main is not available, run `git fetch origin main` first"
+        ));
     }
     let text = String::from_utf8_lossy(&output.stdout);
     Ok(text.lines().map(String::from).collect())
+}
+
+/// Origin-main rooted selector for callers that run from the repository
+/// root — including the strict check-fast module, which binds this
+/// function as its discovery authority.
+fn changed_files_vs_origin_main() -> Result<Vec<String>, String> {
+    changed_files_vs_base(Path::new("."))
+}
+
+fn check_fast_selector_failure(error: &str) -> String {
+    format!("check-fast selector unavailable (instrument_failure): {error}")
+}
+
+fn check_fast_selector_failure_report(error: &str) -> String {
+    format!(
+        "# check-fast report\n\nStatus: instrument_failure\n\nSelector: failed\nBase: origin/main\n\nError: {error}\n\nRemediation: run `git fetch origin main` and retry `cargo xtask check-fast`.\n"
+    )
+}
+
+#[cfg(test)]
+mod check_fast_selector_tests {
+    use super::*;
+
+    fn run_fixture_git(root: &std::path::Path, args: &[&str]) -> Result<(), String> {
+        // Route through the centralized runner: process policy allows one
+        // raw spawn literal in this file (the gate-runner git-diff site),
+        // so the fixture must not add its own spawn site.
+        let args: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
+        let output = crate::run::capture_output_in_dir("git", &args, root, "selector fixture git")?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(format!(
+                "git fixture command failed: {args:?}; stderr: {}",
+                output.stderr.trim()
+            ))
+        }
+    }
+
+    #[test]
+    fn check_fast_fails_closed_when_the_selector_cannot_run() -> Result<(), String> {
+        // #3549 review: the unit tests above pin the helpers, but only
+        // check_fast itself proves the selector failure fails closed. Run
+        // it in a fixture repo without an origin/main ref and assert the
+        // instrument_failure error and report — with the old
+        // unwrap_or_default fallback restored, check_fast instead proceeds
+        // into the gates and every other assertion here would pass.
+        let root =
+            std::env::temp_dir().join(format!("ripr-check-fast-fail-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+        run_fixture_git(&root, &["init", "--initial-branch=main"])?;
+
+        let attempt = std::panic::catch_unwind(|| check_fast_in(&root));
+        // write_report targets the process-cwd reports dir (a generated,
+        // gitignored artifact the next real check-fast run rewrites).
+        let report = std::fs::read_to_string("target/ripr/reports/check-fast.md").ok();
+        let _ = std::fs::remove_dir_all(&root);
+
+        let error = match attempt {
+            Ok(Ok(())) => {
+                return Err("check_fast must fail closed when the selector cannot run".to_string());
+            }
+            Ok(Err(error)) => error,
+            Err(panic) => return Err(format!("check_fast panicked: {panic:?}")),
+        };
+        assert!(
+            error.contains("instrument_failure"),
+            "fail-closed error must name the instrument failure: {error}"
+        );
+        let report = report
+            .ok_or_else(|| "check-fast.md report must be written before failing".to_string())?;
+        assert!(
+            report.contains("Status: instrument_failure"),
+            "report must record the instrument failure: {report}"
+        );
+        assert!(
+            report.contains("Selector: failed") && report.contains("Base: origin/main"),
+            "report must disclose selector status and base: {report}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn empty_selection_is_distinct_from_selector_failure() -> Result<(), String> {
+        let root = std::env::temp_dir().join(format!("ripr-check-fast-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| format!("create selector fixture: {err}"))?;
+        let run = |args: &[&str]| run_fixture_git(&root, args);
+        run(&["init", "--initial-branch=main"])?;
+        run(&["config", "user.email", "ripr@example.invalid"])?;
+        run(&["config", "user.name", "ripr test"])?;
+        std::fs::write(root.join("README.md"), "fixture\n")
+            .map_err(|err| format!("write selector fixture: {err}"))?;
+        run(&["add", "."])?;
+        run(&["commit", "-m", "fixture"])?;
+        run(&["update-ref", "refs/remotes/origin/main", "HEAD"])?;
+
+        assert_eq!(
+            changed_files_vs_base(&root)?,
+            Vec::<String>::new(),
+            "a clean fixture selects no changed files"
+        );
+        let failure_root = root.join("missing-base");
+        std::fs::create_dir_all(&failure_root)
+            .map_err(|err| format!("create missing-base fixture: {err}"))?;
+        run_fixture_git(&failure_root, &["init"])?;
+        let failure = match changed_files_vs_base(&failure_root) {
+            Ok(files) => {
+                return Err(format!(
+                    "missing base must fail; selected files instead: {files:?}"
+                ));
+            }
+            Err(failure) => failure,
+        };
+        assert!(failure.contains("origin/main"));
+        assert!(check_fast_selector_failure(&failure).contains("instrument_failure"));
+        assert!(
+            check_fast_selector_failure_report(&failure).contains("Status: instrument_failure")
+        );
+        assert!(check_fast_selector_failure_report(&failure).contains("git fetch origin main"));
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
 }
 
 fn check_pr() -> Result<(), String> {
@@ -811,6 +989,12 @@ struct CheckPrGateFailure {
     reproduce: String,
     bounded_error: String,
     not_run: Vec<String>,
+    baseline: BaselineFailureComparison,
+}
+
+struct BaselineFailureComparison {
+    status: &'static str,
+    detail: String,
 }
 
 /// Run the gates in order and stop at the first failure (#3036). On failure,
@@ -834,6 +1018,7 @@ fn run_check_pr_gates(
                     .iter()
                     .map(|later| later.name.to_string())
                     .collect(),
+                baseline: compare_failure_with_origin_main(gate.name),
             };
             write_failure_report(&failure).map_err(|write_err| {
                 format!(
@@ -845,6 +1030,122 @@ fn run_check_pr_gates(
         }
     }
     Ok(())
+}
+
+fn compare_failure_with_origin_main(gate_name: &str) -> BaselineFailureComparison {
+    let divergence = match run_output(
+        "git",
+        &["rev-list", "--left-right", "--count", "origin/main...HEAD"],
+    ) {
+        Ok(value) => value,
+        Err(err) => {
+            return BaselineFailureComparison {
+                status: "NOT_PROVEN",
+                detail: format!("origin/main is unavailable: {err}"),
+            };
+        }
+    };
+    let mut counts = divergence.split_whitespace();
+    let behind = counts.next().and_then(|value| value.parse::<u64>().ok());
+    let ahead = counts.next().and_then(|value| value.parse::<u64>().ok());
+    if matches!((behind, ahead), (Some(0), Some(_))) {
+        return BaselineFailureComparison {
+            status: "NOT_PROVEN",
+            detail: "the branch is not behind origin/main".to_string(),
+        };
+    }
+    if !matches!((behind, ahead), (Some(_), Some(_))) {
+        return BaselineFailureComparison {
+            status: "NOT_PROVEN",
+            detail: format!("could not parse origin/main divergence: {divergence:?}"),
+        };
+    }
+    if gate_name == "ci-fast" {
+        return BaselineFailureComparison {
+            status: "NOT_PROVEN",
+            detail: "ci-fast has no stable inner-failure identity for an inherited comparison"
+                .to_string(),
+        };
+    }
+    let root = match std::env::current_dir() {
+        Ok(root) => root,
+        Err(err) => {
+            return BaselineFailureComparison {
+                status: "NOT_PROVEN",
+                detail: format!("could not resolve the PR checkout: {err}"),
+            };
+        }
+    };
+    let worktree = root
+        .join("target")
+        .join("tmp")
+        .join("check-pr")
+        .join("origin-main");
+    if let Err(err) = fs::create_dir_all(worktree.parent().unwrap_or(&worktree)) {
+        return BaselineFailureComparison {
+            status: "NOT_PROVEN",
+            detail: format!("could not create the comparison directory: {err}"),
+        };
+    }
+    let worktree_text = worktree.to_string_lossy().into_owned();
+    let _ = run("git", &["worktree", "prune", "--expire", "now"]);
+    if worktree.exists() {
+        let _ = run("git", &["worktree", "remove", "--force", &worktree_text]);
+        if let Err(err) = fs::remove_dir_all(&worktree) {
+            return BaselineFailureComparison {
+                status: "NOT_PROVEN",
+                detail: format!("could not clear the previous comparison worktree: {err}"),
+            };
+        }
+    }
+    if let Err(err) = run(
+        "git",
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            "--quiet",
+            &worktree_text,
+            "origin/main",
+        ],
+    ) {
+        return BaselineFailureComparison {
+            status: "NOT_PROVEN",
+            detail: format!("could not create the origin/main comparison worktree: {err}"),
+        };
+    }
+    let result = run_origin_gate(gate_name, &worktree);
+    let cleanup = run("git", &["worktree", "remove", "--force", &worktree_text]);
+    if let Err(err) = cleanup {
+        eprintln!("warning: failed to remove comparison worktree: {err}");
+    }
+    match result {
+        Ok(()) => BaselineFailureComparison {
+            status: "PR_INTRODUCED",
+            detail: "the gate passed on origin/main and failed on this branch".to_string(),
+        },
+        Err(err) => BaselineFailureComparison {
+            status: "INHERITED",
+            detail: format!("the same gate failed on origin/main: {err}"),
+        },
+    }
+}
+
+fn run_origin_gate(gate_name: &str, worktree: &Path) -> Result<(), String> {
+    let args: &[&str] = match gate_name {
+        "ci-fast" => &["xtask", "ci-fast"],
+        "clippy" => &[
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ],
+        "doc" => &["doc", "--workspace", "--no-deps"],
+        _ => return Err(format!("unsupported check-pr gate: {gate_name}")),
+    };
+    run_in_dir(Path::new("cargo"), args, worktree).map(|_| ())
 }
 
 /// Bound the retained first-failure evidence to five lines with CRLF
@@ -908,6 +1209,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_allow_attributes()?;
     check_local_context()?;
     check_file_policy()?;
+    check_covered_by()?;
     check_executable_files()?;
     check_workflows()?;
     check_droid_review_config()?;
@@ -985,6 +1287,11 @@ fn vscode_test_e2e() -> Result<(), String> {
     if build_server {
         run("cargo", &["build", "-p", "ripr"])?;
     }
+    let packaged_server = if build_server {
+        Some(stage_vscode_test_server_archive(&server_path)?)
+    } else {
+        None
+    };
     vscode_compile()?;
     let workspace_path = vscode_test_workspace_path()?;
     let mut envs = vec![(
@@ -992,12 +1299,101 @@ fn vscode_test_e2e() -> Result<(), String> {
         path_to_utf8(&workspace_path, "VS Code test workspace path")?,
     )];
     if provided_server.is_none() {
+        let packaged = packaged_server.as_ref().ok_or_else(|| {
+            "default VS Code test server was not staged through the release archive shape"
+                .to_string()
+        })?;
         envs.push((
             "RIPR_TEST_SERVER_PATH",
-            path_to_utf8(&server_path, "VS Code test server path")?,
+            path_to_utf8(&packaged.executable, "packaged VS Code test server path")?,
         ));
+        envs.push((
+            "RIPR_TEST_PACKAGED_SERVER_PATH",
+            path_to_utf8(&packaged.executable, "packaged VS Code identity path")?,
+        ));
+        envs.push(("RIPR_TEST_PACKAGED_SERVER_SHA256", packaged.sha256.as_str()));
     }
     run_cwd_command_with_envs(&vscode_test_e2e_command(), &envs)
+}
+
+struct PackagedVscodeTestServer {
+    executable: PathBuf,
+    sha256: String,
+}
+
+fn stage_vscode_test_server_archive(
+    server_path: &Path,
+) -> Result<PackagedVscodeTestServer, String> {
+    let root = std::env::current_dir()
+        .map_err(|err| {
+            format!("failed to resolve repository root for VS Code server proof: {err}")
+        })?
+        .join("target")
+        .join("ripr")
+        .join("vscode-server-archive");
+    let package = root.join("package");
+    let extracted = root.join("extracted");
+    let archive = root.join("ripr-server-test.zip");
+    if root.exists() {
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("failed to reset {}: {err}", root.display()))?;
+    }
+    fs::create_dir_all(&package)
+        .map_err(|err| format!("failed to create {}: {err}", package.display()))?;
+    let executable_name = server_path.file_name().ok_or_else(|| {
+        format!(
+            "VS Code test server path has no file name: {}",
+            server_path.display()
+        )
+    })?;
+    fs::copy(server_path, package.join(executable_name)).map_err(|err| {
+        format!(
+            "failed to stage {} for archive proof: {err}",
+            server_path.display()
+        )
+    })?;
+    create_zip_archive(&package, &archive)?;
+    fs::create_dir_all(&extracted)
+        .map_err(|err| format!("failed to create {}: {err}", extracted.display()))?;
+    let archive_file = fs::File::open(&archive)
+        .map_err(|err| format!("failed to open {}: {err}", archive.display()))?;
+    let mut zip = zip::ZipArchive::new(archive_file)
+        .map_err(|err| format!("failed to read {}: {err}", archive.display()))?;
+    if zip.len() != 1 {
+        return Err(format!(
+            "VS Code server proof archive contained {} entries, expected 1",
+            zip.len()
+        ));
+    }
+    let mut member = zip
+        .by_index(0)
+        .map_err(|err| format!("failed to read archive member: {err}"))?;
+    if Path::new(member.name()).file_name() != Some(executable_name) {
+        return Err(format!(
+            "VS Code server proof archive member `{}` did not match the built executable",
+            member.name()
+        ));
+    }
+    let executable = extracted.join(executable_name);
+    let mut output = fs::File::create(&executable)
+        .map_err(|err| format!("failed to create {}: {err}", executable.display()))?;
+    std::io::copy(&mut member, &mut output)
+        .map_err(|err| format!("failed to extract {}: {err}", executable.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o755))
+            .map_err(|err| format!("failed to mark {} executable: {err}", executable.display()))?;
+    }
+    let built_sha = sha256_file(server_path)?;
+    let extracted_sha = sha256_file(&executable)?;
+    if built_sha != extracted_sha {
+        return Err("VS Code server archive extraction changed the executable digest".to_string());
+    }
+    Ok(PackagedVscodeTestServer {
+        executable,
+        sha256: extracted_sha,
+    })
 }
 
 fn select_vscode_test_server(
@@ -4048,7 +4444,7 @@ fn receipts_report_markdown(
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-spec-numbering`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-artifacts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-command-catalog`\n- `cargo xtask check-generated`\n- `cargo xtask check-badge-diff-policy`\n- `cargo xtask check-generated-clean`\n- `cargo xtask check-proof-packs`\n- `cargo xtask check-release-targets`\n- `cargo xtask check-dependencies`\n- `cargo xtask check-process-policy`\n- `cargo xtask check-network-policy`\n- `cargo xtask check-lint-policy`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-covered-by`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-spec-numbering`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-rust-judged-panel`\n- `cargo xtask check-python-judged-panel`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-rust-source-role-authority`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-artifacts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-command-catalog`\n- `cargo xtask check-generated`\n- `cargo xtask check-badge-diff-policy`\n- `cargo xtask check-generated-clean`\n- `cargo xtask check-proof-packs`\n- `cargo xtask check-release-targets`\n- `cargo xtask check-dependencies`\n- `cargo xtask check-process-policy`\n- `cargo xtask check-network-policy`\n- `cargo xtask check-lint-policy`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 /// Compose the check-pr report for either terminal state (#3036). One
@@ -4078,6 +4474,10 @@ fn check_pr_report(failure: Option<&CheckPrGateFailure>) -> String {
                 body.push_str(&format!("- `{name}`\n"));
             }
         }
+        body.push_str(&format!(
+            "\n## Inherited-failure comparison (advisory)\n\nStatus: {}\nDetail: {}\n",
+            failure.baseline.status, failure.baseline.detail
+        ));
     }
     let pr_summary_entry = if failure.is_some() {
         // The failure path returns before pr_summary() runs, so advertising
@@ -4094,6 +4494,50 @@ pub(crate) fn finish_policy_report(
     spec: PolicyReportSpec<'_>,
     violations: &[String],
 ) -> Result<(), String> {
+    finish_policy_report_with_disclosures(spec, violations, &[])
+}
+
+/// One advisory report section rendered regardless of pass/fail status: a
+/// disclosed limitation of this run (for example the files a parser-backed
+/// scan had to fall back on), never a violation.
+pub(crate) struct PolicyDisclosure {
+    pub(crate) heading: String,
+    pub(crate) intro: String,
+    pub(crate) items: Vec<String>,
+}
+
+fn finish_policy_report_with_disclosures(
+    spec: PolicyReportSpec<'_>,
+    violations: &[String],
+    disclosures: &[PolicyDisclosure],
+) -> Result<(), String> {
+    let body = policy_report_body(&spec, violations, disclosures);
+    write_report(spec.report_file, &body)?;
+
+    if violations.is_empty() {
+        println!(
+            "{}: pass (target/ripr/reports/{})",
+            spec.check, spec.report_file
+        );
+        Ok(())
+    } else {
+        Err(format!(
+            "{} failed; see target/ripr/reports/{}\n{}",
+            spec.check,
+            spec.report_file,
+            violations.join("\n")
+        ))
+    }
+}
+
+/// The full markdown body of one policy report: status, why-it-matters,
+/// violations, any disclosed limitations of this run, fix guidance, and
+/// the rerun command. Pure so the rendering contract stays unit-testable.
+fn policy_report_body(
+    spec: &PolicyReportSpec<'_>,
+    violations: &[String],
+    disclosures: &[PolicyDisclosure],
+) -> String {
     let status = if violations.is_empty() {
         "pass"
     } else {
@@ -4113,6 +4557,20 @@ pub(crate) fn finish_policy_report(
             body.push_str(violation);
             body.push_str("\n```\n\n");
         }
+    }
+
+    for disclosure in disclosures {
+        body.push_str("## ");
+        body.push_str(&disclosure.heading);
+        body.push_str("\n\n");
+        body.push_str(&disclosure.intro);
+        body.push_str("\n\n");
+        for item in &disclosure.items {
+            body.push_str("- ");
+            body.push_str(item);
+            body.push('\n');
+        }
+        body.push('\n');
     }
 
     if !violations.is_empty() {
@@ -4136,22 +4594,79 @@ pub(crate) fn finish_policy_report(
     body.push_str("## Rerun\n\n```bash\n");
     body.push_str(spec.rerun_command);
     body.push_str("\n```\n");
+    body
+}
 
-    write_report(spec.report_file, &body)?;
+#[cfg(test)]
+mod policy_report_disclosure_tests {
+    use super::{FixKind, PolicyDisclosure, PolicyReportSpec, policy_report_body};
 
-    if violations.is_empty() {
-        println!(
-            "{}: pass (target/ripr/reports/{})",
-            spec.check, spec.report_file
-        );
+    fn spec() -> PolicyReportSpec<'static> {
+        PolicyReportSpec {
+            report_file: "example.md",
+            check: "check-example",
+            why_it_matters: "why",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &["fix one"],
+            rerun_command: "cargo xtask check-example",
+            exception_template: None,
+        }
+    }
+
+    #[test]
+    fn disclosure_section_renders_between_violations_and_rerun() -> Result<(), String> {
+        let disclosure = PolicyDisclosure {
+            heading: "Parse Fallbacks".to_string(),
+            intro: "These files were scanned verbatim.".to_string(),
+            items: vec!["crates/ripr/src/broken.rs".to_string()],
+        };
+        let body = policy_report_body(&spec(), &[], &[disclosure]);
+        if !body.contains("Status: pass") {
+            return Err("status must stay pass with only a disclosure".to_string());
+        }
+        let violations_at = body
+            .find("## Violations")
+            .ok_or_else(|| "Violations heading missing".to_string())?;
+        let disclosure_at = body
+            .find("## Parse Fallbacks")
+            .ok_or_else(|| "Parse Fallbacks heading missing".to_string())?;
+        let rerun_at = body
+            .find("## Rerun")
+            .ok_or_else(|| "Rerun heading missing".to_string())?;
+        if !(violations_at < disclosure_at && disclosure_at < rerun_at) {
+            return Err("disclosure must sit between Violations and Rerun".to_string());
+        }
+        if !body.contains("- crates/ripr/src/broken.rs\n") {
+            return Err("disclosure items must render as bullets".to_string());
+        }
+        // The disclosure is advisory: the status stays pass with no
+        // violations even when a fallback is disclosed.
+        if body.contains("## Fix Kind") {
+            return Err("fix guidance must stay absent on a pass".to_string());
+        }
         Ok(())
-    } else {
-        Err(format!(
-            "{} failed; see target/ripr/reports/{}\n{}",
-            spec.check,
-            spec.report_file,
-            violations.join("\n")
-        ))
+    }
+
+    #[test]
+    fn disclosure_renders_on_a_failing_run_too() {
+        let disclosure = PolicyDisclosure {
+            heading: "Parse Fallbacks".to_string(),
+            intro: "verbatim".to_string(),
+            items: vec!["a.rs".to_string()],
+        };
+        let violations = vec!["a.rs re-derives source role".to_string()];
+        let body = policy_report_body(&spec(), &violations, &[disclosure]);
+        assert!(body.contains("Status: fail"));
+        assert!(body.contains("## Parse Fallbacks"));
+        assert!(body.contains("## Fix Kind"));
+    }
+
+    #[test]
+    fn no_disclosures_render_no_extra_section() {
+        let body = policy_report_body(&spec(), &[], &[]);
+        assert_eq!(body.matches("\n## ").count(), 3); // Why This Matters + Violations + Rerun
+        assert!(body.starts_with("# check-example\n\nStatus: pass\n\n"));
+        assert!(body.ends_with("cargo xtask check-example\n```\n"));
     }
 }
 
@@ -4696,6 +5211,7 @@ fn check_workflows_impl() -> Result<(), String> {
             &normalized,
             &text,
         ));
+        violations.extend(scratch_gc_concurrency_violations(&normalized, &text));
         for block in extract_workflow_run_blocks(&text) {
             if block.non_empty_lines > budget.max_non_empty_lines {
                 violations.push(format!(
@@ -4745,6 +5261,66 @@ fn check_workflows_impl() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+/// Keep the scratch-GC matrix isolated by pool.
+///
+/// A workflow-level concurrency group serializes the whole matrix behind the
+/// slowest or unavailable self-hosted pool. The resulting pending-run
+/// eviction is especially dangerous here because `cancelled` is not a failed
+/// workflow and therefore produces no useful CI signal.
+fn scratch_gc_concurrency_violations(path: &str, text: &str) -> Vec<String> {
+    const WORKFLOW: &str = ".github/workflows/scratch-gc.yml";
+    const GROUP: &str = "group: scratch-gc-${{ github.repository }}-${{ matrix.pool }}";
+
+    if path != WORKFLOW {
+        return Vec::new();
+    }
+
+    let lines: Vec<&str> = text.lines().collect();
+    let has_top_level_concurrency = lines
+        .iter()
+        .any(|line| line.trim_start().len() == line.len() && line.trim() == "concurrency:");
+    let mut in_scratch_job = false;
+    let mut in_concurrency = false;
+    let mut concurrency_lines = Vec::new();
+    for line in &lines {
+        let indent = line.len() - line.trim_start().len();
+        if *line == "  scratch-gc:" {
+            in_scratch_job = true;
+            continue;
+        }
+        if in_scratch_job && indent == 2 && !line.trim().is_empty() {
+            in_scratch_job = false;
+            in_concurrency = false;
+        }
+        if in_scratch_job && indent == 4 && line.trim() == "concurrency:" {
+            in_concurrency = true;
+            continue;
+        }
+        if in_concurrency {
+            if indent <= 4 && !line.trim().is_empty() {
+                in_concurrency = false;
+            } else {
+                concurrency_lines.push(line.trim());
+            }
+        }
+    }
+    let has_pool_group = concurrency_lines.contains(&GROUP);
+    let has_non_cancelling_pool_queue = concurrency_lines.contains(&"cancel-in-progress: false");
+
+    let mut violations = Vec::new();
+    if has_top_level_concurrency {
+        violations.push(format!(
+            "{WORKFLOW}: scratch-GC concurrency must be job-level and keyed by matrix.pool; workflow-level concurrency starves the matrix when one pool is unavailable"
+        ));
+    }
+    if !has_pool_group || !has_non_cancelling_pool_queue {
+        violations.push(format!(
+            "{WORKFLOW}: scratch-GC must preserve a non-cancelling per-pool concurrency group ({GROUP})"
+        ));
+    }
+    violations
 }
 
 /// Workflow automation must not perform review-thread resolution without adjudication.
@@ -5051,11 +5627,17 @@ fn routed_rust_workflow_contract_violations_for_repo() -> Result<Vec<String>, St
     }
 
     let workflow = read_text_lossy(workflow_path)?;
+    let reusable_workflow = if workflow.contains(ROUTED_RUST_REUSABLE_WORKFLOW_REF) {
+        optional_policy_text(ROUTED_RUST_REUSABLE_WORKFLOW_PATH)?
+    } else {
+        None
+    };
     let settings = optional_policy_text(".github/settings.yml")?;
     let lane_whitelist = optional_policy_text("policy/ci-lane-whitelist.toml")?;
 
-    Ok(routed_rust_workflow_contract_violations(
+    Ok(routed_rust_workflow_contract_violations_with_reusable(
         &workflow,
+        reusable_workflow.as_deref(),
         settings.as_deref(),
         lane_whitelist.as_deref(),
     ))
@@ -6706,10 +7288,17 @@ const ROUTED_RUST_DEADLINE_JOBS: [&str; 5] = [
     "result",
 ];
 
-/// Whether the named job block in a workflow text sets `timeout-minutes`.
+const ROUTED_RUST_REUSABLE_WORKFLOW_PATH: &str = ".github/workflows/rust-gates.yml";
+const ROUTED_RUST_REUSABLE_WORKFLOW_REF: &str = "uses: ./.github/workflows/rust-gates.yml";
+
+/// Whether any line in the named job block satisfies `predicate`.
 /// Job keys are exactly two-space-indented `name:` lines under `jobs:`;
 /// anything deeper belongs to the current block.
-fn routed_rust_job_block_has_deadline(workflow: &str, job: &str) -> bool {
+fn routed_rust_job_block_any(
+    workflow: &str,
+    job: &str,
+    mut predicate: impl FnMut(&str) -> bool,
+) -> bool {
     let job_header = format!("{job}:");
     let mut in_block = false;
     for line in workflow.lines() {
@@ -6721,15 +7310,34 @@ fn routed_rust_job_block_has_deadline(workflow: &str, job: &str) -> bool {
             in_block = line.trim() == job_header;
             continue;
         }
-        if in_block && !line.trim_start().starts_with('#') && line.contains("timeout-minutes:") {
+        if in_block && !line.is_empty() && !line.starts_with(' ') {
+            break;
+        }
+        if in_block && predicate(line) {
             return true;
         }
     }
     false
 }
 
+fn routed_rust_job_block_has_deadline(workflow: &str, job: &str) -> bool {
+    routed_rust_job_block_any(workflow, job, |line| {
+        !line.trim_start().starts_with('#') && line.contains("timeout-minutes:")
+    })
+}
+
+#[cfg(test)]
 fn routed_rust_workflow_contract_violations(
     workflow: &str,
+    settings: Option<&str>,
+    lane_whitelist: Option<&str>,
+) -> Vec<String> {
+    routed_rust_workflow_contract_violations_with_reusable(workflow, None, settings, lane_whitelist)
+}
+
+fn routed_rust_workflow_contract_violations_with_reusable(
+    workflow: &str,
+    _reusable_workflow: Option<&str>,
     settings: Option<&str>,
     lane_whitelist: Option<&str>,
 ) -> Vec<String> {
@@ -6896,7 +7504,6 @@ fn routed_rust_workflow_contract_violations(
             ));
         }
     }
-
     if let Some(settings) = settings
         && (settings.contains("name: ripr-swarm") || settings.contains("Ripr Rust Small Result"))
     {
@@ -7069,20 +7676,6 @@ fn check_spec_format() -> Result<(), String> {
             Some(value) => violations.push(format!("{normalized} has invalid status `{value}`")),
             None => violations.push(format!("{normalized} is missing `Status: ...`")),
         }
-        // #2708: flag proposed specs older than 90 days without review.
-        // Accepted/deprecated specs are exempt — they have been reviewed.
-        if status.as_deref() == Some("proposed")
-            && let Ok(metadata) = std::fs::metadata(&path)
-            && let Ok(modified) = metadata.modified()
-            && let Ok(elapsed) = modified.elapsed()
-            && elapsed.as_secs() > 90 * 24 * 60 * 60
-        {
-            let days = elapsed.as_secs() / (24 * 60 * 60);
-            violations.push(format!(
-                "{normalized} has been `proposed` for {days} days without review; \
-                 promote to `accepted`, re-scope, or add evidence to justify the status"
-            ));
-        }
         for heading in required_spec_headings() {
             if !has_markdown_heading(&text, heading) {
                 violations.push(format!("{normalized} is missing `{heading}`"));
@@ -7113,16 +7706,19 @@ fn check_spec_format() -> Result<(), String> {
     )
 }
 
+const SPECS_USAGE: &str = "usage: cargo xtask specs next | maintenance --as-of YYYY-MM-DD [--json] [--receipts <dir>] | digest --as-of YYYY-MM-DD [--json] [--receipts <dir>] | close --spec RIPR-SPEC-NNNN --disposition <label> --as-of YYYY-MM-DD --reviewed-by <identity> [--waived-until YYYY-MM-DD] [--detail <text>]";
+
 fn specs(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("next") => {
             println!("{}", next_spec_id(Path::new("."))?);
             Ok(())
         }
-        Some(other) => Err(format!(
-            "unknown specs command `{other}`\nusage: cargo xtask specs next"
-        )),
-        None => Err("missing specs command\nusage: cargo xtask specs next".to_string()),
+        Some("maintenance") => reports::spec_maintenance(&args[1..]),
+        Some("digest") => reports::spec_digest(&args[1..]),
+        Some("close") => reports::spec_close(&args[1..]),
+        Some(other) => Err(format!("unknown specs command `{other}`\n{SPECS_USAGE}")),
+        None => Err(format!("missing specs command\n{SPECS_USAGE}")),
     }
 }
 
@@ -7863,19 +8459,24 @@ pub(crate) fn metrics_report_impl() -> Result<(), String> {
     write_report("metrics.json", &capability_metrics_json(&capabilities))
 }
 
-pub(crate) fn test_oracle_report_impl() -> Result<(), String> {
-    let tests = collect_test_oracle_tests()?;
-    write_report("test-oracles.md", &test_oracle_report_markdown(&tests))?;
-    write_report("test-oracles.json", &test_oracle_report_json(&tests))
+fn collect_test_oracle_tests() -> Result<Vec<TestOracleTest>, String> {
+    let roots = test_oracle_source_roots();
+    collect_test_oracle_tests_from_roots(&roots)
 }
 
-fn collect_test_oracle_tests() -> Result<Vec<TestOracleTest>, String> {
-    let mut tests = Vec::new();
-    for root in [
+pub(crate) fn test_oracle_source_roots() -> [&'static Path; 3] {
+    [
         Path::new("crates/ripr/src"),
         Path::new("crates/ripr/tests"),
         Path::new("xtask/src"),
-    ] {
+    ]
+}
+
+pub(crate) fn collect_test_oracle_tests_from_roots(
+    roots: &[&Path],
+) -> Result<Vec<TestOracleTest>, String> {
+    let mut tests = Vec::new();
+    for root in roots {
         if !root.exists() {
             continue;
         }
@@ -7897,6 +8498,272 @@ fn collect_test_oracle_tests() -> Result<Vec<TestOracleTest>, String> {
 }
 
 fn test_oracle_tests_in_text(path: &Path, text: &str) -> Vec<TestOracleTest> {
+    if let Some(tests) = test_oracle_tests_via_syntax(path, text) {
+        return tests;
+    }
+    test_oracle_tests_in_text_legacy(path, text)
+}
+
+/// Test selection from the real syntax tree: every non-nested `fn` carrying a
+/// test attribute gets its exact node range, so braces inside strings or
+/// comments can neither truncate a body nor swallow following tests (#3687).
+/// Returns `None` when the file does not parse cleanly; the caller then keeps
+/// the legacy line scan, preserving today's behavior on malformed input.
+fn test_oracle_tests_via_syntax(path: &Path, text: &str) -> Option<Vec<TestOracleTest>> {
+    let parse = SourceFile::parse(text, Edition::CURRENT);
+    if !parse.errors().is_empty() {
+        return None;
+    }
+    let lines = text.lines().collect::<Vec<_>>();
+    let line_starts = test_oracle_line_starts(text);
+    // 1-based line number for a byte offset (matches the legacy `line` fields).
+    let line_no = |offset: usize| line_starts.partition_point(|start| *start <= offset);
+    let mut tests = Vec::new();
+    for node in parse.tree().syntax().descendants() {
+        let Some(func) = ast::Fn::cast(node) else {
+            continue;
+        };
+        // The legacy scan jumps over test bodies, so a `#[test]` fn nested
+        // inside another fn body was never selected; keep that reach.
+        if func
+            .syntax()
+            .ancestors()
+            .any(|ancestor| ancestor.kind() == SyntaxKind::FN && ancestor != *func.syntax())
+        {
+            continue;
+        }
+        let Some(attr) = func
+            .attrs()
+            .find(|attr| is_test_attribute(&attr.syntax().text().to_string().replace(' ', "")))
+        else {
+            continue;
+        };
+        let Some(name) = func.name().map(|name| name.text().to_string()) else {
+            continue;
+        };
+        let attr_line = line_no(usize::from(attr.syntax().text_range().start()));
+        let fn_line = func
+            .fn_token()
+            .map(|token| line_no(usize::from(token.text_range().start())))
+            .unwrap_or_else(|| line_no(usize::from(func.syntax().text_range().start())));
+        let end_line = line_no(usize::from(func.syntax().text_range().end()).saturating_sub(1));
+        if fn_line == 0 || end_line > lines.len() || fn_line > end_line {
+            continue;
+        }
+        let body = lines[fn_line - 1..=end_line - 1].join("\n");
+        tests.push(test_oracle_test_for_range(
+            path, name, attr_line, fn_line, &body,
+        ));
+    }
+    // Real tests generated inside macro invocations (`proptest!`,
+    // `test_case!`, ...) never surface as syntax-tree `fn` items: their
+    // bodies live inside opaque token trees. The legacy line scan saw them,
+    // so recover them with a token-level scan that keeps the string/comment
+    // blindness (fixture-embedded `#[test]` spellings stay invisible).
+    let mut seen: Vec<usize> = tests.iter().map(|test| test.line).collect();
+    for node in parse.tree().syntax().descendants() {
+        let Some(macro_call) = ast::MacroCall::cast(node) else {
+            continue;
+        };
+        for recovered in test_oracle_tests_in_macro_tree(text, &line_starts, &macro_call) {
+            if !seen.contains(&recovered.line) {
+                seen.push(recovered.line);
+                tests.push(test_oracle_test_for_range(
+                    path,
+                    recovered.name,
+                    recovered.line,
+                    recovered.body_line,
+                    &recovered.body,
+                ));
+            }
+        }
+    }
+    tests.sort_by(|left, right| left.line.cmp(&right.line).then(left.name.cmp(&right.name)));
+    Some(tests)
+}
+
+/// A test recovered from inside a macro token tree, with 1-based lines.
+struct MacroNestedTest {
+    name: String,
+    line: usize,
+    body_line: usize,
+    body: String,
+}
+
+/// `#[test] fn` items declared inside one macro invocation's token tree.
+/// Token-level matching keeps fixture-embedded spellings (string tokens)
+/// invisible. Trees nested in another macro tree or in a fn body are skipped
+/// to preserve the legacy selection reach.
+fn test_oracle_tests_in_macro_tree(
+    text: &str,
+    line_starts: &[usize],
+    macro_call: &ast::MacroCall,
+) -> Vec<MacroNestedTest> {
+    // Skip trees nested in another macro tree or in a fn body (legacy reach).
+    if macro_call
+        .syntax()
+        .ancestors()
+        .skip(1)
+        .any(|ancestor| matches!(ancestor.kind(), SyntaxKind::TOKEN_TREE | SyntaxKind::FN))
+    {
+        return Vec::new();
+    }
+    let Some(tree) = macro_call.token_tree() else {
+        return Vec::new();
+    };
+    let lines = text.lines().collect::<Vec<_>>();
+    let line_no = |offset: usize| line_starts.partition_point(|start| *start <= offset);
+    let tokens = tree
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| {
+            !matches!(
+                token.kind(),
+                SyntaxKind::WHITESPACE
+                    | SyntaxKind::COMMENT
+                    | SyntaxKind::STRING
+                    | SyntaxKind::BYTE_STRING
+                    | SyntaxKind::C_STRING
+                    | SyntaxKind::CHAR
+                    | SyntaxKind::BYTE
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut found = Vec::new();
+    let mut index = 0usize;
+    while index < tokens.len() {
+        // Look for `#` `[` ... `]` with a test-attribute spelling.
+        if tokens[index].text() != "#"
+            || tokens.get(index + 1).is_none_or(|next| next.text() != "[")
+        {
+            index += 1;
+            continue;
+        }
+        let mut depth = 0usize;
+        let mut close = None;
+        for (offset, token) in tokens[index..].iter().enumerate() {
+            if token.text() == "[" {
+                depth += 1;
+            } else if token.text() == "]" {
+                depth -= 1;
+                if depth == 0 {
+                    close = Some(index + offset);
+                    break;
+                }
+            }
+        }
+        let Some(close) = close else {
+            index += 1;
+            continue;
+        };
+        let spelling = tokens[index..=close]
+            .iter()
+            .map(|token| token.text().to_string())
+            .collect::<String>()
+            .replace(' ', "");
+        let mut cursor = close + 1;
+        if !is_test_attribute(&spelling) {
+            index = cursor;
+            continue;
+        }
+        // Expect `fn` NAME, then a braced body.
+        if cursor >= tokens.len() || tokens[cursor].text() != "fn" {
+            index = cursor;
+            continue;
+        }
+        cursor += 1;
+        if cursor >= tokens.len() {
+            break;
+        }
+        let name = tokens[cursor].text().to_string();
+        cursor += 1;
+        // Skip the parameter list.
+        if cursor < tokens.len() && tokens[cursor].text() == "(" {
+            let mut parens = 0usize;
+            while cursor < tokens.len() {
+                if tokens[cursor].text() == "(" {
+                    parens += 1;
+                } else if tokens[cursor].text() == ")" {
+                    parens -= 1;
+                    if parens == 0 {
+                        cursor += 1;
+                        break;
+                    }
+                }
+                cursor += 1;
+            }
+        }
+        if cursor >= tokens.len() || tokens[cursor].text() != "{" {
+            index = cursor;
+            continue;
+        }
+        let mut braces = 0usize;
+        let mut end_cursor = None;
+        while cursor < tokens.len() {
+            if tokens[cursor].text() == "{" {
+                braces += 1;
+            } else if tokens[cursor].text() == "}" {
+                braces -= 1;
+                if braces == 0 {
+                    end_cursor = Some(cursor);
+                    break;
+                }
+            }
+            cursor += 1;
+        }
+        let Some(end_cursor) = end_cursor else {
+            index = cursor;
+            continue;
+        };
+        let attr_line = line_no(usize::from(tokens[index].text_range().start()));
+        let fn_line = line_no(usize::from(tokens[close + 1].text_range().start()));
+        let end_line = line_no(usize::from(tokens[end_cursor].text_range().start()));
+        if fn_line == 0 || end_line > lines.len() || fn_line > end_line {
+            index = end_cursor + 1;
+            continue;
+        }
+        found.push(MacroNestedTest {
+            name,
+            line: attr_line,
+            body_line: fn_line,
+            body: lines[fn_line - 1..=end_line - 1].join("\n"),
+        });
+        index = end_cursor + 1;
+    }
+    found
+}
+
+/// Classify one detected test body and build its record. Shared by the syntax
+/// and legacy selection paths so both observe identical evidence semantics.
+fn test_oracle_test_for_range(
+    path: &Path,
+    name: String,
+    attr_line: usize,
+    fn_line: usize,
+    body: &str,
+) -> TestOracleTest {
+    let (code_lines, _) = test_oracle_code_lines(body);
+    let asserted_matches = test_oracle_asserted_matches_ranges(body);
+    let code_refs = code_lines.iter().map(String::as_str).collect::<Vec<_>>();
+    let observations = test_oracle_observations(&code_refs, fn_line, &asserted_matches);
+    let class = observations
+        .iter()
+        .map(|observation| observation.class)
+        .max_by_key(|class| class.rank())
+        .unwrap_or(TestOracleClass::Smoke);
+    TestOracleTest {
+        path: path.to_path_buf(),
+        name,
+        line: attr_line,
+        body_line: fn_line,
+        body: body.to_string(),
+        class,
+        observations,
+    }
+}
+
+fn test_oracle_tests_in_text_legacy(path: &Path, text: &str) -> Vec<TestOracleTest> {
     let lines = text.lines().collect::<Vec<_>>();
     let mut tests = Vec::new();
     let mut pending_test_attr_line = None;
@@ -7917,22 +8784,27 @@ fn test_oracle_tests_in_text(path: &Path, text: &str) -> Vec<TestOracleTest> {
             }
 
             if let Some(name) = test_fn_name(trimmed) {
-                let end = test_function_end(&lines, index);
-                let observations = test_oracle_observations(&lines[index..=end], index + 1);
-                let class = observations
-                    .iter()
-                    .map(|observation| observation.class)
-                    .max_by_key(|class| class.rank())
-                    .unwrap_or(TestOracleClass::Smoke);
-                tests.push(TestOracleTest {
-                    path: path.to_path_buf(),
+                let mut end = test_function_end(&lines, index);
+                // A brace inside a string or comment can truncate the
+                // brace-counted boundary, leaving a body that does not parse.
+                // Extend forward until the slice parses so a valid test never
+                // reaches the unfiltered fallback through truncation. Stop at
+                // the next test attribute or EOF: crossing into the next test
+                // would misattribute its observations.
+                while end + 1 < lines.len()
+                    && !is_test_attribute(lines[end + 1].trim())
+                    && !test_oracle_body_parses(&lines[index..=end].join("\n"))
+                {
+                    end += 1;
+                }
+                let body = lines[index..=end].join("\n");
+                tests.push(test_oracle_test_for_range(
+                    path,
                     name,
-                    line: attr_line,
-                    body_line: index + 1,
-                    body: lines[index..=end].join("\n"),
-                    class,
-                    observations,
-                });
+                    attr_line,
+                    index + 1,
+                    &body,
+                ));
                 pending_test_attr_line = None;
                 index = end + 1;
                 continue;
@@ -7993,9 +8865,160 @@ fn test_function_end(lines: &[&str], start: usize) -> usize {
     lines.len().saturating_sub(1)
 }
 
-fn test_oracle_observations(lines: &[&str], first_line: usize) -> Vec<TestOracleObservation> {
+/// Byte offset where each body line starts; the entry count always equals the
+/// line count, so it doubles as the line denominator.
+fn test_oracle_line_starts(body: &str) -> Vec<usize> {
+    let mut line_starts = vec![0usize];
+    for (offset, _) in body.match_indices('\n') {
+        line_starts.push(offset + 1);
+    }
+    line_starts
+}
+
+fn test_oracle_body_parses(body: &str) -> bool {
+    SourceFile::parse(body, Edition::CURRENT)
+        .errors()
+        .is_empty()
+}
+
+/// Code text of each test-body line with strings, character/byte literals, and
+/// comments removed through the real lexer (`ra_ap_syntax`), so
+/// assertion-shaped inert text can never establish oracle evidence (#3687).
+///
+/// The returned vector has exactly one entry per input line, preserving line
+/// identity for observation reporting, alongside whether the body parsed. An
+/// unparseable body falls back to the verbatim lines (today's behavior): for
+/// this advisory report, keeping the prior over-credit on malformed input is
+/// safer than silently dropping every observation to Smoke. The caller extends
+/// brace-truncated boundaries before this runs, so the fallback should only
+/// trigger on genuinely malformed input.
+fn test_oracle_code_lines(body: &str) -> (Vec<String>, bool) {
+    let parse = SourceFile::parse(body, Edition::CURRENT);
+    if !parse.errors().is_empty() {
+        return (body.lines().map(str::to_string).collect(), false);
+    }
+    let line_starts = test_oracle_line_starts(body);
+    let mut code_lines = vec![String::new(); line_starts.len()];
+    let line_of = |offset: usize| line_starts.partition_point(|start| *start <= offset) - 1;
+    for token in parse
+        .tree()
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+    {
+        match token.kind() {
+            SyntaxKind::COMMENT
+            | SyntaxKind::STRING
+            | SyntaxKind::BYTE_STRING
+            | SyntaxKind::C_STRING
+            | SyntaxKind::CHAR
+            | SyntaxKind::BYTE => continue,
+            _ => {}
+        }
+        let start_line = line_of(usize::from(token.text_range().start()));
+        for (offset, part) in token.text().split('\n').enumerate() {
+            if start_line + offset < code_lines.len() {
+                code_lines[start_line + offset].push_str(part);
+            }
+        }
+    }
+    (code_lines, true)
+}
+
+/// Body-relative 0-based line ranges of `assert!(...)` invocations whose
+/// condition evaluates a `matches!(...)` macro call (#3687).
+///
+/// Association is token-range based, not line co-occurrence: a discarded
+/// `matches!` sharing a line with an unrelated `assert!` earns nothing, a
+/// `matches!` mentioned only in an assertion message is invisible (message
+/// strings are filtered tokens), and multi-line `assert!(matches!(..))` forms
+/// credit the macro's first line. A `matches!` nested deeper inside the
+/// asserted expression (e.g. behind a block that discards it) still credits:
+/// token ranges cannot see statement position, so this errs toward credit
+/// only for text the asserted condition actually contains.
+fn test_oracle_asserted_matches_ranges(body: &str) -> Vec<(usize, usize)> {
+    let parse = SourceFile::parse(body, Edition::CURRENT);
+    if !parse.errors().is_empty() {
+        return Vec::new();
+    }
+    let line_starts = test_oracle_line_starts(body);
+    let line_of = |offset: usize| line_starts.partition_point(|start| *start <= offset) - 1;
+    let mut ranges = Vec::new();
+    for macro_call in parse
+        .tree()
+        .syntax()
+        .descendants()
+        .filter_map(ast::MacroCall::cast)
+    {
+        let is_assert = macro_call
+            .path()
+            .is_some_and(|path| path.syntax().text() == "assert");
+        let Some(token_tree) = macro_call.token_tree() else {
+            continue;
+        };
+        if !is_assert || !token_tree_contains_asserted_matches(&token_tree) {
+            continue;
+        }
+        let range = token_tree.syntax().text_range();
+        let start = line_of(usize::from(range.start()));
+        let end = line_of(usize::from(range.end()).saturating_sub(1));
+        ranges.push((start, end));
+    }
+    ranges
+}
+
+/// True when the `assert!(...)` token tree evaluates a `matches!(...)` macro
+/// invocation: an adjacent `matches` `!` `(` token triple outside literals,
+/// comments, and whitespace. Assertion-message mentions are string tokens,
+/// so they never qualify.
+fn token_tree_contains_asserted_matches(token_tree: &ast::TokenTree) -> bool {
+    let significant = token_tree
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| {
+            !matches!(
+                token.kind(),
+                SyntaxKind::WHITESPACE
+                    | SyntaxKind::COMMENT
+                    | SyntaxKind::STRING
+                    | SyntaxKind::BYTE_STRING
+                    | SyntaxKind::C_STRING
+                    | SyntaxKind::CHAR
+                    | SyntaxKind::BYTE
+            )
+        })
+        .map(|token| token.text().to_string())
+        .collect::<Vec<_>>();
+    significant
+        .windows(3)
+        .any(|window| window == ["matches", "!", "("])
+}
+
+fn test_oracle_observations(
+    lines: &[&str],
+    first_line: usize,
+    asserted_matches: &[(usize, usize)],
+) -> Vec<TestOracleObservation> {
     let mut observations = Vec::new();
     for (offset, line) in lines.iter().enumerate() {
+        if let Some(range) = asserted_matches
+            .iter()
+            .find(|range| offset >= range.0 && offset <= range.1)
+        {
+            // One Strong observation at the macro's first line; continuation
+            // lines contribute nothing so a split `matches!(` is neither
+            // double-counted nor demoted to a generic assert.
+            if offset == range.0 {
+                observations.push(test_oracle_observation_for(
+                    first_line + offset,
+                    TestOracleClass::Strong,
+                    "matches!",
+                    "pattern assertion can discriminate an exact variant or shape",
+                ));
+            }
+            continue;
+        }
         let trimmed = line.trim();
         if trimmed.starts_with("//") {
             continue;
@@ -8030,14 +9053,11 @@ fn test_oracle_observation(trimmed: &str, line: usize) -> Option<TestOracleObser
             "exact equality, inequality, or variant assertion",
         ));
     }
-    if trimmed.contains("matches!(") {
-        return Some(test_oracle_observation_for(
-            line,
-            TestOracleClass::Strong,
-            "matches!",
-            "pattern assertion can discriminate an exact variant or shape",
-        ));
-    }
+    // A bare `matches!` never reaches Strong here: asserted forms are credited
+    // through the syntax-derived ranges in `test_oracle_observations`, which
+    // require the invocation to sit inside an `assert!(...)` condition. On
+    // unparseable bodies those ranges are empty and an asserted `matches!`
+    // falls through to the generic-assert arm (fail-closed Weak).
     if trimmed.contains("status.success()") {
         return Some(test_oracle_observation_for(
             line,
@@ -8103,7 +9123,7 @@ fn test_oracle_observation_for(
     }
 }
 
-fn is_bdd_test_name(name: &str) -> bool {
+pub(crate) fn is_bdd_test_name(name: &str) -> bool {
     let compact = name.to_ascii_lowercase();
     if !compact.starts_with("given_") {
         return false;
@@ -8119,7 +9139,7 @@ fn is_bdd_test_name(name: &str) -> bool {
     when_index > "given_".len() && then_index > when_index + "_when_".len()
 }
 
-fn test_oracle_counts(tests: &[TestOracleTest]) -> BTreeMap<&'static str, usize> {
+pub(crate) fn test_oracle_counts(tests: &[TestOracleTest]) -> BTreeMap<&'static str, usize> {
     let mut counts = BTreeMap::from([
         ("strong", 0usize),
         ("medium", 0usize),
@@ -8132,133 +9152,6 @@ fn test_oracle_counts(tests: &[TestOracleTest]) -> BTreeMap<&'static str, usize>
         }
     }
     counts
-}
-
-fn test_oracle_report_status(tests: &[TestOracleTest]) -> &'static str {
-    if tests
-        .iter()
-        .any(|test| matches!(test.class, TestOracleClass::Weak | TestOracleClass::Smoke))
-    {
-        "warn"
-    } else {
-        "pass"
-    }
-}
-
-fn test_oracle_report_markdown(tests: &[TestOracleTest]) -> String {
-    let counts = test_oracle_counts(tests);
-    let bdd_named = tests
-        .iter()
-        .filter(|test| is_bdd_test_name(&test.name))
-        .count();
-    let mut body = format!(
-        "# ripr test oracle report\n\nStatus: {}\n\nMode: advisory\n\nThis report measures the apparent discriminator strength of `ripr`'s own Rust tests. It does not fail existing debt yet.\n\n## Summary\n\n- Strong: {}\n- Medium: {}\n- Weak: {}\n- Smoke: {}\n- BDD-shaped names: {} / {}\n\n",
-        test_oracle_report_status(tests),
-        counts.get("strong").copied().unwrap_or(0),
-        counts.get("medium").copied().unwrap_or(0),
-        counts.get("weak").copied().unwrap_or(0),
-        counts.get("smoke").copied().unwrap_or(0),
-        bdd_named,
-        tests.len(),
-    );
-
-    body.push_str("## Weak Or Smoke Tests\n\n");
-    let weak_or_smoke = tests
-        .iter()
-        .filter(|test| matches!(test.class, TestOracleClass::Weak | TestOracleClass::Smoke))
-        .collect::<Vec<_>>();
-    if weak_or_smoke.is_empty() {
-        body.push_str("None detected.\n\n");
-    } else {
-        for test in weak_or_smoke {
-            body.push_str(&format!(
-                "- `{}`:{} `{}` classified `{}`\n",
-                normalize_path(&test.path),
-                test.line,
-                test.name,
-                test.class.as_str()
-            ));
-            for observation in &test.observations {
-                body.push_str(&format!(
-                    "  - line {}: `{}` - {}\n",
-                    observation.line, observation.pattern, observation.detail
-                ));
-            }
-        }
-        body.push('\n');
-    }
-
-    body.push_str("## All Tests\n\n| Test | Class | Evidence |\n| --- | --- | --- |\n");
-    for test in tests {
-        let evidence = test
-            .observations
-            .iter()
-            .map(|observation| format!("{}: {}", observation.line, observation.pattern))
-            .collect::<Vec<_>>()
-            .join("<br>");
-        body.push_str(&format!(
-            "| `{}`:{} `{}` | `{}` | {} |\n",
-            normalize_path(&test.path),
-            test.line,
-            markdown_cell(&test.name),
-            test.class.as_str(),
-            markdown_cell(&evidence)
-        ));
-    }
-    body
-}
-
-fn test_oracle_report_json(tests: &[TestOracleTest]) -> String {
-    let counts = test_oracle_counts(tests);
-    let mut body = format!(
-        "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"counts\": {{\n    \"strong\": {},\n    \"medium\": {},\n    \"weak\": {},\n    \"smoke\": {}\n  }},\n  \"tests\": [\n",
-        test_oracle_report_status(tests),
-        counts.get("strong").copied().unwrap_or(0),
-        counts.get("medium").copied().unwrap_or(0),
-        counts.get("weak").copied().unwrap_or(0),
-        counts.get("smoke").copied().unwrap_or(0)
-    );
-
-    for (test_index, test) in tests.iter().enumerate() {
-        if test_index > 0 {
-            body.push_str(",\n");
-        }
-        body.push_str("    {\n");
-        body.push_str(&format!(
-            "      \"path\": \"{}\",\n",
-            json_escape(&normalize_path(&test.path))
-        ));
-        body.push_str(&format!(
-            "      \"name\": \"{}\",\n",
-            json_escape(&test.name)
-        ));
-        body.push_str(&format!("      \"line\": {},\n", test.line));
-        body.push_str(&format!("      \"class\": \"{}\",\n", test.class.as_str()));
-        body.push_str("      \"observations\": [\n");
-        for (observation_index, observation) in test.observations.iter().enumerate() {
-            if observation_index > 0 {
-                body.push_str(",\n");
-            }
-            body.push_str("        {\n");
-            body.push_str(&format!("          \"line\": {},\n", observation.line));
-            body.push_str(&format!(
-                "          \"class\": \"{}\",\n",
-                observation.class.as_str()
-            ));
-            body.push_str(&format!(
-                "          \"pattern\": \"{}\",\n",
-                json_escape(&observation.pattern)
-            ));
-            body.push_str(&format!(
-                "          \"detail\": \"{}\"\n",
-                json_escape(&observation.detail)
-            ));
-            body.push_str("        }");
-        }
-        body.push_str("\n      ]\n    }");
-    }
-    body.push_str("\n  ]\n}\n");
-    body
 }
 
 pub(crate) fn test_efficiency_report_impl() -> Result<(), String> {
@@ -13227,6 +14120,18 @@ fn check_architecture() -> Result<(), String> {
         }
     }
 
+    for file in files
+        .iter()
+        .filter(|file| convergence::architecture::is_source_candidate(file))
+    {
+        let text = read_text_lossy(Path::new(file))?;
+        violations.extend(convergence::architecture::source_violations(file, &text));
+    }
+
+    violations.extend(convergence::architecture::required_surface_violations(
+        &files,
+    ));
+
     // RIPR-SPEC-0087 §8 (issue #2028): repair-packet authority coupling guard.
     for file in &files {
         if !file.starts_with("crates/ripr/src/") || !file.ends_with(".rs") {
@@ -13255,12 +14160,209 @@ fn check_architecture() -> Result<(), String> {
                 "Move rendering logic into output modules.",
                 "Keep domain model types independent from CLI, LSP, output, and JSON adapters.",
                 "Keep analysis logic out of CLI, LSP, and output adapters.",
+                "Keep convergence types and domain code independent from infrastructure adapters.",
+                "Route convergence command I/O and mutation through the bounded convergence ports.",
                 "Update policy/architecture.txt only when the architecture rule itself changes.",
             ],
             rerun_command: "cargo xtask check-architecture",
             exception_template: Some("glob|forbidden_pattern|reason"),
         },
         &violations,
+    )
+}
+
+/// #3534: Rust source-role authority. Producer modules derive source role
+/// from Cargo target declarations, role configuration, test-defining
+/// attributes, cfg predicates, harness registrations, and composition
+/// provenance; every other consumer must receive the typed
+/// role/provenance facts instead of re-deriving role from paths,
+/// attributes, or strings. This gate rejects consumer-side role
+/// heuristics and names the owning producer API to route through.
+fn check_rust_source_role_authority() -> Result<(), String> {
+    const SCAN_ROOT: &str = "crates/ripr/src";
+    /// Out of scope: non-Rust adapters own their per-language test-file
+    /// authorities (`python`/`typescript` define local `is_test_file`
+    /// helpers); this gate polices the RUST source-role authority only.
+    const OUT_OF_SCOPE_PREFIXES: [&str; 2] = [
+        "crates/ripr/src/analysis/language/python",
+        "crates/ripr/src/analysis/language/typescript",
+    ];
+    /// Producer modules allowed to contain the patterns below: they are the
+    /// role-derivation authorities (RIPR-SPEC-0153) or package-identity
+    /// layout classification that feeds `SourceRoleContext`.
+    const PRODUCER_PREFIXES: [&str; 5] = [
+        "crates/ripr/src/analysis/facts/",
+        "crates/ripr/src/analysis/workspace/source_role.rs",
+        "crates/ripr/src/analysis/workspace/classify.rs",
+        "crates/ripr/src/analysis/rust_index.rs",
+        "crates/ripr/src/analysis/syntax/",
+    ];
+    /// (file, pattern) pairs explicitly allowed outside producers, each with
+    /// the reason it is not a role authority. New entries need the reason in
+    /// the surrounding code and a review that the check stays display- or
+    /// identity-scoped.
+    const ALLOWED_SITE_PATTERNS: [(&str, &str, &str); 7] = [
+        (
+            "crates/ripr/src/output/review_comments.rs",
+            "starts_with(\"tests",
+            "display grouping of test-like files inside the rendered review comment; grouping only, findings are already selected",
+        ),
+        (
+            "crates/ripr/src/output/review_comments.rs",
+            "contains(\"/tests/\")",
+            "display grouping of test-like files inside the rendered review comment; grouping only, findings are already selected",
+        ),
+        (
+            "crates/ripr/src/output/review_comments.rs",
+            "ends_with(\"_test.rs\")",
+            "display grouping of test-like files inside the rendered review comment; grouping only, findings are already selected",
+        ),
+        (
+            "crates/ripr/src/output/review_comments.rs",
+            "ends_with(\"_tests.rs\")",
+            "display grouping of test-like files inside the rendered review comment; grouping only, findings are already selected",
+        ),
+        (
+            "crates/ripr/src/analysis/test_grip_evidence/related_tests.rs",
+            "starts_with(\"tests",
+            "package_prefix/package_scope derive package identity from paths, which the source-role contract explicitly permits; they do not classify role",
+        ),
+        (
+            "crates/ripr/src/analysis/classify/related_tests.rs",
+            "starts_with(\"tests",
+            "package_prefix/package_scope derive package identity from paths, which the source-role contract explicitly permits; they do not classify role",
+        ),
+        (
+            "crates/ripr/src/lsp/tests.rs",
+            "\"#[cfg(test)]\"",
+            "LSP test fixtures split source text on the attribute spelling; the string is test data, not a role decision",
+        ),
+    ];
+    /// Rules: (pattern, owner guidance). Patterns are matched as plain
+    /// substrings of the scanned production text.
+    const RULES: [(&str, &str); 5] = [
+        (
+            "starts_with(\"tests",
+            "route test-file decisions through `rust_index::is_test_file` or the layout role from `SourceRoleContext::classify_with` (RIPR-SPEC-0153)",
+        ),
+        (
+            "contains(\"/tests/\")",
+            "route test-file decisions through `rust_index::is_test_file` or the layout role from `SourceRoleContext::classify_with` (RIPR-SPEC-0153)",
+        ),
+        (
+            "ends_with(\"_test.rs\")",
+            "a naming convention cannot establish role; use the layout role from `SourceRoleContext::classify_with` and keep naming purely presentational (RIPR-SPEC-0153)",
+        ),
+        (
+            "ends_with(\"_tests.rs\")",
+            "a naming convention cannot establish role; use the layout role from `SourceRoleContext::classify_with` and keep naming purely presentational (RIPR-SPEC-0153)",
+        ),
+        (
+            "\"#[cfg(test)]\"",
+            "route cfg-term recognition through `analysis::facts::cfg_predicates` (the #3530 cfg-predicate authority); consumers receive typed facts",
+        ),
+    ];
+    /// Approved `rust_index::is_test_file` call sites: the typed test-file
+    /// authority may be consumed only by this inventoried set; new consumers
+    /// extend the inventory here with a reason so role consumers stay
+    /// reviewable.
+    const IS_TEST_FILE_CONSUMERS: [&str; 6] = [
+        "crates/ripr/src/analysis/classify/owner_shape.rs",
+        "crates/ripr/src/analysis/test_grip_evidence.rs",
+        "crates/ripr/src/analysis/test_grip_evidence/related_tests/context.rs",
+        "crates/ripr/src/analysis/source_role_corpus.rs",
+        "crates/ripr/src/analysis/mod.rs",
+        "crates/ripr/src/analysis/language/rust.rs",
+    ];
+
+    let files = tracked_files()?;
+    let mut violations = Vec::new();
+    let mut fallbacks = Vec::new();
+    for file in &files {
+        if !file.starts_with(SCAN_ROOT) || !file.ends_with(".rs") {
+            continue;
+        }
+        if OUT_OF_SCOPE_PREFIXES
+            .iter()
+            .any(|prefix| file.starts_with(prefix))
+        {
+            continue;
+        }
+        if PRODUCER_PREFIXES
+            .iter()
+            .any(|prefix| file.starts_with(prefix))
+        {
+            continue;
+        }
+        // Test code asserts producer behavior and manipulates source text
+        // as data, so the interiors of top-level `#[cfg(test)]` items stay
+        // exempt: the gate polices production role derivation only. The
+        // region-aware scan still covers production code before, between,
+        // and after those items; the earlier first-item truncation let
+        // every production region below that line escape the ban (for
+        // example `analysis/mod.rs`, whose gated corpus declaration sits
+        // near the top of the file).
+        let source = read_text_lossy(Path::new(file))?;
+        let regions = rust_region_scan::production_text_regions(&source);
+        if regions.used_verbatim_fallback {
+            fallbacks.push(file.clone());
+        }
+        let scanned = regions.text;
+        for (pattern, owner) in RULES {
+            if !scanned.contains(pattern) {
+                continue;
+            }
+            if ALLOWED_SITE_PATTERNS
+                .iter()
+                .any(|(allowed_file, allowed_pattern, _)| {
+                    *allowed_file == file.as_str() && *allowed_pattern == pattern
+                })
+            {
+                continue;
+            }
+            violations.push(format!(
+                "{file} re-derives source role with `{pattern}` outside the producer modules\n  owner: {owner}\n  reason: #3534 - consumers receive typed role facts; path, attribute, and string heuristics may not become role authorities"
+            ));
+        }
+        if scanned.contains("is_test_file(") && !IS_TEST_FILE_CONSUMERS.contains(&file.as_str()) {
+            violations.push(format!(
+                "{file} calls `rust_index::is_test_file` outside the approved consumer inventory\n  owner: `rust_index::is_test_file` is the typed test-file authority; extend the inventory in `check_rust_source_role_authority` with a reviewed reason or route through `SourceRoleContext`\n  reason: #3534 - role consumers stay reviewable against the producer contract"
+            ));
+        }
+    }
+
+    let disclosures = if fallbacks.is_empty() {
+        Vec::new()
+    } else {
+        vec![PolicyDisclosure {
+            heading: "Parse Fallbacks".to_string(),
+            intro: "These files did not parse cleanly under the edition-2024 grammar, so their \
+                   production regions could not be derived from the syntax tree. Each was \
+                   scanned verbatim (its cfg-test item interiors were not exempted). Verbatim \
+                   scanning can only over-report violations, never skip them; findings inside \
+                   these files' test items need hand verification against the parse failure."
+                .to_string(),
+            items: fallbacks,
+        }]
+    };
+
+    finish_policy_report_with_disclosures(
+        PolicyReportSpec {
+            report_file: "source-role-authority.md",
+            check: "check-rust-source-role-authority",
+            why_it_matters: "Source-role fixes have repeatedly landed in one producer or consumer while another path retained an older heuristic; a mechanical authority gate keeps every consumer on the producer-owned role contract.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Route test-file decisions through `rust_index::is_test_file` or `SourceRoleContext::classify_with`.",
+                "Route cfg-term recognition through `analysis::facts::cfg_predicates`.",
+                "Keep path checks scoped to path containment, package identity, display, or integration-test kind.",
+                "Extend the consumer inventory in `check_rust_source_role_authority` only with a reviewed reason.",
+            ],
+            rerun_command: "cargo xtask check-rust-source-role-authority",
+            exception_template: None,
+        },
+        &violations,
+        &disclosures,
     )
 }
 
@@ -13671,7 +14773,7 @@ fn check_output_contracts() -> Result<(), String> {
             }
             "exposure_class" | "severity" | "probe_family" | "delta" | "flow_sink"
             | "stage_state" | "confidence" | "oracle_kind" | "oracle_strength" | "stop_reason"
-            | "value_context" | "oracle_alignment" => {
+            | "value_context" | "oracle_alignment" | "source_currentness" => {
                 require_contract_value(
                     "crates/ripr/src/domain/",
                     &domain,
@@ -13918,6 +15020,8 @@ fn check_doc_index() -> Result<(), String> {
 const DOC_ARTIFACT_LEDGER: &str = "policy/doc-artifacts.toml";
 const DOC_ARTIFACT_SCHEMA_VERSION: &str = "1.0";
 const SUPPORT_TIERS_PATH: &str = "docs/status/SUPPORT_TIERS.md";
+const RUST_REPAIR_TRUST_CORPUS_PATH: &str = "metrics/rust-repair-trust/corpus.json";
+const RUST_GAP_REPAIR_CAPABILITY: &str = "Rust gap repair loop";
 const DOC_ARTIFACT_KINDS: &[&str] = &[
     "adr",
     "closeout",
@@ -14511,9 +15615,92 @@ fn support_tier_violations(root: &Path, support_tiers_path: &Path) -> Result<Vec
         validate_support_tier_row(root, &display, row, &mut violations);
     }
 
+    validate_rust_gap_repair_support_tier(root, &display, &rows, &mut violations);
+
     validate_support_tier_spec_links(root, &mut violations)?;
     validate_readme_support_tier_pointer(root, &mut violations)?;
     Ok(violations)
+}
+
+fn validate_rust_gap_repair_support_tier(
+    root: &Path,
+    display: &str,
+    rows: &[SupportTierRow],
+    violations: &mut Vec<String>,
+) {
+    let matching_rows = rows
+        .iter()
+        .filter(|row| row.capability.trim() == RUST_GAP_REPAIR_CAPABILITY)
+        .collect::<Vec<_>>();
+    let row = match matching_rows.as_slice() {
+        [] => {
+            violations.push(format!(
+                "{display} must contain exactly one canonical support-tier row named `{RUST_GAP_REPAIR_CAPABILITY}`; the row is missing or renamed"
+            ));
+            return;
+        }
+        [row] => *row,
+        duplicates => {
+            let lines = duplicates
+                .iter()
+                .map(|row| row.line.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            violations.push(format!(
+                "{display} must contain exactly one canonical support-tier row named `{RUST_GAP_REPAIR_CAPABILITY}`; found {} rows on lines {lines}",
+                duplicates.len()
+            ));
+            return;
+        }
+    };
+
+    let tier = normalized_support_tier(&row.tier);
+    let corpus_path = root.join(RUST_REPAIR_TRUST_CORPUS_PATH);
+    let report = rust_repair_trust_report_value_at(&corpus_path).ok();
+    if let Some(reason) = rust_gap_repair_interim_cap_violation(&tier, report.as_ref()) {
+        violations.push(format!(
+            "{display}:{} support-tier row `{RUST_GAP_REPAIR_CAPABILITY}` cannot claim `{tier}`: {reason}",
+            row.line
+        ));
+    }
+}
+
+fn rust_gap_repair_interim_cap_violation(
+    tier: &str,
+    report: Option<&serde_json::Value>,
+) -> Option<String> {
+    if !matches!(tier, "usable" | "stable building block") {
+        return None;
+    }
+    let report_context = rust_gap_repair_report_context(report);
+    Some(format!(
+        "`{tier}` exceeds the interim `usable alpha` cap; {report_context}, but the trust report alone is not promotion authority; keep `usable alpha` until one canonical promotion decision covers the full governed corpus (#3076) and the installed CLI/packaged VS Code pilot (#1702)"
+    ))
+}
+
+fn rust_gap_repair_report_context(report: Option<&serde_json::Value>) -> String {
+    let Some(report) = report else {
+        return format!("governed evidence at `{RUST_REPAIR_TRUST_CORPUS_PATH}` is unavailable");
+    };
+    let status = report
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("missing");
+    let eligible_attempts = report
+        .get("eligible_attempt_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let improved = report
+        .pointer("/movement_counts/improved")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let closed = report
+        .pointer("/movement_counts/closed")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    format!(
+        "the canonical Rust repair trust report is `{status}` with {eligible_attempts} eligible, {improved} improved, and {closed} closed attempt(s)"
+    )
 }
 
 fn support_tier_rows(text: &str, display: &str) -> Result<Vec<SupportTierRow>, String> {
@@ -17480,14 +18667,40 @@ fn ensure_receipts_dir() -> Result<(), String> {
 }
 
 pub(crate) fn write_report(file_name: &str, body: &str) -> Result<(), String> {
-    ensure_reports_dir()?;
-    let path = reports_dir().join(file_name);
+    write_report_in(&reports_dir(), file_name, body)
+}
+
+/// `write_report` against an explicit report directory, so parameterized
+/// pipelines (and their tests) can target a hermetic location.
+pub(crate) fn write_report_in(directory: &Path, file_name: &str, body: &str) -> Result<(), String> {
+    fs::create_dir_all(directory).map_err(|err| {
+        format!(
+            "failed to create {}: {err}\nrerun with `cargo xtask shape` after fixing directory permissions",
+            directory.display()
+        )
+    })?;
+    let path = directory.join(file_name);
     fs::write(&path, body).map_err(|err| {
         format!(
             "failed to write {}: {err}\nrerun with `cargo xtask shape` after fixing file permissions",
             path.display()
         )
     })
+}
+
+/// Removes one report file, absorbing every error: a missing or locked
+/// stale artifact must never fail the run that is about to rewrite it
+/// (same style as `remove_evidence_health_report_artifacts`).
+pub(crate) fn remove_report_in(directory: &Path, file_name: &str) -> Result<(), String> {
+    let path = directory.join(file_name);
+    match fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "failed to remove stale report {}: {error}",
+            path.display()
+        )),
+    }
 }
 
 fn write_receipt(file_name: &str, body: &str) -> Result<(), String> {
@@ -17501,7 +18714,7 @@ fn write_receipt(file_name: &str, body: &str) -> Result<(), String> {
     })
 }
 
-fn reports_dir() -> PathBuf {
+pub(crate) fn reports_dir() -> PathBuf {
     Path::new("target").join("ripr").join("reports")
 }
 
@@ -20025,6 +21238,26 @@ pub(crate) fn read_file_policy_allowlist(path: &str) -> Result<Vec<GlobAllow>, S
         .collect())
 }
 
+pub(crate) fn read_file_policy_test_commands(path: &str) -> Result<Vec<(usize, String)>, String> {
+    let entries = parse_file_policy_allowlist(path)?;
+    Ok(entries
+        .into_iter()
+        .flat_map(|entry| {
+            entry
+                .covered_by
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|command| is_cargo_test_command(command))
+                .map(move |command| (entry.line, command))
+        })
+        .collect())
+}
+
+pub(crate) fn is_cargo_test_command(command: &str) -> bool {
+    let mut words = command.split_whitespace();
+    words.next() == Some("cargo") && words.next() == Some("test")
+}
+
 fn parse_file_policy_allowlist(path: &str) -> Result<Vec<FilePolicyAllowEntry>, String> {
     let text = read_text_lossy(Path::new(path))?;
     let mut entries = Vec::new();
@@ -20874,8 +22107,10 @@ fn is_process_policy_candidate(path: &str) -> bool {
 fn is_network_policy_candidate(path: &str) -> bool {
     path.ends_with(".rs")
         || path.ends_with(".ts")
+        || path.ends_with(".tsx")
         || path.ends_with(".py")
         || path.ends_with(".js")
+        || path.ends_with(".jsx")
         || path.ends_with(".sh")
         || path.ends_with(".ps1")
         || path.ends_with(".yml")
@@ -21491,3 +22726,23 @@ synonym (e.g. {hint}). To intentionally allow this line, append \
     reason = "xtask test code uses unwrap/expect for fail-fast assertion. Production paths are receipted via policy/no-panic-allowlist.toml; the test scope is governed by this single module-level expect."
 )]
 mod tests;
+
+#[cfg(test)]
+mod inherited_failure_tests {
+    use super::*;
+    #[test]
+    fn failure_report_preserves_not_proven_baseline_state() {
+        let report = check_pr_report(Some(&CheckPrGateFailure {
+            name: "clippy".to_string(),
+            reproduce: "cargo clippy".to_string(),
+            bounded_error: "error".to_string(),
+            not_run: vec![],
+            baseline: BaselineFailureComparison {
+                status: "NOT_PROVEN",
+                detail: "unavailable".to_string(),
+            },
+        }));
+        assert!(report.contains("Inherited-failure comparison"));
+        assert!(report.contains("Status: NOT_PROVEN"));
+    }
+}

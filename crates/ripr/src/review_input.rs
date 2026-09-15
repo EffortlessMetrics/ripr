@@ -18,6 +18,29 @@ pub const REVIEW_INDEX_MAX_ENTRIES: usize = 4096;
 // while keeping subject admission firmly in the compact evidence plane.
 pub const REVIEW_INDEX_MAX_BYTES: usize = 2 * 1024 * 1024;
 
+/// Root identity shared by PR producers, review admission and review receipts.
+/// Existing paths use native canonicalization. Windows verbatim prefixes are
+/// representation details; POSIX backslashes remain filename characters.
+/// Unavailable paths retain their spelling and do not gain existence authority.
+pub fn canonical_root_identity(root: &Path) -> String {
+    let canonical = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    review_root_spelling(&canonical.to_string_lossy(), cfg!(windows))
+}
+
+fn review_root_spelling(path: &str, windows: bool) -> String {
+    if !windows {
+        return path.to_string();
+    }
+    let normalized = path.replace('\\', "/");
+    if let Some(unc) = normalized.strip_prefix("//?/UNC/") {
+        return format!("//{unc}");
+    }
+    normalized
+        .strip_prefix("//?/")
+        .unwrap_or(&normalized)
+        .to_string()
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ReviewInputV1 {
@@ -272,6 +295,65 @@ fn projection_order(value: &ReviewFindingProjectionV1) -> (u8, u8, String, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn review_root_spelling_preserves_platform_identity() -> Result<(), String> {
+        for (input, windows, expected) in [
+            (r"\\?\C:\path\to\repo", true, "C:/path/to/repo"),
+            (r"C:\path\to\repo", true, "C:/path/to/repo"),
+            (r"\\?\UNC\server\share\repo", true, "//server/share/repo"),
+            (r"\\server\share\repo", true, "//server/share/repo"),
+            (r"/tmp/a\b", false, r"/tmp/a\b"),
+            ("/tmp/a/b", false, "/tmp/a/b"),
+        ] {
+            let actual = review_root_spelling(input, windows);
+            if actual != expected {
+                return Err(format!(
+                    "root spelling {input:?}: expected {expected:?}, got {actual:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn canonical_root_identity_preserves_existing_root_equivalence() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let canonical = root.canonicalize().map_err(|error| error.to_string())?;
+        let expected = canonical_root_identity(&root);
+        for alias in [&canonical, &root.join(".")] {
+            if canonical_root_identity(alias) != expected {
+                return Err(format!(
+                    "existing alias {} changed root identity",
+                    alias.display()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_root_identity_keeps_distinct_posix_backslash_roots() -> Result<(), String> {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos();
+        let parent =
+            std::env::temp_dir().join(format!("review-root-{}-{unique}", std::process::id()));
+        let literal = parent.join(r"a\b");
+        let nested = parent.join("a").join("b");
+        let result = (|| {
+            std::fs::create_dir_all(&literal).map_err(|error| error.to_string())?;
+            std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+            if canonical_root_identity(&literal) == canonical_root_identity(&nested) {
+                return Err("distinct POSIX roots collapsed into one review identity".to_string());
+            }
+            Ok(())
+        })();
+        let cleanup = std::fs::remove_dir_all(&parent).map_err(|error| error.to_string());
+        result.and(cleanup)
+    }
 
     fn finding() -> Value {
         serde_json::json!({

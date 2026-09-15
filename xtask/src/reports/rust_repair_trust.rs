@@ -41,12 +41,16 @@ const REQUIRED_ROUTE_FIELDS: [&str; 19] = [
 ];
 
 pub(crate) fn rust_repair_trust_report() -> Result<(), String> {
-    let corpus = read_corpus(Path::new(CORPUS_PATH))?;
-    let report = build_report(&corpus);
+    let report = rust_repair_trust_report_value_at(Path::new(CORPUS_PATH))?;
     let json_body = serde_json::to_string_pretty(&report)
         .map_err(|error| format!("serialize Rust repair trust report: {error}"))?;
     crate::write_report("rust-repair-trust.json", &format!("{json_body}\n"))?;
     crate::write_report("rust-repair-trust.md", &markdown_report(&report))
+}
+
+pub(crate) fn rust_repair_trust_report_value_at(path: &Path) -> Result<Value, String> {
+    let corpus = read_corpus(path)?;
+    Ok(build_report(&corpus))
 }
 
 fn read_corpus(path: &Path) -> Result<Value, String> {

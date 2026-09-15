@@ -1,6 +1,6 @@
 {
   "protocol_version": "0.1",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "request": "ripr/refreshAnalysis",
   "status": "error",
   "error": { "kind": "config_invalid", "retryable": false, "recovery_route": "fix_configuration", "snapshot_id": null },

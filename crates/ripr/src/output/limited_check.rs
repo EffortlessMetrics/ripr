@@ -105,6 +105,7 @@ mod tests {
             perl_facts_path: None,
             suppression_policy: None,
             git_timeout: None,
+            git_candidate: None,
         }
     }
 

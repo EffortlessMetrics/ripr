@@ -1534,6 +1534,9 @@ mod tests {
     fn doctor_suggests_typescript_when_detected_and_not_enabled() -> Result<(), String> {
         let dir = unique_command_test_dir("suggest-ts-detected");
         std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        // Keep the no-config fixture independent of the host repository policy.
+        std::fs::create_dir(dir.join(".git"))
+            .map_err(|err| format!("create repository boundary: {err}"))?;
         // Drop a .ts file so TypeScript is detected.
         std::fs::write(dir.join("index.ts"), "export const x = 1;\n")
             .map_err(|err| format!("write ts: {err}"))?;

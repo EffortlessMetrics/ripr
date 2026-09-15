@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/unwrap_err_sibling_variant/input
 
-Summary: 2 probe(s), 1 exposed, 0 weak, 1 unrevealed, 0 no path, 0 unknown
+Summary: 2 probe(s), 0 exposed, 1 weak, 1 unrevealed, 0 no path, 0 unknown
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
@@ -11,19 +11,20 @@ Start here:
   State: top_gap
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/unwrap_err_sibling_variant/input/src/lib.rs:11
-  Static exposure: reachable_unrevealed (warning, confidence 0.79)
-  Why reachable_unrevealed: no related test was found that reaches this change
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Err(CalcError::TooLarge);
   Missing discriminator: CalcError::TooLarge
-  Next step: Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
+  Related test: tests/errors.rs:5 negative_input_rejects_with_negative_error
+  Next step: Add a test input that reaches the changed error path and assert the exact error variant it returns.
   Evidence:
     - reach yes: Related tests appear to reach compute: negative_input_rejects_with_negative_error
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 6 more evidence line(s) hidden
+    - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain --root fixtures/unwrap_err_sibling_variant/input --diff fixtures/unwrap_err_sibling_variant/diff.patch --mode fast probe:src_lib.rs:error_path:c566a7f6
-  ripr context --root fixtures/unwrap_err_sibling_variant/input --diff fixtures/unwrap_err_sibling_variant/diff.patch --mode fast --at probe:src_lib.rs:error_path:c566a7f6
+  ripr explain --root fixtures/unwrap_err_sibling_variant/input --diff fixtures/unwrap_err_sibling_variant/diff.patch --mode fast probe:src_lib.rs:return_value:e88897cd
+  ripr context --root fixtures/unwrap_err_sibling_variant/input --diff fixtures/unwrap_err_sibling_variant/diff.patch --mode fast --at probe:src_lib.rs:return_value:e88897cd
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

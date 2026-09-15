@@ -650,7 +650,7 @@ printf '%s\n' "$SOURCE_RELEASE_HEAD" > "$PACKET_ROOT/SOURCE_RELEASE_HEAD"
 ```
 
 The exact-K contract is [`BACK_SYNC_VERIFIER.md`](BACK_SYNC_VERIFIER.md),
-[`RIPR-SPEC-0152`](specs/RIPR-SPEC-0152-back-sync-verifier.md), and
+[`RIPR-SPEC-0179`](specs/RIPR-SPEC-0179-back-sync-verifier.md) (renumbered from `RIPR-SPEC-0152` on the 0.11 J join to resolve the cross-repo number collision; content unchanged), and
 [#3100](https://github.com/EffortlessMetrics/ripr-swarm/issues/3100), merged
 at [`4589b85a`](https://github.com/EffortlessMetrics/ripr-swarm/commit/4589b85a8f63529c4838abe5ee54a78d28d989c7). Use its verifier and receipt;
 this runbook does not redefine its semantics.

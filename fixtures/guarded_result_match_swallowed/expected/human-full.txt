@@ -1,0 +1,82 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/guarded_result_match_swallowed/input
+
+Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
+
+WARNING fixtures/guarded_result_match_swallowed/input/src/lib.rs:9
+
+Changed
+  before: return Err(ParseError::UnexpectedEof);
+  after:  return Err(ParseError::InvalidData)
+
+Probe
+  family: error_path
+  delta:  value
+  owner:  src/lib.rs::expect_ready
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach expect_ready: logs_failures_without_discriminating, wildcard_panic_without_variant_pin
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches error variant: Result::Err(ParseError::InvalidData) (line 9)
+  - related test tests/messages.rs:4 logs_failures_without_discriminating uses strong exact value oracle: assert_eq!(value, 12)
+  - related test tests/messages.rs:14 wildcard_panic_without_variant_pin uses strong exact value oracle: assert_eq!(value, 12)
+  - observed function argument value kind = "busy" at line 5
+  - observed function argument value len = 12 at line 5
+  - observed assertion argument value 12 at line 9
+  - observed function argument value kind = "busy" at line 15
+  - observed function argument value len = 12 at line 15
+  - observed assertion argument value 12 at line 16
+
+Weakness
+  - No exact error variant discriminator was detected
+  - missing discriminator ParseError::InvalidData: No exact error variant assertion for ParseError::InvalidData
+
+Next step
+  Assert the exact error variant or payload instead of only is_err().
+
+WARNING fixtures/guarded_result_match_swallowed/input/src/lib.rs:9
+
+Changed
+  before: return Err(ParseError::UnexpectedEof);
+  after:  return Err(ParseError::InvalidData)
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::expect_ready
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach expect_ready: logs_failures_without_discriminating, wildcard_panic_without_variant_pin
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches error variant: Result::Err(ParseError::InvalidData) (line 9)
+  - related test tests/messages.rs:4 logs_failures_without_discriminating uses strong exact value oracle: assert_eq!(value, 12)
+  - related test tests/messages.rs:14 wildcard_panic_without_variant_pin uses strong exact value oracle: assert_eq!(value, 12)
+  - observed function argument value kind = "busy" at line 5
+  - observed function argument value len = 12 at line 5
+  - observed assertion argument value 12 at line 9
+  - observed function argument value kind = "busy" at line 15
+  - observed function argument value len = 12 at line 15
+  - observed assertion argument value 12 at line 16
+
+Weakness
+  - No strong discriminator was detected
+  - missing discriminator ParseError::InvalidData: No exact error variant assertion for ParseError::InvalidData
+
+Next step
+  Add a test input that reaches the changed error path and assert the exact error variant it returns.

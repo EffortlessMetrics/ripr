@@ -1,0 +1,38 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/binding_predicate_positions/input
+
+Summary: 3 probe(s), 0 exposed, 0 weak, 0 unrevealed, 3 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 6 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
+
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/binding_predicate_positions/input/src/lib.rs:3
+  Static exposure: no_static_path (warning, confidence 0.48)
+  Why no_static_path: the changed behavior could not be traced to an observable output
+  Changed behavior: false
+  Missing discriminator: No detected boundary input for the changed predicate
+  Next step: ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr…
+  Evidence:
+    - reach no: No static test path found for the changed owner
+    - infection unknown: No tests were found, so activation/infection cannot be estimated
+    - 4 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/binding_predicate_positions/input --diff fixtures/binding_predicate_positions/diff.patch --mode fast probe:src_lib.rs:predicate:63305cee
+  ripr context --root fixtures/binding_predicate_positions/input --diff fixtures/binding_predicate_positions/diff.patch --mode fast --at probe:src_lib.rs:predicate:63305cee
+
+Hidden:
+  2 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: ripr found no static test path for any of the 3 changed expression(s) in this diff. Scope
+  analyzed: 1 changed Rust file(s), 3 changed expression(s), and 0 statically linked related
+  test(s). This is not a coverage assessment. A test may already exercise these changes through
+  macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if
+  none does, add co-located tests that observe the changed behavior.

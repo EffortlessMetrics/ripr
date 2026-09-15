@@ -4,6 +4,7 @@
 //! static evidence into a proof, and an incomplete receipt never means that
 //! the requested review is clean or complete.
 
+use crate::review_input::canonical_root_identity;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -189,6 +190,40 @@ impl ReviewCommentsRunReceipt {
         });
     }
 
+    pub fn limited_timeout(&mut self, active_phase: &str) {
+        self.status = "limited_timeout";
+        self.active_phase = Some(active_phase.to_string());
+        self.limitations.push(ReviewCommentsReceiptLimitation {
+            category: "analysis_timeout".to_string(),
+            repair_route: "rerun review-comments with a larger configured timeout".to_string(),
+        });
+        self.terminalize_non_claims();
+    }
+
+    pub fn failed(&mut self, active_phase: &str, error: &str) {
+        self.status = "failed";
+        self.active_phase = Some(active_phase.to_string());
+        let repair_route = if error.trim().is_empty() {
+            "unknown analysis failure".to_string()
+        } else {
+            error.to_string()
+        };
+        self.limitations.push(ReviewCommentsReceiptLimitation {
+            category: "analysis_failed".to_string(),
+            repair_route,
+        });
+        self.terminalize_non_claims();
+    }
+
+    fn terminalize_non_claims(&mut self) {
+        self.non_claims.retain(|claim| {
+            claim != "no complete route inventory is claimed until status is complete"
+        });
+        self.non_claims
+            .push("no complete route inventory".to_string());
+        self.non_claims.push("no all-clear".to_string());
+    }
+
     pub(crate) fn write_atomic(&mut self, path: &Path) -> Result<(), String> {
         let parent = path
             .parent()
@@ -244,18 +279,6 @@ pub(crate) fn attach_to_json(
         .map_err(|err| format!("render review-comments JSON with receipt failed: {err}"))
 }
 
-fn canonical_root_identity(root: &Path) -> String {
-    let normalized = root
-        .canonicalize()
-        .unwrap_or_else(|_| root.to_path_buf())
-        .to_string_lossy()
-        .replace('\\', "/");
-    normalized
-        .strip_prefix("//?/")
-        .unwrap_or(&normalized)
-        .to_string()
-}
-
 fn reusable_cache_identity(root: &str, base: &str, head: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"ripr-review-comments\0");
@@ -306,6 +329,109 @@ mod tests {
             30_000,
             &["comments.json".to_string()],
         )
+    }
+
+    #[test]
+    fn terminal_setters_preserve_phase_and_write_atomic_receipts() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-receipt-terminal-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        fs::create_dir_all(&dir).map_err(|err| format!("create temp dir failed: {err}"))?;
+
+        let timeout_path = dir.join("timeout.json");
+        let mut timeout = sample_receipt();
+        timeout.limited_timeout("review_guidance");
+        assert_eq!(timeout.status, "limited_timeout");
+        assert_eq!(timeout.active_phase.as_deref(), Some("review_guidance"));
+        assert_eq!(timeout.last_completed_phase, None);
+        assert_eq!(timeout.limitations[0].category, "analysis_timeout");
+        assert_eq!(
+            timeout.limitations[0].repair_route,
+            "rerun review-comments with a larger configured timeout"
+        );
+        assert_eq!(
+            timeout.non_claims,
+            vec![
+                "static review guidance is advisory evidence only",
+                "no complete route inventory",
+                "no all-clear",
+            ]
+        );
+        timeout.write_atomic(&timeout_path)?;
+        let timeout_json: Value = serde_json::from_slice(
+            &fs::read(&timeout_path)
+                .map_err(|err| format!("read timeout receipt failed: {err}"))?,
+        )
+        .map_err(|err| format!("parse timeout receipt failed: {err}"))?;
+        assert_eq!(timeout_json["status"], "limited_timeout");
+        assert_eq!(timeout_json["active_phase"], "review_guidance");
+        assert_eq!(timeout_json["atomic_write_status"], "committed");
+        assert_eq!(
+            timeout_json["limitations"][0]["category"],
+            "analysis_timeout"
+        );
+        assert_eq!(
+            timeout_json["limitations"][0]["repair_route"],
+            "rerun review-comments with a larger configured timeout"
+        );
+        assert_eq!(
+            timeout_json["non_claims"][0],
+            "static review guidance is advisory evidence only"
+        );
+        assert_eq!(timeout_json["non_claims"][1], "no complete route inventory");
+        assert_eq!(timeout_json["non_claims"][2], "no all-clear");
+
+        let failure_path = dir.join("failed.json");
+        let mut failure = sample_receipt();
+        failure.failed("canonical_comparison", "canonical comparison failed");
+        assert_eq!(failure.status, "failed");
+        assert_eq!(
+            failure.active_phase.as_deref(),
+            Some("canonical_comparison")
+        );
+        assert_eq!(failure.limitations[0].category, "analysis_failed");
+        assert_eq!(
+            failure.limitations[0].repair_route,
+            "canonical comparison failed"
+        );
+        assert_eq!(
+            failure.non_claims,
+            vec![
+                "static review guidance is advisory evidence only",
+                "no complete route inventory",
+                "no all-clear",
+            ]
+        );
+        failure.write_atomic(&failure_path)?;
+        let failure_json: Value = serde_json::from_slice(
+            &fs::read(&failure_path).map_err(|err| format!("read failed receipt failed: {err}"))?,
+        )
+        .map_err(|err| format!("parse failed receipt failed: {err}"))?;
+        assert_eq!(failure_json["status"], "failed");
+        assert_eq!(failure_json["active_phase"], "canonical_comparison");
+        assert_eq!(failure_json["atomic_write_status"], "committed");
+        assert_eq!(
+            failure_json["limitations"][0]["category"],
+            "analysis_failed"
+        );
+        assert_eq!(
+            failure_json["limitations"][0]["repair_route"],
+            "canonical comparison failed"
+        );
+        assert_eq!(
+            failure_json["non_claims"][0],
+            "static review guidance is advisory evidence only"
+        );
+        assert_eq!(failure_json["non_claims"][1], "no complete route inventory");
+        assert_eq!(failure_json["non_claims"][2], "no all-clear");
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     #[test]

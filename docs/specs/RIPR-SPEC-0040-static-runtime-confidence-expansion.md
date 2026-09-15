@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on the runtime-fixtures-v3 join and confidence matrix described in Required Evidence.
+
 ## Problem
 
 Lane 1 already imports static/runtime confidence labels for checked fixture

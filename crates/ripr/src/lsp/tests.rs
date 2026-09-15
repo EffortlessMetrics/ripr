@@ -27,8 +27,8 @@ use super::refresh_scheduler::{
     RefreshAttemptOutcome, RefreshDecision, RefreshReason, RefreshRequest, RefreshScope,
 };
 use super::state::{
-    AnalysisAttemptState, AnalysisFailureKind, AnalysisSnapshot, DocumentStore, RefreshMetadata,
-    content_digest, format_duration,
+    AnalysisAttemptState, AnalysisFailureKind, AnalysisSnapshot, DocumentStore,
+    HarnessFactsOnSnapshot, RefreshMetadata, content_digest, format_duration,
 };
 use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
 use super::{
@@ -194,6 +194,58 @@ fn watched_file_batch_preserves_config_and_workspace_graph_signals() -> Result<(
     ];
 
     assert_eq!(backend.watched_file_change_kinds(&changes), (true, true));
+    Ok(())
+}
+
+#[test]
+fn watched_python_source_batch_routes_to_config_reload_only() -> Result<(), String> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let backend_root = root.clone();
+    let (service, _socket) =
+        LspService::new(move |client| Backend::new(client, backend_root.clone()));
+    let backend = service.inner();
+    backend.initialize_test_workspace_root();
+
+    // A detectable source file under a root src/tests directory is a
+    // repository-configuration input: it drives the no-config Python
+    // reload path, not the Cargo workspace-graph path.
+    let src_py = file_uri_for_path(&root.join("src").join("app.py"))
+        .map_err(|err| format!("src URI failed: {err}"))?;
+    let changes = vec![FileEvent {
+        uri: src_py,
+        typ: FileChangeType::CREATED,
+    }];
+    assert_eq!(
+        backend.watched_file_change_kinds(&changes),
+        (true, false),
+        "src/app.py events must classify as configuration reload inputs"
+    );
+
+    // Python outside root src/tests is not a detection input.
+    let scripts_py = file_uri_for_path(&root.join("scripts").join("app.py"))
+        .map_err(|err| format!("scripts URI failed: {err}"))?;
+    let changes = vec![FileEvent {
+        uri: scripts_py,
+        typ: FileChangeType::CREATED,
+    }];
+    assert_eq!(
+        backend.watched_file_change_kinds(&changes),
+        (false, false),
+        "Python outside root src/tests must not trigger any invalidation"
+    );
+
+    // Generated source names never change detection state.
+    let generated_py = file_uri_for_path(&root.join("src").join("client_pb2.py"))
+        .map_err(|err| format!("generated URI failed: {err}"))?;
+    let changes = vec![FileEvent {
+        uri: generated_py,
+        typ: FileChangeType::CREATED,
+    }];
+    assert_eq!(
+        backend.watched_file_change_kinds(&changes),
+        (false, false),
+        "generated Python sources are excluded from detection inputs"
+    );
     Ok(())
 }
 
@@ -620,6 +672,7 @@ fn backend_code_lens_handler_delegates_to_lens_helper() -> Result<(), String> {
         observed_sink: None,
         oracle_alignment: None,
         alignment_reason: None,
+        source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
     };
 
     // Build snapshot satisfying is_consistent().
@@ -660,6 +713,7 @@ fn backend_code_lens_handler_delegates_to_lens_helper() -> Result<(), String> {
         classified_seams: Vec::new(),
         gap_artifacts: Vec::new(),
         gap_artifact_rejections: Vec::new(),
+        harness_facts: HarnessFactsOnSnapshot::NotRegistered,
         diagnostics_by_uri,
         delivery_selection: None,
         seams_deferred: false,
@@ -1643,16 +1697,30 @@ fn framed_code_lens_refresh_follows_semantic_lens_view_changes() -> Result<(), S
             "a byte-identical re-commit must not send workspace/codeLens/refresh"
         );
 
-        // Refresh 3: the saved workspace changes semantically (a committed
-        // second changed predicate alters the base..HEAD diff and with it
-        // the visible lens set), so exactly one new request must arrive.
+        // Refresh 3 (#3183): the saved workspace changes semantically through
+        // a tracked on-disk edit that has not been committed. The editor is a
+        // draft-time surface, so the canonical worktree diff must include the
+        // new predicate and change the visible lens set without requiring a
+        // commit.
         fs::write(
             root.path.join("src/lib.rs"),
             "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n\npub fn second_gate(level: u8) -> bool {\n    level > 3\n}\n",
         )
         .map_err(|err| format!("write second production change failed: {err}"))?;
-        run_lsp_scope_git(&root.path, &["add", "src/lib.rs"])?;
-        run_lsp_scope_git(&root.path, &["commit", "-m", "add second gate"])?;
+        let worktree = lsp_scope_git_output(
+            &root.path,
+            &["diff", "--name-only", "HEAD", "--"],
+        )?;
+        if !worktree.status.success()
+            || String::from_utf8_lossy(&worktree.stdout).trim() != "src/lib.rs"
+        {
+            return Err(format!(
+                "fixture must contain exactly the saved tracked source edit before refresh: status={} stdout={:?} stderr={:?}",
+                worktree.status,
+                String::from_utf8_lossy(&worktree.stdout),
+                String::from_utf8_lossy(&worktree.stderr)
+            ));
+        }
         write_lsp_message(
             &mut client_write,
             serde_json::json!({
@@ -1672,10 +1740,35 @@ fn framed_code_lens_refresh_follows_semantic_lens_view_changes() -> Result<(), S
         assert!(refresh.get("error").is_none());
         assert_eq!(
             refresh_requests, 1,
-            "a semantic lens-view change must send exactly one workspace/codeLens/refresh"
+            "a saved tracked worktree edit must change the lens view without requiring a commit"
         );
 
-        // Refresh 4 (RIPR-SPEC-0138, review): removing the workspace root
+        // Refresh 4: the explicit full refresh must consume the same worktree
+        // diff authority. It still owns the full seam inventory, but the
+        // unchanged saved-worktree lens view must not emit a duplicate refresh.
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "workspace/executeCommand",
+                "params": {
+                    "command": REFRESH_COMMAND,
+                    "arguments": []
+                }
+            }),
+        )
+        .await?;
+        let (refresh, refresh_requests) =
+            read_response_answering_code_lens_refresh(&mut client_read, &mut client_write, 5)
+                .await?;
+        assert!(refresh.get("error").is_none());
+        assert_eq!(
+            refresh_requests, 0,
+            "an unchanged explicit full refresh must preserve the worktree-derived lens view"
+        );
+
+        // Refresh 5 (RIPR-SPEC-0138, review): removing the workspace root
         // clears analysis state — every lens is now stale — so the server
         // must send one more refresh for the cleared view.
         write_lsp_message(
@@ -1714,13 +1807,13 @@ fn framed_code_lens_refresh_follows_semantic_lens_view_changes() -> Result<(), S
             &mut client_write,
             serde_json::json!({
                 "jsonrpc": "2.0",
-                "id": 5,
+                "id": 6,
                 "method": "shutdown",
                 "params": null
             }),
         )
         .await?;
-        let shutdown = read_lsp_response(&mut client_read, 5).await?;
+        let shutdown = read_lsp_response(&mut client_read, 6).await?;
         assert!(shutdown.get("error").is_none());
         write_lsp_message(
             &mut client_write,
@@ -1746,6 +1839,80 @@ fn framed_code_lens_refresh_follows_semantic_lens_view_changes() -> Result<(), S
         }
         Ok(())
     })
+}
+
+#[test]
+fn lsp_saved_worktree_refresh_analyzes_uncommitted_tracked_edit() -> Result<(), String> {
+    let root = unique_lsp_test_root("saved-worktree-diff-authority")?;
+    write_lsp_scope_fixture(root.path())?;
+    run_lsp_scope_git(root.path(), &["init"])?;
+    run_lsp_scope_git(
+        root.path(),
+        &["config", "user.email", "ripr@example.invalid"],
+    )?;
+    run_lsp_scope_git(root.path(), &["config", "user.name", "RIPR Test"])?;
+    run_lsp_scope_git(
+        root.path(),
+        &["add", "Cargo.toml", "src/lib.rs", "tests/end_to_end.rs"],
+    )?;
+    run_lsp_scope_git(root.path(), &["commit", "-m", "base"])?;
+
+    fs::write(
+        root.path().join("src/lib.rs"),
+        "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )
+    .map_err(|err| format!("persist saved tracked source edit failed: {err}"))?;
+
+    // Discriminating setup: committed-history mode has no subject, while the
+    // canonical worktree diff has exactly one tracked source file. A nearby
+    // fix that only changes status or seam inventory cannot satisfy this.
+    let committed =
+        lsp_scope_git_output(root.path(), &["diff", "--name-only", "HEAD...HEAD", "--"])?;
+    if !committed.status.success() || !committed.stdout.is_empty() {
+        return Err(format!(
+            "fixture committed diff must be empty: status={} stdout={:?} stderr={:?}",
+            committed.status,
+            String::from_utf8_lossy(&committed.stdout),
+            String::from_utf8_lossy(&committed.stderr)
+        ));
+    }
+    let worktree = lsp_scope_git_output(root.path(), &["diff", "--name-only", "HEAD", "--"])?;
+    if !worktree.status.success()
+        || String::from_utf8_lossy(&worktree.stdout).trim() != "src/lib.rs"
+    {
+        return Err(format!(
+            "fixture worktree diff must contain exactly src/lib.rs: status={} stdout={:?} stderr={:?}",
+            worktree.status,
+            String::from_utf8_lossy(&worktree.stdout),
+            String::from_utf8_lossy(&worktree.stderr)
+        ));
+    }
+
+    let config = LspAnalysisConfig {
+        base_ref: Some("HEAD".to_string()),
+        mode: Mode::Instant,
+        diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
+        ..LspAnalysisConfig::default()
+    };
+    let diagnostics = workspace_diagnostics_with_config(root.path(), &config, true)?;
+    if !diagnostics.snapshot.seams_deferred {
+        return Err("interactive saved-worktree proof must defer seam inventory".to_string());
+    }
+    if diagnostics.snapshot.findings.is_empty() {
+        return Err(
+            "saved tracked edit produced no diff-scoped findings; the LSP refresh still appears to analyze HEAD instead of the worktree"
+                .to_string(),
+        );
+    }
+    let source_uri = file_uri_for_path(&root.path().join("src/lib.rs"))?;
+    if !diagnostics
+        .batches
+        .iter()
+        .any(|batch| batch.uri == source_uri && !batch.diagnostics.is_empty())
+    {
+        return Err("saved tracked source edit did not reach the LSP diagnostic batch".to_string());
+    }
+    Ok(())
 }
 
 fn published_seam_diagnostic(
@@ -7563,6 +7730,9 @@ fn framed_lsp_configuration_pull_applies_and_discloses_pull_state() -> Result<()
 
     runtime.block_on(async {
         let root = unique_lsp_test_root("framed-config-pull")?;
+        // Exercise configuration pull from defaults, independent of host policy.
+        std::fs::create_dir(root.path().join(".git"))
+            .map_err(|err| format!("create repository boundary: {err}"))?;
         let root_uri = file_uri_for_path(root.path())?;
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (client_read, mut client_write) = tokio::io::split(client_io);
@@ -9682,6 +9852,111 @@ fn workspace_diagnostics_exclude_changed_test_files_from_published_findings() ->
 }
 
 #[test]
+fn workspace_diagnostics_include_saved_tracked_edits_and_exclude_untracked_files()
+-> Result<(), String> {
+    let fixture = boundary_gap_git_fixture_root("saved-tracked-worktree")?;
+    let root = fixture.path();
+    let config = boundary_gap_lsp_config(crate::config::RiprConfig::default());
+    let lib_path = root.join("src/lib.rs");
+    let baseline = std::fs::read_to_string(&lib_path)
+        .map_err(|err| format!("read saved-worktree fixture failed: {err}"))?;
+    let edited = baseline.replace(">=", ">");
+    if edited == baseline {
+        return Err("saved-worktree fixture no longer carries the equality boundary".to_string());
+    }
+    std::fs::write(&lib_path, edited)
+        .map_err(|err| format!("write unstaged tracked edit failed: {err}"))?;
+    let untracked_path = root.join("src/untracked.rs");
+    std::fs::write(
+        &untracked_path,
+        "pub fn untracked_boundary(left: i32, right: i32) -> bool { left >= right }\n",
+    )
+    .map_err(|err| format!("write untracked fixture failed: {err}"))?;
+
+    let interactive = workspace_diagnostics_with_config(root, &config, true)?;
+    let tracked_count = lsp_test_scope_diagnostic_count(&interactive, root, "src/lib.rs")?;
+    if tracked_count == 0 {
+        return Err(
+            "unstaged tracked equality-boundary edit received no LSP diagnostics".to_string(),
+        );
+    }
+    if !interactive
+        .snapshot
+        .findings
+        .iter()
+        .any(|finding| finding.probe.location.file.ends_with("src/lib.rs"))
+    {
+        return Err("unstaged tracked edit produced no diff-scoped finding".to_string());
+    }
+    assert!(
+        interactive.snapshot.seams_deferred,
+        "interactive saved-state analysis must keep seam inventory deferred"
+    );
+    let untracked_uri = file_uri_for_path(&untracked_path)?;
+    if interactive
+        .batches
+        .iter()
+        .any(|batch| batch.uri == untracked_uri)
+    {
+        return Err("untracked file entered the saved-worktree LSP authority".to_string());
+    }
+
+    run_lsp_scope_git(root, &["add", "src/lib.rs"])?;
+    let staged = workspace_diagnostics_with_config(root, &config, true)?;
+    let staged_count = lsp_test_scope_diagnostic_count(&staged, root, "src/lib.rs")?;
+    if staged_count == 0 {
+        return Err(
+            "staged tracked equality-boundary edit received no LSP diagnostics".to_string(),
+        );
+    }
+    assert!(
+        staged.snapshot.seams_deferred,
+        "staged proof must not pass through full seam-inventory fallback"
+    );
+    if !staged
+        .snapshot
+        .findings
+        .iter()
+        .any(|finding| finding.probe.location.file.ends_with("src/lib.rs"))
+    {
+        return Err("staged tracked edit produced no diff-scoped finding".to_string());
+    }
+    if staged
+        .snapshot
+        .findings
+        .iter()
+        .any(|finding| finding.probe.location.file.ends_with("src/untracked.rs"))
+    {
+        return Err("untracked file entered the staged worktree diff authority".to_string());
+    }
+
+    let untracked_only = boundary_gap_git_fixture_root("untracked-only-worktree")?;
+    let untracked_only_root = untracked_only.path();
+    let untracked_only_path = untracked_only_root.join("src/untracked.rs");
+    std::fs::write(
+        &untracked_only_path,
+        "pub fn untracked_boundary(left: i32, right: i32) -> bool { left >= right }\n",
+    )
+    .map_err(|err| format!("write untracked-only fixture failed: {err}"))?;
+    let negative = workspace_diagnostics_with_config(untracked_only_root, &config, true)?;
+    if !negative.snapshot.findings.is_empty() {
+        return Err(format!(
+            "untracked-only workspace produced diff-scoped findings: {:?}",
+            negative.snapshot.findings
+        ));
+    }
+    let untracked_only_uri = file_uri_for_path(&untracked_only_path)?;
+    if negative
+        .batches
+        .iter()
+        .any(|batch| batch.uri == untracked_only_uri)
+    {
+        return Err("untracked-only source entered LSP diagnostics".to_string());
+    }
+    Ok(())
+}
+
+#[test]
 fn boundary_gap_workspace_diagnostics_include_live_seam_diagnostic() -> Result<(), String> {
     let fixture = boundary_gap_git_fixture_root("workspace-diagnostics")?;
     let fixture_root = fixture.path();
@@ -9730,12 +10005,17 @@ fn write_lsp_scope_fixture(root: &Path) -> Result<(), String> {
     .map_err(|err| format!("write fixture test file failed: {err}"))
 }
 
-pub(crate) fn run_lsp_scope_git(root: &Path, args: &[&str]) -> Result<(), String> {
+fn lsp_scope_git_output(root: &Path, args: &[&str]) -> Result<std::process::Output, String> {
     let output = Command::new("git")
         .args(args)
         .current_dir(root)
         .output()
         .map_err(|err| format!("run git {args:?} failed: {err}"))?;
+    Ok(output)
+}
+
+pub(crate) fn run_lsp_scope_git(root: &Path, args: &[&str]) -> Result<(), String> {
+    let output = lsp_scope_git_output(root, args)?;
     if output.status.success() {
         return Ok(());
     }
@@ -9908,11 +10188,13 @@ fn workspace_diagnostics_scope_changed_test_file_findings_out_of_projection() ->
         "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
     )
     .map_err(|err| format!("write changed production file failed: {err}"))?;
+    std::fs::create_dir_all(root.path().join("examples/demo/src"))
+        .map_err(|err| format!("create examples dir failed: {err}"))?;
     std::fs::write(
-        root.path().join("src/tests.rs"),
+        root.path().join("examples/demo/src/lib.rs"),
         "pub fn helper_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
     )
-    .map_err(|err| format!("write changed src/tests.rs failed: {err}"))?;
+    .map_err(|err| format!("write changed examples/demo/src/lib.rs failed: {err}"))?;
     std::fs::write(
         root.path().join("tests/end_to_end.rs"),
         "#[test]\nfn end_to_end_changed() {\n    let value = if true { 1 } else { 2 };\n    assert_eq!(value, 1);\n}\n",
@@ -9928,28 +10210,29 @@ fn workspace_diagnostics_scope_changed_test_file_findings_out_of_projection() ->
     if production_count == 0 {
         return Err("changed production file received no LSP diagnostics".to_string());
     }
-    for scoped_out in ["src/tests.rs", "tests/end_to_end.rs"] {
-        let count = lsp_test_scope_diagnostic_count(&diagnostics, root.path(), scoped_out)?;
-        if count != 0 {
-            return Err(format!(
-                "out-of-scope test file {scoped_out} received {count} line-local LSP diagnostics"
-            ));
-        }
-    }
-    if diagnostics
-        .snapshot
-        .findings
-        .iter()
-        .any(|finding| finding.probe.location.file.ends_with("src/tests.rs"))
-    {
+    // #3285: the partition consumes the same source-role model as seeding,
+    // so a nested-src example (a production subject — the declared
+    // divergence) KEEPS its editor projection instead of being dropped.
+    let nested_example_count =
+        lsp_test_scope_diagnostic_count(&diagnostics, root.path(), "examples/demo/src/lib.rs")?;
+    if nested_example_count == 0 {
         return Err(
-            "out-of-scope src/tests.rs finding must not remain in the snapshot".to_string(),
+            "a nested-src example is a production subject and must keep its editor projection"
+                .to_string(),
         );
     }
-    if diagnostics.snapshot.out_of_scope_test_file_findings == 0 {
-        return Err(
-            "suppressed test-file findings must be disclosed with a non-zero count".to_string(),
-        );
+    let test_only_count =
+        lsp_test_scope_diagnostic_count(&diagnostics, root.path(), "tests/end_to_end.rs")?;
+    if test_only_count != 0 {
+        return Err(format!(
+            "evidence-role test file received {test_only_count} line-local LSP diagnostics"
+        ));
+    }
+    if diagnostics.snapshot.out_of_scope_test_file_findings != 0 {
+        return Err(format!(
+            "a converged partition suppresses nothing the seeding model already excluded: {}",
+            diagnostics.snapshot.out_of_scope_test_file_findings
+        ));
     }
     Ok(())
 }
@@ -9959,11 +10242,13 @@ fn workspace_diagnostics_test_only_diff_publishes_no_line_local_diagnostics() ->
 {
     let root = unique_lsp_test_root("lsp-test-file-scope-test-only")?;
     init_lsp_test_scope_repo(root.path())?;
+    std::fs::create_dir_all(root.path().join("examples"))
+        .map_err(|err| format!("create examples dir failed: {err}"))?;
     std::fs::write(
-        root.path().join("src/tests.rs"),
-        "pub fn helper_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+        root.path().join("examples/demo.rs"),
+        "fn main() {\n    let value = if true { 1 } else { 2 };\n    println!(\"{value}\");\n}\n",
     )
-    .map_err(|err| format!("write changed src/tests.rs failed: {err}"))?;
+    .map_err(|err| format!("write changed examples/demo.rs failed: {err}"))?;
     std::fs::write(
         root.path().join("tests/end_to_end.rs"),
         "#[test]\nfn end_to_end_changed() {\n    let value = if true { 1 } else { 2 };\n    assert_eq!(value, 1);\n}\n",
@@ -9987,10 +10272,11 @@ fn workspace_diagnostics_test_only_diff_publishes_no_line_local_diagnostics() ->
     if !diagnostics.snapshot.findings.is_empty() {
         return Err("test-only diff findings must be scoped out of the LSP snapshot".to_string());
     }
-    if diagnostics.snapshot.out_of_scope_test_file_findings == 0 {
-        return Err(
-            "test-only diff must disclose the suppressed test-file findings count".to_string(),
-        );
+    if diagnostics.snapshot.out_of_scope_test_file_findings != 0 {
+        return Err(format!(
+            "seeding already excludes evidence role; the converged partition suppresses nothing: {}",
+            diagnostics.snapshot.out_of_scope_test_file_findings
+        ));
     }
     Ok(())
 }
@@ -10445,6 +10731,7 @@ fn sample_analysis_snapshot(
         classified_seams: Vec::new(),
         gap_artifacts: Vec::new(),
         gap_artifact_rejections: Vec::new(),
+        harness_facts: HarnessFactsOnSnapshot::NotRegistered,
         diagnostics_by_uri,
         delivery_selection: None,
         seams_deferred: false,
@@ -11178,6 +11465,7 @@ fn sample_finding() -> Finding {
         observed_sink: None,
         oracle_alignment: None,
         alignment_reason: None,
+        source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
     }
 }
 
@@ -12797,8 +13085,20 @@ fn execute_command_collect_workspace_status_with_snapshot_returns_diagnostics_co
             current_input["enabled_languages"],
             serde_json::json!(["rust"])
         );
-        assert_eq!(current_input["manifest_identity"], serde_json::Value::Null);
-        assert_eq!(current_input["lockfile_identity"], serde_json::Value::Null);
+        assert!(
+            current_input["manifest_identity"].is_null()
+                || current_input["manifest_identity"]
+                    .as_str()
+                    .is_some_and(|identity| !identity.is_empty()),
+            "manifest identity must be null without a manifest or a non-empty identity: {status}"
+        );
+        assert!(
+            current_input["lockfile_identity"].is_null()
+                || current_input["lockfile_identity"]
+                    .as_str()
+                    .is_some_and(|identity| !identity.is_empty()),
+            "lockfile identity must be null without a lockfile or a non-empty identity: {status}"
+        );
         assert_eq!(current_input["analyzer_version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(current_input["schema_version"], "lsp-analysis-input-v1");
         assert_eq!(
@@ -12820,7 +13120,7 @@ fn execute_command_collect_workspace_status_with_snapshot_returns_diagnostics_co
         );
         assert_eq!(
             status["limits_note"],
-            "Static evidence only; advisory, not a gate decision."
+            "Static evidence only; staged and unstaged tracked files are analyzed; untracked files remain out of scope until staged or supplied through an explicit diff."
         );
         Ok(())
     })
@@ -14876,6 +15176,7 @@ fn quarantine_workspace_diagnostics(fixture: &QuarantineFixture) -> WorkspaceDia
         classified_seams: Vec::new(),
         gap_artifacts: Vec::new(),
         gap_artifact_rejections: Vec::new(),
+        harness_facts: HarnessFactsOnSnapshot::NotRegistered,
         diagnostics_by_uri,
         delivery_selection: None,
         seams_deferred: false,
@@ -15857,7 +16158,10 @@ fn framed_lsp_saved_workspace_session_serves_saved_state_across_dirty_save() -> 
         }
 
         // didChange: the buffer diverges from the analyzed saved content.
-        let dirty_text = format!("{saved_text}// unsaved buffer note\n");
+        let dirty_text = saved_text.replace(">=", ">");
+        if dirty_text == saved_text {
+            return Err("saved-workspace fixture no longer carries the equality boundary".to_string());
+        }
         write_lsp_message(
             &mut client_write,
             serde_json::json!({
@@ -15940,9 +16244,23 @@ fn framed_lsp_saved_workspace_session_serves_saved_state_across_dirty_save() -> 
             framed_pull_document_report(&mut client_read, &mut client_write, next_id, &text_uri)
                 .await?;
         next_id += 1;
-        let (kind, _) = report_kind_and_items(&re_served);
-        if kind != Some("full") {
-            return Err(format!("expected a full re-served report: {re_served}"));
+        let (kind, items) = report_kind_and_items(&re_served);
+        if kind != Some("full") || items == 0 {
+            return Err(format!(
+                "expected didSave to analyze the unstaged tracked equality-boundary edit: {re_served}"
+            ));
+        }
+        let saved_items = re_served
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| format!("didSave report carried no items array: {re_served}"))?;
+        if !saved_items.iter().any(|item| {
+            item.get("source").and_then(serde_json::Value::as_str) == Some("ripr")
+                && item["range"]["start"]["line"].as_u64() == Some(1)
+        }) {
+            return Err(format!(
+                "didSave must publish the RIPR diagnostic on the changed src/lib.rs line: {re_served}"
+            ));
         }
         let re_served_id = re_served
             .get("resultId")
@@ -16992,4 +17310,162 @@ fn framed_lsp_component_degradation_is_typed_logged_and_recovers() -> Result<(),
         drop(temp);
         Ok(())
     })
+}
+
+#[test]
+fn workspace_diagnostics_production_like_opt_in_target_keeps_editor_projection()
+-> Result<(), String> {
+    // #3285: the out-of-scope partition must consume the producer-owned
+    // source-role model, not the legacy path predicate. An opted-in
+    // `production_like_targets` target seeds CLI findings; the editor
+    // partition must keep them (the divergence was documented in-code
+    // since #3283).
+    let root = unique_lsp_test_root("lsp-production-like-opt-in")?;
+    init_lsp_test_scope_repo(root.path())?;
+    std::fs::write(
+        root.path().join("src/lib.rs"),
+        "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )
+    .map_err(|err| format!("write changed production file failed: {err}"))?;
+    std::fs::write(
+        root.path().join("tests/api_contract.rs"),
+        "pub fn contract_helper(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )
+    .map_err(|err| format!("write changed opt-in target failed: {err}"))?;
+    commit_lsp_test_scope_change(root.path(), "change production and opt-in target")?;
+
+    let mut repo_config = crate::config::RiprConfig::default();
+    repo_config
+        .analysis
+        .production_like_targets
+        .insert(std::path::PathBuf::from("tests/api_contract.rs"));
+    let config = LspAnalysisConfig {
+        base_ref: Some("HEAD~1".to_string()),
+        mode: Mode::Instant,
+        diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
+        repo_config,
+        ..LspAnalysisConfig::default()
+    };
+
+    let diagnostics = workspace_diagnostics_with_config(root.path(), &config, true)?;
+
+    let opt_in_count =
+        lsp_test_scope_diagnostic_count(&diagnostics, root.path(), "tests/api_contract.rs")?;
+    if opt_in_count == 0 {
+        return Err(
+            "the opted-in production-like target's findings must stay in the editor projection"
+                .to_string(),
+        );
+    }
+    // Sibling test targets stay evidence-only: nothing seeds them, so no
+    // diagnostics and no out-of-scope suppression ambiguity.
+    if diagnostics.snapshot.out_of_scope_test_file_findings != 0 {
+        return Err(format!(
+            "no out-of-scope drop should occur when seeding already excludes evidence role: {}",
+            diagnostics.snapshot.out_of_scope_test_file_findings
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn registered_harness_projection_reaches_the_lsp_snapshot() -> Result<(), Box<dyn std::error::Error>>
+{
+    // #3605: the editor surface reads the same registered harness facts the
+    // CLI projects — registration identity, subjects, and typed limitations
+    // ride on the analysis snapshot instead of being dropped at the LSP
+    // boundary.
+    let root = unique_lsp_test_root("harness-projection")?;
+    std::fs::write(
+        root.path().join("Cargo.toml"),
+        concat!(
+            "[package]\n",
+            "name = \"lsp-harness-fixture\"\n",
+            "version = \"0.1.0\"\n",
+            "edition = \"2024\"\n",
+            "\n",
+            "[workspace]\n",
+            "\n",
+            "[lib]\n",
+            "name = \"lsp_harness_fixture\"\n",
+            "path = \"src/lib.rs\"\n",
+            "\n",
+            "[[test]]\n",
+            "name = \"mimic\"\n",
+            "path = \"tests/mimic.rs\"\n",
+            "harness = false\n",
+        ),
+    )?;
+    std::fs::write(
+        root.path().join("ripr.toml"),
+        concat!(
+            "[analysis]\n",
+            "[[analysis.test_harnesses]]\n",
+            "registration_id = \"mimic-suite\"\n",
+            "target = \"tests/mimic.rs\"\n",
+            "kind = \"custom_harness\"\n",
+            "adapter = \"libtest_mimic_v1\"\n",
+            "marker = \"libtest_mimic\"\n",
+        ),
+    )?;
+    std::fs::create_dir_all(root.path().join("src"))?;
+    std::fs::write(
+        root.path().join("src/lib.rs"),
+        "pub fn gate(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )?;
+    std::fs::create_dir_all(root.path().join("tests"))?;
+    std::fs::write(
+        root.path().join("tests/mimic.rs"),
+        "fn mimic_helper(value: i32) -> i32 { value }\n\nfn trials() -> Vec<libtest_mimic::Trial> {\n    vec![libtest_mimic::Trial::test(\"mimic_case\", || Ok(()))]\n}\n",
+    )?;
+
+    let run_git = |args: &[&str]| -> Result<std::process::Output, String> {
+        lsp_scope_git_output(root.path(), args)
+    };
+    run_git(&["init"])?;
+    run_git(&["config", "user.email", "ripr@example.invalid"])?;
+    run_git(&["config", "user.name", "RIPR Test"])?;
+    run_git(&["add", "."])?;
+    run_git(&["commit", "-m", "base"])?;
+    // A tracked edit to the registered target itself puts it in the diff
+    // scope, so the diff-scoped adapter indexes its facts and the
+    // projection carries the established subjects.
+    std::fs::write(
+        root.path().join("tests/mimic.rs"),
+        "fn mimic_helper(value: i32) -> i32 { value }\n\nfn trials() -> Vec<libtest_mimic::Trial> {\n    vec![libtest_mimic::Trial::test(\"mimic_case\", || Ok(())), libtest_mimic::Trial::test(\"mimic_case_two\", || Ok(()))]\n}\n",
+    )?;
+
+    let repo_config = crate::config::tests_only_parse(
+        "[analysis]\n[[analysis.test_harnesses]]\nregistration_id = \"mimic-suite\"\ntarget = \"tests/mimic.rs\"\nkind = \"custom_harness\"\nadapter = \"libtest_mimic_v1\"\nmarker = \"libtest_mimic\"\n",
+    )?;
+    let config = LspAnalysisConfig {
+        base_ref: Some("HEAD".to_string()),
+        mode: Mode::Instant,
+        diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
+        repo_config,
+        ..LspAnalysisConfig::default()
+    };
+    let diagnostics = workspace_diagnostics_with_config(root.path(), &config, true)?;
+
+    let super::state::HarnessFactsOnSnapshot::Complete(projections) =
+        &diagnostics.snapshot.harness_facts
+    else {
+        return Err("registered harness must disclose complete facts".into());
+    };
+    assert_eq!(projections.len(), 1, "{:?}", projections);
+    assert_eq!(projections[0].registration_id, "mimic-suite");
+    assert_eq!(projections[0].harness_kind, "custom_harness");
+    assert_eq!(
+        projections[0].target,
+        std::path::PathBuf::from("tests/mimic.rs")
+    );
+    assert_eq!(
+        projections[0]
+            .subjects
+            .iter()
+            .map(|subject| subject.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["mimic_case", "mimic_case_two"]
+    );
+    Ok(())
 }

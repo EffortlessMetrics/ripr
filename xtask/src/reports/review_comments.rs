@@ -4,6 +4,7 @@ use crate::run::{
     tool_build_timeout,
 };
 use crate::verification_contracts::validate_json_file_against_schema;
+use ripr::review_input::canonical_root_identity;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::env;
@@ -21,6 +22,7 @@ const REVIEW_COMMENTS_RECEIPT: &str = "target/ripr/review/run-receipt.json";
 const REVIEW_COMMENTS_SCHEMA: &str = "schemas/ripr/review-comments.schema.json";
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
 const DEFAULT_REVIEW_MODE: &str = "draft";
+const STATIC_GAP_CLASSES: [&str; 3] = ["weakly_exposed", "reachable_unrevealed", "no_static_path"];
 
 #[derive(Debug)]
 struct ReviewCommentsRunError {
@@ -873,13 +875,74 @@ fn error_review_comments_packet(
         "limits_note": "Review guidance generation is advisory. The producer did not complete, so no comments are emitted.",
         "run_receipt": receipt
     });
-    if let Some(analysis_outcome) = producer_analysis_outcome(repo, options) {
-        packet["analysis_outcome"] = analysis_outcome;
+    if let Some(static_fallback) = static_gap_fallback(repo, options) {
+        packet["static_gap_fallback"] = static_fallback;
         packet["limits_note"] = serde_json::json!(
-            "Review guidance generation did not complete; no comments are emitted, but the producer analysis outcome is retained and bound to this error packet."
+            "Review guidance generation did not complete; static seam locations from the check artifact are retained as fallback evidence, but no comments are emitted."
         );
     }
+    if let Some(analysis_outcome) = producer_analysis_outcome(repo, options) {
+        packet["analysis_outcome"] = analysis_outcome;
+        packet["limits_note"] = if packet.get("static_gap_fallback").is_some() {
+            serde_json::json!(
+                "Review guidance generation did not complete; static seam locations and the producer analysis outcome are retained as fallback evidence, but no comments are emitted."
+            )
+        } else {
+            serde_json::json!(
+                "Review guidance generation did not complete; no comments are emitted, but the producer analysis outcome is retained and bound to this error packet."
+            )
+        };
+    }
     packet
+}
+
+fn static_gap_fallback(repo: &Path, options: &ReviewCommentsOptions) -> Option<Value> {
+    let check_output = options.check_output.as_deref()?;
+    let path = Path::new(check_output);
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        repo.join(path)
+    };
+    let text = fs::read_to_string(&path).ok()?;
+    let producer: Value = serde_json::from_str(&text).ok()?;
+    if producer.get("tool").and_then(Value::as_str) != Some("ripr")
+        || producer.get("base").and_then(Value::as_str) != Some(options.base.as_str())
+        || !producer_root_matches(repo, options, &producer)
+    {
+        return None;
+    }
+    let findings = producer.get("findings")?.as_array()?;
+    let seams = findings
+        .iter()
+        .filter_map(|finding| {
+            let classification = finding.get("classification")?.as_str()?;
+            if !STATIC_GAP_CLASSES.contains(&classification) {
+                return None;
+            }
+            let probe = finding.get("probe")?;
+            Some(serde_json::json!({
+                "id": finding.get("id").cloned().unwrap_or(Value::Null),
+                "classification": classification,
+                "family": probe.get("family").cloned().unwrap_or(Value::Null),
+                "file": probe.get("file").cloned().unwrap_or(Value::Null),
+                "line": probe.get("line").cloned().unwrap_or(Value::Null)
+            }))
+        })
+        .collect::<Vec<_>>();
+    Some(serde_json::json!({
+        "source": check_output,
+        "seams": seams,
+        "claim_boundary": "Static seam locations only; no review guidance, correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+    }))
+}
+
+fn producer_root_matches(repo: &Path, options: &ReviewCommentsOptions, producer: &Value) -> bool {
+    let Some(root) = producer.get("root").and_then(Value::as_str) else {
+        return false;
+    };
+    root == options.root
+        || normalize_path_text(root) == normalize_path_text(&command_root_arg(repo, &options.root))
 }
 
 fn producer_analysis_outcome(repo: &Path, options: &ReviewCommentsOptions) -> Option<Value> {
@@ -1196,18 +1259,6 @@ fn requested_review_mode(repo: &Path, options: &ReviewCommentsOptions) -> String
     }
 }
 
-fn canonical_root_identity(root: &Path) -> String {
-    let normalized = root
-        .canonicalize()
-        .unwrap_or_else(|_| root.to_path_buf())
-        .to_string_lossy()
-        .replace('\\', "/");
-    normalized
-        .strip_prefix("//?/")
-        .unwrap_or(&normalized)
-        .to_string()
-}
-
 fn reusable_cache_identity(root: &str, base: &str, head: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"ripr-review-comments\0");
@@ -1227,8 +1278,8 @@ fn render_error_review_comments_markdown(packet: &Value) -> String {
         .and_then(|warning| warning.get("message"))
         .and_then(Value::as_str)
         .unwrap_or("review guidance generation did not complete");
-    format!(
-        "# RIPR PR Guidance\n\n- status: error\n- base: `{}`\n- head: `{}`\n- line annotations: 0\n- summary-only recommendations: 0\n- suppressed recommendations: 0\n\nNo review guidance was generated.\n\n## Warnings\n\n- tool_error: {}\n",
+    let mut markdown = format!(
+        "# RIPR PR Guidance\n\n- status: error\n- base: `{}`\n- head: `{}`\n- line annotations: 0\n- summary-only recommendations: 0\n- suppressed recommendations: 0\n\nNo review guidance was generated.\n",
         packet
             .get("base")
             .and_then(Value::as_str)
@@ -1236,9 +1287,61 @@ fn render_error_review_comments_markdown(packet: &Value) -> String {
         packet
             .get("head")
             .and_then(Value::as_str)
-            .unwrap_or(DEFAULT_HEAD),
-        md_escape(warning)
-    )
+            .unwrap_or(DEFAULT_HEAD)
+    );
+    if let Some(fallback) = packet.get("static_gap_fallback") {
+        markdown.push_str("\n## Static seam fallback\n\n");
+        markdown.push_str(
+            "LLM review guidance failed, but the static check artifact still identified these gap locations:\n\n",
+        );
+        if let Some(seams) = fallback.get("seams").and_then(Value::as_array) {
+            if seams.is_empty() {
+                markdown.push_str(
+                    "- No classified severe-gap seams were present in the fallback artifact.\n",
+                );
+            } else {
+                for seam in seams {
+                    markdown.push_str(&format!(
+                        "- `{}`: `{}`:{} ({})\n",
+                        md_escape(
+                            seam.get("classification")
+                                .and_then(Value::as_str)
+                                .unwrap_or("unknown"),
+                        ),
+                        md_escape(
+                            seam.get("file")
+                                .and_then(Value::as_str)
+                                .unwrap_or("unknown"),
+                        ),
+                        seam.get("line")
+                            .and_then(Value::as_u64)
+                            .map(|line| line.to_string())
+                            .unwrap_or_else(|| "?".to_string()),
+                        md_escape(
+                            seam.get("family")
+                                .and_then(Value::as_str)
+                                .unwrap_or("unknown"),
+                        ),
+                    ));
+                }
+            }
+        }
+        markdown.push_str("\n- source: `");
+        markdown.push_str(&md_escape(
+            fallback
+                .get("source")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown"),
+        ));
+        markdown.push_str(
+            "`\n- boundary: static seam location only; inspect the seam before writing a repair.\n",
+        );
+    }
+    markdown.push_str(&format!(
+        "\n## Warnings\n\n- tool_error: {}\n",
+        md_escape(warning),
+    ));
+    markdown
 }
 
 fn render_empty_review_comments_markdown(packet: &Value) -> String {
@@ -1729,6 +1832,110 @@ mod tests {
         if outcome != producer["analysis_outcome"] {
             return Err("subject outcome did not match the bounded authority".to_string());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn error_packet_retains_static_gap_locations_for_failed_guidance() -> Result<(), String> {
+        let repo = temp_repo("ripr-review-comments-static-fallback")?;
+        let mut options = options();
+        options.check_output = Some("target/check-output.json".to_string());
+        let producer = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "mode": "draft",
+            "root": normalize_path_text(&command_root_arg(&repo, &options.root)),
+            "base": options.base,
+            "head": options.head,
+            "analysis_outcome": {
+                "analysis_complete": true,
+                "outcome": {
+                    "schema_version": "0.1",
+                    "kind": "complete_no_findings",
+                    "identity": {
+                        "repository_identity": null,
+                        "root_identity": null,
+                        "config_identity": null,
+                        "base_revision": options.base.clone(),
+                        "input_identity": null,
+                        "snapshot_identity": null
+                    },
+                    "counts": {
+                        "changed_file_count": 0,
+                        "changed_line_count": 0,
+                        "candidate_line_count": 0,
+                        "probe_count": 0,
+                        "finding_count": 0
+                    },
+                    "limitations": [],
+                    "claim_boundary": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+                }
+            },
+            "summary": {
+                "weakly_exposed": 1,
+                "reachable_unrevealed": 1,
+                "no_static_path": 0
+            },
+            "findings": [
+                {
+                    "id": "gap:weak",
+                    "classification": "weakly_exposed",
+                    "probe": {
+                        "family": "return_value",
+                        "file": "src/auth.rs",
+                        "line": 42
+                    }
+                },
+                {
+                    "id": "gap:reachable",
+                    "classification": "reachable_unrevealed",
+                    "probe": {
+                        "family": "predicate",
+                        "file": "src/auth.rs",
+                        "line": 55
+                    }
+                },
+                {
+                    "id": "gap:ignored",
+                    "classification": "exposed",
+                    "probe": {
+                        "family": "return_value",
+                        "file": "src/auth.rs",
+                        "line": 60
+                    }
+                }
+            ]
+        });
+        fs::create_dir_all(repo.join("target")).map_err(|err| format!("create target: {err}"))?;
+        write_check_output(&repo, &options, &producer)?;
+
+        let receipt =
+            review_comments_receipt(&repo, &options, "limited_timeout", Some("timed out"));
+        let packet = error_review_comments_packet(&repo, &options, "timed out", &receipt);
+        let fallback = packet
+            .get("static_gap_fallback")
+            .ok_or_else(|| "static fallback missing".to_string())?;
+        assert_eq!(fallback["source"], "target/check-output.json");
+        assert_eq!(fallback["seams"].as_array().map(Vec::len), Some(2));
+        assert_eq!(fallback["seams"][0]["file"], "src/auth.rs");
+        assert_eq!(fallback["seams"][0]["line"], 42);
+        assert_eq!(
+            fallback["seams"][1]["classification"],
+            "reachable_unrevealed",
+        );
+        let violations = validate_packet_value(
+            &packet,
+            &repo,
+            &options,
+            false,
+            Path::new(REVIEW_COMMENTS_MD),
+        );
+        assert!(violations.is_empty(), "{violations:#?}");
+
+        let markdown = render_error_review_comments_markdown(&packet);
+        assert!(markdown.contains("Static seam fallback"));
+        assert!(markdown.contains("`src/auth.rs`:42"));
+        assert!(markdown.contains("`src/auth.rs`:55"));
 
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
@@ -1869,7 +2076,12 @@ mod tests {
 
     #[test]
     fn write_wrapper_skips_producer_for_empty_diff() -> Result<(), String> {
-        let (repo, mut options) = prepared_review_repo("ripr-review-comments-empty")?;
+        let name = if cfg!(unix) {
+            r"ripr-review\comments-empty"
+        } else {
+            "ripr-review-comments-empty"
+        };
+        let (repo, mut options) = prepared_review_repo(name)?;
         options.base = "HEAD".to_string();
         options.head = "HEAD".to_string();
 
@@ -1880,6 +2092,17 @@ mod tests {
         })?;
 
         let packet = read_packet(&repo)?;
+        let expected_root = ripr::review_input::canonical_root_identity(&repo);
+        let revision = resolve_revision_identity(&repo, "HEAD");
+        let expected_cache = reusable_cache_identity(&expected_root, &revision, &revision);
+        if packet["run_receipt"]["root_identity"].as_str() != Some(expected_root.as_str())
+            || packet["run_receipt"]["reusable_cache_identity"].as_str()
+                != Some(expected_cache.as_str())
+        {
+            return Err(
+                "empty-diff fallback receipt diverged from shared root/cache identity".into(),
+            );
+        }
         assert_eq!(packet["status"], "advisory");
         assert_eq!(packet["summary"]["comments"], 0);
         assert_eq!(
@@ -1932,6 +2155,7 @@ mod tests {
 
     #[test]
     fn built_path_resolves_to_debug_ripr_binary() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let repo = env::temp_dir().join("ripr-review-repo");
         let path = built_ripr_binary_path(&repo)?;
 
