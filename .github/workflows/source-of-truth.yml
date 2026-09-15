@@ -3,8 +3,26 @@ name: Source of Truth
 on:
   pull_request:
     branches: [main, master]
+    paths:
+      - '.github/workflows/source-of-truth.yml'
+      - '.ripr/traceability.toml'
+      - '.allow/spec-system/**'
+      - 'docs/specs/**'
+      - 'docs/status/SUPPORT_TIERS.md'
+      - 'docs/templates/**'
   push:
     branches: [main, master]
+    paths:
+      - '.github/workflows/source-of-truth.yml'
+      - '.ripr/traceability.toml'
+      - '.allow/spec-system/**'
+      - 'docs/specs/**'
+      - 'docs/status/SUPPORT_TIERS.md'
+      - 'docs/templates/**'
+  schedule:
+    # Bounded weekly review cadence (#3467): no more frequent than weekly.
+    - cron: '37 6 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -40,3 +58,52 @@ jobs:
             echo ""
             echo "This workflow is advisory and is not a branch-protection gate."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  spec-maintenance-digest:
+    name: spec-maintenance-digest
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    concurrency:
+      # Non-cancelling queue semantics: an almost complete scheduled
+      # inventory finishes instead of being discarded (#3467).
+      group: spec-maintenance-digest-${{ github.ref }}
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Spec maintenance digest
+        run: cargo xtask specs digest --as-of "$(date -u +%F)"
+
+      - name: Publish advisory digest summary
+        if: always()
+        run: |
+          {
+            echo "## Specification maintenance digest (advisory)"
+            echo ""
+            echo 'Head: `${{ github.sha }}`'
+            echo ""
+            cat target/ripr/reports/spec-maintenance-digest.md
+          } >> "$GITHUB_STEP_SUMMARY" || true
+          if [ ! -f target/ripr/reports/spec-maintenance-digest.md ]; then
+            {
+              echo "maintenance_status: instrument_failure"
+              echo ""
+              echo "The maintenance instrument failed to produce a trustworthy report. This is a failed advisory observation, not a failed required product gate."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::spec maintenance instrument failed; failed advisory observation, not a required product gate"
+          fi
+
+      - name: Upload maintenance report artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-spec-maintenance
+          path: target/ripr/reports/
+          if-no-files-found: ignore
+          retention-days: 5

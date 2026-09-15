@@ -17,9 +17,18 @@ mod python;
 use model::{BunUbProfileConfig, FindingSeverityConfig, ProfilesConfig, SeamSeverityConfig};
 pub use model::{
     CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION, CheckInputExplicit, ConfigIdentityRole, ConfigSeverity,
-    LspDiagnosticProfile, OraclePolicy, PerlConfig, RiprConfig, SeverityConfig, TypescriptConfig,
+    LspDiagnosticProfile, OraclePolicy, PerlConfig, RiprConfig, SeverityConfig, TestHarnessAdapter,
+    TestHarnessKind, TestHarnessRegistration, TypescriptConfig,
 };
-pub(crate) use python::detect_python_project;
+#[cfg(test)]
+pub(crate) use python::{PYTHON_EXCLUDED_DIRS, PYTHON_VENDOR_DIR};
+pub(crate) use python::{
+    PYTHON_PROJECT_MARKERS, PYTHON_SOURCE_DIR_MARKERS, detect_python_project,
+    is_detectable_excluded_python_path, is_detectable_generated_python_path,
+    is_detectable_python_source_name, is_python_dir_pruned_from_repo_discovery,
+    is_python_excluded_dir_everywhere, python_project_marker_name, python_source_dir_marker_name,
+    source_dir_contains_detectable_python,
+};
 
 pub(crate) const CONFIG_FILE_NAME: &str = "ripr.toml";
 pub(crate) const DEFAULT_CONTEXT_RELATED_TESTS: usize = 5;
@@ -231,10 +240,17 @@ pub(crate) fn check_artifact_config_identity_hash(config: &RiprConfig) -> String
 /// comparable). Closed set: when the producer starts consuming another config
 /// field, add it here in the same PR; do not widen the filter to whole
 /// sections.
-pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 3] = [
+pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 5] = [
     "oracles.broad_error_strength",
     "oracles.mock_expectation_strength",
     "oracles.snapshot_strength",
+    // The production-like opt-in changes which files are production
+    // subjects in the repo seam inventory (#3283).
+    "analysis.production_like_targets",
+    // Harness registrations change which files are evidence subjects and
+    // which functions are executable tests in the repo seam inventory
+    // (#3532).
+    "analysis.test_harnesses",
 ];
 
 /// Canonical config identity for the repo-exposure artifact input identity
@@ -294,6 +310,19 @@ impl RiprConfig {
                 config.analysis.mode = Some(parse_mode_value(&mode)?);
             }
             config.analysis.include_unchanged_tests = analysis.include_unchanged_tests;
+            if let Some(targets) = analysis.production_like_targets {
+                let mut parsed = std::collections::BTreeSet::new();
+                for target in targets {
+                    parsed.insert(parse_relative_path(
+                        "analysis.production_like_targets",
+                        &target,
+                    )?);
+                }
+                config.analysis.production_like_targets = parsed;
+            }
+            if let Some(registrations) = analysis.test_harnesses {
+                config.analysis.test_harnesses = parse_test_harness_registrations(registrations)?;
+            }
         }
         if let Some(oracles) = raw.oracles {
             if let Some(strength) = oracles.snapshot_strength {
@@ -513,6 +542,21 @@ struct RawBunUbProfileConfig {
 struct RawAnalysisConfig {
     mode: Option<String>,
     include_unchanged_tests: Option<bool>,
+    production_like_targets: Option<Vec<String>>,
+    test_harnesses: Option<Vec<RawTestHarnessRegistration>>,
+}
+
+/// Raw `[analysis.test_harnesses]` entry (#3532). Every field is exact:
+/// unknown values, root escapes, and kind/adapter mismatches fail closed
+/// at parse time with named errors.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RawTestHarnessRegistration {
+    registration_id: Option<String>,
+    target: Option<String>,
+    kind: Option<String>,
+    adapter: Option<String>,
+    marker: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -782,10 +826,25 @@ fn parse_relative_path(field: &str, value: &str) -> Result<PathBuf, String> {
             "{field} `{value}` uses a drive or scheme prefix; use a repository-relative path"
         ));
     }
-    let path = PathBuf::from(trimmed);
-    if path.is_absolute() {
-        return Err(format!("{field} `{value}` must be repository-relative"));
+    // `.` segments are normalized away rather than rejected: shared path
+    // settings legitimately carry `./` prefixes, and canonical target
+    // identity needs `./tests/a.rs` and `tests/a.rs` to be one path.
+    // Normalization stays on the `/`-separated string form so the stored
+    // path keeps its workspace-relative display on every host.
+    if trimmed.starts_with('/') {
+        return Err(format!(
+            "{field} `{value}` uses a leading `/`; use a repository-relative path"
+        ));
     }
+    let normalized = trimmed
+        .split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect::<Vec<_>>()
+        .join("/");
+    if normalized.is_empty() {
+        return Err(format!("{field} `{value}` must name a path"));
+    }
+    let path = PathBuf::from(&normalized);
     if path.components().any(|component| {
         matches!(
             component,
@@ -797,5 +856,120 @@ fn parse_relative_path(field: &str, value: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// Parse and validate `[analysis.test_harnesses]` entries (#3532).
+///
+/// Fail-closed rules, each with a named error:
+/// - every field is required (missing fields fail, not default);
+/// - `target` must be a repository-relative path ([`parse_relative_path`]);
+/// - `kind` and `adapter` must be known values (unknown versions fail
+///   closed) and must match each other;
+/// - `marker` must be an exact identifier path — no wildcards, globs,
+///   prefixes, or attribute arguments;
+/// - duplicate `registration_id`s or two registrations claiming the same
+///   `target` are non-clean and named.
+fn parse_test_harness_registrations(
+    registrations: Vec<RawTestHarnessRegistration>,
+) -> Result<Vec<TestHarnessRegistration>, String> {
+    let mut parsed = Vec::with_capacity(registrations.len());
+    let mut seen_ids = std::collections::BTreeSet::new();
+    let mut seen_targets = std::collections::BTreeSet::new();
+    for (index, raw) in registrations.into_iter().enumerate() {
+        let position = format!("analysis.test_harnesses[{index}]");
+        let registration_id = required_text(&position, "registration_id", raw.registration_id)?;
+        if !seen_ids.insert(registration_id.clone()) {
+            return Err(format!(
+                "{position}: registration_id `{registration_id}` is registered twice; conflicting registrations fail closed"
+            ));
+        }
+        let target = parse_relative_path(
+            &format!("{position}.target"),
+            &required_text(&position, "target", raw.target)?,
+        )?;
+        if !seen_targets.insert(normalize_identity_path(&target)) {
+            return Err(format!(
+                "{position}: target `{}` is claimed by two registrations; conflicting registrations fail closed",
+                target.to_string_lossy().replace('\\', "/")
+            ));
+        }
+        let kind = TestHarnessKind::parse(&required_text(&position, "kind", raw.kind)?)?;
+        let adapter =
+            TestHarnessAdapter::parse(&required_text(&position, "adapter", raw.adapter)?)?;
+        if !adapter.supports_kind(kind) {
+            return Err(format!(
+                "{position}: adapter `{}` does not support kind `{}`; the mismatch fails closed",
+                adapter.as_str(),
+                kind.as_str()
+            ));
+        }
+        let marker = required_text(&position, "marker", raw.marker)?;
+        if !marker_path_is_exact(&marker) {
+            return Err(format!(
+                "{position}: marker `{marker}` must be an exact identifier path (e.g. `libtest_mimic`, `myco::contract_test`) without wildcards, prefixes, or arguments"
+            ));
+        }
+        parsed.push(TestHarnessRegistration {
+            registration_id,
+            target,
+            kind,
+            adapter,
+            marker,
+        });
+    }
+    Ok(parsed)
+}
+
+fn required_text(position: &str, field: &str, value: Option<String>) -> Result<String, String> {
+    match value {
+        Some(text) if !text.trim().is_empty() => Ok(text.trim().to_string()),
+        Some(_) => Err(format!("{position}.{field} must not be empty")),
+        None => Err(format!("{position}.{field} is required")),
+    }
+}
+
+fn normalize_identity_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// Exact marker paths only: `::`-separated Rust identifiers, no
+/// wildcards, globs, whitespace, or attribute arguments. A lookalike
+/// marker (`myco::contract_test*`, `myco::contract_test(`) never parses.
+fn marker_path_is_exact(marker: &str) -> bool {
+    !marker.is_empty()
+        && marker.split("::").all(|segment| {
+            let mut characters = segment.chars();
+            matches!(characters.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
+                && characters.all(|rest| rest.is_ascii_alphanumeric() || rest == '_')
+        })
+}
+
 #[cfg(test)]
 mod tests;
+
+/// The config a bound immutable-subject run uses (#3279 R4): the
+/// candidate tree's own `ripr.toml` when the tree carries one, else the
+/// default config. The worktree file (already loaded as `worktree`)
+/// contributes nothing — `source_path`/`source_text` are cleared so the
+/// recorded identity cannot claim the worktree file as its source.
+pub(crate) fn config_for_candidate(
+    subject: &crate::domain::GitCandidateSubject,
+    worktree: &RiprConfig,
+) -> Result<RiprConfig, String> {
+    let bytes = crate::analysis::git_candidate_execution::candidate_config_bytes(
+        subject,
+        Some(std::time::Duration::from_secs(30)),
+    )
+    .map_err(|error| error.to_string())?;
+    let Some(text) = bytes else {
+        // Pure default: no worktree fact may enter a subject run
+        // (#3279 review B1 — the worktree's enabled-languages list is
+        // mutable state, and toggling it flipped subject completeness).
+        // Binary capability is already inside the default config.
+        let _ = worktree;
+        return Ok(RiprConfig::default());
+    };
+    let mut config =
+        parse_config(&text).map_err(|err| format!("candidate tree ripr.toml: {err}"))?;
+    config.source_path = None;
+    config.source_text = Some(text);
+    Ok(config)
+}

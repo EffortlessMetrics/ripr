@@ -138,6 +138,18 @@ are terminal non-repair states, while unresolved producer facts remain
 Verify and receipt
 commands remain the explicit route supplied by the selected gap ledger; the
 rerun does not manufacture commands from a seam's file or line.
+When matching ledger records carry producer-owned typed command
+specifications (`command_specs.verify` / `command_specs.receipt`, validated
+at ledger deserialization), the targeted-rerun route additionally carries
+`verify_command_specs` and `receipt_command_spec` beside the legacy display
+strings: typed specs are deduplicated by their semantic digest (first
+occurrence order; same-id specs with different arguments both survive), a
+typed receipt is carried only when the legacy receipt route is itself
+unambiguous (a conflicting legacy set discloses the conflict limitation and
+drops the machine route), and records without typed specs keep the route
+legacy-string-only. The typed form is the authority for machine execution
+when present; the legacy strings remain the human display. The rerun never
+manufactures commands from a seam's file or line.
 
 ### Cache correctness and disclosure
 
@@ -178,6 +190,23 @@ implicit fact source. Graph statuses are `complete`, `limited`, or
 `input_changed:external_dependency_graph_provenance`, and parity fails closed
 when required local graph provenance is unavailable or differs between
 targeted and full inputs.
+
+The fingerprint also discloses the `path_dependency_graph`: a forward and
+reverse adjacency over the path-dependency edges captured from the same local
+manifests, built in memory with no network access and no filesystem walking
+of dependencies. `status` follows the same `complete`/`limited`/
+`unavailable` vocabulary, where `limited` names a partial edge inventory and
+`complete` with an empty adjacency states truthfully that no path dependency
+was declared. Every participating manifest exposes sorted `forward` and
+`reverse` neighbor lists; cycles terminate any walk and are disclosed as
+cycle markers; edges without a resolved identity do not participate and are
+named in `detail` and `connected_edge_count`. This section is disclosure
+only: it does not contribute to `input_changed` naming, parity input
+mismatches, or parity fail-closed decisions. Dep-driven diff-scope expansion
+(#2970) consumes the adjacency in the diff path by rebuilding it from the
+current manifest provenance on every run, not through this fingerprint
+section, and a fingerprint written before the section existed is read as
+having no recorded path-dependency graph rather than an empty one.
 
 A content change to any selected test, selected production seam, Cargo manifest
 or lockfile, workspace membership or package graph, selected feature

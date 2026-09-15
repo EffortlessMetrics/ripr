@@ -1,6 +1,6 @@
 # Source-promotion resolved-tree fixture
 
-Spec: RIPR-SPEC-0150
+Spec: RIPR-SPEC-0177
 
 This is a dedicated receipt-snapshot corpus for
 `ripr.source_promotion_resolved_tree_validation.v1`. Its dedicated validator

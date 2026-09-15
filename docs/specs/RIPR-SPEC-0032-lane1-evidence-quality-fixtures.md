@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on the audit-derived fixture corpus covering every required evidence-quality class.
+
 ## Problem
 
 The Lane 1 evidence-quality audit identifies dogfood gaps, but analyzer work

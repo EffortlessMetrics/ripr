@@ -17,6 +17,7 @@
 //! repo-exposure report's 0.1, because the packet is a separate
 //! contract aimed at coding agents rather than reviewers.
 
+use crate::agent::command_specs::{command_display_is_nonblank, command_displays_are_complete};
 use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
     WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_receipt_command,
@@ -529,15 +530,23 @@ fn gap_record_command_specs_json(record: &GapRecord) -> Option<serde_json::Value
     }))
 }
 
-/// Render a deterministic queue over explicit GapRecords that are already
-/// eligible for bounded agent-packet projection.
-pub(crate) fn render_agent_gap_record_queue_json(
-    root: &str,
-    gap_ledger_path: &str,
+/// Typed queue model built before any serialization. Validation, language
+/// filtering, upstream ledger ordering, receipt freshness, conflict identity,
+/// and exclusion totals are decided here — callers partition and select from
+/// this model without re-parsing rendered JSON.
+pub(crate) struct GapRecordQueueModel {
+    pub(crate) candidates: Vec<GapRecordQueueCandidate>,
+    pub(crate) records_total: usize,
+    pub(crate) language_records_total: usize,
+    pub(crate) excluded_by_reason: BTreeMap<String, usize>,
+}
+
+/// Build the typed GapRecord-backed queue model over explicit GapRecords that
+/// are already eligible for bounded agent-packet projection.
+pub(crate) fn build_gap_record_queue_model(
     records: &[GapRecord],
     language: &str,
-    top: usize,
-) -> Result<String, String> {
+) -> Result<GapRecordQueueModel, String> {
     let mut candidates = Vec::new();
     let mut excluded_by_reason = BTreeMap::<String, usize>::new();
     let mut language_records_total = 0usize;
@@ -616,15 +625,135 @@ pub(crate) fn render_agent_gap_record_queue_json(
         });
     }
 
-    let conflict_counts = gap_record_queue_conflict_counts(&candidates);
-    let selected: Vec<_> = candidates.iter().take(top).collect();
-    let conflict_groups = gap_record_queue_conflict_groups(&candidates);
-    let stale_total = candidates
+    Ok(GapRecordQueueModel {
+        candidates,
+        records_total: records.len(),
+        language_records_total,
+        excluded_by_reason,
+    })
+}
+
+/// Render the deterministic queue envelope by taking the first `top`
+/// candidates in upstream ledger order.
+pub(crate) fn render_agent_gap_record_queue_json(
+    root: &str,
+    gap_ledger_path: &str,
+    records: &[GapRecord],
+    language: &str,
+    top: usize,
+) -> Result<String, String> {
+    let model = build_gap_record_queue_model(records, language)?;
+    let conflict_counts = gap_record_queue_conflict_counts(&model.candidates);
+    let packets: Vec<Value> = model
+        .candidates
+        .iter()
+        .take(top)
+        .enumerate()
+        .map(|(selected_index, candidate)| {
+            gap_record_queue_packet_value(
+                candidate,
+                &conflict_counts,
+                root,
+                gap_ledger_path,
+                selected_index + 1,
+            )
+        })
+        .collect();
+    render_gap_record_queue_envelope_value(gap_record_queue_envelope_value(
+        root,
+        gap_ledger_path,
+        &model,
+        language,
+        top,
+        packets,
+    ))
+}
+
+/// Render one typed queue candidate as a bounded agent-packet payload with
+/// its 1-based scheduler priority.
+pub(crate) fn gap_record_queue_packet_value(
+    candidate: &GapRecordQueueCandidate,
+    conflict_counts: &BTreeMap<String, usize>,
+    root: &str,
+    gap_ledger_path: &str,
+    priority: usize,
+) -> Value {
+    let conflict_group_size = conflict_counts
+        .get(&candidate.conflict_group)
+        .copied()
+        .unwrap_or(1);
+    let mut packet = json!({
+        "priority": priority,
+        "source_index": candidate.source_index,
+        "queue_state": candidate.queue_state.as_str(),
+        "staleness_status": candidate.staleness_status.as_str(),
+        "staleness_reason": candidate.staleness_reason.as_str(),
+        "gap_id": candidate.gap_id.as_str(),
+        "canonical_gap_id": candidate.canonical_gap_id.as_ref(),
+        "gap_kind": candidate.gap_kind.as_str(),
+        "language": candidate.language.as_str(),
+        "language_status": candidate.language_status.as_str(),
+        "policy_state": candidate.policy_state.as_str(),
+        "evidence_class": candidate.evidence_class.as_str(),
+        "repair_kind": candidate.repair_kind.as_str(),
+        "task": candidate.task.as_str(),
+        "discriminator_guidance": &candidate.discriminator_guidance,
+        "changed_owner": candidate.changed_owner.as_ref(),
+        "changed_file": candidate.changed_file.as_ref(),
+        "changed_line": candidate.changed_line,
+        "changed_behavior": candidate.changed_behavior.as_ref(),
+        "missing_discriminator": candidate.missing_discriminator.as_ref(),
+        "suggested_test_file": candidate.suggested_test_file.as_ref(),
+        "suggested_test_name": candidate.suggested_test_name.as_ref(),
+        "verify_command": candidate.verify_command.as_str(),
+        "receipt_command": candidate.receipt_command.as_ref(),
+        "conflict_group": candidate.conflict_group.as_str(),
+        "conflict_group_size": conflict_group_size,
+        "allowed_edit_surface": &candidate.allowed_edit_surface,
+        "allowed_files": &candidate.allowed_edit_surface,
+        "forbidden_files": &candidate.forbidden_files,
+        "packet_command_args": [
+            "ripr",
+            "agent",
+            "packet",
+            "--root",
+            root,
+            "--gap-ledger",
+            gap_ledger_path,
+            "--gap-id",
+            candidate.gap_id.as_str(),
+            "--json"
+        ],
+    });
+    if let Some(command_specs) = candidate.command_specs.as_ref()
+        && let Some(object) = packet.as_object_mut()
+    {
+        object.insert("command_specs".to_string(), command_specs.clone());
+    }
+    packet
+}
+
+/// Assemble the queue envelope Value from the typed model and pre-rendered
+/// packet payloads. Full-candidate totals — conflict groups, exclusions,
+/// stale counts — always describe every validated candidate, never just the
+/// rendered selection.
+pub(crate) fn gap_record_queue_envelope_value(
+    root: &str,
+    gap_ledger_path: &str,
+    model: &GapRecordQueueModel,
+    language: &str,
+    top: usize,
+    packets: Vec<Value>,
+) -> Value {
+    let conflict_groups = gap_record_queue_conflict_groups(&model.candidates);
+    let stale_total = model
+        .candidates
         .iter()
         .filter(|candidate| candidate.staleness_status == "stale")
         .count();
-    let excluded_records_total: usize = excluded_by_reason.values().sum();
-    let exclusion_reasons: Vec<_> = excluded_by_reason
+    let excluded_records_total: usize = model.excluded_by_reason.values().sum();
+    let exclusion_reasons: Vec<_> = model
+        .excluded_by_reason
         .iter()
         .map(|(reason, count)| {
             json!({
@@ -633,67 +762,8 @@ pub(crate) fn render_agent_gap_record_queue_json(
             })
         })
         .collect();
-    let packets: Vec<_> = selected
-        .iter()
-        .enumerate()
-        .map(|(selected_index, candidate)| {
-            let conflict_group_size = conflict_counts
-                .get(&candidate.conflict_group)
-                .copied()
-                .unwrap_or(1);
-            let mut packet = json!({
-                "priority": selected_index + 1,
-                "source_index": candidate.source_index,
-                "queue_state": candidate.queue_state.as_str(),
-                "staleness_status": candidate.staleness_status.as_str(),
-                "staleness_reason": candidate.staleness_reason.as_str(),
-                "gap_id": candidate.gap_id.as_str(),
-                "canonical_gap_id": candidate.canonical_gap_id.as_ref(),
-                "gap_kind": candidate.gap_kind.as_str(),
-                "language": candidate.language.as_str(),
-                "language_status": candidate.language_status.as_str(),
-                "policy_state": candidate.policy_state.as_str(),
-                "evidence_class": candidate.evidence_class.as_str(),
-                "repair_kind": candidate.repair_kind.as_str(),
-                "task": candidate.task.as_str(),
-                "discriminator_guidance": &candidate.discriminator_guidance,
-                "changed_owner": candidate.changed_owner.as_ref(),
-                "changed_file": candidate.changed_file.as_ref(),
-                "changed_line": candidate.changed_line,
-                "changed_behavior": candidate.changed_behavior.as_ref(),
-                "missing_discriminator": candidate.missing_discriminator.as_ref(),
-                "suggested_test_file": candidate.suggested_test_file.as_ref(),
-                "suggested_test_name": candidate.suggested_test_name.as_ref(),
-                "verify_command": candidate.verify_command.as_str(),
-                "receipt_command": candidate.receipt_command.as_ref(),
-                "conflict_group": candidate.conflict_group.as_str(),
-                "conflict_group_size": conflict_group_size,
-                "allowed_edit_surface": &candidate.allowed_edit_surface,
-                "allowed_files": &candidate.allowed_edit_surface,
-                "forbidden_files": &candidate.forbidden_files,
-                "packet_command_args": [
-                    "ripr",
-                    "agent",
-                    "packet",
-                    "--root",
-                    root,
-                    "--gap-ledger",
-                    gap_ledger_path,
-                    "--gap-id",
-                    candidate.gap_id.as_str(),
-                    "--json"
-                ],
-            });
-            if let Some(command_specs) = candidate.command_specs.as_ref()
-                && let Some(object) = packet.as_object_mut()
-            {
-                object.insert("command_specs".to_string(), command_specs.clone());
-            }
-            packet
-        })
-        .collect();
     let mut envelope = json!({
-        "schema_version": "0.1",
+        "schema_version": "0.2",
         "tool": "ripr",
         "report": "swarm-queue",
         "scope": "repo",
@@ -706,9 +776,9 @@ pub(crate) fn render_agent_gap_record_queue_json(
             "top": top,
         },
         "summary": {
-            "records_total": records.len(),
-            "language_records_total": language_records_total,
-            "queue_total": candidates.len(),
+            "records_total": model.records_total,
+            "language_records_total": model.language_records_total,
+            "queue_total": model.candidates.len(),
             "returned": packets.len(),
             "stale_total": stale_total,
             "excluded_records_total": excluded_records_total,
@@ -729,6 +799,12 @@ pub(crate) fn render_agent_gap_record_queue_json(
     if let Some(object) = envelope.as_object_mut() {
         insert_analysis_outcome_projection(object, None, false);
     }
+    envelope
+}
+
+/// Serialize one assembled queue envelope Value with the shared trailing
+/// newline contract.
+pub(crate) fn render_gap_record_queue_envelope_value(envelope: Value) -> Result<String, String> {
     let mut rendered = serde_json::to_string_pretty(&envelope)
         .map_err(|err| format!("render agent gap queue JSON failed: {err}"))?;
     rendered.push('\n');
@@ -752,7 +828,7 @@ pub(crate) fn render_agent_gap_record_queue_wrong_root_json(
         "gap ledger root {ledger_root} does not match requested --root {root}; regenerate the gap decision ledger for the selected root before assigning swarm work"
     );
     let mut envelope = json!({
-        "schema_version": "0.1",
+        "schema_version": "0.2",
         "tool": "ripr",
         "report": "swarm-queue",
         "scope": "repo",
@@ -824,7 +900,7 @@ pub(crate) fn render_agent_gap_record_queue_missing_root_json(
         gap_ledger_path
     );
     let mut envelope = json!({
-        "schema_version": "0.1",
+        "schema_version": "0.2",
         "tool": "ripr",
         "report": "swarm-queue",
         "scope": "repo",
@@ -880,34 +956,34 @@ pub(crate) fn render_agent_gap_record_queue_missing_root_json(
 }
 
 #[derive(Clone, Debug)]
-struct GapRecordQueueCandidate {
-    source_index: usize,
-    gap_id: String,
-    canonical_gap_id: Option<String>,
-    gap_kind: String,
-    language: String,
-    language_status: String,
-    policy_state: String,
-    evidence_class: String,
-    repair_kind: String,
-    task: String,
-    discriminator_guidance: serde_json::Value,
-    suggested_test_file: Option<String>,
-    suggested_test_name: Option<String>,
-    verify_command: String,
-    receipt_command: Option<String>,
-    command_specs: Option<serde_json::Value>,
-    conflict_group: String,
-    queue_state: String,
-    staleness_status: String,
-    staleness_reason: String,
-    allowed_edit_surface: Vec<String>,
-    forbidden_files: Vec<String>,
-    changed_owner: Option<String>,
-    changed_file: Option<String>,
-    changed_line: Option<u64>,
-    changed_behavior: Option<String>,
-    missing_discriminator: Option<String>,
+pub(crate) struct GapRecordQueueCandidate {
+    pub(crate) source_index: usize,
+    pub(crate) gap_id: String,
+    pub(crate) canonical_gap_id: Option<String>,
+    pub(crate) gap_kind: String,
+    pub(crate) language: String,
+    pub(crate) language_status: String,
+    pub(crate) policy_state: String,
+    pub(crate) evidence_class: String,
+    pub(crate) repair_kind: String,
+    pub(crate) task: String,
+    pub(crate) discriminator_guidance: serde_json::Value,
+    pub(crate) suggested_test_file: Option<String>,
+    pub(crate) suggested_test_name: Option<String>,
+    pub(crate) verify_command: String,
+    pub(crate) receipt_command: Option<String>,
+    pub(crate) command_specs: Option<serde_json::Value>,
+    pub(crate) conflict_group: String,
+    pub(crate) queue_state: String,
+    pub(crate) staleness_status: String,
+    pub(crate) staleness_reason: String,
+    pub(crate) allowed_edit_surface: Vec<String>,
+    pub(crate) forbidden_files: Vec<String>,
+    pub(crate) changed_owner: Option<String>,
+    pub(crate) changed_file: Option<String>,
+    pub(crate) changed_line: Option<u64>,
+    pub(crate) changed_behavior: Option<String>,
+    pub(crate) missing_discriminator: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -917,7 +993,7 @@ struct GapRecordQueueFreshness {
     staleness_reason: String,
 }
 
-fn gap_record_queue_conflict_counts(
+pub(crate) fn gap_record_queue_conflict_counts(
     candidates: &[GapRecordQueueCandidate],
 ) -> BTreeMap<String, usize> {
     let mut counts = BTreeMap::new();
@@ -927,7 +1003,7 @@ fn gap_record_queue_conflict_counts(
     counts
 }
 
-fn gap_record_queue_conflict_groups(
+pub(crate) fn gap_record_queue_conflict_groups(
     candidates: &[GapRecordQueueCandidate],
 ) -> Vec<serde_json::Value> {
     let mut grouped = BTreeMap::<String, Vec<String>>::new();
@@ -1207,8 +1283,8 @@ pub(crate) fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(),
     let Some(route) = record.repair_route.as_ref() else {
         return Err("requires a repair_route".to_string());
     };
-    if record.verification_commands.is_empty() {
-        return Err("requires verification_commands".to_string());
+    if !command_displays_are_complete(&record.verification_commands) {
+        return Err("requires nonblank verification_commands".to_string());
     }
     if record.repairability != "repairable" && route.route_kind != "InspectStaticLimit" {
         return Err("requires a repairable gap or bounded inspection route".to_string());
@@ -1219,10 +1295,9 @@ pub(crate) fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(),
     if record
         .receipt_command
         .as_deref()
-        .and_then(non_empty)
-        .is_none()
+        .is_none_or(|command| !command_display_is_nonblank(command))
     {
-        return Err("requires receipt_command".to_string());
+        return Err("requires nonblank receipt_command".to_string());
     }
     Ok(())
 }
@@ -3032,7 +3107,8 @@ mod tests {
     fn typed_gap_record() -> Result<GapRecord, String> {
         let mut record = crate::output::gap_decision_ledger::parse_gap_records_json(
             r#"{"records":[{
-              "gap_id":"gap:rust:typed-packet",
+              "gap_id": "gap:rust:typed-packet",
+              "source_currentness": "candidate_current",
               "kind":"MissingBoundaryAssertion",
               "language":"rust",
               "language_status":"stable",
@@ -3075,6 +3151,7 @@ mod tests {
         record.command_specs = Some(crate::output::gap_decision_ledger::GapRecordCommandSpecs {
             verify: vec![verify],
             receipt: vec![receipt],
+            regeneration: Vec::new(),
         });
         Ok(record)
     }
@@ -3664,7 +3741,8 @@ mod tests {
     fn gap_record_packet_carries_shared_repair_route_and_stop_conditions() -> Result<(), String> {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
             r#"{"records":[{
-              "gap_id":"gap:pr:pricing",
+              "gap_id": "gap:pr:pricing",
+              "source_currentness": "candidate_current",
               "canonical_gap_id":"gap:rust:pricing",
               "kind":"MissingBoundaryAssertion",
               "language":"rust",
@@ -4203,7 +4281,8 @@ mod tests {
     fn gap_record_packet_bounds_python_preview_to_suggested_test_file() -> Result<(), String> {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
             r#"{"records":[{
-              "gap_id":"gap:python:pricing-boundary",
+              "gap_id": "gap:python:pricing-boundary",
+              "source_currentness": "candidate_current",
               "canonical_gap_id":"gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
               "kind":"MissingBoundaryAssertion",
               "language":"python",
@@ -4325,7 +4404,8 @@ mod tests {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
             r#"{"records":[
             {
-              "gap_id":"gap:python:pricing-boundary",
+              "gap_id": "gap:python:pricing-boundary",
+              "source_currentness": "candidate_current",
               "canonical_gap_id":"gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
               "kind":"MissingBoundaryAssertion",
               "language":"python",
@@ -4349,7 +4429,8 @@ mod tests {
               "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}}
             },
             {
-              "gap_id":"gap:python:pricing-return",
+              "gap_id": "gap:python:pricing-return",
+              "source_currentness": "candidate_current",
               "canonical_gap_id":"gap:python:src/pricing.py:calculate_discount:return_value:expected_discount",
               "kind":"MissingValueAssertion",
               "language":"python",
@@ -4373,7 +4454,8 @@ mod tests {
               "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}}
             },
             {
-              "gap_id":"gap:python:already-observed",
+              "gap_id": "gap:python:already-observed",
+              "source_currentness": "candidate_current",
               "kind":"NoActionAlreadyObserved",
               "language":"python",
               "language_status":"preview",
@@ -4386,7 +4468,8 @@ mod tests {
               "projection_eligibility":{"agent_packet":{"eligible":false,"reason":"already_observed"}}
             },
             {
-              "gap_id":"gap:rust:pricing",
+              "gap_id": "gap:rust:pricing",
+              "source_currentness": "candidate_current",
               "kind":"MissingBoundaryAssertion",
               "language":"rust",
               "language_status":"stable",
@@ -4514,7 +4597,8 @@ mod tests {
     fn gap_record_queue_marks_receipt_closed_python_packets_stale() -> Result<(), String> {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
             r#"{"records":[{
-              "gap_id":"gap:python:pricing-boundary",
+              "gap_id": "gap:python:pricing-boundary",
+              "source_currentness": "candidate_current",
               "canonical_gap_id":"gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
               "kind":"MissingBoundaryAssertion",
               "language":"python",
@@ -4594,7 +4678,8 @@ mod tests {
             (RECEIPT_GAP_MISMATCH, "different gap"),
         ] {
             let ledger = r#"{"records":[{
-              "gap_id":"gap:python:pricing-boundary",
+              "gap_id": "gap:python:pricing-boundary",
+              "source_currentness": "candidate_current",
               "canonical_gap_id":"gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
               "kind":"MissingBoundaryAssertion",
               "language":"python",
@@ -4672,7 +4757,8 @@ mod tests {
     fn gap_record_queue_wrong_root_blocks_packets() -> Result<(), String> {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
             r#"{"records":[{
-              "gap_id":"gap:python:pricing-boundary",
+              "gap_id": "gap:python:pricing-boundary",
+              "source_currentness": "candidate_current",
               "canonical_gap_id":"gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
               "kind":"MissingBoundaryAssertion",
               "language":"python",
@@ -4752,7 +4838,8 @@ mod tests {
     fn gap_record_queue_missing_root_blocks_packets() -> Result<(), String> {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
             r#"{"records":[{
-              "gap_id":"gap:python:pricing-boundary",
+              "gap_id": "gap:python:pricing-boundary",
+              "source_currentness": "candidate_current",
               "canonical_gap_id":"gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
               "kind":"MissingBoundaryAssertion",
               "language":"python",
@@ -4830,7 +4917,8 @@ mod tests {
     {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
             r#"{"records":[{
-              "gap_id":"gap:pr:pricing",
+              "gap_id": "gap:pr:pricing",
+              "source_currentness": "candidate_current",
               "canonical_gap_id":"gap:rust:pricing",
               "kind":"MissingBoundaryAssertion",
               "language":"rust",
@@ -4892,7 +4980,8 @@ mod tests {
     fn gap_record_packet_rejects_missing_allowed_edit_surface() -> Result<(), String> {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
             r#"{"records":[{
-              "gap_id":"gap:no-edit-surface",
+              "gap_id": "gap:no-edit-surface",
+              "source_currentness": "candidate_current",
               "canonical_gap_id":"gap:rust:no-edit-surface",
               "kind":"MissingBoundaryAssertion",
               "language":"rust",
@@ -4931,7 +5020,8 @@ mod tests {
     fn gap_record_packet_rejects_missing_receipt_command() -> Result<(), String> {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
             r#"{"records":[{
-              "gap_id":"gap:missing-receipt",
+              "gap_id": "gap:missing-receipt",
+              "source_currentness": "candidate_current",
               "canonical_gap_id":"gap:rust:missing-receipt",
               "kind":"MissingBoundaryAssertion",
               "language":"rust",
@@ -4961,8 +5051,55 @@ mod tests {
             .ok_or_else(|| "expected parsed gap record".to_string())?;
         assert_eq!(
             render_agent_gap_record_packet_json("gap-ledger.json", record),
-            Err("requires receipt_command".to_string())
+            Err("requires nonblank receipt_command".to_string())
         );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_record_packet_and_queue_reject_blank_or_mixed_legacy_commands() -> Result<(), String> {
+        let valid = typed_gap_record()?;
+        for invalid_commands in [
+            vec![" \t ".to_string()],
+            vec!["cargo test -p ripr".to_string(), "  ".to_string()],
+        ] {
+            let record = GapRecord {
+                verification_commands: invalid_commands,
+                ..valid.clone()
+            };
+            let error = render_agent_gap_record_packet_json("gap-ledger.json", &record)
+                .err()
+                .ok_or_else(|| "blank verification route produced an agent packet".to_string())?;
+            if error != "requires nonblank verification_commands" {
+                return Err(format!("unexpected blank-route rejection: {error}"));
+            }
+            let queue = render_agent_gap_record_queue_json(
+                ".",
+                "gap-ledger.json",
+                std::slice::from_ref(&record),
+                "rust",
+                10,
+            )?;
+            let queue: Value = serde_json::from_str(&queue)
+                .map_err(|error| format!("parse blank-route queue: {error}"))?;
+            if queue
+                .get("packets")
+                .and_then(Value::as_array)
+                .is_none_or(|packets| !packets.is_empty())
+            {
+                return Err(format!("blank verification route entered queue: {queue}"));
+            }
+        }
+
+        let blank_receipt = GapRecord {
+            receipt_command: Some(" \t ".to_string()),
+            ..valid
+        };
+        if render_agent_gap_record_packet_json("gap-ledger.json", &blank_receipt)
+            != Err("requires nonblank receipt_command".to_string())
+        {
+            return Err("blank receipt route produced an agent packet".to_string());
+        }
         Ok(())
     }
 
@@ -4970,7 +5107,8 @@ mod tests {
     fn gap_record_packet_rejects_ineligible_no_action_records() -> Result<(), String> {
         let records = crate::output::gap_decision_ledger::parse_gap_records_json(
             r#"{"records":[{
-              "gap_id":"gap:already-observed",
+              "gap_id": "gap:already-observed",
+              "source_currentness": "candidate_current",
               "kind":"NoActionAlreadyObserved",
               "language":"rust",
               "language_status":"stable",
@@ -6195,6 +6333,38 @@ mod tests {
         if !json.contains("\"name\": \"authenticate_revoked_token_returns_exact_variant\"") {
             return Err(format!(
                 "RIPR-SPEC-0103 fixture 3: expected nominated test name in: {json}"
+            ));
+        }
+        Ok(())
+    }
+
+    // #3731 review: exemplar selection consumes the shared kind matcher, so
+    // a Strong GuardedResultMatch related test is now nominatable for an
+    // ErrorVariant seam (exactly-variant discrimination is graded in
+    // oracle_discriminates_seam; the kind gate only decides nomination).
+    #[test]
+    fn kind_gate_error_variant_seam_with_guarded_result_match_strong_test_is_nominated()
+    -> Result<(), String> {
+        let guarded_strong = related_test_with(
+            "authenticate_pins_revoked_token_via_guarded_match",
+            OracleKind::GuardedResultMatch,
+            OracleStrength::Strong,
+            crate::analysis::test_grip_evidence::RelationConfidence::High,
+        );
+        let classified = classified_with(
+            error_variant_seam(),
+            SeamGripClass::WeaklyGripped,
+            vec![guarded_strong],
+        );
+        let json = render_agent_seam_packets_json(&[classified], None);
+        if json.contains("\"nearest_strong_test_to_imitate\": null") {
+            return Err(format!(
+                "#3731: GuardedResultMatch strong test must be nominated for ErrorVariant seam, not null; got: {json}"
+            ));
+        }
+        if !json.contains("\"name\": \"authenticate_pins_revoked_token_via_guarded_match\"") {
+            return Err(format!(
+                "#3731: expected the guarded-match test nominated in: {json}"
             ));
         }
         Ok(())

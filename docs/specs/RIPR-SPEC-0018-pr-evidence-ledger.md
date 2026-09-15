@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on the full ledger accounting, waiver, suppression, repair, and frontier contract.
+
 ## Problem
 
 Campaign 18 made RIPR Zero status visible from the current baseline, current

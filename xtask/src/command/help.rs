@@ -43,6 +43,6 @@ pub(crate) fn format_help_entries(query: &str, entries: &[CommandCatalogEntry]) 
         lines.push(format!("Notes: {}", entry.notes));
         lines.push(String::new());
     }
-    lines.push("Run `cargo xtask help` for the full command list.".to_string());
+    lines.push("Run `cargo xtask help --all` for the full command list.".to_string());
     lines.join("\n")
 }

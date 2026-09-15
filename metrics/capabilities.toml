@@ -43,6 +43,27 @@ next = "test-efficiency-duplicate-discriminator-v1"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
+id = "rust_gap_repair_loop"
+name = "Rust gap repair loop"
+status = "usable alpha"
+spec = "RIPR-SPEC-0057"
+evidence = [
+  "fixtures and output contracts prove bounded producer-owned Rust repair packets, verify routes, and before/after movement receipts",
+  "installed package and VS Code journeys prove the transaction surfaces when a valid route exists",
+  "metrics/rust-repair-trust/corpus.json is the governed real-repository authority and currently contains zero eligible attempts",
+  "cargo xtask rust-repair-trust-report preserves the zero denominator and reports limited_incomplete_input instead of inventing route-yield or success rates",
+  "cargo xtask check-support-tiers requires one canonical Rust gap repair row and hard-caps it at usable alpha until one promotion decision covers the full governed corpus and installed CLI/packaged VS Code pilot; a complete trust report with real movement cannot promote by itself",
+  "docs/status/SUPPORT_TIERS.md keeps static movement, focused verification, receipts, runtime mutation, and broad real-repository usefulness as separate claims"
+]
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/first_successful_pr",
+  "metrics/rust-repair-trust/corpus.json"
+]
+next = "dogfood/rust-route-quality-corpus"
+metric = "eligible governed Rust repair attempts, real improved or closed attempts, retained exclusions, and unestablished route-yield denominator"
+
+[[capability]]
 id = "unknown_stop_reasons"
 name = "Unknown stop reasons"
 status = "alpha"
@@ -2094,3 +2115,19 @@ evidence = [
 fixtures = []
 next = "agent/typed-command-spec-projections"
 metric = "command_spec_projection_accepted_routes, command_spec_projection_omitted_fail_closed, command_spec_projection_multi_route_arrays"
+
+[[capability]]
+id = "source_role_authority"
+name = "Rust producer-owned source role"
+status = "alpha"
+spec = "RIPR-SPEC-0153"
+evidence = [
+  "typed per-file and item role model",
+  "declared Cargo targets and governed harness registry",
+  "source-role conformance corpus",
+  "check-rust-source-role-authority structural gate",
+  "workspace layout classification",
+]
+fixtures = ["crates/ripr/tests/data/source-role-corpus"]
+next = "analysis/source-role-authority"
+metric = "source_role_layout_classification, source_role_declared_targets, source_role_production_like_opt_in, source_role_harness_registry, source_role_cfg_composition, source_role_naming_lookalike_rejected"

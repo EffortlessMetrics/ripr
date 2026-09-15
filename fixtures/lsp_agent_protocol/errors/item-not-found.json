@@ -1,6 +1,6 @@
 {
   "protocol_version": "0.1",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "request": "ripr/getRepairPacket",
   "status": "error",
   "error": { "kind": "item_not_found", "retryable": false, "recovery_route": "retry", "snapshot_id": null },

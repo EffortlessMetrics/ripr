@@ -1,0 +1,300 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/guarded_result_match_swallowed/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:c3fcc60b42860c16f30cf6f81f115f2fc4c9ec23b8c888f45a6806d750f35ee1","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:error_path:94d13aee",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:error_path:94d13aee",
+        "family": "error_path",
+        "delta": "value",
+        "file": "fixtures/guarded_result_match_swallowed/input/src/lib.rs",
+        "line": 9,
+        "expression": "return Err(ParseError::InvalidData)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach expect_ready: logs_failures_without_discriminating, wildcard_panic_without_variant_pin"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach expect_ready: logs_failures_without_discriminating, wildcard_panic_without_variant_pin", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: Result::Err(ParseError::InvalidData) (line 9)", "related test tests/messages.rs:4 logs_failures_without_discriminating uses strong exact value oracle: assert_eq!(value, 12)", "related test tests/messages.rs:14 wildcard_panic_without_variant_pin uses strong exact value oracle: assert_eq!(value, 12)", "observed function argument value kind = \"busy\" at line 5", "observed function argument value len = 12 at line 5", "observed assertion argument value 12 at line 9", "observed function argument value kind = \"busy\" at line 15", "observed function argument value len = 12 at line 15", "observed assertion argument value 12 at line 16", "missing discriminator ParseError::InvalidData: No exact error variant assertion for ParseError::InvalidData"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach expect_ready: logs_failures_without_discriminating, wildcard_panic_without_variant_pin"],
+      "missing": ["Missing discriminator value: ParseError::InvalidData", "No exact error variant discriminator was detected"],
+      "assertion_texts": {
+        "5": "match expect_ready(\"busy\", 12) {",
+        "9": "assert_eq!(value, 12)",
+        "15": "match expect_ready(\"busy\", 12) {",
+        "16": "assert_eq!(value, 12)"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "kind = \"busy\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "len = 12",
+            "context": "function_argument"
+          },
+          {
+            "line": 9,
+            "value": "12",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "kind = \"busy\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "len = 12",
+            "context": "function_argument"
+          },
+          {
+            "line": 16,
+            "value": "12",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "ParseError::InvalidData",
+            "reason": "No exact error variant assertion for ParseError::InvalidData",
+            "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "kind = \"busy\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "len = 12",
+          "context": "function_argument"
+        },
+        {
+          "line": 9,
+          "value": "12",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "kind = \"busy\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "len = 12",
+          "context": "function_argument"
+        },
+        {
+          "line": 16,
+          "value": "12",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "ParseError::InvalidData",
+          "reason": "No exact error variant assertion for ParseError::InvalidData",
+          "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
+        }
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "logs_failures_without_discriminating",
+          "file": "tests/messages.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(value, 12)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "wildcard_panic_without_variant_pin",
+          "file": "tests/messages.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(value, 12)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Assert the exact error variant or payload instead of only is_err().",
+      "suggested_next_action": "Assert the exact error variant or payload instead of only is_err().",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:1f4cb0e7",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:1f4cb0e7",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/guarded_result_match_swallowed/input/src/lib.rs",
+        "line": 9,
+        "expression": "return Err(ParseError::InvalidData)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach expect_ready: logs_failures_without_discriminating, wildcard_panic_without_variant_pin"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach expect_ready: logs_failures_without_discriminating, wildcard_panic_without_variant_pin", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: Result::Err(ParseError::InvalidData) (line 9)", "related test tests/messages.rs:4 logs_failures_without_discriminating uses strong exact value oracle: assert_eq!(value, 12)", "related test tests/messages.rs:14 wildcard_panic_without_variant_pin uses strong exact value oracle: assert_eq!(value, 12)", "observed function argument value kind = \"busy\" at line 5", "observed function argument value len = 12 at line 5", "observed assertion argument value 12 at line 9", "observed function argument value kind = \"busy\" at line 15", "observed function argument value len = 12 at line 15", "observed assertion argument value 12 at line 16", "missing discriminator ParseError::InvalidData: No exact error variant assertion for ParseError::InvalidData"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach expect_ready: logs_failures_without_discriminating, wildcard_panic_without_variant_pin"],
+      "missing": ["Missing discriminator value: ParseError::InvalidData", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "match expect_ready(\"busy\", 12) {",
+        "9": "assert_eq!(value, 12)",
+        "15": "match expect_ready(\"busy\", 12) {",
+        "16": "assert_eq!(value, 12)"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "kind = \"busy\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "len = 12",
+            "context": "function_argument"
+          },
+          {
+            "line": 9,
+            "value": "12",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "kind = \"busy\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "len = 12",
+            "context": "function_argument"
+          },
+          {
+            "line": 16,
+            "value": "12",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "ParseError::InvalidData",
+            "reason": "No exact error variant assertion for ParseError::InvalidData",
+            "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "kind = \"busy\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "len = 12",
+          "context": "function_argument"
+        },
+        {
+          "line": 9,
+          "value": "12",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "kind = \"busy\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "len = 12",
+          "context": "function_argument"
+        },
+        {
+          "line": 16,
+          "value": "12",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "ParseError::InvalidData",
+          "reason": "No exact error variant assertion for ParseError::InvalidData",
+          "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
+        }
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "logs_failures_without_discriminating",
+          "file": "tests/messages.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(value, 12)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "wildcard_panic_without_variant_pin",
+          "file": "tests/messages.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(value, 12)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add a test input that reaches the changed error path and assert the exact error variant it returns.",
+      "suggested_next_action": "Add a test input that reaches the changed error path and assert the exact error variant it returns.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

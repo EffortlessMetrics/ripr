@@ -212,6 +212,14 @@ pub(crate) fn perl_preview_card_json_value(card: &PerlPreviewCard) -> Value {
     })
 }
 
+/// Render the public Perl preview projection for the JSON report and SARIF
+/// output surfaces. Keeping construction and serialization behind one entry
+/// point prevents either serializer from accidentally exposing the internal
+/// receipt/edit-boundary evidence carried by a `Finding`.
+pub(crate) fn perl_preview_card_json(finding: &Finding) -> Option<Value> {
+    perl_preview_card(finding).map(|card| perl_preview_card_json_value(&card))
+}
+
 fn strongest_related_test(finding: &Finding) -> Option<&RelatedTest> {
     finding
         .related_tests
@@ -366,7 +374,7 @@ fn limits() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{perl_preview_card, perl_preview_card_json_value};
+    use super::{perl_preview_card, perl_preview_card_json, perl_preview_card_json_value};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
         LanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind, OracleStrength, Probe,
@@ -407,6 +415,9 @@ mod tests {
         assert_eq!(card.verify_command, "prove t/app.t");
 
         let value = perl_preview_card_json_value(&card);
+        let shared_value = perl_preview_card_json(&finding)
+            .ok_or_else(|| "expected shared public projection".to_string())?;
+        assert_eq!(shared_value, value);
         assert_eq!(
             value["surface_scope"],
             "check_json_human_sarif_github_gap_ledger_markdown"
@@ -666,6 +677,7 @@ mod tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 

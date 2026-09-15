@@ -710,23 +710,40 @@ mod tests {
             "rustc-root-probe",
             "#!/bin/sh\ncase \"$PWD\" in\n  *selected-root) printf 'rustc 1.94.0 (target-root)\\n' ;;\n  *) printf 'rustc 1.96.0 (caller-root)\\n' ;;\nesac\n",
         )?;
+        let shim_str: &str = shim
+            .to_str()
+            .ok_or_else(|| "shim path is not UTF-8".to_string())?;
 
-        let result = doctor_tool_check_with_command(
+        // #3073: publishing a shim and immediately execing it is exposed to
+        // the #2242/#2378 exec-contention family under full-suite parallelism
+        // (a retryable launch failure flips the verdict without proving
+        // anything about root selection), and the 5s production timeout can
+        // elapse on a loaded host before /bin/sh even starts. Both produce
+        // the same observable — evidence without the MSRV string — so the
+        // oracle is made load-independent: the spawn goes through the shared
+        // bounded retry (only a retryable launch failure is retried, never a
+        // real verdict) under a generous test ceiling instead of the
+        // production constant.
+        let result = probe_published_tool_with_command(
             "rustc",
-            doctor_tool_command(
-                shim.to_str()
-                    .ok_or_else(|| "shim path is not UTF-8".to_string())?,
-            ),
-            DOCTOR_TOOL_TIMEOUT,
+            || doctor_tool_command(shim_str),
+            SHIM_PROBE_TEST_CEILING,
             Some(&selected_root),
         );
         let _ = std::fs::remove_dir_all(&dir);
 
-        assert_eq!(result.status, DoctorStatus::Fail);
+        assert_eq!(
+            result.status,
+            DoctorStatus::Fail,
+            "evidence: {}",
+            result.evidence
+        );
         assert!(
             result
                 .evidence
-                .contains("below the minimum supported Rust version")
+                .contains("below the minimum supported Rust version"),
+            "evidence: {}",
+            result.evidence
         );
         Ok(())
     }
@@ -972,14 +989,36 @@ mod tests {
     /// execute — is never retried into a pass.
     #[cfg(unix)]
     fn probe_published_tool(tool: &str, timeout: Duration) -> (DoctorStatus, String) {
+        probe_published_tool_with_command(tool, || doctor_tool_command(tool), timeout, None)
+            .into_public()
+    }
+
+    /// #3073: test-only ceiling for shim probes. The production 5s constant
+    /// (`DOCTOR_TOOL_TIMEOUT`) is what `ripr doctor` uses; a loaded host
+    /// running the full suite in parallel can exceed it before a shim even
+    /// prints, and that harness condition must not flip a test verdict. The
+    /// oracle under test (which shim branch ran) stays deterministic.
+    #[cfg(unix)]
+    const SHIM_PROBE_TEST_CEILING: Duration = Duration::from_mins(1);
+
+    /// `probe_published_tool` for a caller-supplied command shape and probe
+    /// root: `doctor_rustc_probe_uses_selected_root` (#3073) publishes a shim
+    /// and immediately execs it through `doctor_tool_check_with_command`, so
+    /// it is exposed to the same exec-contention family and must share the
+    /// same bounded launch retry rather than forking a parallel loop.
+    #[cfg(unix)]
+    fn probe_published_tool_with_command(
+        tool: &str,
+        build_command: impl Fn() -> std::process::Command,
+        timeout: Duration,
+        root: Option<&Path>,
+    ) -> DoctorToolCheckResult {
         let mut launch_attempt = 0usize;
         loop {
             launch_attempt += 1;
-            let outcome = doctor_tool_check_with_timeout_result(tool, timeout);
-            let retryable_launch_failure = outcome.retryable_launch_failure;
-            let result = outcome.into_public();
-            if launch_attempt >= 3 || !retryable_launch_failure {
-                break result;
+            let outcome = doctor_tool_check_with_command(tool, build_command(), timeout, root);
+            if launch_attempt >= 3 || !outcome.retryable_launch_failure {
+                break outcome;
             }
             std::thread::sleep(Duration::from_millis(25));
         }

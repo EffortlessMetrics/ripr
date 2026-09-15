@@ -1,0 +1,11 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -7,6 +7,6 @@ pub fn triage(input: &str) -> bool {
+ #[cfg(test)]
+ mod tests {
+     const FIXTURE_JSON: &str = r#"{
+-        "producer_id": "abc",
++        "producer_id": "abd",
+         "admission": 1
+     }"#;

@@ -35,13 +35,13 @@ target_behavior = "Coverage remains advisory until project and patch gates are d
 review_note = "Fork PRs still upload the lcov artifact and skip Codecov secrets."
 
 [[exception]]
-id = "test_analytics_runs_on_all_prs"
+id = "test_analytics_label_gated_on_pull_requests"
 kind = "advisory_workflow"
 paths = [".github/workflows/test-analytics.yml"]
 lanes = ["test-analytics"]
-current_behavior = "The Test Analytics workflow runs on all pull requests and pushes."
-target_behavior = "Keep the JUnit artifact advisory and eligible for future risk-pack selection."
-review_note = "Trusted runs may upload to Codecov Test Analytics when CODECOV_TOKEN is available."
+current_behavior = "The Test Analytics workflow runs on pushes to main or master, manual dispatch, and pull requests carrying the full-ci label; label events re-evaluate pull-request selection."
+target_behavior = "Keep the JUnit artifact advisory, selected explicitly for expensive pull-request verification, and eligible for future risk-pack selection."
+review_note = "Trusted selected runs may upload to Codecov Test Analytics when CODECOV_TOKEN is available; ordinary pull requests remain unselected."
 
 [[exception]]
 id = "droid_review_is_advisory_but_visible"

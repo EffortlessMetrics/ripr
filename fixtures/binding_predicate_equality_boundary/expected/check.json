@@ -1,0 +1,168 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/binding_predicate_equality_boundary/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:f651dfca13956bb1234a7eb8a6f039894b752fdc93f33b329edbdad278dfcb91","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:5290fd4d",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:5290fd4d",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/binding_predicate_equality_boundary/input/src/lib.rs",
+        "line": 4,
+        "expression": "if end == start {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach split_after: absent_delimiter_boundary_returns_head, present_delimiter_returns_prefix"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach split_after: absent_delimiter_boundary_returns_head, present_delimiter_returns_prefix", "infection yes: Detected related test input at the changed boundary", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "related test tests/split.rs:9 absent_delimiter_boundary_returns_head uses strong exact value oracle: assert_eq!(split_after(\"ab\", 'x'), \"a\");", "related test tests/split.rs:4 present_delimiter_returns_prefix uses strong exact value oracle: assert_eq!(split_after(\"a.b\", '.'), \"a\");", "observed assertion argument value \"a\" at line 5", "observed function argument value delim = '.' at line 5", "observed function argument value end == start at line 5", "observed function argument value input = \"a.b\" at line 5", "observed assertion argument value \"a\" at line 10", "observed function argument value delim = 'x' at line 10", "observed function argument value end == start at line 10", "observed function argument value input = \"ab\" at line 10"],
+      "flow_sinks": [
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Detected related test input at the changed boundary", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach split_after: absent_delimiter_boundary_returns_head, present_delimiter_returns_prefix", "Strong oracle found: exact value or pattern assertion", "binding_predicate_relation: changed binding `end` initializer `input.rfind(delim).map_or(0, |idx| idx)` -> `input.rfind(delim).map_or(1, |idx| idx)` flows into predicate operand at line 4", "binding_predicate_value_unresolved: operand value of `end` unresolved at earliest initializer operation `.rfind(`", "binding_predicate_non_claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"],
+      "missing": ["No clear propagation path from changed behavior to an observable sink"],
+      "assertion_texts": {
+        "5": "assert_eq!(split_after(\"a.b\", '.'), \"a\");",
+        "10": "assert_eq!(split_after(\"ab\", 'x'), \"a\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "\"a\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "delim = '.'",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "end == start",
+            "context": "function_argument",
+            "provenance": "assert_eq!(split_after(\"a.b\", '.'), \"a\"); | end = 1 via rfind -> map_or over delim = '.', input = \"a.b\" (chain depth 2); start = 1 via len_utf8 over delim = '.', input = \"a.b\" (chain depth 1)"
+          },
+          {
+            "line": 5,
+            "value": "input = \"a.b\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "\"a\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "delim = 'x'",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "end == start",
+            "context": "function_argument",
+            "provenance": "assert_eq!(split_after(\"ab\", 'x'), \"a\"); | end = 1 via rfind -> map_or over delim = 'x', input = \"ab\" (chain depth 2); start = 1 via len_utf8 over delim = 'x', input = \"ab\" (chain depth 1)"
+          },
+          {
+            "line": 10,
+            "value": "input = \"ab\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "\"a\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "delim = '.'",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "end == start",
+          "context": "function_argument",
+          "provenance": "assert_eq!(split_after(\"a.b\", '.'), \"a\"); | end = 1 via rfind -> map_or over delim = '.', input = \"a.b\" (chain depth 2); start = 1 via len_utf8 over delim = '.', input = \"a.b\" (chain depth 1)"
+        },
+        {
+          "line": 5,
+          "value": "input = \"a.b\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "\"a\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "delim = 'x'",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "end == start",
+          "context": "function_argument",
+          "provenance": "assert_eq!(split_after(\"ab\", 'x'), \"a\"); | end = 1 via rfind -> map_or over delim = 'x', input = \"ab\" (chain depth 2); start = 1 via len_utf8 over delim = 'x', input = \"ab\" (chain depth 1)"
+        },
+        {
+          "line": 10,
+          "value": "input = \"ab\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "absent_delimiter_boundary_returns_head",
+          "file": "tests/split.rs",
+          "line": 9,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(split_after(\"ab\", 'x'), \"a\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "present_delimiter_returns_prefix",
+          "file": "tests/split.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(split_after(\"a.b\", '.'), \"a\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["propagation_evidence_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

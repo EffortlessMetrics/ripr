@@ -55,6 +55,16 @@
 // deliberately carry the contract.
 mod analysis_outcome;
 mod atomic_file;
+// Staged RepairAttempt edit-cage contract. #3163 connects the repository
+// baseline/delta producer before any public receipt projection consumes it.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "staged internal contract; #3163 connects the RepairAttempt delta producer before receipt projection"
+    )
+)]
+mod edit_cage;
 // Shared internal repair-guidance availability vocabulary for the agent packet
 // children under #2830. The public Rust API remains unchanged until those
 // consumers adopt and deliberately expose the contract.
@@ -94,11 +104,17 @@ pub mod domain;
 // Kept public for compatibility with experimental editor integrations.
 #[doc(hidden)]
 pub mod lsp;
+// Protocol process entry point selected by the packaged binary before the
+// human-oriented CLI dispatcher. The product status producer remains private.
+#[doc(hidden)]
+pub mod mcp;
 // Kept public for compatibility with existing render integrations.
 #[doc(hidden)]
 pub mod output;
+/// Exact-snapshot, read-only provider DTOs for external proof orchestrators.
+pub mod provider_contract;
 pub mod review_input;
-
+mod workspace_status;
 pub use analysis::LanguageRun;
 pub use analysis::LanguageRunStatus;
 pub use analysis::PartialDiffScope;
@@ -107,7 +123,7 @@ pub use analysis::PreviewLanguageAdvisory;
 /// Analyze a workspace diff using the default RIPR static pipeline.
 pub use app::{
     CheckInput, CheckOutput, check_workspace, collect_context, explain_finding,
-    explain_finding_with_input, render_check,
+    explain_finding_with_input, reject_pr_evidence_error_packet, render_check,
 };
 /// Field types of the public entrypoint types (#2112): every public field
 /// on `CheckInput` / `CheckOutput` is nameable from the crate root, so a
@@ -115,10 +131,30 @@ pub use app::{
 /// pattern-match, or re-render a result.
 pub use app::{Mode, OutputFormat};
 /// Domain model types exposed as part of the stable public contract.
-pub use domain::{ExposureClass, Finding, Probe, ProbeFamily, RiprEvidence};
-pub use domain::{LanguageFileCount, Summary};
+pub use domain::{
+    ExposureClass, Finding, Probe, ProbeFamily, RiprEvidence, TestEvidenceEntry,
+    TestEvidenceSummary,
+};
+/// Immutable Git candidate subject family (#3237 / #3276): construction
+/// and validation types for naming an exact base/candidate tree pair as
+/// the analysis input.
+pub use domain::{
+    GitCandidateBase, GitCandidateDiffSemantics, GitCandidateSubject, GitCandidateSubjectError,
+    GitHashFormat, GitObjectId, GitTreeish,
+};
+pub use domain::{LanguageFileCount, SourceCurrentness, Summary};
 pub use output::suppressions::CheckSuppressionOutcome;
 pub use output::suppressions::SuppressedCheckFinding;
+pub use provider_contract::{
+    RIPR_ANALYSIS_RECEIPT_SCHEMA_VERSION, RIPR_ANALYSIS_REQUEST_SCHEMA_VERSION,
+    RIPR_PROVIDER_CAPABILITY_SCHEMA_VERSION, RIPR_PROVIDER_CLAIM_BOUNDARY,
+    RIPR_REQUIRED_EXCLUDED_CLAIMS, RiprAnalysisReceiptV1, RiprAnalysisRequestV1,
+    RiprEvidenceSubjectV1, RiprProviderCapabilityDescriptorV1, RiprProviderCapabilitySetV1,
+    RiprProviderCapabilityV1, RiprProviderContractErrorCodeV1, RiprProviderContractErrorV1,
+    RiprProviderDiagnosticV1, RiprProviderEvidenceEntryV1, RiprProviderEvidenceSummaryV1,
+    RiprProviderNativeStatusV1, RiprProviderResultClassV1, RiprRepositorySnapshotV1,
+    RiprSourceViewV1,
+};
 
 // #2610: global verbose flag. Set by the binary entry point before dispatch.
 use std::sync::atomic::{AtomicBool, Ordering};

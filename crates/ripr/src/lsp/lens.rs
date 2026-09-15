@@ -66,10 +66,14 @@ struct LensViewItem {
 
 /// Compute the lens-view identity for a snapshot. Pure: reads only the
 /// snapshot's structured fields, never the wall clock or rendered titles.
+// #3282: the identity mirrors the visible lens set, so a change
+// touching only non-actionable findings does not trigger a spurious
+// workspace/codeLens/refresh.
 pub(super) fn lens_view_identity(snapshot: &AnalysisSnapshot) -> LensViewIdentity {
     let mut items: Vec<LensViewItem> = snapshot
         .findings
         .iter()
+        .filter(|finding| finding.is_candidate_actionable())
         .map(|finding| {
             let file = &finding.probe.location.file;
             let absolute = if file.is_absolute() {
@@ -120,6 +124,11 @@ pub(super) fn code_lens_response(uri: &Uri, snapshot: Option<&AnalysisSnapshot>)
     snapshot
         .findings
         .iter()
+        // Candidate-actionable eligibility (#3282, per RIPR-SPEC-0152):
+        // a lens anchors an advisory at the finding's recorded line,
+        // and a base-deleted finding's recorded line is the projected
+        // new-side coordinate — not a candidate position to pin.
+        .filter(|finding| finding.is_candidate_actionable())
         .filter(|finding| finding_matches_uri(finding, uri, &snapshot.root))
         .map(|finding| finding_to_code_lens(finding, age))
         .collect()
@@ -326,6 +335,7 @@ mod tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 
@@ -377,6 +387,7 @@ mod tests {
             classified_seams: Vec::new(),
             gap_artifacts: Vec::<ValidatedGapArtifact>::new(),
             gap_artifact_rejections: Vec::<GapArtifactRejection>::new(),
+            harness_facts: super::super::state::HarnessFactsOnSnapshot::NotRegistered,
             diagnostics_by_uri,
             delivery_selection: None,
             seams_deferred: false,
@@ -750,6 +761,34 @@ mod tests {
                 ));
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn base_deleted_findings_get_no_code_lens() -> Result<(), String> {
+        // #3282: a lens anchors an advisory at the finding's recorded line.
+        // A base-deleted finding's recorded coordinate is the projected
+        // new-side line (the #3212 incident shape — base line 29 against
+        // a 13-line candidate), so pinning a lens there presents
+        // deleted-side evidence at an impossible candidate position with
+        // no revision marker. Candidate-actionable eligibility gates the
+        // lens exactly as it gates diagnostics and annotations
+        // (RIPR-SPEC-0152).
+        let uri = parse_uri("file:///ws/src/lib.rs")?;
+        let mut deleted = make_finding("src/lib.rs", 29, ExposureClass::NoStaticPath, 1, None);
+        deleted.source_currentness = crate::domain::SourceCurrentness::BaseDeleted;
+        let current = make_finding("src/lib.rs", 3, ExposureClass::NoStaticPath, 1, None);
+        let snapshot = make_snapshot_with_findings("/ws", vec![deleted, current]);
+        let lenses = code_lens_response(&uri, Some(&snapshot));
+        let lines: Vec<u32> = lenses.iter().map(|lens| lens.range.start.line).collect();
+        assert!(
+            !lines.contains(&(29 - 1)),
+            "base_deleted finding must not receive a lens at its projected coordinate: {lines:?}"
+        );
+        assert!(
+            lines.contains(&(3 - 1)),
+            "the candidate-current twin keeps its lens: {lines:?}"
+        );
         Ok(())
     }
 }

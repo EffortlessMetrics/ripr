@@ -16,7 +16,7 @@ Revise the focused test for unchanged static movement.
 - Focused proof intent: Assert the exact discounted_total output at amount == discount_threshold.
 - Verify command: `ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`
 - Receipt command: `ripr agent receipt --root fixtures/boundary_gap/input --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json`
-- Artifacts: `fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json`, `fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json`, `fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json`, `fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json`
+- Artifacts: `fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-receipt.json`, `fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json`, `fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/assistant-proof.json`
 - Boundary: static advisory evidence only; not runtime, coverage, mutation, or gate proof.
 
 ## Why First

@@ -1,0 +1,512 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/guarded_result_match_fail_closed/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:2c32fc2c5a60ffb8ab57cf60a9d4a3bb69884ebe3396b49a89a11d3618b38c81","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:error_path:09b3885a",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:error_path:09b3885a",
+        "family": "error_path",
+        "delta": "value",
+        "file": "fixtures/guarded_result_match_fail_closed/input/src/lib.rs",
+        "line": 62,
+        "expression": "Ok(build_response(id.trim(), method)?)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches error variant: Ok(build_response(id.trim(), method)?)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: Ok(build_response(id.trim(), method)?)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: Ok(build_response(id.trim(), method)?) (line 62)", "related test tests/protocol.rs:43 message_only_error_predicate_never_pins uses strong exact value oracle: assert_eq!(response.id, \"42\")", "related test tests/protocol.rs:34 shadowed_callee_never_credits_the_seam uses strong exact value oracle: assert_eq!(response.id, \"42\")", "related test tests/protocol.rs:55 swallowed_error_arm_never_credits uses strong exact value oracle: assert_eq!(response.id, \"42\")", "observed function argument value \"42\" at line 5", "observed function argument value \"42|workspace/refresh\" at line 5", "observed assertion argument value \"42\" at line 6", "observed function argument value \"42\" at line 26", "observed function argument value \"42|workspace/refresh\" at line 26", "observed assertion argument value \"42\" at line 28", "observed function argument value \"42\" at line 36", "observed assertion argument value \"42\" at line 37"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Ok(build_response(id.trim(), method)?)","line":62}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches error variant: Ok(build_response(id.trim(), method)?)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam"],
+      "missing": ["No exact error variant discriminator was detected"],
+      "assertion_texts": {
+        "5": "let response = expect_response(\"42|workspace/refresh\", \"42\").unwrap();",
+        "6": "assert_eq!(response.id, \"42\");",
+        "26": "let result = expect_response(\"42|workspace/refresh\", \"42\");",
+        "28": "assert_eq!(response.id, \"42\")",
+        "36": "match expect_response(\"42\") {",
+        "37": "assert_eq!(response.id, \"42\")",
+        "44": "match expect_response(\"42|workspace/refresh\", \"42\") {",
+        "45": "assert_eq!(response.id, \"42\")",
+        "56": "match expect_response(\"42|workspace/refresh\", \"42\") {",
+        "57": "assert_eq!(response.id, \"42\")"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "\"42\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "\"42|workspace/refresh\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 6,
+            "value": "\"42\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 26,
+            "value": "\"42\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 26,
+            "value": "\"42|workspace/refresh\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 28,
+            "value": "\"42\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 36,
+            "value": "\"42\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 37,
+            "value": "\"42\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 44,
+            "value": "\"42\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 44,
+            "value": "\"42|workspace/refresh\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 45,
+            "value": "\"42\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 56,
+            "value": "\"42\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 56,
+            "value": "\"42|workspace/refresh\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 57,
+            "value": "\"42\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "\"42\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "\"42|workspace/refresh\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 6,
+          "value": "\"42\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 26,
+          "value": "\"42\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 26,
+          "value": "\"42|workspace/refresh\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 28,
+          "value": "\"42\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 36,
+          "value": "\"42\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 37,
+          "value": "\"42\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 44,
+          "value": "\"42\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 44,
+          "value": "\"42|workspace/refresh\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 45,
+          "value": "\"42\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 56,
+          "value": "\"42\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 56,
+          "value": "\"42|workspace/refresh\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 57,
+          "value": "\"42\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "message_only_error_predicate_never_pins",
+          "file": "tests/protocol.rs",
+          "line": 43,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(response.id, \"42\")",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "shadowed_callee_never_credits_the_seam",
+          "file": "tests/protocol.rs",
+          "line": 34,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(response.id, \"42\")",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "swallowed_error_arm_never_credits",
+          "file": "tests/protocol.rs",
+          "line": 55,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(response.id, \"42\")",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Assert the exact error variant or payload instead of only is_err().",
+      "suggested_next_action": "Assert the exact error variant or payload instead of only is_err().",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:4a5bf6b6",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:4a5bf6b6",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/guarded_result_match_fail_closed/input/src/lib.rs",
+        "line": 62,
+        "expression": "Ok(build_response(id.trim(), method)?)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"weak","confidence":"low","summary":"No complete owner-bound propagation witness found for returned value: Ok(build_response(id, method)?)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for returned value: Ok(build_response(id, method)?)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: Ok(build_response(id, method)?) (line 62)", "related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses smoke smoke only oracle: expect_response(\"42|workspace/refresh\", \"42\").unwrap()", "related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses smoke smoke only oracle: let response = expect_response(\"42|workspace/refresh\", \"42\").unwrap();", "related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses strong exact value oracle: assert_eq!(response.id, \"42\");", "related test tests/protocol.rs:43 message_only_error_predicate_never_pins uses strong exact value oracle: assert_eq!(response.id, \"42\")", "related test tests/protocol.rs:34 shadowed_callee_never_credits_the_seam uses strong exact value oracle: assert_eq!(response.id, \"42\")", "observed function argument value \"42\" at line 5", "observed function argument value \"42|workspace/refresh\" at line 5", "observed assertion argument value \"42\" at line 6", "observed function argument value \"42\" at line 26", "observed function argument value \"42|workspace/refresh\" at line 26", "observed assertion argument value \"42\" at line 28", "observed function argument value \"42\" at line 36", "observed assertion argument value \"42\" at line 37"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"Ok(build_response(id, method)?)","line":62}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "No complete owner-bound propagation witness found for returned value: Ok(build_response(id, method)?)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "let response = expect_response(\"42|workspace/refresh\", \"42\").unwrap();",
+        "6": "assert_eq!(response.id, \"42\");",
+        "26": "let result = expect_response(\"42|workspace/refresh\", \"42\");",
+        "28": "assert_eq!(response.id, \"42\")",
+        "36": "match expect_response(\"42\") {",
+        "37": "assert_eq!(response.id, \"42\")",
+        "44": "match expect_response(\"42|workspace/refresh\", \"42\") {",
+        "45": "assert_eq!(response.id, \"42\")",
+        "56": "match expect_response(\"42|workspace/refresh\", \"42\") {",
+        "57": "assert_eq!(response.id, \"42\")"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "\"42\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "\"42|workspace/refresh\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 6,
+            "value": "\"42\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 26,
+            "value": "\"42\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 26,
+            "value": "\"42|workspace/refresh\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 28,
+            "value": "\"42\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 36,
+            "value": "\"42\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 37,
+            "value": "\"42\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 44,
+            "value": "\"42\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 44,
+            "value": "\"42|workspace/refresh\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 45,
+            "value": "\"42\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 56,
+            "value": "\"42\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 56,
+            "value": "\"42|workspace/refresh\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 57,
+            "value": "\"42\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "\"42\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "\"42|workspace/refresh\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 6,
+          "value": "\"42\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 26,
+          "value": "\"42\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 26,
+          "value": "\"42|workspace/refresh\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 28,
+          "value": "\"42\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 36,
+          "value": "\"42\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 37,
+          "value": "\"42\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 44,
+          "value": "\"42\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 44,
+          "value": "\"42|workspace/refresh\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 45,
+          "value": "\"42\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 56,
+          "value": "\"42\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 56,
+          "value": "\"42|workspace/refresh\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 57,
+          "value": "\"42\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 7,
+      "related_tests": [
+        {
+          "name": "direct_owner_call_keeps_the_file_related",
+          "file": "tests/protocol.rs",
+          "line": 4,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect_response(\"42|workspace/refresh\", \"42\").unwrap()",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "direct_owner_call_keeps_the_file_related",
+          "file": "tests/protocol.rs",
+          "line": 4,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "let response = expect_response(\"42|workspace/refresh\", \"42\").unwrap();",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "direct_owner_call_keeps_the_file_related",
+          "file": "tests/protocol.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(response.id, \"42\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "message_only_error_predicate_never_pins",
+          "file": "tests/protocol.rs",
+          "line": 43,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(response.id, \"42\")",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "shadowed_callee_never_credits_the_seam",
+          "file": "tests/protocol.rs",
+          "line": 34,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(response.id, \"42\")",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "swallowed_error_arm_never_credits",
+          "file": "tests/protocol.rs",
+          "line": 55,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(response.id, \"42\")",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "variable_binding_scrutinee_keeps_existing_weaker_meaning",
+          "file": "tests/protocol.rs",
+          "line": 25,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(response.id, \"42\")",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

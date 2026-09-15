@@ -1,0 +1,11 @@
+diff --git a/crates/b/src/lib.rs b/crates/b/src/lib.rs
+index 0000000..1111111 100644
+--- a/crates/b/src/lib.rs
++++ b/crates/b/src/lib.rs
+@@ -1,5 +1,5 @@
+ pub const SCORE_BONUS: i64 = 3;
+
+ pub fn score(points: i64) -> i64 {
+-    points * points
++    points + SCORE_BONUS
+ }

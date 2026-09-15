@@ -33,7 +33,7 @@ Evidence
   - infection yes: Changed Python predicate can alter branch selection: `if len(buffer) <= limit:`
   - propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.
   - observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator weak: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.
   - local flow reaches unknown sink: if len(buffer) <= limit: (line 3)
   - related test tests/test_pack.py:4 test_pack_returns_list uses strong exact value oracle: assert buffered_output == [1, 2]
 

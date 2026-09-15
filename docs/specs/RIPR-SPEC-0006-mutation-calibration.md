@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on the runtime/static join cases and advisory agreement summary contract.
+
 ## Problem
 
 `ripr` gives fast static seam evidence. Real mutation execution can later confirm

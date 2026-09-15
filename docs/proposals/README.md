@@ -12,11 +12,17 @@ Proposals decompose into:
 - campaign and work-item entries in
   [`docs/IMPLEMENTATION_CAMPAIGNS.md`](../IMPLEMENTATION_CAMPAIGNS.md) and
   [`docs/IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md)
-- the active execution manifest at `.ripr/goals/active.toml`
+- live implementation through GitHub issues, pull requests, checks, reviews,
+  and the local worktree
 - fixtures, tests, goldens, output contracts, and metrics in the rest of the
   repo
 - a closeout handoff in [`docs/handoffs/`](../handoffs/) when the campaign
   finishes
+
+The former `.ripr/goals/active.toml` execution manifest was retired and deleted.
+Do not add a proposal-owned scheduler or infer current work from proposal status;
+see [`docs/REPO_TRACKING_MODEL.md`](../REPO_TRACKING_MODEL.md) for the durable
+layering and live-work boundary.
 
 ## When to write a proposal
 
@@ -45,22 +51,22 @@ docs/proposals/RIPR-PROP-NNNN-<kebab-title>.md
 Status values:
 
 - `proposed`: design is being shaped; specs and ADRs may still change.
-- `accepted`: the campaign that implements this proposal is open or has
+- `accepted`: the design has been accepted and may be implemented or already
   landed.
 - `superseded`: another proposal replaces this one; link the replacement.
 - `withdrawn`: the design is no longer being pursued; record the reason.
 
-The lifecycle is:
+The durable lifecycle is:
 
 ```text
 proposal (proposed)
   -> behavior specs in docs/specs/
   -> ADRs in docs/adr/ when needed
   -> campaign + work items in IMPLEMENTATION_CAMPAIGNS.md / IMPLEMENTATION_PLAN.md
-  -> active manifest in .ripr/goals/active.toml
+  -> GitHub issues / PRs / checks / reviews + local worktree
   -> fixtures, tests, goldens, output contracts, metrics
   -> closeout handoff in docs/handoffs/
-  -> proposal status: accepted
+  -> proposal status: accepted | superseded | withdrawn
 ```
 
 When a proposal is accepted, leave it in place as historical context. Do not

@@ -1,0 +1,234 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/wrapper_seam_callee_call_attribution/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:ee3342adfb0392b492beae4dc7142aaae175e6b6af966bf014972a5822c751d0","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:error_path:463e8297",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:error_path:463e8297",
+        "family": "error_path",
+        "delta": "value",
+        "file": "fixtures/wrapper_seam_callee_call_attribution/input/src/lib.rs",
+        "line": 14,
+        "expression": "try_parse_summary(raw).map_err(|error| error.to_string().into())"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests exercise the wrapper seam's converted callee (the changed owner is not invoked by them): calls_callee_before_shadow_binding, observes_callee_outcome"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"weak","confidence":"low","summary":"No complete owner-bound propagation witness found for error variant: try_parse_summary(raw).map_err(|error| error.to_string().into())"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests exercise the wrapper seam's converted callee (the changed owner is not invoked by them): calls_callee_before_shadow_binding, observes_callee_outcome", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for error variant: try_parse_summary(raw).map_err(|error| error.to_string().into())", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: try_parse_summary(raw).map_err(|error| error.to_string().into()) (line 14)", "related test tests/attribution.rs:4 observes_callee_outcome uses strong exact value oracle: assert_eq!(parsed.map(|n| n), Ok(3));", "observed assertion argument value 3 at line 6", "observed assertion argument value 3 at line 15", "observed assertion argument value 5 at line 18"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"try_parse_summary(raw).map_err(|error| error.to_string().into())","line":14}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "No complete owner-bound propagation witness found for error variant: try_parse_summary(raw).map_err(|error| error.to_string().into())", "Reachable tests can plausibly activate this changed behavior", "Related tests exercise the wrapper seam's converted callee (the changed owner is not invoked by them): calls_callee_before_shadow_binding, observes_callee_outcome", "limitation_last_established_edge: changed wrapper conversion maps the converted callee's error into the boxed error channel", "limitation_first_unresolved_edge: whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers", "limitation_analyzer_route: analysis/wrapper-error-binding", "limitation_non_claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"],
+      "missing": ["Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established"],
+      "assertion_texts": {
+        "6": "assert_eq!(parsed.map(|n| n), Ok(3));",
+        "15": "assert_eq!(parsed.map(|n| n), Ok(3));",
+        "18": "assert_eq!(ignored, Ok(5));"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 18,
+            "value": "5",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 18,
+          "value": "5",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "observes_callee_outcome",
+          "file": "tests/attribution.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(parsed.map(|n| n), Ok(3));",
+          "relation_reason": "seam_callee_call",
+          "relation_confidence": "medium"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.",
+      "suggested_next_action": "Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.",
+      "language": "rust",
+      "static_limit_kind": "wrapper_error_binding_unresolved",
+      "static_limitation": {
+        "analyzer_route": "analysis/wrapper-error-binding",
+        "first_unresolved_edge": "whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers",
+        "kind": "wrapper_error_binding_unresolved",
+        "last_established_edge": "changed wrapper conversion maps the converted callee's error into the boxed error channel",
+        "non_claim": "named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"
+      },
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:7ef92e0f",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:7ef92e0f",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/wrapper_seam_callee_call_attribution/input/src/lib.rs",
+        "line": 14,
+        "expression": "try_parse_summary(raw).map_err(|error| error.to_string().into())"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests exercise the wrapper seam's converted callee (the changed owner is not invoked by them): calls_callee_before_shadow_binding, observes_callee_outcome"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"weak","confidence":"low","summary":"No complete owner-bound propagation witness found for returned value: try_parse_summary(raw).map_err(|error| error.to_string().into())"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests exercise the wrapper seam's converted callee (the changed owner is not invoked by them): calls_callee_before_shadow_binding, observes_callee_outcome", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for returned value: try_parse_summary(raw).map_err(|error| error.to_string().into())", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: try_parse_summary(raw).map_err(|error| error.to_string().into()) (line 14)", "related test tests/attribution.rs:13 calls_callee_before_shadow_binding uses strong exact value oracle: assert_eq!(parsed.map(|n| n), Ok(3));", "related test tests/attribution.rs:13 calls_callee_before_shadow_binding uses strong exact value oracle: assert_eq!(ignored, Ok(5));", "related test tests/attribution.rs:4 observes_callee_outcome uses strong exact value oracle: assert_eq!(parsed.map(|n| n), Ok(3));", "observed assertion argument value 3 at line 6", "observed assertion argument value 3 at line 15", "observed assertion argument value 5 at line 18"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"try_parse_summary(raw).map_err(|error| error.to_string().into())","line":14}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "No complete owner-bound propagation witness found for returned value: try_parse_summary(raw).map_err(|error| error.to_string().into())", "Reachable tests can plausibly activate this changed behavior", "Related tests exercise the wrapper seam's converted callee (the changed owner is not invoked by them): calls_callee_before_shadow_binding, observes_callee_outcome", "limitation_last_established_edge: changed wrapper conversion maps the converted callee's error into the boxed error channel", "limitation_first_unresolved_edge: whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers", "limitation_analyzer_route: analysis/wrapper-error-binding", "limitation_non_claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"],
+      "missing": ["Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established"],
+      "assertion_texts": {
+        "6": "assert_eq!(parsed.map(|n| n), Ok(3));",
+        "15": "assert_eq!(parsed.map(|n| n), Ok(3));",
+        "18": "assert_eq!(ignored, Ok(5));"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 18,
+            "value": "5",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 18,
+          "value": "5",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "calls_callee_before_shadow_binding",
+          "file": "tests/attribution.rs",
+          "line": 13,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(parsed.map(|n| n), Ok(3));",
+          "relation_reason": "seam_callee_call",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "calls_callee_before_shadow_binding",
+          "file": "tests/attribution.rs",
+          "line": 13,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(ignored, Ok(5));",
+          "relation_reason": "seam_callee_call",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "observes_callee_outcome",
+          "file": "tests/attribution.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(parsed.map(|n| n), Ok(3));",
+          "relation_reason": "seam_callee_call",
+          "relation_confidence": "medium"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.",
+      "suggested_next_action": "Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.",
+      "language": "rust",
+      "static_limit_kind": "wrapper_error_binding_unresolved",
+      "static_limitation": {
+        "analyzer_route": "analysis/wrapper-error-binding",
+        "first_unresolved_edge": "whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers",
+        "kind": "wrapper_error_binding_unresolved",
+        "last_established_edge": "changed wrapper conversion maps the converted callee's error into the boxed error channel",
+        "non_claim": "named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"
+      },
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

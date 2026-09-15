@@ -10,19 +10,32 @@ Inputs:
 
 | Bucket | Count |
 | --- | ---: |
-| moved | 0 |
-| unchanged | 1 |
+| moved | 1 |
+| unchanged | 0 |
 | regressed | 0 |
 | new | 0 |
 | removed | 0 |
+
+## Gap Movement
+
+| Movement | Count |
+| --- | ---: |
+| closed | 1 |
+| opened | 0 |
+| strengthened | 0 |
+| weakened | 0 |
+| unchanged | 0 |
+| new | 0 |
+| removed | 0 |
+| changed | 0 |
 
 ## Grip Counts
 
 | Class | Before | After |
 | --- | ---: | ---: |
 | seams_total | 1 | 1 |
-| strongly_gripped | 0 | 0 |
-| weakly_gripped | 1 | 1 |
+| strongly_gripped | 0 | 1 |
+| weakly_gripped | 1 | 0 |
 | ungripped | 0 | 0 |
 | reachable_unrevealed | 0 | 0 |
 | activation_unknown | 0 | 0 |
@@ -35,13 +48,15 @@ Inputs:
 
 ## Moved
 
-None.
+- `67fc764ba37d77bd` src/lib.rs:2 weakly_gripped -> strongly_gripped (improved; gap closed)
+  - grip class moved from weakly_gripped to strongly_gripped
+  - missing discriminator no longer reported: discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate)
+  - new observed value: 100
+  - related test count increased by 1
 
 ## Unchanged
 
-- `67fc764ba37d77bd` src/lib.rs:2 weakly_gripped -> weakly_gripped (unchanged; gap unchanged)
-  - new observed value: 100
-  - related test count increased by 1
+None.
 
 ## Regressed
 
@@ -57,10 +72,14 @@ None.
 
 ## Review Receipt
 
+### Gap movement summary
+
+- Gap movement: 1 closed, 0 opened, 0 strengthened, 0 weakened, 0 unchanged, 0 new, 0 removed, 0 changed.
+
 ### What changed?
 
 - Compared before snapshot fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json with after snapshot fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json.
-- Static seam movement: 0 moved, 1 unchanged, 0 regressed, 0 new, 0 removed.
+- Static seam movement: 1 moved, 0 unchanged, 0 regressed, 0 new, 0 removed.
 
 ### What RIPR flagged before?
 
@@ -68,16 +87,17 @@ None.
 
 ### What focused proof changed?
 
-- predicate_boundary at src/lib.rs:2 shows static evidence movement for focused proof outside RIPR: new observed value: 100; related test count increased by 1.
+- predicate_boundary at src/lib.rs:2 shows static evidence movement for focused proof outside RIPR: missing discriminator no longer reported: discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate); new observed value: 100; related test count increased by 1.
 
 ### What moved after verification?
 
-- 0 improved, 0 changed without ranking higher, 0 regressed, 1 unchanged.
-- predicate_boundary at src/lib.rs:2 kept weakly_gripped but evidence changed: new observed value: 100; related test count increased by 1.
+- 1 improved, 0 changed without ranking higher, 0 regressed, 0 unchanged.
+- Gap movement: 1 closed, 0 opened, 0 strengthened, 0 weakened, 0 unchanged, 0 new, 0 removed, 0 changed.
+- predicate_boundary at src/lib.rs:2 moved weakly_gripped -> strongly_gripped (improved).
 
 ### What remains weak or unknown?
 
-- predicate_boundary remains weakly_gripped at src/lib.rs:2.
+- No weak or unknown after-snapshot seams were present in the compared artifacts.
 
 ### Reviewer should inspect
 

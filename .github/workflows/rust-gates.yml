@@ -1,0 +1,264 @@
+name: Rust Gates
+
+on:
+  workflow_call:
+    inputs:
+      runner-config:
+        description: JSON string or object accepted by jobs.<job_id>.runs-on.
+        required: true
+        type: string
+      cargo-build-jobs:
+        description: Parallel Cargo build jobs for the selected runner.
+        required: false
+        default: "8"
+        type: string
+      disk-guard-threshold:
+        description: Minimum free GiB required on self-hosted scratch.
+        required: false
+        default: 35
+        type: number
+      use-scratch:
+        description: Configure self-hosted scratch and sccache.
+        required: false
+        default: true
+        type: boolean
+      artifact-name:
+        description: Name for the optional RIPR evidence artifact.
+        required: true
+        type: string
+      job-timeout-minutes:
+        description: Hard deadline for the implementation job.
+        required: false
+        default: 60
+        type: number
+      run-advisory-reports:
+        description: Generate broad advisory report families after required proof passes.
+        required: false
+        default: false
+        type: boolean
+      upload-success-artifacts:
+        description: Upload report artifacts after a successful run.
+        required: false
+        default: false
+        type: boolean
+    outputs:
+      scratch_status:
+        value: ${{ jobs.rust-gates.outputs.scratch_status }}
+      scratch_message:
+        value: ${{ jobs.rust-gates.outputs.scratch_message }}
+
+permissions:
+  contents: read
+
+jobs:
+  rust-gates:
+    name: Rust gates
+    runs-on: ${{ fromJSON(inputs.runner-config) }}
+    timeout-minutes: ${{ inputs.job-timeout-minutes }}
+    outputs:
+      scratch_status: ${{ steps.scratch.outputs.status }}
+      scratch_message: ${{ steps.scratch.outputs.message }}
+    env:
+      CARGO_BUILD_JOBS: ${{ inputs.cargo-build-jobs }}
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Prepare toolchain temp
+        if: inputs.use-scratch
+        env:
+          TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
+        run: mkdir -p "$TMPDIR"
+
+      - name: Configure scratch environment
+        if: inputs.use-scratch
+        env:
+          CARGO_HOME: /mnt/ci-scratch/cargo-home/${{ github.run_id }}-${{ github.run_attempt }}
+          RUSTC_WRAPPER: sccache
+          SCCACHE_DIR: /mnt/ci-cache/sccache
+          SCCACHE_CACHE_SIZE: 15G
+          CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
+          TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          {
+            echo "CARGO_HOME=$CARGO_HOME"
+            echo "RUSTC_WRAPPER=$RUSTC_WRAPPER"
+            echo "SCCACHE_DIR=$SCCACHE_DIR"
+            echo "SCCACHE_CACHE_SIZE=$SCCACHE_CACHE_SIZE"
+            echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
+            echo "TMPDIR=$TMPDIR"
+          } >> "$GITHUB_ENV"
+
+      - name: Prepare scratch
+        id: scratch
+        if: inputs.use-scratch
+        run: |
+          find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +30 -exec rm -rf {} + 2>/dev/null || true
+          find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
+          du -sh /mnt/ci-scratch/* /mnt/ci-cache/* /mnt/actions/_work/* /var/log /var/lib/docker /home/* 2>/dev/null | sort -rh | head -20 || true
+          df -h / /mnt/ci-scratch 2>/dev/null || true
+          set +e
+          ci-disk-guard /mnt/ci-scratch "${{ inputs.disk-guard-threshold }}"
+          scratch_code=$?
+          ci-disk-guard /mnt/ci-cache 20
+          cache_code=$?
+          set -e
+          if [ "$scratch_code" -eq 75 ] || [ "$cache_code" -eq 75 ]; then
+            echo "status=tempfail" >> "$GITHUB_OUTPUT"
+            echo "message=disk_guard_tempfail" >> "$GITHUB_OUTPUT"
+            echo "::warning::disk guard tempfail; GitHub-hosted fallback may run"
+            exit 75
+          fi
+          if [ "$scratch_code" -ne 0 ]; then
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+            echo "message=scratch_guard_failed" >> "$GITHUB_OUTPUT"
+            exit "$scratch_code"
+          fi
+          if [ "$cache_code" -ne 0 ]; then
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+            echo "message=cache_guard_failed" >> "$GITHUB_OUTPUT"
+            exit "$cache_code"
+          fi
+          mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
+          df -h /mnt/ci-scratch /mnt/ci-cache || true
+          free -h || true
+          echo "status=success" >> "$GITHUB_OUTPUT"
+          echo "message=ok" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+
+      - name: Formatting preflight
+        run: cargo fmt --check
+
+      - name: Install CI tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: ${{ inputs.use-scratch && 'sccache,nextest' || 'nextest' }}
+
+      - name: Restore hosted Rust cache
+        if: ${{ !inputs.use-scratch }}
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-swarm-rust-small-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Start sccache server
+        if: inputs.use-scratch
+        run: |
+          mkdir -p "$CARGO_TARGET_DIR" "$SCCACHE_DIR"
+          sccache --start-server || true
+
+      - name: Required Rust gates
+        run: |
+          cargo check --workspace --all-targets
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo nextest run --workspace
+          cargo xtask precommit
+          cargo xtask check-evidence-promotion-honesty
+          cargo xtask check-agent-skills
+          cargo xtask check-dependencies
+          cargo xtask check-process-policy
+          cargo xtask check-network-policy
+          cargo xtask goldens check
+          cargo xtask fixtures
+
+      - name: PR evidence
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+          # Raised from the 2000 default as the PR #3592 decision artifact, then
+          # to 3500 for #3532 (3,060-line capability diff), then to 4500 for
+          # #3674 (#3555 PR C, 4,321-line review-hardened capability diff),
+          # then to 5500, 6500 and finally 7500 for #3709/#3569 (the guarded-match
+          # oracle + driver-binding diff reached ~7,300 changed Rust lines
+          # across six adversarial bot-review rounds of falsifier pins;
+          # further growth splits per docs/CONFIGURATION.md);
+          # the variable is documented in docs/CONFIGURATION.md.
+          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "7500"
+          # Match the raised max limit: the partial-budget clamp bounds against
+          # the effective limit, so without this a PR above the default passes
+          # the hard guard but still lands in gate-ineligible
+          # limited_partial_scope.
+          RIPR_PARTIAL_DIFF_LINE_BUDGET: "7500"
+          # Large analyzer PRs need more than the 120s default for the
+          # evidence producer's ripr check subprocess; #3709's 5,104-line
+          # diff measured ~3,100s locally and exceeded 1,800s on CI, so
+          # the ceiling is 3,600s (measured locally per the raise rule;
+          # a hung producer wastes at most one hour — the scope guard
+          # still caps memory).
+          RIPR_PR_EVIDENCE_TIMEOUT_SECS: "3600"
+        run: |
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check-output target/ripr/pr/check.json
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check --check-output target/ripr/pr/check.json
+          cargo xtask impacted-evidence
+          cargo xtask impacted-evidence --check
+          cargo xtask ripr-pr-summary
+          cargo xtask ripr-pr-summary --check
+          cargo xtask ripr-annotations
+          cargo xtask ripr-annotations --check
+
+      - name: Proof route dry-run (advisory)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          cargo xtask proof route --base "$BASE_SHA" --head "$HEAD_SHA" || true
+          { echo "### Proof Route (dry-run, advisory)"; echo ""; cat target/ripr/reports/proof-route.md; } >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Advisory reports
+        if: success() && inputs.run-advisory-reports
+        run: |
+          cargo xtask test-efficiency-report || true
+          cargo xtask badge-artifacts || true
+          cargo xtask pr-summary || true
+          cargo xtask receipts || true
+          cargo xtask reports index || true
+
+      - name: Show sccache stats
+        if: always() && inputs.use-scratch && steps.scratch.outputs.status != 'tempfail'
+        run: sccache --show-stats || true
+
+      - name: Write failure summary
+        if: failure()
+        run: |
+          {
+            echo "## Rust gates failed"
+            echo ""
+            echo "The first failed step above is the authoritative failure."
+            echo "Broad advisory report generation was skipped after the required failure."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove RIPR analysis cache before artifact upload
+        if: failure() || inputs.upload-success-artifacts
+        run: rm -rf target/ripr/cache
+
+      - name: Upload RIPR reports
+        if: failure() || inputs.upload-success-artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: |
+            target/ripr/reports/
+            target/ripr/receipts/
+            target/ripr/pr/
+            target/ripr/review/
+            target/xtask/impacted-evidence/
+          if-no-files-found: ignore
+          retention-days: 5
+
+      - name: Clean scratch
+        if: always() && inputs.use-scratch
+        run: |
+          cargo clean || true
+          rm -rf "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
+          df -h /mnt/ci-scratch /mnt/ci-cache || true

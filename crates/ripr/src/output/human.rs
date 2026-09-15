@@ -437,10 +437,12 @@ pub(super) fn wrap_human_prose(
 /// Called unconditionally; emits nothing when `preview_language_advisories`
 /// is empty (pure-Rust scope). See RIPR-SPEC-0082.
 ///
-/// Two wordings per the `enabled` flag:
+/// Three wordings per the producer-owned completion state:
 ///
-/// - `enabled` — the preview adapter ran; the empty/partial result is advisory
-///   and may be incomplete, not Rust-grade clean.
+/// - enabled and completed — the preview adapter ran; the empty/partial result
+///   is advisory and may be incomplete, not Rust-grade clean.
+/// - enabled but failed — the files were routed but not analyzed to adapter
+///   completion; the typed `language_runs` status is disclosed.
 /// - not enabled — the files were detected but not analyzed because the
 ///   preview adapter is not enabled in `ripr.toml`; the empty result must not
 ///   be read as clean. A copy-paste-ready TOML block is appended so enabling
@@ -453,16 +455,25 @@ fn render_preview_language_advisories(out: &mut String, output: &CheckOutput) {
         } else {
             format!("{language}(s)")
         };
-        if advisory.enabled {
+        if advisory.analyzed(&output.language_runs) {
             out.push_str(&format!(
                 "\nNote: {} {} analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.\n",
                 advisory.file_count, file_label,
             ));
-        } else {
+        } else if !advisory.enabled {
             let language_lowercase = advisory.language.to_lowercase();
             out.push_str(&format!(
                 "\nNote: this diff contains {} {}. The {} adapter is preview and not enabled, so these files were not analyzed — this is NOT a clean Rust-grade result. Enable it in ripr.toml [languages] to analyze them.\n\nTo enable, add to ripr.toml:\n\n[languages]\nenabled = [\"rust\", \"{language_lowercase}\"]\n",
                 advisory.file_count, file_label, language,
+            ));
+        } else if let Some(run) = advisory.non_success_run(&output.language_runs) {
+            out.push_str(&format!(
+                "\nNote: the {language} preview adapter did not complete successfully ({}), so {} {} were not analyzed — this is NOT a clean Rust-grade result.\n",
+                run.status.as_str(), advisory.file_count, file_label,
+            ));
+        } else {
+            out.push_str(&format!(
+                "\nNote: the {language} preview adapter was enabled but no {file_label} were routed, so nothing was analyzed — this is NOT a clean Rust-grade result.\n"
             ));
         }
     }
@@ -545,6 +556,7 @@ mod tests {
     #[test]
     fn render_includes_summary_counts_and_empty_findings_message() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -586,6 +598,7 @@ mod tests {
         let finding = sample_finding();
         let finding_id = finding.id.clone();
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -619,6 +632,7 @@ mod tests {
     #[test]
     fn render_replaces_hidden_block_with_more_when_nothing_is_omitted() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -661,6 +675,7 @@ mod tests {
             findings.push(finding);
         }
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -694,6 +709,7 @@ mod tests {
     #[test]
     fn render_omits_language_breakdown_for_rust_only_run() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -730,6 +746,7 @@ mod tests {
     #[test]
     fn render_emits_language_breakdown_when_non_rust_files_counted() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -778,6 +795,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -826,6 +844,7 @@ mod tests {
             Some("Add the missing discriminator assertion.".to_string());
 
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -859,6 +878,7 @@ mod tests {
     #[test]
     fn bounded_human_output_reports_missing_scope_as_start_here_state() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -893,6 +913,7 @@ mod tests {
             .evidence
             .push("suggested_verify_command: npm test -- pricing".to_string());
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -948,6 +969,66 @@ mod tests {
             !digest.contains("Missing discriminator:"),
             "exposed digest must not claim a missing discriminator; got:\n{digest}"
         );
+    }
+
+    // #3317 follow-up (RIPR-SPEC-0162): the why-hint must not assert the
+    // propagation the class marks unknown, and unknown-class limitation
+    // prose renders under the Analyzer limit label — while a real
+    // missing discriminator keeps its own label.
+    #[test]
+    fn propagation_unknown_wording_is_honest() -> Result<(), String> {
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::PropagationUnknown;
+        finding.ripr.propagate = stage(
+            StageState::Unknown,
+            Confidence::Low,
+            "Propagation is not statically obvious from syntax-first analysis",
+        );
+        finding.missing = vec![
+            "No clear propagation path from changed behavior to an observable sink".to_string(),
+        ];
+        finding.activation.missing_discriminators = Vec::new();
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+        if !digest.contains(
+            "Why propagation_unknown: the path from the changed behavior to an observable sink is not statically clear",
+        ) {
+            return Err(format!("honest why-hint missing:
+{digest}"));
+        }
+        if digest.contains("the change propagates but") {
+            return Err(format!(
+                "the hint must not assert the propagation the class marks unknown:
+{digest}"
+            ));
+        }
+        if !digest.contains(
+            "  Analyzer limit: No clear propagation path from changed behavior to an observable sink",
+        ) {
+            return Err(format!("analyzer-limit label missing:
+{digest}"));
+        }
+        // A real missing discriminator keeps the discriminator label even
+        // on the unknown classes.
+        finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "end == start".to_string(),
+            reason: "no related test call uses end equal to start".to_string(),
+            flow_sink: None,
+        }];
+        finding.missing = vec!["No strong discriminator was detected".to_string()];
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+        if !digest.contains("  Missing discriminator: No strong discriminator was detected") {
+            return Err(format!(
+                "a finding with a real missing discriminator keeps its label:
+{digest}"
+            ));
+        }
+        Ok(())
     }
 
     #[test]
@@ -1135,6 +1216,7 @@ mod tests {
 
     fn single_finding_output(finding: Finding) -> CheckOutput {
         CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -1231,6 +1313,7 @@ mod tests {
             .push("suggested_verify_command: npm test -- pricing".to_string());
 
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -1268,6 +1351,7 @@ mod tests {
         second.id = "second".to_string();
         second.probe.location.line = 8;
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -1304,6 +1388,7 @@ mod tests {
         let finding_id = finding.id.clone();
         let location = finding.probe.location.file.display().to_string();
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -1351,6 +1436,7 @@ mod tests {
         let finding = sample_finding();
         let finding_id = finding.id.clone();
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -1390,6 +1476,7 @@ mod tests {
     #[test]
     fn human_output_discloses_limited_partial_scope_run_state() -> Result<(), String> {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -1459,6 +1546,7 @@ mod tests {
         // terminal verbatim (#2142 review): the display is escaped while the
         // raw path stays on the scope record.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2139,6 +2227,7 @@ mod tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 
@@ -2184,6 +2273,7 @@ mod tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 
@@ -2199,6 +2289,7 @@ mod tests {
     #[test]
     fn render_emits_preview_disclosure_when_typescript_files_in_scope() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2239,6 +2330,7 @@ mod tests {
     #[test]
     fn render_emits_preview_disclosure_when_python_files_in_scope() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2275,6 +2367,7 @@ mod tests {
     #[test]
     fn render_omits_preview_disclosure_for_pure_rust_scope() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2307,6 +2400,7 @@ mod tests {
     fn render_preview_disclosure_count_matches_advisory_file_count() {
         // The file_count in the advisory must appear verbatim in the disclosure line.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2342,6 +2436,7 @@ mod tests {
         // is NOT enabled. The empty result must be broken by a disclosure that
         // says the files were not analyzed.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2399,6 +2494,7 @@ mod tests {
         // hardcoded string. This covers the Python path; Perl is covered by
         // render_emits_singular_perl_disclosure_when_adapter_disabled.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2477,6 +2573,7 @@ mod tests {
         // The cardinal case: bare `ripr check` produces an empty result.
         // `no_scope_provided: true` must emit the guidance note.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2525,6 +2622,7 @@ mod tests {
         // `no_scope_provided: false` must NOT emit the guidance — the result
         // is honest: that diff really had no probes.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2560,6 +2658,7 @@ mod tests {
         // the disclosure uses the approved phrasing ("does NOT mean your changed
         // behavior is covered") rather than any runtime claim.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2596,6 +2695,7 @@ mod tests {
         // --format repo-exposure-md for a full-repo scan, NOT --mode fast.
         // --mode is a speed tier on the diff path; it does NOT provide scope.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2630,6 +2730,7 @@ mod tests {
     fn render_emits_all_no_path_disclosure_when_all_findings_are_no_path() {
         // Primary case: findings exist but none are exposed/weak/reachable.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2680,6 +2781,7 @@ mod tests {
     fn render_emits_all_no_path_disclosure_for_infection_unknown_findings() {
         // Also fires for infection_unknown / propagation_unknown / static_unknown classes.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2727,6 +2829,7 @@ mod tests {
         let mut duplicate_finding = unknown_finding();
         duplicate_finding.related_tests.push(related_test);
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2781,6 +2884,7 @@ mod tests {
         let mut finding = unknown_finding();
         finding.ripr.reach.state = StageState::Yes;
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2815,6 +2919,7 @@ mod tests {
         // If any finding is exposed, the per-finding output carries the signal.
         // Do NOT emit the all-no-path note.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2848,6 +2953,7 @@ mod tests {
     #[test]
     fn render_omits_all_no_path_disclosure_when_weakly_exposed_finding_exists() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2882,6 +2988,7 @@ mod tests {
         // Zero findings is a different case (handled by no-probes message).
         // The all-no-path disclosure must NOT fire here.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2910,6 +3017,7 @@ mod tests {
     fn render_all_no_path_disclosure_uses_finding_count_not_probe_count() {
         // The count shown must be the no-path/unknown total (= findings), not probes.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -2944,6 +3052,7 @@ mod tests {
     fn render_all_no_path_disclosure_uses_conservative_static_language() {
         // Verify the disclosure does not use forbidden mutation-testing vocabulary.
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.2".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,

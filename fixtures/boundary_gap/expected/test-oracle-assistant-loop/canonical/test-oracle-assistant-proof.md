@@ -13,17 +13,14 @@ Top focused test:
 
 Movement:
 - Before: weakly_gripped
-- After: weakly_gripped
-- State: unchanged
+- After: strongly_gripped
+- State: improved
 - Receipt: fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json
 
 Projection:
 - PR ledger: fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json
 - Coverage/grip frontier: not available
 - Gate: not configured
-
-Warnings:
-- current replay fixture preserves actual analyzer output: the focused-test snapshot remains weakly_gripped; dogfood receipt work records live movement separately
 
 Limits:
 - Static RIPR evidence only.

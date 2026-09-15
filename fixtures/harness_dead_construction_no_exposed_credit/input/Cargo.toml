@@ -1,0 +1,15 @@
+[package]
+name = "harness_dead_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "harness_dead_fixture"
+path = "src/lib.rs"
+
+[[test]]
+name = "mimic"
+path = "tests/mimic.rs"
+harness = false
+
+[workspace]

@@ -1,4 +1,4 @@
-use super::python::PYTHON_PROJECT_EXCLUDED_DIRS;
+use super::python::{PYTHON_EXCLUDED_DIRS, PYTHON_VENDOR_DIR};
 #[cfg(feature = "lang-python")]
 use super::python::{PYTHON_PROJECT_MARKERS, PYTHON_SOURCE_DIR_MARKERS};
 use super::*;
@@ -105,7 +105,11 @@ fn missing_config_does_not_treat_empty_src_or_tests_as_python() -> Result<(), St
 #[test]
 fn missing_config_ignores_excluded_python_directories_and_generated_files() -> Result<(), String> {
     let root = temp_root("excluded-python-sources")?;
-    for excluded_dir in PYTHON_PROJECT_EXCLUDED_DIRS {
+    for excluded_dir in PYTHON_EXCLUDED_DIRS
+        .iter()
+        .copied()
+        .chain([PYTHON_VENDOR_DIR])
+    {
         write_file(
             &root.join("src").join(excluded_dir).join("ignored.py"),
             "x = 1\n",
@@ -969,6 +973,8 @@ fn check_artifact_identity_fields_classify_every_config_field() -> Result<(), St
 
     let finding_affecting = [
         "languages.rust.generated_file_patterns",
+        "analysis.production_like_targets",
+        "analysis.test_harnesses",
         "oracles.broad_error_strength",
         "oracles.mock_expectation_strength",
         "oracles.snapshot_strength",
@@ -1161,6 +1167,8 @@ proptest! {
             analysis: Some(RawAnalysisConfig {
                 mode,
                 include_unchanged_tests,
+                production_like_targets: None,
+                test_harnesses: None,
             }),
             oracles: Some(RawOraclePolicy {
                 snapshot_strength,
@@ -1255,4 +1263,203 @@ fn valid_repository_paths() -> impl Strategy<Value = String> {
         "config/ripr.toml".to_string(),
         "fixtures/policy.toml".to_string(),
     ])
+}
+
+#[test]
+fn parse_config_reads_production_like_targets() -> Result<(), String> {
+    // #3283: the opt-in parses as workspace-relative paths and joins the
+    // check-artifact identity as FindingAffecting.
+    let raw = toml::from_str::<RawConfig>(
+        "[analysis]\nproduction_like_targets = [\"tests/api_contract.rs\", \"benches/perf.rs\"]\n",
+    )
+    .map_err(|error| error.to_string())?;
+    let config = RiprConfig::from_raw(raw)?;
+    let targets = config.analysis().production_like_targets();
+    assert_eq!(targets.len(), 2);
+    assert!(
+        targets.contains(&std::path::PathBuf::from("tests/api_contract.rs"))
+            && targets.contains(&std::path::PathBuf::from("benches/perf.rs"))
+    );
+    let identity = config.check_artifact_identity_fields();
+    let field = identity
+        .iter()
+        .find(|field| field.name == "analysis.production_like_targets")
+        .ok_or("identity must classify the opt-in")?;
+    assert_eq!(
+        field.value.as_deref(),
+        Some("2\u{0}benches/perf.rs\u{0}tests/api_contract.rs"),
+        "the identity encoding must be injective: count + NUL separators"
+    );
+    Ok(())
+}
+
+#[test]
+fn parse_config_rejects_absolute_production_like_target() -> Result<(), String> {
+    // Fail closed: an absolute path can never match a workspace-relative
+    // discovery identity, so it must be a named parse error. TOML literal
+    // strings (single quotes) keep backslashes intact for the windows arm.
+    let outside = if cfg!(windows) {
+        concat!("C:", '\\', "outside", '\\', "target.rs")
+    } else {
+        "/outside/target.rs"
+    };
+    let text = format!("[analysis]\nproduction_like_targets = ['{outside}']\n");
+    let raw = toml::from_str::<RawConfig>(&text).map_err(|error| error.to_string())?;
+    match RiprConfig::from_raw(raw) {
+        Err(error) => assert!(
+            error.contains("production_like_targets"),
+            "error must name the field: {error}"
+        ),
+        Ok(_) => return Err("absolute opt-in paths must fail closed".to_string()),
+    }
+    Ok(())
+}
+
+#[test]
+fn parse_config_normalizes_curdir_harness_targets_to_canonical_identity() -> Result<(), String> {
+    // `./tests/a.rs` and `tests/a.rs` must be one target identity: the
+    // canonical form drops `.` segments while keeping `/` separators, so
+    // the duplicate-target guard cannot be bypassed by a `./` prefix and
+    // shared `./`-prefixed path settings keep loading.
+    let registrations = parse_test_harnesses(
+        "[[analysis.test_harnesses]]
+registration_id = 'x'
+target = './tests/a.rs'
+kind = 'custom_harness'
+adapter = 'libtest_mimic_v1'
+marker = 'libtest_mimic'
+",
+    )?;
+    assert_eq!(
+        registrations[0].target,
+        std::path::PathBuf::from("tests/a.rs")
+    );
+    Ok(())
+}
+
+fn parse_test_harnesses(toml_text: &str) -> Result<Vec<TestHarnessRegistration>, String> {
+    let raw = toml::from_str::<RawConfig>(toml_text).map_err(|error| error.to_string())?;
+    RiprConfig::from_raw(raw).map(|config| config.analysis.test_harnesses)
+}
+
+/// The named parse error a registration config must produce; `Err` when it
+/// unexpectedly parsed.
+fn harness_parse_error(toml_text: &str) -> Result<String, String> {
+    match parse_test_harnesses(toml_text) {
+        Err(error) => Ok(error),
+        Ok(_) => Err("harness registrations must fail closed".to_string()),
+    }
+}
+
+#[test]
+fn parse_config_reads_exact_harness_registrations() -> Result<(), String> {
+    // #3532: both supported families parse with exact identities and join
+    // the check-artifact identity as FindingAffecting.
+    let config_text = r#"
+[analysis]
+[[analysis.test_harnesses]]
+registration_id = "mimic-suite"
+target = "tests/price_mimic.rs"
+kind = "custom_harness"
+adapter = "libtest_mimic_v1"
+marker = "libtest_mimic"
+
+[[analysis.test_harnesses]]
+registration_id = "contract-tests"
+target = "crates/pricing/tests/api.rs"
+kind = "registered_attribute"
+adapter = "exact_attribute_v1"
+marker = "myco::contract_test"
+"#;
+    let registrations = parse_test_harnesses(config_text)?;
+    assert_eq!(registrations.len(), 2);
+    assert_eq!(registrations[0].registration_id, "mimic-suite");
+    assert_eq!(
+        registrations[0].target,
+        std::path::PathBuf::from("tests/price_mimic.rs")
+    );
+    assert_eq!(registrations[0].kind, TestHarnessKind::CustomHarnessTarget);
+    assert_eq!(registrations[0].adapter, TestHarnessAdapter::LibtestMimicV1);
+    assert_eq!(registrations[0].marker, "libtest_mimic");
+    assert_eq!(registrations[1].marker, "myco::contract_test");
+
+    let identity = RiprConfig::from_raw(
+        toml::from_str::<RawConfig>(config_text).map_err(|error| error.to_string())?,
+    )?
+    .check_artifact_identity_fields();
+    let field = identity
+        .iter()
+        .find(|field| field.name == "analysis.test_harnesses")
+        .ok_or("identity must classify test_harnesses")?;
+    assert_eq!(field.role, ConfigIdentityRole::FindingAffecting);
+    // Pin the canonical encoding itself: the value feeds artifact reuse,
+    // so an accidental encoding drift must fail here (a deliberate change
+    // bumps CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION and this pin).
+    assert_eq!(
+        field.value.as_deref(),
+        Some(
+            "2 11:mimic-suite 20:tests/price_mimic.rs 14:custom_harness 16:libtest_mimic_v1 13:libtest_mimic  14:contract-tests 27:crates/pricing/tests/api.rs 20:registered_attribute 18:exact_attribute_v1 19:myco::contract_test "
+        )
+    );
+    Ok(())
+}
+
+#[test]
+fn parse_config_rejects_unknown_harness_adapter_version() -> Result<(), String> {
+    // Unknown adapter/schema versions fail closed at parse time.
+    let error = harness_parse_error(
+        "[[analysis.test_harnesses]]\nregistration_id = 'x'\ntarget = 'tests/a.rs'\nkind = 'custom_harness'\nadapter = 'libtest_mimic_v9'\nmarker = 'libtest_mimic'\n",
+    )?;
+    assert!(
+        error.contains("libtest_mimic_v9") && error.contains("unknown"),
+        "the error must name the rejected value: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn parse_config_rejects_harness_kind_adapter_mismatch() -> Result<(), String> {
+    let error = harness_parse_error(
+        "[[analysis.test_harnesses]]\nregistration_id = 'x'\ntarget = 'tests/a.rs'\nkind = 'registered_attribute'\nadapter = 'libtest_mimic_v1'\nmarker = 'contract_test'\n",
+    )?;
+    assert!(error.contains("does not support kind"), "{error}");
+    Ok(())
+}
+
+#[test]
+fn parse_config_rejects_harness_root_escape_and_lookalike_marker() -> Result<(), String> {
+    // Root escape fails closed through the shared relative-path rule.
+    let escape_error = harness_parse_error(
+        "[[analysis.test_harnesses]]\nregistration_id = 'x'\ntarget = '../outside/mimic.rs'\nkind = 'custom_harness'\nadapter = 'libtest_mimic_v1'\nmarker = 'libtest_mimic'\n",
+    )?;
+    assert!(escape_error.contains("target"), "{escape_error}");
+
+    // A lookalike wildcard marker never parses: registration is exact.
+    let marker_error = harness_parse_error(
+        "[[analysis.test_harnesses]]\nregistration_id = 'x'\ntarget = 'tests/a.rs'\nkind = 'registered_attribute'\nadapter = 'exact_attribute_v1'\nmarker = 'myco::contract_*'\n",
+    )?;
+    assert!(
+        marker_error.contains("exact identifier path"),
+        "{marker_error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn parse_config_rejects_conflicting_harness_registrations() -> Result<(), String> {
+    // Duplicate registration ids are non-clean.
+    let id_error = harness_parse_error(
+        "[[analysis.test_harnesses]]\nregistration_id = 'same'\ntarget = 'tests/a.rs'\nkind = 'custom_harness'\nadapter = 'libtest_mimic_v1'\nmarker = 'libtest_mimic'\n\n[[analysis.test_harnesses]]\nregistration_id = 'same'\ntarget = 'tests/b.rs'\nkind = 'custom_harness'\nadapter = 'libtest_mimic_v1'\nmarker = 'libtest_mimic'\n",
+    )?;
+    assert!(id_error.contains("registered twice"), "{id_error}");
+
+    // Two registrations claiming the same target are non-clean.
+    let target_error = harness_parse_error(
+        "[[analysis.test_harnesses]]\nregistration_id = 'one'\ntarget = 'tests/a.rs'\nkind = 'custom_harness'\nadapter = 'libtest_mimic_v1'\nmarker = 'libtest_mimic'\n\n[[analysis.test_harnesses]]\nregistration_id = 'two'\ntarget = 'tests/a.rs'\nkind = 'custom_harness'\nadapter = 'libtest_mimic_v1'\nmarker = 'libtest_mimic'\n",
+    )?;
+    assert!(
+        target_error.contains("claimed by two registrations"),
+        "{target_error}"
+    );
+    Ok(())
 }

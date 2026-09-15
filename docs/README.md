@@ -11,15 +11,17 @@
 | **Curated learnings** | [Knowledge library](LIBRARY.md) |
 | **Agent workflows** | [Agent workflows](AGENT_WORKFLOWS.md) |
 | **Editor integration** | [LSP repair workflow](LSP_AGENT_REPAIR_WORKFLOW.md) |
+| **Portable LSP client proof** | [Neovim standard-LSP recipe](interop/neovim-lsp.md) |
 | **Preview languages** | [Language adapter preview](LANGUAGE_ADAPTER_PREVIEW.md) |
 | **Verification & badges** | [Verification contract](VERIFICATION.md) |
 | **Triage a finding** | [Finding triage guide](how-to/triage-a-finding.md) |
 | **Support tiers** | [Support tiers](status/SUPPORT_TIERS.md) |
+| **Sibling-tool contracts** | [Interop and learning ledger](interop/sibling-tools.md) |
 
 ## Reference
 
 - [Specs](specs/) — 130+ behavioral specifications
-- [ADRs](adr/) — 19 architecture decision records
+- [ADRs](adr/) — 21 architecture decision records
 - [Agent context](agent-context/) — repo map, review invariants, validation
 - [Source-of-truth doctrine](source-of-truth/README.md) — control-plane for proposals, specs, ADRs, plans, goals, policy ledgers, proof, and closeouts
 - [Spec/proposal system](SPEC_PROPOSAL_SYSTEM.md) — companion guide to the repo tracking model

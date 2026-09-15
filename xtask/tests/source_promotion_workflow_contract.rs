@@ -854,14 +854,37 @@ fn admission_workflow_does_not_accept_caller_selected_authority() -> Result<(), 
 #[test]
 fn production_j5_rejection_is_a_self_verifying_workflow_packet() -> Result<(), String> {
     let xtask = PathBuf::from(env!("CARGO_BIN_EXE_xtask"));
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?
-        .to_path_buf();
+    // Stage a private copy of the xtask binary beside the original. The suite
+    // runs a nested `cargo test -p xtask` concurrently
+    // (test_covered_by_production_wrapper_enumerates_through_cargo), and cargo
+    // rebuilds and replaces target/debug/xtask mid-run after a nextest build
+    // (fingerprint skew between the two drivers). A replaced executable reads
+    // back as "... (deleted)", and the workflow's fail-closed executable
+    // binding then reports unavailable instead of rejected. The staged copy is
+    // byte-identical (same digest) but never rebuilt, and it keeps the
+    // target/debug layout so the workflow's target-directory derivation still
+    // resolves.
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| format!("test clock precedes epoch: {error}"))?
         .as_nanos();
+    let staged = xtask.with_file_name(format!(
+        "xtask-j5-production-stage-{}-{nonce}{}",
+        std::process::id(),
+        std::env::consts::EXE_SUFFIX
+    ));
+    fs::copy(&xtask, &staged)
+        .map_err(|error| format!("failed to stage production J5 xtask copy: {error}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&staged, fs::Permissions::from_mode(0o755))
+            .map_err(|error| format!("failed to mark staged J5 xtask executable: {error}"))?;
+    }
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "xtask manifest directory has no repository parent".to_string())?
+        .to_path_buf();
     let root = repo_root
         .parent()
         .ok_or_else(|| "repository root has no temporary-workspace parent".to_string())?
@@ -889,7 +912,7 @@ fn production_j5_rejection_is_a_self_verifying_workflow_packet() -> Result<(), S
                 .and_then(Value::as_str)
                 .ok_or_else(|| format!("production J5 request is missing {key}"))
         };
-        let output = Command::new(&xtask)
+        let output = Command::new(&staged)
             .current_dir(&repo_root)
             .args([
                 "source-promotion",
@@ -954,7 +977,7 @@ fn production_j5_rejection_is_a_self_verifying_workflow_packet() -> Result<(), S
                 String::from_utf8_lossy(&output.stderr).trim(),
             ));
         }
-        let verification = Command::new(&xtask)
+        let verification = Command::new(&staged)
             .current_dir(&repo_root)
             .args([
                 "source-promotion",
@@ -992,7 +1015,9 @@ fn production_j5_rejection_is_a_self_verifying_workflow_packet() -> Result<(), S
         }
         Ok(())
     })();
+    let staged_cleanup = fs::remove_file(&staged)
+        .map_err(|error| format!("failed to clean staged production J5 xtask copy: {error}"));
     let cleanup = fs::remove_dir_all(&root)
         .map_err(|error| format!("failed to clean production J5 test root: {error}"));
-    result.and(cleanup)
+    result.and(staged_cleanup).and(cleanup)
 }

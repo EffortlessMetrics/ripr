@@ -65,11 +65,11 @@ pub(crate) fn render_check_with_config(
             Ok(badge::render_shields_json(&summary))
         }
         OutputFormat::RepoSeamsJson => {
-            let seams = analysis::inventory_seams_at(&output.root)?;
+            let seams = analysis::inventory_seams_at_with_config(&output.root, config)?;
             Ok(repo_seams::render_repo_seams_json(&seams))
         }
         OutputFormat::RepoSeamsMd => {
-            let seams = analysis::inventory_seams_at(&output.root)?;
+            let seams = analysis::inventory_seams_at_with_config(&output.root, config)?;
             Ok(repo_seams::render_repo_seams_md(&seams))
         }
         OutputFormat::RepoExposureJson => {
@@ -925,6 +925,7 @@ mod tests {
 
     fn check_output_with(findings: Vec<Finding>) -> CheckOutput {
         CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -1074,6 +1075,7 @@ mod tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 }
