@@ -163,7 +163,7 @@ runtime mutation an observed outcome for a concrete executed counterfactual
 
 The useful question remains whether a test discriminates the changed behavior.
 How reliably RIPR answers it, and how much downstream verification its evidence
-can justify displacing, require independent evaluation rather than a zero badge
+can justify displacing, require independent evaluation rather than a zero-badge
 count. See [Two error rates](#two-error-rates) and the historical panel boundary
 below.
 
