@@ -25,7 +25,7 @@
       "id": "agent_packet",
       "label": "Agent repair packet",
       "path": "target/ripr/workflow/agent-packet.json",
-      "regeneration_command": "ripr agent packet --root fixtures/first_successful_pr/empty-diff --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id <gap-id> --json > target/ripr/workflow/agent-packet.json",
+      "regeneration_command": null,
       "status": "missing"
     },
     {

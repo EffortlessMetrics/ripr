@@ -102,6 +102,20 @@ pub fn ripr_badge_summary_with_suppressions(
     let mut unique_tests: BTreeSet<(String, String, usize)> = BTreeSet::new();
 
     for finding in &output.findings {
+        // Candidate-actionable eligibility (#3281): base-side evidence
+        // (base_deleted / moved_or_renamed) and unresolved subjects never
+        // count as exposure gaps or unknowns in the badge; the analyzed
+        // denominator below keeps every finding.
+        if !finding.is_candidate_actionable() {
+            for test in &finding.related_tests {
+                unique_tests.insert((
+                    test.file.to_string_lossy().into_owned(),
+                    test.name.clone(),
+                    test.line,
+                ));
+            }
+            continue;
+        }
         match finding.class {
             ExposureClass::WeaklyExposed
             | ExposureClass::ReachableUnrevealed

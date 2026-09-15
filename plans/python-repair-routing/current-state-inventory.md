@@ -30,7 +30,11 @@ baseline and is kept current as the repair-routing lane lands scoped slices.
 
 This document does not promote Python support, change analyzer behavior,
 define new output schema, add fixtures, run Python, or make Python findings
-gate eligible. Python remains opt-in `preview` evidence.
+gate eligible. Language enablement: explicit `ripr.toml` configuration is
+authoritative; when config is absent, Python project markers can enable the
+Python adapter by default (see `analysis/python-project-detection`). Broader
+Python static facts remain preview/advisory; only the scoped repair-routing
+loop is governed `usable alpha` (#741).
 
 ## Summary
 
@@ -39,7 +43,10 @@ language adapter contract. It can parse `.py` files with
 `rustpython-parser`, extract selected owners, tests, assertion/oracle facts,
 probe shapes, related-test links, and static limits, then emit ordinary RIPR
 findings with `language = "python"` and `language_status = "preview"` when
-the repo enables Python in `ripr.toml`.
+the resolved language configuration includes Python: either no-config project
+markers select it automatically, or explicit `ripr.toml` enables it. Explicit
+configuration remains authoritative, so explicitly omitting Python keeps it
+disabled.
 
 The current implementation has the core static/advisory repair-routing loop for
 selected Python pytest and unittest workflows: canonical Python gap IDs, direct
@@ -54,9 +61,9 @@ surfaces aligned without promoting broader Python static facts beyond preview.
 | Area | Current files | Current behavior |
 | --- | --- | --- |
 | Build feature | [`crates/ripr/Cargo.toml`](../../crates/ripr/Cargo.toml) | Default build enables `lang-python`; the feature pulls in optional `rustpython-parser`. |
-| Config opt-in | [`crates/ripr/src/config.rs`](../../crates/ripr/src/config.rs) | Default `[languages]` is `["rust"]`; Python runs only when `python` is listed. |
+| Config opt-in | [`crates/ripr/src/config.rs`](../../crates/ripr/src/config.rs) | Explicit `[languages]` config is authoritative; when config is absent, Python project markers can enable the adapter by default (no-config project detection). |
 | Router | [`crates/ripr/src/analysis/language/router.rs`](../../crates/ripr/src/analysis/language/router.rs) | `.py` paths route to `LanguageId::Python`; pipeline dispatch still depends on config. |
-| Pipeline | [`crates/ripr/src/analysis/pipeline.rs`](../../crates/ripr/src/analysis/pipeline.rs) | Diff and repo pipelines can dispatch to `PythonAdapter` when the feature and config allow it. |
+| Pipeline | [`crates/ripr/src/analysis/pipeline.rs`](../../crates/ripr/src/analysis/pipeline.rs) | Diff and repo pipelines can dispatch to `PythonAdapter` when the feature and resolved language configuration allow it. |
 | Adapter | [`crates/ripr/src/analysis/language/python.rs`](../../crates/ripr/src/analysis/language/python.rs) | Extracts source-fact snapshots, preview owners, tests, oracles, related tests, probe shape, static limits, and `Finding` values. |
 | Python helpers | [`crates/ripr/src/analysis/language/python/source_utils.rs`](../../crates/ripr/src/analysis/language/python/source_utils.rs) | Provides line/span/path helpers and Python test-file recognition. |
 | Adapter tests | [`crates/ripr/src/analysis/language/python/python_tests.rs`](../../crates/ripr/src/analysis/language/python/python_tests.rs) | Pins assertion walking, probe classification, static limits, workspace exclusions, and diff analysis. |

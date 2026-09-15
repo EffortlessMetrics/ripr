@@ -5,14 +5,20 @@
 # validator checks; the transitive module-level surface is recorded separately
 # in policy/public_api_surface.txt.
 
+# PR #3298: owner ripr/provider-contract; reason: intentional versioned
+# read-only provider DTO and validator contract; covered_by:
+# cargo test -p ripr --lib provider_contract, cargo xtask check-public-api.
+
 pub mod analysis;
 pub mod app;
 pub mod cli;
 pub mod config;
 pub mod domain;
 pub mod lsp;
+pub mod mcp;
 pub mod output;
 pub mod review_input;
+pub mod provider_contract;
 pub use analysis::LanguageRun;
 pub use analysis::LanguageRunStatus;
 pub use analysis::PartialDiffScope;
@@ -20,7 +26,8 @@ pub use analysis::PartialDiffStopReason;
 pub use analysis::PreviewLanguageAdvisory;
 pub use app::{
 pub use app::{Mode, OutputFormat};
-pub use domain::{ExposureClass, Finding, Probe, ProbeFamily, RiprEvidence};
-pub use domain::{LanguageFileCount, Summary};
+pub use domain::{
+pub use domain::{LanguageFileCount, SourceCurrentness, Summary};
 pub use output::suppressions::CheckSuppressionOutcome;
 pub use output::suppressions::SuppressedCheckFinding;
+pub use provider_contract::{

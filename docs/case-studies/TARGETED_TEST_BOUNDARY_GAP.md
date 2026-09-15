@@ -9,20 +9,37 @@ The checked public corpus index is
 boundary-gap receipt and optional calibration outputs are checked in under
 `fixtures/boundary_gap/calibration/`.
 
+The executable regression is
+[`crates/ripr/tests/boundary_gap_closure.rs`](../../crates/ripr/tests/boundary_gap_closure.rs).
+It constructs an isolated Git repository and exercises the built `ripr` binary
+through repo exposure before and after the test edit, then requires `ripr
+outcome` to report the gap as closed.
+
 ## Operator Loop
 
 Scratch workspace:
 
-```text
-target/ripr/case-study/boundary-gap
+```bash
+rm -rf target/ripr/case-study/boundary-gap
+mkdir -p target/ripr/case-study/boundary-gap/reports
+cp -R fixtures/boundary_gap/input/. target/ripr/case-study/boundary-gap/
+git -C target/ripr/case-study/boundary-gap init -q
+git -C target/ripr/case-study/boundary-gap config user.name "ripr fixture"
+git -C target/ripr/case-study/boundary-gap config user.email "fixture@ripr.invalid"
+git -C target/ripr/case-study/boundary-gap config core.autocrlf false
+git -C target/ripr/case-study/boundary-gap add Cargo.toml src tests
+git -C target/ripr/case-study/boundary-gap commit -qm "initial boundary fixture"
 ```
+
+These commands create the same before-state Git repository used by the
+executable regression. Apply the focused test below as an uncommitted change
+before capturing the after snapshot.
 
 Before snapshot:
 
 ```bash
 cargo run -p ripr -- check \
   --root target/ripr/case-study/boundary-gap \
-  --diff target/ripr/case-study/boundary-gap/diff.patch \
   --mode ready \
   --format repo-exposure-json \
   > target/ripr/case-study/boundary-gap/reports/before.repo-exposure.json
@@ -33,7 +50,6 @@ Work order:
 ```bash
 cargo run -p ripr -- check \
   --root target/ripr/case-study/boundary-gap \
-  --diff target/ripr/case-study/boundary-gap/diff.patch \
   --mode ready \
   --format agent-seam-packets-json \
   > target/ripr/case-study/boundary-gap/reports/agent-seam-packets.json
@@ -64,7 +80,6 @@ After snapshot:
 ```bash
 cargo run -p ripr -- check \
   --root target/ripr/case-study/boundary-gap \
-  --diff target/ripr/case-study/boundary-gap/diff.patch \
   --mode ready \
   --format repo-exposure-json \
   > target/ripr/case-study/boundary-gap/reports/after.repo-exposure.json
@@ -88,43 +103,50 @@ cargo run -p ripr -- outcome \
 
 ## Receipt Result
 
-The receipt stayed advisory and reported:
+The receipt remains advisory and reports:
 
 ```text
-moved: 0
-unchanged: 1
+moved: 1
+unchanged: 0
 regressed: 0
 new: 0
 removed: 0
+closed gaps: 1
 ```
 
-The unchanged seam still carried a useful evidence delta:
+The canonical seam moves with concrete evidence:
 
 ```text
-67fc764ba37d77bd src/lib.rs:2 weakly_gripped -> weakly_gripped
+67fc764ba37d77bd src/lib.rs:2 weakly_gripped -> strongly_gripped
+- missing discriminator no longer reported: discount_threshold (equality boundary)
 - new observed value: 100
+- related test count increased by 1
 ```
 
 ## Interpretation
 
-The focused test was visible to RIPR: the after snapshot gained the observed
-value `100` and the related test list included `equality_boundary_discounts`.
-The seam class did not move because the current repo seam evidence still
-reports the equality-boundary discriminator as missing.
+The focused test exercises the one input that distinguishes `>=` from `>`:
+`amount == discount_threshold`. The after snapshot retains the same seam and
+owner identity, observes the concrete equality input, includes
+`equality_boundary_discounts` as a direct-owner test with an exact-value
+oracle, and no longer reports the equality discriminator as missing.
 
-That is an acceptable dogfood receipt. It tells the operator:
+That earns static closure for this supported fixture:
 
-- the targeted test reached the intended seam;
-- the rendered evidence changed;
-- the current static classifier still did not close the grip class;
-- runtime calibration was not run for this case.
+- the targeted test reaches the intended seam;
+- the missing activation discriminator is present;
+- the existing return-value observer remains strong and aligned;
+- the repo-scoped grip class moves from `weakly_gripped` to
+  `strongly_gripped`;
+- the targeted-test outcome records `gap_movement: closed`.
 
-This is the useful product behavior: the receipt records what improved and what
-did not, without claiming runtime confirmation or hiding a static-model gap.
+The receipt still does not claim that RIPR executed the focused test, proved
+coverage adequacy, established general correctness, or approved a merge. Those
+are separate runtime and policy facts.
 
 ## Optional Runtime Calibration Sample
 
-The fixture also includes a tiny imported runtime sample:
+The fixture also includes a tiny **imported** runtime sample:
 
 ```bash
 ripr calibrate cargo-mutants \
@@ -136,16 +158,20 @@ Expected agreement summary:
 
 ```text
 static_gap_and_runtime_signal: 0
-static_gap_without_runtime_signal: 1
+static_gap_without_runtime_signal: 0
 runtime_signal_without_static_gap: 0
-static_clean_and_runtime_clean: 0
+static_clean_and_runtime_clean: 1
 runtime_inconclusive: 0
 ```
 
-That is the calibration value of this case. The static after snapshot still
-reports a gap, while the supplied runtime data reports the imported mutant as
-`caught`. The report keeps those facts separate instead of upgrading the static
-classification.
+The supplied sample labels the exact `>=` to `>` mutant as `caught` by
+`equality_boundary_discounts`, while the current static snapshot reports the
+seam as strongly gripped. The calibration report therefore records
+`supports_static_clean`.
+
+The runtime row is sample input, not a claim that this fixture execution ran
+cargo-mutants. Static closure and imported runtime agreement remain separate
+facts.
 
 Checked corpus calibration outputs:
 

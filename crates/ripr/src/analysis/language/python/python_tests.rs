@@ -1,3 +1,6 @@
+use super::owners_tests::{extract_owners, extract_tests};
+use super::source_facts::{PythonSourceFactKind, PythonSourceFacts};
+use super::source_utils::text_for_range;
 use super::*;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -1410,6 +1413,10 @@ fn analyze_diff_emits_finding_for_changed_python_file_on_disk() -> Result<(), St
         resolve_tsconfig_paths: false,
         perl_facts_path: None,
         git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+        resolved_subject_identity: None,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![
@@ -1476,6 +1483,198 @@ fn analyze_diff_emits_finding_for_changed_python_file_on_disk() -> Result<(), St
 }
 
 #[test]
+fn analyze_diff_suppresses_multiline_docstring_interior_change() -> Result<(), String> {
+    let root = unique_tempdir("analyze-diff-docstring-interior")?;
+    let production_rel = PathBuf::from("src/pricing.py");
+    write_file(
+        &root.join(&production_rel),
+        "def apply_discount(amount):\n    \"\"\"Apply the standard discount.\n\n    Cuts the running total by exactly ten units.\n    \"\"\"\n    if amount >= 100:\n        return amount - 10\n    return amount\n",
+    )?;
+    write_file(
+        &root.join("tests/test_pricing.py"),
+        "from src.pricing import apply_discount\n\ndef test_apply_discount():\n    assert apply_discount(100) == 90\n",
+    )?;
+
+    let adapter = PythonAdapter;
+    let options = AnalysisOptions {
+        root: root.clone(),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+        resolved_subject_identity: None,
+    };
+    let changed_files = vec![ChangedFile {
+        path: production_rel,
+        added_lines: vec![crate::analysis::diff::ChangedLine {
+            line: 4,
+            new_side_line: 4,
+            text: "    Cuts the running total by exactly ten units.".to_string(),
+        }],
+        removed_lines: vec![crate::analysis::diff::ChangedLine {
+            line: 4,
+            new_side_line: 4,
+            text: "    Cuts the running total by a flat ten units.".to_string(),
+        }],
+    }];
+
+    let result = adapter.analyze_diff(&options, &OraclePolicy::default(), &changed_files);
+    let cleanup = std::fs::remove_dir_all(&root);
+    let result = result?;
+    cleanup.map_err(|err| format!("remove_dir_all({}): {err}", root.display()))?;
+
+    if !result.findings.is_empty() {
+        return Err(format!(
+            "a docstring-interior-only change must emit no probe, got {} findings",
+            result.findings.len()
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_does_not_hide_behavior_after_same_line_docstring() -> Result<(), String> {
+    let root = unique_tempdir("analyze-diff-docstring-semicolon")?;
+    let production_rel = PathBuf::from("src/value.py");
+    write_file(
+        &root.join(&production_rel),
+        "def value():\n    \"\"\"Documentation.\"\"\"; return 2\n",
+    )?;
+
+    let adapter = PythonAdapter;
+    let options = AnalysisOptions {
+        root: root.clone(),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+        resolved_subject_identity: None,
+    };
+    let changed_files = vec![ChangedFile {
+        path: production_rel,
+        added_lines: vec![crate::analysis::diff::ChangedLine {
+            line: 2,
+            new_side_line: 2,
+            text: "    \"\"\"Documentation.\"\"\"; return 2".to_string(),
+        }],
+        removed_lines: vec![crate::analysis::diff::ChangedLine {
+            line: 2,
+            new_side_line: 2,
+            text: "    \"\"\"Documentation.\"\"\"; return 1".to_string(),
+        }],
+    }];
+
+    let result = adapter.analyze_diff(&options, &OraclePolicy::default(), &changed_files);
+    let cleanup = std::fs::remove_dir_all(&root);
+    let result = result?;
+    cleanup.map_err(|err| format!("remove_dir_all({}): {err}", root.display()))?;
+
+    if result.findings.is_empty() {
+        return Err("behavior after a same-line docstring must remain analyzable".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_does_not_hide_code_replaced_by_multiline_docstring() -> Result<(), String> {
+    let root = unique_tempdir("analyze-diff-code-to-docstring")?;
+    let production_rel = PathBuf::from("src/pricing.py");
+    write_file(
+        &root.join(&production_rel),
+        "def apply_discount(amount):\n    \"\"\"Replacement prose.\n    More replacement prose.\n    \"\"\"\n    return amount\n",
+    )?;
+
+    let adapter = PythonAdapter;
+    let options = AnalysisOptions {
+        root: root.clone(),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+        resolved_subject_identity: None,
+    };
+    let changed_files = vec![ChangedFile {
+        path: production_rel,
+        added_lines: vec![
+            crate::analysis::diff::ChangedLine {
+                line: 2,
+                new_side_line: 2,
+                text: "    \"\"\"Replacement prose.".to_string(),
+            },
+            crate::analysis::diff::ChangedLine {
+                line: 3,
+                new_side_line: 3,
+                text: "    More replacement prose.".to_string(),
+            },
+            crate::analysis::diff::ChangedLine {
+                line: 4,
+                new_side_line: 4,
+                text: "    \"\"\"".to_string(),
+            },
+        ],
+        removed_lines: vec![crate::analysis::diff::ChangedLine {
+            line: 2,
+            new_side_line: 2,
+            text: "    return amount - 10".to_string(),
+        }],
+    }];
+
+    let result = adapter.analyze_diff(&options, &OraclePolicy::default(), &changed_files);
+    let cleanup = std::fs::remove_dir_all(&root);
+    let result = result?;
+    cleanup.map_err(|err| format!("remove_dir_all({}): {err}", root.display()))?;
+
+    if result.findings.is_empty() {
+        return Err(
+            "replacing behavioral code with a docstring must remain analyzable".to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn docstring_ranges_exclude_assigned_strings_and_fstrings() {
+    let source = concat!(
+        "\"\"\"Module docs.\n",
+        "More module docs.\n",
+        "\"\"\"\n",
+        "MESSAGE = \"\"\"Assigned text.\n",
+        "More assigned text.\n",
+        "\"\"\"\n",
+        "def render(value):\n",
+        "    f\"\"\"{side_effect(value)}\n",
+        "formatted text\n",
+        "\"\"\"\n",
+        "    return MESSAGE\n",
+    );
+    let facts = extract_source_facts(Path::new("src/messages.py"), source);
+
+    assert_eq!(
+        facts.docstring_line_ranges,
+        vec![1..=3],
+        "only the plain first string expression of a real scope is a docstring"
+    );
+}
+
+#[test]
 fn analyze_diff_skips_detectable_generated_python_files() -> Result<(), String> {
     let root = unique_tempdir("analyze-diff-generated-file")?;
     let generated_rel = PathBuf::from("src/schema_pb2.py");
@@ -1499,6 +1698,10 @@ def test_encode_status():\n    assert encode_status('paid')['status'] == 'paid'\
         resolve_tsconfig_paths: false,
         perl_facts_path: None,
         git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+        resolved_subject_identity: None,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {
@@ -1537,6 +1740,12 @@ fn collect_workspace_python_files_skips_excluded_directories() -> Result<(), Str
     let included = [
         PathBuf::from("src/keep.py"),
         PathBuf::from("nested/also_keep.py"),
+        // Generated-family near-misses must keep being collected (#3672):
+        // none of them terminates a generated suffix and none carries the
+        // `generated_` prefix.
+        PathBuf::from("src/pb2.py"),
+        PathBuf::from("src/generated.py"),
+        PathBuf::from("src/regenerated_client.py"),
     ];
     let excluded = [
         PathBuf::from(".git/skip.py"),
@@ -1555,6 +1764,9 @@ fn collect_workspace_python_files_skips_excluded_directories() -> Result<(), Str
         PathBuf::from(".mypy_cache/skip.py"),
         PathBuf::from("dist/skip.py"),
         PathBuf::from("build/skip.py"),
+        // Vendored Python is not project or production source, so diff
+        // discovery prunes it too (#3672).
+        PathBuf::from("vendor/skip.py"),
         PathBuf::from("src/generated_client.py"),
         PathBuf::from("src/schema_pb2.py"),
         PathBuf::from("src/schema_pb2_grpc.py"),
@@ -1606,6 +1818,204 @@ fn collect_workspace_python_files_returns_empty_for_missing_root() {
             .unwrap_or(0)
     ));
     assert!(collect_workspace_python_files(&missing).is_empty());
+}
+
+#[test]
+fn vendor_only_tree_neither_enables_python_nor_enters_diff_inputs() -> Result<(), String> {
+    // #3672: vendored Python is not project or production source. A tree
+    // whose only Python lives under `vendor` must not enable project
+    // detection and must contribute nothing to the diff-mode workspace
+    // walk (the source of diff-mode production inputs).
+    let root = unique_tempdir("vendor-only-tree")?;
+    write_file(&root.join("vendor/dep.py"), "VALUE = 1\n")?;
+    write_file(&root.join("src/vendor/dep.py"), "VALUE = 2\n")?;
+
+    let files = collect_workspace_python_files(&root);
+    let detection_enabled = crate::config::detect_python_project(&root);
+    let cleanup = std::fs::remove_dir_all(&root);
+
+    if !files.is_empty() {
+        let _ = cleanup;
+        return Err(format!(
+            "vendor-only Python must not enter the diff workspace, got {files:?}"
+        ));
+    }
+    if detection_enabled {
+        let _ = cleanup;
+        return Err("vendor-only Python must not enable Python detection".to_string());
+    }
+    cleanup.map_err(|err| format!("remove_dir_all({}): {err}", root.display()))?;
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_does_not_count_vendor_subtree_changes() -> Result<(), String> {
+    // #3672 follow-up: `vendor` is pruned from the diff-mode workspace walk,
+    // so no workspace facts can back a changed vendored file and no findings
+    // can ever be emitted for it. Diff analysis must skip it BEFORE counting
+    // (same treatment as generated names), or the report denominator counts
+    // an uninspected file as a handled changed subject.
+    let root = unique_tempdir("analyze-diff-vendor-count")?;
+    let vendor_rel = PathBuf::from("vendor/dep.py");
+    write_file(
+        &root.join(&vendor_rel),
+        "def encode_status(status):\n    return {'status': status, 'version': 2}\n",
+    )?;
+
+    let adapter = PythonAdapter;
+    let options = AnalysisOptions {
+        root: root.clone(),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+        resolved_subject_identity: None,
+    };
+    let policy = OraclePolicy::default();
+    let changed_files = vec![ChangedFile {
+        path: vendor_rel,
+        added_lines: vec![crate::analysis::diff::ChangedLine {
+            line: 2,
+            new_side_line: 2,
+            text: "    return {'status': status, 'version': 2}".to_string(),
+        }],
+        removed_lines: Vec::new(),
+    }];
+
+    let result = adapter.analyze_diff(&options, &policy, &changed_files);
+    let cleanup = std::fs::remove_dir_all(&root);
+    let result = result?;
+    cleanup.map_err(|err| format!("remove_dir_all({}): {err}", root.display()))?;
+
+    if result.changed_files != 0 {
+        return Err(format!(
+            "expected vendored Python change to be excluded from changed files, got {}",
+            result.changed_files
+        ));
+    }
+    if !result.findings.is_empty() {
+        return Err(format!(
+            "expected vendored Python change to emit no preview findings, got {}",
+            result.findings.len()
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_does_not_count_environment_subtree_changes() -> Result<(), String> {
+    // Same denominator rule as the vendor case (#3672): `.venv` is an
+    // environment subtree excluded from the diff-mode workspace walk, so a
+    // changed file under it must not be counted as a handled changed subject.
+    let root = unique_tempdir("analyze-diff-venv-count")?;
+    let venv_rel = PathBuf::from(".venv/x.py");
+    write_file(
+        &root.join(&venv_rel),
+        "def encode_status(status):\n    return {'status': status, 'version': 2}\n",
+    )?;
+
+    let adapter = PythonAdapter;
+    let options = AnalysisOptions {
+        root: root.clone(),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+        resolved_subject_identity: None,
+    };
+    let policy = OraclePolicy::default();
+    let changed_files = vec![ChangedFile {
+        path: venv_rel,
+        added_lines: vec![crate::analysis::diff::ChangedLine {
+            line: 2,
+            new_side_line: 2,
+            text: "    return {'status': status, 'version': 2}".to_string(),
+        }],
+        removed_lines: Vec::new(),
+    }];
+
+    let result = adapter.analyze_diff(&options, &policy, &changed_files);
+    let cleanup = std::fs::remove_dir_all(&root);
+    let result = result?;
+    cleanup.map_err(|err| format!("remove_dir_all({}): {err}", root.display()))?;
+
+    if result.changed_files != 0 {
+        return Err(format!(
+            "expected environment-subtree Python change to be excluded from changed files, got {}",
+            result.changed_files
+        ));
+    }
+    if !result.findings.is_empty() {
+        return Err(format!(
+            "expected environment-subtree Python change to emit no preview findings, got {}",
+            result.findings.len()
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_still_counts_regular_source_changes() -> Result<(), String> {
+    // Control for the excluded-subtree skip (#3672 follow-up): a changed
+    // regular production file is still counted, proving the skip is scoped
+    // to excluded subtrees rather than suppressing the diff loop entirely.
+    let root = unique_tempdir("analyze-diff-regular-control")?;
+    let source_rel = PathBuf::from("src/x.py");
+    write_file(
+        &root.join(&source_rel),
+        "def encode_status(status):\n    return {'status': status, 'version': 2}\n",
+    )?;
+
+    let adapter = PythonAdapter;
+    let options = AnalysisOptions {
+        root: root.clone(),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+        resolved_subject_identity: None,
+    };
+    let policy = OraclePolicy::default();
+    let changed_files = vec![ChangedFile {
+        path: source_rel,
+        added_lines: vec![crate::analysis::diff::ChangedLine {
+            line: 2,
+            new_side_line: 2,
+            text: "    return {'status': status, 'version': 2}".to_string(),
+        }],
+        removed_lines: Vec::new(),
+    }];
+
+    let result = adapter.analyze_diff(&options, &policy, &changed_files);
+    let cleanup = std::fs::remove_dir_all(&root);
+    let result = result?;
+    cleanup.map_err(|err| format!("remove_dir_all({}): {err}", root.display()))?;
+
+    if result.changed_files != 1 {
+        return Err(format!(
+            "expected the regular source change to count as one changed file, got {}",
+            result.changed_files
+        ));
+    }
+    Ok(())
 }
 
 #[test]
@@ -2271,6 +2681,10 @@ fn analyze_diff_counts_python_file_but_skips_unreadable_workspace_source() -> Re
         resolve_tsconfig_paths: false,
         perl_facts_path: None,
         git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+        resolved_subject_identity: None,
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {

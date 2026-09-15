@@ -254,3 +254,57 @@ pub use ripr::lsp::workspace_diagnostic_batches
 pub use ripr::output::json::render
 pub use ripr::output::json::render_context_packet
 pub use ripr::render_check
+
+# 0.11 J join (source 971ac1a8 + swarm 45b56c09): items reachable through
+# the joined crate root that neither parent ledger recorded alone. This is a
+# recording of the joined surface, not an endorsement; narrowing is separate work.
+pub fn ripr::app::pr_evidence::reject_pr_evidence_error_packet
+pub fn ripr::mcp::run
+pub mod ripr::app::pr_evidence
+pub mod ripr::mcp
+pub mod ripr::provider_contract
+pub use ripr::GitCandidateBase
+pub use ripr::GitCandidateDiffSemantics
+pub use ripr::GitCandidateSubject
+pub use ripr::GitCandidateSubjectError
+pub use ripr::GitHashFormat
+pub use ripr::GitObjectId
+pub use ripr::GitTreeish
+pub use ripr::RIPR_ANALYSIS_RECEIPT_SCHEMA_VERSION
+pub use ripr::RIPR_ANALYSIS_REQUEST_SCHEMA_VERSION
+pub use ripr::RIPR_PROVIDER_CAPABILITY_SCHEMA_VERSION
+pub use ripr::RIPR_PROVIDER_CLAIM_BOUNDARY
+pub use ripr::RIPR_REQUIRED_EXCLUDED_CLAIMS
+pub use ripr::RiprAnalysisReceiptV1
+pub use ripr::RiprAnalysisRequestV1
+pub use ripr::RiprEvidenceSubjectV1
+pub use ripr::RiprProviderCapabilityDescriptorV1
+pub use ripr::RiprProviderCapabilitySetV1
+pub use ripr::RiprProviderCapabilityV1
+pub use ripr::RiprProviderContractErrorCodeV1
+pub use ripr::RiprProviderContractErrorV1
+pub use ripr::RiprProviderDiagnosticV1
+pub use ripr::RiprProviderEvidenceEntryV1
+pub use ripr::RiprProviderEvidenceSummaryV1
+pub use ripr::RiprProviderNativeStatusV1
+pub use ripr::RiprProviderResultClassV1
+pub use ripr::RiprRepositorySnapshotV1
+pub use ripr::RiprSourceViewV1
+pub use ripr::SourceCurrentness
+pub use ripr::TestEvidenceEntry
+pub use ripr::TestEvidenceSummary
+pub use ripr::app::reject_pr_evidence_error_packet
+pub use ripr::config::TestHarnessAdapter
+pub use ripr::config::TestHarnessKind
+pub use ripr::config::TestHarnessRegistration
+pub use ripr::domain::GitCandidateBase
+pub use ripr::domain::GitCandidateDiffSemantics
+pub use ripr::domain::GitCandidateSubject
+pub use ripr::domain::GitCandidateSubjectError
+pub use ripr::domain::GitHashFormat
+pub use ripr::domain::GitObjectId
+pub use ripr::domain::GitTreeish
+pub use ripr::domain::SOURCE_CURRENTNESS_VALUES
+pub use ripr::domain::SourceCurrentness
+pub use ripr::provider_contract::*
+pub use ripr::reject_pr_evidence_error_packet

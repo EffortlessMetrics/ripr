@@ -18,7 +18,7 @@ Start here:
   Static exposure: static_unknown (note, confidence 0.20)
   Why static_unknown: the analysis could not determine a static exposure state
   Changed behavior: return max(0, self._balance)
-  Missing discriminator: Static limit `decorator_indirection`: owner `Account.balance` is decorated with `property`; syntax-first preview evidence does not resolve decorator-modified call behavior.
+  Analyzer limit: Static limit `decorator_indirection`: owner `Account.balance` is decorated with `property`; syntax-first preview evidence does not resolve decorator-modified call behavior.
   Related test: tests/test_account.py:4 test_account_init
   Evidence:
     - reach weak: 1 heuristic Python test link(s) found for owner `balance`; relation is uncertain

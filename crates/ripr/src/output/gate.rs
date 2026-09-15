@@ -446,7 +446,10 @@ fn candidate_from_gap_record(record: &GapRecord) -> GateCandidate {
         .or_else(|| canonical_gap_id.clone())
         .unwrap_or_else(|| "unknown".to_string());
     let projection = record.projection_eligibility.get("gate_candidate");
-    let gate_candidate = projection.is_some_and(|projection| projection.eligible);
+    // Shared eligibility authority (#3281): a non-candidate-current record
+    // is never a gate candidate even if a stale ledger map says eligible.
+    let gate_candidate =
+        crate::output::gap_decision_ledger::projection_eligible(record, "gate_candidate");
     let gate_reason = projection
         .and_then(|projection| non_empty_string(&projection.reason))
         .or_else(|| Some("not_gate_candidate".to_string()));

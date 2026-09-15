@@ -8,6 +8,15 @@ pub enum OracleKind {
     BroadError,
     SmokeOnly,
     MockExpectation,
+    /// A guarded Result match over a direct callee result:
+    /// `match <callee>(..) { Ok(..) => .., Err(e) => <guard> }` (#3709).
+    /// The scrutinee observes the callee's returned `Result` directly, so
+    /// the Err-arm guard is the result's discriminator and the oracle is
+    /// bound to that callee rather than to changed-line tokens. Strength
+    /// carries the guard's precision: strong for an exact error-variant
+    /// pin, medium for a concrete downcast type pin. Shapes without a
+    /// recognized guard emit no oracle at all.
+    GuardedResultMatch,
     Unknown,
 }
 
@@ -22,6 +31,7 @@ impl OracleKind {
             OracleKind::BroadError => "broad_error",
             OracleKind::SmokeOnly => "smoke_only",
             OracleKind::MockExpectation => "mock_expectation",
+            OracleKind::GuardedResultMatch => "guarded_result_match",
             OracleKind::Unknown => "unknown",
         }
     }
@@ -161,6 +171,13 @@ pub enum RelationReason {
     /// one hop was followed to verify the chain leads to the changed owner.
     /// Two-hop and deeper chains are NOT followed (fail-closed).
     ReExportChainFollowed,
+    /// Matched because the test's captured calls include the converted
+    /// callee of a wrapper error seam (`callee(..).map_err(..)` — #3714).
+    /// A direct captured call fact, but the attribution to THIS seam is
+    /// weaker than calling the changed owner: every test of the callee
+    /// relates. Ranked below `HelperOwnerCall`, above
+    /// `WeakTokenSubstring`.
+    SeamCalleeCall,
 }
 
 impl RelationReason {
@@ -176,6 +193,7 @@ impl RelationReason {
             Self::FixtureOwnerAffinity => "fixture_owner_affinity",
             Self::WeakTokenSubstring => "weak_token_substring",
             Self::ReExportChainFollowed => "re_export_chain_followed",
+            Self::SeamCalleeCall => "seam_callee_call",
         }
     }
 
@@ -193,7 +211,10 @@ impl RelationReason {
             // the inference is explicit in-source but involves one hop of indirection.
             Self::ReExportChainFollowed => 6,
             Self::FixtureOwnerAffinity => 7,
-            Self::WeakTokenSubstring => 8,
+            // #3714: a captured callee call outranks token-substring
+            // affinity but stays below every owner-anchored signal.
+            Self::SeamCalleeCall => 8,
+            Self::WeakTokenSubstring => 9,
         }
     }
 
@@ -210,6 +231,9 @@ impl RelationReason {
             // one hop of indirection means ripr cannot see deeper aliasing.
             | Self::ReExportChainFollowed => RelationConfidence::Medium,
             Self::FixtureOwnerAffinity | Self::WeakTokenSubstring => RelationConfidence::Low,
+            // A captured direct call of the seam's callee is a solid fact;
+            // the uncertainty is in attributing it to this seam.
+            Self::SeamCalleeCall => RelationConfidence::Medium,
         }
     }
 }
@@ -264,6 +288,7 @@ mod tests {
             (OracleKind::BroadError, "broad_error"),
             (OracleKind::SmokeOnly, "smoke_only"),
             (OracleKind::MockExpectation, "mock_expectation"),
+            (OracleKind::GuardedResultMatch, "guarded_result_match"),
             (OracleKind::Unknown, "unknown"),
         ];
 
@@ -344,6 +369,7 @@ mod tests {
                 RelationReason::ReExportChainFollowed,
                 "re_export_chain_followed",
             ),
+            (RelationReason::SeamCalleeCall, "seam_callee_call"),
         ];
         for (reason, label) in cases {
             assert_eq!(reason.as_str(), label);

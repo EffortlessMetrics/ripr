@@ -20,6 +20,31 @@ The VS Code/Open VSX extension resolves the server in this order:
 `ripr.server.path` is an override for pinned or enterprise-managed binaries. The
 PATH fallback remains useful for local development and offline installs.
 
+Before activation commits to any candidate, the extension first checks
+`ripr --version`, then runs a bounded standard-LSP compatibility session over
+`ripr lsp --stdio`: framed `initialize`, `initialized`, `shutdown`, and `exit`.
+Each response must use JSON-RPC 2.0, the active request id, and exactly one of a
+structurally valid `result` or `error`. Initialize must identify a versioned
+`ripr` server, select UTF-16, and advertise full saved synchronization, hover,
+code actions, pull diagnostics, workspace folders, and the complete command set
+the extension executes. Only code-action resolve and work-done progress remain
+typed optional evidence because the client has fallbacks for their absence.
+Shutdown succeeds only with a `null` result. A failed probe never becomes the
+active client, and resolver fallback continues only along the existing order
+above. Workspace Trust remains outside and above resolution, so an untrusted
+workspace spawns neither this probe nor the active server.
+
+Every terminal path after spawn owns process-tree cleanup, including a direct
+child that exits successfully or unsuccessfully before cleanup runs. POSIX
+probes lead a dedicated process group. Windows probes run inside a kill-on-close
+Job Object whose owner relays raw stdio, so descendants cannot escape merely
+because the direct process exits before `taskkill /T` can address its PID.
+
+This compatibility evidence is activation state, separate from the completed
+install receipt and its byte-integrity evidence. It does not attest producer
+provenance or use a private/experimental capability as the standard-LSP
+baseline.
+
 ## Downloaded Server Cache
 
 Downloaded servers are stored under the VS Code global storage directory:
@@ -29,11 +54,34 @@ servers/
   <version>/
     <rust-target>/
       ripr(.exe)
-      sha256.txt
+      install-receipt.json
 ```
 
 The default server version is the extension version. Users can pin a different
-server with `ripr.server.version`.
+server with `ripr.server.version`. The configured value must be a canonical
+semantic version such as `1.2.3` or `1.2.3-rc.1`; path separators, rooted paths,
+drive/UNC forms, and `.` / `..` aliases are rejected before URL or filesystem
+use.
+
+Each version/target install uses a unique temporary sibling directory and a
+per-version/target lock. The extension verifies the manifest version and
+archive digest, extracts and probes the staged executable, records its digest
+and reported binary version, writes a completed `install-receipt.json`, and
+then atomically renames the validated directory into the final cache path.
+Concurrent extension hosts converge on that one completed installation.
+
+A cached executable is eligible only when the receipt has
+`installationState: "complete"`, its requested/manifest version, target, and
+executable name match the request, and its current executable SHA-256 matches
+the receipt. Binary-only, partial, malformed, or tampered directories are not
+probed as cache candidates. A failed install for a new version leaves an
+already completed prior version unchanged. Contenders never reclaim an
+existing lock based only on age; they fail closed after a bounded wait rather
+than risk deleting a replacement owner's lock.
+
+The install receipt establishes local completion and byte integrity. It is not
+a producer provenance attestation; release provenance verification remains a
+separate downstream trust boundary.
 
 ## Manifest
 
@@ -59,8 +107,8 @@ The manifest shape is:
 ```
 
 The checksum is for the downloaded archive. The extension verifies the archive
-before extraction and only starts the extracted binary after `ripr --version`
-passes.
+before extraction and admits the result only after the staged binary's
+`ripr --version` probe and completed-receipt validation pass.
 
 ## Previous Public Release Proof
 

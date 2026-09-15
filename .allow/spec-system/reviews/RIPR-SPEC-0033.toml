@@ -1,0 +1,17 @@
+schema_version = "1"
+producer = "xtask specs close"
+spec_id = "RIPR-SPEC-0033"
+spec_path = "docs/specs/RIPR-SPEC-0033-match-arm-canonical-gap-discriminators.md"
+content_digest = "sha256:c229e5252467bcd2d72ee088c4d6cfbcf07cda81c3eed04dffc0a79c39bb8509"
+status_observed = "proposed"
+observed_at = "2026-08-30"
+reviewed_by = "ZCode agent (session 2026-08-30, verified by landing PR review)"
+disposition = "acceptance_candidate"
+waived_until = "2026-11-30"
+disposition_detail = "Lifecycle note blocks acceptance on parser-backed match-arm discriminators and the audit proof that generic duplicates are removed; the corpus case duplicate_canonical_gap_overcount_suppressions_match_arm pins seam 205829e99ffbd3ca with the concrete kind-arrow discriminator and canonical_gap_group_size 1 exactly as the Acceptance Examples require, and traceability pins the rust_index probe-shape and canonical_gap identity tests."
+reasons_inspected = []
+evidence_refs = []
+limitations = []
+receipt_id = "sha256:5fe80874fec69ec4bea11c802ba12492079e4a3a8488cb64a0cbe70a01836d71"
+claim_boundary = "An asserted, content-bound record that this exact spec content was observed by the named reviewer and reached the labeled advisory maintenance disposition; the PR review that lands the receipt is the verification act."
+non_claims = ["specification correctness or completeness", "normative document status, requirement lifecycle, implementation, evidence, or support state", "acceptance, deprecation, supersession, migration, merge eligibility, or branch protection"]

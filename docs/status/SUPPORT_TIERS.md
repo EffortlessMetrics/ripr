@@ -48,7 +48,7 @@ product-claim authority.
 | Capability | Tier | Surface | Proof | Known limits |
 | --- | --- | --- | --- | --- |
 | Rust static exposure loop | `usable alpha` | CLI, generated CI, editor, reports | [RIPR-SPEC-0001](../specs/RIPR-SPEC-0001-static-exposure-loop.md), [capability matrix](../CAPABILITY_MATRIX.md), `cargo xtask fixtures`, `cargo xtask goldens check` | Static only; unknowns stay explicit; mutation testing remains the runtime backstop. |
-| Rust gap repair loop | `usable` | CLI, generated CI, PR repair cards, editor packets, agent packets, receipts | [First successful PR workflow](../FIRST_PR_WORKFLOW.md), [gap decision ledger spec](../specs/RIPR-SPEC-0046-gap-decision-ledger.md), `cargo xtask check-output-contracts`, `cargo xtask check-capabilities` | Advisory static loop only; interruptions require a repair route and verification command; runtime mutation and coverage remain separate signals. |
+| Rust gap repair loop | `usable alpha` | CLI, generated CI, PR repair cards, editor packets, agent packets, receipts | [First successful PR workflow](../FIRST_PR_WORKFLOW.md), [gap decision ledger spec](../specs/RIPR-SPEC-0046-gap-decision-ledger.md), `cargo xtask rust-repair-trust-report`, `cargo xtask check-output-contracts`, `cargo xtask check-capabilities` | Fixture-, package-, editor-, and transaction-proven for bounded advisory test-only repairs when a valid route exists. Governed real-repository route yield and ordinary-user success remain unestablished: the corpus currently has zero eligible attempts. Runtime mutation and coverage remain separate signals. |
 | Local delta flow and activation/value modeling | `stable building block` | Rust analysis output and evidence records | [capability matrix](../CAPABILITY_MATRIX.md#capability-matrix), [Lane 1 tracker](../lanes/LANE_1_EVIDENCE_SPINE.md), `cargo xtask lane1-evidence-audit` | Stable inside documented syntax-first scope; unsupported propagation and value sources remain static limitations. |
 | First useful PR action | `usable alpha` | Generated CI summary, reports, editor projection | [First useful action workflow](../FIRST_USEFUL_ACTION_WORKFLOW.md), [RIPR-SPEC-0020](../specs/RIPR-SPEC-0020-first-useful-action-report.md), `cargo xtask check-output-contracts` | Advisory routing only; missing or stale inputs must be refreshed before assigning work. |
 | PR review cockpit | `usable alpha` | Generated CI summary and uploaded report packet | [PR review front panel workflow](../PR_REVIEW_FRONT_PANEL_WORKFLOW.md), [Report packet index workflow](../REPORT_PACKET_INDEX_WORKFLOW.md), `cargo xtask check-output-contracts` | Composes explicit artifacts; summaries do not create analyzer truth or pass/fail authority. |
@@ -69,9 +69,11 @@ product-claim authority.
 Use the tier with the surface:
 
 ```text
-usable + Rust gap repair loop:
-  safe to try as the end-to-end advisory workflow: repair one named Rust gap,
-  verify movement, and keep the receipt.
+usable alpha + Rust gap repair loop:
+  safe to evaluate when RIPR emits a complete bounded test-only route: repair
+  one named Rust gap, verify movement, and keep the receipt. Package, editor,
+  and transaction paths are proved; ordinary real-repository route yield and
+  success rate are not yet established.
 
 usable alpha + generated CI:
   safe to try in advisory PR workflows, but not a default merge gate.
@@ -103,6 +105,31 @@ stable building block + source-of-truth artifact graph:
   or CI promotion are generated or validated.
 ```
 
+## Rust Gap Repair Promotion Contract
+
+Promotion of the Rust gap repair loop from `usable alpha` to `usable` requires
+an explicit evidence-backed decision, not a wording-only change. The decision
+must show all of the following:
+
+- the canonical governed trust report has a nonzero route denominator, meets
+  its full corpus threshold, and does not invent a rate from missing input;
+- at least one exact real attempt ends `improved` or `closed`;
+- the installed CLI and packaged VS Code pilot includes five unique real
+  attempts across at least three repositories;
+- wrong- or unsafe-target, false-actionability, timeout, limitation, and
+  archaeology incidents remain visible in the governed denominator; and
+- the promoted statement says whether it covers a bounded repair family or the
+  broad Rust gap-repair loop. Broad `usable` support must not exceed the full
+  governed corpus without an explicit narrower boundary.
+
+`cargo xtask check-support-tiers` requires exactly one row with the canonical
+`Rust gap repair loop` identity and hard-caps it at `usable alpha`. Missing,
+renamed, duplicate, `usable`, and `stable building block` rows fail closed. The
+cap remains until one canonical promotion decision covers both the full
+governed corpus (#3076) and the installed CLI/packaged VS Code pilot (#1702).
+Even a complete trust report with real `improved` or `closed` movement is
+necessary evidence, not sufficient promotion authority by itself.
+
 ## Trust Boundaries
 
 - Public badges are repo-scoped trust markers, not PR-local evidence.
@@ -112,6 +139,10 @@ stable building block + source-of-truth artifact graph:
   indexes do not.
 - Runtime mutation testing is the execution-backed confirmation step; RIPR's
   normal output is static evidence.
+- The Rust gap repair transaction is `usable alpha`: a complete producer-owned
+  route can be carried through package, editor, and receipt surfaces, but the
+  governed real-repository corpus does not yet establish how often ordinary
+  changes produce such a route or finish successfully.
 - Preview-language evidence and the scoped Python repair-routing usable-alpha
   loop remain visibly labeled and advisory unless an explicit policy promotes a
   stronger gate, baseline, RIPR Zero, or badge role.

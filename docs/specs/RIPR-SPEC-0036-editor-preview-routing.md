@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on saved-artifact identity, root, freshness, and fail-closed editor routing.
+
 ## Problem
 
 The saved-workspace Rust editor cockpit already projects RIPR evidence at the

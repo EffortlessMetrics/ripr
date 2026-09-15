@@ -63,7 +63,7 @@
       "static_movement": {
         "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
         "source": "agent_receipt",
-        "state": "unchanged"
+        "state": "improved"
       }
     }
   ],
@@ -89,4 +89,3 @@
     "gate decision not configured; this fixture is advisory evidence only"
   ]
 }
-

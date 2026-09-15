@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on the fixture expectation matrix, outcome receipts, and joined calibration report.
+
 ## Problem
 
 RIPR now projects static seam evidence into editor actions, agent packets,

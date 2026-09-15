@@ -1,0 +1,291 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/binding_value_fail_closed/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":1,"propagation_unknown":2,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:203b913af89e48b8410f983689cbfeda8d7e4d380715397b1ce6857c2e2b2570","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":6,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:d9aa811b",
+      "classification": "infection_unknown",
+      "severity": "warning",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:d9aa811b",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/binding_value_fail_closed/input/src/lib.rs",
+        "line": 2,
+        "expression": "let end = input.rfind(delim).map_or_else(|| 1, |idx| idx);"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach via_map_or_else: map_or_else_boundary_stays_unresolved"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Related tests use opaque fixtures; activation/infection is unknown"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach via_map_or_else: map_or_else_boundary_stays_unresolved", "infection unknown: Related tests use opaque fixtures; activation/infection is unknown", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "related test tests/controls.rs:4 map_or_else_boundary_stays_unresolved uses strong exact value oracle: assert_eq!(via_map_or_else(\"ab\", 'x'), \"a\");", "observed assertion argument value \"a\" at line 5", "observed function argument value delim = 'x' at line 5", "observed function argument value input = \"ab\" at line 5"],
+      "flow_sinks": [
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach via_map_or_else: map_or_else_boundary_stays_unresolved", "Related tests use opaque fixtures; activation/infection is unknown", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["No detected boundary input for the changed predicate", "Related tests use opaque fixtures; activation/infection is unknown"],
+      "assertion_texts": {
+        "5": "assert_eq!(via_map_or_else(\"ab\", 'x'), \"a\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "\"a\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "delim = 'x'",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "input = \"ab\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "\"a\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "delim = 'x'",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "input = \"ab\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "map_or_else_boundary_stays_unresolved",
+          "file": "tests/controls.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(via_map_or_else(\"ab\", 'x'), \"a\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["infection_evidence_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.",
+      "suggested_next_action": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:23bb9cc9",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:23bb9cc9",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/binding_value_fail_closed/input/src/lib.rs",
+        "line": 14,
+        "expression": "if end == start {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach via_shifted_closure: shifted_closure_boundary_stays_unresolved"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach via_shifted_closure: shifted_closure_boundary_stays_unresolved", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "related test tests/controls.rs:9 shifted_closure_boundary_stays_unresolved uses strong exact value oracle: assert_eq!(via_shifted_closure(\"ax\", 'x'), \"ax\");", "observed assertion argument value \"ax\" at line 10", "observed function argument value delim = 'x' at line 10", "observed function argument value input = \"ax\" at line 10", "missing discriminator end == start: No related test call uses end equal to start; observed end values: unknown"],
+      "flow_sinks": [
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach via_shifted_closure: shifted_closure_boundary_stays_unresolved", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion", "binding_predicate_relation: changed binding `end` initializer `input.rfind(delim).map_or(0, |idx| idx)` -> `input.rfind(delim).map_or(0, |idx| idx + 1)` flows into predicate operand at line 14", "binding_predicate_value_unresolved: operand value of `end` unresolved at earliest initializer operation `.rfind(`", "binding_predicate_non_claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"],
+      "missing": ["Missing discriminator value: end == start", "No clear propagation path from changed behavior to an observable sink"],
+      "assertion_texts": {
+        "10": "assert_eq!(via_shifted_closure(\"ax\", 'x'), \"ax\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 10,
+            "value": "\"ax\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "delim = 'x'",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "input = \"ax\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "end == start",
+            "reason": "No related test call uses end equal to start; observed end values: unknown",
+            "flow_sink": null
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 10,
+          "value": "\"ax\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "delim = 'x'",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "input = \"ax\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "end == start",
+          "reason": "No related test call uses end equal to start; observed end values: unknown",
+          "flow_sink": null
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "shifted_closure_boundary_stays_unresolved",
+          "file": "tests/controls.rs",
+          "line": 9,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(via_shifted_closure(\"ax\", 'x'), \"ax\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["propagation_evidence_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:276aa001",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:276aa001",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/binding_value_fail_closed/input/src/lib.rs",
+        "line": 25,
+        "expression": "end == start"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach via_dynamic_needle: dynamic_needle_boundary_stays_unresolved"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"high","summary":"Only relational oracle found; it may not discriminate the changed value exactly"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach via_dynamic_needle: dynamic_needle_boundary_stays_unresolved", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly", "related test tests/controls.rs:14 dynamic_needle_boundary_stays_unresolved uses weak relational check oracle: assert!(via_dynamic_needle(\"ax\", 'x'));", "observed function argument value delim = 'x' at line 15", "observed function argument value input = \"ax\" at line 15", "missing discriminator end == start: No related test call uses end equal to start; observed end values: unknown"],
+      "flow_sinks": [
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Only relational oracle found; it may not discriminate the changed value exactly", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach via_dynamic_needle: dynamic_needle_boundary_stays_unresolved", "Related tests contain input values, but the equality-boundary discriminator is missing", "binding_predicate_relation: changed binding `end` initializer `input.rfind(needle.as_str()).map_or(0, |idx| idx)` -> `input.rfind(needle.as_str()).map_or(1, |idx| idx)` flows into predicate operand at line 25", "binding_predicate_value_unresolved: operand value of `end` unresolved at earliest initializer operation `.rfind(`", "binding_predicate_non_claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"],
+      "missing": ["Missing discriminator value: end == start", "No clear propagation path from changed behavior to an observable sink", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "15": "assert!(via_dynamic_needle(\"ax\", 'x'));"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 15,
+            "value": "delim = 'x'",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "input = \"ax\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "end == start",
+            "reason": "No related test call uses end equal to start; observed end values: unknown",
+            "flow_sink": null
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 15,
+          "value": "delim = 'x'",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "input = \"ax\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "end == start",
+          "reason": "No related test call uses end equal to start; observed end values: unknown",
+          "flow_sink": null
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "dynamic_needle_boundary_stays_unresolved",
+          "file": "tests/controls.rs",
+          "line": 14,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(via_dynamic_needle(\"ax\", 'x'));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["propagation_evidence_unknown"],
+      "oracle_kind": "relational_check",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

@@ -292,6 +292,9 @@ pub(crate) enum EvidencePromotionSemanticAssertion {
     ExpectedChangedRustFiles {
         count: u64,
     },
+    ExpectedFindingCount {
+        count: u64,
+    },
     MustDiscloseWitness,
     MustDiscloseLimitationDetail,
     ExpectedLimitationDetail {
@@ -687,6 +690,9 @@ fn evidence_promotion_parse_assertion(
                 )?,
             },
         ),
+        "expected_finding_count" => Ok(EvidencePromotionSemanticAssertion::ExpectedFindingCount {
+            count: evidence_promotion_required_assertion_u64(case_id, index, assertion, "count")?,
+        }),
         "must_disclose_witness" => Ok(EvidencePromotionSemanticAssertion::MustDiscloseWitness),
         "must_disclose_limitation_detail" => {
             Ok(EvidencePromotionSemanticAssertion::MustDiscloseLimitationDetail)
@@ -1313,13 +1319,19 @@ pub(crate) fn evidence_promotion_semantic_violations(
                         "{case_label}: `must_emit_limitation` requires expected_limit_kind"
                     ));
                 } else {
+                    // Findings come from the validated report slice (pure
+                    // and pinned-external cases pass different shapes);
+                    // the harness projection comes from the check output.
                     let has_limit = findings.iter().any(|finding| {
                         finding.get("static_limit_kind").and_then(Value::as_str)
                             == Some(expected_limit_kind.as_str())
-                    });
+                    }) || evidence_promotion_emits_any_harness_limitation_kind(
+                        check_json,
+                        expected_limit_kind,
+                    );
                     if !has_limit {
                         violations.push(format!(
-                            "{case_label}: expected static_limit_kind `{expected_limit_kind}` was not emitted"
+                            "{case_label}: expected limitation kind `{expected_limit_kind}` was not emitted in findings' static_limit_kind or test_harnesses limitations"
                         ));
                     }
                 }
@@ -1331,6 +1343,11 @@ pub(crate) fn evidence_promotion_semantic_violations(
                     violations.push(format!(
                         "{case_label}: `must_not_emit_limitation` forbids static_limit_kind, but found it at {}",
                         limit_paths.join(", ")
+                    ));
+                }
+                if evidence_promotion_emits_any_harness_limitation(check_json) {
+                    violations.push(format!(
+                        "{case_label}: `must_not_emit_limitation` forbids test_harnesses limitations, but the harness projection emitted at least one"
                     ));
                 }
             }
@@ -1689,6 +1706,14 @@ pub(crate) fn evidence_promotion_semantic_violations(
                         observed
                             .map(|value| value.to_string())
                             .unwrap_or_else(|| "<missing>".to_string())
+                    ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::ExpectedFindingCount { count } => {
+                let observed = u64::try_from(findings.len()).unwrap_or(u64::MAX);
+                if observed != *count {
+                    violations.push(format!(
+                        "{case_label}: `expected_finding_count` requires {count} finding(s), found {observed}"
                     ));
                 }
             }
@@ -2893,6 +2918,9 @@ fn evidence_promotion_report_reads_clean(check_json: &Value, findings: &[Value])
     {
         return false;
     }
+    if evidence_promotion_emits_any_harness_limitation(check_json) {
+        return false;
+    }
     if check_json
         .get("preview_languages")
         .and_then(Value::as_array)
@@ -2904,6 +2932,42 @@ fn evidence_promotion_report_reads_clean(check_json: &Value, findings: &[Value])
         return false;
     }
     true
+}
+
+/// Whether any harness projection in the check output emits a limitation
+/// with the given code.
+fn evidence_promotion_emits_any_harness_limitation_kind(check_json: &Value, kind: &str) -> bool {
+    check_json
+        .get("test_harnesses")
+        .and_then(Value::as_array)
+        .is_some_and(|harnesses| {
+            harnesses.iter().any(|harness| {
+                harness
+                    .get("limitations")
+                    .and_then(Value::as_array)
+                    .is_some_and(|limitations| {
+                        limitations.iter().any(|limitation| {
+                            limitation.get("code").and_then(Value::as_str) == Some(kind)
+                        })
+                    })
+            })
+        })
+}
+
+/// Whether any harness projection in the check output emits any
+/// limitation at all.
+fn evidence_promotion_emits_any_harness_limitation(check_json: &Value) -> bool {
+    check_json
+        .get("test_harnesses")
+        .and_then(Value::as_array)
+        .is_some_and(|harnesses| {
+            harnesses.iter().any(|harness| {
+                harness
+                    .get("limitations")
+                    .and_then(Value::as_array)
+                    .is_some_and(|limitations| !limitations.is_empty())
+            })
+        })
 }
 
 fn evidence_promotion_discloses_unanalyzed_working_tree(check_json: &Value) -> bool {
@@ -2952,7 +3016,9 @@ fn evidence_promotion_failure_kind(violations: &[String], pure_case: bool) -> St
         "unexpected_promotion".to_string()
     } else if joined.contains("static_limit_kind")
         || joined.contains("must_emit_limitation")
+        || joined.contains("must_not_emit_limitation")
         || joined.contains("named limitation")
+        || joined.contains("test_harnesses limitations")
     {
         "unexpected_limitation".to_string()
     } else if pure_case
@@ -3888,6 +3954,32 @@ pub(crate) fn validate_evidence_promotion_honesty_corpus_at(
                 Vec::new()
             }
         };
+        let must_not_promote = assertions.iter().any(|assertion| {
+            matches!(
+                assertion,
+                EvidencePromotionSemanticAssertion::MustNotPromote
+            )
+        });
+        let must_not_report_clean = assertions.iter().any(|assertion| {
+            matches!(
+                assertion,
+                EvidencePromotionSemanticAssertion::MustNotReportClean
+            )
+        });
+        let pins_zero_findings = assertions.iter().any(|assertion| {
+            matches!(
+                assertion,
+                EvidencePromotionSemanticAssertion::ExpectedFindingCount { count: 0 }
+            )
+        });
+        let pins_non_vacuous_outcome = must_not_report_clean || pins_zero_findings;
+        if case.get("assertions").is_some() && must_not_promote && !pins_non_vacuous_outcome {
+            violations.push(format!(
+                "evidence promotion honesty case `{id}`: `must_not_promote` requires \
+                 `must_not_report_clean` or `expected_finding_count=0`, so an empty \
+                 findings re-bless cannot pass vacuously"
+            ));
+        }
 
         match tier {
             "pure" => {
@@ -4278,4 +4370,79 @@ pub(crate) fn validate_evidence_promotion_honesty_corpus_at(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod harness_limitation_assertion_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn check_with_harness_limitation(code: &str) -> Value {
+        json!({
+            "findings": [],
+            "test_harnesses": [
+                {
+                    "registration_id": "mimic-suite",
+                    "limitations": [
+                        {"code": code, "file": "tests/mimic.rs", "line": 5}
+                    ]
+                }
+            ]
+        })
+    }
+
+    #[test]
+    fn must_emit_limitation_accepts_harness_projection_kind() {
+        let check_json = check_with_harness_limitation("registration_unreachable");
+        assert!(evidence_promotion_emits_any_harness_limitation_kind(
+            &check_json,
+            "registration_unreachable"
+        ));
+    }
+
+    #[test]
+    fn must_emit_limitation_rejects_absent_harness_kind() {
+        let check_json = check_with_harness_limitation("registration_unreachable");
+        assert!(!evidence_promotion_emits_any_harness_limitation_kind(
+            &check_json,
+            "unanchored_trial_path"
+        ));
+    }
+
+    #[test]
+    fn harness_projection_kinds_are_kind_specific() {
+        let check_json = check_with_harness_limitation("static_unknown");
+        assert!(evidence_promotion_emits_any_harness_limitation_kind(
+            &check_json,
+            "static_unknown"
+        ));
+        assert!(!evidence_promotion_emits_any_harness_limitation_kind(
+            &check_json,
+            "registration_unreachable"
+        ));
+    }
+
+    #[test]
+    fn harness_projection_without_limitations_emits_nothing() {
+        let check_json = json!({
+            "test_harnesses": [
+                {"registration_id": "mimic-suite", "limitations": []}
+            ]
+        });
+        assert!(!evidence_promotion_emits_any_harness_limitation(
+            &check_json
+        ));
+        assert!(!evidence_promotion_emits_any_harness_limitation_kind(
+            &check_json,
+            "registration_unreachable"
+        ));
+    }
+
+    #[test]
+    fn missing_harness_projection_emits_nothing() {
+        let check_json = json!({"findings": []});
+        assert!(!evidence_promotion_emits_any_harness_limitation(
+            &check_json
+        ));
+    }
 }

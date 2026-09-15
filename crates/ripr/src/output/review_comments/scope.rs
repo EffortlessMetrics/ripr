@@ -60,10 +60,16 @@ impl ReviewCommentsAnalysisScope {
         working_set: &AgentBriefResolvedWorkingSet,
         reviewed_count: usize,
     ) -> Self {
+        // The pre-#3285 `is_production_rust_path` predicate is retired: route
+        // through the producer-owned source-role model with an empty context
+        // (no declared targets), which carries the same exclusions forward.
+        let role_context = crate::analysis::SourceRoleContext::empty();
         let production_files = working_set
             .files
             .iter()
-            .filter(|path| crate::analysis::is_production_rust_path(path))
+            .filter(|path| {
+                crate::analysis::classify_with(path, &role_context).seeds_production_findings()
+            })
             .cloned()
             .collect::<Vec<_>>();
         Self {

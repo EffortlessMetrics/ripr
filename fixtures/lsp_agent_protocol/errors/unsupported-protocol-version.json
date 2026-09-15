@@ -1,6 +1,6 @@
 {
   "protocol_version": "0.1",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "request": "ripr/workspaceStatus",
   "status": "error",
   "error": { "kind": "unsupported_protocol_version", "retryable": false, "recovery_route": "request_supported_version", "snapshot_id": null },

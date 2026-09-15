@@ -356,7 +356,7 @@ pub(crate) enum ArtifactCurrentness {
 /// receipt's canonical byte comparison always recomputes the same token the
 /// verify path emitted. The pair token must state what each side actually
 /// is: the previous `_ => "dirty_worktree"` fallthrough mislabeled every
-/// mixed pair — including the expected clean historical-before/current-after
+/// mixed pair — including the expected historical-before/current-after
 /// transaction — as a dirty worktree. `dirty_worktree` itself stays reserved
 /// for per-artifact evidence; a pair with a dirty side names which side.
 ///

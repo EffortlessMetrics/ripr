@@ -61,6 +61,7 @@ WARNING fixtures/rust_macro_wrapped_assertion_limitation/input/src/internal.rs:2
 Changed
   before: if a > b {
   expr:   if a > b {
+  source:  base_deleted — base-side evidence, not a candidate edit target
 
 Probe
   family: predicate

@@ -50,6 +50,7 @@ map is:
 | `ripr receipt write/check` | `schema_version` | `0.1` |
 | badge JSON | `schema_version` | `0.8` |
 | `ripr cache status --json` | `schema_version` | `0.1` |
+| `ripr swarm queue --json` | `schema_version` | `0.2` |
 
 Bump rules below apply per contract: a breaking change to one family bumps
 that family's version only.
@@ -626,15 +627,38 @@ The evidence-first fields are additive in schema `0.2`:
 - `evidence_path` is an ordered, human-readable summary of reachability,
   infection, propagation, observation, discrimination, local flow, related test
   oracles, observed values, and missing discriminator evidence.
+- `identity.git_candidate_subject` (additive, no `schema_version` bump,
+  #3278) appears in the `analysis_outcome.outcome.identity` object
+  as a non-null object exactly when the run analyzed an immutable Git
+  candidate (`--candidate-tree`); the key itself is always present, and
+  ordinary runs leave it `null`. It binds directly to the resolved producer
+  state — `subject_kind` (`tree_to_tree`), `base_tree` and
+  `candidate_tree` object IDs, and `diff_identity` (SHA-256 of the
+  derived base→candidate unified diff). A consumer compares the emitted
+  `candidate_tree` with its supplied OID without parsing prose;
+  ordinary runs leave the field `null`.
 - `assertion_texts` (added in schema `0.2`) is a finding-level JSON object
   mapping line-number strings to assertion source text.  Per-value objects in
   `observed_values` no longer carry a redundant `text` field; downstream
   consumers recover the assertion source via
   `finding.assertion_texts[line.to_string()]`.  **Known limitation**: the map
   is keyed by line number only, so if two assertions in different source files
-  share the same line number within one finding, only one text is retained.
-  This is a low-probability edge case; a future schema could use `"file:line"`
-  composite keys.
+  share the same line number within one finding, only one text is retained
+  **in this map** — differing texts are retained per-value via the optional
+  `provenance` field described below. This is a low-probability edge case; a
+  future schema could use `"file:line"` composite keys.
+- Per-value objects in `observed_values` carry an **optional `provenance`**
+  field (additive, no `schema_version` bump, #3295 follow-up). It carries
+  the fact's retained source text **whenever it differs from the shared
+  assertion source for its line** — the exact texts the line-keyed
+  `assertion_texts` map drops. That includes call-source text for plain
+  `function_argument` facts and, for facts computed by the bounded
+  value-transfer evaluator (`#3295`) or the helper-transfer chain
+  (`#3296`), the full evaluation chain with bound inputs and chain depth
+  (e.g.
+  `assert_eq!(…); | body = "fix" via strip_prefix -> map_or over label = "pre-fix" (chain depth 2)`).
+  Facts whose text **is** the plain assertion source stay deduped and omit
+  the field, so `assertion_texts` remains the recovery path for them.
 - `flow_sinks`, `observed_values`, and `missing_discriminators` promote the
   nested activation evidence for consumers that want direct finding-level
   access.
@@ -701,6 +725,37 @@ The evidence-first fields are additive in schema `0.2`:
     "oracle_alignment": "orthogonal",
     "alignment_reason": "strong_oracle_observes_different_sink" }
   ```
+- `source_currentness` is an additive per-finding field (#3280, parent #3212)
+  that states which revision owns the finding's actionable source. It is
+  always emitted and does **not** bump `schema_version` (still `0.2`). The
+  value is a controlled enum (`SOURCE_CURRENTNESS_VALUES`):
+  - `candidate_current` — the finding's source expression is present in the
+    candidate (head-side) source at the recorded `probe.file`/`probe.line`;
+    the location is a candidate edit target.
+  RIPR-SPEC-0152 routes every actionability surface through this field:
+  badge gaps and unknowns, alignment items, gap records (authority
+  projections only for `candidate_current`), start-here triage, the LSP
+  actionable profile, SARIF results, GitHub annotations, and PR severe-gap
+  counts exclude non-current findings while denominators keep everything;
+  TS/JS/Python findings now resolve `candidate_current` from their
+  head-side probes and Perl stays the explicit unknown.
+  - `base_deleted` — the expression was removed on the candidate side. The
+    retained evidence is base-side and the finding is not a candidate edit
+    target; `probe.line` still records the projected new-side coordinate in
+    this slice, and consumer re-coordination of deleted-side evidence is
+    the #3212 projection slice.
+  - `moved_or_renamed` — the same expression re-appears elsewhere in the
+    candidate file, but the producer cannot prove the exact candidate
+    identity of the source; not a candidate edit target.
+  - `unresolved_subject` — the producing surface does not resolve source
+    currentness (preview-language findings today); the explicit unknown, and
+    the backward-compatibility value when reading artifacts written before
+    the field existed.
+  For Rust diff findings the disposition is resolved from the diff evidence
+  that seeded the probe; repo-mode findings are `candidate_current` by
+  construction (they seed from the current tree). In this slice the field is
+  informational for consumers: gate and actionability policy follow in the
+  #3212 projection slice.
 - `repair_placement` is an additive optional object for preview-language
   findings that can statically name a bounded test location and command before
   full repair-card projection. It currently appears for direct weak Python
@@ -1214,11 +1269,13 @@ JSON fields:
   `rust_integration_public_api_path_unresolved`, or
   `rust_macro_reach_unresolved`, or
   `rust_macro_wrapped_test_call_unresolved`, or
-  `rust_macro_wrapped_assertion_unresolved`.
+  `rust_macro_wrapped_assertion_unresolved`, or
+  `rust_value_propagation_unresolved`.
 - `static_limitation` is an additive optional per-finding object emitted only
   when a finding with `static_limit_kind` also carries a complete structured
   limitation detail. Current Rust transitive-reach, integration public-API path,
-  macro-reach, direct test macro-call, and macro-wrapped assertion limitations
+  macro-reach, direct test macro-call, macro-wrapped assertion, and
+  value-propagation limitations
   populate it from the same evidence lines rendered in human output. Fields are
   `kind`, `last_established_edge`, `first_unresolved_edge`, `analyzer_route`,
   and `non_claim`. The object is absent for static limits that do not have all
@@ -1267,6 +1324,115 @@ preview-language files were not analyzed at all (`enabled == false`) or were
 analyzed under advisory preview support that may be incomplete
 (`enabled == true`). In neither case is an empty result a Rust-grade clean
 result.
+
+### `test_harnesses` (top-level additive advisory, #3532)
+
+Added in schema `0.2` as an additive optional top-level array. Emitted only when
+the repository registered test harnesses (`[analysis.test_harnesses]` in
+`ripr.toml`) and the run's analysis carried harness facts. Absent for
+repositories without registrations, so their output is byte-identical to the
+pre-#3532 shape. Does not bump `schema_version`.
+
+The LSP editor surface carries the same registered facts on its analysis
+snapshot (`harness_projections`): registration identity, harness kind,
+adapter generation, exact marker and target, provenance, established
+subjects, and typed limitations.
+
+The editor workspace status discloses a bounded summary of the same
+facts: `harness_registry.registrations[]` with registration id,
+harness kind, adapter, target, established subject count, and typed
+limitation count per registration. The key is Null when the run
+carried no harness facts and is absent from runs of repositories
+without registrations. The snapshot carries them only from
+complete runs whose diff scope included the registered target; limited
+runs (git timeout, oversized diff) disclose the run-status limitation
+instead and repopulate on the next full refresh. This is the
+registered-facts subset — it never claims the harness subjects were
+executed (#3605).
+
+Example — one registered `harness = false` custom target with one exact trial
+subject and one dynamic-name limitation:
+
+```json
+"test_harnesses": [
+  {
+    "registration_id": "mimic-suite",
+    "harness_kind": "custom_harness",
+    "adapter": "libtest_mimic_v1",
+    "marker": "libtest_mimic",
+    "target": "tests/price_mimic.rs",
+    "provenance": "ripr.toml [analysis.test_harnesses]",
+    "subjects": [
+      {
+        "name": "alpha_parses",
+        "file": "tests/price_mimic.rs",
+        "start_line": 9,
+        "end_line": 9,
+        "selector": "named_unexecuted",
+        "claim": "named_invocation"
+      }
+    ],
+    "limitations": [
+      {
+        "code": "dynamic_trial_name",
+        "file": "tests/price_mimic.rs",
+        "line": 17,
+        "detail": "trial name is not a simple string literal; generated names remain unresolved"
+      }
+    ]
+  }
+]
+```
+
+- `registration_id` — the stable identifier from the registration
+- `harness_kind` — `custom_harness` or `registered_attribute`
+- `adapter` — adapter generation, e.g. `libtest_mimic_v1`, `exact_attribute_v1`
+- `marker` — the exact source marker the adapter matched (crate or attribute path)
+- `target` — the exact registered target file (workspace-relative, forward-slashed)
+- `provenance` — where the authority came from (registration channel)
+- `subjects[].name` — stable subject identity (trial name or test fn name)
+- `subjects[].selector` — `named_unexecuted` when a selector route is known;
+  a known route is never a selector that ran — passive analysis never starts
+  Cargo or a harness
+- `subjects[].claim` — `named_invocation` (the invocation is one source-level
+  subject; generated cases are not enumerated) or `named_function` (the
+  function is one executable test). `named_invocation` is a syntactic claim
+  bounded by the registered target: a named trial invocation exists in the
+  registered target. It does not claim the harness registers or executes the
+  trial — a constructor in dead construction (an unused helper, an `if false`
+  branch, a collection never passed to the harness's run entry point) still
+  carries the claim. Denominator admission for the subject is decided by the
+  bounded reachability authority (#3636): a construction provably excluded
+  from every resolved run argument keeps this claim but leaves the
+  executable-test denominator and is named by a `registration_unreachable`
+  limitation; a construction the resolver can neither connect nor exclude
+  stays in the denominator under this claim with an aggregate
+  `registration_reachability_unknown` disclosure. There is no per-subject
+  reachability field: the unknown bucket is exactly the case where
+  per-subject attribution is not established.
+- `limitations[]` — typed shapes the registration saw but could not classify
+  (`dynamic_trial_name`, `dynamic_trial_registration`, `ambiguous_import`,
+  `unanchored_trial_path`, `unresolved_marker_import`, `duplicate_subject`,
+  `parse_unavailable`). Cargo target metadata conflicts (#3608) use
+  `target_not_declared` (the target matches no Cargo `[[test]]` target,
+  declared or autodiscovered), `harness_flag_conflict` (the Cargo target
+  still has `harness = true`), and `manifest_unavailable` (the owning
+  manifest could not be read or parsed); each records that the
+  registration grants no file-wide evidence role, demotion, or trial
+  subjects and the target keeps its ordinary per-function classification.
+  Reachability limitations (#3636) use `registration_unreachable` (one per
+  trial: the construction provably cannot reach the registered run entry
+  point's argument — no supported run entry call exists in the target, or
+  every run argument resolved completely and the trial is not in any of
+  them — so the subject keeps its syntactic claim and fact but its
+  executable-test fact does not join the denominator) and
+  `registration_reachability_unknown` (one aggregate disclosure per
+  registration: the bounded resolver could not establish reachability for
+  the named trials, so they remain in the denominator under the syntactic
+  claim and the gap is disclosed here rather than per subject).
+
+An absent `test_harnesses` array means the repository has no harness
+registrations; it is never a claim that custom harnesses do not exist.
 
 ### `scope_disclosures` (top-level additive advisory, RIPR-SPEC-0083)
 
@@ -1437,6 +1603,8 @@ suppression.
 
 - `rust_macro_wrapped_assertion_unresolved` -- (RIPR-SPEC-0120, additive) A Rust test reaches the changed owner, but its assertion-like custom macro is not classified as an oracle. Classification stays `reachable_unrevealed`; this is a named limitation, not an oracle, coverage, or repair-packet claim.
 
+- `rust_value_propagation_unresolved` -- (RIPR-SPEC-0150, additive) A changed Rust value-producing binding reaches a same-owner equality predicate through a bounded `map_or` shape that ripr cannot fully resolve. Classification stays `static_unknown`; this is a named limitation, not a propagation, coverage, or repair claim.
+
 Reserved `flow_sink` values:
 
 - `return_value`
@@ -1486,6 +1654,7 @@ while `call_effect` remains the fallback for other observable calls.
 
 - `exact_value`
 - `exact_error_variant`
+- `guarded_result_match`
 - `whole_object_equality`
 - `snapshot`
 - `relational_check`
@@ -2019,7 +2188,10 @@ producer-owned facts: `fix_site` and `oracle_location` are absent when the
 producer cannot identify them, and `suggested_assertion` remains `null` until
 the producer supplies a symbol-resolved assertion template. `limitations[]`
 names unavailable evidence; renderers must not infer it from paths, lines,
-classes, or prose.
+classes, or prose. `source_currentness` (RIPR-SPEC-0152) mirrors the finding's
+disposition: agent consumers must not treat a `base_deleted`,
+`moved_or_renamed`, or `unresolved_subject` packet as a candidate edit
+target.
 
 ## Repo Seam Inventory
 
@@ -2752,7 +2924,10 @@ Field contract:
   oracle-shape explanation with `observes`, `missing`, and nullable
   `upgrade_suggestion`. Weak, broad, smoke-only, and unknown oracle shapes
   name the behavior they observe, the discriminator they fail to observe, and
-  the assertion upgrade RIPR recommends for this seam kind.
+  the assertion upgrade RIPR recommends for this seam kind. The upgrade
+  suggestion is strength-gated (#3731): a `strong` oracle already
+  discriminates, so its `upgrade_suggestion` is `null`; medium-or-below
+  keeps the recommendation.
 - `seams[].evidence_record.recommendation` - bounded test-intent guidance
   derived from existing evidence: recommended test target, nearest test to
   imitate, candidate values, assertion shape, and verification command when
@@ -6307,7 +6482,7 @@ JSON shape:
     "before_content_sha256": "sha256:<64-hex-digest>",
     "after_content_sha256": "sha256:<64-hex-digest>"
   },
-  "artifact_currentness": "current",
+  "artifact_currentness": "historical_before_current_after",
   "summary": {
     "improved": 1,
     "changed": 0,
@@ -6392,8 +6567,20 @@ Field contract:
   `current`, `historical_noncurrent`, `historical_before_current_after`,
   `current_before_historical_after`, `dirty_before`, `dirty_after`, or
   `dirty_both`. A dirty side names the side (`dirty_before`, `dirty_after`,
-  or `dirty_both`); the clean expected transaction is
-  `historical_before_current_after`. It does not claim
+  or `dirty_both`). `historical_before_current_after` is the expected
+  before/after transaction shape — the repository moved past the before
+  artifact while the after artifact is bound to the current HEAD — and is a
+  revision-movement disclosure, not a cleanliness certificate: a historical
+  side is classified by head mismatch alone, and the worktree state
+  remembered at production time does not participate in that
+  classification, so a historical artifact produced on a dirty worktree
+  still renders a `historical_*` pair token (#3229).
+  `current_before_historical_after` is a reachable accepted outcome when the
+  checked-out HEAD is the before artifact's revision and the after artifact
+  is bound to a descendant revision. A fully current pair (both artifacts
+  current at the same clean revision) fails the movement gate before any
+  output is rendered, so `current` closes the vocabulary without being a
+  reachable successful verify outcome. The field does not claim
   that tests ran or that the static gap is correct.
 - `summary.improved` - matched seams whose after `SeamGripClass` ranks higher
   than before.
@@ -11821,6 +12008,12 @@ run mutation testing, refresh LSP state, or configure CI blocking.
 The generated command list also captures the diff-scoped producer outcome at
 `target/ripr/workflow/analysis-outcome.json`; this is a required input to the
 review-summary projection and is distinct from repo-exposure snapshots.
+When a step has a producer-owned typed route, its command object also carries
+a `command_spec` — the versioned, direct-execution-safe form (#1617) whose
+`command_id`, role, argv, policies, and expected writes bind machine
+execution; the `command` string remains the human display. Steps without a
+typed route are legacy-string-only: copyable, but never advertised as
+direct-executable.
 
 JSON shape:
 
@@ -11866,6 +12059,33 @@ JSON shape:
       "artifact": "target/ripr/workflow/before.repo-exposure.json",
       "purpose": "Capture static seam evidence before editing tests.",
       "command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+    },
+    {
+      "step": "agent_packet",
+      "artifact": "target/ripr/workflow/agent-packet.json",
+      "purpose": "Expand the selected seam into a bounded agent packet.",
+      "command": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json",
+      "command_spec": {
+        "schema_version": "1",
+        "command_id": "ripr:agent:packet",
+        "role": "regeneration",
+        "execution_mode": "shell_required",
+        "program": "ripr",
+        "args": ["agent", "packet", "--root", ".", "--seam-id", "67fc764ba37d77bd", "--json"],
+        "working_directory": ".",
+        "environment": "clean",
+        "stdin": "null",
+        "timeout_ms": 120000,
+        "cancellation": "allowed",
+        "network": "forbidden",
+        "expected_result_parser": "declared_json",
+        "expected_exit_codes": [0],
+        "expected_writes": ["target/ripr/workflow/agent-packet.json"],
+        "cost_class": "unknown",
+        "platforms": ["linux", "macos", "windows"],
+        "human_display": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json",
+        "authority_boundary": "regeneration_route_only"
+      }
     }
   ],
   "missing_inputs": [
@@ -12461,7 +12681,20 @@ analysis and only includes records that can already render through
 `ripr agent packet --gap-ledger ... --gap-id ... --json`. Static limitations,
 already-observed/no-action records, records without verify commands, and
 records without `allowed_edit_surface` are counted in `exclusion_reasons`
-instead of entering `packets[]`.
+instead of entering `packets[]`. `--top` is applied after the live-current
+filtering: `packets[]` contains only assignable candidates —
+`queue_state = "queued"` with `staleness_status = "current"` — selected in
+upstream ledger order, so a stale or `not_evaluated` record never consumes a
+bounded packet slot. Non-assignable candidates stay visible in a bounded,
+command-free `blocked_review[]` projection that carries identity, typed
+queue/currentness state, reason, conflict group, and `refresh_commands` only.
+The summary keeps the honest denominators for every truncation:
+`queue_total` counts validated candidates, `assignable_total` counts the
+live-current assignable frontier, `returned` counts rendered packets,
+`unreturned_assignable_total` counts assignable candidates `--top` left
+unrendered, and `stale_total` / `not_evaluated_total` count blocked
+candidates, with `blocked_review_total` and `blocked_review_returned`
+reporting the full and rendered review projections.
 
 The queue envelope is:
 
@@ -12486,7 +12719,15 @@ The queue envelope is:
     "returned": 2,
     "stale_total": 0,
     "excluded_records_total": 1,
-    "conflict_groups_total": 1
+    "conflict_groups_total": 1,
+    "current_total": 2,
+    "not_evaluated_total": 0,
+    "assignable_total": 2,
+    "returned_assignable_total": 2,
+    "unreturned_assignable_total": 0,
+    "blocked_total": 0,
+    "blocked_review_total": 0,
+    "blocked_review_returned": 0
   },
   "conflict_groups": [
     {
@@ -12505,8 +12746,8 @@ The queue envelope is:
     {
       "priority": 1,
       "queue_state": "queued",
-      "staleness_status": "not_evaluated",
-      "staleness_reason": "GapRecord queue rendering does not compare the ledger with current git state yet.",
+      "staleness_status": "current",
+      "staleness_reason": "producer-validated repo-exposure source matches the selected canonical root, exact clean HEAD, snapshot identity, content commitment, and persisted GapRecords",
       "gap_id": "gap:python:pricing-boundary",
       "canonical_gap_id": "gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold",
       "language": "python",
@@ -12531,6 +12772,10 @@ The queue envelope is:
       "allowed_edit_surface": ["tests/test_pricing.py"],
       "allowed_files": ["tests/test_pricing.py"],
       "forbidden_files": ["src/pricing.py"],
+      "assignment": {
+        "eligible": true,
+        "reason": "producer-validated live-current packet"
+      },
       "packet_command_args": [
         "ripr",
         "agent",
@@ -12544,19 +12789,59 @@ The queue envelope is:
         "--json"
       ]
     }
+  ],
+  "blocked_review": [
+    {
+      "source_index": 2,
+      "gap_id": "gap:python:pricing-stale",
+      "canonical_gap_id": "gap:python:src/pricing.py:calculate_discount:predicate_boundary:stale",
+      "language": "python",
+      "queue_state": "blocked_stale",
+      "staleness_status": "stale",
+      "staleness_reason": "repo-exposure source input identity no longer matches the current producer configuration; regenerate the source and ledger before assignment",
+      "conflict_group": "file:tests/test_pricing.py",
+      "assignment": {
+        "eligible": false,
+        "reason": "repo-exposure source input identity no longer matches the current producer configuration; regenerate the source and ledger before assignment"
+      },
+      "refresh_commands": [
+        "ripr agent check-repo-exposure --root . --repo-exposure target/ripr/reports/repo-exposure.json --mode draft",
+        "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --root . --out target/ripr/reports/gap-decision-ledger.json"
+      ]
+    }
   ]
 }
 ```
 
-`staleness_status = "not_evaluated"` is intentional when no receipt freshness
-state is attached. Consumers must treat it as a stop-and-refresh signal, not
-freshness proof. If a GapRecord receipt says the packet is stale, mismatched, or
-already resolved, the queue keeps the item visible with
-`queue_state = "blocked_stale"`, `staleness_status = "stale"`, and a
-`staleness_reason`; schedulers must refresh instead of assigning that packet.
-`summary.stale_total` counts those visible stale packets. `conflict_group_size >
-1` means another queued packet targets the same edit surface, so schedulers
-should avoid assigning those packets in parallel.
+`source_currentness` is the live producer-backed authority for a packet source.
+It contains `status`, `queue_state`, `reason`, `refresh_commands`,
+`source_kind`, and `source_path`. A packet is assignable only when
+`source_currentness.status = "current"` and `queue_state = "queued"`; the
+rendered packet mirrors these values as `staleness_status`, `queue_state`, and
+`staleness_reason`. `current` requires a canonical repo-exposure artifact with
+matching repository root, exact clean HEAD, producer input identity, content
+commitment, and GapRecords. The input identity is recomputed from the current
+producer-consumed configuration, including an untracked `ripr.toml`; a changed
+or invalid relevant configuration therefore fails closed as stale or
+`not_evaluated`.
+
+`staleness_status = "not_evaluated"` is a stop-and-refresh state, not freshness
+proof. Stale or mismatched sources use `queue_state = "blocked_stale"`, while
+unresolved identities and invalid source artifacts use
+`queue_state = "blocked_not_evaluated"`; each retains a
+`staleness_reason`, and schedulers must refresh instead of assigning them. Any
+non-assignable candidate that reaches live-currentness rendering is projected
+into `blocked_review[]` with its bounded shell-escaped `refresh_commands`;
+malformed ledgers and missing or mismatched roots follow the error and
+blocker-envelope paths instead, without the projection; the review projection never carries
+`packet_command_args`, verify or receipt commands, `command_specs`, suggested
+tests, or edit-surface authority. `summary.stale_total` counts stale blocked
+candidates and `summary.not_evaluated_total` counts unevaluated blocked
+candidates; `blocked_review_total` always reports the full blocked
+denominator even when the projection is bounded by `--top`.
+
+`conflict_group_size > 1` means another queued packet targets the same edit
+surface, so schedulers should avoid assigning those packets in parallel.
 
 If the gap decision ledger omits top-level `root` provenance, or declares a
 `root` that clearly differs from the selected `--root`, `ripr swarm queue`
@@ -14745,6 +15030,43 @@ Gap-ledger PR review cards likewise project only `GapRecord.seam_id`; a row
 without it is suppressed with `missing_seam_identity` rather than using
 `gap_id` as a seam substitute.
 
+Typed command specifications (additive `command_specs`): records may carry
+`command_specs.verify`, `command_specs.receipt`, and
+`command_specs.regeneration` `CommandSpec` collections. Every collection
+accepts a single object or an array (`null` reads as empty); each spec must
+pass `CommandSpec` validation and carry the collection's role, so a `verify`
+spec inside `command_specs.regeneration` is a named input error, not a silent
+re-slot. Regeneration collections cover the canonical report-regeneration
+routes only:
+
+- `ripr check --root R --mode M --format repo-exposure-json > OUT` - recovered
+  as `shell_required` (the redirect is shell semantics) with `OUT` as the
+  expected write and argv stopping before the redirect; `M` must come from the
+  CLI mode vocabulary (`instant`, `draft`, `fast`, `deep`, `ready`).
+- `ripr reports gap-ledger --repo-exposure E --out O --out-md M`,
+  `ripr reports gap-ledger --check-output C --root R --out O --out-md M`, and
+  the shorter single-output forms ending at `--out O` - recovered as
+  `direct` with `O` and the CLI default Markdown output
+  (`target/ripr/reports/gap-decision-ledger.md`, applied independently of
+  `--out`) as the expected writes; forms without any output flag fail
+  closed.
+- `ripr pr-review front-panel ...` and `ripr reports index ...` - loop-template
+  routes: their closed flag set in any order, no repeats, and the route's
+  mandatory flags present; front-panel additionally requires at least one
+  explicit artifact input (`--pr-guidance`, `--first-action`,
+  `--assistant-proof`, `--assistant-health`, `--ledger`, `--baseline-delta`,
+  `--zero-status`, `--gate-decision`, `--recommendation-calibration`,
+  `--mutation-calibration`, `--coverage-frontier`, or `--receipt`), matching
+  the CLI.
+
+Legacy string-only `regeneration_commands` for these routes gain their typed
+specs at read time on every parse path (ledger build and persisted-ledger
+loaders, LSP included); records already carrying typed regeneration specs are
+never double-appended. Displays that deviate from a route's exact shape -
+reordered flags, unknown or missing flags, extra tokens, compound `&&` shell
+lines, or traversing/absolute output paths - stay legacy strings and gain no
+typed spec.
+
 JSON shape:
 
 ```jsonc
@@ -15363,7 +15685,23 @@ targeted-rerun receipt shape:
         "feature_graph_hash": "…",
         "feature_graph_detail": null,
         "external_dependency_graph_status": "unavailable",
-        "external_dependency_graph_detail": "external dependency metadata is not resolved; no network access was used"
+        "external_dependency_graph_detail": "external dependency metadata is not resolved; no network access was used",
+        "path_dependency_graph": {
+          "status": "complete",
+          "detail": null,
+          "edge_count": 2,
+          "connected_edge_count": 2,
+          "adjacency": {
+            "crates/app/Cargo.toml": {
+              "forward": ["crates/shared/Cargo.toml"],
+              "reverse": []
+            },
+            "crates/shared/Cargo.toml": {
+              "forward": [],
+              "reverse": ["crates/app/Cargo.toml"]
+            }
+          }
+        }
       }
     }
   },
@@ -15431,6 +15769,20 @@ distinct non-empty command exists; otherwise that field is explicit JSON
 `route.receipt_command_conflict` rather than choosing one arbitrarily. Neither
 command is manufactured.
 
+When the matching ledger records carry producer-owned typed `command_specs`,
+the route also carries `verify_command_specs` (a JSON array of full
+`CommandSpec` objects) beside the legacy `verify_commands` strings, and
+`receipt_command_spec` (a single `CommandSpec` object) beside
+`receipt_command`. The typed specs are deduplicated by their semantic digest
+(sha256 over the serialized spec), so distinct invocations that reuse one
+command id all survive in first-occurrence order. `receipt_command_spec` is
+present only when the legacy string side also agrees on exactly one receipt
+route: records without `command_specs` keep the route legacy-string-only, and
+a conflicting legacy receipt set emits `receipt_command_conflict` and omits
+the typed receipt instead of keeping a machine route across the conflict.
+The rendered Markdown names each typed route with its execution mode, for
+example `Verify (typed, direct): ...`.
+
 Anchorless or no-longer-current records appear in `scope_limitations` with their
 matching-record index and do not hide other current scopes. The overall result
 is `limited` only when no current scope resolves. Missing, root-mismatched, or
@@ -15496,6 +15848,29 @@ use network or ambient Cargo metadata. Graph changes are named as
 `input_changed:external_dependency_graph_provenance`; parity fails closed when
 required local graph provenance is unavailable.
 
+`input_fingerprint.graph_provenance.path_dependency_graph` discloses the
+forward/reverse path-dependency adjacency built in memory from the
+path-dependency edges captured from local Cargo manifests (#2969). `status`
+is `complete`, `limited`, or `unavailable`: `limited` means edge capture
+reported limitations, so the adjacency covers a partial edge inventory;
+`complete` with an empty `adjacency` means no path dependencies were declared
+in the scanned manifests, not an omitted analysis; `unavailable` means no
+manifest was found. `edge_count` names the captured edges and
+`connected_edge_count` the subset carrying a resolved repo-relative identity;
+edges without one (absolute paths, unresolved workspace inheritance, invalid
+declarations) never participate, and the remainder is named in `detail`.
+`adjacency` maps every participating repo-relative manifest to sorted
+`forward` (the manifests it declares path dependencies on) and `reverse`
+(the manifests that declare a path dependency on it) neighbor lists; crates
+with no path-dependency edges are absent because they are isolated from the
+path-dependency graph. The adjacency is derived without network access or
+filesystem walking of dependencies; external dependency status stays
+unavailable. The section is disclosure only in this slice: it does not yet
+contribute to `input_changed` naming or parity input mismatches, because
+workspace scope expansion does not consume the graph yet (#2970). Before
+artifacts written before this section existed deserialize with an empty
+default whose empty status is never read as a recorded graph fact.
+
 Pass `--check-parity` to request an explicit full-inventory comparison. The
 optional `parity` object reports `matched` only when the targeted and expected
 full selector-scoped seam sets are identical and every shared seam has the
@@ -15555,6 +15930,65 @@ correctness, coverage adequacy, or complete broader-input invalidation.
 p50 no greater than 30 seconds, and a cold-full-to-warm-targeted p50 speedup of
 at least 5x. Otherwise the receipt remains `inconclusive` and preserves the
 measured values.
+
+## Python Eval Sweep Accepted Receipt
+
+`cargo xtask eval-sweep report --candidate <receipt.json> --accept`
+(RIPR-SPEC-0086, after the candidate passes the exact `eval-sweep check`
+validation) writes the accepted receipt to
+`<state-dir>/receipts/<receipt-sha256>.json`, content-addressed over the exact
+written bytes. The envelope has `schema_version: "0.1"`, the kind
+`python_eval_sweep_accepted_receipt`, the spec and support tier, the
+command-contract version, and the retained candidate binding (candidate kind
+and schema version, candidate receipt sha256, manifest sha256).
+
+Every count is emitted as `{numerator, denominator}` with the denominator its
+contract defines — selection over the manifest subject denominator, top-level
+counts and outcomes and distribution buckets over the selected rows, health
+tallies over the selected rows they tally, and the runtime count over the
+analyzed (run) rows. There are no bare rates and no denominator-free numbers.
+Blocks: `counts`, `outcomes`, `runtime_envelope` (a reliable envelope, or a
+typed `unavailable` with its reason), `stability` (compared and stable counts
+with per-subject mismatch reasons), `distributions` (classification,
+alignment, and a named disclosure in place of a limitation taxonomy that no
+schema-0.3 row produces), `health` (detection and corpus-selection tallies
+including the unrecorded share), per-subject rows with identity, evidence
+digests, and recorded dispositions, `identities` (the currentness-bound
+identity projection), `incomplete_disclosures` (copied from the candidate),
+`non_claims`, and `claim_boundary`.
+
+Non-claims are embedded in the artifact itself: no judged accuracy
+(robustness and distribution metrics are informational and never become judged
+accuracy), no repair-correctness claim, no support-tier change, no
+outcome-flip claim, no coverage claim beyond the retained eight-subject
+denominator, and no durable currentness claim — currentness is established
+only by `eval-sweep report --check-currentness` at consumption time. Accepted
+bytes reach their final path through a staged atomic write (staging file,
+flush, rename). A file under a digest address whose bytes do not hash to that
+address is not a valid prior artifact: re-acceptance republishes the
+digest-named bytes (repair). The Markdown copy is named by the receipt's
+digest rather than a digest of its own bytes, so it is not self-verifying: an
+existing copy with different bytes is a typed refusal, never a silent repair.
+
+## Python Eval Sweep Current Pointer
+
+Acceptance also writes `<state-dir>/current.json` with `schema_version: "0.1"`
+and the kind `python_eval_sweep_current_pointer`. The pointer is identity-only:
+the accepted receipt's digest and portable filename, the command-contract
+version, an optional bounded `as_of` disclosure string, the manifest digest,
+the RIPR toolchain identity block (source sha, binary digest, features, build
+profile), and per-subject bound identities (accepted-row digest, tree digest,
+input digest, config input and profile). It carries no totals, no rates, and
+no per-subject outcomes.
+
+`as_of` is a disclosure, never an identity: editing it can never repair
+staleness, and `--check-currentness` requires it, when present, to be a
+non-empty bounded string but never compares its value. Currentness is a
+mechanical recomputation over digest, binding, and vocabulary comparisons with
+the verdicts `current`, `stale`, `unverifiable`, or `not_run` (no pointer;
+never a pass); only `stale` exits nonzero. The pointer is replaced by atomic
+staged write, so a reader sees either the old or the new pointer, never a
+partial one.
 
 ## Stability Rules
 

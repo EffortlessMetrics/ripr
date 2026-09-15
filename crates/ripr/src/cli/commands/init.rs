@@ -523,13 +523,20 @@ jobs:
             comments: [
               .[]?[]?
               | select((.body // "") | contains("<!-- ripr:dedupe="))
+              | (.body // "") as $body
               | {
                   comment_id: .id,
-                  dedupe_key: ((.body // "") | capture("<!-- ripr:dedupe=(?<key>[^ ]+) -->").key),
+                  dedupe_key: ($body | capture("<!-- ripr:dedupe=(?<key>[^ ]+)").key),
                   path: .path,
                   line: (.line // .original_line),
                   side: (.side // "RIGHT"),
-                  body: ((.body // "") | sub("\n\n<!-- ripr:dedupe=[^ ]+ -->\n?$"; "")),
+                  body: (
+                    if ($body | contains(" presentation=compact-v1 -->")) then
+                      (($body | [capture("<details><summary>Full RIPR repair card</summary>\n\n(?<card>.*)\n\n</details>"; "m").card][0]) // "__ripr_compact_presentation_unreadable__")
+                    else
+                      "__ripr_legacy_presentation__"
+                    end
+                  ),
                   outdated: (.position == null and .line == null)
                 }
             ]
@@ -579,40 +586,90 @@ jobs:
             exit 0
           fi
 
-          jq -c '.operations[]? | select(.safe_to_publish == true)' "$plan" \
+          publishable="$(mktemp)"
+          jq '
+            def captured($regex; $flags): [capture($regex; $flags).value][0] // null;
+            def compact_body:
+              .body as $full
+              | ($full | captured("^### ripr gap: (?<value>[^\n]+)"; "") // "repairable gap") as $gap
+              | ($full | captured("\nRepair:\n(?<value>[^\n]+)"; "") // "Follow the bounded repair route in the RIPR artifact.") as $repair
+              | ($full | captured("\nVerify:\n`(?<value>[^`]+)`"; "") // "ripr agent verify") as $verify
+              | "**ripr: \($gap)** — \($repair)\n\nVerify: `\($verify)`\n\n<details><summary>Full RIPR repair card</summary>\n\n\($full)\n\n</details>\n\n<!-- ripr:dedupe=\(.dedupe_key) presentation=compact-v1 -->";
+            [
+              .operations[]?
+              | select(.safe_to_publish == true)
+              | select(.operation == "create" or .operation == "update" or .operation == "keep")
+              | . + {published_body: compact_body}
+            ]
+          ' "$plan" > "$publishable"
+
+          review_body="$(jq -r '
+            (.summary.publishable // 0) as $inline
+            | ((.summary.summary_only // 0) + ([.skipped[]? | select(.skip_reason == "inline_comment_cap_reached")] | length)) as $additional
+            | (.summary.suppressed // 0) as $suppressed
+            | (if $inline == 1 then "" else "s" end) as $inline_suffix
+            | (if $additional == 1 then "" else "s" end) as $additional_suffix
+            | (if $suppressed == 1 then "" else "s" end) as $suppressed_suffix
+            | "RIPR surfaced \($inline) line-placed recommendation\($inline_suffix)."
+              + (if $additional > 0 then "\n\n\($additional) additional recommendation\($additional_suffix) remain in the generated `target/ripr/review/comments.json` and `target/ripr/review/comments.md` artifacts." else "" end)
+              + (if $suppressed > 0 then "\n\n\($suppressed) suppressed recommendation\($suppressed_suffix) remain visible there with reasons." else "" end)
+              + "\n\nAdvisory static evidence only; gate authority remains separate."
+          ' "$plan")"
+
+          create_count="$(jq '[.[] | select(.operation == "create")] | length' "$publishable")"
+          update_count="$(jq '[.[] | select(.operation == "update")] | length' "$publishable")"
+          additional_count="$(jq '(.summary.summary_only // 0) + ([.skipped[]? | select(.skip_reason == "inline_comment_cap_reached")] | length)' "$plan")"
+          suppressed_count="$(jq '.summary.suppressed // 0' "$plan")"
+
+          jq -c '.[] | select(.operation == "update")' "$publishable" \
             | while IFS= read -r operation; do
-                op="$(jq -r '.operation' <<< "$operation")"
+                comment_id="$(jq -r '.existing_comment_id' <<< "$operation")"
                 dedupe_key="$(jq -r '.dedupe_key' <<< "$operation")"
-                body="$(jq -r '.body // ""' <<< "$operation")"
-                body_with_marker="$(printf '%s\n\n<!-- ripr:dedupe=%s -->\n' "$body" "$dedupe_key")"
-                if [ "$op" = "keep" ]; then
-                  echo "RIPR inline comment already current: $dedupe_key"
-                  continue
-                fi
-                if [ "$op" = "create" ]; then
-                  path="$(jq -r '.placement.path' <<< "$operation")"
-                  line="$(jq -r '.placement.line' <<< "$operation")"
-                  side="$(jq -r '.placement.side // "RIGHT"' <<< "$operation")"
-                  payload="$(mktemp)"
-                  jq -n \
-                    --arg body "$body_with_marker" \
-                    --arg commit_id "${{ github.event.pull_request.head.sha }}" \
-                    --arg path "$path" \
-                    --arg side "$side" \
-                    --argjson line "$line" \
-                    '{body: $body, commit_id: $commit_id, path: $path, side: $side, line: $line}' \
-                    > "$payload"
-                  gh api --method POST "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments" --input "$payload" >/dev/null
-                  echo "Created RIPR inline comment: $dedupe_key"
-                elif [ "$op" = "update" ]; then
-                  comment_id="$(jq -r '.existing_comment_id' <<< "$operation")"
-                  payload="$(mktemp)"
-                  jq -n --arg body "$body_with_marker" '{body: $body}' > "$payload"
-                  gh api --method PATCH "repos/${{ github.repository }}/pulls/comments/$comment_id" --input "$payload" >/dev/null
-                  echo "Updated RIPR inline comment: $dedupe_key"
-                else
-                  echo "RIPR inline comment operation $op is review-only: $dedupe_key"
-                fi
+                body="$(jq -r '.published_body' <<< "$operation")"
+                payload="$(mktemp)"
+                jq -n --arg body "$body" '{body: $body}' > "$payload"
+                gh api --method PATCH "repos/${{ github.repository }}/pulls/comments/$comment_id" --input "$payload" >/dev/null
+                echo "Updated RIPR inline comment: $dedupe_key"
+              done
+
+          review_required=false
+          if [ "$create_count" -gt 0 ] || { [ "$update_count" -gt 0 ] && { [ "$additional_count" -gt 0 ] || [ "$suppressed_count" -gt 0 ]; }; }; then
+            review_required=true
+          fi
+          if [ "$review_required" = true ]; then
+            payload="$(mktemp)"
+            jq -n \
+              --arg body "$review_body" \
+              --arg commit_id "${{ github.event.pull_request.head.sha }}" \
+              --argjson create_count "$create_count" \
+              --slurpfile operations "$publishable" \
+              '({
+                body: $body,
+                event: "COMMENT",
+                commit_id: $commit_id
+              } + if $create_count > 0 then {
+                comments: [
+                  $operations[0][]
+                  | select(.operation == "create")
+                  | {
+                      path: .placement.path,
+                      line: .placement.line,
+                      side: (.placement.side // "RIGHT"),
+                      body: .published_body
+                    }
+                ]
+              } else {} end)' > "$payload"
+            gh api --method POST "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" --input "$payload" >/dev/null
+            if [ "$create_count" -gt 0 ]; then
+              echo "Created one RIPR review with $create_count inline comment(s)."
+            else
+              echo "Created one RIPR review summary after $update_count inline comment update(s)."
+            fi
+          fi
+
+          jq -r '.[] | select(.operation == "keep") | .dedupe_key' "$publishable" \
+            | while IFS= read -r dedupe_key; do
+                echo "RIPR inline comment already current: $dedupe_key"
               done
 
       - name: Capture RIPR gate labels

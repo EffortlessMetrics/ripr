@@ -32,6 +32,15 @@ pub(crate) fn render_context_packet_dto(packet: &ContextPacket) -> String {
     if let Some(canonical_gap_id) = &packet.canonical_gap_id {
         field(&mut out, 1, "canonical_gap_id", canonical_gap_id, true);
     }
+    // Which revision owns the packet's source (#3281): agent consumers
+    // must not treat non-candidate-current packets as edit targets.
+    field(
+        &mut out,
+        1,
+        "source_currentness",
+        packet.source_currentness,
+        true,
+    );
     out.push_str("  \"probe\": {\n");
     field(&mut out, 2, "id", &packet.probe.id, true);
     field(&mut out, 2, "family", &packet.probe.family, true);
@@ -255,6 +264,7 @@ mod tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 

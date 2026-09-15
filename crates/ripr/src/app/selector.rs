@@ -10,7 +10,10 @@ pub(in crate::app) fn select_finding<'a>(
 }
 
 pub(in crate::app) fn selector_matches_location(selector: &str, finding: &Finding) -> bool {
-    let file = finding.probe.location.file.to_string_lossy();
+    // Match the spelling renderers show (stable text, %XX for invalid
+    // bytes), not a lossy re-render that a raw-byte path could never
+    // type into (#3609).
+    let file = crate::analysis::stable_path_text(&finding.probe.location.file);
     selector_matches_file_line(file.as_ref(), finding.probe.location.line, selector)
 }
 

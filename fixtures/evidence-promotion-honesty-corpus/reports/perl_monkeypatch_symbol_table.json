@@ -64,7 +64,7 @@
       "suggested_next_action": "Add a focused Perl assertion that pins the changed behavior.",
       "language": "perl",
       "language_status": "preview",
-      "static_limit_kind": "dynamic_dispatch",
+      "static_limit_kind": "metaprogramming",
       "changed_sink": "return_value"
     }
   ]

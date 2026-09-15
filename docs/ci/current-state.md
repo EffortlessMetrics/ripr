@@ -1,79 +1,99 @@
 # CI Current State
 
-This document records the current (as of 2026-05-24) implementation state of
-the CI economics system. It is the honest answer to "what actually runs today?"
+This document records the current implementation state of the CI economics
+system as of 2026-08-25. It is the honest answer to “what actually runs today?”
 as distinct from the target design in `docs/CI.md`.
 
 ## What is implemented
 
+### Required Rust and repository-policy owner
+
+`.github/workflows/routed-rust.yml` classifies docs-only changes, selects one
+trusted self-hosted runner when available, falls back to GitHub-hosted when
+required, and normalizes the protected `Ripr Rust Small Result` context.
+
+The four Rust implementations delegate to `.github/workflows/rust-gates.yml`.
+That reusable workflow is the single executable owner for ordinary required
+Rust and repository-policy proof:
+
+```text
+cargo fmt --check
+cargo check --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+cargo nextest run --workspace
+cargo xtask precommit
+cargo xtask check-evidence-promotion-honesty
+cargo xtask check-agent-skills
+cargo xtask check-dependencies
+cargo xtask check-process-policy
+cargo xtask check-network-policy
+cargo xtask goldens check
+cargo xtask fixtures
+```
+
+Formatting runs before nextest installation and hosted cache restoration. A
+required failure skips broad advisory report generation. Ordinary successful
+PRs do not upload the full report bundle unless `full-ci` is present; failed
+runs retain bounded diagnostic evidence.
+
+### Unique CI proof
+
+`.github/workflows/ci.yml` no longer repeats the routed Rust gate table. It owns
+only distinct proof:
+
+- Perl feature-adapter check and focused Perl language-analysis tests;
+- package list, publish dry-run, and release-readiness proof on `main`,
+  `release-check`, or `full-ci`;
+- the named duplicate MSRV proof on manual or `full-ci` runs;
+- VS Code compile, package, and real-server E2E proof on pushes, manual runs,
+  and `full-ci` pull requests.
+
+The routed owner already runs Rust 1.95.0 on every ordinary PR and `main` push,
+so the separate MSRV workspace check is not repeated on each push.
+
 ### Cancellation and cache posture
 
-- PR synchronize events cancel previous runs (correct).
-- Cache saves happen only on `main` (correct).
-- Release-surface checks gate on push/main or explicit labels (correct).
+- PR synchronize events cancel superseded runs.
+- Label events do not cancel an in-progress run.
+- Cache saves happen on `main` unless a lane explicitly remains read-only.
+- Release-surface checks run on `main` or explicit release labels.
 
-### Policy gates (all blocking on relevant PRs)
+### Advisory lanes
 
-- `cargo fmt --check`
-- `cargo check --workspace --all-targets`
-- `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo test --workspace`
-- `cargo xtask check-no-panic-family`
-- `cargo xtask check-allow-attributes`
-- `cargo xtask check-static-language`
-- `cargo xtask check-file-policy`
-- `cargo xtask check-executable-files`
-- `cargo xtask check-workflows`
-- `cargo xtask check-spec-format`
-- `cargo xtask check-fixture-contracts`
-- `cargo xtask check-traceability`
-- `cargo xtask check-capabilities`
-- `cargo xtask check-workspace-shape`
-- `cargo xtask check-architecture`
-- `cargo xtask check-public-api`
-- `cargo xtask check-output-contracts`
-- `cargo xtask check-doc-index`
-- `cargo xtask check-dependencies`
-- `cargo xtask check-supply-chain`
+- Coverage runs on `main`, manual dispatch, and pull requests labeled
+  `coverage` or `full-ci`.
+- Test Analytics runs on `main`, manual dispatch, and pull requests labeled
+  `full-ci`.
+- Future Clippy runs on `main`, manual dispatch, `clippy-future`, or `full-ci`.
+- Source-of-truth, security, review, and `ripr` evidence lanes retain their own
+  documented advisory contracts.
 
-### Advisory lanes (exist, non-blocking)
-
-- `ripr` self-dogfood (advisory only; not a gate).
-- Coverage via `cargo-llvm-cov` (advisory; Codecov status is informational).
-- Test Analytics.
-
-### On-demand lanes (label or main)
-
-- `cargo package -p ripr --list`
-- `cargo publish -p ripr --dry-run`
-- VS Code compile/package checks in the legacy CI workflow run on pushes,
-  manual dispatches, and pull requests labeled `full-ci` only. The separate
-  marketplace publish workflow remains release/manual-authority surface.
+Coverage and Test Analytics no longer rebuild the entire workspace on every
+ordinary pull request. Their artifacts have five-day retention on these lanes.
 
 ## Gaps vs target state
 
-| Gap | Target PR | Impact |
-| --- | --- | --- |
-| No numeric PR Plan (`ci-plan.json`) | PR 11 | Structural PR Plan exists; no numeric LEM forecast before lanes run. |
-| No `ci-actuals.json` emission | PR 12 | No forecast→actuals loop. |
-| VS Code lane is not path-gated or wired to the `vscode` label | PR 13 | `full-ci` is currently the only PR label that runs the legacy VS Code CI job. |
-| `ripr` self-dogfood is advisory but no LEM tracking | PR 14 | Cannot measure cost of self-verification. |
-| No soft budget guard | PR 15 | No warning when PRs exceed budget bands. |
-| `indexing_slicing` / `string_slice` are not active | PR 07 | Missing per-call receipts for parser/diff bounded indexing and slicing. |
+| Gap | Impact |
+| --- | --- |
+| No numeric PR Plan (`ci-plan.json`) | The structural PR Plan exists, but there is no machine-readable LEM forecast before lane selection. |
+| No `ci-actuals.json` emission | There is no forecast-to-actuals feedback loop or measured post-decision waste metric. |
+| VS Code is not path-gated or wired to `vscode` | `full-ci` remains the only PR label that runs the editor lane. |
+| Advisory workflows do not consume canonical Rust artifacts | Coverage and Test Analytics are selected economically, but selected runs still compile independently. |
+| No soft budget guard | CI does not yet warn when the selected proof exceeds its forecast band. |
 
 ## Policy files that exist but are not yet fully enforced
 
-- `policy/ci-budget.toml` — `policy_state = "advisory-ledger"`, `enforcement = "none"`.
-- `policy/ci-lane-whitelist.toml` — defined but not read by a running planner yet.
-- `policy/ci-risk-packs.toml` — defined but not read by a running planner yet.
+- `policy/ci-budget.toml` — advisory budget and label vocabulary.
+- `policy/ci-lane-whitelist.toml` — allowed lane and artifact-family registry.
+- `policy/ci-risk-packs.toml` — target path-to-risk-pack mapping.
 
-None of these represent broken invariants. They are correct drafts waiting for
-the matching xtask implementation.
+These are reviewable policy inputs. They do not yet constitute a numeric planner
+or an enforcement claim.
 
 ## Compatibility mirrors
 
-- `.ripr/no-panic-allowlist.toml` — legacy schema 0.2 compatibility mirror;
-  the canonical checker reads `policy/no-panic-allowlist.toml`.
+- `.ripr/no-panic-allowlist.toml` is the legacy schema 0.2 compatibility
+  mirror; the canonical checker reads `policy/no-panic-allowlist.toml`.
 - `cargo xtask check-no-panic-family` reports allowed findings, advisory
   `last_seen` drift, stale entries, unallowed findings, and warnings. Ambiguous
   selector matches and duplicate semantic identities fail until selectors are
@@ -85,16 +105,9 @@ the matching xtask implementation.
 
 - Current `workspace.package.rust-version`: `1.95`
 - Current `rust-toolchain.toml` channel: `1.95.0`
-- Target: `1.95`
+- Required routed Rust toolchain: `1.95.0`
+- Named duplicate MSRV lane: manual or `full-ci`
 - Rust 1.95 compatibility audit: pass on 2026-05-09; see
   [Rust 1.95 compatibility audit](msrv-1.95-audit.md).
-- Rust 1.95 consistency audit: pass on 2026-05-10; all surfaces confirmed at
-  `1.95`. See [Rust 1.95 consistency audit](rust-1.95-consistency-audit.md).
-- PR 03 promoted clean Rust 1.94/1.95 lints:
-  `same_length_and_capacity`, `manual_ilog2`, `needless_type_cast`,
-  `decimal_bitwise_operands`, `manual_checked_ops`, `manual_take`,
-  `duration_suboptimal_units`, and `unnecessary_trailing_comma`.
-- Planned lints retained with explicit blockers:
-  `disallowed_fields` needs a reviewed `clippy.toml` protected-seam config,
-  `manual_pop_if` is not recognized by Rust 1.95.0 Clippy, and
-  `indexing_slicing` / `string_slice` need per-call receipts.
+- Rust 1.95 consistency audit: pass on 2026-05-10; see
+  [Rust 1.95 consistency audit](rust-1.95-consistency-audit.md).

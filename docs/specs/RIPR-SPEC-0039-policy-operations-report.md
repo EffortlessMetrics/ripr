@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on the policy-operations artifacts, ceiling, blockers, and non-mutation guarantees.
+
 ## Problem
 
 Policy readiness tells maintainers which posture is safe for a repository right

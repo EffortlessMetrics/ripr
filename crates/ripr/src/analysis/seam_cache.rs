@@ -49,6 +49,9 @@ use super::seam_classification::ClassifiedSeam;
 #[cfg(test)]
 use super::seam_classification::SeamGripClassCounts;
 use super::seam_inventory::{SeamLimitSource, repo_exposure_seam_limit};
+use crate::config::{
+    PYTHON_PROJECT_MARKERS, PYTHON_SOURCE_DIR_MARKERS, source_dir_contains_detectable_python,
+};
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -77,26 +80,277 @@ pub(crate) struct CachedSeamLimitInfo {
 /// `0.4` → `0.5`: error-variant discriminators changed from surrounding
 /// expressions to producer-owned exact identities; old classified seams must
 /// not be reused by full or compact consumers.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.6";
-const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.2";
+/// `0.6` → `0.7`: inline `#[cfg(test)]` source role (#3273) and
+/// helper-evidence eligibility (#3286) changed classified-seam semantics
+/// while the package version stayed `0.10.0`; old full classified entries
+/// may carry pre-#3273 production roles and pre-#3286 relations and must
+/// not be reused.
+/// `0.7` -> `0.8`: Err-return guards now credit as assertion twins
+/// (#3284) and repo-mode probe seeding filters evidence-role owners,
+/// changing classified-seam content at package `0.10.0`.
+/// `0.8` -> `0.9`: target evidence gained producer-owned workspace,
+/// currentness, and package-identity authority (#3410).
+/// `0.9` -> `1.0`: manifest-less package identity is derived per containing
+/// directory rather than from the common root of all indexed files (#3410).
+/// `1.0` -> `1.1`: a direct top-level `test` conjunct in
+/// `cfg(all(...))` now carries evidence role regardless of conjunct order;
+/// old classified seams may retain test-second helpers as production.
+/// `1.1` -> `1.2`: nested `test` conjunctions in `cfg(all(...))` now carry
+/// evidence role through the shared cfg-predicate authority (#3530); old
+/// classified seams may retain nested-conjunct helpers as production.
+/// `1.2` -> `1.3`: source roles now compose across include and module edges
+/// (#3533); out-of-line `#[cfg(test)]` module helpers flip out of the
+/// production inventory, changing classified-seam content.
+/// `1.3` -> `1.4`: harness trial subjects gained helper-callback one-level
+/// body evidence and method-position `unwrap`/`expect` smoke oracles
+/// (#3603), and `custom_harness` registrations now validate against
+/// parsed Cargo target metadata (#3608) — a misdeclared target keeps its
+/// ordinary classification instead of receiving file-wide evidence role,
+/// changing the production inventory classified seams derive from. Old
+/// classified entries would serve evidence-blind classifications for
+/// registered-harness workspaces.
+/// `1.4` -> `1.5`: harness-target validation now sources workspace
+/// membership and the test-target inventory from `cargo metadata`
+/// itself (#3634), flipping verdicts for workspaces the manifest
+/// emulation approximated (workspace-inherited path dependencies,
+/// character-class member globs, wildcard exclude patterns). Old
+/// classified entries would serve pre-#3634 grants for those
+/// workspaces.
+/// `1.5` -> `1.6`: the harness reachability authority (#3636) excludes
+/// trial constructions that provably cannot reach the registered run
+/// entry point's argument from the executable-test denominator and
+/// discloses unresolved reachability, changing the test inventory
+/// classified seams derive from for registered-harness workspaces. Old
+/// classified entries would serve dead-construction over-credits.
+/// `1.6` -> `1.7`: the guarded-Result-match review fixes (#3731) change
+/// which guarded oracles exist and what their facts pin — the terminal
+/// arm grammar, the first-comma `matches!` pattern slice, the bare-scrutinee
+/// shadow gate, and the reveal-side variant/bare confirmation gates. Old
+/// classified entries would serve conditional-failure over-credits and
+/// stale guarded discrimination for warm workspaces.
+/// `1.7` -> `1.8`: the #3731 review round-4 fixes change the guarded facts
+/// and gates again — successful exits are not loud failures, a downcast
+/// pin requires the cast's own observed result, the reveal-side owner
+/// binding is defeated by a foreign same-name import, and repo-mode
+/// discrimination requires scrutinee/owner callee identity. Old classified
+/// entries would serve successful-exit over-credits and stale guarded
+/// discrimination for warm workspaces.
+/// `1.8` -> `1.9`: the #3731 review round-5 fixes change the guarded facts
+/// and gates again — a guard equality pins only when its compared operand
+/// is rooted at the arm's error binding, the first control transfer
+/// decides arm termination, every Err arm's variant pin is collected, the
+/// repo-mode scrutinee gate is bare-only, the foreign-import defeat scans
+/// nested `use` declarations, and the own-crate gate admits the `[lib]`
+/// target and hyphen-normalized names. Old classified entries would serve
+/// unrelated-guard over-credits, stale pin lists, and stale guarded
+/// discrimination for warm workspaces.
+/// `1.9` -> `1.10`: the #3731 review round-6 fixes change the guarded
+/// facts and gates again — a body pin counts only when it participates in
+/// the arm's divergence decision, an if-form whose branches can return
+/// successfully stops being terminal (and its pin stops crediting), and
+/// the reveal-side owner binding is defeated by a same-named function in
+/// the test's own package. Old classified entries would serve
+/// dead-computation and escape-path over-credits for warm workspaces.
+/// `1.10` -> `1.11`: the guarded facts gain the Ok-arm observation
+/// decision (RIPR-SPEC-0175) and the reveal/repo confirmation gates
+/// require it for success-payload return-value probes and seams — the
+/// routing form and payload-ignoring Ok arms stop confirming. Old
+/// classified entries would serve stale guarded discrimination for warm
+/// workspaces.
+/// `1.11` -> `1.12`: the parser-backed shadow facts (#3727 Slice A,
+/// RIPR-SPEC-0175) switch the shadow authority behind the `SeamCalleeCall`
+/// relation and the guarded-match oracle on the file's
+/// `used_lexical_fallback` flag, changing which defeats and admits the
+/// classification sees on parser-backed files. This cache loads BEFORE any
+/// file-fact rebuild — a warm hit returns classified seams without
+/// re-reading a single file — so the file-fact generation bump alone
+/// cannot reach it: old classified entries would serve pre-#3727
+/// shadow classification for warm workspaces indefinitely.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.12";
+/// `0.2` → `0.3`: same semantic transition as the outer cache (#3273 /
+/// #3286) — sharded entries derive from the same facts and cannot bypass
+/// the outer generation bump.
+/// `0.3` → `0.4`: #3284 changes the facts sharded entries derive from
+/// (guard oracle twins, evidence-role repo probe filtering).
+/// `0.5` -> `0.6`: target package identity semantics changed with the outer
+/// classified-seam cache.
+/// `0.6` -> `0.7`: test-second `cfg(all(...))` helpers now carry evidence
+/// role, changing the facts sharded entries derive from.
+/// `0.7` -> `0.8`: nested `test` conjunctions in `cfg(all(...))` now carry
+/// evidence role (#3530), changing the facts sharded entries derive from.
+/// `0.8` -> `0.9`: source roles now compose across include and module edges
+/// (#3533), changing the facts sharded entries derive from.
+/// `0.9` -> `0.10`: #3603 trial evidence parity and #3608 harness-target
+/// validation change the facts and production inventory the sharded
+/// entries derive from.
+/// `0.10` -> `0.11`: #3634 metadata-sourced harness validation flips
+/// verdicts for workspaces the manifest emulation approximated.
+/// `0.11` -> `0.12`: #3636 excludes unreachable harness trial
+/// constructions from the executable-test denominator, changing the
+/// facts sharded entries derive from.
+/// `0.12` -> `0.13`: the guarded-Result-match review fixes (#3731) change
+/// the oracle facts and confirmation gates sharded entries derive from —
+/// same semantic transition as the outer classified-seam cache.
+/// `0.13` -> `0.14`: the #3731 review round-4 fixes change the guarded
+/// facts and gates again — same semantic transition as the outer
+/// classified-seam cache.
+/// `0.14` -> `0.15`: the #3731 review round-5 fixes change the guarded
+/// facts and gates again — same semantic transition as the outer
+/// classified-seam cache.
+/// `0.15` -> `0.16`: the #3731 review round-6 fixes change the guarded
+/// facts and gates again — same semantic transition as the outer
+/// classified-seam cache.
+/// `0.16` -> `0.17`: the guarded facts gain the Ok-arm observation
+/// decision (RIPR-SPEC-0175) — same semantic transition as the outer
+/// classified-seam cache.
+/// `0.17` -> `0.18`: the parser-backed shadow facts (#3727 Slice A) change
+/// which shadow defeats the classification sees — same semantic transition
+/// as the outer classified-seam cache.
+const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.18";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
 /// under a separate directory because the evidence payload is intentionally
 /// compact and must never satisfy full repo-exposure consumers.
-pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.3";
+/// `0.3` → `0.4`: compact evidence derives from the same facts as the full
+/// cache — the #3273 source-role and #3286 helper-evidence changes
+/// invalidate prior compact entries at package `0.10.0`.
+/// `0.4` → `0.5`: #3284 changes guard oracle facts and repo probe seeding.
+/// `0.5` -> `0.6`: target evidence authority fields changed (#3410).
+/// `0.6` -> `0.7`: manifest-less package identity semantics changed (#3410).
+/// `0.7` -> `0.8`: test-second `cfg(all(...))` helpers now carry evidence
+/// role, changing compact classified-seam content.
+/// `0.8` -> `0.9`: nested `test` conjunctions in `cfg(all(...))` now carry
+/// evidence role (#3530), changing compact classified-seam content.
+/// `0.9` -> `0.10`: source roles now compose across include and module edges
+/// (#3533); out-of-line `#[cfg(test)]` module helpers flip out of the
+/// production inventory, changing compact classified-seam content.
+/// `0.10` -> `0.11`: #3603 trial evidence parity and #3608 harness-target
+/// validation change the facts and production inventory the compact
+/// classified-seam entries derive from.
+/// `0.11` -> `0.12`: #3634 metadata-sourced harness validation flips
+/// verdicts for workspaces the manifest emulation approximated.
+/// `0.12` -> `0.13`: #3636 excludes unreachable harness trial
+/// constructions from the executable-test denominator, changing the
+/// facts the compact classified-seam entries derive from.
+/// `0.13` -> `0.14`: the guarded-Result-match review fixes (#3731) change
+/// the oracle facts and confirmation gates the compact classified-seam
+/// entries derive from — same semantic transition as the outer
+/// classified-seam cache.
+/// `0.14` -> `0.15`: the #3731 review round-4 fixes change the guarded
+/// facts and gates again — same semantic transition as the outer
+/// classified-seam cache.
+/// `0.15` -> `0.16`: the #3731 review round-5 fixes change the guarded
+/// facts and gates again — same semantic transition as the outer
+/// classified-seam cache.
+/// `0.16` -> `0.17`: the #3731 review round-6 fixes change the guarded
+/// facts and gates again — same semantic transition as the outer
+/// classified-seam cache.
+/// `0.17` -> `0.18`: the guarded facts gain the Ok-arm observation
+/// decision (RIPR-SPEC-0175) — same semantic transition as the outer
+/// classified-seam cache.
+/// `0.18` -> `0.19`: the parser-backed shadow facts (#3727 Slice A) change
+/// which shadow defeats the classification sees — same semantic transition
+/// as the outer classified-seam cache.
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.19";
 
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only
 /// per-class counts so badge endpoints never need to deserialize the
 /// multi-hundred-megabyte evidence cache.
+/// `0.1` → `0.2`: class counts shifted with the #3273 source-role change
+/// at package `0.10.0`; prior counts must not satisfy badge rendering.
+/// Test-second source-role changes miss transitively because each count
+/// entry key embeds the outer `CACHE_SCHEMA_VERSION`.
 #[cfg(test)]
-const COUNT_CACHE_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const COUNT_CACHE_SCHEMA_VERSION: &str = "0.2";
 
 /// Per-file fact cache schema. This is intentionally separate from the
 /// workspace-level classified seam cache so warm compute can reuse parser facts
 /// even when a full classified seam entry has not been written yet.
-pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.2";
+/// `0.2` → `0.3`: `FunctionFact.is_test` widened from "has a test
+/// attribute" to "has a test attribute or lives in an inline `#[cfg(test)]`
+/// module" (#3273), and #3286 changed which of those functions the
+/// helper-evidence graph admits — both while the package version stayed
+/// `0.10.0`. Old per-file facts carry pre-#3273 role booleans and must
+/// miss so the corrected producer repopulates them.
+/// `0.3` -> `0.4`: TestFact assertions now include Err-return guards
+/// (#3284); warm per-file facts from before the change would serve
+/// guard-blind evidence at package `0.10.0`.
+/// `0.4` -> `0.5`: `FunctionFact.is_test` now recognizes a direct
+/// top-level `test` conjunct in `cfg(all(...))` regardless of order; old
+/// file facts may retain test-second helpers as production.
+/// `0.5` -> `0.6`: `FunctionFact.is_test` now recognizes nested `test`
+/// conjunctions in `cfg(all(...))` through the shared cfg-predicate
+/// authority (#3530); old file facts may retain nested-conjunct helpers as
+/// production.
+/// `0.6` -> `0.7`: `FunctionFact.is_test` is replaced by the typed
+/// `FunctionFact.source_role` (#3531). The evidence-bit semantics are
+/// unchanged, but the on-disk `FunctionFact` shape changed, so old
+/// per-file entries cannot deserialize into the new model and must miss.
+/// `0.7` -> `0.8`: `FileFacts` gained the module-declaration producer and
+/// composed role provenance (#3533). Old entries predate the
+/// `module_declarations` producer entirely: without the bump a warm hit
+/// would serve composition-blind facts and silently disable composed
+/// roles for that file.
+/// `0.8` -> `0.9`: `cfg_attr`-introduced `#[path]` targets now classify as
+/// a typed unknown (#3533 review). Entries from the `0.8` generation store
+/// such declarations as `Default`, which would resolve the default file
+/// Rust does not compile under the conditional configuration.
+/// `0.9` -> `1.0`: call and literal extraction now masks comments (line
+/// and nested block), string contents, and character literals before
+/// scanning (#3633 review). Warm per-file facts from before the change
+/// would serve comment-derived calls and numbers as live evidence.
+/// `1.1` -> `1.2` through `1.2` -> `1.3`: the guarded-Result-match
+/// grammar changed twice more within the same unreleased cycle (#3731
+/// review): the terminal-arm grammar became a bounded depth-0 statement
+/// grammar and the `matches!` pattern slice takes the first top-level
+/// comma, so a warm pre-fix 1.2 hit would serve conditional-failure
+/// matches and message-sliced pins as live oracle facts.
+/// `1.3` -> `1.4`: the #3731 review round-4 fixes change which guarded
+/// oracles exist and what their pins observe again — successful exits
+/// (`return Ok(..)`, bare `return`, `exit(0)`) stop terminating arms, a
+/// downcast pin now requires the cast's OWN result to be observed (with
+/// `.expect(`/`.unwrap(` added as observers and ALL invocations
+/// considered), so a warm pre-fix hit would serve successful-exit and
+/// discarded/unobserved-downcast oracles as live facts.
+/// `1.4` -> `1.5`: the #3731 review round-5 fixes change which guarded
+/// oracles exist and what they pin again — a guard equality pins only when
+/// its compared operand is rooted at the arm's error binding, the arm's
+/// FIRST control transfer decides termination, and every Err arm's variant
+/// pin joins the synthesized pin list — so a warm pre-fix hit would serve
+/// unrelated-guard pins, successful-transfer arms, and single-pin texts as
+/// live facts.
+/// `1.5` -> `1.6`: the #3731 review round-6 fixes change which guarded
+/// oracles exist and what they pin again — a body pin counts only when it
+/// participates in the arm's divergence decision, an if-form whose
+/// branches can return successfully stops being terminal, and each pin is
+/// truncated individually while the joined pin list keeps its full length —
+/// so a warm pre-fix hit would serve dead-computation pins, escape-path
+/// arms, and overall-truncated pin lists as live facts.
+/// `1.6` -> `1.7`: the guarded facts gain the Ok-arm observation decision
+/// (RIPR-SPEC-0175): Ok-arm bodies are sliced at extraction and the fact
+/// carries whether they observe the unwrapped success value, so a warm
+/// pre-bump hit would serve routing-form and payload-ignoring facts
+/// WITHOUT the decision — return-value confirmations would read the
+/// missing decision as unobserved and silently under-credit (or, worse,
+/// a future default flip would over-credit) — as live facts.
+/// `1.7` -> `1.8`: the parser-backed shadow facts (#3727 Slice A,
+/// RIPR-SPEC-0175): `FunctionFact`/`TestFact` gain `nested_fn_names` and
+/// `let_bindings`, and both shadow consumers (the `SeamCalleeCall`
+/// relation and the guarded-match scanner) switch their shadow authority
+/// on `used_lexical_fallback` — a warm pre-bump hit would serve
+/// parser-backed files WITHOUT the fact fields, and on those files the
+/// flag law reads empty facts as real "no shadow", so the pre-extension
+/// envelope could silently retire the lexical scanners' defeats.
+///
+/// Still no bump for #3603/#3608/#3636 themselves: per-file parser
+/// facts are unchanged by the harness registry — it applies
+/// registrations after the file-fact cache loads, re-validating every
+/// build against the current manifests, and the #3636 reachability
+/// authority runs inside that re-application — so a warm hit cannot
+/// bypass either validation or reachability classification.
+pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.8";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
 /// analysis into an unbounded post-analysis stall on large repos. Larger live
@@ -447,8 +701,7 @@ impl WorkspaceKeyContext<'_> {
             Some((n, _)) => format!("limit_{n}"),
         };
 
-        let workspace_manifests_hash =
-            hash_named_workspace_files(self.workspace_root, "Cargo.toml");
+        let workspace_manifests_hash = hash_workspace_manifests(self.workspace_root);
         let lockfile_hash = hash_named_workspace_files(self.workspace_root, "Cargo.lock");
         let toolchain_hash = hash_str(
             std::env::var("RUSTUP_TOOLCHAIN")
@@ -1564,6 +1817,168 @@ pub(crate) fn stable_input_hash(bytes: &[u8]) -> String {
     hash_bytes(bytes)
 }
 
+/// Cargo section scope of a path-dependency declaration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum PathDependencySection {
+    Dependencies,
+    DevDependencies,
+    BuildDependencies,
+}
+
+impl PathDependencySection {
+    fn from_table_name(name: &str) -> Option<Self> {
+        match name {
+            "dependencies" => Some(Self::Dependencies),
+            "dev-dependencies" => Some(Self::DevDependencies),
+            "build-dependencies" => Some(Self::BuildDependencies),
+            _ => None,
+        }
+    }
+}
+
+/// Where the path authority for a dependency edge lives.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum PathDependencySource {
+    /// `path = "..."` spelled directly in the declaring package manifest.
+    Package,
+    /// `workspace = true` in the declaring manifest, with the `path` resolved
+    /// from the nearest ancestor workspace root's `[workspace.dependencies]`.
+    WorkspaceInherited,
+}
+
+/// Resolution outcome for one captured path-dependency edge.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum PathDependencyResolution {
+    /// Resolved lexically to a repo-relative path that stays inside the scan
+    /// root and names an existing directory.
+    Resolved,
+    /// Resolved lexically but the path climbs above the scan root; the
+    /// repo-relative identity keeps its leading `..` segments.
+    ResolvedOutsideWorkspace,
+    /// Resolved lexically inside the scan root, but the target is missing or
+    /// is not a directory on disk.
+    TargetMissing,
+    /// The manifest declares an absolute POSIX or Windows path. It is a valid
+    /// Cargo path dependency, but it has no repo-relative identity for this
+    /// inventory and is therefore retained as an explicit boundary.
+    UnsupportedAbsolutePath,
+    /// `workspace = true` was declared but no nearest-ancestor workspace root
+    /// with a matching `[workspace.dependencies]` entry was found, so no path
+    /// authority exists. This is a typed limitation, not a missing edge.
+    UnresolvedWorkspaceInheritance,
+    /// The declaration carries both `path` and `workspace = true`. Cargo
+    /// rejects this form when the name is absent from
+    /// `[workspace.dependencies]`, and otherwise ignores the member's own
+    /// `path` (the workspace entry wins), so honoring the explicit `path`
+    /// would misstate Cargo semantics. The declaration is retained as a typed
+    /// invalid edge with no resolved identity, never as a resolvable
+    /// `Package` path edge (the `source` still records where the declaration
+    /// was seen).
+    InvalidDeclaration,
+}
+
+/// Inheritance authority for `workspace = true` dependencies: per workspace
+/// root, the repo-relative directory text and the `(name, path)` entries of
+/// its `[workspace.dependencies]` (`None` path = version-only registry
+/// entry, not a path edge).
+type WorkspaceDependencyTables = Vec<(String, Vec<(String, Option<String>)>)>;
+
+/// One captured Cargo path-dependency declaration (#2968, typed in #3037).
+///
+/// V1 denominator: an edge is recorded for every path-bearing dependency
+/// declaration visible in a scanned manifest:
+///
+/// - `dep = { path = "...", ... }` inline tables in `[dependencies]`,
+///   `[dev-dependencies]`, and `[build-dependencies]` (target = `None`);
+/// - the same inline-table form under `[target.<spec>.<section>]`
+///   (target = `Some(spec)`);
+/// - `dep = { workspace = true }` in any of those scopes whose nearest
+///   ancestor workspace root declares `dep` with a `path` in
+///   `[workspace.dependencies]` (source = `WorkspaceInherited`; the path is
+///   resolved relative to the workspace root manifest directory, per Cargo).
+///
+/// Explicitly out of the denominator (documented boundaries, never silent):
+///
+/// - string-form `dep = "1.0"` and table-form entries without `path` or
+///   `workspace = true` are registry/git declarations, not path edges;
+/// - `workspace = true` resolving to a workspace entry without `path` is a
+///   registry inheritance, not a path edge;
+/// - bare `[workspace.dependencies]` entries are inheritance authority only —
+///   they have no consumer, so they are not edges;
+/// - a manifest whose repo-relative path is not UTF-8 contributes no edges;
+///   the gap is surfaced in `path_dependency_limitations` instead of a
+///   lossy-corrupted path identity;
+/// - absolute POSIX and Windows drive-prefixed paths remain explicit edges with
+///   `UnsupportedAbsolutePath` and no fabricated repo-relative identity;
+/// - a `[package] workspace = "..."` redirect is not followed: `workspace =
+///   true` dependencies resolve against the nearest ancestor manifest with a
+///   `[workspace]` table only, and a manifest whose inherited dependencies are
+///   affected by an unfollowed redirect contributes an
+///   `UnfollowedWorkspaceRedirect` entry to `path_dependency_limitations`;
+/// - an entry carrying both `path` and `workspace = true` is Cargo-invalid
+///   (Cargo rejects it when the name is absent from `[workspace.dependencies]`
+///   and ignores the member's own `path` otherwise); it is retained as an
+///   `InvalidDeclaration` edge with no resolved identity, never honored as a
+///   `Package` path edge.
+///
+/// Ordering is fully sorted and exact duplicate records are deduplicated, so
+/// the inventory is deterministic under manifest enumeration changes. Cycles
+/// are preserved as-is (a cycle is distinct records, never a duplicate);
+/// later traversal (#2969/#2970) must see them rather than have capture
+/// erase them.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct PathDependencyEdge {
+    /// Repo-relative manifest that declares the dependency, `/`-separated.
+    pub(crate) from_manifest: String,
+    /// Section scope of the declaration.
+    pub(crate) section: PathDependencySection,
+    /// Target-specific scope (the `[target.<spec>...]` key), if any.
+    pub(crate) target: Option<String>,
+    pub(crate) dependency_name: String,
+    /// Path as spelled in the manifest holding the path authority,
+    /// normalized to `/` separators. `None` when no path authority was found
+    /// (`UnresolvedWorkspaceInheritance`).
+    pub(crate) declared_path: Option<String>,
+    /// Lexically resolved repo-relative identity, `/`-separated. `None` when
+    /// no path authority was found, when the declared path is absolute
+    /// (`UnsupportedAbsolutePath`), or when the declaration is Cargo-invalid
+    /// (`InvalidDeclaration`).
+    pub(crate) resolved_path: Option<String>,
+    pub(crate) resolution: PathDependencyResolution,
+    pub(crate) source: PathDependencySource,
+}
+
+/// Machine-visible kind of a path-dependency capture limitation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum PathDependencyLimitationKind {
+    /// A manifest's repo-relative path is not UTF-8, so no portable identity
+    /// exists and edge capture was skipped for that manifest.
+    NonUtf8ManifestPath,
+    /// A manifest could not be decoded as UTF-8 or parsed as TOML, so no
+    /// declarations were visible and edge capture was skipped for it.
+    ManifestUnparsed,
+    /// A `[package] workspace = "..."` redirect was not followed: the
+    /// manifest's `workspace = true` dependencies were resolved against the
+    /// nearest ancestor workspace root instead of the redirected one, so the
+    /// inherited edge set for this manifest may be wrong or incomplete.
+    UnfollowedWorkspaceRedirect,
+}
+
+/// One typed path-dependency capture limitation. A non-empty
+/// [`WorkspaceGraphProvenance::path_dependency_limitations`] list means
+/// `path_dependency_edges` is a partial inventory and must not be treated as
+/// a complete path-dependency graph.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct PathDependencyLimitation {
+    /// Repo-relative manifest the limitation belongs to, `/`-separated.
+    /// Empty when the manifest path itself is not UTF-8 (the lossy spelling
+    /// is carried in `detail` instead of a fabricated identity).
+    pub(crate) manifest: String,
+    pub(crate) kind: PathDependencyLimitationKind,
+    /// Human-readable detail for diagnostics; `kind` is the machine contract.
+    pub(crate) detail: String,
+}
+
 /// Producer-owned provenance for the local Cargo package and feature graphs.
 /// External dependency metadata is never resolved here: targeted reruns must
 /// not perform network work or imply that registry graph facts were observed.
@@ -1577,10 +1992,21 @@ pub(crate) struct WorkspaceGraphProvenance {
     pub(crate) feature_graph_detail: Option<String>,
     pub(crate) external_dependency_graph_status: String,
     pub(crate) external_dependency_graph_detail: String,
-    /// #2968: path dependencies discovered in Cargo.toml `[dependencies]`
-    /// tables with `path = "..."` values. Each entry is `(from_manifest, dep_name, resolved_path)`.
-    /// Preserved but not yet walked (#2969/#2970 consume this).
-    pub(crate) path_dependency_edges: Vec<(String, String, String)>,
+    /// #2968/#3037: typed path-dependency edges captured from Cargo manifests;
+    /// see [`PathDependencyEdge`] for the exact V1 denominator. Preserved but
+    /// not yet walked (#2969/#2970 consume this).
+    ///
+    /// Currentness contract: this field is deliberately excluded from
+    /// `package_graph_hash` (the hash predates the field and covers package /
+    /// feature facts only). Edges are recomputed on every provenance build,
+    /// so consumers must rebuild provenance for current edges and must not
+    /// read hash stability as edge stability.
+    pub(crate) path_dependency_edges: Vec<PathDependencyEdge>,
+    /// Typed capture limitations (for example a non-UTF-8 manifest path or an
+    /// unfollowed `[package] workspace = "..."` redirect). A non-empty list
+    /// means `path_dependency_edges` is a partial inventory and must not be
+    /// treated as a complete path-dependency graph.
+    pub(crate) path_dependency_limitations: Vec<PathDependencyLimitation>,
 }
 
 /// Read local Cargo manifests and derive deterministic package/feature graph
@@ -1605,22 +2031,62 @@ pub(crate) fn workspace_graph_provenance(root: &Path) -> WorkspaceGraphProvenanc
         };
     }
 
-    let mut package_facts = Vec::new();
-    let mut path_dep_edges: Vec<(String, String, String)> = Vec::new();
-    let mut feature_facts = Vec::new();
     let mut parse_errors = Vec::new();
+    let mut unparsed_manifests = Vec::new();
+    let mut parsed_manifests = Vec::new();
     for (path, bytes) in &manifests {
         let path_text = path.to_string_lossy().replace('\\', "/");
-        let value = match std::str::from_utf8(bytes)
+        match std::str::from_utf8(bytes)
             .map_err(|err| err.to_string())
             .and_then(|text| toml::from_str::<toml::Value>(text).map_err(|err| err.to_string()))
         {
-            Ok(value) => value,
+            Ok(value) => parsed_manifests.push((path, path_text, value)),
             Err(err) => {
                 parse_errors.push(format!("{path_text}: {err}"));
-                continue;
+                unparsed_manifests.push((path_text.clone(), err));
             }
+        }
+    }
+
+    // Inheritance authority for `workspace = true` dependencies: for every
+    // manifest with a `[workspace]` table, the repo-relative directory text
+    // and the `(name, path)` entries of its `[workspace.dependencies]`
+    // (`None` path = version-only registry entry). A non-UTF-8 workspace
+    // root is not an authority (the same boundary as edge capture); its
+    // members report `UnresolvedWorkspaceInheritance`.
+    let mut workspace_tables: WorkspaceDependencyTables = Vec::new();
+    for (path, _, value) in &parsed_manifests {
+        let Some(workspace) = value.get("workspace").and_then(toml::Value::as_table) else {
+            continue;
         };
+        let Some(dir_text) = portable_manifest_dir_text(path) else {
+            continue;
+        };
+        let entries = workspace
+            .get("dependencies")
+            .and_then(toml::Value::as_table)
+            .map(|table| {
+                table
+                    .iter()
+                    .map(|(name, dep)| {
+                        let declared = dep
+                            .as_table()
+                            .and_then(|dep_table| dep_table.get("path"))
+                            .and_then(toml::Value::as_str)
+                            .map(str::to_string);
+                        (name.clone(), declared)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        workspace_tables.push((dir_text, entries));
+    }
+
+    let mut package_facts = Vec::new();
+    let mut path_dep_edges: Vec<PathDependencyEdge> = Vec::new();
+    let mut path_dep_limitations: Vec<PathDependencyLimitation> = Vec::new();
+    let mut feature_facts = Vec::new();
+    for (path, path_text, value) in &parsed_manifests {
         let package = value.get("package").and_then(toml::Value::as_table);
         let package_name = package
             .and_then(|table| table.get("name"))
@@ -1639,22 +2105,49 @@ pub(crate) fn workspace_graph_provenance(root: &Path) -> WorkspaceGraphProvenanc
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
-        // #2968: also preserve path-dep values so #2969 can build the adjacency graph.
-        let manifest_dir = path.parent().unwrap_or(Path::new("."));
-        for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
-            if let Some(table) = value.get(section).and_then(toml::Value::as_table) {
-                for (dep_name, dep_value) in table {
-                    if let Some(path_str) = dep_value
-                        .as_table()
-                        .and_then(|t| t.get("path"))
-                        .and_then(toml::Value::as_str)
-                    {
-                        let resolved = manifest_dir.join(path_str);
-                        let resolved_str = resolved.to_string_lossy().replace('\\', "/");
-                        path_dep_edges.push((path_text.clone(), dep_name.clone(), resolved_str));
-                    }
+        // #2968/#3037: capture typed path-dependency edges for #2969/#2970.
+        // A non-UTF-8 manifest path cannot produce a portable repo-relative
+        // identity, so it contributes a limitation instead of lossy edges.
+        match portable_manifest_dir_text(path) {
+            Some(dir_text) => {
+                let workspace_redirect = package
+                    .and_then(|table| table.get("workspace"))
+                    .and_then(toml::Value::as_str);
+                let inherited = collect_path_dependency_edges(
+                    root,
+                    path_text,
+                    &dir_text,
+                    value,
+                    &workspace_tables,
+                    &mut path_dep_edges,
+                );
+                // A `[package] workspace = "..."` redirect is never followed:
+                // inherited dependencies resolve against the nearest ancestor
+                // workspace root. When the manifest actually declares
+                // `workspace = true` dependencies, that gap makes the
+                // inventory potentially partial and must be machine-visible.
+                if let Some(redirect) = workspace_redirect
+                    && inherited > 0
+                {
+                    path_dep_limitations.push(PathDependencyLimitation {
+                        manifest: path_text.clone(),
+                        kind: PathDependencyLimitationKind::UnfollowedWorkspaceRedirect,
+                        detail: format!(
+                            "`[package] workspace = \"{redirect}\"` redirect not followed; \
+                             {inherited} `workspace = true` dependencies resolved against \
+                             the nearest ancestor workspace root instead"
+                        ),
+                    });
                 }
             }
+            None => path_dep_limitations.push(PathDependencyLimitation {
+                manifest: String::new(),
+                kind: PathDependencyLimitationKind::NonUtf8ManifestPath,
+                detail: format!(
+                    "path-dependency edges not captured for a manifest with a non-UTF-8 \
+                     repo-relative path (lossy spelling: {path_text})"
+                ),
+            }),
         }
         package_facts.push(format!(
             "{path_text}\0package={package_name}\0members={workspace_members}\0dependencies={dependencies:?}"
@@ -1688,6 +2181,16 @@ pub(crate) fn workspace_graph_provenance(root: &Path) -> WorkspaceGraphProvenanc
     };
     package_facts.sort();
     feature_facts.sort();
+    path_dep_edges.sort();
+    path_dep_edges.dedup();
+    for (manifest, detail) in unparsed_manifests {
+        path_dep_limitations.push(PathDependencyLimitation {
+            manifest,
+            kind: PathDependencyLimitationKind::ManifestUnparsed,
+            detail: format!("path-dependency edges not captured: {detail}"),
+        });
+    }
+    path_dep_limitations.sort();
     WorkspaceGraphProvenance {
         package_graph_status: package_graph_status.to_string(),
         package_graph_hash: (!package_facts.is_empty())
@@ -1700,7 +2203,259 @@ pub(crate) fn workspace_graph_provenance(root: &Path) -> WorkspaceGraphProvenanc
         external_dependency_graph_detail:
             "external dependency metadata is not resolved; no network access was used".to_string(),
         path_dependency_edges: path_dep_edges,
+        path_dependency_limitations: path_dep_limitations,
     }
+}
+
+/// Repo-relative, `/`-separated directory text of a manifest path, or `None`
+/// when the path is not valid UTF-8 (the supported-path boundary: no lossy
+/// conversion). The root manifest's directory is the empty string.
+fn portable_manifest_dir_text(manifest_path: &Path) -> Option<String> {
+    let dir = manifest_path.parent().unwrap_or_else(|| Path::new(""));
+    Some(dir.to_str()?.replace('\\', "/"))
+}
+
+/// True when a declared Cargo path is absolute in either the POSIX or
+/// Windows drive-prefixed sense. Absolute paths are valid Cargo inputs, but
+/// they cannot be represented as repo-relative identities without observing
+/// the host filesystem root.
+fn is_absolute_declared_path(declared: &str) -> bool {
+    // A `/`-rooted path is absolute on every host: Cargo on Windows still
+    // resolves `/opt/shared` against the current drive root. Remaining
+    // forms (drive and UNC roots) follow host path semantics, so on Unix
+    // `a:b` and `..\\shared` stay relative.
+    if declared.starts_with('/') {
+        return true;
+    }
+    Path::new(declared).is_absolute()
+}
+
+/// Classify a lexically resolved repo-relative path target. A path
+/// dependency resolves only when its target is an existing directory
+/// that contains a Cargo.toml manifest; a bare directory cannot satisfy
+/// the dependency, so it must not count as `Resolved` and become a
+/// manifest node downstream (#3613 review).
+fn classify_repo_relative_target(root: &Path, resolved: &str) -> PathDependencyResolution {
+    let target = root.join(resolved);
+    if target.is_dir() && target.join("Cargo.toml").is_file() {
+        PathDependencyResolution::Resolved
+    } else {
+        PathDependencyResolution::TargetMissing
+    }
+}
+
+/// Lexically resolve a `/`-separated declared path against a `/`-separated
+/// repo-relative directory, without touching the filesystem. The caller
+/// passes the host resolution form: on Windows hosts `\` has been normalized
+/// to `/`; on Unix hosts `\` is a legal filename character and is preserved.
+/// Returns the normalized identity; `escaped` is true when resolution climbs
+/// above the scan root, in which case the identity keeps its leading `..`
+/// segments.
+fn resolve_repo_relative(base: &str, declared: &str) -> (String, bool) {
+    let mut components: Vec<&str> = base
+        .split('/')
+        .filter(|component| !component.is_empty() && *component != ".")
+        .collect();
+    for component in declared.split('/') {
+        match component {
+            "" | "." => {}
+            ".." => match components.last() {
+                Some(&"..") | None => components.push(".."),
+                Some(_) => {
+                    components.pop();
+                }
+            },
+            _ => components.push(component),
+        }
+    }
+    let escaped = components.first() == Some(&"..");
+    (components.join("/"), escaped)
+}
+
+/// Find the path authority for a `workspace = true` dependency: the nearest
+/// ancestor directory (inclusive) with a `[workspace]` manifest, then the
+/// dependency's entry in its `[workspace.dependencies]`. Returns the
+/// workspace root directory text and the entry's declared path (`None` =
+/// version-only registry entry, not a path edge). `None` overall means no
+/// authority was found at all.
+fn workspace_dependency_path(
+    workspace_tables: &WorkspaceDependencyTables,
+    manifest_dir: &str,
+    dependency_name: &str,
+) -> Option<(String, Option<String>)> {
+    let mut ancestor = manifest_dir.to_string();
+    loop {
+        if let Some((_, entries)) = workspace_tables.iter().find(|(dir, _)| dir == &ancestor) {
+            return entries
+                .iter()
+                .find(|(name, _)| name == dependency_name)
+                .map(|(_, path)| (ancestor.clone(), path.clone()));
+        }
+        if ancestor.is_empty() {
+            return None;
+        }
+        ancestor = ancestor
+            .rsplit_once('/')
+            .map(|(head, _)| head.to_string())
+            .unwrap_or_default();
+    }
+}
+
+/// Capture the V1 path-dependency edge denominator (see
+/// [`PathDependencyEdge`]) from one parsed manifest. Returns the number of
+/// `workspace = true` inheritance declarations seen, so the caller can flag
+/// an unfollowed `[package] workspace = "..."` redirect when inheritance was
+/// actually in play.
+fn collect_path_dependency_edges(
+    root: &Path,
+    manifest_text: &str,
+    manifest_dir: &str,
+    value: &toml::Value,
+    workspace_tables: &WorkspaceDependencyTables,
+    edges: &mut Vec<PathDependencyEdge>,
+) -> usize {
+    let mut workspace_inherited_count = 0usize;
+    let mut collect_section = |section: PathDependencySection,
+                               target: Option<&str>,
+                               table: &toml::Table| {
+        for (dependency_name, dep_value) in table {
+            let Some(dep_table) = dep_value.as_table() else {
+                // String form (`dep = "1.0"`): registry declaration, never a
+                // path edge.
+                continue;
+            };
+            let workspace_inherited =
+                dep_table.get("workspace").and_then(toml::Value::as_bool) == Some(true);
+            if let Some(declared) = dep_table.get("path").and_then(toml::Value::as_str) {
+                // The recorded declaration keeps the manifest's raw spelling;
+                // only resolution applies host path semantics (`\` is a
+                // separator on Windows hosts, a filename character on Unix).
+                let declared = declared.to_string();
+                #[cfg(windows)]
+                let resolution_form = declared.replace('\\', "/");
+                #[cfg(not(windows))]
+                let resolution_form = declared.clone();
+                if workspace_inherited {
+                    // `path` + `workspace = true` is Cargo-invalid: Cargo
+                    // rejects it when the name is absent from
+                    // `[workspace.dependencies]` and otherwise the workspace
+                    // entry wins, so honoring the member's explicit `path`
+                    // would misstate Cargo semantics. Retain the declaration
+                    // as a typed invalid edge instead of a resolved one.
+                    edges.push(PathDependencyEdge {
+                        from_manifest: manifest_text.to_string(),
+                        section,
+                        target: target.map(str::to_string),
+                        dependency_name: dependency_name.clone(),
+                        declared_path: Some(declared),
+                        resolved_path: None,
+                        resolution: PathDependencyResolution::InvalidDeclaration,
+                        source: PathDependencySource::Package,
+                    });
+                    continue;
+                }
+                let (resolved_path, resolution) = if is_absolute_declared_path(&resolution_form) {
+                    (None, PathDependencyResolution::UnsupportedAbsolutePath)
+                } else {
+                    let (resolved, escaped) = resolve_repo_relative(manifest_dir, &resolution_form);
+                    let resolution = if escaped {
+                        PathDependencyResolution::ResolvedOutsideWorkspace
+                    } else {
+                        classify_repo_relative_target(root, &resolved)
+                    };
+                    (Some(resolved), resolution)
+                };
+                edges.push(PathDependencyEdge {
+                    from_manifest: manifest_text.to_string(),
+                    section,
+                    target: target.map(str::to_string),
+                    dependency_name: dependency_name.clone(),
+                    declared_path: Some(declared),
+                    resolved_path,
+                    resolution,
+                    source: PathDependencySource::Package,
+                });
+            } else if workspace_inherited {
+                workspace_inherited_count += 1;
+                match workspace_dependency_path(workspace_tables, manifest_dir, dependency_name) {
+                    Some((root_dir, Some(declared))) => {
+                        #[cfg(windows)]
+                        let resolution_form = declared.replace('\\', "/");
+                        #[cfg(not(windows))]
+                        let resolution_form = declared.clone();
+                        let (resolved_path, resolution) =
+                            if is_absolute_declared_path(&resolution_form) {
+                                (None, PathDependencyResolution::UnsupportedAbsolutePath)
+                            } else {
+                                let (resolved, escaped) =
+                                    resolve_repo_relative(&root_dir, &resolution_form);
+                                let resolution = if escaped {
+                                    PathDependencyResolution::ResolvedOutsideWorkspace
+                                } else {
+                                    classify_repo_relative_target(root, &resolved)
+                                };
+                                (Some(resolved), resolution)
+                            };
+                        edges.push(PathDependencyEdge {
+                            from_manifest: manifest_text.to_string(),
+                            section,
+                            target: target.map(str::to_string),
+                            dependency_name: dependency_name.clone(),
+                            declared_path: Some(declared),
+                            resolved_path,
+                            resolution,
+                            source: PathDependencySource::WorkspaceInherited,
+                        });
+                    }
+                    Some((_, None)) => {
+                        // Version-only workspace entry: a registry
+                        // inheritance, not a path edge.
+                    }
+                    None => edges.push(PathDependencyEdge {
+                        from_manifest: manifest_text.to_string(),
+                        section,
+                        target: target.map(str::to_string),
+                        dependency_name: dependency_name.clone(),
+                        declared_path: None,
+                        resolved_path: None,
+                        resolution: PathDependencyResolution::UnresolvedWorkspaceInheritance,
+                        source: PathDependencySource::WorkspaceInherited,
+                    }),
+                }
+            }
+            // Table-form entries with neither `path` nor `workspace = true`
+            // are registry/git declarations, not path edges.
+        }
+    };
+
+    for (section_name, section) in [
+        ("dependencies", PathDependencySection::Dependencies),
+        ("dev-dependencies", PathDependencySection::DevDependencies),
+        (
+            "build-dependencies",
+            PathDependencySection::BuildDependencies,
+        ),
+    ] {
+        if let Some(table) = value.get(section_name).and_then(toml::Value::as_table) {
+            collect_section(section, None, table);
+        }
+    }
+    if let Some(targets) = value.get("target").and_then(toml::Value::as_table) {
+        for (spec, target_value) in targets {
+            let Some(target_value) = target_value.as_table() else {
+                continue;
+            };
+            for (section_name, table) in target_value {
+                if let (Some(section), Some(table)) = (
+                    PathDependencySection::from_table_name(section_name),
+                    table.as_table(),
+                ) {
+                    collect_section(section, Some(spec), table);
+                }
+            }
+        }
+    }
+    workspace_inherited_count
 }
 
 fn canonical_toml_value(value: &toml::Value) -> String {
@@ -1714,6 +2469,45 @@ fn hash_bytes(bytes: &[u8]) -> String {
 fn hash_named_workspace_files(root: &Path, file_name: &str) -> String {
     workspace_named_file_identity(root, file_name)
         .unwrap_or_else(|| hash_str("<no matching workspace files>"))
+}
+
+/// Hash the adapter-owned workspace identities that can change analysis.
+/// Cargo consumes manifest contents recursively. The Python inputs tracked
+/// here are presence-only, exactly as no-config detection consumes them:
+/// root marker files and detectable Python source below root `src`/`tests`
+/// (bounded to two presence booleans — never a per-file enumeration).
+/// Content-only edits intentionally preserve this identity while creation
+/// and deletion invalidate it. Generated files and excluded directories do
+/// not participate: detection ignores them, so binding them would orphan
+/// cache entries without any input change.
+fn hash_workspace_manifests(root: &Path) -> String {
+    let cargo_identity = hash_named_workspace_files(root, "Cargo.toml");
+    let present_python_markers: Vec<&str> = PYTHON_PROJECT_MARKERS
+        .iter()
+        .copied()
+        .filter(|marker| root.join(marker).is_file())
+        .collect();
+    let detectable_source_dirs: Vec<&str> = PYTHON_SOURCE_DIR_MARKERS
+        .iter()
+        .copied()
+        .filter(|dir| source_dir_contains_detectable_python(root, dir))
+        .collect();
+    if present_python_markers.is_empty() && detectable_source_dirs.is_empty() {
+        return cargo_identity;
+    }
+
+    let mut identity = format!("cargo={cargo_identity}\n");
+    for marker in present_python_markers {
+        identity.push_str("python_marker=");
+        identity.push_str(marker);
+        identity.push('\n');
+    }
+    for dir in detectable_source_dirs {
+        identity.push_str("python_source_dir=");
+        identity.push_str(dir);
+        identity.push('\n');
+    }
+    hash_str(&identity)
 }
 
 /// Return the deterministic identity of all matching workspace files.
@@ -1815,6 +2609,20 @@ fn workspace_file_identity(mut files: Vec<(PathBuf, Vec<u8>)>) -> Option<String>
     (!input.is_empty()).then(|| hash_str(&input))
 }
 
+/// Directories every workspace manifest/lockfile scan skips. Shared by the
+/// content-collecting walks and the path-only inventory walk so the
+/// discovered-manifest identities behind
+/// [`workspace_manifest_dir_prefixes`] can never drift from the manifests
+/// `workspace_graph_provenance` parsed.
+const WORKSPACE_SCAN_SKIPPED_DIRS: [&str; 6] = [
+    ".git",
+    ".ripr",
+    "target",
+    "fixtures",
+    ".direnv",
+    "node_modules",
+];
+
 fn collect_named_workspace_files_by_name(
     root: &Path,
     directory: &Path,
@@ -1830,10 +2638,7 @@ fn collect_named_workspace_files_by_name(
             .and_then(|value| value.to_str())
             .unwrap_or("");
         if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
-            if matches!(
-                name,
-                ".git" | ".ripr" | "target" | "fixtures" | ".direnv" | "node_modules"
-            ) {
+            if WORKSPACE_SCAN_SKIPPED_DIRS.contains(&name) {
                 continue;
             }
             collect_named_workspace_files_by_name(root, &path, files);
@@ -1863,10 +2668,7 @@ fn collect_named_workspace_files(
             .and_then(|value| value.to_str())
             .unwrap_or("");
         if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
-            if matches!(
-                name,
-                ".git" | ".ripr" | "target" | "fixtures" | ".direnv" | "node_modules"
-            ) {
+            if WORKSPACE_SCAN_SKIPPED_DIRS.contains(&name) {
                 continue;
             }
             collect_named_workspace_files(root, &path, file_name, files);
@@ -1875,6 +2677,52 @@ fn collect_named_workspace_files(
             let bytes =
                 std::fs::read(&path).unwrap_or_else(|_| b"<workspace input unreadable>".to_vec());
             files.push((relative, bytes));
+        }
+    }
+}
+
+/// Directory prefixes (`/`-separated, trailing `/`, root manifest as the
+/// empty prefix, sorted) of every Cargo.toml the workspace scan discovers.
+/// Path-only: no manifest content is read. The #2970 diff-scope expansion
+/// uses this real manifest inventory to attribute changed files that the
+/// layout heuristics cannot place (custom Cargo target paths, #3616
+/// review) to the nearest owning manifest directory.
+pub(crate) fn workspace_manifest_dir_prefixes(root: &Path) -> Vec<String> {
+    let mut prefixes = Vec::new();
+    collect_manifest_dir_prefixes(root, root, &mut prefixes);
+    prefixes.sort();
+    prefixes.dedup();
+    prefixes
+}
+
+fn collect_manifest_dir_prefixes(root: &Path, directory: &Path, prefixes: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("");
+        if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            if WORKSPACE_SCAN_SKIPPED_DIRS.contains(&name) {
+                continue;
+            }
+            collect_manifest_dir_prefixes(root, &path, prefixes);
+        } else if name == "Cargo.toml" {
+            let dir = path
+                .parent()
+                .unwrap_or_else(|| Path::new(""))
+                .strip_prefix(root)
+                .unwrap_or_else(|_| Path::new(""))
+                .to_string_lossy()
+                .replace('\\', "/");
+            prefixes.push(if dir.is_empty() {
+                String::new()
+            } else {
+                format!("{dir}/")
+            });
         }
     }
 }
@@ -1902,6 +2750,161 @@ mod tests {
     use crate::analysis::test_grip_evidence::TestGripEvidence;
     use crate::domain::{Confidence, StageEvidence, StageState};
     use std::path::PathBuf;
+
+    /// Cache-bump pin: composed source roles change every cached
+    /// derivation that embeds them (#3533), and trial evidence parity
+    /// changes classified-seam content for registered-harness workspaces
+    /// (#3603). Each version here was bumped on purpose; a future change
+    /// must move these pins in the same PR as its semantic change so no
+    /// warm cache serves stale roles.
+    #[test]
+    fn schema_versions_pin_the_role_composition_generation() {
+        // 0.9 -> 1.0: comment/string masking changed the extracted
+        // FileFacts.calls/literals content (#3633 review). Still no bump
+        // for the harness registry itself: it re-applies after the
+        // file-fact cache loads, so #3636 cannot be bypassed by a warm
+        // file-fact hit.
+        // 1.0 -> 1.1: the guarded-Result-match oracle (#3709) changed the
+        // extracted FileFacts assertions vocabulary (new
+        // `guarded_result_match` kind and statement suppression), so a
+        // warm pre-extension file-fact hit cannot reuse the old oracle
+        // semantics.
+        // 1.1 -> 1.2: the guarded-Result-match grammar gained the
+        // guarded-routing form (guarded accept arm + loud catch-all, no
+        // `Ok` arm), changing both which statements are suppressed from
+        // the generic joiners and which oracle facts are emitted. A warm
+        // 1.1 hit demonstrably replays the pre-routing classification
+        // (observed on a real fixture during #3709), so the generation
+        // moves again.
+        // 1.2 -> 1.3: the #3731 review fixes changed the guarded grammar
+        // again (bounded depth-0 terminal-arm grammar, first-comma
+        // `matches!` pattern slice, bare-scrutinee shadow gate), so a
+        // warm pre-fix 1.2 hit would serve conditional-failure matches
+        // and message-sliced pins as live oracle facts.
+        // 1.3 -> 1.4: the #3731 review round-4 fixes change which guarded
+        // oracles exist again (successful exits stop terminating arms; a
+        // downcast pin requires the cast's own observed result, with
+        // expect/unwrap as observers), so a warm pre-fix 1.3 hit would
+        // serve successful-exit and unobserved-downcast oracles as live
+        // facts.
+        // 1.4 -> 1.5: the #3731 review round-5 fixes change which guarded
+        // oracles exist again (binding-rooted guard-equality pins,
+        // first-control-transfer termination, every-arm pin collection),
+        // so a warm pre-fix 1.4 hit would serve unrelated-guard pins,
+        // successful-transfer arms, and single-pin texts as live facts.
+        // 1.5 -> 1.6: the #3731 review round-6 fixes change which guarded
+        // oracles exist again (divergence-participating body pins,
+        // escape-free if-form termination, per-pin truncation with an
+        // untruncated join), so a warm pre-fix 1.5 hit would serve
+        // dead-computation pins, escape-path arms, and overall-truncated
+        // pin lists as live facts.
+        // 1.6 -> 1.7: the guarded facts gain the Ok-arm observation
+        // decision (RIPR-SPEC-0175), so a warm pre-bump hit would serve
+        // routing-form and payload-ignoring facts without the decision as
+        // live facts.
+        // 1.7 -> 1.8: the parser-backed shadow facts (#3727 Slice A,
+        // RIPR-SPEC-0175) — `nested_fn_names`/`let_bindings` on
+        // `FunctionFact`/`TestFact` plus the flag-law shadow-authority
+        // switch in both consumers. A warm pre-bump hit would serve
+        // parser-backed files without the fact fields, and the flag law
+        // reads empty facts on those files as real "no shadow" — silently
+        // retiring the lexical scanners' defeats.
+        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.8");
+        // 1.4 -> 1.5: metadata-sourced harness validation (#3634) flips
+        // verdicts for workspaces the manifest emulation approximated.
+        // 1.5 -> 1.6: the #3636 reachability authority excludes
+        // unreachable harness trial constructions from the
+        // executable-test denominator.
+        // 1.6 -> 1.7 / 1.7 -> 1.8 / 1.8 -> 1.9 / 1.9 -> 1.10: the #3731
+        // review fixes (and their round-4, round-5, and round-6
+        // continuations) change which guarded oracles exist and what they
+        // confirm (terminal grammar, first-comma slice, bare-scrutinee and
+        // exact-variant confirmation gates, successful exits, observed-cast
+        // pins, foreign-import and callee-identity gates, binding-rooted
+        // guard pins, first-transfer termination, all-arm pin collection,
+        // bare-only repo scrutinees, nested-import defeats, lib-target
+        // own-crate names, divergence-participating body pins, escape-free
+        // if-forms, cross-package same-name defeats), so classified seams
+        // derived from pre-fix oracle facts must miss.
+        // 1.10 -> 1.11: the guarded facts gain the Ok-arm observation
+        // decision (RIPR-SPEC-0175) and the confirmation gates require it
+        // for success-payload return-value probes and seams.
+        // 1.11 -> 1.12: the parser-backed shadow facts (#3727 Slice A,
+        // RIPR-SPEC-0175) switch the shadow authority behind the
+        // `SeamCalleeCall` relation and the guarded-match oracle on the
+        // file's `used_lexical_fallback` flag. The classified cache loads
+        // BEFORE any file-fact rebuild, so the 1.8 file-fact bump cannot
+        // reach it — a warm pre-bump classified hit would serve pre-#3727
+        // shadow classification for warm workspaces indefinitely.
+        assert_eq!(CACHE_SCHEMA_VERSION, "1.12");
+        // 0.12 -> 0.13 through 0.14 / 0.15 / 0.16 / 0.17 / 0.18: same
+        // #3731 semantic transition as the outer classified-seam cache,
+        // for the sharded and compact envelopes.
+        // 0.18 (sharded) / 0.19 (compact): the #3727 Slice A shadow
+        // authority transition — same semantic transition as the outer
+        // classified-seam cache.
+        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.18");
+        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.19");
+    }
+
+    #[test]
+    fn file_fact_generation_before_the_guarded_grammar_fixes_is_a_miss() -> Result<(), String> {
+        // #3731 review (warm caches hide guarded evidence): the guarded
+        // grammar fixes change which oracle facts extraction emits
+        // (bounded depth-0 terminal arms, first-comma `matches!` slices).
+        // An envelope seeded under the pre-fix 1.2 generation must miss
+        // the current generation's key with identical identity fields, so
+        // a warm hit cannot replay conditional-failure matches and
+        // message-sliced pins as live evidence.
+        let dir = isolated_dir("gen-guarded-fix-facts");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoFileFactCache::at_dir(dir.clone());
+        let file = Path::new("src/guarded.rs");
+        let content = "fn t() {
+    match parse(input) {
+        Ok(v) => {}
+        Err(e) => panic!(\"{e}\")
+    }
+}
+"
+        .as_bytes()
+        .to_vec();
+        let previous_key = RepoFileFactCacheKey {
+            schema_version: "1.2".to_string(),
+            analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
+            file_path: file.to_path_buf(),
+            // Production derives this field via `hash_bytes`, so the seed
+            // must too: the only difference from the current key is then
+            // the schema generation, making the miss prove the boundary.
+            content_hash: hash_bytes(&content),
+        };
+        cache.store_file_facts(&previous_key, &FileFacts::default())?;
+        assert!(cache.entry_path(&previous_key).exists());
+
+        // The current generation's key with identical identity must miss.
+        let current_key = RepoFileFactCacheKey::new(file, &content);
+        assert_ne!(previous_key.schema_version, current_key.schema_version);
+        match cache.load_file_facts(&current_key) {
+            CacheLoad::Miss => {}
+            other => {
+                return Err(format!(
+                    "expected Miss across the #3731 file-fact generation transition, got {other:?}"
+                ));
+            }
+        }
+        // Seed sanity: the previous key still reads its own envelope; it
+        // is only reachable by a key current code never constructs.
+        match cache.load_file_facts(&previous_key) {
+            CacheLoad::Hit(_) => {}
+            other => {
+                return Err(format!(
+                    "seed sanity: previous key should read its own envelope, got {other:?}"
+                ));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
 
     fn sample_classified() -> ClassifiedSeam {
         let seam = RepoSeam::new(
@@ -2358,6 +3361,131 @@ mod tests {
     }
 
     #[test]
+    fn python_project_marker_presence_changes_cache_identity() -> Result<(), String> {
+        let root = isolated_dir("python-project-marker-inputs");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| format!("create workspace: {err}"))?;
+        let cache_key = || {
+            WorkspaceState {
+                workspace_root: &root,
+                files: &[],
+                cfg_features: None,
+                config_text: None,
+                test_intent_text: None,
+                suppressions_text: None,
+            }
+            .cache_key()
+        };
+        let baseline = cache_key();
+
+        for marker in PYTHON_PROJECT_MARKERS {
+            let marker_path = root.join(marker);
+            std::fs::write(&marker_path, "first")
+                .map_err(|err| format!("write {marker}: {err}"))?;
+            let present = cache_key();
+            assert_ne!(
+                baseline.workspace_manifests_hash, present.workspace_manifests_hash,
+                "creating {marker} must invalidate the cache identity"
+            );
+            assert_ne!(baseline.filename(), present.filename());
+
+            std::fs::write(&marker_path, "second")
+                .map_err(|err| format!("rewrite {marker}: {err}"))?;
+            let edited = cache_key();
+            assert_eq!(
+                present.workspace_manifests_hash, edited.workspace_manifests_hash,
+                "Python detection consumes {marker} presence, not contents"
+            );
+
+            std::fs::remove_file(&marker_path).map_err(|err| format!("remove {marker}: {err}"))?;
+            let removed = cache_key();
+            assert_eq!(
+                baseline.workspace_manifests_hash, removed.workspace_manifests_hash,
+                "removing {marker} must restore the baseline identity"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn python_source_dir_presence_changes_cache_identity() -> Result<(), String> {
+        let root = isolated_dir("python-source-dir-inputs");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| format!("create workspace: {err}"))?;
+        let cache_key = || {
+            WorkspaceState {
+                workspace_root: &root,
+                files: &[],
+                cfg_features: None,
+                config_text: None,
+                test_intent_text: None,
+                suppressions_text: None,
+            }
+            .cache_key()
+        };
+        let baseline = cache_key();
+
+        for dir in PYTHON_SOURCE_DIR_MARKERS {
+            std::fs::create_dir_all(root.join(dir))
+                .map_err(|err| format!("create {dir}: {err}"))?;
+            let source_file = root.join(dir).join("pricing.py");
+            std::fs::write(&source_file, "first").map_err(|err| format!("write {dir}: {err}"))?;
+            let present = cache_key();
+            assert_ne!(
+                baseline.workspace_manifests_hash, present.workspace_manifests_hash,
+                "creating the first {dir} source must invalidate the cache identity"
+            );
+            assert_ne!(baseline.filename(), present.filename());
+
+            std::fs::write(&source_file, "second")
+                .map_err(|err| format!("rewrite {dir}: {err}"))?;
+            let edited = cache_key();
+            assert_eq!(
+                present.workspace_manifests_hash, edited.workspace_manifests_hash,
+                "Python detection consumes {dir} source presence, not contents"
+            );
+
+            std::fs::remove_file(&source_file).map_err(|err| format!("remove {dir}: {err}"))?;
+            let removed = cache_key();
+            assert_eq!(
+                baseline.workspace_manifests_hash, removed.workspace_manifests_hash,
+                "removing the last {dir} source must restore the baseline identity"
+            );
+
+            // Nested sources are covered by recursive detection.
+            std::fs::create_dir_all(root.join(dir).join("pkg"))
+                .map_err(|err| format!("create {dir}/pkg: {err}"))?;
+            let nested_file = root.join(dir).join("pkg").join("mod.py");
+            std::fs::write(&nested_file, "x").map_err(|err| format!("write {dir}/pkg: {err}"))?;
+            let nested = cache_key();
+            assert_ne!(
+                baseline.workspace_manifests_hash, nested.workspace_manifests_hash,
+                "nested {dir} sources participate in detection identity"
+            );
+            std::fs::remove_file(&nested_file).map_err(|err| format!("remove {dir}/pkg: {err}"))?;
+        }
+
+        // Generated and excluded-directory files are not detection inputs,
+        // so they must not invalidate the identity either.
+        std::fs::create_dir_all(root.join("src").join(".venv"))
+            .map_err(|err| format!("create src/.venv: {err}"))?;
+        std::fs::write(root.join("src").join("client_pb2.py"), "x")
+            .map_err(|err| format!("write generated: {err}"))?;
+        std::fs::write(root.join("src").join(".venv").join("lib.py"), "x")
+            .map_err(|err| format!("write excluded: {err}"))?;
+        let irrelevant = cache_key();
+        assert_eq!(
+            baseline.workspace_manifests_hash, irrelevant.workspace_manifests_hash,
+            "generated and excluded-directory sources never change detection"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
     fn workspace_manifest_and_lockfile_changes_change_cache_identity() -> Result<(), String> {
         let root = isolated_dir("workspace-inputs");
         let _ = std::fs::remove_dir_all(&root);
@@ -2535,6 +3663,1001 @@ mod tests {
         assert_eq!(malformed.feature_graph_status, "limited");
         assert!(malformed.package_graph_detail.is_some());
         assert!(malformed.feature_graph_detail.is_some());
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    fn write_manifest(root: &Path, relative: &str, text: &str) -> Result<(), String> {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| format!("create {}: {err}", parent.display()))?;
+        }
+        std::fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
+    }
+
+    #[test]
+    fn resolve_repo_relative_normalizes_lexically() {
+        assert_eq!(
+            resolve_repo_relative("crates/app", "../shared"),
+            ("crates/shared".to_string(), false)
+        );
+        assert_eq!(
+            resolve_repo_relative("crates/app", "../../../outside"),
+            ("../outside".to_string(), true)
+        );
+        assert_eq!(
+            resolve_repo_relative("", "a/./b/../c"),
+            ("a/c".to_string(), false)
+        );
+        assert_eq!(resolve_repo_relative("a", ".."), (String::new(), false));
+        assert_eq!(
+            resolve_repo_relative("", "../../deep"),
+            ("../../deep".to_string(), true)
+        );
+    }
+
+    #[test]
+    fn path_dependency_edges_capture_package_dev_and_build_sections() -> Result<(), String> {
+        let root = isolated_dir("path-dep-sections");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\"]\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/shared/Cargo.toml",
+            "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nshared = { path = \"../shared\" }\n\n\
+             [dev-dependencies]\ndevhelper = { path = \"../shared\" }\n\n\
+             [build-dependencies]\nbuildtool = { path = \"../shared\" }\n",
+        )?;
+
+        let provenance = workspace_graph_provenance(&root);
+        let edges = &provenance.path_dependency_edges;
+        assert_eq!(edges.len(), 3, "expected one edge per section: {edges:?}");
+        // Sorted: Dependencies < DevDependencies < BuildDependencies.
+        assert_eq!(edges[0].section, PathDependencySection::Dependencies);
+        assert_eq!(edges[0].dependency_name, "shared");
+        assert_eq!(edges[1].section, PathDependencySection::DevDependencies);
+        assert_eq!(edges[1].dependency_name, "devhelper");
+        assert_eq!(edges[2].section, PathDependencySection::BuildDependencies);
+        assert_eq!(edges[2].dependency_name, "buildtool");
+        for edge in edges {
+            assert_eq!(edge.from_manifest, "crates/app/Cargo.toml");
+            assert_eq!(edge.target, None);
+            assert_eq!(edge.declared_path.as_deref(), Some("../shared"));
+            assert_eq!(edge.resolved_path.as_deref(), Some("crates/shared"));
+            assert_eq!(edge.resolution, PathDependencyResolution::Resolved);
+            assert_eq!(edge.source, PathDependencySource::Package);
+        }
+        assert!(provenance.path_dependency_limitations.is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn path_dependency_edges_resolve_workspace_inherited_dependencies() -> Result<(), String> {
+        let root = isolated_dir("path-dep-workspace-inherit");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\"]\n\n\
+             [workspace.dependencies]\nshared = { path = \"crates/shared\" }\nregistry = \"1.0\"\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/shared/Cargo.toml",
+            "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nshared = { workspace = true }\n\
+             unknown = { workspace = true }\nregistry = { workspace = true }\n",
+        )?;
+
+        let provenance = workspace_graph_provenance(&root);
+        let edges = &provenance.path_dependency_edges;
+        assert_eq!(
+            edges.len(),
+            2,
+            "workspace-inherited path dep plus one unresolved inheritance: {edges:?}"
+        );
+        // Sorted by dependency_name: "shared" < "unknown".
+        let inherited = &edges[0];
+        assert_eq!(inherited.dependency_name, "shared");
+        assert_eq!(inherited.source, PathDependencySource::WorkspaceInherited);
+        // Workspace dependency paths resolve relative to the workspace root.
+        assert_eq!(inherited.declared_path.as_deref(), Some("crates/shared"));
+        assert_eq!(inherited.resolved_path.as_deref(), Some("crates/shared"));
+        assert_eq!(inherited.resolution, PathDependencyResolution::Resolved);
+
+        let unresolved = &edges[1];
+        assert_eq!(unresolved.dependency_name, "unknown");
+        assert_eq!(
+            unresolved.resolution,
+            PathDependencyResolution::UnresolvedWorkspaceInheritance
+        );
+        assert_eq!(unresolved.declared_path, None);
+        assert_eq!(unresolved.resolved_path, None);
+
+        // `registry` inherits a version-only workspace entry: a registry
+        // inheritance, not a path edge.
+        assert!(edges.iter().all(|edge| edge.dependency_name != "registry"));
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_dependency_path_stops_at_nearest_workspace_authority() {
+        let tables = vec![
+            (
+                String::new(),
+                vec![(String::from("shared"), Some(String::from("shared")))],
+            ),
+            (String::from("crates/inner"), Vec::new()),
+        ];
+        assert_eq!(
+            workspace_dependency_path(&tables, "crates/inner/member", "shared"),
+            None,
+            "an inner workspace without the entry must not inherit from an outer workspace"
+        );
+    }
+
+    #[test]
+    fn path_dependency_edges_capture_target_specific_sections() -> Result<(), String> {
+        let root = isolated_dir("path-dep-target-specific");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\"]\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/shared/Cargo.toml",
+            "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [target.'cfg(windows)'.dependencies]\nwindep = { path = \"../shared\" }\n\n\
+             [target.x86_64-unknown-linux-gnu.build-dependencies]\nlinuxbuild = { path = \"../shared\" }\n",
+        )?;
+
+        let provenance = workspace_graph_provenance(&root);
+        let edges = &provenance.path_dependency_edges;
+        assert_eq!(edges.len(), 2, "one edge per target table: {edges:?}");
+        // Sorted by target text: "cfg(windows)" < "x86_64-...".
+        assert_eq!(edges[0].target.as_deref(), Some("cfg(windows)"));
+        assert_eq!(edges[0].section, PathDependencySection::Dependencies);
+        assert_eq!(edges[0].dependency_name, "windep");
+        assert_eq!(edges[1].target.as_deref(), Some("x86_64-unknown-linux-gnu"));
+        assert_eq!(edges[1].section, PathDependencySection::BuildDependencies);
+        assert_eq!(edges[1].dependency_name, "linuxbuild");
+        for edge in edges {
+            assert_eq!(edge.resolved_path.as_deref(), Some("crates/shared"));
+            assert_eq!(edge.resolution, PathDependencyResolution::Resolved);
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn path_dependency_edges_keep_governed_forms_distinct_and_deterministic() -> Result<(), String>
+    {
+        let root = isolated_dir("path-dep-governed-forms");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\"]\n\n\
+             [workspace.dependencies]\nshared = { path = \"crates/shared\" }\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/shared/Cargo.toml",
+            "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nshared = { path = \"../shared\" }\n\n\
+             [dev-dependencies]\nshared = { workspace = true }\n",
+        )?;
+
+        let first = workspace_graph_provenance(&root);
+        let second = workspace_graph_provenance(&root);
+        assert_eq!(
+            first.path_dependency_edges, second.path_dependency_edges,
+            "edge capture must be deterministic across runs"
+        );
+        let edges = &first.path_dependency_edges;
+        assert_eq!(
+            edges.len(),
+            2,
+            "the same dep under two governed forms is two distinct edges, not a dedup: {edges:?}"
+        );
+        let mut sorted = edges.clone();
+        sorted.sort();
+        assert_eq!(*edges, sorted, "edges must be emitted fully sorted");
+        // The direct package declaration and the workspace-inherited form
+        // stay distinct records with their own sources.
+        assert_eq!(edges[0].section, PathDependencySection::Dependencies);
+        assert_eq!(edges[0].source, PathDependencySource::Package);
+        assert_eq!(edges[1].section, PathDependencySection::DevDependencies);
+        assert_eq!(edges[1].source, PathDependencySource::WorkspaceInherited);
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn path_dependency_edges_normalize_separators_spaces_and_non_ascii() -> Result<(), String> {
+        let root = isolated_dir("path-dep-portable-identity");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(&root, "Cargo.toml", "[workspace]\nmembers = []\n")?;
+        write_manifest(
+            &root,
+            "crates/shared/Cargo.toml",
+            "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
+        )?;
+        // Directory with spaces and non-ASCII; one dep spells its path with a
+        // Windows-style separator (TOML `\\` decodes to a single `\`), which
+        // the portable identity normalizes to `/`.
+        write_manifest(
+            &root,
+            "crates/mý äpp/Cargo.toml",
+            "[package]\nname = \"my-app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nplain = { path = \"../shared\" }\n\
+             winstyle = { path = \"..\\\\shared\" }\n",
+        )?;
+
+        let provenance = workspace_graph_provenance(&root);
+        let edges = &provenance.path_dependency_edges;
+        assert_eq!(edges.len(), 2, "{edges:?}");
+        for edge in edges {
+            assert_eq!(edge.from_manifest, "crates/mý äpp/Cargo.toml");
+        }
+        // Cargo uses host path semantics: a backslash is a separator on
+        // Windows but a legal filename character on Unix.
+        #[cfg(windows)]
+        for edge in edges {
+            assert_eq!(edge.resolved_path.as_deref(), Some("crates/shared"));
+            assert_eq!(edge.resolution, PathDependencyResolution::Resolved);
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(edges[0].resolved_path.as_deref(), Some("crates/shared"));
+            assert_eq!(edges[0].resolution, PathDependencyResolution::Resolved);
+            assert_eq!(
+                edges[1].resolved_path.as_deref(),
+                Some("crates/mý äpp/..\\shared")
+            );
+            assert_eq!(edges[1].resolution, PathDependencyResolution::TargetMissing);
+        }
+        // Sorted by dependency_name: "plain" < "winstyle".
+        assert_eq!(edges[0].declared_path.as_deref(), Some("../shared"));
+        assert_eq!(edges[1].declared_path.as_deref(), Some("..\\shared"));
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn path_dependency_edge_to_manifest_less_directory_is_target_missing() -> Result<(), String> {
+        // A bare directory cannot satisfy a Cargo path dependency: the
+        // producer classifies it TargetMissing so it never becomes a
+        // manifest node downstream (#3613 review).
+        let root = isolated_dir("path-dep-manifest-less-target");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(&root, "Cargo.toml", "[workspace]\nmembers = []\n")?;
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nempty = { path = \"../empty-dep\" }\n",
+        )?;
+        std::fs::create_dir_all(root.join("crates/empty-dep")).map_err(|err| err.to_string())?;
+
+        let provenance = workspace_graph_provenance(&root);
+        let edges = &provenance.path_dependency_edges;
+        assert_eq!(edges.len(), 1, "{edges:?}");
+        assert_eq!(
+            edges[0].resolution,
+            PathDependencyResolution::TargetMissing,
+            "a directory without Cargo.toml must not count as resolved: {edges:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_dependency_helpers_preserve_unix_colons_and_backslashes() {
+        assert!(!is_absolute_declared_path("a:b"));
+        assert!(!is_absolute_declared_path(r"..\shared"));
+        assert_eq!(
+            resolve_repo_relative("crates/app", r"..\shared"),
+            ("crates/app/..\\shared".to_string(), false)
+        );
+    }
+
+    #[test]
+    fn path_dependency_edges_keep_absolute_paths_explicit() -> Result<(), String> {
+        let root = isolated_dir("path-dep-absolute");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\"]\n",
+        )?;
+        let windows_path = format!("{}:/shared", 'C');
+        let manifest = format!(
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nposix = {{ path = \"/opt/shared\" }}\n             windows = {{ path = \"{windows_path}\" }}\n",
+        );
+        write_manifest(&root, "crates/app/Cargo.toml", &manifest)?;
+
+        let provenance = workspace_graph_provenance(&root);
+        let edges = &provenance.path_dependency_edges;
+        assert_eq!(edges.len(), 2, "{edges:?}");
+        assert_eq!(edges[0].dependency_name, "posix");
+        assert_eq!(edges[1].dependency_name, "windows");
+        assert_eq!(
+            edges[0].resolution,
+            PathDependencyResolution::UnsupportedAbsolutePath,
+            "POSIX absolute paths are absolute on every host"
+        );
+        assert_eq!(edges[0].resolved_path, None);
+        assert_eq!(edges[0].declared_path.as_deref(), Some("/opt/shared"));
+        #[cfg(windows)]
+        {
+            assert_eq!(
+                edges[1].resolution,
+                PathDependencyResolution::UnsupportedAbsolutePath,
+                "drive-rooted paths are absolute on Windows"
+            );
+            assert_eq!(edges[1].resolved_path, None);
+        }
+        #[cfg(unix)]
+        {
+            assert_eq!(
+                edges[1].resolution,
+                PathDependencyResolution::TargetMissing,
+                "a drive-prefixed path is relative on Unix"
+            );
+            let unix_resolved = format!("crates/app/{windows_path}");
+            assert_eq!(
+                edges[1].resolved_path.as_deref(),
+                Some(unix_resolved.as_str())
+            );
+        }
+        assert_eq!(
+            edges[1].declared_path.as_deref(),
+            Some(windows_path.as_str())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn path_dependency_edges_mark_outside_workspace_and_missing_targets() -> Result<(), String> {
+        let root = isolated_dir("path-dep-resolution-status");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\"]\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nghost = { path = \"../ghost\" }\noutside = { path = \"../../../outside\" }\n",
+        )?;
+
+        let provenance = workspace_graph_provenance(&root);
+        let edges = &provenance.path_dependency_edges;
+        assert_eq!(edges.len(), 2, "{edges:?}");
+        // Sorted by dependency_name: "ghost" < "outside".
+        assert_eq!(edges[0].dependency_name, "ghost");
+        assert_eq!(edges[0].resolved_path.as_deref(), Some("crates/ghost"));
+        assert_eq!(edges[0].resolution, PathDependencyResolution::TargetMissing);
+        assert_eq!(edges[1].dependency_name, "outside");
+        assert_eq!(edges[1].resolved_path.as_deref(), Some("../outside"));
+        assert_eq!(
+            edges[1].resolution,
+            PathDependencyResolution::ResolvedOutsideWorkspace
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn path_dependency_edges_preserve_cycles() -> Result<(), String> {
+        let root = isolated_dir("path-dep-cycle");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/a\", \"crates/b\"]\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/a/Cargo.toml",
+            "[package]\nname = \"a\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nb = { path = \"../b\" }\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/b/Cargo.toml",
+            "[package]\nname = \"b\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\na = { path = \"../a\" }\n",
+        )?;
+
+        let edges = workspace_graph_provenance(&root).path_dependency_edges;
+        assert_eq!(edges.len(), 2, "{edges:?}");
+        assert_eq!(edges[0].from_manifest, "crates/a/Cargo.toml");
+        assert_eq!(edges[0].dependency_name, "b");
+        assert_eq!(edges[1].from_manifest, "crates/b/Cargo.toml");
+        assert_eq!(edges[1].dependency_name, "a");
+        assert!(edges.iter().all(|edge| {
+            edge.resolution == PathDependencyResolution::Resolved && edge.resolved_path.is_some()
+        }));
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_dependency_edges_skip_non_utf8_manifest_with_explicit_limitation() -> Result<(), String>
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let root = isolated_dir("path-dep-non-utf8");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(&root, "Cargo.toml", "[workspace]\nmembers = []\n")?;
+        let bad_dir = root.join(std::ffi::OsStr::from_bytes(b"bad\xffdir"));
+        std::fs::create_dir_all(&bad_dir).map_err(|err| format!("create bad dir: {err}"))?;
+        // The `[workspace]` table also exercises the authority-extraction
+        // boundary: a non-UTF-8 workspace root is not an inheritance
+        // authority either.
+        std::fs::write(
+            bad_dir.join("Cargo.toml"),
+            "[workspace]\nmembers = []\n\n\
+             [package]\nname = \"bad\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nshared = { path = \"../shared\" }\n",
+        )
+        .map_err(|err| format!("write bad manifest: {err}"))?;
+
+        let provenance = workspace_graph_provenance(&root);
+        assert!(
+            provenance.path_dependency_edges.is_empty(),
+            "a non-UTF-8 manifest path must not contribute lossy edges: {:?}",
+            provenance.path_dependency_edges
+        );
+        assert_eq!(
+            provenance.path_dependency_limitations.len(),
+            1,
+            "the capture gap must be an explicit limitation: {:?}",
+            provenance.path_dependency_limitations
+        );
+        let limitation = &provenance.path_dependency_limitations[0];
+        assert_eq!(
+            limitation.kind,
+            PathDependencyLimitationKind::NonUtf8ManifestPath
+        );
+        assert!(limitation.manifest.is_empty());
+        assert!(limitation.detail.contains("non-UTF-8"));
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn package_graph_hash_excludes_path_dependency_edges() -> Result<(), String> {
+        let root = isolated_dir("path-dep-hash-exclusion");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\"]\n",
+        )?;
+        for member in ["a", "b"] {
+            write_manifest(
+                &root,
+                &format!("crates/{member}/Cargo.toml"),
+                &format!("[package]\nname = \"{member}\"\nversion = \"0.1.0\"\n"),
+            )?;
+        }
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nshared = { path = \"../a\" }\n",
+        )?;
+
+        let first = workspace_graph_provenance(&root);
+        assert_eq!(first.path_dependency_edges.len(), 1);
+        assert_eq!(
+            first.path_dependency_edges[0].resolved_path.as_deref(),
+            Some("crates/a")
+        );
+
+        // Changing only the path value (same dep name) must change the edges
+        // but not the package graph hash: the field is additive and excluded.
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nshared = { path = \"../b\" }\n",
+        )?;
+        let second = workspace_graph_provenance(&root);
+        assert_eq!(
+            first.package_graph_hash, second.package_graph_hash,
+            "path-dependency edges must not feed package_graph_hash"
+        );
+        assert_ne!(first.path_dependency_edges, second.path_dependency_edges);
+
+        // A target-specific path dep is likewise excluded from hash inputs.
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nshared = { path = \"../b\" }\n\n\
+             [target.'cfg(unix)'.dependencies]\nextra = { path = \"../a\" }\n",
+        )?;
+        let third = workspace_graph_provenance(&root);
+        assert_eq!(second.package_graph_hash, third.package_graph_hash);
+        assert_eq!(third.path_dependency_edges.len(), 2);
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn path_dependency_edges_ignore_registry_string_and_table_forms() -> Result<(), String> {
+        let root = isolated_dir("path-dep-registry-forms");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\"]\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nstringdep = \"1.0\"\ntabledep = { version = \"1.0\", features = [\"x\"] }\n",
+        )?;
+
+        let provenance = workspace_graph_provenance(&root);
+        assert!(
+            provenance.path_dependency_edges.is_empty(),
+            "registry declarations are outside the path-edge denominator: {:?}",
+            provenance.path_dependency_edges
+        );
+        assert!(provenance.path_dependency_limitations.is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn path_dependency_edges_workspace_inherited_boundary_statuses() -> Result<(), String> {
+        let root = isolated_dir("path-dep-inherited-boundaries");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\"]\n\n\
+             [workspace.dependencies]\n\
+             abs = { path = \"/opt/shared\" }\n\
+             outside = { path = \"../outside-ws\" }\n\
+             ghost = { path = \"missing/dir\" }\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\n\
+             abs = { workspace = true }\n\
+             outside = { workspace = true }\n\
+             ghost = { workspace = true }\n",
+        )?;
+
+        let provenance = workspace_graph_provenance(&root);
+        let edges = &provenance.path_dependency_edges;
+        assert_eq!(edges.len(), 3, "{edges:?}");
+        // Sorted by dependency_name: "abs" < "ghost" < "outside".
+        assert_eq!(edges[0].dependency_name, "abs");
+        assert_eq!(edges[0].declared_path.as_deref(), Some("/opt/shared"));
+        assert_eq!(edges[0].resolved_path, None);
+        assert_eq!(
+            edges[0].resolution,
+            PathDependencyResolution::UnsupportedAbsolutePath
+        );
+        assert_eq!(edges[1].dependency_name, "ghost");
+        assert_eq!(edges[1].resolved_path.as_deref(), Some("missing/dir"));
+        assert_eq!(edges[1].resolution, PathDependencyResolution::TargetMissing);
+        assert_eq!(edges[2].dependency_name, "outside");
+        assert_eq!(edges[2].resolved_path.as_deref(), Some("../outside-ws"));
+        assert_eq!(
+            edges[2].resolution,
+            PathDependencyResolution::ResolvedOutsideWorkspace
+        );
+        for edge in edges {
+            assert_eq!(edge.source, PathDependencySource::WorkspaceInherited);
+        }
+        assert!(provenance.path_dependency_limitations.is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn path_dependency_edges_workspace_true_without_workspace_authority() -> Result<(), String> {
+        let root = isolated_dir("path-dep-no-authority");
+        let _ = std::fs::remove_dir_all(&root);
+        // No `[workspace]` table anywhere: the ancestor walk must terminate at
+        // the scan root instead of fabricating an authority.
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[package]\nname = \"solo\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\ndep = { workspace = true }\n",
+        )?;
+
+        let provenance = workspace_graph_provenance(&root);
+        let edges = &provenance.path_dependency_edges;
+        assert_eq!(edges.len(), 1, "{edges:?}");
+        assert_eq!(edges[0].dependency_name, "dep");
+        assert_eq!(
+            edges[0].resolution,
+            PathDependencyResolution::UnresolvedWorkspaceInheritance
+        );
+        assert_eq!(edges[0].declared_path, None);
+        assert_eq!(edges[0].resolved_path, None);
+        assert!(provenance.path_dependency_limitations.is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn path_dependency_edges_treat_path_plus_workspace_as_invalid() -> Result<(), String> {
+        let root = isolated_dir("path-dep-invalid-declaration");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\"]\n\n\
+             [workspace.dependencies]\nboth = { path = \"crates/shared\" }\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/shared/Cargo.toml",
+            "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
+        )?;
+        // Cargo rejects `path` + `workspace = true` when the name is absent
+        // from `[workspace.dependencies]` and ignores the member's own `path`
+        // otherwise, so the explicit `path` must never win. `both` has a
+        // workspace entry; `other` does not — both are invalid declarations.
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\n\
+             both = { path = \"../shared\", workspace = true }\n\
+             other = { path = \"../shared\", workspace = true }\n",
+        )?;
+
+        let provenance = workspace_graph_provenance(&root);
+        let edges = &provenance.path_dependency_edges;
+        assert_eq!(edges.len(), 2, "{edges:?}");
+        for edge in edges {
+            assert_eq!(
+                edge.resolution,
+                PathDependencyResolution::InvalidDeclaration
+            );
+            assert_eq!(edge.resolved_path, None);
+            assert_eq!(edge.declared_path.as_deref(), Some("../shared"));
+            assert_eq!(edge.source, PathDependencySource::Package);
+        }
+        assert_eq!(edges[0].dependency_name, "both");
+        assert_eq!(edges[1].dependency_name, "other");
+        assert!(provenance.path_dependency_limitations.is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn path_dependency_edges_flag_unfollowed_workspace_redirect() -> Result<(), String> {
+        let root = isolated_dir("path-dep-workspace-redirect");
+        let _ = std::fs::remove_dir_all(&root);
+        // The nearest ancestor workspace root has no `[workspace.dependencies]`
+        // entry for `shared`; the redirect target does. Not following the
+        // redirect must be a typed limitation, not a silent miss.
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\", \"crates/plain\"]\n",
+        )?;
+        write_manifest(
+            &root,
+            "other-root/Cargo.toml",
+            "[workspace]\nmembers = []\n\n\
+             [workspace.dependencies]\nshared = { path = \"other-shared\" }\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\nworkspace = \"../../other-root\"\n\n\
+             [dependencies]\nshared = { workspace = true }\n",
+        )?;
+        // A redirect without `workspace = true` dependencies is irrelevant to
+        // the path-edge inventory and must not produce a limitation.
+        write_manifest(
+            &root,
+            "crates/plain/Cargo.toml",
+            "[package]\nname = \"plain\"\nversion = \"0.1.0\"\nworkspace = \"../..\"\n",
+        )?;
+
+        let provenance = workspace_graph_provenance(&root);
+        let edges = &provenance.path_dependency_edges;
+        assert_eq!(edges.len(), 1, "{edges:?}");
+        assert_eq!(edges[0].from_manifest, "crates/app/Cargo.toml");
+        assert_eq!(edges[0].dependency_name, "shared");
+        assert_eq!(
+            edges[0].resolution,
+            PathDependencyResolution::UnresolvedWorkspaceInheritance
+        );
+
+        let limitations = &provenance.path_dependency_limitations;
+        assert_eq!(limitations.len(), 1, "{limitations:?}");
+        assert_eq!(limitations[0].manifest, "crates/app/Cargo.toml");
+        assert_eq!(
+            limitations[0].kind,
+            PathDependencyLimitationKind::UnfollowedWorkspaceRedirect
+        );
+        assert!(limitations[0].detail.contains("../../other-root"));
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn path_dependency_edges_cover_target_dev_dependencies_and_skip_malformed_target_tables()
+    -> Result<(), String> {
+        let root = isolated_dir("path-dep-target-boundaries");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\"]\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/shared/Cargo.toml",
+            "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [target.'cfg(unix)'.dev-dependencies]\ndevt = { path = \"../shared\" }\n\n\
+             [target.'cfg(bogus)'.not-a-section]\nghost = { path = \"../shared\" }\n\n\
+             [target.'cfg(plain)']\ndependencies = \"not-a-table\"\n\n\
+             [target]\n'cfg(z)' = \"plain\"\n",
+        )?;
+
+        let provenance = workspace_graph_provenance(&root);
+        let edges = &provenance.path_dependency_edges;
+        assert_eq!(
+            edges.len(),
+            1,
+            "only the governed target dev-dependency is an edge: {edges:?}"
+        );
+        assert_eq!(edges[0].dependency_name, "devt");
+        assert_eq!(edges[0].section, PathDependencySection::DevDependencies);
+        assert_eq!(edges[0].target.as_deref(), Some("cfg(unix)"));
+        assert_eq!(edges[0].resolved_path.as_deref(), Some("crates/shared"));
+        assert_eq!(edges[0].resolution, PathDependencyResolution::Resolved);
+        assert!(provenance.path_dependency_limitations.is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    /// Differential proof against Cargo itself (#3037): the resolver's typed
+    /// edge set for a synthetic workspace must agree with `cargo metadata`
+    /// on every supported path-dependency form. Skips (does not fail) when no
+    /// `cargo` binary is available.
+    #[test]
+    fn path_dependency_edges_match_cargo_metadata() -> Result<(), String> {
+        let cargo_available = std::process::Command::new("cargo")
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+        if !cargo_available {
+            // Fail closed: an unobserved differential must not report as a
+            // pass with zero compared subjects. Environments that genuinely
+            // lack a cargo binary opt out explicitly.
+            if std::env::var_os("RIPR_ALLOW_MISSING_CARGO").is_none() {
+                return Err(
+                    "cargo metadata differential not_run: no cargo binary available; set \
+                     RIPR_ALLOW_MISSING_CARGO=1 to accept an unobserved differential"
+                        .to_string(),
+                );
+            }
+            eprintln!("skipping cargo metadata differential: cargo binary unavailable");
+            return Ok(());
+        }
+
+        let root = isolated_dir("path-dep-cargo-differential");
+        let _ = std::fs::remove_dir_all(&root);
+        write_manifest(
+            &root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/app\", \"crates/shared\"]\n\n\
+             [workspace.dependencies]\nwsdep = { path = \"crates/shared\" }\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/shared/Cargo.toml",
+            "[package]\nname = \"shared\"\nversion = \"0.1.0\"\n",
+        )?;
+        write_manifest(
+            &root,
+            "crates/app/Cargo.toml",
+            "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\ndirect = { path = \"../shared\" }\nwsdep = { workspace = true }\n\n\
+             [dev-dependencies]\ndevd = { path = \"../shared\" }\n\n\
+             [build-dependencies]\nbuildd = { path = \"../shared\" }\n\n\
+             [target.'cfg(unix)'.dependencies]\ntgt = { path = \"../shared\" }\n",
+        )?;
+        // `cargo metadata` requires each package to declare a target.
+        for member in ["crates/app", "crates/shared"] {
+            let src = root.join(member).join("src");
+            std::fs::create_dir_all(&src)
+                .map_err(|err| format!("create {}: {err}", src.display()))?;
+            std::fs::write(src.join("lib.rs"), "").map_err(|err| format!("write lib.rs: {err}"))?;
+        }
+
+        let output = std::process::Command::new("cargo")
+            .args([
+                "metadata",
+                "--no-deps",
+                "--format-version",
+                "1",
+                "--offline",
+            ])
+            .arg("--manifest-path")
+            .arg(root.join("Cargo.toml"))
+            .output()
+            .map_err(|err| format!("run cargo metadata: {err}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "cargo metadata failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        let metadata: serde_json::Value = serde_json::from_slice(&output.stdout)
+            .map_err(|err| format!("parse cargo metadata: {err}"))?;
+
+        // Cargo's view: every `path` dependency of package `app`, keyed by the
+        // manifest key (`rename` or name), with kind and target scope.
+        let mut expected: BTreeSet<(String, String, Option<String>)> = BTreeSet::new();
+        let mut expected_paths: Vec<(String, String)> = Vec::new();
+        let packages = metadata
+            .get("packages")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| "cargo metadata has no packages array".to_string())?;
+        let app = packages
+            .iter()
+            .find(|package| package.get("name").and_then(serde_json::Value::as_str) == Some("app"))
+            .ok_or_else(|| "cargo metadata has no app package".to_string())?;
+        let dependencies = app
+            .get("dependencies")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| "app package has no dependencies array".to_string())?;
+        for dep in dependencies {
+            let Some(path) = dep.get("path").and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            let name = dep
+                .get("rename")
+                .and_then(serde_json::Value::as_str)
+                .or_else(|| dep.get("name").and_then(serde_json::Value::as_str))
+                .ok_or_else(|| "dependency without a name".to_string())?;
+            let kind = dep
+                .get("kind")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("normal")
+                .to_string();
+            let target = dep
+                .get("target")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+            expected.insert((name.to_string(), kind, target));
+            expected_paths.push((name.to_string(), path.replace('\\', "/")));
+        }
+        assert_eq!(
+            expected.len(),
+            5,
+            "the fixture must exercise all five supported forms: {expected:?}"
+        );
+
+        // The resolver's view for the same manifest.
+        let provenance = workspace_graph_provenance(&root);
+        let actual: BTreeSet<(String, String, Option<String>)> = provenance
+            .path_dependency_edges
+            .iter()
+            .filter(|edge| edge.from_manifest == "crates/app/Cargo.toml")
+            .map(|edge| {
+                let kind = match edge.section {
+                    PathDependencySection::Dependencies => "normal",
+                    PathDependencySection::DevDependencies => "dev",
+                    PathDependencySection::BuildDependencies => "build",
+                };
+                (
+                    edge.dependency_name.clone(),
+                    kind.to_string(),
+                    edge.target.clone(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            actual, expected,
+            "resolver edge set must agree with cargo metadata (name, kind, target)"
+        );
+
+        // Every edge Cargo reports must also agree on the resolved directory
+        // identity and carry no capture limitation.
+        for edge in &provenance.path_dependency_edges {
+            assert_eq!(
+                edge.resolution,
+                PathDependencyResolution::Resolved,
+                "{edge:?}"
+            );
+            let resolved = edge
+                .resolved_path
+                .as_deref()
+                .ok_or_else(|| format!("edge without resolved path: {edge:?}"))?;
+            let (_, cargo_path) = expected_paths
+                .iter()
+                .find(|(name, _)| name == &edge.dependency_name)
+                .ok_or_else(|| format!("no cargo path for {}", edge.dependency_name))?;
+            assert!(
+                cargo_path == resolved || cargo_path.ends_with(&format!("/{resolved}")),
+                "cargo path {cargo_path} must end with resolver identity {resolved}"
+            );
+        }
+        assert!(provenance.path_dependency_limitations.is_empty());
 
         let _ = std::fs::remove_dir_all(&root);
         Ok(())
@@ -3319,5 +5442,312 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod generation_transition_tests {
+    use super::*;
+    use crate::analysis::syntax::RustSyntaxAdapter as _;
+
+    fn isolated_dir(label: &str) -> PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("ripr-cache-gen-{label}-{nanos}"))
+    }
+
+    fn cfg_test_helper_source() -> &'static str {
+        // The #3286 shape: a plain helper inside an inline #[cfg(test)]
+        // module mediating a #[test] -> owner relation.
+        "pub fn device_labels() -> Vec<&'static str> {\n  Vec::new()\n}\n\n#[cfg(test)]\nmod tests {\n  use super::*;\n\n  fn exercise_device_labels() -> Vec<&'static str> {\n    device_labels()\n  }\n\n  #[test]\n  fn helper_reaches_device_labels() {\n    let labels = exercise_device_labels();\n    assert!(labels.is_empty());\n  }\n}\n"
+    }
+
+    #[test]
+    fn previous_generation_file_fact_envelope_with_identical_identity_is_a_miss()
+    -> Result<(), String> {
+        // #3287: seed an envelope under the previous generation with the
+        // same package/path/content identity, then prove the current
+        // generation cannot return it — even if the file were copied into
+        // the current directory, the embedded key identity mismatches.
+        let dir = isolated_dir("gen-file-fact");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoFileFactCache::at_dir(dir.clone());
+        let file = Path::new("src/labels.rs");
+        let content = cfg_test_helper_source().as_bytes().to_vec();
+        let previous_key = RepoFileFactCacheKey {
+            schema_version: "0.2".to_string(),
+            analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
+            file_path: file.to_path_buf(),
+            content_hash: content_hash_for(&content),
+        };
+        let previous_facts = FileFacts::default();
+        cache.store_file_facts(&previous_key, &previous_facts)?;
+        // The stale envelope stays on disk...
+        assert!(cache.entry_path(&previous_key).exists());
+
+        // ...but the current-generation key with identical package, path,
+        // and content identity must miss.
+        let current_key = RepoFileFactCacheKey::new(file, &content);
+        assert_ne!(previous_key.schema_version, current_key.schema_version);
+        match cache.load_file_facts(&current_key) {
+            CacheLoad::Miss => {}
+            other => {
+                return Err(format!(
+                    "expected Miss across the generation transition, got {other:?}"
+                ));
+            }
+        }
+        // Copied-file defense: even if the stale envelope were copied to
+        // the current key's entry path, the embedded key identity inside
+        // the envelope mismatches and the load still misses.
+        let current_path = cache.entry_path(&current_key);
+        let stale_bytes = std::fs::read(cache.entry_path(&previous_key))
+            .map_err(|error| format!("read stale envelope: {error}"))?;
+        if let Some(parent) = current_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("create current entry dir: {error}"))?;
+        }
+        std::fs::write(&current_path, stale_bytes)
+            .map_err(|error| format!("copy stale envelope: {error}"))?;
+        match cache.load_file_facts(&current_key) {
+            CacheLoad::Miss => {}
+            other => {
+                return Err(format!(
+                    "expected Miss for a copied previous-generation envelope, got {other:?}"
+                ));
+            }
+        }
+        // And the stale entry itself, loaded by its own key, no longer
+        // satisfies current analysis identity: it can only be reached by
+        // the previous key, which current code never constructs.
+        match cache.load_file_facts(&previous_key) {
+            CacheLoad::Hit(_) => {}
+            other => {
+                return Err(format!(
+                    "seed sanity: previous key should still read its own envelope, got {other:?}"
+                ));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn classified_generation_before_parser_backed_shadow_facts_is_a_miss() -> Result<(), String> {
+        // #3739 review (codex h6Z9w): the parser-backed shadow facts
+        // (#3727 Slice A) change the shadow authority behind the
+        // `SeamCalleeCall` relation and the guarded-match oracle, and the
+        // classified-seam cache loads BEFORE any file-fact rebuild — a warm
+        // hit returns classified seams without re-reading a single file —
+        // so the file-fact generation bump alone cannot invalidate it. A
+        // classified envelope seeded under the pre-#3727 1.11 generation
+        // with identical identity fields must miss the current generation's
+        // key, or warm workspaces would replay pre-#3727 shadow
+        // classification indefinitely.
+        let dir = isolated_dir("gen-shadow-facts-classified");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoSeamFactCache::at_dir(dir.clone());
+        let previous_key = RepoSeamCacheKey {
+            schema_version: "1.11".to_string(),
+            analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
+            workspace_root_hash: hash_str("/ws"),
+            files_content_hash: hash_str("corpus"),
+            cfg_features_hash: hash_str(""),
+            config_hash: hash_str(""),
+            test_intent_hash: hash_str(""),
+            suppressions_hash: hash_str(""),
+            workspace_manifests_hash: hash_str("manifests"),
+            lockfile_hash: hash_str("lock"),
+            toolchain_hash: hash_str("toolchain"),
+            seam_limit_key: "unlimited".to_string(),
+        };
+        cache.store_classified_seams_with_limit(
+            &previous_key,
+            &[],
+            None,
+            CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+        )?;
+        // The stale envelope stays on disk...
+        assert!(cache.entry_path(&previous_key).exists());
+
+        // ...but the current-generation key with identical identity fields
+        // must miss — through the single AND the sharded fallback path.
+        let mut current_key = previous_key.clone();
+        current_key.schema_version = CACHE_SCHEMA_VERSION.to_string();
+        assert_ne!(previous_key.schema_version, current_key.schema_version);
+        match cache.load_classified_seams_with_fallback(&current_key) {
+            CacheLoad::Miss => {}
+            other => {
+                return Err(format!(
+                    "expected Miss across the pre-#3727 classified generation, got {other:?}"
+                ));
+            }
+        }
+        match cache.load_classified_seams_with_fallback(&previous_key) {
+            CacheLoad::Hit(_) => {}
+            other => {
+                return Err(format!(
+                    "seed sanity: previous key should still read its own envelope, got {other:?}"
+                ));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn file_fact_generation_before_comment_masking_is_a_miss() -> Result<(), String> {
+        // #3633 review (coderabbit Ltle): call and literal extraction now
+        // masks comments and string contents, changing the stored
+        // FileFacts.calls/literals. An envelope seeded under the 0.9
+        // generation (pre-masking) must miss the current generation's key
+        // with identical identity fields.
+        let dir = isolated_dir("gen-masked-facts");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoFileFactCache::at_dir(dir.clone());
+        let file = Path::new("src/commented.rs");
+        let content = "fn check() {\n    /* other_call(9); */\n    live_call(3);\n}\n"
+            .as_bytes()
+            .to_vec();
+        let previous_key = RepoFileFactCacheKey {
+            schema_version: "0.9".to_string(),
+            analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
+            file_path: file.to_path_buf(),
+            // Production derives this field via `hash_bytes`, so the seed
+            // must too: the only difference from the current key is then
+            // the schema generation, making the miss prove the boundary.
+            content_hash: hash_bytes(&content),
+        };
+        cache.store_file_facts(&previous_key, &FileFacts::default())?;
+        assert!(cache.entry_path(&previous_key).exists());
+
+        let current_key = RepoFileFactCacheKey::new(file, &content);
+        assert_ne!(previous_key.schema_version, current_key.schema_version);
+        match cache.load_file_facts(&current_key) {
+            CacheLoad::Miss => {}
+            other => {
+                return Err(format!(
+                    "expected Miss across the pre-masking file-fact generation, got {other:?}"
+                ));
+            }
+        }
+        match cache.load_file_facts(&previous_key) {
+            CacheLoad::Hit(_) => {}
+            other => {
+                return Err(format!(
+                    "seed sanity: previous key should still read its own envelope, got {other:?}"
+                ));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn cold_current_run_then_warm_rerun_preserves_3286_semantics() -> Result<(), String> {
+        // #3287: cold populate under the current generation from the real
+        // indexer, warm-load the same identity, and prove the #3273/#3286
+        // semantics survive as a genuine cache hit.
+        let dir = isolated_dir("gen-cold-warm");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoFileFactCache::at_dir(dir.clone());
+        let file = Path::new("src/labels.rs");
+        let source = cfg_test_helper_source();
+        let content = source.as_bytes().to_vec();
+        let key = RepoFileFactCacheKey::new(file, &content);
+
+        // Cold: current producer facts carry the corrected semantics.
+        let parsed = crate::analysis::syntax::RaRustSyntaxAdapter
+            .summarize_file(file, source)
+            .map_err(|error| format!("parse fixture: {error}"))?;
+        cache.store_file_facts(&key, &parsed)?;
+        let warm = match cache.load_file_facts(&key) {
+            CacheLoad::Hit(facts) => facts,
+            other => return Err(format!("expected warm Hit, got {other:?}")),
+        };
+        let helper = warm
+            .functions
+            .iter()
+            .find(|function| function.name == "exercise_device_labels")
+            .ok_or("helper missing from warm facts")?;
+        assert!(
+            helper.source_role.is_evidence_role(),
+            "warm hit keeps the #3273 evidence role"
+        );
+        assert!(
+            !warm
+                .tests
+                .iter()
+                .any(|test| test.name == "exercise_device_labels"),
+            "warm hit keeps TestFact reserved for actual tests"
+        );
+        assert!(
+            warm.tests
+                .iter()
+                .any(|test| test.name == "helper_reaches_device_labels"),
+            "warm hit keeps the real test as an executable selector"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn generation_law_follows_env_relocation_and_sharded_paths() -> Result<(), String> {
+        // #3287: RIPR_CACHE_DIR relocation and sharded classified paths
+        // obey the same generation law.
+        let relocated = cache_base_dir_from_env(Path::new("/ws"), Ok("/custom/cache".to_string()));
+        assert_eq!(relocated, PathBuf::from("/custom/cache"));
+
+        let full = RepoSeamFactCache::at(Path::new("/ws"));
+        assert!(
+            full.dir.ends_with(CACHE_SCHEMA_VERSION),
+            "full cache directory must be generation-scoped: {:?}",
+            full.dir
+        );
+        assert!(
+            full.sharded_dir
+                .ends_with(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION),
+            "sharded paths must be generation-scoped: {:?}",
+            full.sharded_dir
+        );
+        let mut outer = full.sharded_dir.ancestors();
+        let _ = outer.next();
+        assert!(
+            outer
+                .next()
+                .is_some_and(|component| component.ends_with(CACHE_SCHEMA_VERSION)),
+            "sharded paths embed the outer generation and cannot bypass it: {:?}",
+            full.sharded_dir
+        );
+
+        let compact = RepoSeamFactCache::at_compact_classified(Path::new("/ws"));
+        assert!(
+            compact
+                .dir
+                .ends_with(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION),
+            "compact cache directory must be generation-scoped: {:?}",
+            compact.dir
+        );
+
+        let file_facts = RepoFileFactCache::at(Path::new("/ws"));
+        assert!(
+            file_facts.dir.ends_with(FILE_FACT_CACHE_SCHEMA_VERSION),
+            "file-fact cache directory must be generation-scoped: {:?}",
+            file_facts.dir
+        );
+        Ok(())
+    }
+
+    fn content_hash_for(content: &[u8]) -> String {
+        use std::fmt::Write as _;
+        let digest = <sha2::Sha256 as sha2::Digest>::digest(content);
+        let mut hex = String::with_capacity(digest.len() * 2);
+        for byte in digest {
+            let _ = write!(hex, "{byte:02x}");
+        }
+        hex
     }
 }

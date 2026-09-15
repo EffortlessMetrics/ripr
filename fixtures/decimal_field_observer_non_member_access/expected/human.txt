@@ -13,8 +13,8 @@ Start here:
   File: fixtures/decimal_field_observer_non_member_access/input/src/lib.rs:7
   Static exposure: reachable_unrevealed (warning, confidence 0.79)
   Why reachable_unrevealed: no related test was found that reaches this change
-  Changed behavior: retries: 1,
-  Missing discriminator: retries: 1,
+  Changed behavior: Config { timeout_secs: 30, retries: 1, }
+  Missing discriminator: No detected assertion observes the changed value, error, field, or effect
   Next step: Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
   Evidence:
     - reach yes: Related tests appear to reach default_config: decimal_observation_does_not_name_retries
@@ -22,8 +22,8 @@ Start here:
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain --root fixtures/decimal_field_observer_non_member_access/input --diff fixtures/decimal_field_observer_non_member_access/diff.patch --mode fast probe:src_lib.rs:field_construction:66b24106
-  ripr context --root fixtures/decimal_field_observer_non_member_access/input --diff fixtures/decimal_field_observer_non_member_access/diff.patch --mode fast --at probe:src_lib.rs:field_construction:66b24106
+  ripr explain --root fixtures/decimal_field_observer_non_member_access/input --diff fixtures/decimal_field_observer_non_member_access/diff.patch --mode fast probe:src_lib.rs:return_value:4b922ba9
+  ripr context --root fixtures/decimal_field_observer_non_member_access/input --diff fixtures/decimal_field_observer_non_member_access/diff.patch --mode fast --at probe:src_lib.rs:return_value:4b922ba9
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.

@@ -24,7 +24,7 @@ Static exposure
 Evidence
   - reach yes: Related tests appear to reach authenticate: empty_token_is_rejected
   - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
+  - propagation yes: Complete propagation witness reaches error variant: Result::Err(AuthError::RevokedToken)
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
@@ -55,7 +55,7 @@ Static exposure
 Evidence
   - reach yes: Related tests appear to reach authenticate: empty_token_is_rejected
   - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
+  - propagation yes: Complete propagation witness reaches error variant: Result::Err(AuthError::RevokedToken)
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
@@ -67,4 +67,4 @@ Weakness
   - missing discriminator AuthError::RevokedToken: No exact error variant assertion for AuthError::RevokedToken
 
 Next step
-  Replace broad assertions with exact equality or a property that constrains the changed returned value.
+  Add a test input that reaches the changed error path and assert the exact error variant it returns.

@@ -1003,3 +1003,53 @@ fn worktree_artifact_scope_flags_alongside_from_are_assertions() -> Result<(), S
     let _ = std::fs::remove_dir_all(&dir);
     result
 }
+
+#[test]
+fn source_currentness_wire_vocabulary_and_legacy_back_compat() -> Result<(), String> {
+    use crate::domain::{Finding, SOURCE_CURRENTNESS_VALUES, SourceCurrentness};
+    // The serialized form is the controlled vocabulary (domain may not know
+    // JSON, so the wire pin lives with the artifact layer).
+    for value in [
+        SourceCurrentness::CandidateCurrent,
+        SourceCurrentness::BaseDeleted,
+        SourceCurrentness::MovedOrRenamed,
+        SourceCurrentness::UnresolvedSubject,
+    ] {
+        let wire = serde_json::to_string(&value).map_err(|error| error.to_string())?;
+        let label = wire.trim_matches('"');
+        assert!(
+            SOURCE_CURRENTNESS_VALUES.contains(&label),
+            "value {wire:?} must use the controlled vocabulary"
+        );
+    }
+    // Pre-#3280 findings carry no source_currentness; the deserialize
+    // default must be the explicit unknown, never a fabricated
+    // disposition.
+    let legacy = r#"{
+        "id": "probe:x", "canonical_gap": null,
+        "probe": {
+            "id": "probe:x", "location": {"file": "x.rs", "line": 1, "column": 1},
+            "owner": null, "family": "side_effect", "delta": "effect",
+            "before": null, "after": null, "expression": "x()",
+            "expected_sinks": [], "required_oracles": []
+        },
+        "class": "static_unknown",
+        "ripr": {
+            "reach": {"state":"Unknown","confidence":"Low","summary":"s"},
+            "infect": {"state":"Unknown","confidence":"Low","summary":"s"},
+            "propagate": {"state":"Unknown","confidence":"Low","summary":"s"},
+            "reveal": {"observe":{"state":"Unknown","confidence":"Low","summary":"s"},"discriminate":{"state":"Unknown","confidence":"Low","summary":"s"}}
+        },
+        "confidence": 0.1, "evidence": [], "missing": [], "flow_sinks": [],
+        "activation": {"observed_values": [], "missing_discriminators": []},
+        "stop_reasons": [], "related_tests": [],
+        "recommended_next_step": null
+    }"#;
+    let finding: Finding = serde_json::from_str(legacy)
+        .map_err(|error| format!("legacy finding must deserialize: {error}"))?;
+    assert_eq!(
+        finding.source_currentness,
+        SourceCurrentness::UnresolvedSubject
+    );
+    Ok(())
+}

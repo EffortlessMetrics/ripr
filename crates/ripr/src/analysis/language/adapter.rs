@@ -21,6 +21,9 @@ use std::path::Path;
 #[derive(Clone, Debug, Default)]
 pub(crate) struct LanguageDiffResult {
     pub(crate) findings: Vec<Finding>,
+    /// Test-harness registry projections (#3532): what each exact
+    /// registration established for this run. Empty without registrations.
+    pub(crate) harness_projections: Vec<crate::analysis::harness_projection::TestHarnessProjection>,
     pub(crate) changed_files: usize,
     /// Number of distinct changed source lines for which the adapter
     /// generated at least one probe. This is a producer fact, not a proxy for
@@ -48,10 +51,21 @@ pub(crate) struct LanguageDiffResult {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct LanguageRepoResult {
     pub(crate) findings: Vec<Finding>,
+    /// Test-harness registry projections (#3532); empty without
+    /// registrations.
+    pub(crate) harness_projections: Vec<crate::analysis::harness_projection::TestHarnessProjection>,
     pub(crate) production_files: usize,
     /// Number of discovered-language files intentionally excluded as generated
     /// source. The pipeline records this as a partial run disclosure.
     pub(crate) skipped_files: usize,
+    /// Typed partial-run disclosure (#3554, #2109): `Some` only when the
+    /// adapter ran over a capped or otherwise partial repo working set, so
+    /// the run can never back a full-denominator claim. The pipeline records
+    /// it as a `LanguageRun` with status `Partial` — the same disclosure
+    /// channel the Rust repo path uses for generated-file skips — which
+    /// human/JSON output renders and gates fail closed on. `None` for
+    /// complete runs and honest zeros.
+    pub(crate) partial_reason: Option<String>,
 }
 
 /// Boundary trait for per-language adapters.

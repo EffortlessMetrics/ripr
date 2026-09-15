@@ -10,6 +10,7 @@ import {
   readActionableGapQueueStatus,
   readFirstPrPacketStatus
 } from '../../src/client';
+import { compatibleLspEvidence } from './testCompatibility';
 
 suite('Extension Smoke', () => {
   suiteSetup(async () => {
@@ -4352,7 +4353,9 @@ function createControllerTestContext(options: ControllerTestOptions) {
       command: 'ripr',
       source: 'path',
       detail: 'test ripr on PATH',
-      version: options.serverVersion ?? 'ripr 0.8.0-test'
+      binaryVersion: options.serverVersion ?? 'ripr 0.8.0-test',
+      installationState: 'unmanaged',
+      compatibilityResult: compatibleLspEvidence
     }),
     createLanguageClient: (_serverOptions, options, experimental) => {
       clientOptions = options;
@@ -4698,6 +4701,7 @@ function editorGapSmokeLedger(): unknown {
         gap_state: 'actionable',
         policy_state: 'advisory',
         repairability: 'repairable',
+        source_currentness: 'candidate_current',
         static_limit_kind: 'missing_import_graph',
         static_limit_detail: 'TypeScript preview smoke uses syntax-first evidence.',
         static_limits: [
