@@ -128,6 +128,8 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     // pair. No implicit cache: the user names the artifact path.
     let mut write_artifact: Option<PathBuf> = None;
     let mut git_timeout_explicitly_provided = false;
+    let mut candidate_tree: Option<String> = None;
+    let mut candidate_base: Option<String> = None;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -146,6 +148,18 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 i += 1;
                 input.diff_file = Some(PathBuf::from(expect_value(args, i, "--diff")?));
                 scope_explicitly_provided = true;
+            }
+            // #3237/#3278: immutable Git candidate input. The subject
+            // owns both identities; --diff/--base conflicts are
+            // rejected at binding (app::analysis_subject).
+            "--candidate-tree" => {
+                i += 1;
+                candidate_tree = Some(expect_value(args, i, "--candidate-tree")?.to_string());
+                scope_explicitly_provided = true;
+            }
+            "--candidate-base" => {
+                i += 1;
+                candidate_base = Some(expect_value(args, i, "--candidate-base")?.to_string());
             }
             "--worktree" => {
                 scope_explicitly_provided = true;
@@ -251,15 +265,76 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 .to_string(),
         );
     }
+    // #3237/#3278: bind the immutable subject before the analysis
+    // call. Construction runs #3276's typed validation (malformed OIDs,
+    // oversized treeishes) and the binding layer rejects --diff/--base
+    // combinations with named errors, so an invalid subject never
+    // reaches analysis.
+    if let Some(tree) = candidate_tree.as_deref() {
+        let base = match candidate_base.as_deref() {
+            Some(explicit) => crate::domain::GitCandidateBase::Treeish(
+                crate::domain::GitTreeish::new(explicit).map_err(|error| error.to_string())?,
+            ),
+            None => crate::domain::GitCandidateBase::EmptyTree,
+        };
+        let candidate =
+            crate::domain::GitObjectId::parse(tree).map_err(|error| error.to_string())?;
+        input.git_candidate = Some(crate::domain::GitCandidateSubject::new(
+            input.root.clone(),
+            base,
+            candidate,
+        ));
+    }
+    // #3278 review: --candidate-base without --candidate-tree is a
+    // dangling input the run would silently ignore; fail closed.
+    if candidate_base.is_some() && candidate_tree.is_none() {
+        return Err(
+            "--candidate-base requires --candidate-tree: name the candidate tree the base applies to"
+                .to_string(),
+        );
+    }
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format;
+    // #3278 review M1: repo-scope formats, repo exposure, and the gap
+    // ledger analyze the LIVE repository by definition. A bound
+    // immutable subject is an exact-tree contract; silently dropping it
+    // would render live-repo output under a candidate-tree invocation —
+    // the exact "analyzed T vs analyzed HEAD by fallback" confusion
+    // this surface exists to eliminate. Fail closed with a named error.
+    let subject_bound_with_live_repo_path = candidate_tree.is_some()
+        && (gap_ledger.is_some()
+            || matches!(format, OutputFormat::RepoExposureJson)
+            || format.is_repo_scope());
+    if subject_bound_with_live_repo_path {
+        return Err(format!(
+            "--candidate-tree cannot be combined with the live-repository path (--format {}{}): the subject binds exact trees, not the live repo",
+            format.primary_cli_name(),
+            if gap_ledger.is_some() {
+                " with --gap-ledger"
+            } else {
+                ""
+            }
+        ));
+    }
     // RIPR-SPEC-0140: --write-artifact records a diff-scoped findings run.
     // Repo-scoped and gap-ledger paths produce no such finding set, so both
     // fail closed with a named limitation rather than silently skipping the
     // requested artifact. --worktree runs record the base-to-worktree diff
     // source, which is re-resolvable at reuse time.
     if let Some(path) = write_artifact.as_ref() {
+        // #3278 review B1: the artifact records a diff source and its
+        // reuse verifier re-resolves it; a tree-to-tree subject diff is
+        // not re-resolvable from the recorded shape, so the artifact
+        // would misdescribe the analyzed run and pass verification
+        // vacuously. Fail closed until a subject-aware diff source
+        // identity exists (R4 scope).
+        if candidate_tree.is_some() {
+            return Err(format!(
+                "--write-artifact {} cannot be combined with --candidate-tree: the artifact records a diff source; the subject's tree-to-tree diff is not re-resolvable yet",
+                path.display()
+            ));
+        }
         if gap_ledger.is_some() {
             return Err(format!(
                 "--write-artifact {} cannot be combined with --gap-ledger: the artifact records a findings-based check run",
@@ -291,6 +366,19 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 path.display()
             ));
         }
+    }
+    // #3279 R4: a bound subject configures itself — the candidate
+    // tree's own ripr.toml (or the pure default when the tree carries
+    // none) replaces the worktree file, so a dirty worktree config
+    // cannot change a subject run. Applied AFTER the argv conflict
+    // gates so an input conflict never depends on a Git object read
+    // (the R3 conflict tests pin the error text, not the ordering;
+    // #3279 review m1). The worktree `config` value above fed only
+    // gates that reject subject combinations outright.
+    let mut config = config;
+    if let Some(subject) = input.git_candidate.as_ref() {
+        config = crate::config::config_for_candidate(subject, &config)?;
+        apply_to_check_input(&mut input, &config, explicit);
     }
     // #2644: `fast` is currently behaviorally identical to `draft`. The notice
     // fires on the EFFECTIVE mode after `apply_to_check_input`, not on argv
@@ -521,6 +609,184 @@ fn render_check_gap_ledger_badge(
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod candidate_tree_tests {
+    use super::super::super::commands::check;
+
+    fn repo_with_candidate(name: &str) -> Result<(std::path::PathBuf, String, String), String> {
+        let root = std::env::temp_dir().join(format!("ripr-3278-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).map_err(|e| e.to_string())?;
+        let run = |args: &[&str]| -> Result<String, String> {
+            let out = crate::git::run_git_output_with_deadline(
+                &root,
+                args,
+                Some(std::time::Duration::from_secs(30)),
+            )
+            .map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                return Err(format!(
+                    "git {} failed: {}",
+                    args[0],
+                    String::from_utf8_lossy(&out.stderr)
+                ));
+            }
+            Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        };
+        run(&["init", "--initial-branch=main"])?;
+        run(&["config", "user.email", "r@e.in"])?;
+        run(&["config", "user.name", "r"])?;
+        std::fs::write(
+            root.join("src/lib.rs"),
+            "pub fn one() -> u8 { 1 }
+",
+        )
+        .map_err(|e| e.to_string())?;
+        run(&["add", "."])?;
+        run(&["commit", "-qm", "base"])?;
+        let base = run(&["rev-parse", "HEAD"])?;
+        std::fs::write(
+            root.join("src/lib.rs"),
+            "pub fn one() -> u8 { 2 }
+",
+        )
+        .map_err(|e| e.to_string())?;
+        run(&["add", "."])?;
+        run(&["commit", "-qm", "candidate"])?;
+        let candidate = run(&["rev-parse", "HEAD"])?;
+        Ok((root, base, candidate))
+    }
+
+    struct Guard(std::path::PathBuf);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn root_args(root: &std::path::Path, extra: &[&str]) -> Vec<String> {
+        let mut args = vec!["--root".to_string(), root.to_string_lossy().to_string()];
+        args.extend(extra.iter().map(|a| a.to_string()));
+        args
+    }
+
+    // #3278: a valid subject runs end to end through the real CLI
+    // parser, and the rendered JSON carries the exact resolved identity
+    // (candidate_tree equals the supplied commit's tree — argv is never
+    // the source).
+    #[test]
+    fn candidate_tree_cli_runs_the_subject() -> Result<(), String> {
+        let (root, base, candidate) = repo_with_candidate("cli-run")?;
+        let _guard = Guard(root.clone());
+        check(&root_args(
+            &root,
+            &[
+                "--candidate-tree",
+                &candidate,
+                "--candidate-base",
+                &base,
+                "--format",
+                "json",
+            ],
+        ))?;
+        Ok(())
+    }
+
+    // #3278 review B1/M1: the artifact, repo-scope, and gap-ledger paths
+    // must fail closed on a bound subject instead of silently dropping
+    // it; --candidate-base without a tree is a named dangling input.
+    #[test]
+    fn candidate_tree_rejects_live_repo_and_artifact_paths() -> Result<(), String> {
+        let (root, _base, candidate) = repo_with_candidate("cli-paths")?;
+        let _guard = Guard(root.clone());
+        let cases: [Vec<&str>; 4] = [
+            vec!["--candidate-tree", &candidate, "--write-artifact", "a.json"],
+            vec![
+                "--candidate-tree",
+                &candidate,
+                "--format",
+                "repo-badge-json",
+            ],
+            vec![
+                "--candidate-tree",
+                &candidate,
+                "--format",
+                "repo-exposure-json",
+            ],
+            vec!["--candidate-base", "main"],
+        ];
+        let expected = [
+            "cannot be combined with --candidate-tree",
+            "cannot be combined with the live-repository path",
+            "cannot be combined with the live-repository path",
+            "--candidate-base requires --candidate-tree",
+        ];
+        for (extra, want) in cases.iter().zip(expected.iter()) {
+            let error = check(&root_args(&root, extra)).err().unwrap_or_default();
+            assert!(error.contains(want), "expected `{want}` in: {error}");
+        }
+        Ok(())
+    }
+
+    // #3278: the conflicting-input controls fail before analysis.
+    #[test]
+    fn candidate_tree_rejects_conflicting_inputs() -> Result<(), String> {
+        let (root, _base, candidate) = repo_with_candidate("cli-conflict")?;
+        let _guard = Guard(root.clone());
+        let cases: [Vec<&str>; 3] = [
+            vec!["--candidate-tree", &candidate, "--diff", "x.diff"],
+            vec!["--candidate-tree", &candidate, "--base", "main"],
+            vec!["--candidate-tree", "deadbeef"],
+        ];
+        for extra in cases {
+            let error = check(&root_args(&root, &extra)).err().unwrap_or_default();
+            assert!(
+                error.contains("git candidate subject"),
+                "must fail closed naming the subject: {error}"
+            );
+        }
+        Ok(())
+    }
+
+    // #3278: the app layer projects the exact resolved identity —
+    // subject_kind, both trees, and a sha256 diff identity — into the
+    // check JSON the CLI renders.
+    #[test]
+    fn candidate_tree_json_carries_exact_subject_identity() -> Result<(), String> {
+        let (root, base, candidate) = repo_with_candidate("cli-json")?;
+        let _guard = Guard(root.clone());
+        let subject = crate::domain::GitCandidateSubject::new(
+            &root,
+            crate::domain::GitCandidateBase::Treeish(
+                crate::domain::GitTreeish::new(&base).map_err(|e| e.to_string())?,
+            ),
+            crate::domain::GitObjectId::parse(&candidate).map_err(|e| e.to_string())?,
+        );
+        let input = crate::app::CheckInput {
+            root: root.clone(),
+            base: None,
+            diff_file: None,
+            git_candidate: Some(subject),
+            ..crate::app::CheckInput::default()
+        };
+        let output = crate::app::check_workspace(input)?;
+        let outcome = output
+            .analysis_outcome
+            .as_ref()
+            .ok_or("candidate run must carry an analysis outcome")?;
+        let identity = outcome
+            .identity
+            .git_candidate_subject
+            .as_ref()
+            .ok_or("git_candidate_subject missing from identity")?;
+        assert_eq!(identity.subject_kind, "tree_to_tree");
+        assert!(!identity.base_tree.is_empty());
+        assert!(!identity.candidate_tree.is_empty());
+        assert!(identity.diff_identity.starts_with("sha256:"));
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {

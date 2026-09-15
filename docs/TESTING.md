@@ -38,6 +38,7 @@ cargo xtask ci-full
 cargo xtask check-static-language
 cargo xtask check-no-panic-family
 cargo xtask check-file-policy
+cargo xtask check-covered-by
 cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
@@ -70,6 +71,8 @@ The current test suite covers:
 
 - unified diff parsing
 - Rust test/assertion extraction
+- harness trial-subject evidence parity (helper callbacks, method
+  oracles, dormant templates, shadow fail-closed boundaries)
 - JSON escaping
 - simple end-to-end diff analysis
 - CLI smoke behavior
@@ -92,6 +95,38 @@ Properties checked:
 Convention: property tests use `Result<(), String>` bodies, no `unwrap`/`expect`,
 per the workspace lint posture. See `docs/TEST_TAXONOMY.md` for the Property
 and Fuzz test type definitions.
+
+## Harness Trial-Subject Evidence Parity Scan
+
+The repository-governed test-harness registry
+(`crates/ripr/src/analysis/facts/harness_registry.rs`, [RIPR-SPEC-0173](specs/RIPR-SPEC-0173-trial-subject-evidence-parity.md))
+derives evidence for registered harness trial subjects (for example
+libtest_mimic `Trial::test` registrations). Its parity scan keeps a trial
+subject's observation evidence aligned with what an ordinary `#[test]`
+carrying the same code would show, and every widening is fail-closed.
+The discriminating unit tests live in
+`crates/ripr/src/analysis/facts/harness_registry/tests.rs`:
+
+- helper-callback bodies contribute one level of parsed evidence
+  (calls, oracles, literals) with real line attribution, only when the
+  callback name provably binds the file-level fn (`shadowed_callback_...`
+  and `..._const_or_static_shadow_...` pins block let/parameter/const/
+  static/import/nested-module shadows);
+- method-position `.unwrap()`/`.expect()` calls register smoke oracles
+  with receiver-ful text across keyword, indexed, cast, operator, and
+  negation receiver forms (`trial_method_oracle_receivers_...`);
+- assertion macros in every delimiter Rust permits (`(...)`, `[...]`,
+  `{...}`) keep their complete invocation text, classification, and
+  observed tokens (`trial_alternative_delimiters_...`);
+- dormant `macro_rules!` templates — in any delimiter, in a closure or
+  a helper body — contribute no oracle, call, or literal evidence while
+  live surrounding evidence still admits (`trial_dormant_...` and
+  `given_dormant_template_in_helper_...` pins).
+
+When you touch the trial evidence scan, work fixture-first: verify the
+new discriminating test fails on the pre-fix head, then check the
+ordinary-parser parity pins and the fail-closed negative controls
+together, so a widened admit cannot land without its boundary.
 
 ## Error-Handling Bar
 

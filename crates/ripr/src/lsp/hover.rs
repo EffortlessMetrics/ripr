@@ -292,8 +292,20 @@ fn push_gap_verify_and_receipt(lines: &mut Vec<String>, data: &Value) {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    // FIX #1617 slice 2: producer-owned typed specs carry the execution
+    // mode beside the legacy display strings, so the hover can say whether
+    // a route is directly executable or needs a shell (redirect). Elements
+    // missing either field render nothing rather than a guessed marker.
+    let regeneration_specs = value_at(data, &["regeneration_command_specs"])
+        .and_then(Value::as_array)
+        .map(|items| items.iter().take(5).collect::<Vec<_>>())
+        .unwrap_or_default();
     let receipt = value_at(data, &["receipt"]);
-    if verify_commands.is_empty() && regeneration_commands.is_empty() && receipt.is_none() {
+    if verify_commands.is_empty()
+        && regeneration_commands.is_empty()
+        && regeneration_specs.is_empty()
+        && receipt.is_none()
+    {
         return;
     }
 
@@ -301,6 +313,15 @@ fn push_gap_verify_and_receipt(lines: &mut Vec<String>, data: &Value) {
     lines.push("## Verify and receipt".to_string());
     for command in verify_commands {
         lines.push(format!("- verify: `{command}`"));
+    }
+    for spec in &regeneration_specs {
+        let Some(mode) = spec.get("execution_mode").and_then(string_value) else {
+            continue;
+        };
+        let Some(display) = spec.get("human_display").and_then(string_value) else {
+            continue;
+        };
+        lines.push(format!("- regenerate ({mode}): `{display}`"));
     }
     for command in regeneration_commands {
         lines.push(format!("- regenerate: `{command}`"));
@@ -1260,6 +1281,7 @@ mod seam_hover_tests {
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),
+            harness_facts: super::super::state::HarnessFactsOnSnapshot::NotRegistered,
             diagnostics_by_uri: BTreeMap::new(),
             delivery_selection: None,
             seams_deferred: false,
@@ -1337,6 +1359,111 @@ mod seam_hover_tests {
         }
         if !md.contains("Probe:") && !md.contains("**ripr**") {
             return Err(format!("expected generic diagnostic hover in:\n{md}"));
+        }
+        Ok(())
+    }
+
+    /// FIX #1617 slice 2: typed regeneration specs render an execution-mode
+    /// marker before the legacy display strings, and the legacy lines stay
+    /// for human parity.
+    #[test]
+    fn gap_diagnostic_hover_renders_typed_regeneration_spec_modes() -> Result<(), String> {
+        let mut diagnostic = sample_gap_diagnostic();
+        let data = diagnostic
+            .data
+            .as_mut()
+            .ok_or("gap diagnostic must carry data")?;
+        let object = data
+            .as_object_mut()
+            .ok_or("gap diagnostic data must be an object")?;
+        object.insert(
+            "regeneration_command_specs".to_string(),
+            serde_json::json!([
+                {
+                    "command_id": "ripr:reports:gap-ledger",
+                    "role": "regeneration",
+                    "execution_mode": "direct",
+                    "human_display": "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md"
+                },
+                {
+                    "command_id": "ripr:check:repo-exposure",
+                    "role": "regeneration",
+                    "execution_mode": "shell_required",
+                    "human_display": "ripr check --root . --mode instant --format repo-exposure-json > repo.json"
+                }
+            ]),
+        );
+
+        let hover = diagnostic_hover_response(&diagnostic);
+        let md = extract_markup(&hover)?;
+        let direct = "- regenerate (direct): `ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md`";
+        let shell_required = "- regenerate (shell_required): `ripr check --root . --mode instant --format repo-exposure-json > repo.json`";
+        let legacy = "- regenerate: `cargo xtask ripr-pr --check`";
+        for needle in [direct, shell_required, legacy] {
+            if !md.contains(needle) {
+                return Err(format!("missing {needle:?} in:\n{md}"));
+            }
+        }
+        let direct_index = md
+            .find(direct)
+            .ok_or_else(|| format!("missing direct marker in:\n{md}"))?;
+        let shell_index = md
+            .find(shell_required)
+            .ok_or_else(|| format!("missing shell_required marker in:\n{md}"))?;
+        let legacy_index = md
+            .find(legacy)
+            .ok_or_else(|| format!("missing legacy regenerate line in:\n{md}"))?;
+        if direct_index > legacy_index || shell_index > legacy_index {
+            return Err(format!(
+                "typed spec markers must precede the legacy lines in:\n{md}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// FIX (round-1 review): the marker contract must hold for a real
+    /// serialized `CommandSpec`, not only hand-built JSON — the hover reads
+    /// the serde field names (`human_display`, `execution_mode`) exactly as
+    /// the domain type serializes them.
+    #[test]
+    fn gap_diagnostic_hover_recognizes_serialized_command_spec() -> Result<(), String> {
+        let spec = crate::agent::command_specs::report_regeneration_command_spec_from_display(
+            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md",
+        )
+        .ok_or("canonical gap-ledger route was not recoverable")?;
+        let serialized = serde_json::to_value(&spec)
+            .map_err(|error| format!("serialize command spec failed: {error}"))?;
+        if serialized.get("human_display").and_then(string_value) != Some(spec.display.as_str()) {
+            return Err(format!(
+                "serialized spec must expose the display as `human_display`: {serialized}"
+            ));
+        }
+        if serialized.get("execution_mode").and_then(string_value) != Some("direct") {
+            return Err(format!(
+                "serialized spec must expose `execution_mode` as a string: {serialized}"
+            ));
+        }
+
+        let mut diagnostic = sample_gap_diagnostic();
+        let data = diagnostic
+            .data
+            .as_mut()
+            .ok_or("gap diagnostic must carry data")?;
+        let object = data
+            .as_object_mut()
+            .ok_or("gap diagnostic data must be an object")?;
+        object.insert(
+            "regeneration_command_specs".to_string(),
+            serde_json::json!([serialized]),
+        );
+
+        let hover = diagnostic_hover_response(&diagnostic);
+        let md = extract_markup(&hover)?;
+        let marker = format!("- regenerate (direct): `{}`", spec.display);
+        if !md.contains(&marker) {
+            return Err(format!(
+                "missing serialized-spec marker {marker:?} in:\n{md}"
+            ));
         }
         Ok(())
     }

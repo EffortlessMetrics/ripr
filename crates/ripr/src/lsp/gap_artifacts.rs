@@ -1513,6 +1513,8 @@ fn known_static_limit_kind(kind: &str) -> bool {
         StaticLimitKind::RustMacroReachUnresolved,
         StaticLimitKind::RustMacroWrappedTestCallUnresolved,
         StaticLimitKind::RustMacroWrappedAssertionUnresolved,
+        StaticLimitKind::RustValuePropagationUnresolved,
+        StaticLimitKind::RustSubprocessBinaryReachUnresolved,
     ]
     .iter()
     .any(|known| known.as_str() == kind)
@@ -2776,6 +2778,31 @@ mod tests {
         artifact["records"][0]["language_status"] = json!("stable");
         artifact["records"][0]["static_limit_kind"] =
             json!("rust_macro_wrapped_assertion_unresolved");
+
+        validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|err| format!("{err:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn validation_accepts_rust_value_propagation_static_limit_kind() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"][0]["language"] = json!("rust");
+        artifact["records"][0]["language_status"] = json!("stable");
+        artifact["records"][0]["static_limit_kind"] = json!("rust_value_propagation_unresolved");
+
+        validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|err| format!("{err:?}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn validation_accepts_rust_subprocess_binary_static_limit_kind() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"][0]["language"] = json!("rust");
+        artifact["records"][0]["language_status"] = json!("stable");
+        artifact["records"][0]["static_limit_kind"] =
+            json!("rust_subprocess_binary_reach_unresolved");
 
         validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
             .map_err(|err| format!("{err:?}"))?;

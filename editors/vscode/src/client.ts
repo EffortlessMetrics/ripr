@@ -2320,7 +2320,7 @@ function statusContextLines(status: RiprStatusState, context: RiprStatusContext)
   if (context.server) {
     lines.push(`Server: ${context.server.source} (${context.server.detail})`);
     lines.push(`Server command: ${context.server.command}`);
-    lines.push(`Server version: ${context.server.version ?? 'not reported'}`);
+    lines.push(`Server version: ${context.server.binaryVersion ?? 'not reported'}`);
   } else {
     lines.push('Server: not resolved');
     lines.push('Server version: not reported');
@@ -2428,7 +2428,7 @@ function actionableGapQueueStoredInTarget(queue: RiprActionableGapQueueStatus): 
 }
 
 function riprServerVersionState(context: RiprStatusContext): { state: RiprSetupState; detail?: string } {
-  const version = context.server?.version;
+  const version = context.server?.binaryVersion;
   if (!context.server) {
     return { state: 'ripr_missing' };
   }

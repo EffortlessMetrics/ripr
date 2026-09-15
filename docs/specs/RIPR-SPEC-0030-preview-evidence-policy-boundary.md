@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on cross-surface proof that preview evidence remains visible but non-governing.
+
 ## Problem
 
 Campaign 27 introduces opt-in TypeScript and Python preview adapters. Those

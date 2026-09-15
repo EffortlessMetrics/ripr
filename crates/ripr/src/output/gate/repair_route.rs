@@ -127,7 +127,7 @@ fn gap_record_route_facts(record: &GapRecord) -> GateRouteFacts {
             .and_then(non_empty_str)
             .map(ToString::to_string),
         gap_state: non_empty(&record.gap_state),
-        classification: None,
+        classification: non_empty(&record.evidence_class),
         changed_owner: record
             .anchor
             .as_ref()

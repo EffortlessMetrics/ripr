@@ -128,6 +128,7 @@ cargo xtask check-no-panic-family
 cargo xtask check-allow-attributes
 cargo xtask check-local-context
 cargo xtask check-file-policy
+cargo xtask check-covered-by
 cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-droid-review-config
@@ -199,7 +200,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.10.0.vsix --force
+code --install-extension dist/ripr-0.11.0.vsix --force
 ```
 
 The extension should resolve the server in this order:

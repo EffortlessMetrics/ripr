@@ -48,7 +48,7 @@
         "agent_command": "ripr agent start --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
       },
       "receipt": {
-        "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+        "artifact": "fixtures/boundary_gap/expected/assistant-loop-health/regressed/agent-receipt.json",
         "status": "present"
       },
       "movement": {
@@ -67,7 +67,7 @@
         {
           "kind": "regressed_movement",
           "message": "Static movement regressed after the focused attempt.",
-          "source_artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
+          "source_artifact": "fixtures/boundary_gap/expected/assistant-loop-health/regressed/agent-receipt.json"
         }
       ]
     }

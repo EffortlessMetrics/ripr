@@ -1,0 +1,374 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/match_arm_controls/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":4,"findings":4,"exposed":0,"weakly_exposed":4,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:a2662e9aabeaa84e294a1e5c0339a99b8778addc8a353af50bf3688374238d92","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":8,"candidate_line_count":4,"probe_count":4,"finding_count":4},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:659cd128",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:659cd128",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/match_arm_controls/input/src/lib.rs",
+        "line": 14,
+        "expression": "if final_label == \"beta\" {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach classify_computed: computed_label_is_word"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: \"word\""},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach classify_computed: computed_label_is_word", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: \"word\"", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: \"word\" (line 15)", "related test tests/classify.rs:4 computed_label_is_word uses strong exact value oracle: assert_eq!(classify_computed(\"word\"), \"word\");", "observed assertion argument value \"word\" at line 5", "observed function argument value input = \"word\" at line 5", "missing discriminator final_label == \"beta\": No related test call uses final_label equal to \"beta\"; observed final_label values: unknown; target \"beta\" value: \"beta\""],
+      "flow_sinks": [
+        {"kind":"return_value","text":"\"word\"","line":15}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: \"word\"", "Related tests appear to reach classify_computed: computed_label_is_word", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["Missing discriminator value: final_label == \"beta\""],
+      "assertion_texts": {
+        "5": "assert_eq!(classify_computed(\"word\"), \"word\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "\"word\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "input = \"word\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "final_label == \"beta\"",
+            "reason": "No related test call uses final_label equal to \"beta\"; observed final_label values: unknown; target \"beta\" value: \"beta\"",
+            "flow_sink": {"kind":"return_value","text":"\"word\"","line":15}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "\"word\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "input = \"word\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "final_label == \"beta\"",
+          "reason": "No related test call uses final_label equal to \"beta\"; observed final_label values: unknown; target \"beta\" value: \"beta\"",
+          "flow_sink": {"kind":"return_value","text":"\"word\"","line":15}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "computed_label_is_word",
+          "file": "tests/classify.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(classify_computed(\"word\"), \"word\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:2d6b188b",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:2d6b188b",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/match_arm_controls/input/src/lib.rs",
+        "line": 30,
+        "expression": "if final_label == \"beta\" {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach classify_guard: guarded_label_is_word"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: \"word\""},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach classify_guard: guarded_label_is_word", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: \"word\"", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: \"word\" (line 31)", "related test tests/classify.rs:9 guarded_label_is_word uses strong exact value oracle: assert_eq!(classify_guard(\"word\"), \"word\");", "observed assertion argument value \"word\" at line 10", "observed function argument value input = \"word\" at line 10", "missing discriminator final_label == \"beta\": No related test call uses final_label equal to \"beta\"; observed final_label values: unknown; target \"beta\" value: \"beta\""],
+      "flow_sinks": [
+        {"kind":"return_value","text":"\"word\"","line":31}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: \"word\"", "Related tests appear to reach classify_guard: guarded_label_is_word", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["Missing discriminator value: final_label == \"beta\""],
+      "assertion_texts": {
+        "10": "assert_eq!(classify_guard(\"word\"), \"word\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 10,
+            "value": "\"word\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "input = \"word\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "final_label == \"beta\"",
+            "reason": "No related test call uses final_label equal to \"beta\"; observed final_label values: unknown; target \"beta\" value: \"beta\"",
+            "flow_sink": {"kind":"return_value","text":"\"word\"","line":31}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 10,
+          "value": "\"word\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "input = \"word\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "final_label == \"beta\"",
+          "reason": "No related test call uses final_label equal to \"beta\"; observed final_label values: unknown; target \"beta\" value: \"beta\"",
+          "flow_sink": {"kind":"return_value","text":"\"word\"","line":31}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "guarded_label_is_word",
+          "file": "tests/classify.rs",
+          "line": 9,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(classify_guard(\"word\"), \"word\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:845a474d",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:845a474d",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/match_arm_controls/input/src/lib.rs",
+        "line": 46,
+        "expression": "if final_label == \"beta\" {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach classify_bare: bare_label_is_word"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: \"word\""},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach classify_bare: bare_label_is_word", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: \"word\"", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: \"word\" (line 47)", "related test tests/classify.rs:14 bare_label_is_word uses strong exact value oracle: assert_eq!(classify_bare(\"word\"), \"word\");", "observed assertion argument value \"word\" at line 15", "observed function argument value input = \"word\" at line 15", "missing discriminator final_label == \"beta\": No related test call uses final_label equal to \"beta\"; observed final_label values: unknown; target \"beta\" value: \"beta\""],
+      "flow_sinks": [
+        {"kind":"return_value","text":"\"word\"","line":47}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: \"word\"", "Related tests appear to reach classify_bare: bare_label_is_word", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["Missing discriminator value: final_label == \"beta\""],
+      "assertion_texts": {
+        "15": "assert_eq!(classify_bare(\"word\"), \"word\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 15,
+            "value": "\"word\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "input = \"word\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "final_label == \"beta\"",
+            "reason": "No related test call uses final_label equal to \"beta\"; observed final_label values: unknown; target \"beta\" value: \"beta\"",
+            "flow_sink": {"kind":"return_value","text":"\"word\"","line":47}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 15,
+          "value": "\"word\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "input = \"word\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "final_label == \"beta\"",
+          "reason": "No related test call uses final_label equal to \"beta\"; observed final_label values: unknown; target \"beta\" value: \"beta\"",
+          "flow_sink": {"kind":"return_value","text":"\"word\"","line":47}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "bare_label_is_word",
+          "file": "tests/classify.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(classify_bare(\"word\"), \"word\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:0a147037",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:0a147037",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/match_arm_controls/input/src/lib.rs",
+        "line": 62,
+        "expression": "if final_label == \"beta\" {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach classify_char: char_tag_is_word"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: \"word\""},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach classify_char: char_tag_is_word", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: \"word\"", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: \"word\" (line 63)", "related test tests/classify.rs:19 char_tag_is_word uses strong exact value oracle: assert_eq!(classify_char('a'), \"word\");", "observed assertion argument value \"word\" at line 20", "observed function argument value c = 'a' at line 20", "missing discriminator final_label == \"beta\": No related test call uses final_label equal to \"beta\"; observed final_label values: unknown; target \"beta\" value: \"beta\""],
+      "flow_sinks": [
+        {"kind":"return_value","text":"\"word\"","line":63}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: \"word\"", "Related tests appear to reach classify_char: char_tag_is_word", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["Missing discriminator value: final_label == \"beta\""],
+      "assertion_texts": {
+        "20": "assert_eq!(classify_char('a'), \"word\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 20,
+            "value": "\"word\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 20,
+            "value": "c = 'a'",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "final_label == \"beta\"",
+            "reason": "No related test call uses final_label equal to \"beta\"; observed final_label values: unknown; target \"beta\" value: \"beta\"",
+            "flow_sink": {"kind":"return_value","text":"\"word\"","line":63}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 20,
+          "value": "\"word\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 20,
+          "value": "c = 'a'",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "final_label == \"beta\"",
+          "reason": "No related test call uses final_label equal to \"beta\"; observed final_label values: unknown; target \"beta\" value: \"beta\"",
+          "flow_sink": {"kind":"return_value","text":"\"word\"","line":63}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "char_tag_is_word",
+          "file": "tests/classify.rs",
+          "line": 19,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(classify_char('a'), \"word\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

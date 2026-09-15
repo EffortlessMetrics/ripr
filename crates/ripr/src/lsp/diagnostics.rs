@@ -4,15 +4,16 @@ use super::gap_artifacts::{
     GapArtifactKind, GapArtifactRejection, GapArtifactValidationContext, validate_gap_artifact,
     validate_workspace_gap_artifact_report,
 };
-use super::state::{AnalysisSnapshot, RefreshMetadata};
+use super::state::{AnalysisSnapshot, HarnessFactsOnSnapshot, RefreshMetadata};
 use super::uri::{absolute_join, display_path, file_uri_for_path, path_from_file_uri};
+use crate::agent::command_specs::{command_display_is_nonblank, command_displays_are_complete};
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::cancellation::AnalysisCancellationToken;
 use crate::analysis::inventory_classified_seams_at_with_config;
 use crate::analysis::seams::SeamGripClass;
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::causal_projection::{CausalDeltaArtifact, insert_canonical_delta_fields};
-use crate::app::check_workspace_with_config;
+use crate::app::check_workspace_worktree_with_config;
 use crate::config::{ConfigSeverity, LspDiagnosticProfile, SeverityConfig};
 #[cfg(test)]
 use crate::domain::RelatedTest;
@@ -395,16 +396,21 @@ pub(super) fn finding_is_visible_in_profile(
     finding: &Finding,
 ) -> bool {
     match profile {
+        // The Full profile keeps base-side evidence visible as historical
+        // context; the Actionable profile is an obligation surface and only
+        // candidate-current findings qualify (#3281).
         LspDiagnosticProfile::Full => true,
         LspDiagnosticProfile::Actionable => {
-            matches!(
-                finding.class,
-                ExposureClass::WeaklyExposed
-                    | ExposureClass::ReachableUnrevealed
-                    | ExposureClass::NoStaticPath
-            ) && DiagnosticWitness::from_finding(finding).is_some_and(|witness| {
-                !witness.missing_discriminators.is_empty() && witness.fix_site.is_some()
-            })
+            finding.is_candidate_actionable()
+                && matches!(
+                    finding.class,
+                    ExposureClass::WeaklyExposed
+                        | ExposureClass::ReachableUnrevealed
+                        | ExposureClass::NoStaticPath
+                )
+                && DiagnosticWitness::from_finding(finding).is_some_and(|witness| {
+                    !witness.missing_discriminators.is_empty() && witness.fix_site.is_some()
+                })
         }
     }
 }
@@ -718,7 +724,12 @@ pub(super) fn workspace_diagnostics_with_config(
     defer_seam_inventory: bool,
 ) -> Result<WorkspaceDiagnostics, String> {
     let input = config.check_input(root);
-    let output = match check_workspace_with_config(input, config.repo_config()) {
+    // Saved-workspace authority (#3183): editor refreshes analyze the live
+    // tracked working tree, including staged and unstaged bytes that the
+    // client has persisted, through the same canonical path as
+    // `ripr check --worktree`. Document quarantine remains the independent
+    // authority that prevents unsaved buffers from being served as current.
+    let output = match check_workspace_worktree_with_config(input, config.repo_config()) {
         Ok(output) => output,
         // #2303: a git invocation that exceeded the configured cooperative
         // deadline commits a limited snapshot (zero findings, one typed
@@ -752,19 +763,35 @@ pub(super) fn workspace_diagnostics_with_config(
     let root = output.root;
     let base = output.base;
     let analysis_outcome = output.analysis_outcome;
+    // Harness facts on the snapshot distinguish three states: no
+    // registrations (repositories keep byte-identical output), facts
+    // established by this run, and limited runs that disclose the run-status
+    // limitation instead (#3605).
+    let registrations = config.repo_config().analysis().test_harnesses();
+    let harness_facts = if !registrations.is_empty() {
+        if output.harness_projections.is_empty() {
+            // Registrations exist but this run established no facts (Rust
+            // disabled, or a partial scope that indexed none of the targets).
+            HarnessFactsOnSnapshot::Unknown
+        } else {
+            HarnessFactsOnSnapshot::Complete(output.harness_projections)
+        }
+    } else {
+        HarnessFactsOnSnapshot::NotRegistered
+    };
     let mode = output.mode;
     let partial_scope = output.partial_scope;
     // Scope the LSP projection to production Rust anchors, matching the CLI
     // review surface (`changed_production_files_plus_immediate_callers`).
-    // Diff probe seeding already skips `tests/` trees, but the seeding
-    // predicate is narrower than the shared production classifier
-    // (`workspace::is_production_rust_path`): `src/tests.rs`, `examples/`,
-    // `benches/`, and other non-production trees can still seed findings.
-    // Dropping them here — with the suppressed count disclosed on the
-    // snapshot — keeps the editor from pinning line-local gap diagnostics in
-    // files the review surface explicitly treats as out of scope (#2130).
+    // Since #3285 the partition consumes the same producer-owned
+    // source-role model as diff seeding — `tests/`, cargo-discoverable
+    // `benches/`/`examples/` shapes, declared targets, and the
+    // `production_like_targets` opt-in — so an opted-in target keeps its
+    // editor projection and the partition suppresses nothing seeding
+    // already excluded. The suppressed count stays on the snapshot as the
+    // typed safety net against anchor-model divergence (#2130).
     let (findings, out_of_scope_test_file_findings) =
-        partition_out_of_scope_test_file_findings(&root, output.findings);
+        partition_out_of_scope_test_file_findings(&root, config.repo_config(), output.findings);
 
     // Typed component-outcome authority (#1997, RIPR-SPEC-0141): every
     // optional analysis component records one bounded outcome on the
@@ -987,6 +1014,7 @@ pub(super) fn workspace_diagnostics_with_config(
         classified_seams,
         gap_artifacts: gap_artifact_report.artifacts,
         gap_artifact_rejections: gap_artifact_report.rejections,
+        harness_facts,
         diagnostics_by_uri,
         delivery_selection: None,
         seams_deferred: defer_seam_inventory,
@@ -1094,6 +1122,15 @@ fn git_timeout_limited_diagnostics(
         classified_seams: Vec::new(),
         gap_artifacts: Vec::new(),
         gap_artifact_rejections: Vec::new(),
+        // Limited runs disclose the run-status limitation instead of
+        // harness facts; the next full refresh repopulates them (#3605).
+        // NotRegistered vs UnavailableLimitedRun stays resolvable here
+        // because the config is authoritative for registration presence.
+        harness_facts: if config.repo_config().analysis().test_harnesses().is_empty() {
+            HarnessFactsOnSnapshot::NotRegistered
+        } else {
+            HarnessFactsOnSnapshot::UnavailableLimitedRun
+        },
         diagnostics_by_uri: BTreeMap::new(),
         delivery_selection: None,
         seams_deferred: defer_seam_inventory,
@@ -1163,6 +1200,15 @@ fn oversized_diff_limited_diagnostics(
         classified_seams: Vec::new(),
         gap_artifacts: Vec::new(),
         gap_artifact_rejections: Vec::new(),
+        // Limited runs disclose the run-status limitation instead of
+        // harness facts; the next full refresh repopulates them (#3605).
+        // NotRegistered vs UnavailableLimitedRun stays resolvable here
+        // because the config is authoritative for registration presence.
+        harness_facts: if config.repo_config().analysis().test_harnesses().is_empty() {
+            HarnessFactsOnSnapshot::NotRegistered
+        } else {
+            HarnessFactsOnSnapshot::UnavailableLimitedRun
+        },
         diagnostics_by_uri,
         delivery_selection: None,
         seams_deferred: defer_seam_inventory,
@@ -1708,13 +1754,17 @@ fn finding_is_advisory(finding: &Finding) -> bool {
     finding.static_limit_kind.is_some() || finding.language_status == Some(LanguageStatus::Preview)
 }
 
-/// A gap record has a complete repair packet when it is repairable, carries
-/// at least one verification command, and has a receipt command.
+/// A gap record has a complete repair packet when it is repairable, carries a
+/// non-empty verification list whose every display is non-whitespace after
+/// trimming, and has a receipt command that is non-whitespace after trimming.
 /// WARNING is only appropriate when the packet is complete and actionable.
 fn gap_record_has_complete_packet(record: &GapRecord) -> bool {
     record.repairability == "repairable"
-        && !record.verification_commands.is_empty()
-        && record.receipt_command.is_some()
+        && command_displays_are_complete(&record.verification_commands)
+        && record
+            .receipt_command
+            .as_deref()
+            .is_some_and(command_display_is_nonblank)
 }
 
 /// A gap record is advisory when it is from a preview language or carries a
@@ -1728,8 +1778,8 @@ fn gap_record_is_advisory(record: &GapRecord) -> bool {
 /// packet AND is not advisory. All other cases → INFORMATION.
 ///
 /// This enforces the hard rule: no WARNING without a complete repair packet.
-/// A complete packet requires `repairability == "repairable"`,
-/// non-empty `verification_commands`, and `receipt_command.is_some()`.
+/// A complete packet requires `repairability == "repairable"`, an all-nonblank
+/// `verification_commands` list, and a trim-nonblank `receipt_command`.
 /// Advisory records (preview language or static_limit_kind present) are
 /// clamped to INFORMATION even when the packet looks complete.
 fn gap_record_diagnostic_severity(record: &GapRecord) -> DiagnosticSeverity {
@@ -1762,6 +1812,26 @@ fn gap_record_diagnostic_message(record: &GapRecord) -> String {
     message
 }
 
+/// FIX (round-2 review): a serialization failure must not collapse into an
+/// empty collection — that would be indistinguishable from "no typed
+/// routes". The payload carries the serialized specs plus an optional
+/// named error string; success keeps the error absent.
+fn regeneration_specs_payload<S: serde::Serialize>(
+    specs: &[S],
+) -> (serde_json::Value, Option<String>) {
+    match specs
+        .iter()
+        .map(serde_json::to_value)
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(values) => (serde_json::Value::Array(values), None),
+        Err(error) => (
+            serde_json::Value::Array(Vec::new()),
+            Some(error.to_string()),
+        ),
+    }
+}
+
 fn gap_record_diagnostic_data_with_causal(
     root: &Path,
     ledger_path: &Path,
@@ -1780,6 +1850,13 @@ fn gap_record_diagnostic_data_with_causal(
             ],
         )
     };
+    let (regeneration_command_specs, regeneration_command_specs_error) = regeneration_specs_payload(
+        record
+            .command_specs
+            .as_ref()
+            .map(|specs| specs.regeneration.as_slice())
+            .unwrap_or(&[]),
+    );
     let mut data = serde_json::json!({
         "schema_version": "0.1",
         "source": "gap_decision_ledger",
@@ -1803,10 +1880,19 @@ fn gap_record_diagnostic_data_with_causal(
         "evidence_ids": record.evidence_ids,
         "verification_commands": record.verification_commands,
         "regeneration_commands": record.regeneration_commands,
+        "regeneration_command_specs": regeneration_command_specs,
         "receipt_command": record.receipt_command,
         "receipt": record.receipt,
         "authority_boundary": record.authority_boundary,
     });
+    if let Some(error) = regeneration_command_specs_error
+        && let Some(object) = data.as_object_mut()
+    {
+        object.insert(
+            "regeneration_command_specs_error".to_string(),
+            serde_json::Value::String(error),
+        );
+    }
     if let Some(missing_discriminator) = record
         .repair_route
         .as_ref()
@@ -2249,21 +2335,41 @@ fn absolute_finding_path(root: &Path, finding: &Finding) -> PathBuf {
 /// Split diff-analysis findings into the production scope the LSP publishes
 /// and the out-of-scope tail it must not pin as line-local diagnostics.
 ///
-/// The scope predicate is the shared `workspace::is_production_rust_path`
-/// classifier — the same production/test boundary the CLI review surface and
-/// the seam inventory use — not a parallel LSP-only test-path matcher. It is
+/// The scope predicate is the producer-owned source-role model (#3285) —
+/// the same authority the CLI seeding surface and the seam inventory use —
+/// not a parallel LSP-only test-path matcher. It is
 /// applied only to Rust anchors (`.rs`); other languages keep their own
 /// adapter-owned test-file handling. Paths are relativized against the
 /// workspace root first so an absolute anchor cannot be misclassified by a
 /// root prefix component (e.g. a checkout under a `target/` parent).
 fn partition_out_of_scope_test_file_findings(
     root: &Path,
+    config: &crate::config::RiprConfig,
     findings: Vec<Finding>,
 ) -> (Vec<Finding>, usize) {
+    // #3285: the partition consumes the producer-owned source-role
+    // model — the same authority diff seeding and the seam inventory
+    // use — so an opted-in production-like target keeps its editor
+    // projection and every role judgment (declared Cargo targets
+    // included) agrees across surfaces.
+    let mut context = crate::analysis::context_for_files(
+        root,
+        findings
+            .iter()
+            .map(|finding| finding.probe.location.file.as_path()),
+    );
+    context.production_like_targets = config.analysis().production_like_targets().clone();
+    // Cargo-validated file-wide harness evidence (#3608): the same
+    // validated grant the diff seeding and seam inventory consume, so a
+    // misdeclared registration degrades identically in the editor.
+    context.harness_targets = crate::analysis::validated_file_wide_harness_targets(
+        root,
+        config.analysis().test_harnesses(),
+    );
     let mut scoped = Vec::with_capacity(findings.len());
     let mut out_of_scope = 0usize;
     for finding in findings {
-        if finding_anchor_is_out_of_scope_rust_path(root, &finding) {
+        if finding_anchor_is_out_of_scope_rust_path(root, &context, &finding) {
             out_of_scope += 1;
         } else {
             scoped.push(finding);
@@ -2272,7 +2378,11 @@ fn partition_out_of_scope_test_file_findings(
     (scoped, out_of_scope)
 }
 
-fn finding_anchor_is_out_of_scope_rust_path(root: &Path, finding: &Finding) -> bool {
+fn finding_anchor_is_out_of_scope_rust_path(
+    root: &Path,
+    context: &crate::analysis::SourceRoleContext,
+    finding: &Finding,
+) -> bool {
     let file = &finding.probe.location.file;
     if file.extension().and_then(|ext| ext.to_str()) != Some("rs") {
         return false;
@@ -2282,7 +2392,7 @@ fn finding_anchor_is_out_of_scope_rust_path(root: &Path, finding: &Finding) -> b
     } else {
         file.as_path()
     };
-    !crate::analysis::is_production_rust_path(relative)
+    !crate::analysis::classify_with(relative, context).seeds_production_findings()
 }
 
 #[cfg(test)]
@@ -2848,6 +2958,7 @@ mod seam_diagnostic_tests {
             },
         );
         GapRecord {
+        source_currentness: Some("candidate_current".to_string()),
             gap_id: "gap:pr:pricing:threshold-boundary".to_string(),
             canonical_gap_id: "gap:rust:pricing:threshold-boundary".to_string(),
             seam_id: None,
@@ -2943,6 +3054,128 @@ mod seam_diagnostic_tests {
         fs::remove_dir_all(&root)
             .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
         result
+    }
+
+    /// FIX (round-1 review): a persisted legacy ledger (string-only
+    /// regeneration commands) gains typed regeneration specs at parse time,
+    /// and the LSP diagnostic payload carries them as
+    /// `regeneration_command_specs`.
+    #[test]
+    fn persisted_legacy_ledger_parse_enriches_diagnostic_payload_specs() -> Result<(), String> {
+        let legacy_ledger = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "gap_decision_ledger",
+            "status": "advisory",
+            "root": ".",
+            "records": [{
+                "gap_id": "gap:legacy-regen",
+                "canonical_gap_id": "gap:legacy-regen",
+                "kind": "MissingValueAssertion",
+                "language": "rust",
+                "language_status": "stable",
+                "scope": "pr_local",
+                "evidence_class": "already_observed",
+                "gap_state": "actionable",
+                "policy_state": "new",
+                "repairability": "repairable",
+                "authority_boundary": "advisory",
+                "regeneration_commands": [
+                    "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md"
+                ]
+            }]
+        });
+        let records =
+            crate::output::gap_decision_ledger::parse_gap_records_json(&legacy_ledger.to_string())?;
+        let record = records
+            .first()
+            .ok_or("legacy ledger parse returned no records")?;
+        let specs = record
+            .command_specs
+            .as_ref()
+            .ok_or("parsed legacy record did not gain typed command specs")?;
+        if specs.regeneration.len() != 1
+            || specs.regeneration[0].command_id != "ripr:reports:gap-ledger"
+        {
+            return Err(format!(
+                "parsed legacy record carried unexpected regeneration specs: {:?}",
+                specs.regeneration
+            ));
+        }
+
+        let root = temp_gap_root()?;
+        let data = gap_record_diagnostic_data_with_causal(
+            &root,
+            Path::new("target/ripr/reports/gap-decision-ledger.json"),
+            record,
+            None,
+        );
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        let payload_specs = data
+            .get("regeneration_command_specs")
+            .and_then(serde_json::Value::as_array)
+            .ok_or("diagnostic payload omitted regeneration_command_specs")?;
+        if payload_specs.len() != 1
+            || payload_specs[0]
+                .get("command_id")
+                .and_then(serde_json::Value::as_str)
+                != Some("ripr:reports:gap-ledger")
+        {
+            return Err(format!(
+                "diagnostic payload carried unexpected regeneration specs: {data}"
+            ));
+        }
+        if data.get("regeneration_command_specs_error").is_some() {
+            return Err(format!(
+                "a successful serialization must not carry an error entry: {data}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// FIX (round-2 review): a serialization failure must surface as the
+    /// named `regeneration_command_specs_error` entry instead of collapsing
+    /// into an empty collection that reads as "no typed routes". Real
+    /// `CommandSpec` values cannot force `serde_json::to_value` to fail
+    /// (all fields are strings, sequences, and integers), so the failure
+    /// branch is pinned through the shared payload helper with a poison
+    /// serializer input.
+    #[test]
+    fn regeneration_specs_payload_surfaces_serialization_failures() -> Result<(), String> {
+        struct Poison;
+        impl serde::Serialize for Poison {
+            fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+                Err(serde::ser::Error::custom("poisoned spec"))
+            }
+        }
+        let (value, error) = regeneration_specs_payload(&[Poison]);
+        if !value.as_array().is_some_and(|entries| entries.is_empty()) {
+            return Err(format!(
+                "a failed serialization must render no specs: {value}"
+            ));
+        }
+        let error = error.ok_or("a serialization failure was not disclosed")?;
+        if !error.contains("poisoned spec") {
+            return Err(format!("the error entry lost the failure detail: {error}"));
+        }
+
+        let spec = crate::agent::command_specs::report_regeneration_command_spec_from_display(
+            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md",
+        )
+        .ok_or("canonical gap-ledger route was not recoverable")?;
+        let (value, error) = regeneration_specs_payload(std::slice::from_ref(&spec));
+        if error.is_some() {
+            return Err("a serializable spec must not produce an error entry".to_string());
+        }
+        if value[0]
+            .get("command_id")
+            .and_then(serde_json::Value::as_str)
+            != Some("ripr:reports:gap-ledger")
+        {
+            return Err(format!("the payload lost the spec: {value}"));
+        }
+        Ok(())
     }
 
     fn temp_gap_root() -> Result<PathBuf, String> {
@@ -3069,6 +3302,7 @@ mod diagnostic_policy_tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 
@@ -3146,6 +3380,7 @@ mod diagnostic_policy_tests {
             },
         );
         GapRecord {
+            source_currentness: Some("candidate_current".to_string()),
             gap_id: "gap:pr:pricing:policy-test".to_string(),
             canonical_gap_id: "gap:rust:pricing:policy-test".to_string(),
             seam_id: None,
@@ -3268,6 +3503,49 @@ mod diagnostic_policy_tests {
             ));
         }
         Ok(())
+    }
+
+    #[test]
+    fn actionable_profile_excludes_base_side_evidence() {
+        // RIPR-SPEC-0152: the actionable profile is an obligation surface;
+        // the full profile keeps base-side evidence visible as history.
+        // Both findings carry the same witness-enriched shape; only the
+        // currentness differs.
+        let witness = || {
+            let mut finding = policy_finding();
+            finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+                value: "Price::Boundary".to_string(),
+                reason: "exact boundary is not observed".to_string(),
+                flow_sink: None,
+            }];
+            finding.related_tests.push(RelatedTest {
+                name: "checks_boundary".to_string(),
+                file: std::path::PathBuf::from("tests/pricing.rs"),
+                line: 12,
+                oracle: Some("assert_eq!(price, expected)".to_string()),
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
+            });
+            finding
+        };
+        let mut deleted = witness();
+        deleted.source_currentness = crate::domain::SourceCurrentness::BaseDeleted;
+        assert!(
+            !finding_is_visible_in_profile(LspDiagnosticProfile::Actionable, &deleted),
+            "base-deleted evidence is not an actionable diagnostic"
+        );
+        assert!(
+            finding_is_visible_in_profile(LspDiagnosticProfile::Full, &deleted),
+            "the full profile keeps base-side evidence visible"
+        );
+        let mut current = witness();
+        current.source_currentness = crate::domain::SourceCurrentness::CandidateCurrent;
+        assert!(
+            finding_is_visible_in_profile(LspDiagnosticProfile::Actionable, &current),
+            "the candidate-current twin keeps its actionable diagnostic"
+        );
     }
 
     #[test]
@@ -3424,6 +3702,20 @@ mod diagnostic_policy_tests {
             ));
         }
 
+        for invalid_commands in [
+            vec![" \t ".to_string()],
+            vec!["cargo test".to_string(), "  ".to_string()],
+        ] {
+            let mut blank_verify = complete.clone();
+            blank_verify.verification_commands = invalid_commands;
+            let severity = gap_record_diagnostic_severity(&blank_verify);
+            if severity != DiagnosticSeverity::INFORMATION {
+                return Err(format!(
+                    "expected INFORMATION for blank verification display, got {severity:?}"
+                ));
+            }
+        }
+
         // Missing receipt_command → INFORMATION.
         let mut no_receipt = complete.clone();
         no_receipt.receipt_command = None;
@@ -3431,6 +3723,15 @@ mod diagnostic_policy_tests {
         if severity != DiagnosticSeverity::INFORMATION {
             return Err(format!(
                 "expected INFORMATION when receipt_command missing, got {severity:?}"
+            ));
+        }
+
+        let mut blank_receipt = complete.clone();
+        blank_receipt.receipt_command = Some(" \t ".to_string());
+        let severity = gap_record_diagnostic_severity(&blank_receipt);
+        if severity != DiagnosticSeverity::INFORMATION {
+            return Err(format!(
+                "expected INFORMATION for blank receipt display, got {severity:?}"
             ));
         }
 
@@ -3975,6 +4276,7 @@ mod lsp_next_step_parity_tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 
@@ -4097,6 +4399,7 @@ mod delivery_tests {
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),
+            harness_facts: HarnessFactsOnSnapshot::NotRegistered,
             diagnostics_by_uri,
             delivery_selection: None,
             seams_deferred: false,

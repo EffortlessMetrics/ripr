@@ -530,6 +530,8 @@ fn extract_rstest_cases_preserves_string_literal_whitespace() {
         assertions: Vec::new(),
         literals: Vec::new(),
         attrs: vec!["#[rstest]".to_string(), "#[case(\"a b\")]".to_string()],
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
     };
     let (cases, params) = extract_rstest_cases(&test);
     assert_eq!(params, vec!["input"]);
@@ -600,6 +602,8 @@ fn allowed_builder_method_names_includes_required_discriminator_tokens() {
         assertions: Vec::new(),
         literals: Vec::new(),
         attrs: Vec::new(),
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
     };
     let facts = ValueEnvFacts::default();
     let env = ValueEnv::new(&seam, &facts);

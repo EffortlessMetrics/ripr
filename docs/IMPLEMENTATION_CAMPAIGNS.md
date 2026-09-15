@@ -5020,7 +5020,12 @@ Campaign ID: `python-repair-routing-reliability`
 
 Status: active
 
-Tracker: `.ripr/goals/python-repair-routing.toml` · issue #1160
+Tracker: issue #1160 (Python usable-tier readiness, partial/open) ·
+`plans/python-repair-routing/current-state-inventory.md` and
+`plans/python-repair-routing/implementation-plan.md` · RIPR-SPEC-0086 /
+RIPR-SPEC-0092. The former `.ripr/goals/python-repair-routing.toml`
+manifest was deleted with the goals scheduler (#2056) and is historical,
+not a live tracker.
 
 Objective:
 
@@ -5041,10 +5046,18 @@ Evidence ladder:
 - support-tier promotion (usable)
 - source promotion into ripr
 
-Landed:
+Landed (historical receipts):
 
 - PR #1161 — Tier A `cargo xtask eval-sweep` harness + RIPR-SPEC-0086
 - PR #1163 — empty/no-clone sweeps report `not_run`, never a vacuous `pass`
+- PR #741 — scoped Python repair-routing loop promoted to `usable alpha`
+  (the governed scope; broader Python static facts remain preview/advisory)
+
+Current status: Python project detection can enable the adapter by default
+when no `ripr.toml` language config is present; explicit config remains
+authoritative. The scoped repair-routing loop is `usable alpha`. The
+`usable` promotion itself is still open — tracked by #1160, which remains
+the partial/open promotion tracker.
 
 Non-goals:
 

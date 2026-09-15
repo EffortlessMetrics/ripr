@@ -1,0 +1,47 @@
+{
+  "kind": "perl_packet_contract_consumer_dispositions",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0064",
+  "case_id": "ordinary_discount",
+  "producer": {
+    "repository": "EffortlessMetrics/perl-lsp-swarm",
+    "commit": "a9664af790888333efbe50a042fa060f3cc2d171",
+    "version": "0.17.0"
+  },
+  "packet": "fixtures/perl_packet_contract_migration/producer-packets/v1/ordinary_discount.json",
+  "packet_sha256": "sha256:0cc8f4bb089aebc99313e143dee9dd2479c34e99b51a8d404063c3d9a370f658",
+  "observed_at": {
+    "ripr_repository": "EffortlessMetrics/ripr-swarm",
+    "ripr_commit": "f608dfd7868843c19087646aded2acfdecdef539"
+  },
+  "authority_boundary": "preview_advisory_only",
+  "decode_result": "ok",
+  "structural_validation_result": "ok",
+  "packet_status_observed": "partial",
+  "pipeline": {
+    "findings_count": 1,
+    "finding_exposure_class": "exposed",
+    "canonical_gap_emitted": false,
+    "repair_packet_ready": false,
+    "agent_packet_ready": false,
+    "language_limitation_emitted": true,
+    "language_limitation_reason": "packet_status partial: findings are advisory only"
+  },
+  "disposition_notes": [
+    "The `exposed` class is the current consumer's projection of a sink-aligned strong exact oracle (observed_sink == changed_observable whole-line equality) over a direct_owner_call relation; infection/propagation stay unknown and the partial packet status keeps the finding advisory with no canonical gap.",
+    "canonical_gap_emitted is false for two independent pinned reasons: packet_status is not complete, and the real producer owner IDs lack the `perl:` prefix required by canonical_owner_identity.",
+    "Structural validation passing includes the packet fingerprint check: the real producer's `packet_fingerprint` recipe matches the consumer's recomputation over the identity-bearing facts (verified empirically at the pinned commits)."
+  ],
+  "must_not_claim": [
+    "ripr_check_executes_perl_lsp",
+    "perl_runtime_executed",
+    "test_command_executed",
+    "canonical_gap_id_emitted_by_perl_lsp",
+    "gap_state_emitted_by_perl_lsp",
+    "repair_packet_ready",
+    "default_gate_authority",
+    "public_badge_contribution",
+    "support_tier_promotion",
+    "v1_compatibility"
+  ]
+}

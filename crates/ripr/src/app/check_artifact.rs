@@ -103,14 +103,32 @@ pub(crate) struct AnalysisOptionsIdentity {
     pub(crate) perl_facts_content_hash: Option<String>,
 }
 
-/// Write the artifact for one completed check run, atomically.
-///
-/// The identity is recomputed here from the resolved input: the diff source
-/// is re-resolved with the same loaders the pipeline used, so the recorded
-/// hash commits to the exact diff bytes of this run. `worktree` marks a
-/// `--worktree` producing run so its diff source is recorded as the
-/// base-to-live-working-tree diff (re-resolvable at reuse time) instead of
-/// the committed `base...HEAD` pair.
+/// Raw-byte diff paths cannot serialize into JSON strings, so any
+/// non-UTF-8 path field renders through the injective stable text
+/// projection (#3609): the artifact stays writable and each distinct
+/// path keeps a distinct, resolvable spelling. Valid-UTF-8 paths are
+/// untouched, keeping existing artifacts byte-identical.
+fn rewrite_non_utf8_finding_paths(findings: &[Finding]) -> Vec<Finding> {
+    findings
+        .iter()
+        .map(|finding| {
+            let mut finding = finding.clone();
+            if finding.probe.location.file.to_str().is_none() {
+                finding.probe.location.file = std::path::PathBuf::from(
+                    crate::analysis::stable_path_text(&finding.probe.location.file),
+                );
+            }
+            for related in &mut finding.related_tests {
+                if related.file.to_str().is_none() {
+                    related.file =
+                        std::path::PathBuf::from(crate::analysis::stable_path_text(&related.file));
+                }
+            }
+            finding
+        })
+        .collect()
+}
+
 pub(crate) fn write_check_artifact(
     path: &Path,
     input: &CheckInput,
@@ -124,7 +142,7 @@ pub(crate) fn write_check_artifact(
         tool: "ripr".to_string(),
         analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
         identity,
-        findings: findings.to_vec(),
+        findings: rewrite_non_utf8_finding_paths(findings),
     };
     let json = serde_json::to_string_pretty(&artifact)
         .map_err(|err| format!("failed to serialize check artifact: {err}"))?;
@@ -420,8 +438,21 @@ fn closed_analysis_options_view(options: &AnalysisOptions) -> (bool, Option<&Pat
         resolve_tsconfig_paths: _, // recorded via the config identity allowlist
         perl_facts_path,
         git_timeout: _, // resource bound (#2303), not analysis identity: a
-                        // deadline never changes what the analysis computes,
-                        // only whether a hung git invocation aborts the run
+        // deadline never changes what the analysis computes,
+        // only whether a hung git invocation aborts the run
+        resolved_subject_identity: _, // derived, not caller input: the R2
+        // producer sets it on the internal options clone only (#3278);
+        // the caller-visible subject flows through `git_candidate`
+        git_candidate: _, // unreachable at write time: `run_check` rejects
+        // Git candidate subjects before analysis, so an
+        // artifact can never carry one until #3277/#3278
+        // record the subject's resolved identity here
+        test_harnesses: _, // recorded via the config identity
+        production_like_targets: _, // recorded via the config identity
+                           // allowlist: the opt-in originates in
+                           // `[analysis]` (#3283), which the
+                           // versioned config identity already
+                           // hashes field-by-field
     } = options;
     (*include_unchanged_tests, perl_facts_path.as_deref())
 }
@@ -489,3 +520,117 @@ fn canonical_root(root: &Path) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test, unix))]
+mod raw_path_tests {
+    use super::*;
+    use crate::domain::{
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FlowSinkKind,
+        OracleKind, OracleStrength, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
+        RiprEvidence, SourceCurrentness, StageEvidence, StageState, StopReason,
+    };
+    use crate::domain::{Probe, SourceLocation};
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::PathBuf;
+
+    fn raw_byte_finding() -> Finding {
+        let raw = PathBuf::from(OsStr::from_bytes(b"pricing_\xff.rs"));
+        Finding {
+            id: "probe:pricing:1:error_path".to_string(),
+            canonical_gap: None,
+            probe: Probe {
+                id: ProbeId("probe:pricing:1:error_path".to_string()),
+                family: ProbeFamily::ErrorPath,
+                location: SourceLocation::new(raw.clone(), 1, 1),
+                owner: None,
+                delta: DeltaKind::Control,
+                before: None,
+                after: None,
+                expression: "sample_expr".to_string(),
+                expected_sinks: Vec::new(),
+                required_oracles: Vec::new(),
+            },
+            class: ExposureClass::WeaklyExposed,
+            ripr: RiprEvidence {
+                reach: StageEvidence::new(StageState::Yes, Confidence::Medium, "reached"),
+                infect: StageEvidence::new(StageState::Weak, Confidence::Low, "infected"),
+                propagate: StageEvidence::new(StageState::No, Confidence::Medium, "none"),
+                reveal: RevealEvidence {
+                    observe: StageEvidence::new(StageState::Weak, Confidence::Low, "observed"),
+                    discriminate: StageEvidence::new(
+                        StageState::No,
+                        Confidence::Medium,
+                        "no discriminator",
+                    ),
+                },
+            },
+            confidence: 0.5,
+            evidence: Vec::new(),
+            missing: Vec::new(),
+            flow_sinks: Vec::new(),
+            activation: ActivationEvidence::default(),
+            stop_reasons: vec![StopReason::NoChangedRustLine],
+            related_tests: vec![RelatedTest {
+                name: "nearby".to_string(),
+                file: raw,
+                line: 2,
+                oracle: None,
+                oracle_kind: OracleKind::Unknown,
+                oracle_strength: OracleStrength::Weak,
+                relation_reason: None,
+                relation_confidence: None,
+            }],
+            recommended_next_step: None,
+            language: None,
+            language_status: None,
+            owner_kind: None,
+            static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
+            source_currentness: SourceCurrentness::CandidateCurrent,
+        }
+    }
+
+    #[test]
+    fn raw_byte_finding_paths_render_through_stable_text() -> Result<(), String> {
+        let finding = raw_byte_finding();
+        // Sanity: the fixture really carries a non-UTF-8 path, the shape
+        // that motivated the rewrite.
+        assert!(finding.probe.location.file.to_str().is_none());
+        let rewritten = rewrite_non_utf8_finding_paths(&[finding]);
+        assert_eq!(
+            rewritten[0].probe.location.file,
+            PathBuf::from("pricing_%FF.rs")
+        );
+        assert_eq!(
+            rewritten[0].related_tests[0].file,
+            PathBuf::from("pricing_%FF.rs")
+        );
+        // The rewritten artifact serializes without the JSON
+        // invalid-UTF-8 rejection that motivated the rewrite.
+        let serialized = serde_json::to_string(&rewritten)
+            .map_err(|error| format!("artifact serializes: {error}"))?;
+        assert!(serialized.contains("pricing_%FF.rs"));
+        let _ = FlowSinkKind::ReturnValue;
+        Ok(())
+    }
+
+    #[test]
+    fn valid_utf8_paths_stay_untouched() {
+        let mut finding = raw_byte_finding();
+        finding.probe.location.file = PathBuf::from("src/pricing.rs");
+        finding.related_tests[0].file = PathBuf::from("tests/pricing_test.rs");
+        let rewritten = rewrite_non_utf8_finding_paths(&[finding]);
+        assert_eq!(
+            rewritten[0].probe.location.file,
+            PathBuf::from("src/pricing.rs")
+        );
+        assert_eq!(
+            rewritten[0].related_tests[0].file,
+            PathBuf::from("tests/pricing_test.rs")
+        );
+    }
+}

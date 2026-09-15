@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on all four target-mode packets and their repair, receipt, and rollback evidence.
+
 ## Problem
 
 Policy operations can say which modes are safe now and which modes are blocked.

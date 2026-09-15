@@ -1,6 +1,9 @@
 pub(crate) mod agent_brief;
 pub(crate) mod agent_receipt;
+#[path = "agent_seam_packets_live.rs"]
 pub(crate) mod agent_seam_packets;
+#[path = "agent_seam_packets.rs"]
+mod agent_seam_packets_legacy;
 pub(crate) mod agent_workflow;
 pub(crate) mod assistant_loop_health;
 pub(crate) mod badge;
@@ -16,6 +19,7 @@ pub(crate) mod first_pr;
 pub(crate) mod first_useful_action;
 pub(crate) mod format;
 pub(crate) mod gap_decision_ledger;
+pub(crate) mod gap_decision_ledger_live;
 pub(crate) mod gate;
 pub mod github;
 pub mod human;
@@ -49,6 +53,7 @@ pub(crate) mod review_comments;
 pub(crate) mod review_comments_receipt;
 pub(crate) mod ripr_zero_status;
 pub(crate) mod sarif;
+pub(crate) mod schemas;
 pub mod start_here_state;
 pub(crate) mod suppression_health;
 pub(crate) mod suppressions;
@@ -60,6 +65,12 @@ pub(crate) mod typescript_packet_projection;
 pub(crate) mod typescript_preview_card;
 pub(crate) mod value_path;
 pub(crate) mod waiver_aging;
+
+// #2973 owns a source-level compatibility inventory, not a binary discovery
+// surface or a migration of every emitter's version authority. This reference
+// keeps the catalog compile-checked outside #[cfg(test)] while live producers
+// continue to own serialization. Optimized binary retention is not claimed.
+const _: usize = schemas::AGENT_ARTIFACT_SCHEMAS.len();
 
 #[cfg(test)]
 pub(crate) mod test_support {

@@ -1254,6 +1254,12 @@ pub(crate) fn bun_cross_language_finding_for_changed_rust_line_with_profile(
         required_oracles: profile.kind.required_oracles(),
     };
     let actionability = typescript_bun_cross_language_actionability(&hint);
+    // Resolved from the probe's own delta evidence (#3281) before the probe
+    // moves into the finding: the bridge tags a changed Rust head-side line.
+    let source_currentness = crate::domain::SourceCurrentness::from_probe_delta(
+        probe.before.as_deref(),
+        probe.after.as_deref(),
+    );
     let mut evidence = vec![
         format!("owner: {}", profile.rust_owner),
         format!(
@@ -1348,6 +1354,7 @@ pub(crate) fn bun_cross_language_finding_for_changed_rust_line_with_profile(
         observed_sink: None,
         oracle_alignment: None,
         alignment_reason: None,
+        source_currentness,
     })
 }
 

@@ -1,10 +1,15 @@
 import * as cp from 'child_process';
-import * as crypto from 'crypto';
-import * as fs from 'fs';
 import * as https from 'https';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { RiprConfig } from './config';
+import {
+  installManagedServer,
+  ManagedServerInstallation,
+  ManagedServerInstallRequest,
+  readManagedServerInstallation,
+  validateManagedServerVersion
+} from './managedServerInstall';
 import { RiprPlatform } from './platform';
 
 export interface ManifestAsset {
@@ -23,15 +28,16 @@ export async function downloadServer(
   platform: RiprPlatform,
   version: string,
   output: vscode.OutputChannel
-): Promise<string> {
-  const origin = downloadOriginLabel(config, version);
+): Promise<ManagedServerInstallation> {
+  const managedVersion = validateManagedServerVersion(version);
+  const origin = downloadOriginLabel(config, managedVersion);
   return vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `ripr: downloading server ${version} for ${platform.target} from ${origin}`,
+      title: `ripr: downloading server ${managedVersion} for ${platform.target} from ${origin}`,
       cancellable: false
     },
-    (progress) => downloadServerWithProgress(context, config, platform, version, output, progress)
+    (progress) => downloadServerWithProgress(context, config, platform, managedVersion, output, progress)
   );
 }
 
@@ -42,54 +48,54 @@ async function downloadServerWithProgress(
   version: string,
   output: vscode.OutputChannel,
   progress: vscode.Progress<{ message?: string; increment?: number }>
-): Promise<string> {
-  const cacheDir = serverCacheDir(context, version, platform.target);
-  const executablePath = path.join(cacheDir, platform.executableName);
-  await fs.promises.mkdir(cacheDir, { recursive: true });
+): Promise<ManagedServerInstallation> {
+  const request = installRequest(context, version, platform);
+  return installManagedServer(request, {
+    resolveArchive: async () => {
+      progress.report({ message: 'Fetching release manifest…' });
+      const manifest = await fetchManifest(manifestUrl(config.downloadBaseUrl, version));
+      if (manifest.version !== version) {
+        throw new Error(`Server manifest version ${manifest.version} does not match requested version ${version}.`);
+      }
+      const asset = manifest.assets[platform.target];
+      if (!asset) {
+        throw new Error(`No ripr server asset is listed for ${platform.target} in manifest ${manifest.version}.`);
+      }
 
-  progress.report({ message: 'Fetching release manifest…' });
-  const manifest = await fetchManifest(manifestUrl(config.downloadBaseUrl, version));
-  const asset = manifest.assets[platform.target];
-  if (!asset) {
-    throw new Error(`No ripr server asset is listed for ${platform.target} in manifest ${manifest.version}.`);
-  }
-
-  output.appendLine(`Downloading ripr server ${version} for ${platform.target}.`);
-  progress.report({ message: `Downloading ${platform.executableName}…` });
-  const archive = await fetchBuffer(asset.url);
-  progress.report({ message: 'Verifying checksum…' });
-  const actualSha = sha256Hex(archive);
-  if (actualSha.toLowerCase() !== asset.sha256.toLowerCase()) {
-    throw new Error(`Checksum mismatch for ${asset.url}. Expected ${asset.sha256}, got ${actualSha}.`);
-  }
-  progress.report({ message: 'Extracting…' });
-
-  const archivePath = path.join(cacheDir, `ripr-server.${platform.archiveExtension}`);
-  const extractDir = path.join(cacheDir, 'extract');
-  await fs.promises.writeFile(archivePath, archive);
-  await fs.promises.rm(extractDir, { recursive: true, force: true });
-  await fs.promises.mkdir(extractDir, { recursive: true });
-  await extractArchive(archivePath, extractDir, platform);
-  const foundExecutable = await findExecutable(extractDir, platform.executableName);
-  if (!foundExecutable) {
-    throw new Error(`Downloaded archive did not contain ${platform.executableName}.`);
-  }
-  if (foundExecutable !== executablePath) {
-    await fs.promises.copyFile(foundExecutable, executablePath);
-  }
-  if (process.platform !== 'win32') {
-    await fs.promises.chmod(executablePath, 0o755);
-  }
-  await fs.promises.writeFile(path.join(cacheDir, 'sha256.txt'), `${actualSha}\n`);
-  return executablePath;
+      output.appendLine(`Downloading ripr server ${version} for ${platform.target}.`);
+      progress.report({ message: `Downloading ${platform.executableName}…` });
+      const bytes = await fetchBuffer(asset.url);
+      progress.report({ message: 'Verifying checksum…' });
+      return { manifestVersion: manifest.version, expectedSha256: asset.sha256, bytes };
+    },
+    extractArchive: async (archivePath, destination) => {
+      progress.report({ message: 'Extracting…' });
+      await extractArchive(archivePath, destination, platform);
+    },
+    probeExecutable: (executablePath) => probeDownloadedExecutable(executablePath)
+  });
 }
 
-export function cachedServerPath(context: vscode.ExtensionContext, version: string, platform: RiprPlatform): string {
-  return path.join(serverCacheDir(context, version, platform.target), platform.executableName);
+export function cachedServerInstallation(
+  context: vscode.ExtensionContext,
+  version: string,
+  platform: RiprPlatform
+): Promise<ManagedServerInstallation | undefined> {
+  return readManagedServerInstallation(installRequest(context, version, platform));
 }
 
-function serverCacheDir(context: vscode.ExtensionContext, version: string, target: string): string {
-  return path.join(context.globalStorageUri.fsPath, 'servers', version, target);
+function installRequest(
+  context: vscode.ExtensionContext,
+  version: string,
+  platform: RiprPlatform
+): ManagedServerInstallRequest {
+  return {
+    serversRoot: path.join(context.globalStorageUri.fsPath, 'servers'),
+    version,
+    platformTarget: platform.target,
+    executableName: platform.executableName,
+    archiveExtension: platform.archiveExtension
+  };
 }
 
 function downloadOriginLabel(config: RiprConfig, version: string): string {
@@ -111,7 +117,24 @@ function manifestUrl(baseUrl: string, version: string): string {
 
 async function fetchManifest(url: string): Promise<ServerManifest> {
   const body = await fetchBuffer(url);
-  return JSON.parse(body.toString('utf8')) as ServerManifest;
+  const parsed: unknown = JSON.parse(body.toString('utf8'));
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Server manifest is not an object.');
+  }
+  const manifest = parsed as Record<string, unknown>;
+  if (typeof manifest.version !== 'string' || !manifest.assets || typeof manifest.assets !== 'object') {
+    throw new Error('Server manifest is missing a string version or asset map.');
+  }
+  for (const [target, value] of Object.entries(manifest.assets as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') {
+      throw new Error(`Server manifest asset ${target} is not an object.`);
+    }
+    const asset = value as Record<string, unknown>;
+    if (typeof asset.url !== 'string' || typeof asset.sha256 !== 'string') {
+      throw new Error(`Server manifest asset ${target} is missing its URL or SHA-256 digest.`);
+    }
+  }
+  return parsed as ServerManifest;
 }
 
 function fetchBuffer(url: string, redirects = 0): Promise<Buffer> {
@@ -146,10 +169,6 @@ function fetchBuffer(url: string, redirects = 0): Promise<Buffer> {
   });
 }
 
-function sha256Hex(data: Buffer): string {
-  return crypto.createHash('sha256').update(data).digest('hex');
-}
-
 function extractArchive(archivePath: string, destination: string, platform: RiprPlatform): Promise<void> {
   if (platform.archiveExtension === 'zip') {
     return runProcess('powershell.exe', [
@@ -179,19 +198,26 @@ function quotePowerShell(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-async function findExecutable(root: string, executableName: string): Promise<string | undefined> {
-  const entries = await fs.promises.readdir(root, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = path.join(root, entry.name);
-    if (entry.isFile() && entry.name === executableName) {
-      return fullPath;
-    }
-    if (entry.isDirectory()) {
-      const found = await findExecutable(fullPath, executableName);
-      if (found) {
-        return found;
+function probeDownloadedExecutable(executablePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    cp.execFile(executablePath, ['--version'], { timeout: 5000 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(`Downloaded server failed its version probe: ${stderr.trim() || error.message}`));
+        return;
       }
-    }
-  }
-  return undefined;
+      const version = firstNonemptyLine(stdout, stderr);
+      if (!version) {
+        reject(new Error('Downloaded server version probe produced no version text.'));
+        return;
+      }
+      resolve(version);
+    });
+  });
+}
+
+function firstNonemptyLine(stdout: string, stderr: string): string | undefined {
+  return (stdout || stderr)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
 }

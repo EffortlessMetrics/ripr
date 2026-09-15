@@ -214,12 +214,32 @@ mod tests {
         );
     }
 
+    #[test]
+    fn no_flag_default_is_explicit_top_ten() {
+        let default = parse_options(&args(&[]));
+        assert_eq!(
+            default,
+            Ok(Options {
+                root: PathBuf::from("."),
+                gap_ledger: PathBuf::from("target/ripr/reports/gap-decision-ledger.json"),
+                language: "python".to_string(),
+                top: 10,
+            })
+        );
+        assert_eq!(
+            parse_options(&args(&["--top", "10"])),
+            default,
+            "omitting --top must select exactly the explicit --top 10 rendering"
+        );
+    }
+
     fn python_swarm_queue_gap_ledger(root: &Path) -> String {
         serde_json::json!({
             "root": output::outcome::display_path(root),
             "generated_at": "unix_ms:1778240100000",
             "records": [{
                 "gap_id": "gap:python:pricing-boundary",
+                "source_currentness": "candidate_current",
                 "canonical_gap_id": "gap:python:src/pricing.py:calculate_discount:predicate_boundary",
                 "kind": "MissingBoundaryAssertion",
                 "language": "python",

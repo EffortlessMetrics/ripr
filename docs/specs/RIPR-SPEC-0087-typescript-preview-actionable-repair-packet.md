@@ -176,11 +176,12 @@ The shared validator enforces (verbatim, `agent_seam_packets.rs:839–871`):
 1. `record.projection_eligibility["agent_packet"]` present **and**
    `projection_eligible(record, "agent_packet") == true`.
 2. `record.repair_route` is `Some(_)`.
-3. `record.verification_commands` is non-empty.
+3. `record.verification_commands` is non-empty and every legacy display is
+   non-whitespace after trimming.
 4. `record.repairability == "repairable"` **OR**
    `route.route_kind == "InspectStaticLimit"`.
 5. `allowed_edit_surface_for_gap_route(route)` returns a non-empty `Vec`.
-6. `record.receipt_command` is `Some(non-empty)`.
+6. `record.receipt_command` is `Some(non-whitespace-after-trimming)`.
 
 ### 1.2 TypeScript-specific preconditions BEFORE the validator (fail-closed)
 
@@ -314,8 +315,8 @@ guard that MUST hold for the flip; failing it ⇒ `repair_packet_ready: false`.
 | F2 | Snapshot / `toMatchSnapshot` / `toBeDefined` treated as exact | oracle_kind ∈ exact set only; snapshot/loose kinds excluded | G-C; oracle.rs metadata |
 | F3 | Heuristic-only related test borrowed | `has_oracle_eligible_relation == true` | G-D; else `ambiguous_related_test` (preview) |
 | F4 | Cross-package / monorepo test that doesn't exercise the owner | related test resolved same-package; workspace_root filtered before ranking | related_tests.rs ownership filter; else `missing_context` (preview) |
-| F5 | Guessed/templated `verify_command` | command produced by `verify_command_for_discovery()` from real framework/runner discovery, non-empty | validator cond. 3; package.rs |
-| F6 | Missing receipt ⇒ unrecordable repair | `receipt_command` `Some(non-empty)` | validator cond. 6 (§1.1); §3.2 |
+| F5 | Guessed/templated `verify_command` | command produced by `verify_command_for_discovery()` from real framework/runner discovery; the complete legacy verification list is non-empty and every display is non-whitespace after trimming | validator cond. 3; package.rs |
+| F6 | Missing receipt ⇒ unrecordable repair | `receipt_command` is present and non-whitespace after trimming | validator cond. 6 (§1.1); §3.2 |
 | F7 | Receipt delegates to external provider | receipt is a `ripr outcome …` invocation only; reject any `curl`/`http`/provider-name pattern | `typescript_receipt_command` constructs a fixed `ripr outcome` shape; no interpolation of free text |
 | F8 | Implicit / unbounded edit surface | `allowed_edit_surface_for_gap_route(route)` non-empty AND tokenizes to a single test file | validator cond. 5 (shared fn) |
 | F9 | Edit surface points at production (not test) file | route.target_file is the *test* file; production file lands in `forbidden_files` | `forbidden_files_for_gap_record` (shared) |

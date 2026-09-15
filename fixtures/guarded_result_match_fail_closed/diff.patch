@@ -1,0 +1,11 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -58,6 +58,6 @@
+         return Err(Box::new(ParseError::InvalidData {
+             reason: format!("id mismatch {id}"),
+         }));
+     }
+-    Ok(build_response(id, method)?)
++    Ok(build_response(id.trim(), method)?)
+ }

@@ -16,7 +16,7 @@
   ],
   "properties": {
     "protocol_version": { "const": "0.1" },
-    "schema_version": { "const": "0.1" },
+    "schema_version": { "const": "0.2" },
     "request": { "$ref": "ripr-agent-request.schema.json#/properties/request" },
     "status": { "const": "error" },
     "error": { "$ref": "#/$defs/error" },

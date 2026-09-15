@@ -1,0 +1,17 @@
+schema_version = "1"
+producer = "xtask specs close"
+spec_id = "RIPR-SPEC-0006"
+spec_path = "docs/specs/RIPR-SPEC-0006-mutation-calibration.md"
+content_digest = "sha256:0270576aaec850824c5a6dec5c5ac21b35548594f9c3e2f155a6e51d5e4e2c81"
+status_observed = "proposed"
+observed_at = "2026-08-30"
+reviewed_by = "ZCode agent (session 2026-08-30, verified by landing PR review)"
+disposition = "acceptance_candidate"
+waived_until = "2026-11-30"
+disposition_detail = "Lifecycle note blocks acceptance on the runtime/static join cases and the advisory agreement summary contract; the current Test Mapping and traceability ledger pin both via mutation_calibration unit tests, the calibrate CLI tests, and checked runtime-fixtures v1-v3 corpora including agreement-summary counts and ambiguous join handling, so a normative acceptance PR is the warranted next step."
+reasons_inspected = []
+evidence_refs = []
+limitations = []
+receipt_id = "sha256:a78e85024016583e75c1104d53f6718f8319384e3b663e65381e9ad70ed970e8"
+claim_boundary = "An asserted, content-bound record that this exact spec content was observed by the named reviewer and reached the labeled advisory maintenance disposition; the PR review that lands the receipt is the verification act."
+non_claims = ["specification correctness or completeness", "normative document status, requirement lifecycle, implementation, evidence, or support state", "acceptance, deprecation, supersession, migration, merge eligibility, or branch protection"]

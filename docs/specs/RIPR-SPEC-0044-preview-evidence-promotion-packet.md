@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on language-specific promotion artifacts and closure of every promotion proof criterion.
+
 ## Problem
 
 TypeScript, JavaScript, and Python preview evidence is intentionally useful

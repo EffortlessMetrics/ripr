@@ -5,6 +5,7 @@ mod classify;
 mod diff;
 mod extract;
 mod facts;
+pub(crate) mod harness_projection;
 mod language;
 mod pipeline;
 mod probes;
@@ -15,6 +16,8 @@ mod seam_classification;
 mod seam_inventory;
 pub(crate) mod seams;
 mod sort;
+#[cfg(test)]
+mod source_role_corpus;
 mod summary;
 mod syntax;
 pub(crate) mod test_grip_evidence;
@@ -25,6 +28,7 @@ pub(crate) use diff::{
     load_diff, load_diff_range, load_worktree_diff, parse_unified_diff, resolve_base_commit,
     resolve_default_base_commit, working_tree_has_tracked_changes,
 };
+pub(crate) use facts::validated_file_wide_harness_targets;
 pub(crate) use language::{DIFF_SCOPE_OVERSIZED_PREFIX, is_diff_scope_oversized};
 pub use language::{
     PARTIAL_DIFF_LANGUAGE_TIER_VERSION, PARTIAL_DIFF_SELECTION_VERSION, PartialDiffScope,
@@ -42,11 +46,15 @@ pub(crate) use seam_inventory::{
     inventory_changed_test_classified_seams_at_with_config_node,
     inventory_classified_seams_at_with_config, inventory_compact_classified_seams_at_with_config,
     inventory_diff_scoped_classified_seams_at_with_config,
-    inventory_diff_scoped_classified_seams_at_with_config_and_lines, inventory_seams_at,
-    workspace_cache_key_at_with_config,
+    inventory_diff_scoped_classified_seams_at_with_config_and_lines,
+    inventory_seams_at_with_config, workspace_cache_key_at_with_config,
 };
 pub(crate) use seams::{RepoSeam, RequiredDiscriminator};
-pub(crate) use workspace::is_production_rust_path;
+pub(crate) use workspace::PathDependencyAdjacency;
+pub(crate) use workspace::SourceRoleContext;
+pub(crate) use workspace::classify_with;
+pub(crate) use workspace::context_for_files;
+pub(crate) use workspace::is_test_surface_path;
 
 /// Re-export workspace discovery helpers for the output layer so it can
 /// detect TS-predominant workspaces without importing through analysis::workspace
@@ -168,10 +176,14 @@ pub(crate) fn targeted_typescript_findings_for_scope(
         base: None,
         diff_file: None,
         mode: AnalysisMode::Draft,
+        resolved_subject_identity: None,
         include_unchanged_tests: config.analysis().include_unchanged_tests().unwrap_or(true),
         resolve_tsconfig_paths: config.typescript().resolve_tsconfig_paths(),
         perl_facts_path: None,
         git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
     };
     let result = TypeScriptAdapter.analyze_diff(
         &options,
@@ -382,6 +394,57 @@ use crate::domain::{Finding, Summary};
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
+/// Render a path for textual identity without collapsing distinct Unix byte
+/// paths through U+FFFD. Valid paths retain their usual spelling except that
+/// `%` is escaped, reserving `%XX` for bytes that are not valid UTF-8.
+pub(crate) fn stable_path_text(path: &Path) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let mut output = String::new();
+        let mut remaining = path.as_os_str().as_bytes();
+        while !remaining.is_empty() {
+            match std::str::from_utf8(remaining) {
+                Ok(valid) => {
+                    push_stable_path_text(&mut output, valid);
+                    break;
+                }
+                Err(error) => {
+                    let valid_prefix = &remaining[..error.valid_up_to()];
+                    if let Ok(valid) = std::str::from_utf8(valid_prefix) {
+                        push_stable_path_text(&mut output, valid);
+                    }
+                    let invalid = error
+                        .error_len()
+                        .unwrap_or(remaining.len() - error.valid_up_to());
+                    for byte in &remaining[error.valid_up_to()..error.valid_up_to() + invalid] {
+                        output.push_str(&format!("%{byte:02X}"));
+                    }
+                    remaining = &remaining[error.valid_up_to() + invalid..];
+                }
+            }
+        }
+        output.replace('\\', "/")
+    }
+
+    #[cfg(not(unix))]
+    {
+        let mut output = String::new();
+        push_stable_path_text(&mut output, &path.to_string_lossy());
+        output.replace('\\', "/")
+    }
+}
+
+fn push_stable_path_text(output: &mut String, text: &str) {
+    for character in text.chars() {
+        if character == '%' {
+            output.push_str("%25");
+        } else {
+            output.push(character);
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AnalysisMode {
     Instant,
@@ -414,6 +477,26 @@ pub struct AnalysisOptions {
     /// behavior, byte-identical to the pre-#2303 path. Only the LSP refresh
     /// path sets this (from the `gitTimeoutMs` session option).
     pub git_timeout: Option<std::time::Duration>,
+    /// Explicit production-like test-infrastructure opt-in (#3283):
+    /// workspace-relative targets this repository wants analyzed as
+    /// production behavior even though their layout or Cargo target
+    /// declares evidence role. Empty by default.
+    pub production_like_targets: std::collections::BTreeSet<std::path::PathBuf>,
+    /// Repository-governed test-harness registrations (#3532): exact
+    /// configured custom-harness targets and registered test-producing
+    /// attributes. Empty by default — nothing is inferred.
+    pub test_harnesses: Vec<crate::config::TestHarnessRegistration>,
+    /// Immutable Git candidate subject (#3237 / #3276 R1). Threaded from
+    /// `CheckInput` so the object producer (#3277) can consume it here;
+    /// no current analysis path executes it, and `run_check` rejects
+    /// subject inputs before analysis begins.
+    pub git_candidate: Option<crate::domain::GitCandidateSubject>,
+    /// Internal (#3278 R3): the R2 producer's resolved subject identity,
+    /// set only on the materialized-candidate options clone so the
+    /// outcome identity block projects machine-visible base/candidate/
+    /// diff identities. Never caller-settable.
+    pub(crate) resolved_subject_identity:
+        Option<crate::analysis_outcome::GitCandidateSubjectIdentity>,
 }
 
 /// Advisory record for one compiled preview-language adapter whose files are
@@ -428,8 +511,10 @@ pub struct AnalysisOptions {
 /// The `enabled` flag distinguishes the two honesty cases per
 /// RIPR-SPEC-0082:
 ///
-/// - `enabled == true` — the adapter ran; an empty result is advisory and may
-///   be incomplete, not a Rust-grade clean result.
+/// - `enabled == true` — the adapter was configured and available. Whether it
+///   completed successfully is derived from the matching `language_runs`
+///   failure record; an empty result is advisory and may be incomplete, not a
+///   Rust-grade clean result.
 /// - `enabled == false` — the adapter is preview and NOT enabled, so these
 ///   files were not analyzed at all; the empty result must not be read as
 ///   clean.
@@ -441,11 +526,33 @@ pub struct PreviewLanguageAdvisory {
     pub file_count: usize,
     /// Up to three sample file paths (normalized, forward-slash).
     pub sample_paths: Vec<String>,
-    /// Whether this preview adapter was enabled (ran) for this analysis.
+    /// Whether this preview adapter was configured and available for this
+    /// analysis.
     ///
     /// `false` means the preview-language files were detected in scope but not
     /// analyzed because the adapter is not enabled in `ripr.toml`.
     pub enabled: bool,
+}
+
+impl PreviewLanguageAdvisory {
+    /// Returns the producer-owned non-success record for this advisory, when
+    /// the adapter did not complete successfully.
+    pub(crate) fn non_success_run<'a>(
+        &self,
+        language_runs: &'a [LanguageRun],
+    ) -> Option<&'a LanguageRun> {
+        language_runs
+            .iter()
+            .find(|run| run.language == self.language && run.status != LanguageRunStatus::Ok)
+    }
+
+    /// Whether the routed files were actually analyzed to adapter completion.
+    ///
+    /// Successful preview runs are omitted from `language_runs`; any matching
+    /// non-success entry therefore closes this readiness claim fail-closed.
+    pub(crate) fn analyzed(&self, language_runs: &[LanguageRun]) -> bool {
+        self.enabled && self.file_count > 0 && self.non_success_run(language_runs).is_none()
+    }
 }
 
 /// Per-language run status for one language adapter invocation.
@@ -503,6 +610,11 @@ impl LanguageRunStatus {
 
 #[derive(Clone, Debug)]
 pub struct AnalysisResult {
+    /// Test-harness registry projections (#3532): what each exact
+    /// registration established for this run — harness kind, provenance,
+    /// subject identity, selector capability, and typed limitations.
+    /// Empty when the repository has no registrations.
+    pub harness_projections: Vec<harness_projection::TestHarnessProjection>,
     /// Producer-owned completeness and limitation facts. Diff/worktree
     /// pipelines populate this; repo-scope analysis has no diff denominator.
     pub(crate) analysis_outcome: Option<crate::analysis_outcome::AnalysisOutcome>,
@@ -533,7 +645,20 @@ pub struct AnalysisResult {
 /// behaviorally identical to the pre-Campaign-27 Rust-only pipeline.
 const DEFAULT_LANGUAGES: &[language::LanguageId] = &[language::LanguageId::Rust];
 
+/// Rejects immutable Git candidate subjects at the direct analysis entry
+/// points (#3276): executing a subject here would silently fall back to
+/// worktree/diff semantics. Subject inputs are bound, validated, and —
+/// once the object producer lands (#3277) — consumed through the
+/// `check_workspace*` entries only.
+fn reject_git_candidate_subject(options: &AnalysisOptions) -> Result<(), String> {
+    if options.git_candidate.is_some() {
+        return Err(crate::domain::GitCandidateSubjectError::ExecutionUnsupported.to_string());
+    }
+    Ok(())
+}
+
 pub fn run_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
+    reject_git_candidate_subject(options)?;
     run_analysis_with_oracle_policy(options, &OraclePolicy::default(), DEFAULT_LANGUAGES)
 }
 
@@ -574,6 +699,7 @@ pub(crate) fn run_worktree_analysis_with_oracle_policy_and_generated_file_patter
 }
 
 pub fn run_repo_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
+    reject_git_candidate_subject(options)?;
     run_repo_analysis_with_oracle_policy(options, &OraclePolicy::default(), DEFAULT_LANGUAGES)
 }
 
@@ -647,6 +773,32 @@ mod tests {
     use super::*;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn stable_path_text_escapes_reserved_percent_on_every_platform() {
+        assert_eq!(
+            stable_path_text(Path::new("pricing_%FF.rs")),
+            "pricing_%25FF.rs"
+        );
+        assert_ne!(
+            stable_path_text(Path::new("pricing_%FF.rs")),
+            "pricing_%FF.rs"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stable_path_text_keeps_invalid_byte_encoding_distinct_from_literal_escape() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let invalid = PathBuf::from(OsString::from_vec(b"pricing_\xff.rs".to_vec()));
+        let literal = Path::new("pricing_%FF.rs");
+
+        assert_eq!(stable_path_text(&invalid), "pricing_%FF.rs");
+        assert_eq!(stable_path_text(literal), "pricing_%25FF.rs");
+        assert_ne!(stable_path_text(&invalid), stable_path_text(literal));
+    }
 
     /// Each rejection branch of the rerun-anchor guard, asserted by reason so a
     /// single platform's `is_absolute()` behavior cannot mask an unexercised
@@ -796,6 +948,10 @@ index 0000000..1111111 100644
             resolve_tsconfig_paths: false,
             perl_facts_path: None,
             git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
         })
         .unwrap();
         assert!(!out.findings.is_empty());
@@ -815,6 +971,10 @@ index 0000000..1111111 100644
             resolve_tsconfig_paths: false,
             perl_facts_path: None,
             git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
         })
         .unwrap();
         assert!(instant.findings.iter().any(|finding| {
@@ -865,6 +1025,10 @@ fn premium_customer_gets_discount() {
             resolve_tsconfig_paths: false,
             perl_facts_path: None,
             git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
         })?;
 
         if out.findings.is_empty() {
@@ -1010,6 +1174,10 @@ fn test_with_predicate() {
             resolve_tsconfig_paths: false,
             perl_facts_path: None,
             git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
         })?;
 
         for finding in &out.findings {
@@ -1075,6 +1243,10 @@ index 0000000..1111111 100644
             resolve_tsconfig_paths: false,
             perl_facts_path: None,
             git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
         })?;
 
         if !diff_out.findings.is_empty() {
@@ -1090,11 +1262,78 @@ index 0000000..1111111 100644
             resolve_tsconfig_paths: false,
             perl_facts_path: None,
             git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
         })?;
 
         if repo_out.findings.is_empty() {
             return Err("expected at least one finding from repo analysis".to_string());
         }
+        Ok(())
+    }
+}
+
+pub(crate) mod git_candidate_execution;
+
+#[cfg(test)]
+mod git_candidate_entry_tests {
+    use super::*;
+    use crate::domain::{GitCandidateBase, GitCandidateSubject, GitObjectId};
+
+    fn subject_options() -> Result<AnalysisOptions, String> {
+        Ok(AnalysisOptions {
+            git_candidate: Some(GitCandidateSubject::new(
+                std::env::temp_dir(),
+                GitCandidateBase::EmptyTree,
+                GitObjectId::parse(
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                )
+                .map_err(|error| error.to_string())?,
+            )),
+            resolved_subject_identity: None,
+            ..default_options_for_entry_test()?
+        })
+    }
+
+    fn default_options_for_entry_test() -> Result<AnalysisOptions, String> {
+        Ok(AnalysisOptions {
+            root: std::env::temp_dir(),
+            base: None,
+            diff_file: None,
+            mode: AnalysisMode::Draft,
+            include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn direct_analysis_entries_reject_git_candidate_subjects() -> Result<(), String> {
+        // #3276: the direct public entries must never execute a subject
+        // against worktree/diff semantics. The named error is the single
+        // authority (GitCandidateSubjectError::ExecutionUnsupported).
+        let options = subject_options()?;
+        let error = run_analysis(&options)
+            .err()
+            .unwrap_or_else(|| "expected rejection".to_string());
+        assert!(
+            error.contains("refusing to fall back"),
+            "run_analysis must fail closed: {error:?}"
+        );
+        let repo_error = run_repo_analysis(&options)
+            .err()
+            .unwrap_or_else(|| "expected rejection".to_string());
+        assert!(
+            repo_error.contains("refusing to fall back"),
+            "run_repo_analysis must fail closed: {repo_error:?}"
+        );
         Ok(())
     }
 }

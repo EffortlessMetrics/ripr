@@ -257,10 +257,16 @@ fn is_error_constructor_path(path: &str) -> bool {
         .chars()
         .next()
         .is_some_and(|ch| ch.is_ascii_uppercase());
-    let method_is_constructor = method
-        .chars()
-        .next()
-        .is_some_and(|ch| ch.is_ascii_lowercase());
+    // #3232: the final segment may start with any ASCII alphabetic character.
+    // Lowercase covers method-shaped constructors (`Type::new`, `Error::other`);
+    // uppercase covers tuple-like enum variants (`MyError::Io(..)`) — the
+    // idiomatic constructor family the lowercase-only rule excluded. The gate
+    // is only reached for paths immediately followed by a call `(`, so
+    // non-call associated items (bare consts like `Type::RED`) are excluded
+    // structurally, and brace-initialised struct variants
+    // (`MyError::InvalidState { .. }`) are outside this extractor's syntax
+    // boundary by the same call-paren prerequisite.
+    let method_is_constructor = method.starts_with(|ch: char| ch.is_ascii_alphabetic());
     owner_is_type && method_is_constructor
 }
 
@@ -371,6 +377,48 @@ mod tests {
             return Err(format!(
                 "comments should not add string literals: {:?}",
                 payloads[0].string_literals
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn tuple_like_enum_variant_constructors_carry_payloads() -> Result<(), String> {
+        // #3232: `MyError::Io("network")` is an idiomatic tuple-variant error
+        // constructor and must reach the constructor-payload evidence path.
+        let payloads = error_constructor_payloads(
+            r#"assert_eq!(err, LedgerError::InsufficientFunds("account 42"));"#,
+        );
+        if payloads.len() != 1 {
+            return Err(format!(
+                "expected one tuple-variant payload, got {payloads:?}"
+            ));
+        }
+        if payloads[0].path != "LedgerError::InsufficientFunds" {
+            return Err(format!("unexpected path: {}", payloads[0].path));
+        }
+        if payloads[0].string_literals != vec!["account 42".to_string()] {
+            return Err(format!(
+                "unexpected literals: {:?}",
+                payloads[0].string_literals
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn non_call_associated_paths_are_not_promoted_by_case() -> Result<(), String> {
+        // #3232: the constructor gate only sees paths immediately followed by
+        // a call `(`. Bare associated constants and brace-initialised struct
+        // variants must not become payload evidence merely because a segment
+        // is uppercase; struct variants are outside this extractor's syntax
+        // boundary (documented on `is_error_constructor_path`).
+        let payloads = error_constructor_payloads(
+            r#"let level = LogLevel::MAX; make(LogError::InvalidState { code: 7 });"#,
+        );
+        if !payloads.is_empty() {
+            return Err(format!(
+                "non-call/brace-initialised paths must not carry payloads: {payloads:?}"
             ));
         }
         Ok(())

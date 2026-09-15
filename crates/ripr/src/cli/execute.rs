@@ -50,6 +50,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::RiprPlus(args) => commands::ripr_plus(&args),
         CliCommand::Cache(args) => commands::cache(&args),
         CliCommand::Rerun(args) => rerun::run(&args),
+        CliCommand::Mcp(args) => crate::mcp::run(&args),
     }
 }
 

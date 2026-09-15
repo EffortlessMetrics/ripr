@@ -3,6 +3,72 @@ use super::arguments::{
 };
 use crate::analysis::classify::{error_constructor_call_paths, rust_string_literals};
 
+/// Structural assertion-text shapes that supplement the parsed
+/// [`OracleKind`](crate::domain::OracleKind)
+/// when deciding whether an oracle is relevant to a probe family.
+///
+/// These are deliberately private analysis facts rather than new public oracle
+/// kinds: they preserve the conservative fallback behavior for custom assertion
+/// helpers without widening the serialized oracle vocabulary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OracleTextShape {
+    ErrorPath,
+    SideEffect,
+    MemberAccess,
+    AssertionOrExpectation,
+}
+
+/// Classifies the small set of assertion-text fallback shapes used by reveal
+/// analysis. Keeping text recognition here prevents downstream classifiers from
+/// each growing their own string-sniffing authority.
+pub(crate) fn has_oracle_text_shape(line: &str, shape: OracleTextShape) -> bool {
+    match shape {
+        OracleTextShape::ErrorPath => line.contains("Error::") || line.contains("Err"),
+        OracleTextShape::SideEffect => {
+            line.contains("expect")
+                || line.contains("mock")
+                || line.contains("saved")
+                || line.contains("published")
+        }
+        OracleTextShape::MemberAccess => contains_member_access(line),
+        OracleTextShape::AssertionOrExpectation => {
+            line.contains("assert") || line.contains("expect")
+        }
+    }
+}
+
+/// Returns true when the assertion contains a Rust-style member access.
+///
+/// A bare dot is not enough: decimal literals and range operators also contain
+/// dots without observing a constructed field. String-literal contents are
+/// excluded for the same reason (#2904).
+fn contains_member_access(text: &str) -> bool {
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut prev_was_dot = false;
+    for ch in text.chars() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        if ch == '"' {
+            in_string = true;
+            continue;
+        }
+        if prev_was_dot && (ch == '_' || ch.is_alphabetic()) {
+            return true;
+        }
+        prev_was_dot = ch == '.';
+    }
+    false
+}
+
 pub(super) fn is_snapshot_assertion(line: &str) -> bool {
     let expect_test_comparison = (line.contains("expect![[") || line.contains("expect_file!["))
         && (line.contains(".assert_eq(")
@@ -538,5 +604,70 @@ mod spec_0106_tests {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod oracle_text_shape_tests {
+    use super::*;
+
+    #[test]
+    fn preserves_reveal_family_fallbacks() {
+        let cases = [
+            (
+                OracleTextShape::ErrorPath,
+                "assert_eq!(kind, Error::Denied);",
+                true,
+            ),
+            (
+                OracleTextShape::ErrorPath,
+                "assert_eq!(kind, Success::Ready);",
+                false,
+            ),
+            (
+                OracleTextShape::SideEffect,
+                "assert!(event.published);",
+                true,
+            ),
+            (OracleTextShape::SideEffect, "assert!(result.ready);", false),
+            (
+                OracleTextShape::MemberAccess,
+                "assert_eq!(item.id, 3);",
+                true,
+            ),
+            (
+                OracleTextShape::MemberAccess,
+                "assert!(3.14_f64 > 0.0_f64);",
+                false,
+            ),
+            (
+                OracleTextShape::MemberAccess,
+                "assert_eq!(msg, \"error.timeout\");",
+                false,
+            ),
+            (
+                OracleTextShape::MemberAccess,
+                r#"assert_eq!(msg, "error.\"timeout");"#,
+                false,
+            ),
+            (
+                OracleTextShape::AssertionOrExpectation,
+                "expect_send_called();",
+                true,
+            ),
+            (
+                OracleTextShape::AssertionOrExpectation,
+                "record_send_call();",
+                false,
+            ),
+        ];
+
+        for (shape, text, expected) in cases {
+            assert_eq!(
+                has_oracle_text_shape(text, shape),
+                expected,
+                "text-shape classification mismatch for {shape:?} and {text}"
+            );
+        }
     }
 }

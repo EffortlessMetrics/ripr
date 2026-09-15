@@ -532,13 +532,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ripr-routed-rust-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            target/ripr/reports/routed-rust-plan.json
-            target/ripr/reports/routed-rust-plan.md
-            target/ripr/reports/routed-rust-execution.json
-            target/ripr/reports/routed-rust-command-*.log
+          name: ripr-docs-gate
+          path: target/ripr/reports/
           if-no-files-found: warn
+          retention-days: 5
 
   result:
     name: Ripr Rust Small Result

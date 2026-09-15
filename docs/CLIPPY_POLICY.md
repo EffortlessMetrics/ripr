@@ -196,7 +196,11 @@ Two companion ledgers track Clippy state alongside the active/planned table:
   counterpart to `.ripr/allow-attributes.txt`. Empty by default.
 
 These are advisory until the corresponding xtask ledger checks land in a
-follow-up PR.
+follow-up PR. One slice already enforces coverage claims: `cargo xtask
+check-covered-by` resolves every test-valued `covered_by` entry in
+`policy/clippy-exceptions.toml` against a static scan of the workspace's
+actual `#[test]`-family functions, so a claim that names a renamed or deleted
+test fails the gate with the entry id and a repair hint (#3528).
 
 ## MSRV 1.95 rollout
 

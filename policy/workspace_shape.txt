@@ -3,8 +3,10 @@
 cargo_manifest|Cargo.toml|workspace root
 cargo_manifest|benchmarks/targeted_rerun_benchmark/**/Cargo.toml|controlled SPEC-0123 targeted-rerun benchmark workspace manifest
 cargo_manifest|crates/ripr/Cargo.toml|published package manifest
+cargo_manifest|crates/ripr/tests/data/**/Cargo.toml|source-role conformance corpus fixture manifests (#3534)
 cargo_manifest|editors/vscode/test-fixtures/**/Cargo.toml|VS Code extension test fixture workspace manifest
 cargo_manifest|fixtures/**/Cargo.toml|fixture input workspace manifests
+cargo_manifest|metrics/rust-judged-behavior-panel/subjects/**/Cargo.toml|governed Rust judged-panel subject manifests for issue #3198
 cargo_manifest|xtask/Cargo.toml|unpublished automation manifest
 workspace_member|crates/ripr|published product package
 workspace_member|xtask|unpublished Rust automation

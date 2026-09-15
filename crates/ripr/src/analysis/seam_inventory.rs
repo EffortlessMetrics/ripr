@@ -12,7 +12,7 @@
 //! 1. Two runs over the same source tree must produce the same seams in
 //!    the same order regardless of file walk order.
 //! 2. Test files do not generate production seams (they are filtered by
-//!    `workspace::is_production_rust_path`).
+//!    the shared source-role model).
 //!
 //! Both contracts are pinned by tests in this file.
 
@@ -67,18 +67,30 @@ const LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
 /// Walk production Rust files at `root` and emit the raw seam inventory.
 /// Used by the `repo-seams-*` formats; the classified inventory used by
 /// `repo-exposure-*` formats lives in [`inventory_classified_seams_at`].
-pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
+pub(crate) fn inventory_seams_at_with_config(
+    root: &Path,
+    config: &RiprConfig,
+) -> Result<Vec<RepoSeam>, String> {
     let rust_files = workspace::discover_rust_files(root)?;
+    // Producer-owned source role (#3283).
+    let mut context =
+        workspace::context_for_files(root, rust_files.iter().map(|path| path.as_path()));
+    context.production_like_targets = config.analysis().production_like_targets().clone();
+    context.harness_targets = harness_targets_from_config(root, config);
     let production_files: Vec<PathBuf> = rust_files
         .iter()
-        .filter(|p| workspace::is_production_rust_path(p))
+        .filter(|p| workspace::classify_with(p, &context).seeds_production_findings())
         .cloned()
         .collect();
 
     // Index the full set so `find_owner_function` can resolve owners
     // even when the seam appears in a file the production filter
     // includes but tests reference.
-    let index = rust_index::build_index(root, &rust_files)?;
+    let index = rust_index::build_index_with_test_harnesses(
+        root,
+        &rust_files,
+        harness_registrations(config),
+    )?;
     Ok(inventory_seams_from_index(&production_files, &index))
 }
 
@@ -376,15 +388,24 @@ pub(crate) fn inventory_classified_seams_uncached_with_config(
         }
     };
     let filter_started = Instant::now();
+    // Same shared role authority as the production paths (#3285).
+    let mut uncached_context =
+        workspace::context_for_files(root, rust_files.iter().map(|path| path.as_path()));
+    uncached_context.production_like_targets = config.analysis().production_like_targets().clone();
+    uncached_context.harness_targets = harness_targets_from_config(root, config);
     let production_files: Vec<PathBuf> = rust_files
         .iter()
-        .filter(|p| workspace::is_production_rust_path(p))
+        .filter(|p| workspace::classify_with(p, &uncached_context).seeds_production_findings())
         .cloned()
         .collect();
     trace_latency_phase("filter_production_files", "ok", filter_started.elapsed());
 
     let index_started = Instant::now();
-    let mut index = match rust_index::build_index(root, &rust_files) {
+    let mut index = match rust_index::build_index_with_test_harnesses(
+        root,
+        &rust_files,
+        harness_registrations(config),
+    ) {
         Ok(index) => {
             trace_latency_phase("build_index", "ok", index_started.elapsed());
             index
@@ -544,13 +565,22 @@ fn inventory_seam_grip_class_counts_uncached_with_config(
     config: &RiprConfig,
 ) -> Result<SeamGripClassCounts, String> {
     let rust_files = workspace::discover_rust_files(root)?;
+    // Producer-owned source role (#3283).
+    let mut context =
+        workspace::context_for_files(root, rust_files.iter().map(|path| path.as_path()));
+    context.production_like_targets = config.analysis().production_like_targets().clone();
+    context.harness_targets = harness_targets_from_config(root, config);
     let production_files: Vec<PathBuf> = rust_files
         .iter()
-        .filter(|p| workspace::is_production_rust_path(p))
+        .filter(|p| workspace::classify_with(p, &context).seeds_production_findings())
         .cloned()
         .collect();
 
-    let mut index = rust_index::build_index(root, &rust_files)?;
+    let mut index = rust_index::build_index_with_test_harnesses(
+        root,
+        &rust_files,
+        harness_registrations(config),
+    )?;
     rust_index::apply_oracle_policy(&mut index, config.oracles());
     let seams = inventory_seams_from_index(&production_files, &index);
     let mut counts = SeamGripClassCounts::new(seams.len());
@@ -567,7 +597,7 @@ fn inventory_compact_classified_seams_from_state_with_config(
     state: &OwnedWorkspaceState,
     config: &RiprConfig,
 ) -> Result<(Vec<ClassifiedSeam>, Vec<PathBuf>), String> {
-    let production_files = production_files_from_state(state);
+    let production_files = production_files_from_state_with_role(state, config);
     let build_started = Instant::now();
     trace_latency_phase(
         "file_fact_cache",
@@ -578,8 +608,11 @@ fn inventory_compact_classified_seams_from_state_with_config(
         ),
         Duration::ZERO,
     );
-    let mut cached =
-        rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    let mut cached = rust_index::build_index_from_loaded_files_with_cache_and_test_harnesses(
+        &state.workspace_root,
+        &state.files,
+        harness_registrations(config),
+    )?;
     cancellation::checkpoint()?;
     trace_latency_phase(
         "file_fact_cache",
@@ -610,7 +643,7 @@ fn inventory_classified_seams_from_state_with_config(
     state: &OwnedWorkspaceState,
     config: &RiprConfig,
 ) -> Result<ClassifiedSeamInventory, String> {
-    let production_files = production_files_from_state(state);
+    let production_files = production_files_from_state_with_role(state, config);
     let build_started = Instant::now();
     trace_latency_phase(
         "file_fact_cache",
@@ -621,8 +654,11 @@ fn inventory_classified_seams_from_state_with_config(
         ),
         Duration::ZERO,
     );
-    let mut cached =
-        rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    let mut cached = rust_index::build_index_from_loaded_files_with_cache_and_test_harnesses(
+        &state.workspace_root,
+        &state.files,
+        harness_registrations(config),
+    )?;
     trace_latency_phase(
         "file_fact_cache",
         &cached.file_fact_cache.status_label(),
@@ -690,8 +726,11 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
     let state = collect_workspace_state(root, config)?;
     let workspace_cache_key = state.cache_key();
     let changed_test = normalized_inventory_path(changed_test);
-    let mut cached =
-        rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    let mut cached = rust_index::build_index_from_loaded_files_with_cache_and_test_harnesses(
+        &state.workspace_root,
+        &state.files,
+        harness_registrations(config),
+    )?;
     rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
 
     let selected_tests = cached
@@ -730,7 +769,9 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
         .index
         .functions
         .iter()
-        .filter(|function| !function.is_test && direct_call_names.contains(&function.name))
+        .filter(|function| {
+            !function.source_role.is_evidence_role() && direct_call_names.contains(&function.name)
+        })
         .collect::<Vec<_>>();
     let matched_call_names = candidate_functions
         .iter()
@@ -802,7 +843,7 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config_and_lines(
     let state = collect_workspace_state(root, config)?;
     let workspace_cache_key = state.cache_key();
     let total_rust_files = state.files.len();
-    let production_files = production_files_from_state(&state);
+    let production_files = production_files_from_state_with_role(&state, config);
     let total_production_files = production_files.len();
     let production_file_set = production_files
         .iter()
@@ -824,8 +865,11 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config_and_lines(
         ),
         Duration::ZERO,
     );
-    let mut cached =
-        rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    let mut cached = rust_index::build_index_from_loaded_files_with_cache_and_test_harnesses(
+        &state.workspace_root,
+        &state.files,
+        harness_registrations(config),
+    )?;
     trace_latency_phase(
         "file_fact_cache",
         &cached.file_fact_cache.status_label(),
@@ -870,7 +914,7 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config_and_lines(
     let immediate_caller_file_set = immediate_caller_files.iter().collect::<BTreeSet<_>>();
     for function in &cached.index.functions {
         if immediate_caller_file_set.contains(&function.file)
-            && !function.is_test
+            && !function.source_role.is_evidence_role()
             && function
                 .calls
                 .iter()
@@ -937,7 +981,7 @@ fn immediate_caller_file_set(
     index
         .functions
         .iter()
-        .filter(|function| !function.is_test)
+        .filter(|function| !function.source_role.is_evidence_role())
         .filter_map(|function| {
             let file = normalized_inventory_path(&function.file);
             (production_file_set.contains(&file)
@@ -963,7 +1007,7 @@ fn call_targets_changed_owner(
     let candidates = index
         .functions
         .iter()
-        .filter(|function| !function.is_test && function.name == call.name)
+        .filter(|function| !function.source_role.is_evidence_role() && function.name == call.name)
         .collect::<Vec<_>>();
     candidates.len() == 1
         && candidates
@@ -1091,7 +1135,7 @@ fn inventory_seam_grip_class_counts_from_state_with_config(
     state: &OwnedWorkspaceState,
     config: &RiprConfig,
 ) -> Result<SeamGripClassCounts, String> {
-    let production_files = production_files_from_state(state);
+    let production_files = production_files_from_state_with_role(state, config);
     let build_started = Instant::now();
     trace_latency_phase(
         "file_fact_cache",
@@ -1102,8 +1146,11 @@ fn inventory_seam_grip_class_counts_from_state_with_config(
         ),
         Duration::ZERO,
     );
-    let mut cached =
-        rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    let mut cached = rust_index::build_index_from_loaded_files_with_cache_and_test_harnesses(
+        &state.workspace_root,
+        &state.files,
+        harness_registrations(config),
+    )?;
     trace_latency_phase(
         "file_fact_cache",
         &cached.file_fact_cache.status_label(),
@@ -1121,12 +1168,42 @@ fn inventory_seam_grip_class_counts_from_state_with_config(
     Ok(counts)
 }
 
-fn production_files_from_state(state: &OwnedWorkspaceState) -> Vec<PathBuf> {
+/// Exact registered test-harness target identities (#3532), normalized to
+/// the forward-slashed workspace-relative form the role context compares.
+/// Validated against parsed Cargo target metadata (#3608): only
+/// registrations whose owning manifest declares the target
+/// `harness = false` keep the file-wide evidence-role grant.
+fn harness_targets_from_config(
+    root: &Path,
+    config: &RiprConfig,
+) -> std::collections::BTreeSet<PathBuf> {
+    rust_index::validated_file_wide_harness_targets(root, harness_registrations(config))
+}
+
+/// Registration list for the harness-aware index builds (#3532). Empty
+/// without registrations; the index build is then a no-op for the
+/// registry and every output stays byte-identical.
+fn harness_registrations(config: &RiprConfig) -> &[crate::config::TestHarnessRegistration] {
+    config.analysis().test_harnesses()
+}
+
+fn production_files_from_state_with_role(
+    state: &OwnedWorkspaceState,
+    config: &RiprConfig,
+) -> Vec<PathBuf> {
+    // Producer-owned source role (#3283): layout plus declared Cargo
+    // targets plus the repository production-like opt-in.
+    let mut context = workspace::context_for_files(
+        &state.workspace_root,
+        state.files.iter().map(|(path, _)| path.as_path()),
+    );
+    context.production_like_targets = config.analysis().production_like_targets().clone();
+    context.harness_targets = harness_targets_from_config(&state.workspace_root, config);
     state
         .files
         .iter()
         .map(|(path, _)| path)
-        .filter(|path| workspace::is_production_rust_path(path))
+        .filter(|path| workspace::classify_with(path, &context).seeds_production_findings())
         .cloned()
         .collect()
 }
@@ -1305,6 +1382,12 @@ fn inventory_seams_from_index_filtered(
     if let Some(disclosure) = rust_index::lexical_fallback_disclosure(index) {
         eprintln!("{disclosure}");
     }
+    if let Some(disclosure) = rust_index::include_resolution_disclosure(index) {
+        eprintln!("{disclosure}");
+    }
+    if let Some(disclosure) = rust_index::module_composition_disclosure(index) {
+        eprintln!("{disclosure}");
+    }
     let mut seams: Vec<RepoSeam> = Vec::new();
 
     // Iterate `production_files` in caller-given order, but the final
@@ -1367,9 +1450,9 @@ fn build_seam_from_shape(
     let owner_fact = rust_index::find_owner_function(index, path, shape.start_line)?;
     // Skip shapes whose owner is itself a test function (e.g.,
     // `#[test] fn ...` inside an in-file `#[cfg(test)] mod tests`).
-    // `is_production_rust_path` already excludes physical test files;
+    // the source-role model already excludes physical test files;
     // this catches inline test modules.
-    if owner_fact.is_test {
+    if owner_fact.source_role.is_evidence_role() {
         return None;
     }
     // `FunctionFact.id` is built from `path.display()`, which uses native
@@ -1452,6 +1535,69 @@ fn expected_sink_for(kind: SeamKind) -> ExpectedSink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis::facts::FunctionSourceRole;
+
+    #[test]
+    fn only_custom_harness_targets_receive_file_wide_evidence_role() -> Result<(), String> {
+        // #3532 review: a registered attribute applies to individual
+        // functions, so its target must not enter the file-wide harness
+        // evidence set — a mixed production file keeps seeding seams.
+        // #3608: a custom_harness target additionally needs its
+        // `harness = false` premise confirmed by the parsed Cargo target
+        // metadata; an undeclared target keeps nothing.
+        let config = crate::config::tests_only_parse(
+            r#"[analysis]
+[[analysis.test_harnesses]]
+registration_id = "mimic"
+target = "tests/mimic.rs"
+kind = "custom_harness"
+adapter = "libtest_mimic_v1"
+marker = "libtest_mimic::Trial"
+
+[[analysis.test_harnesses]]
+registration_id = "contract"
+target = "src/lib.rs"
+kind = "registered_attribute"
+adapter = "exact_attribute_v1"
+marker = "myco::contract_test"
+
+[[analysis.test_harnesses]]
+registration_id = "misdeclared"
+target = "src/misdeclared.rs"
+kind = "custom_harness"
+adapter = "libtest_mimic_v1"
+marker = "libtest_mimic::Trial"
+"#,
+        )
+        .map_err(|error| format!("fixture config parses: {error}"))?;
+        let root = std::env::temp_dir().join(format!(
+            "ripr-harness-role-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(root.join("src")).map_err(|error| error.to_string())?;
+        // A name-only target reaches metadata's inventory only when its
+        // conventional-layout file exists (#3634).
+        std::fs::create_dir_all(root.join("tests")).map_err(|error| error.to_string())?;
+        std::fs::write(root.join("tests/mimic.rs"), "").map_err(|error| error.to_string())?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = 'role-fixture'\nversion = '0.1.0'\n\n[workspace]\n\n[[test]]\nname = 'mimic'\nharness = false\n",
+        )
+        .map_err(|error| error.to_string())?;
+        let targets = harness_targets_from_config(&root, &config);
+        assert_eq!(
+            targets,
+            std::iter::once(PathBuf::from("tests/mimic.rs"))
+                .collect::<std::collections::BTreeSet<_>>(),
+            "the declared harness = false target keeps the grant; the attribute \
+             target never has it and the undeclared custom target loses it"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
     use crate::analysis::rust_index::{
         FileFacts, FunctionFact, RaRustSyntaxAdapter, RustSyntaxAdapter,
     };
@@ -1636,12 +1782,12 @@ fn predicate_inside_test() {
             (prod.clone(), prod_source),
             (test_path.clone(), test_source),
         ])?;
-        // Caller filters production files exactly the way `inventory_seams_at`
-        // does: `is_production_rust_path` excludes anything whose path
-        // contains a `tests` segment.
+        // Caller filters production files exactly the way the role model
+        // does: evidence role never enters the production set.
+        let context = workspace::SourceRoleContext::empty();
         let production_files: Vec<PathBuf> = [prod, test_path.clone()]
             .into_iter()
-            .filter(|p| workspace::is_production_rust_path(p))
+            .filter(|p| workspace::classify_with(p, &context).seeds_production_findings())
             .collect();
 
         if production_files.iter().any(|p| p == &test_path) {
@@ -1962,7 +2108,7 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             .join("ripr")
             .join("cache")
             .join("repo-seam-counts")
-            .join("0.1")
+            .join(crate::analysis::seam_cache::COUNT_CACHE_SCHEMA_VERSION)
     }
 
     fn compact_cache_dir_under(root: &Path) -> PathBuf {
@@ -2116,8 +2262,10 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
-            is_test: false,
+            source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
         let mut index = RustIndex::default();
         index.functions.push(owner.clone());
@@ -2150,7 +2298,7 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         // Inline `#[test]` modules inside production files share the
         // file with real production code. The walker drops shapes whose
         // owner is itself a test function so the seam inventory stays
-        // production-only even when `is_production_rust_path` cannot
+        // production-only even when the layout role alone cannot
         // exclude the file outright.
         let path = PathBuf::from("src/lib.rs");
         let test_owner = FunctionFact {
@@ -2163,8 +2311,10 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
-            is_test: true,
+            source_role: FunctionSourceRole::TestAttribute,
             attrs: vec!["#[test]".to_string()],
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
         };
         let mut index = RustIndex::default();
         index.functions.push(test_owner.clone());
@@ -2191,7 +2341,7 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             .collect::<Vec<_>>();
         assert!(
             seams.is_empty(),
-            "expected no seams when the only owner is `is_test = true`, got owners {owners:?}"
+            "expected no seams when the only owner carries an evidence role, got owners {owners:?}"
         );
     }
 

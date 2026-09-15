@@ -149,6 +149,12 @@ Probes the adapter must generate (syntax-first):
 - mock-interaction probes for call surfaces resolved through a syntactic
   `mock.Mock()` / `MagicMock()` initializer
 
+The adapter must not emit a probe for a change that both source versions parse
+as an edit inside a real module, class, function, or async-function docstring.
+It must derive this from AST string-expression spans in both source versions,
+not from triple-quote text alone. Assigned strings, f-strings, and a behavioral
+line replaced by a newly introduced docstring remain analyzable.
+
 When the adapter cannot classify, it emits one of the `static_limit_kind`
 values defined in RIPR-SPEC-0026:
 

@@ -291,6 +291,27 @@ metadata. A record whose receipt says `resolved`, `stale`, or
 `gap_mismatch` must remain visible as a blocked/stale queue item instead of an
 assignable packet until the ledger is refreshed.
 
+### Typed Regeneration Command Specifications
+
+Records may carry typed `command_specs` collections (`verify`, `receipt`,
+`regeneration`). Each collection accepts a single object or an array (`null`
+reads as empty); every spec must pass `CommandSpec` validation and carry its
+collection's role, so a `verify` spec inside the regeneration collection is a
+named input error rather than a silent re-slot. Regeneration recovery is
+producer knowledge owned by the CLI surface: only the canonical
+report-regeneration route shapes recover typed specs —
+`ripr check --root R --mode M --format repo-exposure-json > OUT` (the mode
+vocabulary comes from `cli/parse/mode.rs` and the redirect target is the
+expected write), the `ripr reports gap-ledger` bridge forms (the Markdown
+twin is derived from `--out` when `--out-md` is absent), and the
+`pr-review front-panel` / `reports index` loop templates (front-panel
+requires at least one explicit artifact input, matching the CLI). Displays
+that deviate from a route's exact shape stay legacy strings and gain no
+typed spec; persisted legacy ledgers are enriched at parse time and never
+double-append producer-carried collections. `docs/OUTPUT_SCHEMA.md`
+documents the rendered shape, and `cargo xtask check-output-contracts`
+enforces the output contract.
+
 ## Required Evidence
 
 An implemented gap decision ledger must provide:
@@ -430,7 +451,10 @@ Follow-up implementation should include:
   conditions;
 - receipt tests proving improved, unchanged-after-attempt, resolved, and
   missing-receipt movement;
-- traceability tests proving source artifacts link to gap records.
+- traceability tests proving source artifacts link to gap records;
+- typed regeneration command-spec tests proving exact-shape-only recovery,
+  role-validated collections, read-time enrichment idempotence, and LSP
+  payload disclosure of the typed routes.
 
 This spec PR does not add production code or public output fields.
 

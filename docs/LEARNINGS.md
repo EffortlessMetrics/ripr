@@ -2063,3 +2063,45 @@ warnings to notices. Keep the mapping fail-closed for unknown values, but pin
 the exact warning and quiet paths. The same discipline applies to submodule and
 gate disclosures: preserve the non-claim and first actionable reason at the
 terminal boundary instead of requiring artifact archaeology.
+
+## 2026-08-13: Empty evidence is not identity evidence
+
+Equality over an empty set does not establish receipt identity. A receipt
+fallback must require a selected before/after class and at least one parsed
+value for each dimension; every parsed value must be recognized and normalize
+to the selected value. Negative oracles should keep movement-coherent tokens
+identical while removing only the intended discriminator, and static findings
+must retain conservative repair language when that discriminator is absent.
+
+## 2026-08-15: Workflow-level concurrency starves a matrix lane, and `cancelled` never alerts
+
+The scheduled scratch-GC lane (#1028) ran 22 consecutive times over 11 hours
+and reclaimed nothing: every run ended `cancelled`, none `success` (#3274).
+
+The tell was arithmetic, not log-reading. Each run's cancellation timestamp
+equaled the *next* run's creation timestamp to the second, for 20 of 21
+consecutive transitions. That signature means pending-run eviction: the run
+never acquired a runner, sat `pending`, and was displaced when the next
+scheduled fire entered the same concurrency group.
+
+The cause was scope. Concurrency was declared at workflow level over a
+three-pool matrix. A workflow run is not complete until every matrix job is,
+so one pool without an available runner holds the single group slot
+indefinitely, and every later fire queues behind it and is evicted by the fire
+after it — including the fires for the two pools whose runners were free.
+`fail-fast: false` was already set and did not help: it decouples job
+*failure*, not queue *occupancy*. `jobs.<job_id>.concurrency` has the `matrix`
+context available, so keying the group on the pool restores the isolation the
+matrix implies.
+
+Two durable lessons:
+
+- Concurrency scope must match the independence the matrix claims. A
+  workflow-level group silently re-couples pools that `fail-fast: false` was
+  written to decouple.
+- `cancelled` is the quietest failure conclusion there is. It trips no
+  required check, no annotation, and no notification, so a lane can be dead
+  for hours while looking routine. When a scheduled lane's contract is
+  reclamation or recovery, absence of `success` is the signal to watch — not
+  presence of `failure`. This is the same false-confidence class as
+  2026-07-25, arriving through scheduling rather than through assertions.

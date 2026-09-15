@@ -1,0 +1,27 @@
+{
+  "schema_version": "0.5",
+  "tool": "ripr",
+  "status": "incomplete",
+  "provenance": {
+    "seam_id": "67fc764ba37d77bd",
+    "movement": "improved",
+    "before_class": "weakly_gripped",
+    "after_class": "strongly_gripped"
+  },
+  "seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary",
+    "file": "src/lib.rs",
+    "line": 2,
+    "before": "weakly_gripped",
+    "after": "strongly_gripped",
+    "change": "improved"
+  },
+  "summary": {
+    "receipt_state": "receipt_movement_improved",
+    "next_action": {
+      "kind": "improved",
+      "summary": "Static grip improved."
+    }
+  }
+}

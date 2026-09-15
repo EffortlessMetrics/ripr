@@ -12,6 +12,7 @@ use crate::config::CONFIG_FILE_NAME;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
 use crate::output;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use crate::cli::commands_agent_support::{
     agent_brief_lines_from_diff, agent_brief_owners_for_lines,
@@ -21,6 +22,40 @@ use crate::cli::commands_timestamps::generated_at_unix_ms;
 
 const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
 
+fn record_review_comments_error(
+    receipt: &mut crate::output::review_comments_receipt::ReviewCommentsRunReceipt,
+    receipt_path: &Path,
+    phase: &str,
+    error: String,
+) -> String {
+    receipt.failed(phase, &error);
+    match receipt.write_atomic(receipt_path) {
+        Ok(()) => error,
+        Err(receipt_error) => {
+            format!("{error}; failed to persist terminal receipt: {receipt_error}")
+        }
+    }
+}
+
+fn enforce_review_comments_deadline(
+    receipt: &mut crate::output::review_comments_receipt::ReviewCommentsRunReceipt,
+    receipt_path: &Path,
+    started: Instant,
+    now: Instant,
+    timeout_ms: u64,
+    phase: &str,
+) -> Result<(), String> {
+    if now.saturating_duration_since(started) < Duration::from_millis(timeout_ms) {
+        return Ok(());
+    }
+    receipt.limited_timeout(phase);
+    receipt.write_atomic(receipt_path).map_err(|error| {
+        format!(
+            "review-comments timed out during {phase}; failed to persist terminal receipt: {error}"
+        )
+    })?;
+    Err(format!("review-comments timed out during {phase}"))
+}
 mod agent;
 #[path = "commands/agent_dispatch.rs"]
 mod agent_dispatch;
@@ -515,7 +550,7 @@ fn report_packet_index(args: &[String]) -> Result<(), String> {
 
 fn gap_decision_ledger(args: &[String]) -> Result<(), String> {
     let options = parse_gap_decision_ledger_options(args)?;
-    let records_path = output::baseline_delta::display_path(options.source.path());
+    let records_path = ledger_source_path(options.source.path())?;
     let input = output::gap_decision_ledger::GapDecisionLedgerInput {
         root: options.root,
         generated_at: gap_decision_ledger_generated_at()?,
@@ -531,6 +566,17 @@ fn gap_decision_ledger(args: &[String]) -> Result<(), String> {
     println!("Wrote {}", options.out.display());
     println!("Wrote {}", options.out_md.display());
     Ok(())
+}
+
+fn ledger_source_path(path: &Path) -> Result<String, String> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| format!("resolve gap-ledger source path failed: {error}"))?
+            .join(path)
+    };
+    Ok(output::baseline_delta::display_path(&absolute))
 }
 
 fn typescript_limitations(args: &[String]) -> Result<(), String> {
@@ -1099,6 +1145,14 @@ fn review_comments_with_diff_loader(
     args: &[String],
     load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
 ) -> Result<(), String> {
+    review_comments_with_diff_loader_at(args, load_diff, Instant::now)
+}
+
+fn review_comments_with_diff_loader_at(
+    args: &[String],
+    load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
+    now: impl Fn() -> Instant,
+) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_review_comments_help();
         return Ok(());
@@ -1125,6 +1179,7 @@ fn review_comments_with_diff_loader(
         output::outcome::display_path(&options.out),
         output::outcome::display_path(&markdown_path),
     ];
+    let started = now();
     let mut receipt = output::review_comments_receipt::ReviewCommentsRunReceipt::new(
         &input.root,
         &options.base,
@@ -1144,18 +1199,38 @@ fn review_comments_with_diff_loader(
             );
         }
         let gap_ledger_text = std::fs::read_to_string(gap_ledger).map_err(|err| {
-            format!(
-                "review-comments --gap-ledger {} is invalid: read failed: {err}",
-                output::pr_inline_comment_publish_plan::display_path(gap_ledger)
+            record_review_comments_error(
+                &mut receipt,
+                &receipt_path,
+                "configuration",
+                format!(
+                    "review-comments --gap-ledger {} is invalid: read failed: {err}",
+                    output::pr_inline_comment_publish_plan::display_path(gap_ledger)
+                ),
             )
         })?;
         let records = output::gap_decision_ledger::parse_gap_records_json(&gap_ledger_text)
             .map_err(|err| {
-                format!(
-                    "review-comments --gap-ledger {} is invalid: {err}",
-                    output::pr_inline_comment_publish_plan::display_path(gap_ledger)
+                record_review_comments_error(
+                    &mut receipt,
+                    &receipt_path,
+                    "configuration",
+                    format!(
+                        "review-comments --gap-ledger {} is invalid: {err}",
+                        output::pr_inline_comment_publish_plan::display_path(gap_ledger)
+                    ),
                 )
             })?;
+        enforce_review_comments_deadline(
+            &mut receipt,
+            &receipt_path,
+            started,
+            now(),
+            options.timeout_ms,
+            "configuration",
+        )?;
+        receipt.phase("configuration", "static_rendering");
+        receipt.write_atomic(&receipt_path)?;
         let gap_ledger_path = output::pr_inline_comment_publish_plan::display_path(gap_ledger);
         let rendered_json = output::review_comments::render_gap_record_review_comments_json(
             &input.root,
@@ -1164,7 +1239,10 @@ fn review_comments_with_diff_loader(
             &input.mode,
             &gap_ledger_path,
             &records,
-        )?;
+        )
+        .map_err(|error| {
+            record_review_comments_error(&mut receipt, &receipt_path, "static_rendering", error)
+        })?;
         let rendered_md = output::review_comments::render_gap_record_review_comments_markdown(
             &input.root,
             &options.base,
@@ -1173,14 +1251,32 @@ fn review_comments_with_diff_loader(
             &gap_ledger_path,
             &records,
         );
-        receipt.phase("configuration", "static_rendering");
-        receipt.write_atomic(&receipt_path)?;
+        enforce_review_comments_deadline(
+            &mut receipt,
+            &receipt_path,
+            started,
+            now(),
+            options.timeout_ms,
+            "static_rendering",
+        )?;
         receipt.phase("static_rendering", "artifact_io");
         receipt.write_atomic(&receipt_path)?;
         let rendered_json =
             output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
-        write_text_file(&options.out, &rendered_json)?;
-        write_text_file(&markdown_path, &rendered_md)?;
+        write_text_file(&options.out, &rendered_json).map_err(|error| {
+            record_review_comments_error(&mut receipt, &receipt_path, "artifact_io", error)
+        })?;
+        write_text_file(&markdown_path, &rendered_md).map_err(|error| {
+            record_review_comments_error(&mut receipt, &receipt_path, "artifact_io", error)
+        })?;
+        enforce_review_comments_deadline(
+            &mut receipt,
+            &receipt_path,
+            started,
+            now(),
+            options.timeout_ms,
+            "artifact_io",
+        )?;
         receipt.complete(&artifacts);
         let rendered_json =
             output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
@@ -1193,7 +1289,9 @@ fn review_comments_with_diff_loader(
 
     receipt.phase("configuration", "diff_discovery");
     receipt.write_atomic(&receipt_path)?;
-    let diff_text = load_diff(&input.root, &options.base, &options.head)?;
+    let diff_text = load_diff(&input.root, &options.base, &options.head).map_err(|error| {
+        record_review_comments_error(&mut receipt, &receipt_path, "diff_discovery", error)
+    })?;
     if analysis::working_tree_has_tracked_changes(&input.root) {
         eprintln!(
             "ripr: warning: working tree has uncommitted tracked changes; \
@@ -1201,6 +1299,14 @@ fn review_comments_with_diff_loader(
             options.base, options.head
         );
     }
+    enforce_review_comments_deadline(
+        &mut receipt,
+        &receipt_path,
+        started,
+        now(),
+        options.timeout_ms,
+        "diff_discovery",
+    )?;
     receipt.phase("diff_discovery", "producer_evidence_admission");
     receipt.write_atomic(&receipt_path)?;
     let admitted = if let Some(path) = options.check_output.as_deref() {
@@ -1255,6 +1361,14 @@ fn review_comments_with_diff_loader(
     receipt.write_atomic(&receipt_path)?;
     let changed_lines = agent_brief_lines_from_diff(&input.root, &diff_text);
     let changed_owners = agent_brief_owners_for_lines(&input.root, &changed_lines);
+    enforce_review_comments_deadline(
+        &mut receipt,
+        &receipt_path,
+        started,
+        now(),
+        options.timeout_ms,
+        "language_facts",
+    )?;
     receipt.phase("language_facts", "canonical_analysis");
     receipt.write_atomic(&receipt_path)?;
     let working_set = AgentBriefResolvedWorkingSet::base(options.base.clone(), changed_lines)
@@ -1339,13 +1453,28 @@ fn review_comments_with_diff_loader(
                 receipt.write_atomic(&receipt_path)?;
                 return Err(format!("limited_timeout: {message}"));
             }
-            Err(error) => return Err(error),
+            Err(error) => {
+                return Err(record_review_comments_error(
+                    &mut receipt,
+                    &receipt_path,
+                    "canonical_analysis",
+                    error,
+                ));
+            }
         };
     let analysis_scope = output::review_comments::ReviewCommentsAnalysisScope::limited_diff_scope(
         &working_set,
         &inventory,
     );
     let classified = inventory.classified;
+    enforce_review_comments_deadline(
+        &mut receipt,
+        &receipt_path,
+        started,
+        now(),
+        options.timeout_ms,
+        "canonical_analysis",
+    )?;
     receipt.measured_phase(
         "canonical_analysis",
         "route_construction",
@@ -1362,6 +1491,14 @@ fn review_comments_with_diff_loader(
         output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
         AgentBriefPolicy::from_config(&config),
     );
+    enforce_review_comments_deadline(
+        &mut receipt,
+        &receipt_path,
+        started,
+        now(),
+        options.timeout_ms,
+        "route_construction",
+    )?;
     receipt.phase("route_construction", "static_rendering");
     receipt.write_atomic(&receipt_path)?;
     // An incomplete producer is admitted for identity and diagnostic
@@ -1385,7 +1522,10 @@ fn review_comments_with_diff_loader(
         &selection,
         &analysis_scope,
         analysis_outcome.as_ref(),
-    )?;
+    )
+    .map_err(|error| {
+        record_review_comments_error(&mut receipt, &receipt_path, "static_rendering", error)
+    })?;
     let rendered_md = output::review_comments::render_review_comments_markdown_with_scope(
         &render_context,
         &working_set,
@@ -1393,11 +1533,27 @@ fn review_comments_with_diff_loader(
         &analysis_scope,
         analysis_outcome.as_ref(),
     );
+    enforce_review_comments_deadline(
+        &mut receipt,
+        &receipt_path,
+        started,
+        now(),
+        options.timeout_ms,
+        "static_rendering",
+    )?;
     receipt.phase("static_rendering", "artifact_io");
     receipt.write_atomic(&receipt_path)?;
     let rendered_json = output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&markdown_path, &rendered_md)?;
+    enforce_review_comments_deadline(
+        &mut receipt,
+        &receipt_path,
+        started,
+        now(),
+        options.timeout_ms,
+        "artifact_io",
+    )?;
     receipt.complete(&artifacts);
     let rendered_json = output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
     write_text_file(&options.out, &rendered_json)?;
@@ -3204,6 +3360,7 @@ fn run_diff_check_from_file(
         perl_facts_path: None,
         suppression_policy: None,
         git_timeout: None,
+        git_candidate: None,
     };
     apply_to_check_input(&mut input, config, options.explicit);
     app::check_workspace_with_config(input, config)
@@ -3977,6 +4134,67 @@ mod tests {
     }
 
     #[test]
+    fn reports_gap_ledger_fails_closed_for_blank_and_mixed_verification_routes()
+    -> Result<(), String> {
+        for (case, commands) in [
+            ("blank", serde_json::json!([" \t "])),
+            ("mixed", serde_json::json!(["cargo test", "  "])),
+        ] {
+            let dir = unique_command_test_dir(&format!("gap-ledger-{case}-verify"));
+            std::fs::create_dir_all(&dir)
+                .map_err(|error| format!("create {case} gap-ledger dir: {error}"))?;
+            let corpus_text = std::fs::read_to_string(
+                repo_root().join("fixtures/gap-decision-ledger/corpus.json"),
+            )
+            .map_err(|error| format!("read gap-ledger corpus: {error}"))?;
+            let corpus: serde_json::Value = serde_json::from_str(&corpus_text)
+                .map_err(|error| format!("parse gap-ledger corpus: {error}"))?;
+            let mut record = corpus
+                .get("cases")
+                .and_then(serde_json::Value::as_array)
+                .and_then(|cases| cases.first())
+                .and_then(|case| case.get("expected_gap_record"))
+                .cloned()
+                .ok_or_else(|| "gap-ledger corpus first expected record missing".to_string())?;
+            record["verification_commands"] = commands;
+            let records = dir.join("records.json");
+            std::fs::write(
+                &records,
+                serde_json::json!({"records": [record]}).to_string(),
+            )
+            .map_err(|error| format!("write {case} gap-ledger records: {error}"))?;
+            let out = dir.join("gap-decision-ledger.json");
+            let out_md = dir.join("gap-decision-ledger.md");
+
+            reports(&args(&[
+                "gap-ledger",
+                "--records",
+                &records.display().to_string(),
+                "--out",
+                &out.display().to_string(),
+                "--out-md",
+                &out_md.display().to_string(),
+            ]))?;
+
+            let json_text = std::fs::read_to_string(&out)
+                .map_err(|error| format!("read {case} gap-ledger JSON: {error}"))?;
+            let value: serde_json::Value = serde_json::from_str(&json_text)
+                .map_err(|error| format!("parse {case} gap-ledger JSON: {error}"))?;
+            assert_eq!(value["summary"]["projection_pr_comment_eligible"], 0);
+            assert_eq!(value["summary"]["projection_gate_candidate"], 0);
+            assert_eq!(value["summary"]["projection_agent_packet_eligible"], 0);
+            let markdown = std::fs::read_to_string(&out_md)
+                .map_err(|error| format!("read {case} gap-ledger Markdown: {error}"))?;
+            assert!(markdown.contains("Verify: `unavailable_incomplete_command_list`"));
+            assert!(!markdown.contains("  - `cargo test`"));
+
+            std::fs::remove_dir_all(&dir)
+                .map_err(|error| format!("remove {case} gap-ledger dir: {error}"))?;
+        }
+        Ok(())
+    }
+
+    #[test]
     fn reports_gap_ledger_derives_output_contract_gap_from_check_output() -> Result<(), String> {
         let dir = unique_command_test_dir("gap-ledger-check-output");
         std::fs::create_dir_all(&dir)
@@ -4099,6 +4317,18 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn gap_ledger_source_path_is_bound_to_invocation_cwd() -> Result<(), String> {
+        let rendered =
+            ledger_source_path(Path::new("repo/target/ripr/reports/repo-exposure.json"))?;
+        let expected_suffix = Path::new("repo/target/ripr/reports/repo-exposure.json")
+            .to_string_lossy()
+            .replace('\\', "/");
+        assert!(rendered.ends_with(&expected_suffix), "{rendered}");
+        assert!(Path::new(&rendered).is_absolute(), "{rendered}");
+        Ok(())
+    }
+
     fn repo_exposure_with_actionable_evidence_record() -> &'static str {
         r#"{
   "schema_version": "0.3",
@@ -4182,6 +4412,10 @@ mod tests {
         r#"{
   "schema_version": "0.1",
   "tool": "ripr",
+  "findings": [
+    {"id": "help-label-decl", "source_currentness": "candidate_current"},
+    {"id": "help-label-literal", "source_currentness": "candidate_current"}
+  ],
   "finding_alignment": {
     "scope": "supported_classes",
     "items": [
@@ -5789,6 +6023,7 @@ language = "rust"
   "records": [
     {
       "gap_id": "gap:pr:pricing:threshold-boundary",
+      "source_currentness": "candidate_current",
       "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
       "kind": "MissingBoundaryAssertion",
       "language": "rust",
@@ -6236,6 +6471,20 @@ language = "rust"
         );
 
         assert_eq!(result, Err("synthetic diff failure".to_string()));
+        let receipt_path = out.with_file_name("run-receipt.json");
+        let receipt_json = std::fs::read_to_string(&receipt_path)
+            .map_err(|err| format!("read failed receipt: {err}"))?;
+        let receipt: serde_json::Value = serde_json::from_str(&receipt_json)
+            .map_err(|err| format!("parse failed receipt: {err}"))?;
+        assert_eq!(receipt["status"], "failed");
+        assert_eq!(receipt["active_phase"], "diff_discovery");
+        assert_eq!(receipt["limitations"][0]["category"], "analysis_failed");
+        assert_eq!(
+            receipt["limitations"][0]["repair_route"],
+            "synthetic diff failure"
+        );
+        assert_eq!(receipt["non_claims"][1], "no complete route inventory");
+        assert_eq!(receipt["non_claims"][2], "no all-clear");
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
         Ok(())
     }
@@ -6384,7 +6633,7 @@ language = "rust"
         let out = root.join("target/ripr/review/comments.json");
         std::fs::write(
             &gap_ledger,
-            r#"{"records":[{"gap_id":"gap:pr:pricing","seam_id":"seam:pricing:threshold-boundary","kind":"MissingBoundaryAssertion","language":"rust","language_status":"stable","scope":"pr_local","evidence_class":"predicate_boundary","gap_state":"actionable","policy_state":"new","repairability":"repairable","anchor":{"file":"src/pricing.rs","line":42,"dedupe_fingerprint":"gap:pricing"},"repair_route":{"route_kind":"AddBoundaryAssertion","target_file":"tests/pricing.rs","assertion_shape":"assert_eq!(discount(100, 100), 90)","changed_behavior":"amount == threshold"},"verification_commands":["cargo xtask fixtures boundary_gap"],"projection_eligibility":{"pr_comment":{"eligible":true,"reason":"stable_anchor_and_repair_route"}}}]}"#,
+            r#"{"records":[{"gap_id":"gap:pr:pricing","source_currentness":"candidate_current","seam_id":"seam:pricing:threshold-boundary","kind":"MissingBoundaryAssertion","language":"rust","language_status":"stable","scope":"pr_local","evidence_class":"predicate_boundary","gap_state":"actionable","policy_state":"new","repairability":"repairable","anchor":{"file":"src/pricing.rs","line":42,"dedupe_fingerprint":"gap:pricing"},"repair_route":{"route_kind":"AddBoundaryAssertion","target_file":"tests/pricing.rs","assertion_shape":"assert_eq!(discount(100, 100), 90)","changed_behavior":"amount == threshold"},"verification_commands":["cargo xtask fixtures boundary_gap"],"projection_eligibility":{"pr_comment":{"eligible":true,"reason":"stable_anchor_and_repair_route"}}}]}"#,
         )
         .map_err(|err| format!("write gap ledger: {err}"))?;
 
@@ -6457,6 +6706,16 @@ language = "rust"
         assert!(read_err.contains("review-comments --gap-ledger"));
         assert!(read_err.contains("read failed"));
 
+        // Pin the read-failure receipt before the next run overwrites it.
+        let receipt_path = out.with_file_name("run-receipt.json");
+        let read_receipt: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&receipt_path)
+                .map_err(|err| format!("read read-failure receipt: {err}"))?,
+        )
+        .map_err(|err| format!("parse read-failure receipt: {err}"))?;
+        assert_eq!(read_receipt["status"], "failed");
+        assert_eq!(read_receipt["active_phase"], "configuration");
+
         let malformed_ledger = root.join("malformed-gap-ledger.json");
         std::fs::write(&malformed_ledger, "{not json")
             .map_err(|err| format!("write malformed gap ledger: {err}"))?;
@@ -6482,6 +6741,23 @@ language = "rust"
         };
         assert!(parse_err.contains("review-comments --gap-ledger"));
         assert!(parse_err.contains("invalid"));
+
+        // Both failure routes must publish a terminal failed receipt so a
+        // reader of the run receipt never mistakes the run for in-progress.
+        let receipt_path = out.with_file_name("run-receipt.json");
+        let receipt_json = std::fs::read_to_string(&receipt_path)
+            .map_err(|err| format!("read failed receipt: {err}"))?;
+        let receipt: serde_json::Value = serde_json::from_str(&receipt_json)
+            .map_err(|err| format!("parse failed receipt: {err}"))?;
+        assert_eq!(receipt["status"], "failed");
+        assert_eq!(receipt["active_phase"], "configuration");
+        assert_eq!(receipt["limitations"][0]["category"], "analysis_failed");
+        assert!(
+            receipt["limitations"][0]["repair_route"]
+                .as_str()
+                .is_some_and(|route| route.contains("--gap-ledger")),
+            "receipt must carry the gap-ledger failure route: {receipt_json}"
+        );
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
         Ok(())
@@ -7284,7 +7560,7 @@ language = "rust"
             existing_comments.contains("pulls/${{ github.event.pull_request.number }}/comments")
         );
         assert!(existing_comments.contains("target/ripr/review/existing-comments.json"));
-        assert!(existing_comments.contains("capture(\"<!-- ripr:dedupe=(?<key>[^ ]+) -->\")"));
+        assert!(existing_comments.contains("capture(\"<!-- ripr:dedupe=(?<key>[^ ]+)\")"));
 
         let comment_plan = workflow_step(&workflow, "Plan RIPR inline comments");
         assert!(comment_plan.contains("env.RIPR_COMMENT_MODE != 'off'"));
@@ -7317,7 +7593,7 @@ language = "rust"
         );
         assert!(publish_comments.contains("jq -e '.summary.safe_to_publish == true'"));
         assert!(publish_comments.contains("select(.safe_to_publish == true)"));
-        assert!(publish_comments.contains("<!-- ripr:dedupe=%s -->"));
+        assert!(publish_comments.contains("published_body: compact_body"));
         assert!(publish_comments.contains("github.event.pull_request.head.sha"));
         assert!(publish_comments.contains("gh api --method POST"));
         assert!(publish_comments.contains("gh api --method PATCH"));
@@ -8339,6 +8615,121 @@ language = "rust"
     #[test]
     fn lsp_version_returns_ok_with_short_flag() {
         assert_eq!(lsp(&args(&["-V"])), Ok(()));
+    }
+
+    #[test]
+    fn review_comments_diff_route_records_timeout_at_injected_deadline() -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments-clock-diff");
+        std::fs::create_dir_all(root.join("src"))
+            .map_err(|err| format!("create fixture source: {err}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"review_comments_clock_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .map_err(|err| format!("write fixture manifest: {err}"))?;
+        std::fs::write(root.join("src/lib.rs"), "pub fn value() -> i32 { 1 }\n")
+            .map_err(|err| format!("write fixture source: {err}"))?;
+
+        let out = root.join("target/ripr/review/comments.json");
+        let start = Instant::now();
+        let calls = std::cell::Cell::new(0);
+        let result = review_comments_with_diff_loader_at(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "BASE",
+                "--head",
+                "HEAD",
+                "--timeout-ms",
+                "1000",
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Ok(String::new()),
+            || {
+                let call = calls.get();
+                calls.set(call + 1);
+                if call == 0 {
+                    start
+                } else {
+                    start + Duration::from_secs(1)
+                }
+            },
+        );
+        if result != Err("review-comments timed out during diff_discovery".to_string()) {
+            return Err(format!(
+                "diff route must expose the injected timeout: {result:?}"
+            ));
+        }
+
+        let receipt_path = out.with_file_name("run-receipt.json");
+        let receipt: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&receipt_path)
+                .map_err(|err| format!("read timeout receipt: {err}"))?,
+        )
+        .map_err(|err| format!("parse timeout receipt: {err}"))?;
+        if receipt["status"] != "limited_timeout" || receipt["active_phase"] != "diff_discovery" {
+            return Err(format!("unexpected diff timeout receipt: {receipt}"));
+        }
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_gap_ledger_records_timeout_at_injected_deadline() -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments-clock-gap-ledger");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create fixture: {err}"))?;
+        let gap_ledger = root.join("gap-ledger.json");
+        let out = root.join("target/ripr/review/comments.json");
+        std::fs::write(&gap_ledger, r#"{"records":[]}"#)
+            .map_err(|err| format!("write gap ledger: {err}"))?;
+
+        let start = Instant::now();
+        let calls = std::cell::Cell::new(0);
+        let result = review_comments_with_diff_loader_at(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "BASE",
+                "--head",
+                "HEAD",
+                "--gap-ledger",
+                &gap_ledger.display().to_string(),
+                "--timeout-ms",
+                "1000",
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Err("diff loader must not run".to_string()),
+            || {
+                let call = calls.get();
+                calls.set(call + 1);
+                if call == 0 {
+                    start
+                } else {
+                    start + Duration::from_secs(1)
+                }
+            },
+        );
+        if result != Err("review-comments timed out during configuration".to_string()) {
+            return Err(format!(
+                "gap-ledger route must expose the injected timeout: {result:?}"
+            ));
+        }
+
+        let receipt_path = out.with_file_name("run-receipt.json");
+        let receipt: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&receipt_path)
+                .map_err(|err| format!("read timeout receipt: {err}"))?,
+        )
+        .map_err(|err| format!("parse timeout receipt: {err}"))?;
+        if receipt["status"] != "limited_timeout" || receipt["active_phase"] != "configuration" {
+            return Err(format!("unexpected gap-ledger timeout receipt: {receipt}"));
+        }
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture: {err}"))?;
+        Ok(())
     }
 
     pub(super) fn outcome_before_json() -> &'static str {

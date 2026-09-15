@@ -24,6 +24,8 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::Path;
 
+mod static_limit;
+
 /// The `ripr-perl-facts-v1` packet schema. Re-uses the canonical declaration
 /// from `app` (Campaign 31 item 5) so the schema version has one source of
 /// truth. References here use `crate::app::PERL_FACT_PACKET_SCHEMA`.
@@ -224,6 +226,9 @@ impl LanguageAdapter for PerlAdapter {
             changed_files_by_language: Vec::new(),
             partial_scope: None,
             skipped_files: 0,
+            // Perl has no harness registry: the projection is empty, as
+            // for every non-Rust adapter (#3532).
+            harness_projections: Vec::new(),
             limitations,
         })
     }
@@ -255,10 +260,27 @@ impl LanguageAdapter for PerlAdapter {
             .filter(|f| f.role.iter().any(|r| matches!(r, FileRole::Source)))
             .count();
 
+        // A Partial fact packet analyzed only part of the repository: its
+        // findings are advisory and the run must not back a full
+        // denominator, so the pipeline records a partial `LanguageRun`
+        // (#3668 review).
+        let partial_reason = if packet.packet_status == PacketStatus::Partial {
+            Some(
+                "the Perl fact packet is partial: findings cover the packet's subjects only"
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+
         Ok(LanguageRepoResult {
             findings,
             production_files,
             skipped_files: 0,
+            // Perl has no harness registry: the projection is empty, as
+            // for every non-Rust adapter (#3532).
+            harness_projections: Vec::new(),
+            partial_reason,
         })
     }
 }
@@ -282,9 +304,9 @@ impl LanguageAdapter for PerlAdapter {
 ///   `test.file_id`) and the test-specific verify command — never the
 ///   production source path. (Cardinal-sin guard: the edit surface must
 ///   never point at `lib/*.pm`.)
-/// - `has_blocking_dynamic_boundary` keeps the conservative owner-OR-file
-///   -OR-test-file boundary scope (an ownerless file-level boundary still
-///   blocks).
+/// - `static_limit::for_change` keeps the conservative owner-OR-file
+///   -OR-test-file boundary scope, separates blocking disposition from typed
+///   taxonomy, and never derives a category from source text or messages.
 /// - A canonical repair gap is attached **only** when a concrete
 ///   discriminator is present (`changed_text_digest` prefixed
 ///   `discriminator:`). Generic enum labels yield an informational Finding
@@ -297,6 +319,43 @@ impl LanguageAdapter for PerlAdapter {
 /// This hotfix is classification **conservative-or-stricter** only. The full
 /// `WeaklyExposed`-with-sink-alignment matrix lands in PR H2, once the
 /// producer contract can prove the changed sink was observed.
+/// Domain projection for a Perl oracle kind (#3228). Single mapping
+/// authority: `packet_to_findings` and the focused oracle-mapping test both
+/// consume this helper, so changing a projection is a reviewable decision the
+/// test observes instead of a parallel test-only match proving itself. The
+/// match is exhaustive by design — a newly added Perl oracle kind is a
+/// compile error here rather than a silent wildcard fallthrough to Unknown.
+fn perl_oracle_kind_to_domain(kind: OracleKind) -> crate::domain::OracleKind {
+    use crate::domain::OracleKind as DomainOracleKind;
+    match kind {
+        OracleKind::ExactReturnAssertion => DomainOracleKind::ExactValue,
+        OracleKind::PredicateBoundaryAssertion => DomainOracleKind::RelationalCheck,
+        OracleKind::SmokeOk => DomainOracleKind::SmokeOnly,
+        OracleKind::ExceptionObserver
+        | OracleKind::HashOrObjectFieldAssertion
+        | OracleKind::OutputObserver
+        | OracleKind::WarnObserver
+        | OracleKind::LogObserver
+        | OracleKind::MentionOnly
+        | OracleKind::DiesOnly
+        | OracleKind::UnknownHelper
+        | OracleKind::DynamicFrameworkIndirection
+        | OracleKind::Unknown => DomainOracleKind::Unknown,
+    }
+}
+
+/// Domain projection for a Perl oracle strength (#3228): same
+/// single-authority contract as `perl_oracle_kind_to_domain`.
+fn perl_oracle_strength_to_domain(strength: OracleStrength) -> crate::domain::OracleStrength {
+    use crate::domain::OracleStrength as DomainOracleStrength;
+    match strength {
+        OracleStrength::StrongExact => DomainOracleStrength::Strong,
+        OracleStrength::WeakSmoke => DomainOracleStrength::Smoke,
+        OracleStrength::WeakBroad => DomainOracleStrength::Weak,
+        OracleStrength::MentionOnly | OracleStrength::Unknown => DomainOracleStrength::Unknown,
+    }
+}
+
 fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
     use crate::domain::{
         ActivationEvidence, Confidence as RiprConfidence, DeltaKind, ExposureClass,
@@ -323,21 +382,17 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
         // `test.file_id`), the per-test verify command, and the relation kind.
         let related_evidence = packet.related_test_evidence_for_change(&change.change_id);
 
-        // Conservative dynamic-boundary scope: owner OR file OR any related
-        // test file (has_blocking_dynamic_boundary). Check EVERY related
-        // evidence — not just the first — so a dynamic boundary tied to a
-        // second/subsequent test's file still blocks (no ordering dependency).
-        // An ownerless file-level boundary still blocks; do NOT narrow to
-        // owner-only.
-        let has_boundary = if related_evidence.is_empty() {
-            packet.has_blocking_dynamic_boundary(change, None)
-                || packet.has_blocking_dynamic_dispatch_limitation_for_change(change)
-        } else {
-            related_evidence.iter().any(|ev| {
-                packet.has_blocking_dynamic_boundary(change, Some(ev))
-                    || packet.has_blocking_dynamic_dispatch_limitation(change, ev)
-            })
-        };
+        // Keep blocking disposition separate from the strongest shared taxonomy
+        // label earned by the packet. Operational v1 boundaries still fail
+        // closed, but they no longer masquerade as dynamic dispatch.
+        let static_limit_projection = static_limit::for_change(packet, change, &related_evidence);
+        // Two distinct gates: `blocks_class` caps the exposure CLASS
+        // (semantic dynamic-dispatch evidence only), while `blocks` gates
+        // repair-shaped output (canonical gap + suggestions) — operational
+        // limitations such as `partial_emitter` must suppress repair
+        // guidance even when they do not mask an earned class (#3583 review).
+        let class_blocked = static_limit_projection.blocks_class;
+        let actionability_blocked = static_limit_projection.blocks;
 
         // Build the projected RelatedTests from the packet evidence. The test
         // FILE comes from `ev.test_path` (resolved from test.file_id), never
@@ -360,11 +415,11 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
                     line: test_line,
                     oracle: oracle.and_then(|o| o.expression.clone()),
                     oracle_kind: oracle
-                        .map(|o| o.kind.to_domain_kind())
+                        .map(|o| perl_oracle_kind_to_domain(o.kind))
                         .unwrap_or(DomainOracleKind::Unknown),
                     oracle_strength: ev
                         .oracle_strength
-                        .map(OracleStrength::to_domain_strength)
+                        .map(perl_oracle_strength_to_domain)
                         .unwrap_or(DomainOracleStrength::Unknown),
                     relation_reason: perl_relation_reason,
                     relation_confidence: perl_relation_confidence,
@@ -390,7 +445,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
         // established-sink-alignment Exposed promotion; we downgrade advisory
         // relations and override to StaticUnknown on a blocking boundary.
         let sink_aligned_evidence = sink_aligned_observation(&related_evidence, change, packet);
-        let class = if has_boundary {
+        let class = if class_blocked {
             ExposureClass::StaticUnknown
         } else if related.is_empty() {
             ExposureClass::NoStaticPath
@@ -440,7 +495,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
         // limits stay fail-closed: they may explain why classification is
         // unknown, but they must not produce repair-shaped gap identities.
         let canonical_gap: Option<FindingCanonicalGap> =
-            if has_concrete_discriminator && !is_already_observed && !has_boundary {
+            if has_concrete_discriminator && !is_already_observed && !actionability_blocked {
                 packet
                     .canonical_gap_identity_for_change_with_assertion_shape(
                         &change.change_id,
@@ -485,7 +540,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
                 aligned.test_name, aligned.observed_sink, aligned.oracle_shape
             ));
         } else if !is_already_observed
-            && !has_boundary
+            && !actionability_blocked
             && has_concrete_discriminator
             && let Some(first) = related.first()
         {
@@ -626,11 +681,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             language: Some(DomainLanguageId::Perl),
             language_status: Some(LanguageStatus::Preview),
             owner_kind: None,
-            static_limit_kind: if has_boundary {
-                Some(crate::domain::StaticLimitKind::DynamicDispatch)
-            } else {
-                None
-            },
+            static_limit_kind: static_limit_projection.kind,
             // changed_sink uses the concrete discriminator when present;
             // otherwise the behavior-hint label (advisory only, since no
             // canonical gap is attached).
@@ -643,6 +694,10 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            // Source currentness is resolved by the producer that observed the diff
+            // evidence; this constructor has none, so the disposition stays the
+            // explicit unknown (#3280).
+            source_currentness: crate::domain::SourceCurrentness::UnresolvedSubject,
         });
     }
 
@@ -1436,10 +1491,6 @@ impl PerlFactPacket {
         let change = self
             .change(change_id)
             .ok_or(PerlActionabilityBlocker::MissingChange)?;
-        if self.has_blocking_dynamic_boundary(change, None) {
-            return Err(PerlActionabilityBlocker::DynamicBoundary);
-        }
-
         let owner = self
             .owner(&change.owner_id)
             .ok_or(PerlActionabilityBlocker::MissingCanonicalGapId)?;
@@ -1477,17 +1528,15 @@ impl PerlFactPacket {
         if evidence.oracle_shape.as_deref() != Some(expected_oracle_shape) {
             return Err(PerlActionabilityBlocker::OracleShapeMismatch);
         }
+        if static_limit::for_change(self, change, &related).blocks {
+            return Err(PerlActionabilityBlocker::DynamicBoundary);
+        }
         let gap = self
             .canonical_gap_identity_for_change_with_assertion_shape(
                 change_id,
                 expected_oracle_shape,
             )
             .ok_or(PerlActionabilityBlocker::MissingCanonicalGapId)?;
-        if self.has_blocking_dynamic_boundary(change, Some(evidence))
-            || self.has_blocking_limitation(change, evidence)
-        {
-            return Err(PerlActionabilityBlocker::DynamicBoundary);
-        }
 
         let verify_command = evidence
             .verify_command
@@ -2605,24 +2654,6 @@ enum OracleKind {
 }
 
 impl OracleKind {
-    fn to_domain_kind(self) -> crate::domain::OracleKind {
-        match self {
-            Self::ExactReturnAssertion => crate::domain::OracleKind::ExactValue,
-            Self::PredicateBoundaryAssertion => crate::domain::OracleKind::RelationalCheck,
-            Self::SmokeOk => crate::domain::OracleKind::SmokeOnly,
-            Self::ExceptionObserver
-            | Self::HashOrObjectFieldAssertion
-            | Self::OutputObserver
-            | Self::WarnObserver
-            | Self::LogObserver
-            | Self::MentionOnly
-            | Self::DiesOnly
-            | Self::UnknownHelper
-            | Self::DynamicFrameworkIndirection
-            | Self::Unknown => crate::domain::OracleKind::Unknown,
-        }
-    }
-
     fn assertion_shape(self) -> &'static str {
         match self {
             Self::ExactReturnAssertion => "exact_return_assertion",
@@ -2663,17 +2694,6 @@ enum OracleStrength {
     WeakBroad,
     MentionOnly,
     Unknown,
-}
-
-impl OracleStrength {
-    fn to_domain_strength(self) -> crate::domain::OracleStrength {
-        match self {
-            Self::StrongExact => crate::domain::OracleStrength::Strong,
-            Self::WeakSmoke => crate::domain::OracleStrength::Smoke,
-            Self::WeakBroad => crate::domain::OracleStrength::Weak,
-            Self::MentionOnly | Self::Unknown => crate::domain::OracleStrength::Unknown,
-        }
-    }
 }
 
 impl OracleFact {

@@ -229,7 +229,7 @@
   "review_input": {
     "findings": [
       {
-        "evidence_digest": "sha256:3b0069e7b1e8e5c8c98c18047115313cece30ebb4eb2c12c0585978b1ebcdba0",
+        "evidence_digest": "sha256:1d4498c012825a3287a49f31f267268baf27711557637fac781ba3eaed8983b5",
         "file": "src/pricing.rs",
         "finding_class": "weakly_gripped",
         "line": 10,
@@ -243,7 +243,7 @@
         "summary": "changed seam line"
       },
       {
-        "evidence_digest": "sha256:6b3398eda55e43aecc64937be39f5da527fe2940925c98ba742c496781ccdd65",
+        "evidence_digest": "sha256:c7060dcf23634f7ef9b53920ca867cc154a6cead4f5ea2084f58b4f10a3f5ca0",
         "file": "src/pricing.rs",
         "finding_class": "weakly_gripped",
         "line": 20,
@@ -257,7 +257,7 @@
         "summary": "changed seam line"
       },
       {
-        "evidence_digest": "sha256:648528d83236540637583d8c84b46e0d83b0e5a056931626eb3e3013ad08e957",
+        "evidence_digest": "sha256:be77732247e500766c0e463ed276739920c872d2b1a8298b4c28ae309a6fbd20",
         "file": "src/pricing.rs",
         "finding_class": "weakly_gripped",
         "line": 30,
@@ -271,7 +271,7 @@
         "summary": "changed seam line"
       },
       {
-        "evidence_digest": "sha256:f48da57a33d4348e6be1536d6fd5e7673f313b70aaab5edbba15cc1a2bfac760",
+        "evidence_digest": "sha256:ee0130ddac5d757afee7b3daef92e1dab82695df1163801d24377e2eaa771826",
         "file": "src/pricing.rs",
         "finding_class": "weakly_gripped",
         "line": 40,
@@ -285,7 +285,7 @@
         "summary": "changed seam line"
       },
       {
-        "evidence_digest": "sha256:d95dd2faf3952b79ff77dbad6be8f20fc30bf351c18e6a2275a2724db3cdd79c",
+        "evidence_digest": "sha256:0114d06b08ed7d3f0fa88e68d268391d5a9c42361c2472cba1ad16be1ea79b89",
         "file": "src/pricing.rs",
         "finding_class": "weakly_gripped",
         "line": 50,
@@ -299,7 +299,7 @@
         "summary": "changed seam line"
       },
       {
-        "evidence_digest": "sha256:8a61cf5354d6ed1709abbae05fa5dddbaeb36aa60dff5f52315539a9e62f9431",
+        "evidence_digest": "sha256:73758fcd8838589fcd15f7eedde41db1789137204d9b2118b294b5a826342d24",
         "file": "src/pricing.rs",
         "finding_class": "weakly_gripped",
         "line": 60,
@@ -313,7 +313,7 @@
         "summary": "changed seam line"
       },
       {
-        "evidence_digest": "sha256:73907d533a75e9957b5b924c22e7747036fd92d381ecc4c91ae76650f41e07d8",
+        "evidence_digest": "sha256:41f06f0966aa3a33fffd4d358bdda00d4502eeb66ec304f82a2f68eabff420e7",
         "file": "src/pricing.rs",
         "finding_class": "weakly_gripped",
         "line": 70,
@@ -327,7 +327,7 @@
         "summary": "changed seam line"
       },
       {
-        "evidence_digest": "sha256:4aad9b6b214771a4a875e1d98e77344df8a682912534c0737c174f702cf9cd26",
+        "evidence_digest": "sha256:015d858cf195d0fc9597aa23a3769a547f3a5c5dbb76311fad5ed5665a61efc0",
         "file": "src/pricing.rs",
         "finding_class": "weakly_gripped",
         "line": 80,
@@ -341,7 +341,7 @@
         "summary": "changed seam line"
       },
       {
-        "evidence_digest": "sha256:f0a4e4eefb1e46da3af80c632f6a573791f048eefd4edd827d32951d6d43eed6",
+        "evidence_digest": "sha256:e0daa1cb95a91d4a294558d2b95bba451b8a9dcdac01d5b3a642016629cc4221",
         "file": "src/pricing.rs",
         "finding_class": "weakly_gripped",
         "line": 90,
@@ -355,7 +355,7 @@
         "summary": "changed seam line"
       },
       {
-        "evidence_digest": "sha256:1a909add6bced7e5d934d52e2a9dc65691b44d46855351cf5f036ed365fd10b1",
+        "evidence_digest": "sha256:268c3e82799090dfc279e7a0922721df5bfeb7ecb572239b1a4ae19c227c856e",
         "file": "src/pricing.rs",
         "finding_class": "weakly_gripped",
         "line": 100,
@@ -369,7 +369,7 @@
         "summary": "changed seam line"
       },
       {
-        "evidence_digest": "sha256:8fee530123cb2236ac5ba59e58f74cea49d4816c5ffa067849bde86f77e655f2",
+        "evidence_digest": "sha256:4fe12f78d370f3174ff3a464e158c7fea643a9d64d78edc99335581e884e503c",
         "file": "src/pricing.rs",
         "finding_class": "weakly_gripped",
         "line": 110,
@@ -383,7 +383,7 @@
         "summary": "changed seam line"
       },
       {
-        "evidence_digest": "sha256:e33f102d05d5862828dff8d3c5bbd3d2475bc406d90da3398a50e3eb28511dc5",
+        "evidence_digest": "sha256:0b44881d3ba01f7698e1153bc2b23846ff18931bd09587acaa430bf83ee8832e",
         "file": "src/pricing.rs",
         "finding_class": "weakly_gripped",
         "line": 120,
@@ -397,7 +397,7 @@
         "summary": "changed seam line"
       }
     ],
-    "projection_sha256": "sha256:8011bcb68d8767f7a2f5acf4d06c8c78bab0fec28a16caa18c0641d1ab6c7b10",
+    "projection_sha256": "sha256:e124a67406f961f555110d5c51459da45a30925670d802df6cd2bc3364b0903b",
     "reviewed_count": 12,
     "root": ".",
     "schema_version": "ripr.review_input.v1"

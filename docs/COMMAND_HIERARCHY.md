@@ -9,7 +9,7 @@ under #1613.
 | Diagnose setup | `ripr doctor` | Checks whether the workspace can produce evidence and gives bounded recovery. It is not required before every run. |
 | Inspect one change | `ripr check --base origin/main` | Ordinary first value: analyze the selected diff and name the top gap or an honest no-action/limited state. |
 | Adopt RIPR in a repository | `ripr pilot --root .` | Guided repository analysis and materialization. It is broader than the ordinary one-change check. |
-| Repair one named gap | `ripr agent repair --seam-id <id> --phase before`, then `--phase after` | RIPR owns the before/after evidence plumbing. A human or external agent owns the focused test edit. |
+| Repair one named gap | `ripr agent repair --seam-id <id> --phase before`, then `ripr agent repair --attempt <repair-attempt-id> --phase after` | RIPR owns the before/after evidence plumbing. A human or external agent owns the focused test edit. |
 | Compose PR evidence | `ripr first-pr --root . --base origin/main --head HEAD` | Composes existing artifacts into the start-here packet. It does not run analysis or repair a gap. |
 | Adopt advisory CI | `ripr init --ci github` | Writes the non-blocking GitHub workflow. Blocking policy remains a later explicit repository decision. |
 | Inspect advanced commands | `ripr help --all` | Complete reference for policy, reports, compatibility, and operator surfaces. |
@@ -19,10 +19,20 @@ under #1613.
 The ordinary repair sequence is:
 
 ```bash
-ripr agent repair --root . --seam-id <id> --phase before
+ripr agent repair --root . --seam-id <seam-id> --phase before
 # edit one focused test outside RIPR
-ripr agent repair --root . --seam-id <id> --phase after
+ripr agent repair --root . --attempt <repair-attempt-id> --phase after
 ```
+
+The before phase prints the repair-attempt ID and exact continuation command.
+Keep that `--attempt` command for the after phase, including across sessions.
+The seam ID selects the gap; the repair-attempt ID selects its prepared
+transaction.
+
+The `--seam-id ... --phase after` form remains a compatibility route and
+requires exactly one awaiting attempt for that seam. Zero or multiple matches
+fail closed. See [repair attempt identity](REPAIR_ATTEMPT.md) for the current
+manifest, validation, and recovery contract.
 
 The lower-level `agent start`, `brief`, `packet`, `verify`, `receipt`, `status`,
 and `review-summary` commands remain available for explicit control,

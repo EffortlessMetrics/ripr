@@ -4,11 +4,12 @@ Lane trackers record lane-local implementation state. They are not the whole
 product board and they do not replace proposals, specs, ADRs, capability
 evidence, traceability, or closeout handoffs.
 
-The active Codex Goals manifest at `.ripr/goals/active.toml` is an operator
-manifest for the current repo-wide execution sequence. It can point at PR/CI,
-editor, policy, release, or cleanup work while a lane tracker still records a
-different lane's durable plan. Do not treat the active manifest as the only
-source of product truth.
+Live execution state comes from GitHub issues, pull requests, checks, reviews,
+and the local worktree. Lane trackers and implementation plans preserve durable
+sequence, boundaries, and restart context; they do not select a repository-wide
+current worker, issue, branch, or wave. The former `.ripr/goals/active.toml`
+operator scheduler was retired and deleted. See
+[`docs/REPO_TRACKING_MODEL.md`](../REPO_TRACKING_MODEL.md).
 
 ## Document Layers
 
@@ -20,16 +21,17 @@ Use one document for one job:
 | Proposal / PRD | why the work exists, user value, alternatives, success criteria | `docs/proposals/` |
 | Spec | behavior contract, inputs and outputs, required evidence, acceptance examples | `docs/specs/` |
 | ADR | durable architecture decisions | `docs/adr/` |
-| Lane tracker | lane-local state, active slices, non-goals, sequencing | `docs/lanes/` |
+| Lane tracker | lane-local state, slices, non-goals, sequencing | `docs/lanes/` |
 | Implementation plan | repo-wide sequence, campaign summaries, and lane-local PR sequencing | `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, `plans/` |
-| Active goals manifest | current Codex/Droid operator sequence | `.ripr/goals/active.toml` |
+| Live execution | current issue/PR/head/check/review/worktree state | GitHub + local worktree |
+| PR-local scope | one reviewable implementation claim and its evidence obligations | `.allow/spec-system/slices/` + PR |
 | Capability matrix | maturity, scope, and proof evidence | `docs/CAPABILITY_MATRIX.md`, `metrics/capabilities.toml` |
 | Traceability | spec, fixture, test, code, and metric linkage | `.ripr/traceability.toml` |
 | Closeout / handoff | what landed, proof, remaining work, restart context | `docs/handoffs/` |
 
 Do not make every document do every job. A lane tracker may link to the
 proposal, spec, ADR, capability, traceability, and closeout records, but it
-should not duplicate their full content.
+should not duplicate their full content or override current GitHub state.
 
 ## Lane 1 Source Of Truth
 
@@ -60,9 +62,9 @@ Lane 1 should use these layers:
 - Traceability: the spec/test/code/fixture/metric chain.
 - Closeout: what landed, what proof ran, and what remains unknown.
 
-Lane 1 should not use `.ripr/goals/active.toml` as a substitute for the lane
-tracker. Update the active manifest only when the repo-wide operator sequence
-explicitly makes Lane 1 active.
+The lane tracker does not authorize work by itself. When Lane 1 work is live,
+the controlling GitHub issue/PR and exact worktree/head establish the current
+execution claim; this tracker supplies its durable lane context.
 
 ## Lane 1 Boundary
 

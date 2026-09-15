@@ -24,7 +24,7 @@ Static exposure
 Evidence
   - reach yes: Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token
   - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
+  - propagation yes: Complete propagation witness reaches error variant: Result::Err(AuthError::RevokedToken)
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator yes: Strong oracle found: exact error variant assertion
   - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
@@ -49,7 +49,7 @@ Static exposure
 Evidence
   - reach yes: Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token
   - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
+  - propagation yes: Complete propagation witness reaches error variant: Result::Err(AuthError::RevokedToken)
   - observation yes: A related test observes a value or effect near the changed behavior
   - discriminator yes: Strong oracle found: exact error variant assertion
   - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)

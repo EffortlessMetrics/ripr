@@ -1,0 +1,6 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -2,1 +2,1 @@
+-    let head = input.chars().next().map_or('!', |c| c);
++    let head = input.chars().next().map_or('?', |c| c);

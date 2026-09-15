@@ -10,7 +10,11 @@
 //! `evidence_promotion`, and `tests.rs`) compile unchanged.
 
 use crate::no_panic::contains_word;
-use crate::run::{run, run_output_owned, run_output_owned_with_envs};
+use crate::run::{
+    capture_output_in_dir_with_envs, run, run_output_owned, run_output_owned_with_envs,
+};
+#[path = "fixture_workspace.rs"]
+mod fixture_workspace;
 use crate::{
     collect_pr_changes, forbidden_static_terms, has_markdown_heading, json_escape, markdown_cell,
     normalize_path, read_text_lossy, ripr_debug_binary, write_json_string_array, write_report,
@@ -167,6 +171,19 @@ pub(crate) fn goldens_check_failure_message(
             golden_drift_type(&entry.semantics),
             blessing,
         ));
+        // The console should carry the first differing line: the
+        // report file is runner-local, so a CI log is often the only
+        // place the hint is visible (#3636 corpus lane).
+        let expected_text = read_text_lossy(Path::new(&entry.expected));
+        let actual_text = read_text_lossy(Path::new(&entry.actual));
+        if let (Ok(expected_text), Ok(actual_text)) = (expected_text, actual_text)
+            && let Some(hint) = first_line_difference(
+                &normalize_golden_text(&expected_text),
+                &normalize_golden_text(&actual_text),
+            )
+        {
+            message.push_str(&format!("  first difference: {hint}\n"));
+        }
     }
     // Violations that are not per-fixture output drift (contract or run errors)
     // are not represented in `entries`; surface them verbatim so nothing is lost.
@@ -288,17 +305,18 @@ fn goldens_bless(name: &str, reason: &str) -> Result<(), String> {
         })?;
     }
     let changelog = expected.join("CHANGELOG.md");
-    let mut entry = format!(
-        "\n## Pending\n\nReason:\n{reason}\n\nCommand:\n`cargo xtask goldens bless {name} --reason \"...\"`\n\nUpdated:\n- `expected/check.json`\n- `expected/human.txt`\n"
-    );
-    if updated_human_full {
-        entry.push_str("- `expected/human-full.txt`\n");
-    }
     let mut text = if changelog.exists() {
         read_text_lossy(&changelog)?
     } else {
         "# Golden Output Changes\n".to_string()
     };
+    let mut entry = format!(
+        "\n{}\n\nReason:\n{reason}\n\nCommand:\n`cargo xtask goldens bless {name} --reason \"...\"`\n\nUpdated:\n- `expected/check.json`\n- `expected/human.txt`\n",
+        next_pending_heading(&text, name)
+    );
+    if updated_human_full {
+        entry.push_str("- `expected/human-full.txt`\n");
+    }
     text.push_str(&entry);
     fs::write(&changelog, text)
         .map_err(|err| format!("failed to write {}: {err}", normalize_path(&changelog)))?;
@@ -322,6 +340,38 @@ fn goldens_bless(name: &str, reason: &str) -> Result<(), String> {
         normalize_path(&fixture)
     );
     write_report("goldens-bless.md", &body)
+}
+
+/// Unique heading for the next appended pending changelog entry.
+///
+/// MD024 (no-duplicate-heading) rejects repeated heading text, so each entry
+/// heading embeds the fixture name plus a sequence number computed from every
+/// pending heading already in the log — including legacy plain `## Pending`
+/// headings — so repeated blesses of the same fixture never collide.
+pub(crate) fn next_pending_heading(existing_log: &str, fixture_name: &str) -> String {
+    // Pick the first UNUSED number rather than count+1: a deleted or
+    // hand-edited entry must never cause a duplicate heading. A bare legacy
+    // `## Pending` heading implicitly reserved number 1.
+    let mut used: Vec<usize> = existing_log
+        .lines()
+        .filter(|line| line.starts_with("## Pending"))
+        .filter_map(|line| {
+            let open = line.rfind('(')?;
+            let close = line.rfind(')')?;
+            line[open + 1..close].trim().parse().ok()
+        })
+        .collect();
+    if existing_log
+        .lines()
+        .any(|line| line.trim_end() == "## Pending")
+    {
+        used.push(1);
+    }
+    let mut candidate = 1usize;
+    while used.contains(&candidate) {
+        candidate += 1;
+    }
+    format!("## Pending — {fixture_name} ({candidate})")
 }
 
 pub(crate) fn fixture_dirs() -> Result<Vec<PathBuf>, String> {
@@ -352,6 +402,7 @@ pub(crate) fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                 "active-goal-authority-audit"
                     | "actionable-gap-outcomes-corpus"
                     | "bun-ub-cross-language-dogfood"
+                    | "convergence"
                     | "cross-language-oracle-graph-corpus"
                     | "editor_gap_cockpit"
                     | "editor_first_run_usability"
@@ -365,6 +416,7 @@ pub(crate) fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "gap-decision-ledger"
                     | "perl_lsp_facts_exporter"
                     | "perl-real-repo-evals"
+                    | "perl_packet_contract_migration"
                     | "python"
                     | "python-eval-sweep"
                     | "python-judged-pr-panel"
@@ -442,6 +494,11 @@ pub(crate) struct FixtureRun {
 }
 
 impl FixtureRun {
+    #[cfg(test)]
+    pub(crate) fn check_json_path(&self) -> &Path {
+        &self.check_json
+    }
+
     #[cfg(test)]
     pub(crate) fn comparisons_all_match(&self) -> bool {
         self.comparisons.iter().all(|comparison| comparison.matches)
@@ -623,6 +680,22 @@ fn clear_fixture_cache(dir: &Path) -> Result<(), String> {
 }
 
 pub(crate) fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
+    let binary = ripr_fixture_binary()?;
+    let mut workspace = fixture_workspace::FixtureWorkspace::create(path)?;
+    let result = run_fixture_outputs_isolated(path, &binary, workspace.root());
+    let cleanup = workspace.cleanup();
+    match (result, cleanup) {
+        (Ok(run), Ok(())) => Ok(run),
+        (Err(error), Ok(())) | (Ok(_), Err(error)) => Err(error),
+        (Err(error), Err(cleanup)) => Err(format!("{error}; {cleanup}")),
+    }
+}
+
+fn run_fixture_outputs_isolated(
+    path: &Path,
+    binary: &str,
+    cwd: &Path,
+) -> Result<FixtureRun, String> {
     let name = fixture_name(path)?;
     let diff = path.join("diff.patch");
     let input = path.join("input");
@@ -659,11 +732,13 @@ pub(crate) fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
     let cache_dir = fixture_cache_dir(&name)?;
     clear_fixture_cache(&cache_dir)?;
 
-    let json = normalize_fixture_json_output(&run_fixture_check(
+    let json = normalize_fixture_json_output(&run_fixture_check_with_context(
+        binary,
         &root,
         &diff_file,
         FixtureCheckFormat::Json,
         Some(&cache_dir),
+        Some(cwd),
     )?);
     fs::write(&check_json, json).map_err(|err| {
         format!(
@@ -672,11 +747,13 @@ pub(crate) fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
         )
     })?;
 
-    let human = normalize_fixture_human_output(&run_fixture_check(
+    let human = normalize_fixture_human_output(&run_fixture_check_with_context(
+        binary,
         &root,
         &diff_file,
         FixtureCheckFormat::Human,
         Some(&cache_dir),
+        Some(cwd),
     )?);
     fs::write(&human_txt, human).map_err(|err| {
         format!(
@@ -685,11 +762,13 @@ pub(crate) fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
         )
     })?;
 
-    let human_full = normalize_fixture_human_output(&run_fixture_check(
+    let human_full = normalize_fixture_human_output(&run_fixture_check_with_context(
+        binary,
         &root,
         &diff_file,
         FixtureCheckFormat::HumanFull,
         Some(&cache_dir),
+        Some(cwd),
     )?);
     fs::write(&human_full_txt, human_full).map_err(|err| {
         format!(
@@ -772,6 +851,17 @@ pub(crate) fn run_fixture_check(
     cache_dir: Option<&Path>,
 ) -> Result<String, String> {
     let binary = ripr_fixture_binary()?;
+    run_fixture_check_with_context(&binary, root, diff_file, format, cache_dir, None)
+}
+
+fn run_fixture_check_with_context(
+    binary: &str,
+    root: &str,
+    diff_file: &str,
+    format: FixtureCheckFormat,
+    cache_dir: Option<&Path>,
+    cwd: Option<&Path>,
+) -> Result<String, String> {
     let mut args = vec![
         "check".to_string(),
         "--root".to_string(),
@@ -789,12 +879,28 @@ pub(crate) fn run_fixture_check(
             args.push("human-full".to_string());
         }
     }
+    if let Some(cwd) = cwd {
+        let value = cache_dir.map(|dir| dir.to_string_lossy().into_owned());
+        let envs = value
+            .as_deref()
+            .map(|value| vec![(FIXTURE_CACHE_DIR_ENV, value)])
+            .unwrap_or_default();
+        let output =
+            capture_output_in_dir_with_envs(binary, &args, cwd, "fixture check", &envs, &[])?;
+        if !output.status.success() {
+            return Err(format!(
+                "fixture check failed: {}\n{}\n{}",
+                output.status, output.stdout, output.stderr
+            ));
+        }
+        return Ok(output.stdout);
+    }
     match cache_dir {
         Some(dir) => {
             let value = dir.to_string_lossy().into_owned();
-            run_output_owned_with_envs(&binary, &args, &[(FIXTURE_CACHE_DIR_ENV, &value)])
+            run_output_owned_with_envs(binary, &args, &[(FIXTURE_CACHE_DIR_ENV, &value)])
         }
-        None => run_output_owned(&binary, &args),
+        None => run_output_owned(binary, &args),
     }
 }
 
@@ -861,12 +967,28 @@ pub(crate) fn first_line_difference(expected: &str, actual: &str) -> Option<Stri
         let expected_line = expected_lines.get(index).copied().unwrap_or("<missing>");
         let actual_line = actual_lines.get(index).copied().unwrap_or("<missing>");
         if expected_line != actual_line {
-            return Some(format!(
+            let mut detail = format!(
                 "line {} expected `{}` vs actual `{}`",
                 index + 1,
                 snapshot_line_preview(expected_line),
                 snapshot_line_preview(actual_line)
-            ));
+            );
+            // Long lines whose previews are identical need a divergence
+            // pointer, or the hint names no actionable difference.
+            if snapshot_line_preview(expected_line) == snapshot_line_preview(actual_line) {
+                let common = expected_line
+                    .chars()
+                    .zip(actual_line.chars())
+                    .take_while(|(expected, actual)| expected == actual)
+                    .count();
+                let start = common.saturating_sub(40);
+                let expected_excerpt: String = expected_line.chars().skip(start).take(80).collect();
+                let actual_excerpt: String = actual_line.chars().skip(start).take(80).collect();
+                detail.push_str(&format!(
+                    "; divergence at char {common}: expected `...{expected_excerpt}...` vs actual `...{actual_excerpt}...`"
+                ));
+            }
+            return Some(detail);
         }
     }
 

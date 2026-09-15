@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on the history artifacts, trend fields, and explicit unknown-state handling.
+
 ## Problem
 
 Policy readiness and policy operations are point-in-time reports. They tell a
