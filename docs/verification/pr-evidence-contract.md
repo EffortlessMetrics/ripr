@@ -76,6 +76,22 @@ target/ripr/review/comments.md
 schemas/ripr/review-comments.schema.json
 ```
 
+Configured gate decisions are a separate pass/fail authority and are validated
+by:
+
+```text
+schemas/ripr/gate-decision.schema.json
+```
+
+Every per-candidate decision contains `repair_route`. A complete route carries
+the canonical gap and seam identities, classification when producer-owned,
+changed owner and behavior, missing discriminator, one tagged related-test or
+explicit production-caller target, focused test intent, verify and receipt
+commands, the exact producer-owned inspection command, and the static-evidence
+boundary. An incomplete route names `incomplete_repair_route` and cannot remain
+policy-eligible. The adapter does not infer caller identity from owner, seam
+identity from evidence-vector order, or an exact command from path and line.
+
 The `comments.json` file is validated by
 `schemas/ripr/review-comments.schema.json`. It separates recommendations by
 placement and policy state:
@@ -94,6 +110,7 @@ Required review-comments fields:
 | `base` / `head` | Git revisions used for the diff. |
 | `mode` | Public RIPR analysis mode label. |
 | `analysis_scope` | Optional scoped-input metadata for analysis-backed review-comments output. Default diff rendering reports `limited_diff_scope`, changed production files, bounded immediate callers, considered seam counts, and the `review_comments_diff_scope_only` limitation route instead of claiming full-repo truth. |
+| `causal_comparison` | Optional producer-owned base/head comparison coverage. It exposes availability and exact snapshot coverage counts; incomplete or unknown comparison remains visible and is never causal by renderer inference. |
 | `rendering_limits` | Producer-side caps for comments and summary items. |
 | `limits_note` | Human-readable explanation of rendering limits. |
 
@@ -124,6 +141,14 @@ The PR evidence summary should keep these field names stable:
 | `requires_targeted_mutation` | Whether targeted mutation is routed for this PR. |
 | `ripr_severe_gap` | Whether RIPR identified a severe gap that participates in routing. |
 | `routing_reason` | Nullable string explaining why targeted mutation was or was not routed. |
+| `targeted_mutation_route` | Structured candidate or named limitation. A required route is never represented by a bare `requires_targeted_mutation` boolean. |
+
+`targeted_mutation_route.status` is one of `not_required`, `candidate`, or
+`static_limitation`. Candidates are derived only from producer-owned probe facts
+and include the source location, mutation kind, from/to values, bounded
+`cargo mutants` command, and expected static observation. Unsupported or
+ambiguous seams use `static_limitation`; RIPR does not execute mutation testing
+by default.
 
 Targeted mutation routing should be justified by explicit evidence:
 

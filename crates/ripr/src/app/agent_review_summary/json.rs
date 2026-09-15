@@ -16,6 +16,10 @@ pub(crate) fn render_agent_review_summary_json(
         "root": report.root,
         "target_seam": report.target_seam.as_ref().map(target_seam_json),
         "static_movement": static_movement_json(&report.static_movement),
+        "analysis_outcome": report.analysis_outcome.as_ref().map(|outcome| serde_json::json!({
+            "analysis_complete": outcome.kind.is_complete(),
+            "outcome": outcome
+        })),
         "next_command": report.next_command.as_ref().map(agent_status_command_json),
         "surfaces": report.surfaces.iter().map(surface_json).collect::<Vec<_>>(),
         "ci_artifacts": report.ci_artifacts.iter().map(artifact_json).collect::<Vec<_>>(),

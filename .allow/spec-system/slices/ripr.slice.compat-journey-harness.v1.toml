@@ -1,0 +1,79 @@
+schema_version = "2.0"
+id = "ripr.slice.compat-journey-harness.v1"
+generation = 1
+
+source_issue = "issue:1930"
+design_reference = "RIPR-SPEC-0126"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Adds the compatibility-command journey residual of issue #1930 to the
+binary-spawning LSP stdio harness (crates/ripr/tests/lsp_lifecycle.rs,
+#2030): one framed session-level test that spawns the real `ripr lsp
+--stdio` binary, initializes against a temp fixture workspace with its own
+git HEAD (the framed lsp/tests.rs recipe: committed base plus committed
+production change), asserts the advertised executeCommandProvider
+server-executed command set, drives `ripr.collectWorkspaceStatus` before
+any analysis and requires the honest disclosed `no_snapshot` shape (never
+fabricated counts), runs the `ripr.refresh` demand path
+(RIPR-SPEC-0105), re-collects workspace status and requires typed
+diagnostic counts with the `no_snapshot` disclosure lifted, collects
+`ripr.collectTopLimitation` and `ripr.collectReceiptStatus` typed
+payloads, and ends with shutdown/exit at exit code 0. The journey emits a
+bounded receipt to git-ignored `target/ripr/reports/lsp-compat-journey-receipt.json`
+recording binary path + version, fixture recipe + content digest, the
+ordered protocol sequence, and the shutdown result. The existing
+policy/process_allowlist.txt entry for the harness is raised from one to
+three `Command::new` sites (server spawn, git fixture helper, `ripr
+--version` receipt probe) through the sanctioned exception mechanism — the
+same entry #2030 created for this file. The test only asserts
+already-shipped server behavior at the wire level: no production code,
+wire contract, fixture, golden, or spec text changes. change_class is
+"spec_or_contract_change" because the slice vocabulary has no test-only
+class (same convention as ripr.slice.saved-workspace-e2e-fixture.v1): the
+delta rides on the RIPR-SPEC-0126 evidence surface via one appended
+traceability test entry, and "behavior_change" would wrongly imply a
+production behavior delta.
+"""
+
+non_goals = [
+  "production code changes of any kind (lsp backend, capabilities, actions, status projection)",
+  "amending docs/specs/RIPR-SPEC-0126-lsp-diagnostic-delivery-budget.md or any other spec text",
+  "fixture or golden directory changes (the session builds its own temp fixture root)",
+  "committed receipt artifacts (the receipt lands under git-ignored target/ only)",
+  "new dependencies or new framing transports",
+]
+
+return_conditions = [
+  "Return to root if the journey cannot assert the no-snapshot and post-refresh status shapes without a production change.",
+  "Return to root if the framed session proves flaky across repeated runs (timing races in refresh or shutdown waits).",
+  "Return to root if the traceability append collides with a concurrent PR appending to the RIPR-SPEC-0126 tests array.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:compat-journey-harness",
+]
+
+shared_seams = [
+  "seam:ripr:lsp:binary-stdio-harness",
+  "seam:ripr:contract:workspace-status-payload",
+]
+
+forbidden_seams = [
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:lsp:backend",
+  "seam:ripr:repo:workflows",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0126"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

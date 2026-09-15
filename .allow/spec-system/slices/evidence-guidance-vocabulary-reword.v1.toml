@@ -1,0 +1,56 @@
+schema_version = "2.0"
+id = "ripr.slice.evidence-guidance-vocabulary-reword.v1"
+generation = 1
+
+source_issue = "issue:2222"
+design_reference = "RIPR-SPEC-0015"
+change_class = "output_contract_change"
+
+claim_boundary = """
+Rewords three repair-route guidance strings in the Lane 1 evidence audit and
+evidence quality reports so user-visible output no longer carries a banned
+conservative-language term from the static-finding vocabulary (replaced with
+"demonstrated"), and drops the fine-grained ripr-allow static-language debt
+comments that masked them after the #2119 extraction. No guidance semantics,
+finding classifications, report schemas, or field names change; the two
+evidence_audit.rs strings stay byte-identical to each other.
+"""
+
+non_goals = [
+  "changes to finding or limitation classifications",
+  "report schema or field-name changes",
+  "fixture or golden changes (zero drift confirmed)",
+  "rewording fixture input data that is not user-facing output",
+]
+
+return_conditions = [
+  "Return to root if any golden or fixture drift appears (stop, do not re-bless).",
+  "Return to root if check-static-language fails without the removed allow comments.",
+]
+
+owned_seams = [
+  "seam:ripr:xtask:evidence-audit-guidance",
+  "seam:ripr:xtask:evidence-quality-guidance",
+]
+
+shared_seams = [
+  "seam:ripr:contract:conservative-static-language",
+]
+
+forbidden_seams = [
+  "seam:ripr:analysis:exposure-classification",
+  "seam:ripr:output:check-json-contract",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0015#conservative-static-language"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

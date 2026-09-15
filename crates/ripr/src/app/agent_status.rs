@@ -3,11 +3,13 @@ use crate::agent::loop_commands::{
     WORKFLOW_AGENT_PACKET_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
     WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT, WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT,
     WORKFLOW_AGENT_STATUS_ARTIFACT, WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT,
-    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command,
-    agent_packet_command, agent_receipt_command, agent_review_summary_command,
-    agent_review_summary_markdown_command, agent_status_command, agent_status_markdown_command,
-    agent_verify_command, check_repo_exposure_command, display_path,
+    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+    WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_packet_command,
+    agent_receipt_command, agent_review_summary_command, agent_review_summary_markdown_command,
+    agent_status_command, agent_status_markdown_command, agent_verify_command,
+    check_analysis_outcome_command, check_repo_exposure_command, display_path,
 };
+use crate::output::markdown::{COMMAND_SHELL_DISCLOSURE, powershell_command};
 use serde_json::Value;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -31,6 +33,11 @@ const ARTIFACTS: &[AgentStatusArtifactDef] = &[
         name: "after_snapshot",
         label: "after snapshot",
         path: WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+    },
+    AgentStatusArtifactDef {
+        name: "analysis_outcome",
+        label: "analysis outcome",
+        path: WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
     },
     AgentStatusArtifactDef {
         name: "agent_brief",
@@ -59,6 +66,7 @@ const MISSING_COMMAND_ORDER: &[&str] = &[
     "agent_packet",
     "agent_brief",
     "after_snapshot",
+    "analysis_outcome",
     "agent_verify",
     "agent_receipt",
 ];
@@ -200,9 +208,22 @@ pub(crate) fn render_agent_status_markdown(report: &AgentStatusReport) -> String
     if let Some(next) = report.missing_commands.first() {
         rendered.push_str("\n## Next Command\n\n");
         rendered.push_str(&format!("{}\n\n", next.reason));
+        rendered.push_str(COMMAND_SHELL_DISCLOSURE);
         rendered.push_str("```bash\n");
         rendered.push_str(&next.command);
         rendered.push_str("\n```\n");
+        match powershell_command(&next.command) {
+            Some(line) => {
+                rendered.push_str("\n```powershell\n");
+                rendered.push_str(&line);
+                rendered.push_str("\n```\n");
+            }
+            None => rendered.push_str(&format!(
+                "{}: `{}`\n",
+                crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE,
+                next.command
+            )),
+        }
     } else {
         rendered.push_str("\nNo missing agent-loop artifacts were detected.\n");
     }
@@ -397,6 +418,7 @@ fn string_field(value: &Value, key: &str) -> Option<String> {
 
 fn stale_warnings(artifacts: &[AgentStatusArtifact]) -> Vec<AgentStatusWarning> {
     let mut warnings = Vec::new();
+    push_snapshot_order_warning(artifacts, &mut warnings);
     push_stale_warning(
         artifacts,
         "agent_verify",
@@ -419,6 +441,28 @@ fn stale_warnings(artifacts: &[AgentStatusArtifact]) -> Vec<AgentStatusWarning> 
         &mut warnings,
     );
     warnings
+}
+
+fn push_snapshot_order_warning(
+    artifacts: &[AgentStatusArtifact],
+    warnings: &mut Vec<AgentStatusWarning>,
+) {
+    let Some(before) = artifact_by_name(artifacts, "before_snapshot").filter(|a| a.present) else {
+        return;
+    };
+    let Some(after) = artifact_by_name(artifacts, "after_snapshot").filter(|a| a.present) else {
+        return;
+    };
+    let (Some(before_modified), Some(after_modified)) = (before.modified, after.modified) else {
+        return;
+    };
+    if before_modified > after_modified {
+        warnings.push(AgentStatusWarning {
+            kind: "stale_artifact".to_string(),
+            artifact: before.name.clone(),
+            message: "before snapshot is newer than after snapshot; the before artifact may have been overwritten after editing".to_string(),
+        });
+    }
 }
 
 fn push_stale_warning(
@@ -485,6 +529,9 @@ fn command_for_missing_artifact(
         }
         "after_snapshot" => {
             check_repo_exposure_command(&root, "draft", WORKFLOW_AFTER_SNAPSHOT_ARTIFACT)
+        }
+        "analysis_outcome" => {
+            check_analysis_outcome_command(&root, "draft", WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT)
         }
         "agent_packet" => agent_packet_command(&root, seam_id, WORKFLOW_AGENT_PACKET_ARTIFACT),
         "agent_brief" => agent_brief_command(&root, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
@@ -567,8 +614,8 @@ mod tests {
         assert_eq!(value["schema_version"], AGENT_STATUS_SCHEMA_VERSION);
         assert_eq!(value["status"], "incomplete");
         assert_eq!(value["seam"], Value::Null);
-        assert_eq!(value["artifacts"].as_array().map(Vec::len), Some(6));
-        assert_eq!(value["missing_commands"].as_array().map(Vec::len), Some(6));
+        assert_eq!(value["artifacts"].as_array().map(Vec::len), Some(7));
+        assert_eq!(value["missing_commands"].as_array().map(Vec::len), Some(7));
         assert_eq!(value["next_command"]["step"], "before_snapshot");
         assert_eq!(
             value["next_command"]["command"],
@@ -584,6 +631,7 @@ mod tests {
         let root = unique_agent_status_test_dir("complete");
         write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
         write_file(&root.join(WORKFLOW_AFTER_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT), "{}")?;
         write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
         write_file(&root.join(WORKFLOW_AGENT_PACKET_ARTIFACT), "{}")?;
         write_file(
@@ -641,6 +689,48 @@ mod tests {
         Ok(())
     }
 
+    /// The agent-status Next Command block must offer both shells (#2628): the
+    /// bash fence stays byte-identical, the PowerShell fence derives through
+    /// the shared `powershell_command` translation (redirect becomes a UTF-8
+    /// .NET write; the quoted root survives as a single-quoted literal), and
+    /// the cmd.exe boundary is stated.
+    #[test]
+    fn agent_status_markdown_next_command_offers_powershell_variant() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("markdown-powershell");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        let report = build_agent_status_report(&root, Path::new("repo root"));
+        let rendered = render_agent_status_markdown(&report);
+
+        let bash_form = "```bash\nripr check --root 'repo root' --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json\n```\n";
+        assert!(
+            rendered.contains(bash_form),
+            "bash next command drifted:\n{rendered}"
+        );
+        let powershell_form = "```powershell\n$ripr = ((ripr check --root 'repo root' --mode draft --format repo-exposure-json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/workflow/before.repo-exposure.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }\n```\n";
+        assert!(
+            rendered.contains(powershell_form),
+            "powershell next command missing or drifted:\n{rendered}"
+        );
+        let bash_fence = rendered
+            .find(bash_form)
+            .ok_or_else(|| format!("bash fence must exist: {rendered}"))?;
+        let powershell_fence = rendered
+            .find(powershell_form)
+            .ok_or_else(|| format!("powershell fence must exist: {rendered}"))?;
+        assert!(
+            bash_fence < powershell_fence,
+            "bash form must be presented before the PowerShell variant"
+        );
+        assert!(
+            rendered.contains("cmd.exe is not supported."),
+            "next command presentation must state the cmd.exe boundary:\n{rendered}"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
     #[test]
     fn agent_status_recovers_seam_id_from_receipt() -> Result<(), String> {
         let root = unique_agent_status_test_dir("receipt");
@@ -660,7 +750,7 @@ mod tests {
         assert!(report.missing_commands.iter().any(|command| {
             command.step == "agent_packet"
                 && command.command
-                    == "ripr agent packet --root \"repo root\" --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json"
+                    == "ripr agent packet --root 'repo root' --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json"
         }));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
@@ -750,6 +840,27 @@ mod tests {
     }
 
     #[test]
+    fn agent_status_warns_when_before_snapshot_is_newer_than_after() {
+        let after = UNIX_EPOCH + Duration::from_secs(2);
+        let before = UNIX_EPOCH + Duration::from_secs(3);
+        let completed = UNIX_EPOCH + Duration::from_secs(4);
+        let warnings = stale_warnings(&[
+            artifact("before_snapshot", true, Some(before)),
+            artifact("after_snapshot", true, Some(after)),
+            artifact("agent_verify", true, Some(completed)),
+            artifact("agent_receipt", true, Some(completed)),
+        ]);
+
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].artifact, "before_snapshot");
+        assert!(
+            warnings[0]
+                .message
+                .contains("before snapshot is newer than after snapshot")
+        );
+    }
+
+    #[test]
     fn agent_status_emits_all_missing_command_templates() {
         let artifacts = ARTIFACTS
             .iter()
@@ -768,11 +879,16 @@ mod tests {
         };
         let commands = missing_commands(Path::new("."), Some(&seam), &artifacts);
 
-        assert_eq!(commands.len(), 6);
+        assert_eq!(commands.len(), 7);
         assert!(commands.iter().any(|command| {
             command.step == "after_snapshot"
                 && command.command
                     == "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.step == "analysis_outcome"
+                && command.command
+                    == "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json"
         }));
         assert!(commands.iter().any(|command| {
             command.step == "agent_brief"
@@ -795,7 +911,7 @@ mod tests {
     fn agent_status_quotes_paths_with_spaces() {
         assert_eq!(
             agent_packet_command("repo root", "seam-a", WORKFLOW_AGENT_PACKET_ARTIFACT),
-            "ripr agent packet --root \"repo root\" --seam-id seam-a --json > target/ripr/workflow/agent-packet.json"
+            "ripr agent packet --root 'repo root' --seam-id seam-a --json > target/ripr/workflow/agent-packet.json"
         );
     }
 }

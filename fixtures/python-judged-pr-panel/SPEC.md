@@ -5,8 +5,9 @@ Contract: [RIPR-SPEC-0092](../../docs/specs/RIPR-SPEC-0092-python-judged-pr-pane
 These inputs define the **schema** for a Tier B judged-diff panel — the bridge
 from the Tier A robustness floor ([RIPR-SPEC-0086](../../docs/specs/RIPR-SPEC-0086-python-eval-sweep.md))
 to a measured usable-tier number (false-actionable AND false-`exposed` rates).
-This is a hand-vetted **seed** only: schema plus a few items, no judging engine
-and no large corpus. Labels are `null` (unjudged) in this seed.
+This directory carries the schema, an unjudged hand-vetted **seed**, and two
+bounded historical manual panels. It has no judging engine, current rerun, or
+promotion-scale corpus. Labels are `null` (unjudged) in the seed.
 
 ## Files
 
@@ -18,6 +19,10 @@ and no large corpus. Labels are `null` (unjudged) in this seed.
   repo's tests. Adds `actual_classification` / `actual_oracle_alignment` per item
   and an envelope `measurement_summary`. Result: 0 false-`exposed`, 1
   false-actionable (tenacity, the `__call__`-via-local-instance limitation).
+- `scaled-judged.json` — a second historical manual panel with four judged
+  items. Its receipt describes a bounded combined denominator of `n=7` when
+  read with the three-item starter panel; it is not a seven-item file or a
+  current promotion rerun.
 - `diffs/*.diff` — the unified diff for each seed panel item.
 
 ## Panel item
@@ -47,6 +52,8 @@ Per item, at most one of `false_actionable` / `false_exposed` is `true`.
 
 ## Boundaries
 
-Schema + seed only. No judging engine, no analyzer change, no large corpus,
-advisory only — never a default gate, badge, or RIPR Zero input. A later PR adds
-the judging surface, populates the labels, and scales the corpus.
+Schema, unjudged seed, and two bounded historical manual panels only. They do
+not establish an executable semantic validator, a current rerun, an accepted
+false-actionable threshold, or a scaled promotion corpus. No judging engine,
+no analyzer change, and advisory only — never a default gate, badge, or RIPR
+Zero input.

@@ -72,18 +72,18 @@ their owning lanes.
 Latest local proof on the merged #827 head:
 
 ```text
-rtk cargo test -p ripr calibration_runtime_fixture -- --nocapture
-rtk cargo xtask mutation-calibration . --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v2/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v2/repo-exposure.json
-rtk cargo xtask check-fixture-contracts
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-static-language
-rtk cargo xtask check-spec-format
-rtk cargo xtask check-traceability
-rtk cargo xtask check-capabilities
-rtk cargo xtask markdown-links
-rtk cargo fmt --check
-rtk git diff --cached --check
-rtk cargo xtask check-pr
+cargo test -p ripr calibration_runtime_fixture -- --nocapture
+cargo xtask mutation-calibration . --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v2/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v2/repo-exposure.json
+cargo xtask check-fixture-contracts
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-spec-format
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask markdown-links
+cargo fmt --check
+git diff --cached --check
+cargo xtask check-pr
 ```
 
 GitHub proof for #827:

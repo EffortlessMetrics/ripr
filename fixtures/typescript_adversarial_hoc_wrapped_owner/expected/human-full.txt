@@ -1,0 +1,79 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_adversarial_hoc_wrapped_owner/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: rust: 0, typescript: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+WARNING src/audit.ts:10
+
+Changed
+  after:    return amount * 1.2;
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  typescript:src/audit.ts::computeTotal
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: ambiguous_related_test
+  repair packet ready: false
+  why not actionable: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof
+  repair route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection
+  missing fields: related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: trusted token-aware relation plus complete verify, receipt, and edit-boundary fields
+  raw evidence: src/audit.ts:10 (typescript_preview_probe) source=probe:src_audit.ts:typescript_preview:cef0d72c owner=computeTotal
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach weak: 1 related test(s) found for owner `computeTotal`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `unknown` (rank 0)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - local flow reaches returned value: return amount * 1.2; (line 10)
+  - related test tests/audit.test.ts:3 computes the total with tax uses unknown unknown oracle
+
+Weakness
+  - Only heuristic TypeScript test links were found for `computeTotal`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: computeTotal
+  owner kind: function
+  changed behavior: return_value changed at src/audit.ts:10: `return amount * 1.2;`
+  related test: tests/audit.test.ts:3 computes the total with tax
+  oracle: unknown (unknown)
+  suggested assertion shape: Add an exact return-value assertion for the changed output.
+  repair packet ready: false
+  why not actionable: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof
+  repair route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof
+  next capability needed: trusted token-aware relation plus complete verify, receipt, and edit-boundary fields
+
+Next step
+  TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

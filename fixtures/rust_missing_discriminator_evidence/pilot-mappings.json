@@ -1,0 +1,49 @@
+{
+  "schema_version": "0.1",
+  "kind": "rust_missing_discriminator_evidence_fixture_mappings",
+  "issue": 1601,
+  "source_document": "docs/dogfood/2026-07-13-rust-pilot.md",
+  "authority_boundary": "fixture_regression_only",
+  "description": "Exact real-repository pilot heads that currently stop at producer-owned missing_discriminator_evidence. This inventory does not count attempts or authorize edits.",
+  "current_limitation": "missing_discriminator_evidence",
+  "expected_producer_stage": "discriminator_evidence",
+  "required_fact": "exact behavior-specific discriminator attached to the canonical owner and behavior identity",
+  "cases": [
+    {
+      "id": "ripr-swarm-1581",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "source_ref": "PR #1581",
+      "analyzed_head_sha": "86fbe048eeedd0eeb6090db96355791c40b3486b",
+      "canonical_candidate_id": "EffortlessMetrics/ripr-swarm#1581",
+      "evidence_ref": "target/ripr/fresh-pilot-1581.json",
+      "fixture_control": "broad-error-oracle"
+    },
+    {
+      "id": "ripr-swarm-1580",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "source_ref": "PR #1580",
+      "analyzed_head_sha": "2f71673f9c2da4532a1c1fb8e011dc6fd586ad2f",
+      "canonical_candidate_id": "EffortlessMetrics/ripr-swarm#1580",
+      "evidence_ref": "target/ripr/fresh-pilot-1580.json",
+      "fixture_control": "broad-error-oracle"
+    },
+    {
+      "id": "ub-review-772",
+      "repository": "EffortlessMetrics/ub-review",
+      "source_ref": "PR #772",
+      "analyzed_head_sha": "217633ca232120a021c7dc975973abdcb5056d39",
+      "canonical_candidate_id": "EffortlessMetrics/ub-review#772",
+      "evidence_ref": "target/ripr/fresh-pilot-772.json",
+      "fixture_control": "broad-error-oracle"
+    },
+    {
+      "id": "ub-review-744",
+      "repository": "EffortlessMetrics/ub-review",
+      "source_ref": "PR #744",
+      "analyzed_head_sha": "84a365e4f509c866e01b51cbd5e5ae0c22b7302b",
+      "canonical_candidate_id": "EffortlessMetrics/ub-review#744",
+      "evidence_ref": "target/ripr/fresh-pilot-744.json",
+      "fixture_control": "broad-error-oracle"
+    }
+  ]
+}

@@ -2,14 +2,14 @@
 
 Use this when a team wants to try `ripr` on one real pull request and decide
 whether the recommendation is useful enough to adopt. Stable Rust gaps are the
-primary path; preview Python gaps can use the same workflow when an explicit
-gap ledger already supplies advisory repair records.
+primary path; preview Python and TypeScript gaps can use the same workflow when
+an explicit gap ledger already supplies advisory repair records.
 
 The success condition is intentionally small:
 
 ```text
 run ripr
--> read one repairable stable Rust gap or preview Python gap
+-> read one repairable stable Rust gap or preview Python/TypeScript gap
 -> add one focused test or output proof outside ripr
 -> verify static movement
 -> keep the receipt
@@ -85,7 +85,7 @@ ripr reports gap-ledger \
   --out-md target/ripr/reports/gap-decision-ledger.md
 ```
 
-For presentation/output-text changes or scoped Python repair-card findings,
+For presentation/output-text changes or scoped Python/TypeScript repair-card findings,
 derive the PR-local route from the checked JSON output:
 
 ```bash
@@ -96,9 +96,9 @@ ripr reports gap-ledger \
   --out-md target/ripr/reports/gap-decision-ledger.md
 ```
 
-For scoped Python repair-routing cards, the public first-PR front door can take the
-same saved check JSON directly and materialize the derived ledger before it
-selects the top repair:
+For scoped Python or TypeScript repair-routing cards, the public first-PR front
+door can take the same saved check JSON directly and materialize the derived
+ledger before it selects the top repair:
 
 ```bash
 ripr first-pr \
@@ -110,9 +110,9 @@ ripr first-pr \
 
 That path should produce `MissingOutputContract` with an `AddOutputGolden`
 repair route when user-facing output changed without checked output evidence,
-or a preview Python repair record with a verify command and check-output
-receipt command when the Python card is actionable. It should not turn generic
-`static_unknown` into an interruption.
+or a preview Python/TypeScript repair record with a verify command and
+check-output receipt command when the saved card is actionable. It should not
+turn generic `static_unknown` into an interruption.
 
 ## 4. Pick One Repairable Gap
 
@@ -262,7 +262,7 @@ optional agent-receipt.json
 The reviewer should be able to say:
 
 ```text
-ripr found one repairable stable Rust gap or preview Python gap.
+ripr found one repairable stable Rust gap or preview Python/TypeScript gap.
 We added one focused proof for that behavior.
 The static evidence improved or resolved, or the checked output proof now exists.
 The result is advisory, and runtime mutation testing remains optional follow-up.
@@ -275,7 +275,7 @@ one of these already owns the job:
 
 | Surface | Opens with | Owns | Does not own |
 | --- | --- | --- | --- |
-| First-run packet | `target/ripr/reports/start-here.md` | Top repairable stable Rust gap, preview Python gap, or no-action state, repair route, verify command, artifact links, advisory boundary. | Analyzer truth, gate authority, PR comments, source edits, generated tests. |
+| First-run packet | `target/ripr/reports/start-here.md` | Top repairable stable Rust gap, preview Python/TypeScript gap, or no-action state, repair route, verify command, artifact links, advisory boundary. | Analyzer truth, gate authority, PR comments, source edits, generated tests. |
 | First successful PR workflow | This document | Manual adoption path from one PR to one repair receipt. | Output schema contracts or editor behavior. |
 | Quickstart | [Quickstart](QUICKSTART.md) | First-hour path selection across CLI, PR, editor, and agent use. | Full report topology. |
 | Generated CI | [CI strategy](CI.md) | Advisory PR summary, artifact upload, start-here projection, optional gate artifact links. | Pass/fail authority unless an explicit gate-decision artifact owns it. |
@@ -293,8 +293,8 @@ Implementation and cleanup follow-up lives in
 - [Quickstart](QUICKSTART.md) covers first-hour paths for CLI, CI, editor, and
   agent users.
 - [First successful PR demo](demo/first-successful-pr.md) shows the checked
-  boundary-gap, output-contract, preview Python, no-action, and blocked
-  fixture cases.
+  boundary-gap, output-contract, preview Python, preview TypeScript, no-action,
+  and blocked fixture cases.
 - [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md)
   explains the VS Code handoff from local receipt to `start-here` packet.
 - [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) explains the

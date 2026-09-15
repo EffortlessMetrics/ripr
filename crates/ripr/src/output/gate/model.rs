@@ -1,4 +1,5 @@
 use super::super::gap_decision_ledger::GapRepairRoute;
+use crate::domain::{CanonicalDelta, DeltaAttribution};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -17,7 +18,9 @@ impl GateMode {
             "acknowledgeable" => Ok(Self::Acknowledgeable),
             "baseline-check" => Ok(Self::BaselineCheck),
             "calibrated-gate" => Ok(Self::CalibratedGate),
-            other => Err(format!("unknown gate mode `{other}`")),
+            other => Err(format!(
+                "unknown gate mode `{other}`; expected `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate`"
+            )),
         }
     }
 
@@ -51,6 +54,10 @@ pub(crate) struct GateEvaluateInput {
     pub(crate) baseline: Option<PathBuf>,
     pub(crate) mode: GateMode,
     pub(crate) acknowledgement_labels: Vec<String>,
+    /// Optional `--exception-policy` TOML ledger (#1442). Relative paths
+    /// resolve against `root`. Fail-closed: a missing or malformed ledger is
+    /// a `config_error`.
+    pub(crate) exception_policy: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -65,6 +72,12 @@ pub(crate) struct GateDecisionReport {
     pub(super) decisions: Vec<GateDecision>,
     pub(super) warnings: Vec<String>,
     pub(super) config_errors: Vec<String>,
+    pub(super) causal_delta: Option<super::causal::CausalDeltaAuthority>,
+    pub(super) causal_projection: Option<crate::app::causal_projection::CausalDeltaArtifact>,
+    /// Exception-ledger evaluation (#1442). `Some` only when the caller
+    /// passed `--exception-policy`; absent otherwise so existing
+    /// gate-decision consumers and goldens see identical output.
+    pub(super) exception_policy: Option<super::exception_policy::ExceptionPolicyReport>,
 }
 
 /// Canonical downstream-thresholding receipt field.
@@ -98,6 +111,9 @@ pub(super) struct GateDecisionInputs {
     pub(super) recommendation_calibration: Option<String>,
     pub(super) mutation_calibration: Option<String>,
     pub(super) baseline: Option<String>,
+    /// Present only when `--exception-policy` was supplied (#1442), keeping
+    /// existing gate-decision JSON byte-identical without the flag.
+    pub(super) exception_policy: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -119,6 +135,11 @@ pub(super) struct GateSummary {
     pub(super) unknown_confidence: usize,
 }
 
+/// Decision-payload value recorded when a baseline match succeeded only via
+/// the legacy `path:line:static_class` fallback selector (issue #1934,
+/// RIPR-SPEC-0014 § Baseline Comparison).
+pub(super) const BASELINE_MATCH_KIND_LEGACY_PATH_LINE_CLASS: &str = "legacy_path_line_class";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct GateDecision {
     pub(super) id: String,
@@ -129,16 +150,63 @@ pub(super) struct GateDecision {
     pub(super) gap_kind: Option<String>,
     pub(super) canonical_gap_id: Option<String>,
     pub(super) seam_id: Option<String>,
+    pub(super) gap_state: Option<String>,
     pub(super) source_id: String,
     pub(super) static_class: Option<String>,
     pub(super) severity: Option<String>,
     pub(super) placement: GatePlacement,
     pub(super) policy: GateDecisionPolicy,
     pub(super) evidence: GateEvidence,
+    pub(super) repair_route: GateRepairRoute,
     /// Whether the candidate was absent from the baseline at decision time.
     /// Always `true` for diff-scoped modes (no baseline).
     /// Used when computing `new_unsuppressed.count` in baseline mode.
     pub(super) is_baseline_new: bool,
+    /// `Some("legacy_path_line_class")` when the baseline matched only via
+    /// the legacy path/line/static_class fallback selector; `None` for
+    /// canonical identity matches and for baseline-new candidates. Rendered
+    /// only when `Some`, so non-fallback decisions stay byte-identical.
+    pub(super) baseline_match_kind: Option<String>,
+    pub(super) delta_attribution: Option<DeltaAttribution>,
+    pub(super) causal_delta: Option<CanonicalDelta>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GateRepairRoute {
+    pub(super) canonical_gap_id: Option<String>,
+    pub(super) seam_id: Option<String>,
+    pub(super) classification: Option<String>,
+    pub(super) changed_owner: Option<String>,
+    pub(super) changed_behavior: Option<String>,
+    pub(super) missing_discriminator: Option<String>,
+    pub(super) repair_target: Option<GateRepairTarget>,
+    pub(super) test_intent: Option<String>,
+    pub(super) verify_command: Option<String>,
+    pub(super) receipt_command: Option<String>,
+    pub(super) inspection_command: Option<String>,
+    pub(super) authority_boundary: String,
+    pub(super) limitation: Option<GateRepairRouteLimitation>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum GateRepairTarget {
+    RelatedTest {
+        name: String,
+        file: String,
+        line: u64,
+    },
+    ProductionCaller {
+        owner: String,
+        file: Option<String>,
+        line: Option<u64>,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GateRepairRouteLimitation {
+    pub(super) kind: &'static str,
+    pub(super) missing_fields: Vec<String>,
+    pub(super) detail: &'static str,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -185,10 +253,12 @@ pub(super) struct GateCandidate {
     pub(super) gap_kind: Option<String>,
     pub(super) canonical_gap_id: Option<String>,
     pub(super) seam_id: Option<String>,
+    pub(super) gap_state: Option<String>,
     pub(super) static_class: Option<String>,
     pub(super) severity: Option<String>,
     pub(super) placement: GatePlacement,
     pub(super) missing_discriminator: Option<String>,
+    pub(super) route_facts: GateRouteFacts,
     pub(super) assertion_shape: Option<String>,
     pub(super) candidate_values: Vec<String>,
     pub(super) recommended_test: Option<String>,
@@ -205,6 +275,22 @@ pub(super) struct GateCandidate {
     pub(super) gap_ledger_gate_candidate: bool,
     pub(super) gap_ledger_gate_reason: Option<String>,
     pub(super) gap_ledger_safe_gate_predicate: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct GateRouteFacts {
+    pub(super) canonical_gap_id: Option<String>,
+    pub(super) seam_id: Option<String>,
+    pub(super) gap_state: Option<String>,
+    pub(super) classification: Option<String>,
+    pub(super) changed_owner: Option<String>,
+    pub(super) changed_behavior: Option<String>,
+    pub(super) missing_discriminator: Option<String>,
+    pub(super) repair_target: Option<GateRepairTarget>,
+    pub(super) test_intent: Option<String>,
+    pub(super) verify_command: Option<String>,
+    pub(super) receipt_command: Option<String>,
+    pub(super) inspection_command: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]

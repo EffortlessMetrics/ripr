@@ -1,6 +1,73 @@
 use super::arguments::{
     comparable_expression, custom_assertion_arguments, equality_assertion_arguments,
 };
+use crate::analysis::classify::{error_constructor_call_paths, rust_string_literals};
+
+/// Structural assertion-text shapes that supplement the parsed
+/// [`OracleKind`](crate::domain::OracleKind)
+/// when deciding whether an oracle is relevant to a probe family.
+///
+/// These are deliberately private analysis facts rather than new public oracle
+/// kinds: they preserve the conservative fallback behavior for custom assertion
+/// helpers without widening the serialized oracle vocabulary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OracleTextShape {
+    ErrorPath,
+    SideEffect,
+    MemberAccess,
+    AssertionOrExpectation,
+}
+
+/// Classifies the small set of assertion-text fallback shapes used by reveal
+/// analysis. Keeping text recognition here prevents downstream classifiers from
+/// each growing their own string-sniffing authority.
+pub(crate) fn has_oracle_text_shape(line: &str, shape: OracleTextShape) -> bool {
+    match shape {
+        OracleTextShape::ErrorPath => line.contains("Error::") || line.contains("Err"),
+        OracleTextShape::SideEffect => {
+            line.contains("expect")
+                || line.contains("mock")
+                || line.contains("saved")
+                || line.contains("published")
+        }
+        OracleTextShape::MemberAccess => contains_member_access(line),
+        OracleTextShape::AssertionOrExpectation => {
+            line.contains("assert") || line.contains("expect")
+        }
+    }
+}
+
+/// Returns true when the assertion contains a Rust-style member access.
+///
+/// A bare dot is not enough: decimal literals and range operators also contain
+/// dots without observing a constructed field. String-literal contents are
+/// excluded for the same reason (#2904).
+fn contains_member_access(text: &str) -> bool {
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut prev_was_dot = false;
+    for ch in text.chars() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        if ch == '"' {
+            in_string = true;
+            continue;
+        }
+        if prev_was_dot && (ch == '_' || ch.is_alphabetic()) {
+            return true;
+        }
+        prev_was_dot = ch == '.';
+    }
+    false
+}
 
 pub(super) fn is_snapshot_assertion(line: &str) -> bool {
     let expect_test_comparison = (line.contains("expect![[") || line.contains("expect_file!["))
@@ -50,13 +117,14 @@ pub(super) fn is_exact_error_variant_assertion(line: &str) -> bool {
 }
 
 /// Returns true when `line` is an assertion on a variable known to hold an
-/// unwrap_err result AND names a specific error variant.
+/// unwrap_err result and pins a specific error result.
 ///
 /// This recognizes the two-line pattern:
 /// ```text
 /// let err = f(-1).unwrap_err();
 /// assert_eq!(err, MyError::Negative);          // ← this line
 /// assert!(matches!(err, MyError::Negative));   // ← or this line
+/// assert_eq!(err, MyError::new("negative"));   // ← or constructor equality
 /// ```
 /// `bound_error_vars` is the set of variable names bound by `.unwrap_err()`
 /// or `.expect_err(...)` earlier in the same test body.
@@ -69,12 +137,14 @@ pub(crate) fn is_unwrap_err_bound_error_assertion(
     }
     // The line must be an assertion macro invocation.
     let is_assert = line.contains("assert_eq!")
-        || line.contains("assert_ne!")
         || line.contains("assert_matches!")
         || line.contains("matches!")
         || line.contains("assert!");
     if !is_assert {
         return false;
+    }
+    if is_bound_error_equality_assertion(line, bound_error_vars) {
+        return true;
     }
     // Must name at least one enum variant (SomeThing::Variant pattern with uppercase last component).
     if !contains_named_enum_variant(line) {
@@ -84,6 +154,70 @@ pub(crate) fn is_unwrap_err_bound_error_assertion(
     bound_error_vars
         .iter()
         .any(|var| line_references_variable(line, var))
+}
+
+fn is_bound_error_equality_assertion(
+    line: &str,
+    bound_error_vars: &std::collections::BTreeSet<String>,
+) -> bool {
+    let Some(args) = equality_assertion_arguments(line) else {
+        return false;
+    };
+    let (Some(left), Some(right)) = (args.first(), args.get(1)) else {
+        return false;
+    };
+    let left = comparable_expression(left);
+    let right = comparable_expression(right);
+    bound_error_vars.iter().any(|var| {
+        let var = comparable_expression(var);
+        (left == var && expression_pins_specific_error(&right))
+            || (right == var && expression_pins_specific_error(&left))
+    })
+}
+
+fn expression_pins_specific_error(expression: &str) -> bool {
+    contains_named_enum_variant(expression)
+        || contains_error_constructor_call(expression)
+        || contains_error_payload_literal(expression)
+}
+
+fn contains_error_constructor_call(expression: &str) -> bool {
+    !error_constructor_call_paths(expression).is_empty()
+}
+
+fn contains_error_payload_literal(expression: &str) -> bool {
+    rust_string_literals(expression)
+        .iter()
+        .any(|literal| literal_has_fixed_payload_text(literal))
+}
+
+fn literal_has_fixed_payload_text(literal: &str) -> bool {
+    let mut fixed = String::new();
+    let mut chars = literal.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '{' => {
+                if matches!(chars.peek(), Some('{')) {
+                    let _ = chars.next();
+                    fixed.push('{');
+                    continue;
+                }
+                for inner in chars.by_ref() {
+                    if inner == '}' {
+                        break;
+                    }
+                }
+            }
+            '}' => {
+                if matches!(chars.peek(), Some('}')) {
+                    let _ = chars.next();
+                    fixed.push('}');
+                }
+            }
+            _ => fixed.push(ch),
+        }
+    }
+    fixed.chars().any(|ch| ch.is_alphanumeric())
 }
 
 /// Returns true when the line contains a path-qualified enum variant:
@@ -148,11 +282,86 @@ pub(super) fn is_duplicative_equality_assertion(line: &str) -> bool {
     comparable_expression(left) == comparable_expression(right)
 }
 
+pub(super) fn is_duplicative_comparison(condition: &str) -> bool {
+    let Some((operator, width)) = top_level_comparison_operator(condition) else {
+        return false;
+    };
+    let left = condition[..operator].trim();
+    let right = condition[operator + width..].trim();
+    !left.is_empty()
+        && !right.is_empty()
+        && comparable_expression(left) == comparable_expression(right)
+}
+
 pub(super) fn is_exact_value_assertion(line: &str) -> bool {
     line.contains("assert_eq!")
         || line.contains("assert_ne!")
         || line.contains("assert_matches!")
         || line.contains("matches!")
+}
+
+pub(super) fn contains_exact_comparison(condition: &str) -> bool {
+    let mut chars = condition.chars().peekable();
+    let mut in_string = false;
+    let mut escaped = false;
+    while let Some(ch) = chars.next() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '=' | '!' if matches!(chars.peek(), Some('=')) => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+fn top_level_comparison_operator(condition: &str) -> Option<(usize, usize)> {
+    let mut paren_depth = 0i32;
+    let mut bracket_depth = 0i32;
+    let mut brace_depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut chars = condition.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            '{' => brace_depth += 1,
+            '}' => brace_depth = brace_depth.saturating_sub(1),
+            '=' | '!'
+                if paren_depth == 0
+                    && bracket_depth == 0
+                    && brace_depth == 0
+                    && matches!(chars.peek(), Some((_, '='))) =>
+            {
+                return Some((index, 2));
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 pub(super) fn is_mock_expectation_line(line: &str) -> bool {
@@ -263,7 +472,72 @@ mod spec_0106_tests {
         );
     }
 
+    #[test]
+    fn is_unwrap_err_bound_error_assertion_upgrades_constructor_payload_equality()
+    -> Result<(), String> {
+        let bound = vars(&["err"]);
+        if !is_unwrap_err_bound_error_assertion(
+            r#"assert_eq!(err, CargoAllowError::new(format!("duplicate allow id `{}`", id)));"#,
+            &bound,
+        ) {
+            return Err(
+                "exact constructor-payload equality on bound error must be recognized".to_string(),
+            );
+        }
+        if is_unwrap_err_bound_error_assertion("assert_eq!(err, expected_error);", &bound) {
+            return Err(
+                "opaque expected variables must not be promoted to exact error variants"
+                    .to_string(),
+            );
+        }
+        if is_unwrap_err_bound_error_assertion(
+            r#"assert_ne!(err, CargoAllowError::new(format!("duplicate allow id `{}`", id)));"#,
+            &bound,
+        ) {
+            return Err("negative constructor-payload assertions must not be promoted".to_string());
+        }
+        if is_unwrap_err_bound_error_assertion("assert_ne!(err, CalcError::Negative);", &bound) {
+            return Err("negative enum-variant assertions must not be promoted".to_string());
+        }
+        Ok(())
+    }
+
     // Control 3 (GENERIC): generic assertion without variant token → no upgrade.
+    #[test]
+    fn is_unwrap_err_bound_error_assertion_rejects_placeholder_only_string_payload()
+    -> Result<(), String> {
+        let bound = vars(&["err"]);
+        let cases = [
+            (
+                "placeholder-only",
+                r#"assert_eq!(err, format!("{}", id));"#,
+                false,
+            ),
+            (
+                "escaped-placeholder-only",
+                r#"assert_eq!(err, format!("{{}} {}", id));"#,
+                false,
+            ),
+            (
+                "fixed-text",
+                r#"assert_eq!(err, format!("duplicate allow id `{}`", id));"#,
+                true,
+            ),
+            (
+                "escaped-fixed-text",
+                r#"assert_eq!(err, format!("{{duplicate}} {}", id));"#,
+                true,
+            ),
+        ];
+        for (label, assertion, expected) in cases {
+            let actual = is_unwrap_err_bound_error_assertion(assertion, &bound);
+            if actual != expected {
+                return Err(format!("{label}: expected {expected}, got {actual}"));
+            }
+        }
+        Ok(())
+    }
+
     #[test]
     fn generic_assertion_on_bound_var_not_upgraded() {
         let bound = vars(&["err"]);
@@ -311,5 +585,89 @@ mod spec_0106_tests {
             !contains_named_enum_variant("assert!(err.to_string().contains(\"error\"));"),
             "no qualified variant — must return false"
         );
+    }
+
+    #[test]
+    fn exact_comparison_ignores_string_contents_and_escapes() -> Result<(), String> {
+        for (condition, expected) in [
+            ("state == TerminalState::Pass", true),
+            ("state != TerminalState::Pending", true),
+            (r#"label.contains("==")"#, false),
+            (r#"label.contains("escaped \"!=\" text")"#, false),
+            ("ready = true", false),
+        ] {
+            let actual = contains_exact_comparison(condition);
+            if actual != expected {
+                return Err(format!(
+                    "comparison classification mismatch for {condition}: {actual}"
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod oracle_text_shape_tests {
+    use super::*;
+
+    #[test]
+    fn preserves_reveal_family_fallbacks() {
+        let cases = [
+            (
+                OracleTextShape::ErrorPath,
+                "assert_eq!(kind, Error::Denied);",
+                true,
+            ),
+            (
+                OracleTextShape::ErrorPath,
+                "assert_eq!(kind, Success::Ready);",
+                false,
+            ),
+            (
+                OracleTextShape::SideEffect,
+                "assert!(event.published);",
+                true,
+            ),
+            (OracleTextShape::SideEffect, "assert!(result.ready);", false),
+            (
+                OracleTextShape::MemberAccess,
+                "assert_eq!(item.id, 3);",
+                true,
+            ),
+            (
+                OracleTextShape::MemberAccess,
+                "assert!(3.14_f64 > 0.0_f64);",
+                false,
+            ),
+            (
+                OracleTextShape::MemberAccess,
+                "assert_eq!(msg, \"error.timeout\");",
+                false,
+            ),
+            (
+                OracleTextShape::MemberAccess,
+                r#"assert_eq!(msg, "error.\"timeout");"#,
+                false,
+            ),
+            (
+                OracleTextShape::AssertionOrExpectation,
+                "expect_send_called();",
+                true,
+            ),
+            (
+                OracleTextShape::AssertionOrExpectation,
+                "record_send_call();",
+                false,
+            ),
+        ];
+
+        for (shape, text, expected) in cases {
+            assert_eq!(
+                has_oracle_text_shape(text, shape),
+                expected,
+                "text-shape classification mismatch for {shape:?} and {text}"
+            );
+        }
     }
 }

@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,4 +1,4 @@
+-pub(crate) const OBSERVATION_SCHEMA_GENERATION: u32 = 4;
++pub(crate) const OBSERVATION_SCHEMA_GENERATION: u32 = 3;
+
+ pub fn dispatch_event(kind: &str) {
+     let rendered = render_label(kind);
+     log_line(&rendered);
+}

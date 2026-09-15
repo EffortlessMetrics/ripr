@@ -1,3 +1,4 @@
+use crate::analysis::cancellation;
 use crate::analysis::language::{LanguageAdapter, LanguageId, RustAdapter, route};
 use std::path::{Path, PathBuf};
 
@@ -19,7 +20,7 @@ pub fn discover_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 /// Discover production files in the workspace that route to a preview-language
-/// adapter (TypeScript/JavaScript or Python), by path extension only.
+/// adapter (TypeScript/JavaScript, Python, or Perl), by path extension only.
 ///
 /// Routing is `analysis::language::route`, the same predicate adapter dispatch
 /// uses. This does not require the adapter to be enabled; it is used so the
@@ -38,6 +39,12 @@ fn visit_preview(root: &Path, dir: &Path, out: &mut Vec<(LanguageId, PathBuf)>) 
         return;
     };
     for entry in entries.flatten() {
+        // Cooperative cancellation (#1972): the preview walk cannot
+        // propagate an error, so a cancelled refresh stops the traversal
+        // early instead of walking the whole tree. No-op without a token.
+        if cancellation::checkpoint().is_err() {
+            return;
+        }
         let path = entry.path();
         let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
         if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -48,7 +55,10 @@ fn visit_preview(root: &Path, dir: &Path, out: &mut Vec<(LanguageId, PathBuf)>) 
         } else if let Some(language) = route(&path)
             && matches!(
                 language,
-                LanguageId::TypeScript | LanguageId::JavaScript | LanguageId::Python
+                LanguageId::TypeScript
+                    | LanguageId::JavaScript
+                    | LanguageId::Python
+                    | LanguageId::Perl
             )
         {
             let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
@@ -66,6 +76,7 @@ fn visit(
     let entries =
         std::fs::read_dir(dir).map_err(|err| format!("failed to read {}: {err}", dir.display()))?;
     for entry in entries {
+        cancellation::checkpoint()?;
         let entry = entry.map_err(|err| format!("failed to read dir entry: {err}"))?;
         let path = entry.path();
         let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
@@ -105,6 +116,52 @@ mod tests {
         Ok(())
     }
 
+    /// #3235: the related-test package guard depends on file identities
+    /// staying repo-relative from discovery through classification. Discovery
+    /// is the authority that strips the workspace root (the RustAdapter
+    /// selects from these paths and passes them into the index unchanged), so
+    /// pin it here: every discovered identity is relative on every host.
+    #[test]
+    fn discover_rust_files_returns_repo_relative_identities()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-discover-relative-{:?}",
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("src"))?;
+        fs::write(dir.join("src/lib.rs"), "pub fn one() -> i32 { 1 }")?;
+        fs::create_dir_all(dir.join("tests"))?;
+        fs::write(
+            dir.join("tests/it.rs"),
+            "#[test] fn t() { assert_eq!(1, 1); }",
+        )?;
+
+        let result = discover_rust_files(&dir)?;
+        assert!(
+            result.iter().any(|p| p.ends_with("src/lib.rs")),
+            "fixture must be discovered"
+        );
+        for path in &result {
+            let text = path.to_string_lossy();
+            assert!(
+                !path.is_absolute(),
+                "discovered identity must stay repo-relative: {text}"
+            );
+            assert!(
+                !text.starts_with('/'),
+                "discovered identity leaked a Unix root: {text}"
+            );
+            assert!(
+                text.as_bytes().get(1) != Some(&b':'),
+                "discovered identity leaked a drive prefix: {text}"
+            );
+        }
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
     #[test]
     fn discover_skips_default_excluded_directories() -> Result<(), Box<dyn std::error::Error>> {
         let dir = std::env::temp_dir().join(format!(
@@ -124,6 +181,25 @@ mod tests {
         let result = discover_rust_files(&dir)?;
         assert_eq!(result, vec![PathBuf::from("src/lib.rs")]);
 
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn discover_preview_language_files_includes_perl_without_adapter()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir =
+            std::env::temp_dir().join(format!("ripr-discover-perl-preview-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("lib/My"))?;
+        fs::write(dir.join("lib/My/App.pm"), "sub value { return 1 }\n")?;
+
+        let result = discover_preview_language_files(&dir);
+
+        assert_eq!(
+            result,
+            vec![(LanguageId::Perl, PathBuf::from("lib/My/App.pm"))]
+        );
         let _ = fs::remove_dir_all(&dir);
         Ok(())
     }

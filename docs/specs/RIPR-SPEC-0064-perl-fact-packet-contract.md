@@ -16,15 +16,21 @@ Linked ADRs:
 
 Linked plan:
 
-- Perl repair routing campaign, future plan file
+- Campaign 31: Perl Repair-Routing Usable Alpha,
+  `docs/IMPLEMENTATION_CAMPAIGNS.md` → Campaign 31 (status: tracker).
+  Tracker manifest: `.ripr/goals/perl-repair-routing.toml`.
 
 Linked issues:
 
-- None yet
+- Umbrella: #1379 (Campaign 31: Perl Repair-Routing Usable Alpha).
+- Phase A (ripr-swarm): #1394, #1395, #1396.
+- Phase B producer (perl-lsp-swarm): perl-lsp-swarm#2591-#2595.
+- Phase C consumer (ripr-swarm): #1402-#1406.
+- Phase D product loop (ripr-swarm): #1407-#1411.
 
 Linked PRs:
 
-- None yet
+- Planning: #1412 (Campaign 31 restructured plan, scout-verified + 2x adversarially reviewed).
 
 Support-tier impact:
 
@@ -44,7 +50,7 @@ Policy impact:
 
 Perl repair routing needs a stable handoff between two tools:
 
-- `perl-lsp` has Perl syntax, semantic, workspace, module-resolution,
+- `perl-ripr-facts` has Perl syntax, semantic, workspace, module-resolution,
   confidence, provenance, and dynamic-boundary knowledge.
 - RIPR has evidence routing, canonical gaps, actionability, repair cards,
   verify commands, receipts, and user surfaces.
@@ -69,8 +75,10 @@ named limitation.
 
 ### Producer and consumer
 
-`perl-lsp` is the producer. It emits `ripr-perl-facts-v1` packets from a saved
-workspace, diff, or explicit file set.
+`perl-ripr-facts` is the canonical producer. It emits `ripr-perl-facts-v1`
+packets from a saved workspace, diff, or explicit file set. `perllsp` and
+`perl-lsp` may remain compatibility wrappers only when they delegate to the
+same batch exporter without starting a live LSP session.
 
 RIPR is the consumer. It ingests the packet through `PerlAdapter`, translates
 facts into the language-neutral evidence spine, and decides:
@@ -90,11 +98,11 @@ install, or test execution to parse a packet.
 
 ### Exporter request
 
-The first integration path is a deterministic batch request to `perl-lsp`, not
-a live LSP session:
+The first integration path is a deterministic batch request to
+`perl-ripr-facts`, not a live LSP session:
 
 ```text
-perl-lsp ripr-facts --schema ripr-perl-facts-v1 --root . --base origin/main --head HEAD --fact-classes owners,changes,tests,oracles --out target/ripr/reports/perl-facts.json
+perl-ripr-facts ripr-facts --schema ripr-perl-facts-v1 --root . --base origin/main --head HEAD --fact-classes owners,changes,tests,oracles --diff diff.patch --out target/ripr/reports/perl-facts.json
 ```
 
 RIPR may render this request shape for fixture-backed integration tests and
@@ -152,7 +160,7 @@ The packet is JSON with this top-level shape:
   "packet_status": "complete",
   "packet_fingerprint": "sha256:...",
   "producer": {
-    "name": "perl-lsp",
+    "name": "perl-ripr-facts",
     "version": "0.0.0",
     "capabilities": ["syntax", "workspace", "test_facts"]
   },
@@ -193,13 +201,13 @@ The producer may consume:
 - explicit file list;
 - diff base/head or hunk list;
 - repo configuration;
-- Perl module/workspace metadata known to `perl-lsp`;
-- test runner configuration known to `perl-lsp`;
+- Perl module/workspace metadata known to `perl-ripr-facts`;
+- test runner configuration known to `perl-ripr-facts`;
 - operator-provided export options.
 
 The packet must record enough `input` metadata for RIPR to explain what was
-analyzed, but the packet must not require RIPR to rerun `perl-lsp` to interpret
-the facts.
+analyzed, but the packet must not require RIPR to rerun the Perl facts exporter
+to interpret the facts.
 
 ## Outputs
 
@@ -420,6 +428,11 @@ Relations connect changes, owners, tests, and oracles:
 Relations are evidence inputs. RIPR decides the final reachability and
 actionability state.
 
+`relation.change_id` must either reference a `changes[]` entry or use the
+sentinel `change:unresolved` for intentionally unbound relation-only evidence.
+Consumers must not treat `change:unresolved` as a dangling reference, and must
+not use it as evidence for any specific change.
+
 ### Dynamic boundaries and limitations
 
 Dynamic boundaries name cases that should fail closed:
@@ -451,6 +464,8 @@ Boundary and limitation `kind` values:
 - `missing_test_runner`
 - `missing_diff_owner`
 - `packet_incomplete`
+- `partial_emitter`
+- `narrowed_representation`
 - `unknown`
 
 If a dynamic boundary affects a change, relation, owner, or oracle needed for
@@ -563,7 +578,7 @@ language-qualified and path-qualified:
 perl:<normalized/path>::<package-or-script>::<owner-name>
 ```
 
-RIPR-derived Perl gap IDs are not emitted by `perl-lsp` fact packets. RIPR
+RIPR-derived Perl gap IDs are not emitted by Perl fact packets. RIPR
 derives them only after consuming packet facts. The first fixture-backed
 identity key is:
 
@@ -624,7 +639,7 @@ Input facts:
 
 Expected RIPR behavior:
 
-- consume the packet without invoking `perl-lsp`;
+- consume the packet without invoking the Perl facts exporter;
 - derive a canonical Perl gap ID if the changed return lacks the needed
   discriminator;
 - emit a repair card only if all strict actionability fields are present;
@@ -730,7 +745,7 @@ The next PRs are:
 1. Add packet model and parser tests for canned fixtures.
 2. Add fixture-only `PerlAdapter` consuming the packet.
 3. Add canonical Perl owner and gap ID mapping.
-4. Add `perl-lsp` exporter integration.
+4. Add `perl-ripr-facts` exporter integration.
 5. Add source/test/oracle fact fixtures.
 6. Add related-test linking as preview reachability/revealability evidence.
 7. Add strict actionability and repair-packet fail-closed cases.

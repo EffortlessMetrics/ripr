@@ -1,8 +1,10 @@
 use crate::agent::loop_commands::{
     WORKFLOW_AGENT_RECEIPT_ARTIFACT, WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT,
     WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT, WORKFLOW_AGENT_STATUS_ARTIFACT,
-    WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT, WORKFLOW_MANIFEST_ARTIFACT, agent_status_command,
+    WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+    WORKFLOW_MANIFEST_ARTIFACT, agent_status_command,
 };
+use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::agent_status::AgentStatusReport;
 use serde_json::Value;
 use std::path::Path;
@@ -21,6 +23,63 @@ pub(super) const LSP_COCKPIT_ARTIFACT: &str = "target/ripr/reports/lsp-cockpit.j
 pub(super) struct ArtifactRead {
     pub(super) value: Option<Value>,
     pub(super) surface: AgentReviewSurface,
+}
+
+pub(super) fn read_analysis_outcome(
+    root: &Path,
+    root_display: &str,
+) -> (Option<AnalysisOutcome>, AgentReviewSurface) {
+    let artifact = read_json_surface(
+        root,
+        "analysis_outcome",
+        "Analysis outcome",
+        WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+        true,
+    );
+    let Some(value) = artifact.value else {
+        return (None, artifact.surface);
+    };
+    let outcome = match crate::app::analysis_outcome_artifact::validate_analysis_outcome_artifact(
+        root,
+        root_display,
+        &value,
+    ) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            return (
+                None,
+                invalid_analysis_outcome_surface(error.status(), &error.to_string()),
+            );
+        }
+    };
+    let mut surface = artifact.surface;
+    surface.status = if outcome.kind.is_complete() {
+        "complete".to_string()
+    } else {
+        "incomplete".to_string()
+    };
+    surface.summary = format!(
+        "Producer analysis outcome is {} ({}).",
+        outcome.kind.as_str(),
+        if outcome.kind.is_complete() {
+            "complete"
+        } else {
+            "incomplete"
+        }
+    );
+    (Some(outcome), surface)
+}
+
+fn invalid_analysis_outcome_surface(status: &str, summary: &str) -> AgentReviewSurface {
+    AgentReviewSurface {
+        name: "analysis_outcome".to_string(),
+        label: "Analysis outcome".to_string(),
+        path: Some(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT.to_string()),
+        state: status.to_string(),
+        status: status.to_string(),
+        required: true,
+        summary: summary.to_string(),
+    }
 }
 
 pub(super) fn read_json_surface(
@@ -188,6 +247,7 @@ pub(super) fn ci_artifacts(root: &Path) -> Vec<AgentReviewArtifact> {
             "agent_review_summary_markdown",
             WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT,
         ),
+        ("analysis_outcome", WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT),
         ("agent_receipt", WORKFLOW_AGENT_RECEIPT_ARTIFACT),
         ("operator_cockpit", OPERATOR_COCKPIT_ARTIFACT),
         (

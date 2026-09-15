@@ -60,7 +60,17 @@ pub(crate) fn escape(value: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            c if c.is_control() => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c if c.is_control() => {
+                let code = c as u32;
+                if code <= 0xFFFF {
+                    out.push_str(&format!("\\u{code:04x}"));
+                } else {
+                    let adjusted = code - 0x10000;
+                    let high = 0xD800 + (adjusted >> 10);
+                    let low = 0xDC00 + (adjusted & 0x3FF);
+                    out.push_str(&format!("\\u{high:04x}\\u{low:04x}"));
+                }
+            }
             c => out.push(c),
         }
     }

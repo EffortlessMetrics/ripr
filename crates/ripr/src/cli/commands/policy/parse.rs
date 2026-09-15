@@ -1,4 +1,5 @@
 use crate::cli::commands_options::*;
+use crate::cli::suggest::unknown_argument;
 use crate::output;
 use std::path::PathBuf;
 
@@ -106,7 +107,7 @@ pub(crate) fn parse_policy_readiness_options(
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "policy readiness")?;
             }
-            other => return Err(format!("unknown policy readiness argument {other:?}")),
+            other => return Err(unknown_argument("policy readiness", other)),
         }
         i += 1;
     }
@@ -228,7 +229,7 @@ pub(crate) fn parse_policy_operations_options(
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "policy operations")?;
             }
-            other => return Err(format!("unknown policy operations argument {other:?}")),
+            other => return Err(unknown_argument("policy operations", other)),
         }
         i += 1;
     }
@@ -298,7 +299,7 @@ pub(crate) fn parse_policy_history_options(
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "policy history")?;
             }
-            other => return Err(format!("unknown policy history argument {other:?}")),
+            other => return Err(unknown_argument("policy history", other)),
         }
         i += 1;
     }
@@ -356,7 +357,7 @@ pub(crate) fn parse_policy_promotion_options(
                 i += 1;
                 out_md = Some(non_empty_path_arg(args, i, "--out-md", "policy promote")?);
             }
-            other => return Err(format!("unknown policy promote argument {other:?}")),
+            other => return Err(unknown_argument("policy promote", other)),
         }
         i += 1;
     }
@@ -454,7 +455,7 @@ pub(crate) fn parse_policy_preview_promotion_options(
                 )?);
             }
             other => {
-                return Err(format!("unknown policy preview-promote argument {other:?}"));
+                return Err(unknown_argument("policy preview-promote", other));
             }
         }
         i += 1;
@@ -538,7 +539,7 @@ pub(crate) fn parse_policy_waiver_aging_options(
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "policy waiver-aging")?;
             }
-            other => return Err(format!("unknown policy waiver-aging argument {other:?}")),
+            other => return Err(unknown_argument("policy waiver-aging", other)),
         }
         i += 1;
     }
@@ -580,9 +581,7 @@ pub(crate) fn parse_policy_suppression_health_options(
                 out_md = non_empty_path_arg(args, i, "--out-md", "policy suppression-health")?;
             }
             other => {
-                return Err(format!(
-                    "unknown policy suppression-health argument {other:?}"
-                ));
+                return Err(unknown_argument("policy suppression-health", other));
             }
         }
         i += 1;

@@ -30,6 +30,13 @@
     "max_inline_comments": 3,
     "max_summary_items": 10
   },
+  "review_input": {
+    "findings": [],
+    "projection_sha256": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "reviewed_count": 0,
+    "root": ".",
+    "schema_version": "ripr.review_input.v1"
+  },
   "root": ".",
   "schema_version": "0.1",
   "status": "advisory",
@@ -45,8 +52,7 @@
   "warnings": [
     {
       "kind": "other",
-      "message": "seam 8f7fa8644fd12280 at src/pricing.rs:88 is configured off for weakly_gripped seams and is not included in agent brief results",
-      "path": null
+      "message": "seam 8f7fa8644fd12280 at src/pricing.rs:88 is configured off for weakly_gripped seams and is not included in agent brief results"
     }
   ]
 }

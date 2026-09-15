@@ -1,0 +1,67 @@
+schema_version = "2.0"
+id = "ripr.slice.worktree-artifact-reuse.v1"
+generation = 1
+
+source_issue = "issue:2251"
+design_reference = "RIPR-SPEC-0140"
+change_class = "behavior_change"
+
+claim_boundary = """
+Extends check-artifact reuse (RIPR-SPEC-0140) to `--worktree` producing
+runs: a new `DiffSourceIdentity::Worktree` variant records the requested
+base (or none for dynamic default-base resolution), reuse re-resolves the
+base-to-live-working-tree diff through git and re-hashes it, and worktree
+drift between write and reuse fails closed on `diff_bytes_hash`. The
+envelope stays at `ripr-check-artifact-v1` (additive variant; older
+binaries fail closed on serde's unknown-variant error). It does not change
+the `check --json` output contract, the public `CheckInput` API surface,
+`explain`/`context` flag parsing, or the repo-scoped / gap-ledger /
+managed-producer named limitations, and it adds no implicit cache and no
+gate, badge, support-tier, or proof-route authority for artifacts.
+"""
+
+non_goals = [
+  "envelope schema-version bump (the variant is additive under v1)",
+  "public CheckInput or library API surface changes",
+  "--worktree flag support on explain/context (reuse flows through --from)",
+  "check --json output contract changes",
+  "implicit or content-addressed cross-invocation caching",
+  "managed [perl] producer packet generation as an artifact input",
+  "full-repository content fingerprinting in the identity gate",
+  "gate, badge, support-tier, or proof-route authority for artifacts",
+]
+
+return_conditions = [
+  "Return to root if a matching worktree cannot reuse the recorded finding set exactly.",
+  "Return to root if worktree drift between write and reuse cannot fail closed naming diff_bytes_hash.",
+  "Return to root if `check --json` golden bytes drift.",
+]
+
+owned_seams = [
+  "seam:ripr:app:check-artifact",
+  "seam:ripr:cli:check-artifact-flags",
+]
+
+shared_seams = [
+  "seam:ripr:analysis:diff-load",
+  "seam:ripr:contract:check-artifact-v1",
+]
+
+forbidden_seams = [
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:lsp:input-identity",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0140"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

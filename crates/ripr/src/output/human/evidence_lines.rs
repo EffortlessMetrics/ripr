@@ -1,4 +1,4 @@
-use crate::domain::Finding;
+use crate::domain::{Finding, MISSING_DISCRIMINATOR_VALUE_PREFIX};
 use crate::output::path::display_path;
 use crate::output::preview_actionability::{
     is_preview_actionability_evidence_line, is_preview_actionability_missing_summary,
@@ -105,7 +105,7 @@ pub(super) fn weakness_lines(finding: &Finding) -> Vec<String> {
 }
 
 fn is_duplicate_discriminator_missing(missing: &str, discriminator_values: &[&str]) -> bool {
-    let Some(value) = missing.strip_prefix("Missing discriminator value: ") else {
+    let Some(value) = missing.strip_prefix(MISSING_DISCRIMINATOR_VALUE_PREFIX) else {
         return false;
     };
     discriminator_values.contains(&value)

@@ -22,6 +22,8 @@ Managed from git:
   merge enabled
 - branch protection for `main` requires only the routed `Ripr Rust Small
   Result` check
+- the classic protection setting does not require an approving review; the
+  active `main` ruleset separately requires conversation resolution
 - CI policy labels documented in `docs/CI.md`
 
 Not managed from `.github/settings.yml`:
@@ -160,7 +162,8 @@ Settings App managed rules:
 
 - block force pushes to `main`
 - block branch deletion for `main`
-- leave conversation resolution disabled unless a focused policy PR promotes it
+- keep the classic conversation-resolution setting disabled; the effective
+  conversation-resolution requirement is managed by the active `main` ruleset
 - leave linear history disabled; merge policy is enforced by squash-only
   repository settings
 - use squash merge for PRs
@@ -168,9 +171,18 @@ Settings App managed rules:
   exception is documented before changing `.github/settings.yml`
 - require release workflow changes to pass security review
 
-GitHub Rulesets should separately block direct pushes to `main` / require the
-PR merge path. Keep that rule enabled until Settings App support for the same
-invariant is verified and moved into `.github/settings.yml` in a focused PR.
+GitHub Ruleset `main` (verified 2026-07-13, ruleset id `18845973`) is the
+effective policy layer for the remaining merge-path controls:
+
+- block direct pushes and branch deletion/force updates;
+- require pull requests for `main`;
+- require zero approving reviews, because this is a solo-maintainer repository;
+- require all review conversations to be resolved before merge.
+
+The classic branch-protection API may report conversation resolution as
+disabled because it does not include the ruleset layer. Check both surfaces
+before diagnosing a merge blocker. A future policy PR may consolidate these
+controls when Settings App support for the same ruleset invariants is verified.
 
 Advisory lanes should not be required by branch protection unless they are
 promoted in a focused policy PR after calibration. This includes Droid review,

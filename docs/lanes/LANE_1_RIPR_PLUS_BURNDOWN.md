@@ -52,7 +52,7 @@ Use these rules until the lane records a fresh downstream-consumable queue:
 - Do not use full `repo-exposure-json` for ordinary badge, receipt, top-file, or
   packet-queue paths.
 - Treat fresh no-ledger bounded summary, no-ledger `repo-badge-json`, and
-  `rtk cargo xtask badge-basis` refreshes as build-heavy full-refresh
+  `cargo xtask badge-basis` refreshes as build-heavy full-refresh
   exceptions, not ordinary repeated loop steps. Run only one such scan at a
   time, then share the generated receipt or ledger with parallel agents.
 - Use `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS=200000` only as a scoped opt-in
@@ -118,7 +118,7 @@ supersede it instead of forcing it through.
 ## Commands Recorded For This Map
 
 ```bash
-rtk cargo xtask badge-basis
+cargo xtask badge-basis
 ```
 
 Result: failed after the default 90 second `repo-badge-json` generation timeout.
@@ -129,11 +129,11 @@ For an intentional full refresh after #588/#689, scope the cache override to the
 single command and check disk headroom first:
 
 ```bash
-RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS=200000 rtk cargo xtask badge-basis
+RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS=200000 cargo xtask badge-basis
 ```
 
 ```bash
-rtk git diff --check
+git diff --check
 ```
 
 Run this before the PR is opened.

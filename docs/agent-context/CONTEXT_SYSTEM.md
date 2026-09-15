@@ -49,7 +49,7 @@ typed manifests:
 | Orientation | What the repo is, where to start, what is risky. | `AGENTS.md`, `docs/agent-context/`. |
 | Product truth | What `ripr` must do (durable behavior contracts). | `docs/specs/`, `docs/OUTPUT_SCHEMA.md`, `docs/STATIC_EXPOSURE_MODEL.md`, `docs/CONFIGURATION.md`. |
 | Decision | Why a load-bearing decision was made and what it constrains. | `docs/adr/`. |
-| Execution | What the agent or operator should work on now. | `docs/ROADMAP.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, `.ripr/goals/active.toml`, `.ripr/goals/archive/`. |
+| Execution | What the agent or operator should work on now. | `docs/ROADMAP.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, GitHub issues and PRs, `.allow/spec-system/slices/`. |
 | Evidence | What actually happened, with provenance. | `target/ripr/reports/`, `target/ripr/receipts/`, `fixtures/`, `metrics/`, `.ripr/traceability.toml`, `docs/handoffs/`, `docs/LEARNINGS.md`. |
 
 A doc lives in exactly one layer. A spec is not a plan; a plan is not a
@@ -70,7 +70,7 @@ translate it into the existing RIPR graph and the accepted
 | Spec | `docs/specs/RIPR-SPEC-*` |
 | ADR | `docs/adr/` |
 | Implementation plan | `docs/IMPLEMENTATION_PLAN.md` and `docs/IMPLEMENTATION_CAMPAIGNS.md` |
-| Active goal manifest | `.ripr/goals/active.toml` |
+| Active work items | GitHub issues, PRs, and `.allow/spec-system/slices/` |
 | Support tiers | `docs/status/SUPPORT_TIERS.md` |
 | Policy ledgers | `policy/*.toml`, `.ripr/traceability.toml`, `docs/CAPABILITY_MATRIX.md`, and `metrics/capabilities.toml` |
 | Closeout | `docs/handoffs/` |
@@ -78,7 +78,7 @@ translate it into the existing RIPR graph and the accepted
 
 The rule is substitution, not duplication. If a handoff asks for a proof stack
 or source-of-truth stack, use the existing source-of-truth docs, proposals,
-specs, ADRs, campaign docs, the active manifest, traceability, capability
+specs, ADRs, campaign docs, GitHub issues and PRs, traceability, capability
 metadata, and handoffs. If a field is missing from that graph, add it to the
 appropriate existing artifact or validator instead of creating a runner-specific
 goals tree or another status ledger.
@@ -216,12 +216,11 @@ proposal (docs/proposals/RIPR-PROP-NNNN-*.md)
   -> specs (docs/specs/RIPR-SPEC-NNNN-*.md)
   -> ADRs when a durable decision is needed (docs/adr/)
   -> campaign entry (docs/IMPLEMENTATION_CAMPAIGNS.md)
-  -> active manifest (.ripr/goals/active.toml)
+  -> active work items (GitHub issues and .allow/spec-system/slices/)
   -> scoped PRs (one production delta + evidence package)
   -> receipts and reports (target/ripr/)
   -> closeout handoff (docs/handoffs/YYYY-MM-DD-<campaign>-closeout.md)
   -> learnings worth surviving sessions (docs/LEARNINGS.md)
-  -> archive (.ripr/goals/archive/YYYY-MM-DD-<campaign>.toml)
 ```
 
 A change does not touch every layer. Most behavior PRs touch a spec, a
@@ -242,10 +241,9 @@ To keep individual docs from being overloaded:
   conditions that would justify revisiting it.
 - A **campaign ledger entry** sequences PRs. It must not redefine specs
   or duplicate proposal reasoning.
-- The **active manifest** names the current execution campaign. It may stay on
-  a closed campaign only when the manifest also declares
-  `successor = "<campaign-id>"` or `no_current_goal = true`; closed manifests
-  also move to the archive.
+- **GitHub issues and PRs** name current execution work. Campaign docs and
+  spec-system slices sequence that work; they do not create a second scheduler
+  or active-manifest authority.
 - A **scoped PR** is the smallest reviewable unit. It must not bundle
   unrelated contracts. See [`SCOPED_PR_CONTRACT.md`](../SCOPED_PR_CONTRACT.md).
 - A **closeout handoff** records what happened. It must not invent new
@@ -254,8 +252,8 @@ To keep individual docs from being overloaded:
 When in doubt, ask which question the reader is asking when they reach
 for the doc. A reader asking "why does this exist?" wants the proposal.
 "What must ripr do?" wants the spec. "What constrains this change?" wants
-the ADR. "What is the agent doing right now, or what campaign just closed
-with a successor or explicit idle marker?" wants the active manifest.
+the ADR. "What is the agent doing right now?" wants the campaign ledger and
+its linked GitHub issues and PRs.
 "What shipped last week?" wants the handoff.
 
 ## PR alignment cadence
@@ -309,7 +307,7 @@ agent-side task state (Codex /goal, Kiro tasks, Claude Code TaskCreate, ...)
   |  reads / writes
   v
 repo-side typed context graph
-  proposals -> specs -> ADRs -> campaigns -> active.toml -> work items
+  proposals -> specs -> ADRs -> campaigns -> GitHub work items
                      -> traceability -> context manifests -> reports
                      -> handoffs / learnings
 ```
@@ -369,8 +367,11 @@ Each future xtask check is its own PR:
     active, ADRs referencing missing specs, or work items pointing at
     nonexistent branches
 
-None of those are added in this PR. This PR establishes the contract; the
-xtask code follows.
+None of those commands exists today — they are unimplemented future
+work (#1631), not a surface an agent can call. Until they land, the
+"contract" language in this document and in
+`docs/reference/AGENT_HANDOFF_PROTOCOL.md` is working-method guidance:
+no validator checks a handoff or context packet (#2097).
 
 ## Rollout
 
@@ -406,7 +407,6 @@ cargo xtask markdown-links
 cargo xtask check-static-language
 cargo xtask check-traceability
 cargo xtask check-capabilities
-cargo xtask check-campaign
 cargo xtask check-file-policy
 cargo xtask check-pr
 git diff --check

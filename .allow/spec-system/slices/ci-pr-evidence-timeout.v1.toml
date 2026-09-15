@@ -1,0 +1,62 @@
+schema_version = "2.0"
+id = "ripr.slice.ci-pr-evidence-timeout.v1"
+generation = 1
+
+source_issue = "issue:2230"
+design_reference = "issue:2230#acceptance-criteria"
+change_class = "behavior_change"
+
+claim_boundary = """
+Bounds the routed-rust PR-evidence surface after the PR #2228 hang: every
+routed-rust job gets an explicit `timeout-minutes` deadline, the previously
+unbounded `cargo build` spawns inside `xtask ripr-pr` (including the canonical
+PR delta) and `xtask ripr-review-comments` go through the shared
+timed-process helper with a named timeout result (default 900s, override
+`RIPR_TOOL_BUILD_TIMEOUT_SECS`), and the check-workflows routed-rust contract
+now requires a job deadline on every job. Analyzer semantics, required-check
+composition, and branch-protection semantics are unchanged; no timeout is
+reported as success.
+"""
+
+non_goals = [
+  "making PR evidence advisory or removing it from the required aggregate",
+  "changes to branch protection or required-check composition",
+  "changes to workflows other than routed-rust.yml",
+  "changes to ripr analyzer, receipt, or finding semantics",
+  "bounding local git probes (fast, backstopped by the job deadline)",
+]
+
+return_conditions = [
+  "Return to root if a required check or branch-protection context would change.",
+  "Return to root if bounding the tool build forces a new external dependency.",
+]
+
+owned_seams = [
+  "seam:ci:routed-rust-job-deadlines",
+  "seam:ripr:xtask:pr-evidence-tool-build-deadline",
+]
+
+shared_seams = [
+  "seam:ripr:xtask:timed-process-runner",
+  "seam:ripr:contract:routed-rust-workflow",
+]
+
+forbidden_seams = [
+  "seam:ci:branch-protection",
+  "seam:ci:other-workflows",
+  "seam:ripr:analysis:exposure-classification",
+  "seam:ripr:output:check-json-contract",
+]
+
+[[requirement_delta]]
+requirement_id = "issue:2230#acceptance-criteria"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

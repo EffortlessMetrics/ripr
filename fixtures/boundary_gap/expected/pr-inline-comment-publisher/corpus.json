@@ -99,7 +99,7 @@
         "blocked": 0,
         "safe_to_publish": false,
         "operations": ["create"],
-        "skip_reasons": ["cap_reached"],
+        "skip_reasons": ["inline_comment_cap_reached"],
         "blocked_reasons": []
       },
       "reason": "The default cap should keep durable review-thread noise bounded."

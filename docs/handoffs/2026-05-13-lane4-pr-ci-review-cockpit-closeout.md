@@ -33,7 +33,7 @@ make summaries into gates.
 | Role-aligned specs | #855 aligned [RIPR-SPEC-0023](../specs/RIPR-SPEC-0023-pr-review-front-panel-report.md) and [RIPR-SPEC-0024](../specs/RIPR-SPEC-0024-report-packet-index.md) with Lane 4 source-of-truth roles. |
 | Generated CI workflow contract | #856 added [RIPR-SPEC-0038](../specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md). |
 | Generated CI gap map | #858 added [generated-ci-gap-map.md](../../plans/lane4-pr-ci-review-cockpit/generated-ci-gap-map.md). |
-| Lane manifest | #860 added [.ripr/goals/lane4-pr-ci-review-cockpit.toml](../../.ripr/goals/lane4-pr-ci-review-cockpit.toml) without replacing Campaign 27 active execution. |
+| Lane manifest | #860 added .ripr/goals/lane4-pr-ci-review-cockpit.toml (deleted in #1701 PR 3) without replacing Campaign 27 active execution. |
 | Generated CI baseline audit | #862 added [generated-ci-baseline-audit.md](../../plans/lane4-pr-ci-review-cockpit/generated-ci-baseline-audit.md). |
 | Reviewer-first generated summary | #864 added the generated CI `Start here` section and regeneration commands for first-useful-action, front-panel, and packet-index surfaces. |
 | Generated CI dogfood receipts | #867 added [generated-CI cockpit dogfood receipts](2026-05-13-generated-ci-cockpit-receipts.md) and the `generated_ci_cockpit` dogfood report section. |

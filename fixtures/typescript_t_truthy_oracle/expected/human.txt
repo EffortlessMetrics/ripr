@@ -1,0 +1,38 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_t_truthy_oracle/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: rust: 0, typescript: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/score.ts:2
+  Language: typescript
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: return total - penalty + 0;
+  Missing discriminator: Related test reaches `score` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair p…
+  Related test: tests/score.test.ts:3 scores a truthy result
+  Next step: TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `return value == total - penalty + 0`; no actionabl…
+  Evidence:
+    - reach yes: 1 related test(s) found for owner `score`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 5 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/typescript_t_truthy_oracle/input --diff fixtures/typescript_t_truthy_oracle/diff.patch --mode fast probe:src_score.ts:typescript_preview:af44236d
+  ripr context --root fixtures/typescript_t_truthy_oracle/input --diff fixtures/typescript_t_truthy_oracle/diff.patch --mode fast --at probe:src_score.ts:typescript_preview:af44236d
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

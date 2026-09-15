@@ -6,6 +6,19 @@
     {
       "category": "typescript_diff_first",
       "ts_file_count": 2,
+      "typescript_readiness": {
+        "source": "repo_exposure_typescript_readiness.v1",
+        "authority_boundary": "preview_advisory_only",
+        "analysis_model": "diff_first",
+        "source_file_count": 2,
+        "test_file_count": 0,
+        "package_root_count": 1,
+        "package_confidence": "medium",
+        "runner_status": "no_tests_detected",
+        "verify_command_count": 0,
+        "top_blocker": "typescript_tests_not_detected",
+        "non_claims": ["no full-repo TypeScript seam model", "no runtime TypeScript execution", "no gate or badge authority"]
+      },
       "repair_route": "TypeScript is analyzed diff-first; run 'ripr check --base origin/main' or '--diff <file>' to evaluate changed TypeScript behavior. Full-repo TypeScript exposure is not yet modeled (named limitation)."
     }
   ],

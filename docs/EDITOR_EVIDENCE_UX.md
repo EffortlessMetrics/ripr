@@ -116,8 +116,6 @@ opened as an explicit new campaign when usage shows a concrete need.
 Closeout and maintenance changes use the campaign and documentation gates:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language

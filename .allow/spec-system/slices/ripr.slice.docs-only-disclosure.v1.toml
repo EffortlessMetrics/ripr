@@ -1,0 +1,63 @@
+schema_version = "2.0"
+id = "ripr.slice.docs-only-disclosure.v1"
+generation = 1
+
+source_issue = "issue:2304"
+design_reference = "RIPR-SPEC-0082"
+change_class = "behavior_change"
+
+claim_boundary = """
+Extends the empty-result disclosure family (RIPR-SPEC-0082) with the
+docs-only case (#2304): when a diff changes at least one file, no changed
+file routes to a source adapter, and the pipeline produced zero findings,
+the CLI emits a one-line stderr disclosure naming the changed-file count
+and observed extensions and stating that the empty result is correct
+because ripr cannot analyze non-source files. The disclosure is not a
+Finding, not a preview_languages block, changes no JSON schema or golden,
+and keeps exit code 0; any source-routed file, or an empty diff,
+suppresses it. Adds the pure non_source_disclosure_message decision
+function in analysis/pipeline.rs, its two contract tests, and the
+RIPR-SPEC-0082 amendment reconciling Acceptance Example 4 (no
+preview-language Note/JSON for non-analyzable files) with the new stderr
+surface. Claims nothing about preview adapters, support tiers, or JSON
+output contracts.
+"""
+
+non_goals = [
+  "JSON/schema or Finding changes (stderr only)",
+  "golden changes",
+  "preview-language adapter or enablement changes",
+  "support-tier promotion",
+]
+
+return_conditions = [
+  "Return to root if the disclosure needs to appear in JSON output (output contract change).",
+  "Return to root if any golden drifts.",
+  "Return to root if a source-routed or empty diff still discloses.",
+]
+
+owned_seams = [
+  "seam:ripr:analysis:docs-only-empty-result-disclosure",
+]
+
+shared_seams = [
+  "seam:ripr:contract:preview-language-disclosure",
+]
+
+forbidden_seams = [
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:output:json-schema",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0082"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

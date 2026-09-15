@@ -21,6 +21,7 @@ Linked plan:
 Linked issues:
 
 - #1111 — Silent "No probes found" honesty gap for preview-language content
+- #2304 — Docs/config-only diffs produced an unexplained empty result
 
 Linked PRs:
 
@@ -29,8 +30,10 @@ Linked PRs:
 Support-tier impact:
 
 - No tier change. This spec adds advisory disclosure output when TypeScript,
-  JavaScript, or Python files are in the analyzed scope and the repo has opted
-  in to those adapters. It does not promote any preview adapter to a higher
+  JavaScript, Python, or Perl files are in the analyzed scope and the repo has
+  opted in to those adapters. Perl presence is disclosed even when its
+  optional adapter is not compiled; that disclosure does not claim analysis
+  ran. It does not promote any preview adapter to a higher
   support tier, does not change pass/fail authority, and does not alter what
   the adapters classify.
 - The disclosure is additive output only. Claim boundaries remain governed by
@@ -48,7 +51,7 @@ Policy impact:
 ## Problem
 
 When a user runs `ripr check --diff` on a diff that contains TypeScript,
-JavaScript, or Python files, an empty result is ambiguous. The output says
+JavaScript, Python, or Perl files, an empty result is ambiguous. The output says
 "No diff-derived mutation exposure probes found" but gives no signal that the
 diff contained preview-language files. A reader cannot distinguish between:
 
@@ -75,25 +78,35 @@ same path router (`analysis::language::route`) that dispatches to adapters.
 **Detection does not require the adapter to be enabled** — it is pure path /
 extension matching. The count is real, never fabricated.
 
-A `PreviewLanguageAdvisory` is produced for each compiled preview language
-(`LanguageId::is_available`) that has at least one file in scope. Only the
-languages `ripr` advertises as preview — TypeScript, JavaScript, Python — are
-disclosed. Non-analyzable files (`.md`, `.yaml`, etc.) never trigger an
-advisory. Each advisory carries:
+A `PreviewLanguageAdvisory` is produced for each preview language. TypeScript,
+JavaScript, and Python are disclosed only when their adapters are compiled in
+(`LanguageId::is_available`). Perl is disclosed by extension even when its
+optional adapter is unavailable, so a Rust-only run cannot silently omit Perl
+changes. The remaining non-analyzable files (`.md`, `.yaml`, etc.) never
+trigger an advisory. Each advisory carries:
 
 - `language`: stable wire string (e.g. `"typescript"`, `"python"`)
 - `file_count`: number of files in scope that routed to this adapter
 - `sample_paths`: up to three normalized file paths (forward-slash)
-- `enabled`: whether this preview adapter was enabled (ran) for this analysis
+- `enabled`: whether this preview adapter was configured and available for
+  this analysis
 
-Advisories are propagated through `AnalysisResult` → `CheckOutput`.
+Advisories are propagated through `AnalysisResult` → `CheckOutput`. Adapter
+completion is producer-owned by `language_runs`: successful runs are omitted,
+while a matching non-success record means the routed files were not analyzed
+to completion.
 
-### Two honesty cases
+### Three honesty cases
 
-1. **Adapter ENABLED + preview files in scope** (`enabled == true`) — the
-   adapter ran; an empty/partial result is advisory and may be incomplete, not
-   a Rust-grade clean result.
-2. **Adapter NOT enabled (default) + preview files in scope** (`enabled ==
+1. **Adapter ENABLED + completed + preview files in scope** (`enabled == true`,
+   no matching non-success `language_runs` entry) — the adapter ran to
+   completion; an empty result is advisory and may be incomplete, not a
+   Rust-grade clean result.
+2. **Adapter ENABLED + non-success + preview files in scope** (`enabled ==
+   true`, matching non-success `language_runs` entry) — the adapter was
+   configured and available but did not complete; the files are explicitly
+   reported as not analyzed and the typed run status is disclosed.
+3. **Adapter NOT enabled (default) + preview files in scope** (`enabled ==
    false`) — the files were detected but NOT analyzed; the user is told their
    change was not analyzed and how to enable the adapter. This is the primary
    #1111 fix.
@@ -143,8 +156,10 @@ Not-enabled (default) example:
 ]
 ```
 
-Enabled example carries `"enabled": true`, `"analyzed": true`, and the
-advisory-may-be-incomplete `why` string.
+Successfully completed enabled example carries `"enabled": true`,
+`"analyzed": true`, and the advisory-may-be-incomplete `why` string. An
+enabled adapter with a matching non-success `language_runs` entry carries
+`"enabled": true`, `"analyzed": false`, and a failure-aware `why` string.
 
 ### Non-claims
 
@@ -170,8 +185,9 @@ advisory-may-be-incomplete `why` string.
   or workspace file walk from `analysis::workspace::discover_preview_language_files`
   (repo mode).
 - Language router output from `analysis::language::route` for each path.
-- `LanguageId::is_available` to restrict disclosure to compiled-in preview
-  adapters.
+- `LanguageId::is_available` to restrict TypeScript/JavaScript/Python
+  disclosure to compiled-in adapters; Perl presence remains disclosable when
+  its optional adapter is unavailable.
 
 ## Inputs
 
@@ -179,13 +195,14 @@ advisory-may-be-incomplete `why` string.
 | --- | --- | --- |
 | Diff changed-file list / workspace walk | yes | Provides paths routed to preview adapters to count files and collect sample paths |
 | Language router (`analysis::language::route`) | yes | Real adapter routing — same predicate used for dispatch; does NOT require the adapter to be enabled |
-| `ripr.toml` `[languages] enabled` | no | Determines the `enabled` flag (which wording is used); absence (default) yields the not-enabled disclosure |
+| `ripr.toml` `[languages] enabled` | no | Determines the `enabled` configuration/availability fact; absence (default) yields the not-enabled disclosure |
+| `language_runs` | no | Matching non-success producer outcome makes `analyzed` false and selects failure-aware wording |
 
 ## Outputs
 
 | Output | Schema impact | Notes |
 | --- | --- | --- |
-| Human text `Note:` line | None | Additive; absent for pure-Rust scope; wording depends on `enabled` |
+| Human text `Note:` line | None | Additive; absent for pure-Rust scope; wording depends on enablement and adapter completion |
 | JSON `preview_languages[]` | Additive field | Absent when empty; no schema version bump; carries `enabled`/`analyzed` |
 
 ## Acceptance Examples
@@ -194,15 +211,27 @@ advisory-may-be-incomplete `why` string.
    (only Rust enabled) → human output includes
    `Note: this diff contains 1 Typescript(s). The Typescript adapter is preview and not enabled, so these files were not analyzed`,
    and JSON `preview_languages[0].enabled == false`, `analyzed == false`.
-2. Enabled case: diff contains `.ts` file, `ripr.toml` has
+2. Enabled-success case: diff contains `.ts` file, `ripr.toml` has
    `enabled = ["typescript"]` → human output includes
    `Note: 1 Typescript(s) analyzed under preview support`, JSON
-   `preview_languages[0].enabled == true`.
-3. Diff contains only `.rs` files → NO `Note:` line, NO `preview_languages`
+   `preview_languages[0].enabled == true`, `analyzed == true`.
+3. Enabled-failure case: diff contains `.pm` file, Perl is enabled, and the
+   supplied facts packet fails ingestion → `language_runs` records `invalid`,
+   human output says the adapter did not complete, and both JSON surfaces emit
+   `preview_languages[0].enabled == true`, `analyzed == false`.
+4. Diff contains only `.rs` files → NO `Note:` line, NO `preview_languages`
    field in JSON output (both enabled and default config).
-4. Diff contains only non-analyzable files (`.md`, `.yaml`) → NO disclosure.
-5. Count in `Note:` matches `file_count` in advisory, matches files routed by
+5. Diff contains only non-analyzable files (`.md`, `.yaml`) → NO
+   preview-language `Note:` line and NO `preview_languages` JSON field. The
+   separate docs-only stderr disclosure (#2304, example 7) applies instead.
+6. Count in `Note:` matches `file_count` in advisory, matches files routed by
    `analysis::language::route` to that adapter.
+7. Diff contains only non-source files (`.md`, `.toml`, extensionless), zero
+   probes (#2304) → a one-line stderr disclosure names the changed-file count
+   and observed extensions and states that the empty result is correct
+   because ripr cannot analyze non-source files. It is not a Finding, not a
+   `preview_languages` block, changes no JSON schema or golden, and the exit
+   code stays 0. Any source-routed file, or an empty diff, suppresses it.
 
 ## Test Mapping
 
@@ -213,23 +242,34 @@ advisory-may-be-incomplete `why` string.
 - `crates/ripr/src/output/human.rs::tests::render_preview_disclosure_count_matches_advisory_file_count`
 - `crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_emits_preview_advisory_when_ts_files_present`
 - `crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_emits_not_enabled_advisory_for_ts_diff_with_rust_only_config`
+- `crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_emits_not_enabled_advisory_for_perl_without_adapter`
 - `crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_no_preview_advisory_for_rust_only_diff`
+- `crates/ripr/src/app/tests/preview_analyzed_outcome.rs` — production malformed
+  Perl failure plus enabled-success and disabled renderer agreement controls.
 - `crates/ripr/src/output/diff_report.rs::tests::diff_report_includes_preview_languages_when_ts_files_in_scope`
 - `crates/ripr/src/output/diff_report.rs::tests::diff_report_omits_preview_languages_for_pure_rust_scope`
+- `crates/ripr/src/analysis/pipeline.rs::tests::non_source_disclosure_message_names_count_and_extensions`
+- `crates/ripr/src/analysis/pipeline.rs::tests::non_source_disclosure_message_silent_for_source_or_empty_diffs`
 
 ## Implementation Mapping
 
 - `crates/ripr/src/analysis/mod.rs` — `PreviewLanguageAdvisory` struct (with
-  `enabled` flag), `AnalysisResult::preview_language_advisories` field.
+  `enabled` flag), shared `analyzed()` / `non_success_run()` authority, and
+  `AnalysisResult::preview_language_advisories` field.
 - `crates/ripr/src/analysis/pipeline.rs` — `is_preview_language()`,
   `detect_preview_advisories()` (diff), `detect_repo_preview_advisories()`
   (repo); detection runs after the language loop, independent of enablement.
+  Also `non_source_disclosure_message()` (#2304): the pure docs-only stderr
+  disclosure decision (count + extension summary), emitted only when the
+  pipeline produced zero findings and no changed file routes to a source
+  adapter.
 - `crates/ripr/src/analysis/workspace/discover.rs` —
-  `discover_preview_language_files()` for repo-mode detection.
+  `discover_preview_language_files()` for repo-mode detection, including Perl
+  paths when the optional adapter is unavailable.
 - `crates/ripr/src/app.rs` — `CheckOutput::preview_language_advisories` field.
 - `crates/ripr/src/app/check/output_builder.rs` — maps advisory field through.
 - `crates/ripr/src/output/human.rs` — `render_preview_language_advisories()`
-  (two wordings by `enabled`), `capitalize_first()`.
+  (completed, failed, and disabled wordings), `capitalize_first()`.
 - `crates/ripr/src/output/json/report.rs` — additive `preview_languages`
   JSON block with `enabled`/`analyzed`/`why` in `render_with_config`.
 - `crates/ripr/src/output/diff_report.rs` — `DiffPreviewLanguageAdvisory`

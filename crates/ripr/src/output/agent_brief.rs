@@ -3,10 +3,12 @@ use crate::agent::loop_commands::{
     WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_seam_packets_command, agent_verify_command,
     check_repo_exposure_command, display_path,
 };
+use crate::analysis::canonical_gap::canonical_gap_identities;
 use crate::app::Mode;
 use crate::app::agent_brief::{
     AgentBriefResolvedWorkingSet, AgentBriefSelectedSeam, AgentBriefSelection,
 };
+use crate::app::causal_projection::{CausalDeltaArtifact, insert_canonical_delta_fields};
 use crate::config::{RiprConfig, config_fingerprint};
 use crate::output::agent_seam_packets;
 use serde_json::{Value, json};
@@ -21,7 +23,12 @@ pub(crate) fn render_agent_brief_json(
     working_set: &AgentBriefResolvedWorkingSet,
     selection: &AgentBriefSelection<'_>,
 ) -> Result<String, String> {
-    let value = json!({
+    let (causal_projection, causal_projection_warning) = CausalDeltaArtifact::load_optional(root);
+    let mut warnings = selection.warnings.clone();
+    if let Some(warning) = causal_projection_warning {
+        warnings.push(warning);
+    }
+    let mut value = json!({
         "schema_version": AGENT_BRIEF_SCHEMA_VERSION,
         "tool": "ripr",
         "scope": "working_set",
@@ -38,7 +45,7 @@ pub(crate) fn render_agent_brief_json(
         "top_seams": selection
             .top_seams
             .iter()
-            .map(|entry| top_seam_json(entry, root, mode, config))
+            .map(|entry| top_seam_json(entry, root, mode, config, causal_projection.as_ref()))
             .collect::<Vec<_>>(),
         "next": {
             "inspect_packet": agent_seam_packets_command(
@@ -53,8 +60,13 @@ pub(crate) fn render_agent_brief_json(
                 None,
             ),
         },
-        "warnings": &selection.warnings,
+        "warnings": warnings,
     });
+    if let Some(projection) = causal_projection
+        && let Some(object) = value.as_object_mut()
+    {
+        projection.insert_comparison_fields(object);
+    }
     serde_json::to_string_pretty(&value).map_err(|err| err.to_string())
 }
 
@@ -87,6 +99,7 @@ fn top_seam_json(
     root: &Path,
     mode: &Mode,
     config: &RiprConfig,
+    causal_projection: Option<&CausalDeltaArtifact>,
 ) -> Value {
     let entry = selected.seam;
     let seam = &entry.seam;
@@ -97,7 +110,7 @@ fn top_seam_json(
     let candidate_values = agent_seam_packets::candidate_values_for(entry, &missing);
     let assertion_shape = agent_seam_packets::assertion_shape_for_entry(entry);
 
-    json!({
+    let mut value = json!({
         "seam_id": seam.id().as_str(),
         "owner": seam.owner(),
         "seam_kind": seam.kind().as_str(),
@@ -141,16 +154,24 @@ fn top_seam_json(
             "value": record.value.as_str(),
             "reason": record.reason.as_str(),
         })).collect::<Vec<_>>(),
-        "assertion_shape": {
-            "kind": assertion_shape.kind,
-            "example": assertion_shape.example,
-        },
+        "assertion_shape": agent_seam_packets::assertion_guidance_json(&assertion_shape),
         "packet_ref": {
             "format": "agent-seam-packets-json",
             "seam_id": seam.id().as_str(),
         },
         "verification": verification_json(root, mode, &recommended.name),
-    })
+    });
+    if let Some(projection) = causal_projection
+        && let Some(delta) = projection.delta_for(
+            canonical_gap_identities(std::slice::from_ref(entry))
+                .get(seam.id())
+                .map(|identity| identity.id.as_str()),
+        )
+        && let Some(object) = value.as_object_mut()
+    {
+        insert_canonical_delta_fields(object, delta);
+    }
+    value
 }
 
 fn verification_json(root: &Path, mode: &Mode, recommended_name: &str) -> Value {
@@ -230,6 +251,13 @@ mod tests {
                     test_name: "below_threshold_has_no_discount".to_string(),
                     file: PathBuf::from("tests/pricing.rs"),
                     line: 12,
+                    test_target: Some(
+                        crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                            "below_threshold_has_no_discount",
+                            std::path::Path::new("tests/pricing.rs"),
+                            12,
+                        ),
+                    ),
                     oracle_kind: OracleKind::ExactValue,
                     oracle_strength: OracleStrength::Strong,
                     evidence_summary: "exact returned value assertion".to_string(),
@@ -307,7 +335,7 @@ mod tests {
         );
         assert_eq!(
             value["top_seams"][0]["candidate_values"][0]["value"],
-            "input that hits the boundary: amount >= discount_threshold"
+            "discount_threshold (equality boundary)"
         );
         assert!(
             value["top_seams"][0]["verification"]["after_snapshot_command"]

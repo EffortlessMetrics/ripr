@@ -4,39 +4,35 @@ root: fixtures/python_field_assignment_shape/input
 
 Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-INFO src/invoice.py:6
+Changed file(s) by language: python: 1, rust: 0.
 
-Changed
-  after:          self.status = "paid"
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
-Probe
-  family: field_construction
-  delta:  value
-  owner:  python:src/invoice.py::Invoice.mark_paid
-  canonical gap: gap:python:src/invoice.py:Invoice.mark_paid:field_value:field_construction:self.status=paid
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/invoice.py:6
+  Language: python
+  Language status: preview
+  Static exposure: exposed (warning, confidence 0.60)
+  Canonical gap: gap:python:src/invoice.py:Invoice.mark_paid:field_value:field_construction:self.status=paid
+  Changed behavior: self.status = "paid"
+  Discriminator (observed, advisory): Related Python test reaches `mark_paid` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+  Related test: tests/test_invoice.py:4 test_mark_paid_sets_status
+  Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `mark_paid`
+    - infection yes: Changed Python field or attribute construction can alter object state: `self.status = "paid"`
+    - 5 more evidence line(s) hidden
 
-Language
-  language: python
-  status: preview
-  owner kind: method
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_field_assignment_shape/input --diff fixtures/python_field_assignment_shape/diff.patch --mode fast probe:src_invoice.py:python_preview:5473c8e6
+  ripr context --root fixtures/python_field_assignment_shape/input --diff fixtures/python_field_assignment_shape/diff.patch --mode fast --at probe:src_invoice.py:python_preview:5473c8e6
 
-Static exposure
-  exposed (info, confidence 0.60)
-
-Evidence
-  - reach yes: 1 related Python test(s) found for owner `mark_paid`
-  - infection yes: Changed Python field or attribute construction can alter object state: `self.status = "paid"`
-  - propagation weak: Changed Python field construction can propagate through returned or retained object state; exact runtime object flow is not resolved.
-  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
-  - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
-  - local flow reaches constructed field: self.status = "paid" (line 6)
-  - related test tests/test_invoice.py:4 test_mark_paid_sets_status uses strong exact value oracle: assert invoice.status == "paid"
-
-Weakness
-  - Related Python test reaches `mark_paid` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
-
-Next step
-  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

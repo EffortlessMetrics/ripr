@@ -1,6 +1,6 @@
 # ADR 0008: TypeScript Parser Substrate
 
-Status: proposed
+Status: accepted
 
 Date: 2026-05-11
 
@@ -152,7 +152,7 @@ This ADR should be revisited if any of these change:
 - [RIPR-SPEC-0027: TypeScript preview static facts](../specs/RIPR-SPEC-0027-typescript-preview-static-facts.md)
 - [RIPR-PROP-0001: Multi-Language Adapter Preview](../proposals/RIPR-PROP-0001-multi-language-adapter-preview.md)
 - Campaign 27: Language Adapter Preview (active in
-  [`.ripr/goals/active.toml`](../../.ripr/goals/active.toml) and the
+  `.ripr/goals/active.toml` (deleted in #1701 PR 3) and the
   [implementation campaigns ledger](../IMPLEMENTATION_CAMPAIGNS.md)).
 
 A separate ADR will pin the Python parser choice when the

@@ -61,7 +61,7 @@ Use the readiness axes this way:
 | --- | --- | --- |
 | `baseline_health` | Baseline exists, parses, joins current evidence, and uses shrink-only refresh. | Baseline is missing, stale, malformed, or would need new debt adoption to pass. |
 | `waiver_health` | Waivers are visible PR-time acknowledgements with manageable aging. | Repeated waivers are high enough that a focused test, baseline, or suppression review should happen first. |
-| `suppression_health` | Suppressions have owner, reason, scope, review date, visibility, static class, and language status. | Suppressions are missing owner/reason, stale, overbroad, unknown, or preview without preview label. |
+| `suppression_health` | Suppressions have owner, reason, scope, review date, visibility, and language status; `exposure_gap` entries also have `static_class`. | Suppressions are missing owner/reason, stale, overbroad, missing an exposure-gap class, unknown, or preview without preview label. |
 | `calibration_health` | Recommendation calibration covers the same candidate class; mutation calibration, if present, joins unambiguously. | Calibration is missing, noisy, ambiguous, or for a different class. |
 | `preview_evidence_boundary` | Preview evidence is labeled, visible, and counted as advisory only. | Preview-language findings dominate the decision or lack preview/static-limit labels. |
 
@@ -168,7 +168,7 @@ Preview-language evidence follows a separate policy boundary:
 | --- | --- |
 | Can it be shown? | Yes, with `language_status = "preview"` and static-limit labels. |
 | Can it be acknowledged or waived? | Yes, as visible advisory review state. |
-| Can it be suppressed? | Yes, with owner, reason, scope, review date, expected visibility, static class, and preview label. |
+| Can it be suppressed? | Yes, with owner, reason, scope, review date, expected visibility, and preview label; `exposure_gap` entries also require `static_class`. |
 | Can it be baselined? | Advisory partition only. |
 | Can it be used for a gate? | No, unless later explicit policy promotes the exact class. |
 | Can it count against RIPR 0? | No, unless later explicit policy promotes the exact class. |
@@ -217,7 +217,8 @@ to make generated CI block by default.
 - The checked-in baseline, if used, has been reviewed as historical debt and
   can be refreshed by shrink-only removal after focused repairs.
 - `.ripr/suppressions.toml` has been reviewed for owner, reason, scope,
-  visibility, static class, language status, and review date.
+  visibility, language status, and review date; `exposure_gap` entries also
+  carry `static_class`.
 - The `ripr-waive` policy is written down: who can apply it, when it is
   appropriate, and when a focused test or output fixture is expected instead.
 - Empty diffs and no-action PRs produce schema-valid advisory packets, not

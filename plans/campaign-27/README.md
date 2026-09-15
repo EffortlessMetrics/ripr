@@ -27,4 +27,4 @@ Related durable sources:
 - [Implementation plan](../../docs/IMPLEMENTATION_PLAN.md)
 - [Lane 3 tracker](../../docs/lanes/LANE_3_EDITOR_LSP.md)
 - [Repo tracking model](../../docs/REPO_TRACKING_MODEL.md)
-- [Active goal manifest](../../.ripr/goals/active.toml)
+- Active goal manifest: `.ripr/goals/active.toml` (deleted in #1701 PR 3)

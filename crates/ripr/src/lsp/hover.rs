@@ -2,7 +2,7 @@ use super::HOVER_TEXT;
 use super::state::{AnalysisSnapshot, format_duration};
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
-use crate::domain::{Finding, StageEvidence, StageState};
+use crate::domain::{DiagnosticWitness, Finding, StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
     allowed_edit_surface_for_gap_route, gap_record_packet_do_not_do,
     suggested_assertion_for_classified_seam, targeted_test_brief_outline_for_classified_seam,
@@ -104,9 +104,18 @@ pub(super) fn diagnostic_covers_position(diagnostic: &Diagnostic, position: &Pos
     position_in_range(position, &diagnostic.range)
 }
 
+pub(super) fn is_gap_diagnostic(diagnostic: &Diagnostic) -> bool {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("source"))
+        .and_then(Value::as_str)
+        == Some("gap_decision_ledger")
+}
+
 fn diagnostic_hover_markdown(diagnostic: &Diagnostic) -> String {
-    if let Some(data) = &diagnostic.data
-        && data.get("source").and_then(string_value) == Some("gap_decision_ledger")
+    if is_gap_diagnostic(diagnostic)
+        && let Some(data) = &diagnostic.data
     {
         return gap_diagnostic_hover_markdown(diagnostic, data);
     }
@@ -283,8 +292,20 @@ fn push_gap_verify_and_receipt(lines: &mut Vec<String>, data: &Value) {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    // FIX #1617 slice 2: producer-owned typed specs carry the execution
+    // mode beside the legacy display strings, so the hover can say whether
+    // a route is directly executable or needs a shell (redirect). Elements
+    // missing either field render nothing rather than a guessed marker.
+    let regeneration_specs = value_at(data, &["regeneration_command_specs"])
+        .and_then(Value::as_array)
+        .map(|items| items.iter().take(5).collect::<Vec<_>>())
+        .unwrap_or_default();
     let receipt = value_at(data, &["receipt"]);
-    if verify_commands.is_empty() && regeneration_commands.is_empty() && receipt.is_none() {
+    if verify_commands.is_empty()
+        && regeneration_commands.is_empty()
+        && regeneration_specs.is_empty()
+        && receipt.is_none()
+    {
         return;
     }
 
@@ -292,6 +313,15 @@ fn push_gap_verify_and_receipt(lines: &mut Vec<String>, data: &Value) {
     lines.push("## Verify and receipt".to_string());
     for command in verify_commands {
         lines.push(format!("- verify: `{command}`"));
+    }
+    for spec in &regeneration_specs {
+        let Some(mode) = spec.get("execution_mode").and_then(string_value) else {
+            continue;
+        };
+        let Some(display) = spec.get("human_display").and_then(string_value) else {
+            continue;
+        };
+        lines.push(format!("- regenerate ({mode}): `{display}`"));
     }
     for command in regeneration_commands {
         lines.push(format!("- regenerate: `{command}`"));
@@ -358,6 +388,14 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
         lines.push("## Canonical Gap".to_string());
         lines.push(format!("ID: `{}`", gap.id));
     }
+    if let Some(witness) = DiagnosticWitness::from_finding(finding) {
+        push_diagnostic_witness(&mut lines, &witness);
+        let summary = crate::domain::FixInstructionSummary::from_witness(&witness);
+        lines.push(format!(
+            "**Fix instruction:** {}",
+            fix_instruction_label(&summary)
+        ));
+    }
 
     if !finding.related_tests.is_empty() {
         lines.push(String::new());
@@ -393,6 +431,87 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
     lines.join("\n")
 }
 
+fn fix_instruction_label(summary: &crate::domain::FixInstructionSummary) -> String {
+    use crate::domain::FixInstructionState;
+    match summary.state {
+        FixInstructionState::FixSiteReady => {
+            "fix site ready — navigate to the test and inspect the oracle"
+        }
+        FixInstructionState::StaticLimitation => {
+            "static limitation — no bounded repair instruction available"
+        }
+        FixInstructionState::Stale => "stale — refresh analysis before acting",
+        FixInstructionState::InspectOnly => "inspect only — informational, nothing to fix",
+        FixInstructionState::Unavailable => "unavailable — no producer-owned witness",
+    }
+    .to_string()
+}
+
+fn push_diagnostic_witness(lines: &mut Vec<String>, witness: &DiagnosticWitness) {
+    lines.push(String::new());
+    lines.push("## Discriminator witness".to_string());
+    lines.push(format!("- kind: `{}`", witness.kind));
+    lines.push(format!("- probe family: `{}`", witness.probe_family));
+    lines.push(format!(
+        "- changed expression: `{}`",
+        witness.changed_expression
+    ));
+    if let Some(before) = &witness.before {
+        lines.push(format!("- before: `{before}`"));
+    }
+    if let Some(after) = &witness.after {
+        lines.push(format!("- after: `{after}`"));
+    }
+    if let Some(expected_sink) = &witness.expected_sink {
+        lines.push(format!("- expected sink: `{expected_sink}`"));
+    }
+    for missing in &witness.missing_discriminators {
+        lines.push(format!(
+            "- missing discriminator: `{}` — {}",
+            missing.value, missing.reason
+        ));
+    }
+    if let Some(fix_site) = &witness.fix_site {
+        lines.push(format!(
+            "- fix site: `{}:{}` `{}`",
+            fix_site.file, fix_site.line, fix_site.test_name
+        ));
+        if let Some(oracle) = &fix_site.current_oracle {
+            lines.push(format!(
+                "- current oracle: `{oracle}` ({}/{})",
+                fix_site.oracle_kind, fix_site.oracle_strength
+            ));
+        }
+        if let Some(location) = &fix_site.oracle_location {
+            lines.push(format!(
+                "- oracle source: `{}:{}`",
+                location.file, location.line
+            ));
+        }
+    }
+    if let Some(assertion) = &witness.suggested_assertion {
+        lines.push(format!("- suggested assertion: `{assertion}`"));
+    }
+    lines.push(format!("- explain: `{}`", witness.explain_command));
+    if let Some(value) = witness.confidence.value {
+        lines.push(format!(
+            "- confidence: {value:.2} ({})",
+            witness.confidence.basis
+        ));
+    } else {
+        lines.push(format!(
+            "- confidence: unavailable ({})",
+            witness.confidence.basis
+        ));
+    }
+    for limitation in &witness.limitations {
+        lines.push(format!(
+            "- limitation: `{}` — {}",
+            limitation.kind, limitation.detail
+        ));
+    }
+}
+
 fn push_preview_boundary(lines: &mut Vec<String>, finding: &Finding) {
     if finding.language_status.is_none() && finding.static_limit_kind.is_none() {
         return;
@@ -408,7 +527,11 @@ fn push_preview_boundary(lines: &mut Vec<String>, finding: &Finding) {
         lines.push("Evidence: syntax-first".to_string());
     }
     if let Some(static_limit_kind) = &finding.static_limit_kind {
-        lines.push(format!("Static limit: {}", static_limit_kind.as_str()));
+        lines.push(format!(
+            "Static limit: {} \u{2014} {}",
+            static_limit_kind.as_str(),
+            static_limit_kind.describe()
+        ));
     }
     if finding.language_status.is_some() {
         lines.push("Action: advisory only".to_string());
@@ -1020,6 +1143,13 @@ mod seam_hover_tests {
                 test_name: "below_threshold_has_no_discount".to_string(),
                 file: PathBuf::from("tests/pricing.rs"),
                 line: 12,
+                test_target: Some(
+                    crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                        "below_threshold_has_no_discount",
+                        std::path::Path::new("tests/pricing.rs"),
+                        12,
+                    ),
+                ),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
                 evidence_summary: "exact value assertion".to_string(),
@@ -1141,15 +1271,23 @@ mod seam_hover_tests {
     fn sample_snapshot(mode: Mode) -> AnalysisSnapshot {
         AnalysisSnapshot {
             root: PathBuf::from("/workspace"),
+            input_identity: None,
             base: None,
             mode,
             refresh: super::super::state::RefreshMetadata::default(),
             findings: Vec::new(),
+            analysis_outcome: None,
+            diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),
             gap_artifact_rejections: Vec::new(),
+            harness_facts: super::super::state::HarnessFactsOnSnapshot::NotRegistered,
             diagnostics_by_uri: BTreeMap::new(),
+            delivery_selection: None,
             seams_deferred: false,
+            partial_scope: None,
+            component_outcomes: Vec::new(),
+            out_of_scope_test_file_findings: 0,
         }
     }
 
@@ -1221,6 +1359,111 @@ mod seam_hover_tests {
         }
         if !md.contains("Probe:") && !md.contains("**ripr**") {
             return Err(format!("expected generic diagnostic hover in:\n{md}"));
+        }
+        Ok(())
+    }
+
+    /// FIX #1617 slice 2: typed regeneration specs render an execution-mode
+    /// marker before the legacy display strings, and the legacy lines stay
+    /// for human parity.
+    #[test]
+    fn gap_diagnostic_hover_renders_typed_regeneration_spec_modes() -> Result<(), String> {
+        let mut diagnostic = sample_gap_diagnostic();
+        let data = diagnostic
+            .data
+            .as_mut()
+            .ok_or("gap diagnostic must carry data")?;
+        let object = data
+            .as_object_mut()
+            .ok_or("gap diagnostic data must be an object")?;
+        object.insert(
+            "regeneration_command_specs".to_string(),
+            serde_json::json!([
+                {
+                    "command_id": "ripr:reports:gap-ledger",
+                    "role": "regeneration",
+                    "execution_mode": "direct",
+                    "human_display": "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md"
+                },
+                {
+                    "command_id": "ripr:check:repo-exposure",
+                    "role": "regeneration",
+                    "execution_mode": "shell_required",
+                    "human_display": "ripr check --root . --mode instant --format repo-exposure-json > repo.json"
+                }
+            ]),
+        );
+
+        let hover = diagnostic_hover_response(&diagnostic);
+        let md = extract_markup(&hover)?;
+        let direct = "- regenerate (direct): `ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md`";
+        let shell_required = "- regenerate (shell_required): `ripr check --root . --mode instant --format repo-exposure-json > repo.json`";
+        let legacy = "- regenerate: `cargo xtask ripr-pr --check`";
+        for needle in [direct, shell_required, legacy] {
+            if !md.contains(needle) {
+                return Err(format!("missing {needle:?} in:\n{md}"));
+            }
+        }
+        let direct_index = md
+            .find(direct)
+            .ok_or_else(|| format!("missing direct marker in:\n{md}"))?;
+        let shell_index = md
+            .find(shell_required)
+            .ok_or_else(|| format!("missing shell_required marker in:\n{md}"))?;
+        let legacy_index = md
+            .find(legacy)
+            .ok_or_else(|| format!("missing legacy regenerate line in:\n{md}"))?;
+        if direct_index > legacy_index || shell_index > legacy_index {
+            return Err(format!(
+                "typed spec markers must precede the legacy lines in:\n{md}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// FIX (round-1 review): the marker contract must hold for a real
+    /// serialized `CommandSpec`, not only hand-built JSON — the hover reads
+    /// the serde field names (`human_display`, `execution_mode`) exactly as
+    /// the domain type serializes them.
+    #[test]
+    fn gap_diagnostic_hover_recognizes_serialized_command_spec() -> Result<(), String> {
+        let spec = crate::agent::command_specs::report_regeneration_command_spec_from_display(
+            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md",
+        )
+        .ok_or("canonical gap-ledger route was not recoverable")?;
+        let serialized = serde_json::to_value(&spec)
+            .map_err(|error| format!("serialize command spec failed: {error}"))?;
+        if serialized.get("human_display").and_then(string_value) != Some(spec.display.as_str()) {
+            return Err(format!(
+                "serialized spec must expose the display as `human_display`: {serialized}"
+            ));
+        }
+        if serialized.get("execution_mode").and_then(string_value) != Some("direct") {
+            return Err(format!(
+                "serialized spec must expose `execution_mode` as a string: {serialized}"
+            ));
+        }
+
+        let mut diagnostic = sample_gap_diagnostic();
+        let data = diagnostic
+            .data
+            .as_mut()
+            .ok_or("gap diagnostic must carry data")?;
+        let object = data
+            .as_object_mut()
+            .ok_or("gap diagnostic data must be an object")?;
+        object.insert(
+            "regeneration_command_specs".to_string(),
+            serde_json::json!([serialized]),
+        );
+
+        let hover = diagnostic_hover_response(&diagnostic);
+        let md = extract_markup(&hover)?;
+        let marker = format!("- regenerate (direct): `{}`", spec.display);
+        if !md.contains(&marker) {
+            return Err(format!(
+                "missing serialized-spec marker {marker:?} in:\n{md}"
+            ));
         }
         Ok(())
     }
@@ -1372,7 +1615,7 @@ mod seam_hover_tests {
             "## Suggested test shape",
             "- file: `tests/pricing.rs`",
             "- name: `discounted_total_boundary_discriminator`",
-            "- candidate value: `input that hits the boundary: amount >= discount_threshold`",
+            "- candidate value: `discount_threshold (equality boundary)`",
             "- assertion shape: assert_eq!(discounted_total",
             "- assertion template: `assert_eq!(discounted_total",
         ] {

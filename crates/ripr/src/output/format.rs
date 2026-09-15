@@ -5,8 +5,10 @@
 /// downstream integrations and may require additional artifacts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OutputFormat {
-    /// Human-readable plain text report.
+    /// Bounded human-readable triage report.
     Human,
+    /// Exhaustive human-readable report with every finding body.
+    HumanFull,
     /// Versioned JSON report for automation.
     Json,
     /// GitHub annotation output suitable for CI logs.
@@ -85,6 +87,11 @@ const FORMAT_SPECS: &[OutputFormatSpec] = &[
     OutputFormatSpec {
         format: OutputFormat::Human,
         cli_names: &["human", "text"],
+        is_repo_seam_inventory: false,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::HumanFull,
+        cli_names: &["human-full", "text-full"],
         is_repo_seam_inventory: false,
     },
     OutputFormatSpec {
@@ -187,6 +194,15 @@ impl OutputFormat {
             .find_map(|spec| spec.cli_names.contains(&value).then_some(spec.format))
     }
 
+    /// Returns the preferred CLI spelling for this output format.
+    pub(crate) fn primary_cli_name(&self) -> &'static str {
+        FORMAT_SPECS
+            .iter()
+            .find(|spec| spec.format == *self)
+            .and_then(|spec| spec.cli_names.first().copied())
+            .unwrap_or("unknown")
+    }
+
     /// Returns `true` when the format targets full-repo scope rather than
     /// diff scope.
     ///
@@ -216,6 +232,24 @@ impl OutputFormat {
 #[cfg(test)]
 mod tests {
     use super::{FORMAT_SPECS, OutputFormat};
+
+    #[test]
+    fn parses_human_full_aliases() {
+        assert_eq!(
+            OutputFormat::parse_cli_name("human-full"),
+            Some(OutputFormat::HumanFull)
+        );
+        assert_eq!(
+            OutputFormat::parse_cli_name("text-full"),
+            Some(OutputFormat::HumanFull)
+        );
+    }
+
+    #[test]
+    fn human_full_is_not_repo_scope() {
+        assert!(!OutputFormat::HumanFull.is_repo_scope());
+        assert!(!OutputFormat::HumanFull.is_repo_seam_inventory());
+    }
 
     #[test]
     fn output_format_is_repo_scope_only_for_repo_variants() {

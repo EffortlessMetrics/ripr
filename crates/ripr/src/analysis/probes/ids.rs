@@ -102,7 +102,7 @@ pub(crate) fn repo_probe_id(
 }
 
 pub(crate) fn sanitize_path(path: &Path) -> String {
-    path.to_string_lossy()
+    crate::analysis::stable_path_text(path)
         .replace(['/', '\\', ':'], "_")
         .trim_matches('_')
         .to_string()
@@ -133,6 +133,17 @@ mod tests {
         let path = PathBuf::from(":src/lib:");
         let sanitized = sanitize_path(&path);
         assert_eq!(sanitized, "src_lib");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sanitize_path_keeps_invalid_bytes_distinct_from_utf8_text() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let invalid = PathBuf::from(OsString::from_vec(b"pricing_\xff.rs".to_vec()));
+        let literal = PathBuf::from("pricing_%FF.rs");
+        assert_ne!(sanitize_path(&invalid), sanitize_path(&literal));
     }
 
     #[test]

@@ -299,9 +299,71 @@ artifact — never a silent green.
 
 ## Test Mapping
 
-- None yet. Test mappings land with the badge projection
-  implementation slice; traceability entries are added only when
-  behavior and tests exist.
+The pure projection contract (the state-mapping table, the fail-closed
+precedence, and every reject-list entry) is pinned by unit tests on
+`crates/ripr/src/output/badge/public_projection.rs`:
+
+- `tests::full_current_zero_gaps_is_zero_actionable` — clean full run renders
+  `0 actionable`.
+- `tests::full_current_n_gaps_is_n_actionable` — full run with `N` gaps renders
+  `N actionable`.
+- `tests::gap_decision_ledger_basis_is_a_valid_count_basis` — the ledger basis
+  is a permitted public basis.
+- `tests::limited_run_status_is_limited_with_named_reason` — a `limited_*` run
+  renders `limited` with no count and a named reason.
+- `tests::over_age_artifact_is_stale` — an over-age artifact renders `stale`
+  and does not re-claim the count.
+- `tests::raw_finding_basis_is_unknown_never_a_count` — `finding_exposure`
+  basis renders `unknown`.
+- `tests::diff_scope_is_unknown_on_public_badge` — diff scope renders
+  `unknown`.
+- `tests::missing_source_report_is_unknown` /
+  `tests::missing_generated_at_is_unknown` — missing provenance renders
+  `unknown`.
+- `tests::unrecognized_run_status_fails_closed_to_unknown` — any non-`full`,
+  non-`limited_*` run_status fails closed.
+- `tests::stale_takes_precedence_over_limited` /
+  `tests::unknown_takes_precedence_over_stale_and_limited` — precedence
+  `unknown > stale > limited > count`.
+- `tests::age_exactly_at_max_is_not_stale` /
+  `tests::age_one_second_over_max_is_stale` — max-age boundary.
+- `tests::attach_projects_repo_canonical_summary` /
+  `tests::attach_is_no_op_for_diff_badges` — projection wiring: repo public
+  badges are projected, diff badges are left unchanged.
+- `crates/ripr/src/app/tests/badge_rendering.rs::render_check_repo_badge_json_paints_scope_repo`
+  — the rendered repo badge JSON carries the `public_projection` object and
+  sidecar fields.
+
+## Shipped (this slice)
+
+- The pure projection contract in
+  `crates/ripr/src/output/badge/public_projection.rs`: the five closed states,
+  the fail-closed precedence, the six required sidecar fields
+  (`run_status`, `generated_at`, `actionable_count`, `limited_reason`,
+  `stale_age_secs`, `source_report`), and the configurable max-age knob
+  (`DEFAULT_BADGE_MAX_AGE_SECS`).
+- The closed public message vocabulary on repo-scoped public badges: the
+  Shields `message` and the native `message` / `status` / `color` are
+  projected from the state; diff-scoped and internal badges are unchanged.
+- The native badge JSON `public_projection` object on repo-scoped public
+  badges, bumping `BADGE_SCHEMA_VERSION` from `0.6` to `0.7`.
+- Every state-mapping row and every reject-list entry pinned by unit tests.
+- `docs/OUTPUT_SCHEMA.md`, `docs/BADGE_POLICY.md`, and `badges/README.md`
+  aligned to the closed vocabulary and the sidecar contract; traceability
+  entries added.
+
+## Deferred (follow-up badge-pipeline slice)
+
+- Driving the projection from the `cargo xtask badges` /
+  `repo-badge-artifacts` pipeline with real source-report `run_status` and
+  `generated_at`, regenerating the committed `badges/ripr.json` /
+  `badges/ripr-plus.json` endpoints into the new message vocabulary.
+- Age-based staleness in `cargo xtask badges --check` (today it fails on
+  content drift only; the projection already implements and tests the
+  age-based `stale` state).
+- xtask fixtures for every state-mapping row and reject-list entry. Until the
+  pipeline drives the projection end to end and these fixtures land, this spec
+  stays `proposed`.
 
 ## Implementation Mapping
 

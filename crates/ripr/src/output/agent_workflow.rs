@@ -2,7 +2,17 @@ use crate::app::agent_workflow::{
     AGENT_WORKFLOW_SCHEMA_VERSION, AgentWorkflowArtifact, AgentWorkflowCommand,
     AgentWorkflowManifest, AgentWorkflowSeam,
 };
+use crate::output::markdown::{POWERSHELL_UNAVAILABLE_DISCLOSURE, powershell_command};
 use serde_json::{Value, json};
+
+/// Shell that every `command` string in this packet is written for.
+///
+/// The command strings are built with POSIX single-quote escaping and `>`
+/// redirection (`agent::loop_commands::shell_arg`), so they are bash source,
+/// not shell-neutral text. Naming the shell keeps the packet honest on Windows,
+/// where cmd.exe treats `'` as a literal character and PowerShell rejects the
+/// `'\''` escape. Emitting an argv form for other shells is out of scope here.
+const COMMAND_SHELL: &str = "bash";
 
 pub(crate) fn render_agent_workflow_json(
     manifest: &AgentWorkflowManifest,
@@ -11,6 +21,7 @@ pub(crate) fn render_agent_workflow_json(
         "schema_version": AGENT_WORKFLOW_SCHEMA_VERSION,
         "tool": "ripr",
         "status": "ready",
+        "command_shell": COMMAND_SHELL,
         "root": manifest.root,
         "mode": manifest.mode,
         "out_dir": manifest.out_dir,
@@ -21,9 +32,21 @@ pub(crate) fn render_agent_workflow_json(
             "agent_brief": manifest.outputs.agent_brief,
         },
         "artifacts": manifest.artifacts.iter().map(artifact_json).collect::<Vec<_>>(),
-        "commands": manifest.commands.iter().map(command_json).collect::<Vec<_>>(),
-        "missing_inputs": manifest.missing_inputs.iter().map(command_json).collect::<Vec<_>>(),
-        "next_command": manifest.missing_inputs.first().map(command_json),
+        "commands": manifest
+            .commands
+            .iter()
+            .map(command_json)
+            .collect::<Result<Vec<_>, _>>()?,
+        "missing_inputs": manifest
+            .missing_inputs
+            .iter()
+            .map(command_json)
+            .collect::<Result<Vec<_>, _>>()?,
+        "next_command": manifest
+            .missing_inputs
+            .first()
+            .map(command_json)
+            .transpose()?,
         "boundaries": {
             "source_edits": false,
             "generated_tests": false,
@@ -65,13 +88,23 @@ fn artifact_json(artifact: &AgentWorkflowArtifact) -> Value {
     })
 }
 
-fn command_json(command: &AgentWorkflowCommand) -> Value {
-    json!({
+fn command_json(command: &AgentWorkflowCommand) -> Result<Value, String> {
+    // FIX #1617: the typed spec rides alongside the display where a producer
+    // owns one; legacy-string-only steps simply omit the key. Serialization
+    // failures propagate (round-1 review) instead of emitting a non-spec
+    // placeholder while the workflow claims ready.
+    let mut value = json!({
         "step": command.step,
         "artifact": command.artifact,
         "purpose": command.purpose,
         "command": command.command,
-    })
+    });
+    if let Some(spec) = &command.command_spec {
+        let serialized = serde_json::to_value(spec)
+            .map_err(|error| format!("serialize command spec for `{}`: {error}", command.step))?;
+        value["command_spec"] = serialized;
+    }
+    Ok(value)
 }
 
 fn command_label(step: &str) -> String {
@@ -79,7 +112,9 @@ fn command_label(step: &str) -> String {
 }
 
 mod markdown {
-    use super::{AgentWorkflowManifest, command_label};
+    use super::{
+        AgentWorkflowManifest, POWERSHELL_UNAVAILABLE_DISCLOSURE, command_label, powershell_command,
+    };
 
     pub(super) fn render_commands_document(manifest: &AgentWorkflowManifest) -> String {
         let mut lines = Vec::new();
@@ -95,6 +130,8 @@ mod markdown {
         lines.push("# RIPR Agent Workflow".to_string());
         lines.push(String::new());
         lines.push("This workflow packet is advisory and source-edit-free. It gives a human or agent the static context and commands for one focused test loop.".to_string());
+        lines.push(String::new());
+        lines.push("Each step includes Bash and PowerShell command variants. The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and UTF-8 `Out-File` redirection. cmd.exe is not supported. On Windows, use either Git Bash or PowerShell. WSL bash is not a drop-in substitute: paths here keep their Windows drive-letter prefix, which WSL resolves as a relative path, so running them there requires rewriting each path under `/mnt/` and having ripr available inside WSL.".to_string());
         lines.push(String::new());
     }
 
@@ -140,6 +177,15 @@ mod markdown {
             lines.push("```bash".to_string());
             lines.push(command.command.clone());
             lines.push("```".to_string());
+            lines.push(String::new());
+            match powershell_command(&command.command) {
+                Some(line) => {
+                    lines.push("```powershell".to_string());
+                    lines.push(line);
+                    lines.push("```".to_string());
+                }
+                None => lines.push(format!("{POWERSHELL_UNAVAILABLE_DISCLOSURE}.")),
+            }
             lines.push(String::new());
         }
     }
@@ -215,12 +261,14 @@ mod tests {
                 artifact: "target/ripr/workflow/before.repo-exposure.json".to_string(),
                 purpose: "Capture static seam evidence before editing tests.".to_string(),
                 command: "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json".to_string(),
+                command_spec: None,
             }],
             missing_inputs: vec![AgentWorkflowCommand {
                 step: "before_snapshot".to_string(),
                 artifact: "target/ripr/workflow/before.repo-exposure.json".to_string(),
                 purpose: "Capture static seam evidence before editing tests.".to_string(),
                 command: "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json".to_string(),
+                command_spec: None,
             }],
         }
     }
@@ -238,6 +286,116 @@ mod tests {
         assert_eq!(
             value["next_command"]["command"],
             "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+        );
+        Ok(())
+    }
+
+    /// FIX (round-1 review): the Some partition must be demonstrated end to end —
+    /// a typed spec on a command renders as a structured `command_spec`
+    /// object beside the display, not just as the legacy string.
+    #[test]
+    fn workflow_json_carries_the_typed_command_spec() -> Result<(), String> {
+        let mut manifest = manifest();
+        let spec = crate::agent::command_specs::agent_regeneration_command_spec(
+            crate::agent::command_specs::AgentArtifactRoute::Packet,
+            ".",
+            "67fc764ba37d77bd",
+            "target/ripr/workflow/agent-packet.json",
+        );
+        let spec_json = serde_json::to_value(&spec).map_err(|err| err.to_string())?;
+        manifest.commands[0].command_spec = Some(spec.clone());
+        let rendered = render_agent_workflow_json(&manifest)?;
+        let value: Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse JSON: {err}"))?;
+        assert_eq!(value["commands"][0]["command_spec"], spec_json);
+        assert_eq!(value["commands"][0]["command_spec"]["role"], "regeneration");
+        assert_eq!(
+            value["commands"][0]["command_spec"]["execution_mode"],
+            "shell_required"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn workflow_markdown_discloses_both_supported_command_shells() -> Result<(), String> {
+        let rendered = render_agent_workflow_commands_md(&manifest());
+
+        // A bare `bash` substring proves nothing here: every command block is
+        // already fenced as ```bash. The disclosure must be prose that reaches
+        // the reader before the first copyable command.
+        // Pinned literally rather than shared with the renderer: a constant
+        // imported from production would make this test agree with whatever the
+        // renderer happens to emit.
+        let disclosure = rendered
+            .find("Each step includes Bash and PowerShell command variants.")
+            .ok_or_else(|| format!("commands.md must disclose both command shells: {rendered}"))?;
+        let first_fence = rendered
+            .find("```bash")
+            .ok_or_else(|| "commands.md must still fence commands as bash".to_string())?;
+        assert!(
+            disclosure < first_fence,
+            "shell disclosure at {disclosure} must precede the first command fence at {first_fence}"
+        );
+        assert!(
+            rendered.contains("PowerShell"),
+            "disclosure must name PowerShell: {rendered}"
+        );
+        assert!(rendered.contains("```powershell"));
+        Ok(())
+    }
+
+    #[test]
+    fn workflow_markdown_translates_bash_apostrophe_escaping_for_powershell() {
+        let mut value = manifest();
+        value.commands[0].command = "ripr agent start --root 'it'\\''s' > 'out'".to_string();
+        let rendered = render_agent_workflow_commands_md(&value);
+        assert!(
+            rendered.contains("$ripr = ((ripr agent start --root 'it''s') | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('out', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }")
+        );
+    }
+
+    /// `display_path` (`agent::loop_commands`) only swaps `\` for `/`, so an
+    /// absolute Windows root keeps its drive-letter prefix. Git Bash resolves that; WSL bash
+    /// reads it as a path relative to the current directory and the `>`
+    /// redirection fails before ripr runs. Recommending "bash on Windows"
+    /// without that distinction sends the one affected reader to an environment
+    /// where the copied command still breaks, so the caveat is load-bearing and
+    /// is pinned here rather than left to review.
+    #[test]
+    fn workflow_markdown_does_not_offer_wsl_as_an_unqualified_windows_shell() -> Result<(), String>
+    {
+        let rendered = render_agent_workflow_commands_md(&manifest());
+
+        let wsl = rendered
+            .find("WSL")
+            .ok_or_else(|| format!("disclosure must address WSL explicitly: {rendered}"))?;
+        let git_bash = rendered
+            .find("Git Bash")
+            .ok_or_else(|| format!("disclosure must name Git Bash: {rendered}"))?;
+        assert!(
+            git_bash < wsl,
+            "Git Bash must be the recommendation the reader meets first, \
+             with WSL qualified afterwards: {rendered}"
+        );
+        assert!(
+            rendered.contains("/mnt/"),
+            "the WSL caveat must name the translation a reader has to perform, \
+             not merely discourage it: {rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn workflow_json_declares_bash_as_the_command_shell() -> Result<(), String> {
+        let rendered = render_agent_workflow_json(&manifest())?;
+        let value: Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse JSON: {err}"))?;
+
+        // Machine consumers never read commands.md, so the manifest must carry
+        // the same boundary the Markdown header states.
+        assert_eq!(
+            value["command_shell"], "bash",
+            "workflow manifest must name the shell its command strings assume: {rendered}"
         );
         Ok(())
     }

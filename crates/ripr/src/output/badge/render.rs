@@ -22,6 +22,25 @@ pub fn render_native_json(summary: &BadgeSummary) -> String {
     ));
     out.push_str(&format!("  \"status\": \"{}\",\n", summary.status.as_str()));
     out.push_str(&format!("  \"color\": \"{}\",\n", summary.color));
+    match &summary.analysis_outcome {
+        Some(outcome) => {
+            out.push_str(&format!(
+                "  \"analysis_complete\": {},\n",
+                outcome.kind.is_complete()
+            ));
+            let rendered = serde_json::to_string(outcome).unwrap_or_else(|error| {
+                format!(
+                    "{{\"serialization_error\":\"{}\"}}",
+                    json_escape(&error.to_string())
+                )
+            });
+            out.push_str(&format!("  \"analysis_outcome\": {rendered},\n"));
+        }
+        None => {
+            out.push_str("  \"analysis_complete\": null,\n");
+            out.push_str("  \"analysis_outcome\": null,\n");
+        }
+    }
 
     let counts = &summary.counts;
     out.push_str("  \"counts\": {\n");
@@ -129,9 +148,14 @@ pub fn render_native_json(summary: &BadgeSummary) -> String {
     // a preview-language diff was not analyzed and the badge is not a clean
     // Rust-grade result. Non-empty only when at least one preview-language
     // adapter was detected but NOT enabled (v0.6 contract field).
+    //
+    // The typed diff outcome fields (v0.8) precede `preview_skipped`. The
+    // `public_projection` object (v0.7) follows only on repo-scoped public
+    // badges; when present `preview_skipped` keeps a trailing comma and the
+    // projection closes the object.
     out.push_str("  \"preview_skipped\": [");
     if summary.preview_skipped.is_empty() {
-        out.push_str("]\n}\n");
+        out.push(']');
     } else {
         out.push('\n');
         for (index, lang) in summary.preview_skipped.iter().enumerate() {
@@ -140,9 +164,72 @@ pub fn render_native_json(summary: &BadgeSummary) -> String {
             }
             out.push_str(&format!("    \"{}\"", json_escape(lang)));
         }
-        out.push_str("\n  ]\n}\n");
+        out.push_str("\n  ]");
     }
+    if let Some(projection) = &summary.projection {
+        out.push_str(",\n");
+        out.push_str(&render_public_projection(projection));
+    }
+    out.push_str("\n}\n");
     out
+}
+
+/// Renders the `public_projection` object (RIPR-SPEC-0066): the closed public
+/// badge state plus the six required sidecar fields. Optional fields render
+/// as JSON `null` when absent so the object shape is stable.
+fn render_public_projection(
+    projection: &super::public_projection::PublicBadgeProjection,
+) -> String {
+    let mut out = String::new();
+    out.push_str("  \"public_projection\": {\n");
+    out.push_str(&format!(
+        "    \"state\": \"{}\",\n",
+        projection.state.as_str()
+    ));
+    out.push_str(&format!(
+        "    \"message\": \"{}\",\n",
+        json_escape(&projection.shields_message)
+    ));
+    out.push_str(&format!(
+        "    \"run_status\": \"{}\",\n",
+        json_escape(&projection.run_status)
+    ));
+    out.push_str(&format!(
+        "    \"generated_at\": {},\n",
+        json_string_or_null(projection.generated_at.as_deref())
+    ));
+    out.push_str(&format!(
+        "    \"actionable_count\": {},\n",
+        projection
+            .actionable_count
+            .map(|count| count.to_string())
+            .unwrap_or_else(|| "null".to_string())
+    ));
+    out.push_str(&format!(
+        "    \"limited_reason\": {},\n",
+        json_string_or_null(projection.limited_reason.as_deref())
+    ));
+    out.push_str(&format!(
+        "    \"stale_age_secs\": {},\n",
+        projection
+            .stale_age_secs
+            .map(|secs| secs.to_string())
+            .unwrap_or_else(|| "null".to_string())
+    ));
+    out.push_str(&format!(
+        "    \"source_report\": {}\n",
+        json_string_or_null(projection.source_report.as_deref())
+    ));
+    out.push_str("  }");
+    out
+}
+
+/// Renders an optional string as a quoted JSON string or `null`.
+fn json_string_or_null(value: Option<&str>) -> String {
+    match value {
+        Some(text) => format!("\"{}\"", json_escape(text)),
+        None => "null".to_string(),
+    }
 }
 
 /// Renders the Shields-compatible projection: exactly four top-level

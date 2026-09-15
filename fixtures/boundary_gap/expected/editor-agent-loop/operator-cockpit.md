@@ -16,12 +16,12 @@ Status: warn
 | repo exposure | present | present | actionable_seams_visible | 1 seams; 1 weakly_gripped, 0 ungripped, 0 reachable_unrevealed. |
 | LSP cockpit | present | pass | editor_contract_green | 1 LSP fixture reports; 0 uncovered contributed VS Code commands. |
 | before snapshot | present | present | before_snapshot_available | 1 seams; 1 weakly_gripped, 0 ungripped, 0 reachable_unrevealed. |
-| after snapshot | present | present | after_snapshot_available | 1 seams; 1 weakly_gripped, 0 ungripped, 0 reachable_unrevealed. |
-| agent verify | present | advisory | agent_verify_counts_available | 0 improved, 0 changed, 0 regressed, 1 unchanged seams. |
-| agent receipt | present | advisory | agent_receipt_available | Receipt for seam 67fc764ba37d77bd: unchanged; before weakly_gripped, after weakly_gripped. Static grip class did not move. |
+| after snapshot | present | present | after_snapshot_available | 1 seams; 0 weakly_gripped, 0 ungripped, 0 reachable_unrevealed. |
+| agent verify | present | advisory | agent_verify_counts_available | 1 improved, 0 changed, 0 regressed, 0 unchanged seams. |
+| agent receipt | present | advisory | agent_receipt_available | Receipt for seam 67fc764ba37d77bd: improved; before weakly_gripped, after strongly_gripped. No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail. |
 | SARIF policy | missing | missing | not_available | Report has not been generated yet. |
 | badge status | missing | missing | not_available | Report has not been generated yet. |
-| targeted-test outcome | present | advisory | targeted_outcome_artifact_present | 0 moved, 0 regressed, 1 unchanged seams. |
+| targeted-test outcome | present | advisory | targeted_outcome_artifact_present | 1 moved, 0 regressed, 0 unchanged seams. |
 | mutation calibration | optional_missing | optional | not_available | Optional calibration report has not been generated. |
 
 ## Inputs

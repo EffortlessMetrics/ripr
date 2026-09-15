@@ -427,6 +427,7 @@ fn push_index(index: &mut BTreeMap<String, Vec<usize>>, key: Option<&String>, va
 }
 
 fn match_current_decision(identity: &Identity, indexes: &CurrentIndexes) -> MatchResult {
+    let mut first_ambiguity = None;
     for (method, key, index) in [
         (
             "canonical_gap_id",
@@ -452,13 +453,15 @@ fn match_current_decision(identity: &Identity, indexes: &CurrentIndexes) -> Matc
                     matched_by: method.to_string(),
                 };
             }
-            return MatchResult::Ambiguous {
-                matched_by: method.to_string(),
-                count: matches.len(),
-            };
+            if first_ambiguity.is_none() {
+                first_ambiguity = Some(MatchResult::Ambiguous {
+                    matched_by: method.to_string(),
+                    count: matches.len(),
+                });
+            }
         }
     }
-    MatchResult::None
+    first_ambiguity.unwrap_or(MatchResult::None)
 }
 
 fn fallback_identity(
@@ -644,6 +647,31 @@ mod tests {
             rendered.contains("\"canonical_gap_id\": \"pricing::discount::threshold_equality\"")
         );
         assert!(rendered.contains("\"seam_id\": \"old-seam\""));
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_update_uses_unique_seam_after_shared_canonical_gap_is_ambiguous()
+    -> Result<(), String> {
+        let baseline = r#"{"schema_version":"0.1","kind":"gate_baseline","entries":[
+          {"identity":{"canonical_gap_id":"gap:shared","seam_id":"seam:a"}},
+          {"identity":{"canonical_gap_id":"gap:shared","seam_id":"seam:b"}}
+        ]}"#;
+        let current = r#"{"schema_version":"0.1","decisions":[
+          {"decision":"advisory","canonical_gap_id":"gap:shared","seam_id":"seam:a","static_class":"weakly_gripped","placement":{"path":"src/a.rs","line":1}},
+          {"decision":"advisory","canonical_gap_id":"gap:shared","seam_id":"seam:b","static_class":"weakly_gripped","placement":{"path":"src/b.rs","line":2}}
+        ]}"#;
+        let report = build_baseline_update_remove_resolved(BaselineUpdateInput {
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: baseline.to_string(),
+            current_gate_decision_json: current.to_string(),
+        })?;
+        assert_eq!(baseline_update_before_entry_count(&report), 2);
+        assert_eq!(baseline_update_after_entry_count(&report), 2);
+        assert_eq!(baseline_update_removed_resolved_count(&report), 0);
+        assert_eq!(baseline_update_ignored_new_current_count(&report), 0);
+        assert_eq!(baseline_update_warning_count(&report), 0);
         Ok(())
     }
 

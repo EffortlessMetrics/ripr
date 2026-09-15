@@ -160,6 +160,13 @@ struct shape; in public card JSON they appear only inside the nested
 `advisory_packet` object, per the `typescript_preview_card.v1`
 section of `docs/OUTPUT_SCHEMA.md`.
 
+When a finding has multiple configured Bun bridge profiles, the first profile
+remains in `bun_cross_language_grip` for compatibility and the public object
+also carries `profiles[]` with every full grip in deterministic producer order.
+Human, JSON, SARIF, and GitHub projections must preserve the complete profile
+set. This is evidence retention only: all profiles remain preview-advisory,
+and no profile becomes runtime proof or public repair-packet authority.
+
 Grip states are the closed set from the post-0.8.1 decision:
 `rust_ungripped_ts_discriminated`,
 `rust_ungripped_ts_missing_discriminator`, `ts_mention_not_observer`,

@@ -1,0 +1,18 @@
+{
+  "schema_version": "0.1",
+  "kind": "gate_baseline",
+  "entries": [
+    {
+      "identity": {
+        "canonical_gap_id": "gap:gamma000000000007",
+        "seam_id": "oldseam0000000007",
+        "source_id": "ripr-review-oldseam0007"
+      }
+    },
+    {
+      "identity": {
+        "fallback": "src/pricing.rs:144:ungripped"
+      }
+    }
+  ]
+}

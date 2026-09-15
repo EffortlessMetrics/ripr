@@ -8,7 +8,8 @@ when the v2 work lands or when the underlying motivation is no longer
 load-bearing.
 
 This is not a feature backlog — that lives in `docs/IMPLEMENTATION_CAMPAIGNS.md`
-and `.ripr/goals/active.toml`. This is the place where the v1 simplifications
+and the GitHub issue/plan trackers it points at (the former `.ripr/goals/`
+scheduler was deleted by #2056). This is the place where the v1 simplifications
 that paid for themselves are written down so a future session does not
 mistake them for permanent design choices.
 
@@ -468,10 +469,52 @@ Related PRs / friction:
 
 ---
 
+## deferred/python-annotation-only-no-probe
+
+Status:           partially closed (#1294 closed the `def`-header case; #1322
+                  closed the module-scope bare-variable case; #1289 closed
+                  multi-line docstring interiors; class-body annotations remain open)
+Surface:          analyzer
+Current v1 behavior:
+                  A `def`-header change touching only parameter/return annotations
+                  emits no probe (#1294). A module-scope bare-variable annotation-
+                  only change (identical target name and value, only the annotation
+                  differs) emits no probe (#1289 sub-item 1). Both fail closed when
+                  anything beyond an annotation differs (a default value, a target
+                  rename, an added/removed value).
+Why v1 kept it simple:
+                  Python does not enforce type annotations at runtime, so an
+                  annotation-only change has no behavior delta. Crediting `exposed`
+                  from a test that merely reaches the owner would falsely imply the
+                  tests notice a change that does not exist. The suppression is
+                  conservative: it requires both old and new lines to parse as the
+                  same annotation-bearing shape with identical runtime-significant
+                  skeleton.
+Risk:             One sub-case remains UN-suppressed and can over-probe (emit a probe
+                  for a non-behavior change), which is lower-severity than a false
+                  `exposed` claim but still noise: class-body variable annotations —
+                  `@dataclass`, Pydantic
+                  `BaseModel`, and `attrs` make annotations runtime-meaningful
+                  (validation/coercion), so they cannot be safely suppressed without
+                  base-class / decorator awareness that does not exist yet.
+Revisit trigger:  A false `exposed` is reported on a class-body annotation change in a
+                  non-dataclass/non-pydantic plain class (the safe-to-suppress subset
+                  we currently miss).
+Likely v2 direction:
+                  Add base-class tracking to `owner_from_class` (record the
+                  bases list), then suppress annotation-only changes in class bodies
+                  whose bases/decorators are not `dataclass`/`BaseModel`/`attrs`.
+Related PRs / friction:
+                  - #1294 — `def`-header annotation-only suppression (closed).
+                  - #1316/#1318 — trap-45 changed-default gate (parallel #1289 work).
+                  - #1322 — module-scope bare-variable suppression.
+                  - #1289 — AST-backed old/new multi-line docstring suppression.
+
+---
+
 ## Cross-references
 
 - `docs/BADGE_POLICY.md` — locked vocabulary and what each badge does and does not prove.
-- `docs/IMPLEMENTATION_CAMPAIGNS.md` — active campaign work items.
-- `.ripr/goals/active.toml` — machine-readable manifest.
+- `docs/IMPLEMENTATION_CAMPAIGNS.md` — active campaign work items, each pointing at its live GitHub issue/plan tracker.
 - `docs/FRICTION_LOG.md` — raw same-day observations; entries graduate either to a fix, to this register, or to LEARNINGS.
 - `docs/LEARNINGS.md` — settled principles.

@@ -1,4 +1,5 @@
 use super::current_evidence_strength_for_selection;
+use crate::domain::CommandSpec;
 use serde::Serialize;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -110,6 +111,16 @@ pub(super) struct ActionCommands {
     pub(super) assistant_proof: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) command_specs: Option<ActionCommandSpecs>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub(super) struct ActionCommandSpecs {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) verify: Option<CommandSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) receipt: Option<CommandSpec>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]

@@ -1,49 +1,26 @@
 {
-  "changed_seams": [],
-  "inputs": {
-    "after": "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
-    "before": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json"
-  },
-  "new_gaps": [],
-  "resolved_gaps": [],
-  "schema_version": "0.1",
-  "status": "advisory",
-  "summary": {
-    "changed": 0,
-    "gap_movement": {
-      "changed": 0,
-      "closed": 0,
-      "new": 0,
-      "opened": 0,
-      "removed": 0,
-      "strengthened": 0,
-      "unchanged": 1,
-      "weakened": 0
-    },
-    "improved": 0,
-    "new": 0,
-    "regressed": 0,
-    "resolved": 0,
-    "unchanged": 1
-  },
-  "tool": "ripr",
-  "unchanged_seams": [
+  "artifact_currentness": "dirty_both",
+  "changed_seams": [
     {
       "activate_delta": null,
-      "after": "weakly_gripped",
+      "after": "strongly_gripped",
       "before": "weakly_gripped",
-      "change": "unchanged",
+      "change": "improved",
       "discriminate_delta": null,
       "evidence_delta": [
+        "grip class moved from weakly_gripped to strongly_gripped",
+        "missing discriminator no longer reported: discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate)",
         "new observed value: 100",
         "related test count increased by 1"
       ],
       "evidence_source": "legacy_fields",
       "file": "src/lib.rs",
-      "gap_movement": "unchanged",
+      "gap_movement": "closed",
       "line": 2,
       "missing_discriminators_reopened": [],
-      "missing_discriminators_resolved": [],
+      "missing_discriminators_resolved": [
+        "discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate)"
+      ],
       "no_movement_reason": null,
       "observe_delta": null,
       "observed_values_added": [
@@ -57,5 +34,35 @@
       "seam_id": "67fc764ba37d77bd",
       "seam_kind": "predicate_boundary"
     }
-  ]
+  ],
+  "inputs": {
+    "after": "target/ripr/test-agent-verify/after.repo-exposure.json",
+    "after_content_sha256": "<content_sha256>",
+    "before": "target/ripr/test-agent-verify/before.repo-exposure.json",
+    "before_content_sha256": "<content_sha256>"
+  },
+  "new_gaps": [],
+  "resolved_gaps": [],
+  "schema_version": "0.3",
+  "status": "advisory",
+  "summary": {
+    "changed": 0,
+    "gap_movement": {
+      "changed": 0,
+      "closed": 1,
+      "new": 0,
+      "opened": 0,
+      "removed": 0,
+      "strengthened": 0,
+      "unchanged": 0,
+      "weakened": 0
+    },
+    "improved": 1,
+    "new": 0,
+    "regressed": 0,
+    "resolved": 0,
+    "unchanged": 0
+  },
+  "tool": "ripr",
+  "unchanged_seams": []
 }

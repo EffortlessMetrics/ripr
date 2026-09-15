@@ -54,6 +54,29 @@ Policy impact:
 - Keep source `ripr` as one published package. No new `ripr-perl` crate,
   binary, LSP server, or parser package is introduced by this proposal.
 
+Current state (recorded 2026-06-21, Campaign 31 #1379):
+
+- **Landed (fixture-only / test-scoped):** the Perl fact-packet model
+  (`crates/ripr/src/analysis/language/perl.rs`, `#[cfg(test)] mod perl;`),
+  strict-actionability validator, dynamic-boundary fail-closed model, and the
+  `perl_preview_card.v1` renderer wired into JSON/human/SARIF/GitHub/gap-ledger
+  output. The 0.9.0 changelog shipped this as "Perl strict actionability and
+  preview projection" with a retroactive scope caveat: the renderer projects
+  only from synthetic test findings until the production bridge lands.
+- **Not landed (the bridge):** the upstream `perl-lsp ripr-facts` exporter, the
+  production `PerlAdapter` implementing `LanguageAdapter`, `.pm`/`.pl`/`.t`/
+  `.psgi` routing, the `--perl-facts` ingestion path, and managed producer
+  mode. Without these, enabling `lang-perl` produces an explicit
+  "fact-packet preview unavailable" error rather than analysis.
+- **Support tier:** `scaffold` (not `preview`) — see
+  [Support Tiers](../status/SUPPORT_TIERS.md).
+- **ADR 0019 constraint:** the production `PerlAdapter` MUST project into the
+  shared `GapRecord` and flip `repair_packet_ready` only through
+  `validate_agent_gap_record_packet` — no Perl-local flip authority.
+- **Campaign:** the 18-PR path to usable alpha is tracked in Campaign 31
+  (`docs/IMPLEMENTATION_CAMPAIGNS.md`) + `.ripr/goals/perl-repair-routing.toml`
+  + umbrella issue #1379. Phase B producer work files into `perl-lsp-swarm`.
+
 ## Problem
 
 Perl users need the same repair-routing value that the TypeScript and Python

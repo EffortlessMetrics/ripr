@@ -114,6 +114,13 @@ struct AnnotationOutput {
     comments_missing: bool,
 }
 
+/// Keep every eligible PR-guidance annotation at GitHub's warning level
+/// (#2632). Severity remains visible in the title; the annotation policy
+/// deliberately does not downgrade weaker or configured values to `notice`.
+fn annotation_level_for_severity(_severity: &str) -> &'static str {
+    "warning"
+}
+
 fn annotation_from_comment(item: &Value) -> Result<String, String> {
     let placement = item
         .get("placement")
@@ -155,8 +162,9 @@ fn annotation_from_comment(item: &Value) -> Result<String, String> {
         message.push_str(intent);
     }
     let title = format!("ripr {severity} {kind}");
+    let level = annotation_level_for_severity(severity);
     Ok(format!(
-        "::warning file={},line={},title={}::{}",
+        "::{level} file={},line={},title={}::{}",
         escape_cmd(&path),
         line,
         escape_cmd(&title),
@@ -296,6 +304,105 @@ mod tests {
                 .contains("Suggested test%3A Assert boundary behavior")
         );
         assert!(!generated.text.contains("src/other.rs"));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
+    }
+
+    #[test]
+    fn weak_severity_remains_warning_level() -> Result<(), String> {
+        let repo = temp_repo("ripr-annotations-weak")?;
+        write_json(
+            &repo,
+            DEFAULT_COMMENTS_JSON,
+            &json!({
+                "comments": [{
+                    "id": "rec-weak",
+                    "kind": "focused_test",
+                    "severity": "weak",
+                    "reason": "Weak oracle reaches this seam.",
+                    "placement": {
+                        "path": "src/lib.rs",
+                        "line": 10,
+                        "side": "RIGHT",
+                        "mode": "exact_seam_line"
+                    }
+                }],
+                "summary_only": []
+            }),
+        )?;
+        let generated = render_annotations(&repo, &AnnotationOptions::default())?;
+        assert!(
+            generated
+                .text
+                .contains("::warning file=src/lib.rs,line=10,title=ripr weak focused_test::"),
+            "expected ::warning for weak severity, got: {}",
+            generated.text
+        );
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
+    }
+
+    #[test]
+    fn warning_severity_preserves_warning_annotation_level() -> Result<(), String> {
+        let repo = temp_repo("ripr-annotations-warning")?;
+        write_json(
+            &repo,
+            DEFAULT_COMMENTS_JSON,
+            &json!({
+                "comments": [{
+                    "id": "rec-warning",
+                    "kind": "focused_test",
+                    "severity": "warning",
+                    "reason": "A configured warning must remain visible.",
+                    "placement": {
+                        "path": "src/lib.rs",
+                        "line": 11,
+                        "side": "RIGHT",
+                        "mode": "exact_seam_line"
+                    }
+                }],
+                "summary_only": []
+            }),
+        )?;
+        let generated = render_annotations(&repo, &AnnotationOptions::default())?;
+        assert!(
+            generated
+                .text
+                .contains("::warning file=src/lib.rs,line=11,title=ripr warning focused_test::"),
+            "expected ::warning for literal warning severity, got: {}",
+            generated.text
+        );
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
+    }
+
+    #[test]
+    fn info_severity_remains_warning_level() -> Result<(), String> {
+        let repo = temp_repo("ripr-annotations-info")?;
+        write_json(
+            &repo,
+            DEFAULT_COMMENTS_JSON,
+            &json!({
+                "comments": [{
+                    "id": "rec-info",
+                    "kind": "focused_test",
+                    "severity": "info",
+                    "reason": "Configured info remains a warning annotation by policy.",
+                    "placement": {
+                        "path": "src/lib.rs",
+                        "line": 12,
+                        "side": "RIGHT",
+                        "mode": "exact_seam_line"
+                    }
+                }],
+                "summary_only": []
+            }),
+        )?;
+        let generated = render_annotations(&repo, &AnnotationOptions::default())?;
+        assert!(
+            generated
+                .text
+                .contains("::warning file=src/lib.rs,line=12,title=ripr info focused_test::"),
+            "expected ::warning for info severity, got: {}",
+            generated.text
+        );
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
     }
 

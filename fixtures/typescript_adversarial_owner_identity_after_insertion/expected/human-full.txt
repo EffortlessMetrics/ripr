@@ -1,0 +1,146 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_adversarial_owner_identity_after_insertion/input
+
+Summary: 2 probe(s), 0 exposed, 1 weak, 0 unrevealed, 1 no path, 0 unknown
+
+Changed file(s) by language: rust: 0, typescript: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 9 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
+
+WARNING src/pricing.ts:6
+
+Changed
+  after:  export const DEFAULT_FEE_RULE: FeeRule = { bps: 300, cap: 50 };
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/pricing.ts::DEFAULT_FEE_RULE
+
+Language
+  language: typescript
+  status: preview
+  owner kind: module_function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: missing_context
+  repair packet ready: false
+  why not actionable: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route
+  repair route: add trusted related-test matching for this owner shape before emitting a repair packet
+  missing fields: related_test_or_observer, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: trusted related test or observer, target shape, verify command, receipt command, and edit boundaries
+  raw evidence: src/pricing.ts:6 (typescript_preview_probe) source=probe:src_pricing.ts:typescript_preview:fff3ea84 owner=DEFAULT_FEE_RULE
+
+Static exposure
+  no_static_path (warning, confidence 0.40)
+
+Evidence
+  - reach no: 0 related test(s) found for owner `DEFAULT_FEE_RULE`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation no: Strongest extracted oracle kind: `unknown` (rank 0)
+  - discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - owner: DEFAULT_FEE_RULE
+  - probe_fact: ambiguous_fallback
+  - typescript_package_confidence: none
+  - typescript_package_limitation: typescript_package_root_unresolved
+  - typescript_package_limitation: typescript_test_runner_unresolved
+
+Weakness
+  - No trusted TypeScript module-initializer observer for `DEFAULT_FEE_RULE`. Direct `expect(IMPORTED_CONST)...` and `expect(namespace.EXPORT)...` observers are supported, but helper-derived values, shadowed aliases, dynamic initialization, and non-expect references stay advisory in preview.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: DEFAULT_FEE_RULE
+  owner kind: module_function
+  changed behavior: predicate changed at src/pricing.ts:6: `export const DEFAULT_FEE_RULE: FeeRule = { bps: 300, cap: 50 };`
+  oracle: unknown (none)
+  suggested assertion shape: Add an exact boundary assertion for the changed predicate.
+  repair packet ready: false
+  why not actionable: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route
+  repair route: add trusted related-test matching for this owner shape before emitting a repair packet
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route
+  next capability needed: trusted related test or observer, target shape, verify command, receipt command, and edit boundaries
+
+Next step
+  TypeScript preview advisory: module initializer observer is missing context; add a direct `expect(IMPORTED_CONST).toBe(...)` or `expect(namespace.EXPORT).toEqual(...)` observer when safe, and keep helper-derived or dynamic initialization evidence advisory.
+
+WARNING src/pricing.ts:14
+
+Changed
+  after:    if (amount >= threshold) {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/pricing.ts::applyDiscount
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: advisory
+  category: ambiguous_related_test
+  repair packet ready: false
+  why not actionable: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof
+  repair route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection
+  missing fields: related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs
+  evidence needed: trusted token-aware relation plus complete verify, receipt, and edit-boundary fields
+  raw evidence: src/pricing.ts:14 (typescript_preview_probe) source=probe:src_pricing.ts:typescript_preview:bd772dc8 owner=applyDiscount
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach weak: 1 related test(s) found for owner `applyDiscount`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `unknown` (rank 0)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
+  - related test tests/pricing.test.ts:3 computes the processing fee uses unknown unknown oracle
+
+Weakness
+  - Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: applyDiscount
+  owner kind: function
+  changed behavior: predicate changed at src/pricing.ts:14: `if (amount >= threshold) {`
+  related test: tests/pricing.test.ts:3 computes the processing fee
+  oracle: unknown (unknown)
+  suggested assertion shape: Add an exact boundary assertion for the changed predicate.
+  repair packet ready: false
+  why not actionable: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof
+  repair route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof
+  next capability needed: trusted token-aware relation plus complete verify, receipt, and edit-boundary fields
+
+Next step
+  TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

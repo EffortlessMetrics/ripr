@@ -323,32 +323,30 @@ column = 9
 path = "crates/ripr/src/analysis/mod.rs"
 family = "unwrap"
 classification = "test_only"
-explanation = "Test helper function for writing test files"
+explanation = "Test helper: run_analysis with draft-mode AnalysisOptions in analyzes_simple_predicate_gap (panic-0026, perl_facts_path added C1)"
 
 [allow.selector]
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Draft, include_unchanged_tests: true, resolve_tsconfig_paths: false, })"
 
 [allow.last_seen]
-line = 254
+line = 327
 column = 19
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
 family = "unwrap"
 classification = "test_only"
-explanation = "Test helper function for writing test files"
+explanation = "Test helper: run_analysis with instant-mode AnalysisOptions in analyzes_simple_predicate_gap (panic-0027, perl_facts_path added C1)"
 
 [allow.selector]
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Instant, include_unchanged_tests: true, resolve_tsconfig_paths: false, })"
 
 [allow.last_seen]
-line = 271
+line = 345
 column = 23
 
 [[allow]]

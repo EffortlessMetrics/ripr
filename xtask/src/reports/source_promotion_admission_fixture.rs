@@ -293,6 +293,14 @@ fn configure_fixture_repository(repo: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Ledger rows the J5 negative control must not inherit, so that its synthetic
+/// surfaces stay uncovered under any HEAD ledger.
+const J5_UNCOVERED_SURFACES: &[&str] = &[
+    ".github/workflows/server-archive-qualification.yml|",
+    "crates/ripr/src/output/perl_gap_record_projection.rs|",
+    "xtask/src/tests.rs|",
+];
+
 fn build_j5_tree(repo: &Path, source_tree: &str, workspace: &Path) -> Result<String, String> {
     let index = workspace.join("j5.index");
     let index_text = path_text(&index)?;
@@ -304,8 +312,22 @@ fn build_j5_tree(repo: &Path, source_tree: &str, workspace: &Path) -> Result<Str
         "seed J5 tree index",
     )?;
     let current_ledger = git_bytes(repo, &["show", "HEAD:policy/network_allowlist.txt"])?;
-    let mut ledger = String::from_utf8(current_ledger)
+    let inherited = String::from_utf8(current_ledger)
         .map_err(|error| format!("network allowlist is not UTF-8: {error}"))?;
+    // The J5 control reproduces an under-covering ledger, so it must not inherit
+    // coverage for its own synthetic surfaces from whatever ledger the current
+    // HEAD happens to carry. The source-parent ledger has no rows for these
+    // paths, but a reconciled source/W7 join ledger does, which would silently
+    // turn this negative control into a passing one.
+    let mut ledger = inherited
+        .lines()
+        .filter(|line| {
+            !J5_UNCOVERED_SURFACES
+                .iter()
+                .any(|prefix| line.starts_with(prefix))
+        })
+        .map(|line| format!("{line}\n"))
+        .collect::<String>();
     if !ledger.ends_with('\n') {
         ledger.push('\n');
     }

@@ -7,6 +7,7 @@ use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_outline_for_classified_seam,
 };
 use crate::output::json::escape as json_escape;
+use crate::output::markdown::powershell_command;
 use crate::output::path::{display_path, display_path_text};
 use crate::output::pilot::commands::PilotCommands;
 use crate::output::pilot::ranking::{actionable_total, top_actionable_seams};
@@ -231,11 +232,36 @@ pub(crate) fn render_pilot_summary_md(
     out.push_str(
         "After adding one focused test, rerun repo exposure and compare the snapshots:\n\n",
     );
+    out.push_str(super::COMMAND_SHELL_DISCLOSURE);
     out.push_str("```bash\n");
     out.push_str(&commands.after_snapshot);
     out.push('\n');
     out.push_str(&commands.outcome);
     out.push_str("\n```\n");
+    let mut unavailable: Vec<&String> = Vec::new();
+    let mut translations: Vec<String> = Vec::new();
+    for command in [&commands.after_snapshot, &commands.outcome] {
+        match powershell_command(command) {
+            Some(line) => translations.push(line),
+            None => unavailable.push(command),
+        }
+    }
+    // Only fence translations that exist; a compound command under-emits to a
+    // disclosure naming the bash form instead of an invalid translation.
+    if !translations.is_empty() {
+        out.push_str("\n```powershell\n");
+        for line in &translations {
+            out.push_str(line);
+            out.push('\n');
+        }
+        out.push_str("\n```\n");
+    }
+    for command in unavailable {
+        out.push_str(&format!(
+            "{}: `{command}`\n",
+            crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE
+        ));
+    }
     out
 }
 
@@ -258,7 +284,7 @@ pub(crate) fn render_pilot_terminal(
     out.push_str(&format!("  timeout: {} ms\n", context.timeout_ms));
     out.push('\n');
 
-    if let Some(entry) = top.first() {
+    let route_not_applicable = if let Some(entry) = top.first() {
         let outline = targeted_test_brief_outline_for_classified_seam(entry);
         out.push_str("Top recommendation:\n");
         out.push_str(&format!(
@@ -270,23 +296,33 @@ pub(crate) fn render_pilot_terminal(
             entry.class.as_str()
         ));
         out.push_str(&format!("  why it matters: {}\n", why_line(entry)));
-        out.push_str(&format!(
-            "  focused test: add {} in {}\n",
-            outline.suggested_name,
-            display_path_text(&outline.suggested_file)
-        ));
+        if outline.is_not_applicable() {
+            out.push_str(&format!(
+                "  focused test: not applicable (route limited: {})\n",
+                outline.suggested_reason
+            ));
+        } else {
+            out.push_str(&format!(
+                "  focused test: add {} in {}\n",
+                outline.suggested_name,
+                display_path_text(&outline.suggested_file)
+            ));
+        }
         if let Some(value) = outline.candidate_value.as_ref() {
             out.push_str(&format!("  candidate value: {value}\n"));
         }
         out.push_str(&format!("  assertion: {}\n\n", outline.assertion_shape));
+        outline.is_not_applicable()
     } else if let Some(card) = python_top_repair_card(context.python_first_use) {
         out.push_str("Top recommendation:\n");
         push_python_repair_card_terminal(&mut out, card);
         out.push('\n');
+        false
     } else {
         out.push_str("Top recommendation:\n");
         out.push_str("  none ranked by the default pilot policy\n\n");
-    }
+        false
+    };
 
     if let Some(first_use) = context.python_first_use {
         push_python_first_use_terminal(&mut out, first_use);
@@ -302,7 +338,11 @@ pub(crate) fn render_pilot_terminal(
         "  {}\n\n",
         display_path(&context.artifacts.agent_seam_packets_json)
     ));
-    out.push_str("Run after adding the focused test:\n");
+    if route_not_applicable {
+        out.push_str("Run after producer evidence makes a repair route actionable:\n");
+    } else {
+        out.push_str("Run after adding the focused test:\n");
+    }
     out.push_str(&format!("  {}\n", commands.after_snapshot));
     out.push_str(&format!("  {}\n", commands.outcome));
     out

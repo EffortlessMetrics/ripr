@@ -1,0 +1,62 @@
+schema_version = "2.0"
+id = "ripr.slice.human-discriminator-state-label.v1"
+generation = 1
+
+source_issue = "issue:2273"
+design_reference = "RIPR-SPEC-0122"
+change_class = "behavior_change"
+
+claim_boundary = """
+Human output wording only. The bounded human finding digest labels the
+first discriminator line by exposure class: `Discriminator (observed,
+advisory)` for `exposed` findings (preview-language classifiers record an
+observation rationale in the same field) and `Missing discriminator` for all
+other classes. The `preview_limited` safe next action distinguishes a
+complete-but-advisory repair packet (shared validator authority) from one
+with missing fields. No analyzer classification, JSON schema, gate authority,
+or support-tier change; preview-language evidence stays advisory.
+"""
+
+non_goals = [
+  "analyzer or classifier changes in any language adapter",
+  "JSON, SARIF, GitHub annotation, badge, or repo-exposure output-shape changes",
+  "repair-packet validation changes (the shared validator stays the only authority)",
+  "support-tier promotion for preview languages (they stay preview/advisory)",
+  "human-full renderer wording changes",
+]
+
+return_conditions = [
+  "Return to root if a Rust `exposed` finding is observed carrying a non-empty `missing` entry in production.",
+  "Return to root if the shared repair-packet validator's completeness contract changes and the preview_limited wording diverges.",
+  "Return to root if a preview language without a structured repair-packet projection needs a distinct safe-next-action line.",
+]
+
+owned_seams = [
+  "seam:ripr:output:human-finding-digest",
+  "seam:ripr:output:human-triage-safe-action",
+  "seam:ripr:contract:ripr-spec-0122-discriminator-state-label",
+]
+
+shared_seams = [
+  "seam:ripr:output:preview-actionability-projection",
+  "seam:ripr:output:golden-fixture-outputs",
+]
+
+forbidden_seams = [
+  "seam:ripr:analysis:language-typescript-matchers",
+  "seam:ripr:analysis:classification-decision",
+  "seam:ripr:output:repair-packet-validator",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0122"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

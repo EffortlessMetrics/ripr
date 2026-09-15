@@ -1,3 +1,4 @@
+use super::mask_comments_and_strings;
 use crate::analysis::facts::LiteralFact;
 
 pub(crate) fn extract_literals(body: &str) -> Vec<String> {
@@ -11,8 +12,13 @@ pub(crate) fn extract_literals(body: &str) -> Vec<String> {
 }
 
 pub(crate) fn extract_literal_facts(body: &str, start_line: usize) -> Vec<LiteralFact> {
+    // Comments (line and block, nested) and string contents are erased
+    // before scanning so commented-out numbers never become evidence.
+    // Masking preserves newlines and byte layout, so line attribution
+    // stays exact.
+    let masked = mask_comments_and_strings(body);
     let mut literals = Vec::new();
-    for (offset, line) in body.lines().enumerate() {
+    for (offset, line) in masked.lines().enumerate() {
         let mut cursor = 0;
         while cursor < line.len() {
             if let Some((literal, next_cursor)) = numeric_literal_at(line, cursor) {

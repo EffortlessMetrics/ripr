@@ -92,7 +92,7 @@ ripr receipt write --gap <canonical_gap_id> --packet <packet_id> \
 | `--packet <packet_id>` | required | Identifies the repair packet the agent acted on. |
 | `--verify-command "<cmd>"` | required | The exact shell command that was run to verify the repair (e.g. `cargo test -p ripr`). Quoted. |
 | `--status <verify_status>` | required | The outcome of the verify command. See valid values below. |
-| `--out <path>` | optional | Write the receipt JSON to this path. When omitted, writes to `target/ripr/receipts/<canonical_gap_id>.json`. |
+| `--out <path>` | optional | Write the receipt JSON to this path. When omitted, writes to `target/ripr/receipts/<canonical_gap_id>.json` with filename-unsafe characters percent-encoded (see default path portability below). |
 
 The `ripr receipt check` command reads a receipt file and reports
 whether it is structurally valid and not stale:
@@ -103,7 +103,49 @@ ripr receipt check [--gap <canonical_gap_id>] [--path <receipt_path>]
 
 When `--gap` is provided without `--path`, `ripr receipt check`
 resolves the path from the canonical location
-`target/ripr/receipts/<canonical_gap_id>.json`.
+`target/ripr/receipts/<canonical_gap_id>.json` using the same default
+path portability rule as `receipt write`.
+
+### Default path portability
+
+Canonical gap ids commonly contain `:`-delimited segments, and `:` is not
+valid in a Windows filename. When `--out` / `--path` is omitted, both
+`receipt write` and `receipt check` derive the default file name by
+percent-encoding the escape character `%` itself and every character that
+is unsafe in filenames (`< > : " / \ | ? *` and ASCII control characters)
+as `%XX` (uppercase hex of the UTF-8 code point). The encoding is
+injective — distinct gap ids never collide on one file name —
+deterministic, and applied on every platform, so a colon-delimited gap id
+such as `gap:rust:pricing:aabbccdd` resolves to
+`target/ripr/receipts/gap%3Arust%3Apricing%3Aaabbccdd.json` everywhere.
+The complete relative default path, including `target/ripr/receipts/` and the
+`.json` extension, is capped at 260 bytes. If the encoded stem exceeds
+the derived filename budget, the path uses a bounded encoded prefix plus `~`
+and the lowercase SHA-256 digest of the full canonical ID.
+The canonical gap id inside the receipt JSON is unchanged; only its
+filesystem representation is made portable. Explicit `--out` / `--path`
+values are used verbatim.
+
+### Repository HEAD binding
+
+Every receipt written by `ripr receipt write` records the commit returned by
+`git rev-parse HEAD` for the process working directory in `current_head`.
+The field is populated even when `--current-head` is omitted. If a caller
+supplies `--current-head`, it is treated as an assertion and must match the
+actual repository HEAD; a plausible but stale SHA is rejected and no receipt
+is written. A write outside a Git repository, or against a repository without
+a resolvable HEAD, fails closed.
+
+`ripr receipt check` also requires `current_head` and validates it as a
+40-character hexadecimal SHA before reporting the receipt structurally valid.
+This is format/provenance validation only; the checker does not yet compare a
+transported receipt's head with a selected repository root.
+
+This is the first provenance floor for the receipt writer. It does not yet
+bind the receipt to an analysis artifact, configuration digest, executed
+command result, or a repository-root identity that can be checked after the
+receipt leaves the invoking process. Those follow-ups remain in #1941 and
+#1979.
 
 ### `canonical_receipt_command` field rule
 
@@ -142,9 +184,11 @@ never reaches `evidence_improved` or `resolved`.
 
 A receipt MUST bind to a `canonical_gap_id`. The `canonical_gap_id` is
 the stable identifier for the gap as emitted by `ripr` in the gap
-decision ledger and repair packets (format:
-`<crate>_<module>_<gap_kind>_<fp8>`). It MUST NOT be a
-line-keyed or session-local identifier.
+decision ledger and repair packets. Its serialization grammar is defined
+by RIPR-SPEC-0021 (Canonical Gap Identity): a `gap`-prefixed,
+colon-delimited, content-addressed identifier such as
+`gap:67fc764ba37d77bd` or `gap:typescript:<family>:<fp8>`. It MUST NOT
+be a line-keyed or session-local identifier.
 
 A receipt SHOULD carry a `packet_id`. The `packet_id` is the
 identifier of the specific repair packet the agent acted on. When a
@@ -223,6 +267,10 @@ no code changes.
 - Does not prove semantic correctness beyond the recorded verify
   command. A receipt records what was run; it does not certify
   the repair is complete or correct.
+- Does not make the free-form `--verify-command` an executed or
+  producer-authorized command. The current-head check binds only the
+  repository revision observed by the receipt writer; command execution and
+  result provenance remain separate contracts.
 - Does not use mutation-runtime vocabulary. The static-language
   constraint applies: the words `killed`, `survived`, `untested`,
   `proven`, and `adequate` are forbidden in receipt output.
@@ -291,6 +339,7 @@ non-zero on any error, printing a human-readable message to stderr.
 5. `ripr receipt check --path target/ripr/receipts/nonexistent.json` exits non-zero with an explicit "not found" error.
 6. `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id <id> --json` is accepted as the legacy alias and produces the same receipt output.
 7. No surface emits `ripr outcome ...` in the `receipt_command` field; any such occurrence is a failing test.
+8. A long punctuation-containing `canonical_gap_id` writes to the bounded default path and is found again by `ripr receipt check --gap <canonical_gap_id>`.
 
 ## Test Mapping
 
@@ -310,6 +359,9 @@ Unit tests (app layer) — `crates/ripr/src/app/receipt.rs`:
 - `receipt_check_no_path_no_gap_exits_nonzero`
 - `receipt_out_path_uses_explicit_path_when_provided`
 - `receipt_out_path_defaults_to_canonical_location`
+- `bounded_receipt_file_stem_caps_the_complete_default_path`
+- `bounded_receipt_file_stem_preserves_short_and_percent_boundaries`
+- `bounded_receipt_file_stem_handles_multibyte_prefix_boundaries`
 
 Integration smoke tests — `crates/ripr/tests/cli_smoke.rs`:
 
@@ -320,6 +372,7 @@ Integration smoke tests — `crates/ripr/tests/cli_smoke.rs`:
 - `receipt_check_missing_file_exits_nonzero_smoke`
 - `receipt_help_exits_zero_smoke`
 - `agent_receipt_legacy_alias_still_dispatches_smoke`
+- `receipt_default_long_gap_path_round_trips_smoke`
 
 Emitter-alignment tests (PR 2):
 

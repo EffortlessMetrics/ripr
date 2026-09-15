@@ -43,13 +43,16 @@ pub(crate) struct ReviewCommentsOptions {
     pub(crate) base: String,
     pub(crate) head: String,
     pub(crate) gap_ledger: Option<PathBuf>,
+    pub(crate) check_output: Option<PathBuf>,
     pub(crate) out: PathBuf,
+    pub(crate) timeout_ms: u64,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct GateOptions {
     pub(crate) input: output::gate::GateEvaluateInput,
     pub(crate) out: PathBuf,
     pub(crate) out_md: PathBuf,
+    pub(crate) mode_explicit: bool,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct BaselineCreateOptions {
@@ -223,6 +226,20 @@ pub(crate) struct ReportPacketIndexOptions {
 pub(crate) struct GapDecisionLedgerOptions {
     pub(crate) root: String,
     pub(crate) source: GapDecisionLedgerSource,
+    pub(crate) out: PathBuf,
+    pub(crate) out_md: PathBuf,
+}
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct TypeScriptLimitationsOptions {
+    pub(crate) root: String,
+    pub(crate) check_output: PathBuf,
+    pub(crate) out: PathBuf,
+    pub(crate) out_md: PathBuf,
+}
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct TypeScriptFalseActionableOptions {
+    pub(crate) root: String,
+    pub(crate) corpus: PathBuf,
     pub(crate) out: PathBuf,
     pub(crate) out_md: PathBuf,
 }

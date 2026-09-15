@@ -5,8 +5,39 @@ use serde_json::{Value, json};
 
 const AUTHORITY_BOUNDARY: &str = "preview_advisory_only";
 const SURFACE_SCOPE: &str = "check_json_human_sarif_github_gap_ledger_markdown";
-const VERIFY_STATUS: &str = "fact_only_not_delegated";
-const RECEIPT_STATUS: &str = "available_not_delegated";
+/// Status is constant because Perl is at preview tier and cannot delegate
+/// verify/receipt routes. These names make the "preview, not ready" contract
+/// explicit rather than implying the status is context-dependent (#2645).
+const VERIFY_STATUS: &str = "preview_fact_only_not_delegated";
+const RECEIPT_STATUS: &str = "preview_available_not_delegated";
+
+/// The readiness flags a Perl preview card is allowed to carry (Campaign 31
+/// item 6 formal scope-down). This bespoke card path predates ADR 0019 and
+/// violates its §83-86 rule ("no bespoke packet renderer / no language-local
+/// `repair_packet_ready` boolean"). It remains wired into production output
+/// (`github.rs`, `human/sections.rs`, `gap_decision_ledger.rs`,
+/// `json/report.rs`, `sarif.rs`) ONLY because the shared path
+/// (`perl_gap_record_for` → `validate_agent_gap_record_packet` → shared
+/// renderers) returns `None` for real Perl findings until perl-lsp-swarm Phase
+/// B lands the `gap_state:` evidence. Deleting it now would silence Perl
+/// advisory output until Phase B; instead, this function hard-pins every
+/// authority-ready flag to `false` and the regression test
+/// `perl_preview_card_advisory_only_readiness_never_flips_authority` proves no
+/// edit can flip one on without failing the test.
+///
+/// Full decommissioning (delete this card + route through the shared
+/// validator) is slated for the post-Phase-B PR (see the ADR-0019 comments at
+/// each call site + `perl_gap_record_projection.rs`). Until then, this is a
+/// formally-scoped, test-guarded dormant cardinal-sin: it can only ever
+/// produce markdown-advisory output, never an agent packet / PR comment / gate
+/// / badge / RIPR Zero authority.
+fn advisory_only_readiness() -> (bool, bool, bool, bool, bool, bool, bool) {
+    // public_projection_ready, public_repair_packet, repair_packet_ready,
+    // agent_packet_ready, gate_candidate, badge_candidate, ripr_zero_candidate
+    // — every authority surface is FALSE by construction except
+    // public_projection_ready (the advisory projection itself is allowed).
+    (true, false, false, false, false, false, false)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PerlPreviewCard {
@@ -94,6 +125,16 @@ pub(crate) fn perl_preview_card(finding: &Finding) -> Option<PerlPreviewCard> {
         .map(str::to_string)
         .or_else(|| strongest_related_test(finding).map(current_test_evidence))?;
 
+    let (
+        public_projection_ready,
+        public_repair_packet,
+        repair_packet_ready,
+        agent_packet_ready,
+        gate_candidate,
+        badge_candidate,
+        ripr_zero_candidate,
+    ) = advisory_only_readiness();
+
     Some(PerlPreviewCard {
         card_version: "perl_preview_card.v1".to_string(),
         source: "check_perl_preview".to_string(),
@@ -101,13 +142,13 @@ pub(crate) fn perl_preview_card(finding: &Finding) -> Option<PerlPreviewCard> {
         language_status: "preview".to_string(),
         authority_boundary: AUTHORITY_BOUNDARY.to_string(),
         surface_scope: SURFACE_SCOPE.to_string(),
-        public_projection_ready: true,
-        public_repair_packet: false,
-        repair_packet_ready: false,
-        agent_packet_ready: false,
-        gate_candidate: false,
-        badge_candidate: false,
-        ripr_zero_candidate: false,
+        public_projection_ready,
+        public_repair_packet,
+        repair_packet_ready,
+        agent_packet_ready,
+        gate_candidate,
+        badge_candidate,
+        ripr_zero_candidate,
         packet_id,
         canonical_gap_id: gap.id.clone(),
         gap_state: "actionable".to_string(),
@@ -169,6 +210,14 @@ pub(crate) fn perl_preview_card_json_value(card: &PerlPreviewCard) -> Value {
         "must_not_change": &card.must_not_change,
         "limits": &card.limits,
     })
+}
+
+/// Render the public Perl preview projection for the JSON report and SARIF
+/// output surfaces. Keeping construction and serialization behind one entry
+/// point prevents either serializer from accidentally exposing the internal
+/// receipt/edit-boundary evidence carried by a `Finding`.
+pub(crate) fn perl_preview_card_json(finding: &Finding) -> Option<Value> {
+    perl_preview_card(finding).map(|card| perl_preview_card_json_value(&card))
 }
 
 fn strongest_related_test(finding: &Finding) -> Option<&RelatedTest> {
@@ -325,7 +374,7 @@ fn limits() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{perl_preview_card, perl_preview_card_json_value};
+    use super::{perl_preview_card, perl_preview_card_json, perl_preview_card_json_value};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FindingCanonicalGap,
         LanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind, OracleStrength, Probe,
@@ -366,6 +415,9 @@ mod tests {
         assert_eq!(card.verify_command, "prove t/app.t");
 
         let value = perl_preview_card_json_value(&card);
+        let shared_value = perl_preview_card_json(&finding)
+            .ok_or_else(|| "expected shared public projection".to_string())?;
+        assert_eq!(shared_value, value);
         assert_eq!(
             value["surface_scope"],
             "check_json_human_sarif_github_gap_ledger_markdown"
@@ -378,9 +430,12 @@ mod tests {
         assert_eq!(value["badge_candidate"], false);
         assert_eq!(value["ripr_zero_candidate"], false);
         assert_eq!(value["verify"]["command"], "prove t/app.t");
-        assert_eq!(value["verify"]["status"], "fact_only_not_delegated");
+        assert_eq!(value["verify"]["status"], "preview_fact_only_not_delegated");
         assert!(value["receipt"]["command"].is_null());
-        assert_eq!(value["receipt"]["status"], "available_not_delegated");
+        assert_eq!(
+            value["receipt"]["status"],
+            "preview_available_not_delegated"
+        );
         assert_eq!(value["raw_evidence_refs"][0]["file"], "lib/My/App.pm");
         assert_eq!(value["raw_evidence_refs"][0]["line"], 8);
         assert!(value.get("allowed_edit_surface").is_none());
@@ -474,6 +529,69 @@ mod tests {
         assert!(perl_preview_card(&missing_provenance).is_none());
     }
 
+    /// Mechanical invariant (Campaign 31 item 6): the bespoke Perl preview
+    /// card path — which violates ADR 0019 §83-86 (bespoke renderer + no
+    /// shared-validator routing) — must NEVER carry a true authority-ready
+    /// flag. This test guards the dormant cardinal-sin: a future edit that
+    /// flips `repair_packet_ready`/`agent_packet_ready`/`gate_candidate`/
+    /// `badge_candidate`/`ripr_zero_candidate`/`public_repair_packet` to true
+    /// fails this test. The card may carry `public_projection_ready` (the
+    /// advisory projection itself) but no authority surface. Decommissioning
+    /// (route through `validate_agent_gap_record_packet`) is deferred to the
+    /// post-Phase-B PR.
+    #[test]
+    fn perl_preview_card_advisory_only_readiness_never_flips_authority() -> Result<(), String> {
+        let finding = sample_perl_finding();
+        let card = perl_preview_card(&finding)
+            .ok_or_else(|| "expected a preview card for the sample finding".to_string())?;
+        // Every authority-ready flag must be false.
+        assert!(
+            !card.public_repair_packet,
+            "public_repair_packet must NEVER be true on the bespoke card"
+        );
+        assert!(
+            !card.repair_packet_ready,
+            "repair_packet_ready must NEVER be true on the bespoke card"
+        );
+        assert!(
+            !card.agent_packet_ready,
+            "agent_packet_ready must NEVER be true on the bespoke card"
+        );
+        assert!(
+            !card.gate_candidate,
+            "gate_candidate must NEVER be true on the bespoke card"
+        );
+        assert!(
+            !card.badge_candidate,
+            "badge_candidate must NEVER be true on the bespoke card"
+        );
+        assert!(
+            !card.ripr_zero_candidate,
+            "ripr_zero_candidate must NEVER be true on the bespoke card"
+        );
+        // The advisory-source helper itself must produce all-false authority flags.
+        let (
+            public_projection_ready,
+            public_repair_packet,
+            repair_packet_ready,
+            agent_packet_ready,
+            gate_candidate,
+            badge_candidate,
+            ripr_zero_candidate,
+        ) = super::advisory_only_readiness();
+        assert!(public_projection_ready, "advisory projection is allowed");
+        assert!(
+            !public_repair_packet
+                && !repair_packet_ready
+                && !agent_packet_ready
+                && !gate_candidate
+                && !badge_candidate
+                && !ripr_zero_candidate,
+            "advisory_only_readiness() must return all-false authority flags"
+        );
+        Ok(())
+    }
+
     pub(crate) fn sample_perl_finding() -> Finding {
         Finding {
             id: "probe:lib_My_App_pm:8:perl_return".to_string(),
@@ -559,6 +677,7 @@ mod tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 

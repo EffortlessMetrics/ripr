@@ -7,6 +7,7 @@ use crate::output::perl_preview_card::perl_preview_card;
 use crate::output::preview_actionability::preview_actionability_for;
 use crate::output::python_repair_card::python_repair_card;
 use crate::output::typescript_preview_card::typescript_preview_card;
+use std::path::Path;
 
 /// Render findings as GitHub Actions workflow command annotations.
 ///
@@ -18,7 +19,29 @@ pub fn render(output: &CheckOutput) -> String {
 
 pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
     let mut out = String::new();
+    // Findings suppressed by an explicit `--suppression-policy` (#1441) are
+    // not annotated: filtering PR-annotation noise on accepted surfaces is
+    // the purpose of the policy. The JSON surface keeps them visible.
+    let suppressed_ids: std::collections::BTreeSet<&str> = output
+        .suppression
+        .iter()
+        .flat_map(|outcome| {
+            outcome
+                .suppressed
+                .iter()
+                .map(|entry| entry.finding_id.as_str())
+        })
+        .collect();
     for finding in &output.findings {
+        if suppressed_ids.contains(finding.id.as_str()) {
+            continue;
+        }
+        // Candidate-actionable eligibility (#3281): annotations are current
+        // PR obligations; base-side evidence and unresolved subjects remain
+        // visible on the check JSON and human surfaces.
+        if !finding.is_candidate_actionable() {
+            continue;
+        }
         let Some(annotation_level) = config
             .severity()
             .for_exposure(&finding.class)
@@ -77,9 +100,22 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             message.push_str(", suggested shape `");
             message.push_str(&card.suggested_assertion_shape);
             message.push_str("` (advisory preview; no repair packet).");
-            if let Some(grip) = &card.bun_cross_language_grip {
-                message.push_str(" Bun cross-language grip: ");
+            for (index, grip) in card.bun_cross_language_grips.iter().enumerate() {
+                if card.bun_cross_language_grips.len() == 1 {
+                    message.push_str(" Bun cross-language grip: ");
+                } else {
+                    message.push_str(" Bun cross-language grip ");
+                    message.push_str(&(index + 1).to_string());
+                    message.push('/');
+                    message.push_str(&card.bun_cross_language_grips.len().to_string());
+                    message.push_str(": ");
+                }
                 message.push_str(&grip.state);
+                message.push_str("; Rust seam `");
+                message.push_str(&grip.rust_file);
+                message.push(':');
+                message.push_str(&grip.rust_owner);
+                message.push('`');
                 message.push_str("; action `");
                 message.push_str(&grip.action);
                 message.push_str("`; suggested test file `");
@@ -96,6 +132,15 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
                 }
             }
         }
+        // ADR-0019 §83-86 bespoke path (Campaign 31 item 6 formal scope-down):
+        // this `perl_preview_card` call is a bespoke renderer that violates
+        // ADR-0019's "no bespoke packet renderer" rule. It remains because the
+        // shared path (`perl_gap_record_for` → `validate_agent_gap_record_packet`)
+        // returns `None` for real Perl findings until perl-lsp-swarm Phase B.
+        // It is hard-pinned to advisory-only (`advisory_only_readiness()`); the
+        // regression test `perl_preview_card_advisory_only_readiness_never_flips_authority`
+        // proves no authority flag can flip true. Full decommissioning is the
+        // post-Phase-B PR.
         if let Some(card) = perl_preview_card(finding) {
             message.push_str(" Perl preview card: missing discriminator `");
             message.push_str(&card.missing_discriminator);
@@ -109,7 +154,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         }
         out.push_str(&format!(
             "::{annotation_level} file={},line={},title={}::{}\n",
-            display_path(&finding.probe.location.file),
+            annotation_path(&output.root, &finding.probe.location.file),
             finding.probe.location.line,
             escape_cmd(&title),
             escape_cmd(&message)
@@ -119,6 +164,19 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         out.push_str("::notice title=ripr::No static exposure findings found\n");
     }
     out
+}
+
+fn annotation_path(root: &Path, file: &Path) -> String {
+    let relative = if root.is_absolute() {
+        file.strip_prefix(root).unwrap_or(file)
+    } else {
+        file
+    };
+    let mut displayed = display_path(relative);
+    while let Some(stripped) = displayed.strip_prefix("./") {
+        displayed = stripped.to_string();
+    }
+    displayed
 }
 
 fn python_no_action_annotation(finding: &Finding) -> Option<String> {
@@ -230,6 +288,7 @@ mod tests {
     #[test]
     fn render_reports_empty_findings_as_notice() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -238,7 +297,12 @@ mod tests {
             summary: Summary::default(),
             findings: vec![],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -259,8 +323,38 @@ mod tests {
     }
 
     #[test]
+    fn render_github_paths_are_repo_relative_without_dot_prefix() {
+        // Use a platform-correct absolute root so strip_prefix works on both
+        // Unix (where /workspace/repo is absolute) and Windows (where it is
+        // drive-relative and is_absolute() returns false).
+        let abs_root = std::env::temp_dir().join("ripr_github_annotation_test");
+        let mut output = output_with_unknown_finding();
+        output.root = abs_root.clone();
+        output.findings[0].probe.location.file = abs_root.join(".").join("crates/ripr/src/lib.rs");
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("file=crates/ripr/src/lib.rs,line=13"));
+        assert!(!rendered.contains("file=./"));
+        assert!(
+            !rendered.contains("file=") || !rendered.contains(&abs_root.display().to_string()),
+            "absolute root must not appear in the annotation file path: {rendered}"
+        );
+
+        let mut nested = output_with_unknown_finding();
+        nested.root = PathBuf::from("fixtures/boundary_gap/input");
+        nested.findings[0].probe.location.file =
+            PathBuf::from("fixtures/boundary_gap/input/src/lib.rs");
+
+        let nested_rendered = render(&nested);
+
+        assert!(nested_rendered.contains("file=fixtures/boundary_gap/input/src/lib.rs,line=13"));
+    }
+
+    #[test]
     fn render_uses_warning_for_exposed_and_default_message_without_stop_reason() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -308,14 +402,20 @@ mod tests {
                 observed_sink: None,
                 oracle_alignment: None,
                 alignment_reason: None,
+                source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
             }],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("::notice file=src/lib.rs,line=21,title=ripr exposed::"));
+        assert!(rendered.contains("::warning file=src/lib.rs,line=21,title=ripr exposed::"));
         assert!(rendered.contains("Static RIPR exposure finding"));
         assert!(!rendered.contains("Stop reason"));
     }
@@ -323,6 +423,7 @@ mod tests {
     #[test]
     fn render_uses_warning_annotation_for_warning_severity_findings() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -370,9 +471,15 @@ mod tests {
                 observed_sink: None,
                 oracle_alignment: None,
                 alignment_reason: None,
+                source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
             }],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -443,17 +550,40 @@ mod tests {
             "typescript_bun_ub_bridge_verdict: ts_missing_resizable missing_discriminators=resizable_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
             "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_resizable action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
             "typescript_bun_ub_test_placement: rank=1 suggested_test_file=test/js/web/fetch/blob.test.ts reason=\"existing Blob + ArrayBuffer integration tests live there; missing discriminator is resizable ArrayBuffer\" basis=configured_bridge_suggested_test_file,same_js_surface,same_boundary_vocabulary authority=preview_advisory_only repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_bridge_hint: confidence=configured_hint rust_file=src/jsc/array_buffer.rs rust_owner=copy_to_unshared rust_boundary=\"array_buffer.shared || array_buffer.resizable\" ts_test_file=test/js/web/fetch/blob.test.ts".to_string(),
+            "typescript_bun_ub_bridge_verdict: ts_missing_shared missing_discriminators=shared_array_buffer action=route_cross_language_oracle_visibility_limitation suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
+            "typescript_bun_ub_cross_language_grip: state=rust_ungripped_ts_missing_discriminator rust_grip=ungripped ts_verdict=ts_missing_shared action=route_cross_language_oracle_visibility_limitation authority=preview_advisory_only suggested_test_file=test/js/web/fetch/blob.test.ts repair_packet_ready=false".to_string(),
         ];
 
         let rendered = render(&output);
 
         assert!(
-            rendered.contains("Bun cross-language grip%3A rust_ungripped_ts_missing_discriminator")
+            rendered
+                .contains("Bun cross-language grip 1/2%3A rust_ungripped_ts_missing_discriminator")
         );
+        assert!(
+            rendered
+                .contains("Bun cross-language grip 2/2%3A rust_ungripped_ts_missing_discriminator")
+        );
+        assert!(rendered.contains("copy_to_unshared"));
         assert!(rendered.contains("action `route_cross_language_oracle_visibility_limitation`"));
         assert!(rendered.contains("suggested test file `test/js/web/fetch/blob.test.ts`"));
         assert!(rendered.contains("TypeScript placement%3A rank 1"));
         assert!(rendered.contains("missing discriminator is resizable ArrayBuffer"));
+        assert_eq!(
+            rendered.matches("TypeScript placement%3A rank 1").count(),
+            1,
+            "only the Blob profile may receive placement evidence"
+        );
+        let copy_profile = rendered
+            .split("Bun cross-language grip 2/2%3A")
+            .nth(1)
+            .unwrap_or_default();
+        assert!(!copy_profile.is_empty(), "expected copy profile annotation");
+        assert!(
+            !copy_profile.contains("TypeScript placement%3A"),
+            "copy_to_unshared must not receive placement evidence"
+        );
         assert!(rendered.contains("(preview advisory)."));
     }
 
@@ -539,8 +669,31 @@ mod tests {
         assert!(!rendered.contains("Python repair card"));
     }
 
+    #[test]
+    fn render_skips_policy_suppressed_findings() {
+        use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
+        let mut output = output_with_unknown_finding();
+        let finding_id = output.findings[0].id.clone();
+        output.suppression = Some(CheckSuppressionOutcome {
+            policy_path: "policy/ripr-suppressions.toml".to_string(),
+            suppressed: vec![SuppressedCheckFinding {
+                finding_id,
+                selector: "src/**".to_string(),
+            }],
+            warnings: Vec::new(),
+        });
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.is_empty(),
+            "policy-suppressed findings must not be annotated: {rendered}"
+        );
+    }
+
     fn output_with_unknown_finding() -> CheckOutput {
         CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -590,9 +743,15 @@ mod tests {
                 observed_sink: None,
                 oracle_alignment: None,
                 alignment_reason: None,
+                source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
             }],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         }
     }
 
@@ -818,6 +977,7 @@ mod tests {
     #[test]
     fn render_normalizes_backslash_location_path_to_forward_slash() {
         let output = CheckOutput {
+            harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
             tool: "ripr".to_string(),
             mode: Mode::Draft,
@@ -865,9 +1025,15 @@ mod tests {
                 observed_sink: None,
                 oracle_alignment: None,
                 alignment_reason: None,
+                source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
             }],
             preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
             no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
         };
 
         let rendered = render(&output);
@@ -880,5 +1046,34 @@ mod tests {
             !rendered.contains(r"src\pricing.ts"),
             "backslash path must not appear in github annotation; got:\n{rendered}"
         );
+    }
+
+    #[test]
+    fn base_deleted_findings_emit_no_github_annotations() -> Result<(), String> {
+        // RIPR-SPEC-0152: annotations are current PR obligations; the
+        // candidate-current twin keeps its annotation.
+        let mut base = output_with_unknown_finding();
+        let Some(finding) = base.findings.first_mut() else {
+            return Err("fixture finding expected".to_string());
+        };
+        finding.source_currentness = crate::domain::SourceCurrentness::BaseDeleted;
+        let annotations = super::render_with_config(&base, &crate::config::RiprConfig::default());
+        assert!(
+            !annotations.contains("::notice file=src/lib.rs")
+                && !annotations.contains("::warning file=src/lib.rs"),
+            "base-deleted finding must not annotate: {annotations}"
+        );
+
+        let mut current = output_with_unknown_finding();
+        if let Some(finding) = current.findings.first_mut() {
+            finding.source_currentness = crate::domain::SourceCurrentness::CandidateCurrent;
+        }
+        let annotations =
+            super::render_with_config(&current, &crate::config::RiprConfig::default());
+        assert!(
+            annotations.contains("::notice file=src/lib.rs"),
+            "candidate-current twin keeps its annotation"
+        );
+        Ok(())
     }
 }

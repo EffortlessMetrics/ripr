@@ -73,9 +73,12 @@ the `schema_version` stays `"0.1"`.
    `d.static_class ∈ {"weakly_gripped","ungripped","reachable_unrevealed","weakly_exposed"}`.
 2. `d.decision ∈ {"blocking","advisory"}` — suppressed, acknowledged, and
    not_applicable candidates are excluded (they are handled or ineligible).
-3. If `basis == "baseline"`: additionally `d.is_baseline_new` is true (the
+3. `d.repair_route.limitation == null`. Incomplete routes remain visible as
+   advisory decisions but are not policy-eligible debt for a downstream
+   threshold.
+4. If `basis == "baseline"`: additionally `d.is_baseline_new` is true (the
    per-decision baseline-new flag). If `basis == "diff"`: all surviving
-   candidates in step 1 and 2 count — diff scope equals "new".
+   candidates in steps 1 through 3 count — diff scope equals "new".
 
 CRITICAL HONESTY POINT: this count INCLUDES policy-eligible `advisory`
 decisions. It is NOT equal to `summary.blocking`. In `visible-only` mode, every
@@ -101,7 +104,7 @@ clean pass. A downstream thresholder at `max_new_unsuppressed=0` would pass on
 
 ## Controls
 
-Two unit tests in `crates/ripr/src/output/gate.rs` (RIPR-SPEC-0111 block):
+Three unit tests in `crates/ripr/src/output/gate.rs` (RIPR-SPEC-0111 block):
 
 1. `new_unsuppressed_counts_advisory_policy_eligible_candidates_not_just_blocking`:
    visible-only mode, 1 policy-eligible candidate → decision is "advisory"
@@ -112,6 +115,11 @@ Two unit tests in `crates/ripr/src/output/gate.rs` (RIPR-SPEC-0111 block):
    calibrated-gate without baseline → `config_error` status → `basis=null`,
    `count=0`, `reason` starts with `"analysis did not run"`. Proves fail-closed
    behavior.
+
+3. `new_unsuppressed_excludes_advisory_candidates_with_incomplete_repair_routes`:
+   an otherwise eligible advisory candidate missing its verify command keeps a
+   named `incomplete_repair_route` but produces `count=0`. Proves downstream
+   thresholding cannot override the structured-route fail-closed decision.
 
 ## Non-Goals
 
@@ -129,7 +137,7 @@ Two unit tests in `crates/ripr/src/output/gate.rs` (RIPR-SPEC-0111 block):
 
 ## Acceptance
 
-1. All 2 unit controls pass.
+1. All 3 unit controls pass.
 2. `RUSTFLAGS="-D warnings" cargo build -p ripr -p xtask` passes.
 3. `cargo clippy -p ripr --all-targets -- -D warnings` reports no issues.
 4. `cargo fmt --check` passes under the pinned toolchain.
@@ -186,6 +194,7 @@ Two unit tests in `crates/ripr/src/output/gate.rs` (RIPR-SPEC-0111 block):
 |---|---|
 | `new_unsuppressed_counts_advisory_policy_eligible_candidates_not_just_blocking` | Control 1: advisory inclusion, count ≠ blocking |
 | `new_unsuppressed_config_error_produces_null_basis_and_zero_count_with_reason` | Control 2: fail-closed |
+| `new_unsuppressed_excludes_advisory_candidates_with_incomplete_repair_routes` | Control 3: incomplete route excluded |
 
 ### Golden fixtures
 
@@ -196,7 +205,7 @@ Two unit tests in `crates/ripr/src/output/gate.rs` (RIPR-SPEC-0111 block):
 | `gate-adoption/baseline-new-gap` | basis="baseline", count=1, reason=null |
 | `gate-adoption/missing-baseline-config` | basis=null, count=0, reason="analysis did not run: ..." |
 | `gate-adoption/acknowledged` | basis="diff", count=0, reason=null |
-| `calibrated-gate/summary-and-suppressed` | basis="diff", count=1, reason=null (suppressed excluded) |
+| `calibrated-gate/summary-and-suppressed` | basis="diff", count=0, reason=null (incomplete advisory and suppressed decisions excluded) |
 
 ## Test Mapping
 
@@ -204,6 +213,8 @@ Two unit tests in `crates/ripr/src/output/gate.rs` (RIPR-SPEC-0111 block):
 |---|---|
 | `new_unsuppressed_counts_advisory_policy_eligible_candidates_not_just_blocking` | Controls §1, Behavior (advisory included), Acceptance §6 |
 | `new_unsuppressed_config_error_produces_null_basis_and_zero_count_with_reason` | Controls §2, Behavior (fail-closed rule), Acceptance §6 |
+
+| `new_unsuppressed_excludes_advisory_candidates_with_incomplete_repair_routes` | Controls 3, Behavior (incomplete route excluded), Acceptance 6 |
 
 ## Implementation Mapping
 

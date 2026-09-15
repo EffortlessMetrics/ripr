@@ -22,6 +22,7 @@
         "recommended_test": null,
         "suppressed": false
       },
+      "gap_state": null,
       "gate_reason": "summary-only recommendation remains visible and advisory",
       "id": "ripr-gate-summary-seam",
       "placement": {
@@ -33,6 +34,35 @@
         "baseline_identity": "summary-seam",
         "mode": "acknowledgeable",
         "threshold": "high_confidence_new_gap"
+      },
+      "repair_route": {
+        "authority_boundary": "static_ripr_evidence_only",
+        "canonical_gap_id": null,
+        "changed_behavior": null,
+        "changed_owner": null,
+        "classification": "weakly_gripped",
+        "inspection_command": null,
+        "limitation": {
+          "detail": "The gate cannot provide a complete bounded repair route from current evidence.",
+          "kind": "incomplete_repair_route",
+          "missing_fields": [
+            "canonical_gap_id",
+            "gap_state",
+            "changed_owner",
+            "changed_behavior",
+            "repair_target",
+            "test_intent",
+            "verify_command",
+            "receipt_command",
+            "inspection_command"
+          ]
+        },
+        "missing_discriminator": "amount == discount_threshold",
+        "receipt_command": null,
+        "repair_target": null,
+        "seam_id": "summary-seam",
+        "test_intent": null,
+        "verify_command": null
       },
       "seam_id": "summary-seam",
       "severity": "warning",
@@ -61,6 +91,7 @@
         "recommended_test": null,
         "suppressed": true
       },
+      "gap_state": null,
       "gate_reason": "configured-hidden or suppressed candidate preserved as `severity_off`",
       "id": "ripr-gate-suppressed-seam",
       "placement": {
@@ -72,6 +103,35 @@
         "baseline_identity": "suppressed-seam",
         "mode": "acknowledgeable",
         "threshold": "high_confidence_new_gap"
+      },
+      "repair_route": {
+        "authority_boundary": "static_ripr_evidence_only",
+        "canonical_gap_id": null,
+        "changed_behavior": null,
+        "changed_owner": null,
+        "classification": "weakly_gripped",
+        "inspection_command": null,
+        "limitation": {
+          "detail": "The gate cannot provide a complete bounded repair route from current evidence.",
+          "kind": "incomplete_repair_route",
+          "missing_fields": [
+            "canonical_gap_id",
+            "gap_state",
+            "changed_owner",
+            "changed_behavior",
+            "repair_target",
+            "test_intent",
+            "verify_command",
+            "receipt_command",
+            "inspection_command"
+          ]
+        },
+        "missing_discriminator": "amount == discount_threshold",
+        "receipt_command": null,
+        "repair_target": null,
+        "seam_id": "suppressed-seam",
+        "test_intent": null,
+        "verify_command": null
       },
       "seam_id": "suppressed-seam",
       "severity": "off",
@@ -96,7 +156,7 @@
   "mode": "acknowledgeable",
   "new_unsuppressed": {
     "basis": "diff",
-    "count": 1,
+    "count": 0,
     "reason": null
   },
   "policy": {

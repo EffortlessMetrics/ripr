@@ -43,27 +43,27 @@ source `ripr` to `ripr-swarm`.
 Closeout validation in this PR:
 
 ```bash
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 The merged PRs above carried the focused product validation:
 
 ```bash
-rtk cargo test -p ripr suggested_test -- --test-threads=1
-rtk cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
-rtk cargo test -p ripr lsp --lib
-rtk cargo xtask ripr-swarm readiness
-rtk cargo xtask evidence-quality-scorecard
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
+cargo test -p ripr suggested_test -- --test-threads=1
+cargo test -p ripr typescript_preview_card_projects_bun_cross_language_grip -- --test-threads=1
+cargo test -p ripr lsp --lib
+cargo xtask ripr-swarm readiness
+cargo xtask evidence-quality-scorecard
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-pr
 ```
 
 ## Claim Boundary

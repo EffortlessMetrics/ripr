@@ -1,0 +1,58 @@
+schema_version = "2.0"
+id = "ripr.slice.receipt-current-head-binding.v1"
+generation = 1
+
+source_issue = "issue:1941"
+design_reference = "RIPR-SPEC-0079#repository-head-binding"
+change_class = "security_contract_change"
+
+claim_boundary = """
+Makes the canonical receipt writer bind its emitted current_head to the
+actual Git HEAD observed in the invoking repository. A caller-supplied SHA is
+accepted only as a matching assertion. This slice does not bind free-form
+verification commands, analysis artifacts, configuration, or receipt checks
+to a re-executed proof.
+"""
+
+non_goals = [
+  "command execution",
+  "verification-result provenance",
+  "analysis-artifact binding",
+  "configuration binding",
+  "receipt signatures",
+  "gate authority",
+]
+
+return_conditions = [
+  "Return to root if current_head is again copied directly from caller input.",
+  "Return to root if a non-repository invocation emits a receipt.",
+  "Return to root if this slice is described as completing receipt provenance.",
+]
+
+owned_seams = [
+  "seam:ripr:app:canonical-receipt-writer",
+  "seam:ripr:agent:git-provenance-adapter",
+]
+
+shared_seams = [
+  "seam:ripr:contract:canonical-receipt-command",
+  "seam:ripr:security:repair-receipt-provenance",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:output:gate-authority",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0079#repository-head-binding"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

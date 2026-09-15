@@ -18,6 +18,7 @@
       "source": "ripr",
       "message": "ripr gap: MissingBoundaryAssertion; repair route: AddBoundaryAssertion; changed behavior: amount >= threshold; suggested check: assert_eq!(discounted_total(threshold), expected)",
       "data": {
+        "diagnostic_id": "gap:rust:pricing:threshold-boundary",
         "schema_version": "0.1",
         "source": "gap_decision_ledger",
         "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",

@@ -1,0 +1,31 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/assertion_shaped_oracle_test_file/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/assertion_shaped_oracle_test_file/input/src/fragment_checks.rs:8
+  Static exposure: infection_unknown (warning, confidence 0.66)
+  Why infection_unknown: the change reaches a sink but infection could not be determined statically
+  Changed behavior: fragment.crate_root.is_none()
+  Missing discriminator: No detected boundary input for the changed predicate
+  Related test: tests/fragments.rs:5 workspace_source_paths_are_stable
+  Next step: The changed owner is an assertion helper (its body is dominated by assert*/expect calls and nothing outside tests calls it); there is no fixture/builder for ripr.toml to describe. …
+  Evidence:
+    - reach yes: Related tests appear to reach assert_workspace_source_paths_are_stable: workspace_source_paths_are_stable
+    - infection unknown: Predicate changed, but no literal boundary was visible in the changed expression
+    - 5 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/assertion_shaped_oracle_test_file/input --diff fixtures/assertion_shaped_oracle_test_file/diff.patch --mode fast probe:src_fragment_checks.rs:predicate:41d9e03a
+  ripr context --root fixtures/assertion_shaped_oracle_test_file/input --diff fixtures/assertion_shaped_oracle_test_file/diff.patch --mode fast --at probe:src_fragment_checks.rs:predicate:41d9e03a
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

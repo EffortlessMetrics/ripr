@@ -20,17 +20,32 @@ Options:
   --root PATH        Workspace root. Defaults to current directory.
   --gap-ledger PATH  Gap decision ledger JSON. Defaults to target/ripr/reports/gap-decision-ledger.json.
   --language NAME    Language filter. Defaults to python.
-  --top N            Maximum queued packets to return. Defaults to 10.
+  --top N            Maximum assignable frontier candidates to return. Defaults to 10.
   --format json      Explicit JSON output. JSON is the only queue format.
   --json             Compatibility alias for JSON output.
 
 The queue command reads existing GapRecord artifacts and includes only records
 that are already eligible for `ripr agent packet --gap-ledger ... --gap-id ...`.
 It groups packets by `allowed_edit_surface` conflict group so schedulers can
-avoid parallel edits to the same test file. Staleness is reported as
-`not_evaluated` until a later receipt/ledger step compares the queue with the
-current git state. If the gap ledger omits root provenance or declares a root
-that differs from `--root`, the command emits a blocked queue with no packets.
+avoid parallel edits to the same test file. A packet is assignable only when
+producer-owned currentness validation yields `queue_state = queued` and
+`staleness_status = current`, and `--top` selects from that live-current
+assignable frontier after filtering, so a blocked record never consumes a
+bounded packet slot. The summary keeps the honest denominators: total
+validated candidates, assignable candidates, returned candidates, unreturned
+assignable candidates, stale candidates, and unevaluated candidates. That
+validation binds the ledger to its declared
+repo-exposure source, selected canonical root, exact clean HEAD, snapshot and
+content identities, and freshly reproduced GapRecords. Candidates that reach
+this live-currentness validation but are not assignable — legacy, unsupported,
+dirty, historical, mismatched, or receipt-stale evidence — remain visible in a
+bounded, command-free `blocked_review` projection with their typed state,
+reason, conflict group, and exact refresh route. A malformed ledger, a missing
+root provenance, or a root mismatch follows the error and blocker-envelope
+paths instead and does not carry the projection. The
+`source_currentness = candidate_current` record label alone is not freshness
+proof. If the gap ledger omits root provenance or declares a root that differs
+from `--root`, the command emits the existing blocked root-provenance envelope.
 "#;
 
 pub(super) const SWARM_INGEST_HELP: &str = r#"Classify one external agent result for safe repair-loop ingestion.

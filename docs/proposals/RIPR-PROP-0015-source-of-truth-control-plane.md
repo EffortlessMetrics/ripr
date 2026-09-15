@@ -131,7 +131,7 @@ Surfaces:
 - [`docs/specs/`](../specs/);
 - [`docs/adr/`](../adr/);
 - [`plans/`](../../plans/);
-- [`.ripr/goals/active.toml`](../../.ripr/goals/active.toml);
+- `.ripr/goals/active.toml` (deleted in #1701 PR 3);
 - [`docs/status/SUPPORT_TIERS.md`](../status/SUPPORT_TIERS.md);
 - [`policy/`](../../policy/);
 - [`.github/`](../../.github/);

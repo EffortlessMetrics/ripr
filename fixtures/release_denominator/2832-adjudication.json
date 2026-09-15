@@ -1,0 +1,79 @@
+{
+  "schema_version": "0.1",
+  "kind": "release_denominator_adjudication",
+  "cutoff_sha": "fcbb30a7cf6a37027fa377abafb617632b2e6f57",
+  "batches": [
+    {
+      "id": "2832-A-product",
+      "positions": [9, 10, 11, 17, 18, 19, 22, 23, 24, 26, 28, 32, 35, 36, 41, 43, 45, 51, 61, 66, 68, 77, 78, 79, 81, 92, 95, 96, 98, 101, 104, 105, 106, 107, 110, 112, 113, 114, 115, 116, 117, 118, 119, 120, 124, 129, 131, 132, 133, 134, 136, 140, 145, 147, 149, 153, 155, 156, 157, 160, 161, 163, 164, 165, 174, 176, 177, 179, 184, 191, 193, 196, 200, 203, 211, 212, 214, 216, 217, 219, 220, 224, 226, 229],
+      "disposition": "include_product",
+      "candidate_tree_state": "present_in_candidate",
+      "review_ref": "review:2832:batch-A-product",
+      "rationale": "The exact commit changes shipped product behavior, user-facing output, editor behavior, or producer-owned evidence and is retained in the provisional candidate projection."
+    },
+    {
+      "id": "2832-B-control",
+      "positions": [1, 2, 13, 27, 42, 62, 74, 83, 108, 121, 122, 123, 126, 127, 130, 141, 151, 159, 167, 173, 175, 180, 181, 183, 186, 188, 190, 192, 221, 225, 230],
+      "disposition": "include_control_or_honesty",
+      "candidate_tree_state": "present_in_candidate",
+      "review_ref": "review:2832:batch-B-control",
+      "rationale": "The exact commit changes release-control, traceability, evidence honesty, or policy authority and is retained so the provisional candidate remains auditable."
+    },
+    {
+      "id": "2832-C-infrastructure",
+      "positions": [3, 4, 5, 6, 7, 8, 12, 15, 16, 25, 29, 30, 31, 34, 37, 38, 39, 40, 44, 47, 48, 49, 52, 53, 56, 60, 63, 64, 65, 67, 69, 70, 71, 72, 73, 75, 76, 85, 87, 89, 93, 94, 109, 125, 128, 135, 137, 139, 142, 148, 152, 162, 166, 168, 169, 170, 171, 172, 178, 182, 185, 189, 194, 195, 202, 206, 207, 208, 209, 210, 215, 218, 222, 223, 227, 228],
+      "disposition": "include_release_infrastructure",
+      "candidate_tree_state": "present_in_candidate",
+      "review_ref": "review:2832:batch-C-infrastructure",
+      "rationale": "The exact commit changes test, workflow, package, dependency, platform, policy, or qualification infrastructure needed to reproduce and inspect the candidate."
+    },
+    {
+      "id": "2832-D-structural",
+      "positions": [14, 20, 21, 33, 46, 50, 54, 55, 57, 58, 59, 80, 82, 84, 86, 88, 90, 91, 97, 99, 100, 102, 103, 111, 138, 143, 144, 146, 150, 154, 158, 187, 197, 198, 199, 201, 204, 205, 213],
+      "disposition": "structural_no_semantic_delta",
+      "candidate_tree_state": "present_in_candidate",
+      "review_ref": "review:2832:batch-D-structural",
+      "rationale": "The exact commit is documentation, refactor, style, or maintenance work; the retained tree state is present, but this record makes no additional product-behavior claim."
+    }
+  ],
+  "overrides": [
+    {
+      "position": 81,
+      "batch_id": "2832-A-product",
+      "exclusion_id": "exclusion:2767:verification-execution",
+      "candidate_only_exclusion_granularity": "hunk_or_symbol",
+      "disposition": "candidate_only_exclusion",
+      "candidate_tree_state": "present_in_candidate",
+      "review_ref": "review:2832:exception-2767",
+      "delivered_delta": "PR #2396 adds the producer-owned verify-execute command and RepairReceiptV2 issuance surface.",
+      "challenged_disposition": "include_product",
+      "candidate_effect": "retain the development commit and reusable provenance/static-assurance foundations; #2835 must apply the exact execution-only path set with hunk-or-symbol-scoped projection rather than whole-file removal",
+      "residual_acceptance": "#2767/#2788 accepted Outcome A; #2835 must materialize the path-level exclusion and preserve the release non-claim that 0.11.0 does not execute verification commands or issue RepairReceiptV2.",
+      "candidate_only_excluded_paths": [
+        ".allow/spec-system/slices/verification-command-execution.v1.toml",
+        ".ripr/traceability.toml",
+        "crates/ripr/src/app.rs",
+        "crates/ripr/src/app/verification_execution.rs",
+        "crates/ripr/src/cli/agent.rs",
+        "crates/ripr/src/cli/commands/agent.rs",
+        "crates/ripr/src/cli/commands/agent_dispatch.rs",
+        "crates/ripr/src/cli/execute.rs",
+        "crates/ripr/src/cli/help.rs",
+        "crates/ripr/src/cli/help/agent.rs",
+        "crates/ripr/src/cli/help/overview.rs",
+        "crates/ripr/src/domain/verification_result.rs",
+        "crates/ripr/tests/cli_smoke.rs",
+        "crates/ripr/tests/verification_result.rs",
+        "docs/OUTPUT_SCHEMA.md",
+        "docs/specs/RIPR-SPEC-0135-assurance-state-vocabulary.md",
+        "policy/process_allowlist.txt",
+        "schemas/ripr/repair-assurance.schema.json"
+      ],
+      "review_evidence": [
+        "issue:2767",
+        "pr:2788",
+        "fixture:release_scope/accepted-outcome-a.json"
+      ]
+    }
+  ]
+}

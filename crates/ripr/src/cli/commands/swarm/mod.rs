@@ -1,4 +1,5 @@
 mod ingest;
+#[path = "queue_live.rs"]
 mod queue;
 
 use crate::cli::help;
@@ -18,7 +19,7 @@ pub(super) fn run(args: &[String]) -> Result<(), String> {
                 help::print_swarm_queue_help();
                 return Ok(());
             }
-            queue::run(queue::parse_options(rest)?)
+            queue::run_with_live_currentness(queue::parse_options(rest)?)
         }
         "ingest" => {
             if rest.iter().any(|arg| arg == "--help" || arg == "-h") {

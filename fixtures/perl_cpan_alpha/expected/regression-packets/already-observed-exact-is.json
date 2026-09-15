@@ -1,0 +1,177 @@
+{
+  "schema_version": "ripr-perl-facts-v1",
+  "packet_id": "perl-facts:cpan-alpha:already-observed-exact-is",
+  "packet_status": "complete",
+  "packet_fingerprint": "sha256:8c93eb841845b47315f38d393ace20ce845ccf66da00be7ba13d191ee55f9a96",
+  "producer": {
+    "name": "perl-lsp",
+    "version": "0.0.0-regression-fixture",
+    "capabilities": ["syntax", "workspace", "test_facts"]
+  },
+  "root": {
+    "repo_relative": ".",
+    "vcs_head": "pricing-alpha",
+    "path_style": "repo_relative"
+  },
+  "input": {
+    "base": "origin/main",
+    "head": "HEAD",
+    "diff_id": "sha256:diff:boundary-change",
+    "requested_fact_classes": ["owners", "changes", "tests", "oracles"]
+  },
+  "_regression_fixture_note": "REGRESSION FIXTURE, NOT PRODUCER PROOF. Hand-authored to mirror what a real `perllsp ripr-facts` run over the boundary-change diff (diff.patch) with the exact `is()` oracle would emit. The exact oracle's observed_sink aligns to the change's changed_observable, so the H2 classifier marks the change already-observed (Exposed, no repair gap). Real inner digests for lib/Pricing.pm and t/pricing.t. Consumed by the lib regression test. Real producer proof requires the two-binary harness against perl-lsp-swarm Phase B output.",
+  "files": [
+    {
+      "file_id": "file:lib/Pricing.pm",
+      "path": "lib/Pricing.pm",
+      "role": ["source"],
+      "digest": "sha256:5db18e7549357d045473db167b5089f2e0e872729755597638c7b95453157bad",
+      "package_names": ["Pricing"],
+      "provenance_refs": ["prov:file-index:source"]
+    },
+    {
+      "file_id": "file:t/pricing.t",
+      "path": "t/pricing.t",
+      "role": ["test"],
+      "digest": "sha256:0c3456804f8f20c99372d9b55344c4907f8082f07a460e92d0e54423aebf5aed",
+      "package_names": [],
+      "provenance_refs": ["prov:file-index:test"]
+    }
+  ],
+  "owners": [
+    {
+      "owner_id": "perl:lib/Pricing.pm::Pricing::calculate_discount",
+      "file_id": "file:lib/Pricing.pm",
+      "kind": "sub",
+      "package": "Pricing",
+      "name": "calculate_discount",
+      "range": {"start_line": 7, "start_column": 1, "end_line": 12, "end_column": 2},
+      "confidence": "high",
+      "provenance_refs": ["prov:syntax:calculate_discount"]
+    }
+  ],
+  "changes": [
+    {
+      "change_id": "change:lib/Pricing.pm:9:boundary",
+      "file_id": "file:lib/Pricing.pm",
+      "owner_id": "perl:lib/Pricing.pm::Pricing::calculate_discount",
+      "range": {"start_line": 9, "start_column": 9, "end_line": 9, "end_column": 24},
+      "behavior_hint": "predicate_boundary",
+      "changed_observable": "$amount >= 100",
+      "changed_text_digest": "sha256:boundary-change-gte-to-gt",
+      "provenance_refs": ["prov:diff:1"]
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "test:t/pricing.t:exact_is_threshold",
+      "file_id": "file:t/pricing.t",
+      "framework": "Test::More",
+      "name": "exact_is_threshold",
+      "range": {"start_line": 11, "start_column": 1, "end_line": 11, "end_column": 60},
+      "runner_hints": ["prove"],
+      "confidence": "medium",
+      "provenance_refs": ["prov:test-discovery:exact-is"]
+    }
+  ],
+  "oracles": [
+    {
+      "oracle_id": "oracle:t/pricing.t:11:is",
+      "test_id": "test:t/pricing.t:exact_is_threshold",
+      "kind": "exact_return_assertion",
+      "strength": "strong_exact",
+      "target_owner_id": "perl:lib/Pricing.pm::Pricing::calculate_discount",
+      "expression": "is(calculate_discount(100), 90, 'discount is 10% at threshold')",
+      "observed_sink": "$amount >= 100",
+      "expected_expression": "90",
+      "range": {"start_line": 11, "start_column": 1, "end_line": 11, "end_column": 60},
+      "confidence": "medium",
+      "provenance_refs": ["prov:oracle:exact-is"]
+    }
+  ],
+  "relations": [
+    {
+      "relation_id": "relation:change:boundary:test:exact-is",
+      "change_id": "change:lib/Pricing.pm:9:boundary",
+      "owner_id": "perl:lib/Pricing.pm::Pricing::calculate_discount",
+      "test_id": "test:t/pricing.t:exact_is_threshold",
+      "oracle_id": "oracle:t/pricing.t:11:is",
+      "relation_kind": "direct_owner_call",
+      "reachability_hint": "reachable",
+      "confidence": "medium",
+      "provenance_refs": ["prov:relation:exact-is"]
+    }
+  ],
+  "dynamic_boundaries": [],
+  "verify_commands": [
+    {
+      "command_id": "verify:t/pricing.t:prove",
+      "runner": "prove",
+      "argv": ["prove", "-l", "t/pricing.t"],
+      "scope": "file",
+      "test_id": "test:t/pricing.t:exact_is_threshold",
+      "confidence": "medium",
+      "preconditions": ["prove_on_path"],
+      "provenance_refs": ["prov:runner:exact-is"]
+    }
+  ],
+  "limitations": [],
+  "provenance": [
+    {
+      "provenance_id": "prov:file-index:source",
+      "source": "workspace",
+      "file_id": "file:lib/Pricing.pm",
+      "range": null,
+      "confidence": "high"
+    },
+    {
+      "provenance_id": "prov:file-index:test",
+      "source": "workspace",
+      "file_id": "file:t/pricing.t",
+      "range": null,
+      "confidence": "high"
+    },
+    {
+      "provenance_id": "prov:syntax:calculate_discount",
+      "source": "syntax",
+      "file_id": "file:lib/Pricing.pm",
+      "range": {"start_line": 7, "start_column": 1, "end_line": 12, "end_column": 2},
+      "confidence": "high"
+    },
+    {
+      "provenance_id": "prov:diff:1",
+      "source": "diff",
+      "file_id": "file:lib/Pricing.pm",
+      "range": {"start_line": 9, "start_column": 9, "end_line": 9, "end_column": 24},
+      "confidence": "high"
+    },
+    {
+      "provenance_id": "prov:test-discovery:exact-is",
+      "source": "test_discovery",
+      "file_id": "file:t/pricing.t",
+      "range": {"start_line": 11, "start_column": 1, "end_line": 11, "end_column": 60},
+      "confidence": "medium"
+    },
+    {
+      "provenance_id": "prov:oracle:exact-is",
+      "source": "oracle_extraction",
+      "file_id": "file:t/pricing.t",
+      "range": {"start_line": 11, "start_column": 1, "end_line": 11, "end_column": 60},
+      "confidence": "medium"
+    },
+    {
+      "provenance_id": "prov:relation:exact-is",
+      "source": "semantic",
+      "file_id": "file:t/pricing.t",
+      "range": {"start_line": 11, "start_column": 1, "end_line": 11, "end_column": 60},
+      "confidence": "medium"
+    },
+    {
+      "provenance_id": "prov:runner:exact-is",
+      "source": "runner_detection",
+      "file_id": "file:t/pricing.t",
+      "range": null,
+      "confidence": "medium"
+    }
+  ]
+}

@@ -13,6 +13,7 @@ pub(super) struct FirstPrOptions {
     pub(super) head: String,
     pub(super) check_output: Option<String>,
     pub(super) gap_ledger: String,
+    pub(super) gap_ledger_explicit: bool,
     pub(super) first_action: String,
     pub(super) review_comments: String,
     pub(super) agent_packet: String,
@@ -33,6 +34,7 @@ impl Default for FirstPrOptions {
             head: DEFAULT_HEAD.to_string(),
             check_output: None,
             gap_ledger: DEFAULT_GAP_LEDGER.to_string(),
+            gap_ledger_explicit: false,
             first_action: DEFAULT_FIRST_ACTION.to_string(),
             review_comments: DEFAULT_REVIEW_COMMENTS.to_string(),
             agent_packet: DEFAULT_AGENT_PACKET.to_string(),
@@ -73,6 +75,7 @@ pub(super) fn parse_options(args: &[String]) -> Result<FirstPrOptions, String> {
             "--gap-ledger" => {
                 i += 1;
                 options.gap_ledger = non_empty_arg(args, i, "--gap-ledger")?.to_string();
+                options.gap_ledger_explicit = true;
             }
             "--first-action" => {
                 i += 1;

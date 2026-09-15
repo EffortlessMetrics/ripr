@@ -64,8 +64,9 @@ lack a complete repair packet by definition.
 
 A gap record has a complete repair packet when:
 - `repairability == "repairable"`, AND
-- `verification_commands` is non-empty, AND
-- `receipt_command.is_some()`.
+- `verification_commands` is non-empty and every legacy display is non-whitespace
+  after trimming, AND
+- `receipt_command` is present and non-whitespace after trimming.
 
 A gap record is advisory when `language_status == "preview"` or
 `static_limit_kind.is_some()`.
@@ -84,7 +85,8 @@ completeness check applies. This exception is documented in the code.
 ### Limited / stale run policy
 
 When `snapshot_run_status` returns anything other than `"full"`
-(i.e. `"stale"`, `"cache_limited"`, `"limited"`, or `"seams_deferred"`):
+(i.e. `"stale"`, `"cache_limited"`, `"limited"`,
+`"limited_incomplete_input"`, or `"seams_deferred"`):
 
 - Finding diagnostics that would be WARNING are downgraded to INFORMATION.
 - Seam diagnostics that would be WARNING are downgraded to INFORMATION.
@@ -100,6 +102,9 @@ nothing → `"full"`). The interactive open/save path additionally defers the
 full-repo seam inventory and reports `"seams_deferred"` when no other
 limitation applies; see RIPR-SPEC-0105. `"seams_deferred"` is a member of this
 limited family for the downgrade/suppression policy above.
+An incomplete or unsupported producer-owned `AnalysisOutcome` maps to
+`"limited_incomplete_input"`; the typed outcome is retained on the snapshot
+and status surfaces, and it cannot authorize full-run gap diagnostics.
 
 ## Non-Goals
 
@@ -121,14 +126,18 @@ limited family for the downgrade/suppression policy above.
   `ConfigSeverity::Warning` mapping for that class.
 - A finding with `language_status = Some(Preview)` emits INFORMATION even when the
   exposure class maps to WARNING by default config.
-- A gap record with `repairability = "repairable"`, non-empty `verification_commands`,
-  and `receipt_command = Some(...)`, and `language_status = "stable"` emits WARNING.
+- A gap record with `repairability = "repairable"`, an all-non-whitespace
+  `verification_commands` list, a non-whitespace `receipt_command`, and
+  `language_status = "stable"` emits WARNING.
 - The same gap record with `receipt_command = None` emits INFORMATION.
 - A gap record with `language_status = "preview"` and an otherwise complete packet
   emits INFORMATION.
 - When `snapshot_run_status` returns `"stale"` (a `StaleArtifact` rejection is
   present), no gap-record diagnostics are emitted and finding/seam WARNINGs are
   downgraded to INFORMATION.
+- When a zero-finding snapshot carries an incomplete typed analysis outcome,
+  its run status is `"limited_incomplete_input"`, no gap-record diagnostics
+  are emitted, and finding/seam WARNINGs are downgraded to INFORMATION.
 
 ## Test Mapping
 
@@ -139,6 +148,7 @@ limited family for the downgrade/suppression policy above.
 - `no_warning_for_static_limit_gap_record` — complete packet + static_limit_kind=Some → INFORMATION.
 - `limited_run_downgrades_finding_warnings` — snapshot with static_limit finding → run_status="limited" → finding WARNING downgrades to INFORMATION.
 - `stale_run_suppresses_gap_record_diagnostics` — StaleArtifact rejection → run_status="stale" → gap records suppressed (is_full_run=false).
+- `typed_incomplete_outcome_never_projects_as_full` — incomplete producer outcome → run_status="limited_incomplete_input" → full-run repair diagnostics suppressed.
 
 ## Implementation Mapping
 

@@ -1,6 +1,10 @@
 src/**
 test/**
+test-fixtures/**
 tsconfig.json
 *.vsix
 dist/**
+out/test/**
 out/**/*.map
+out/test/**
+out/src/test/**

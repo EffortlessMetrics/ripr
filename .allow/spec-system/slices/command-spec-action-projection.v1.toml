@@ -1,0 +1,56 @@
+schema_version = "2.0"
+id = "ripr.slice.command-spec-action-projection.v1"
+generation = 1
+
+source_issue = "issue:1906"
+design_reference = "RIPR-SPEC-0135#command-spec"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Projects producer-owned, validated CommandSpec verify and receipt objects into
+LSP first-repair and gap-repair code-action payloads alongside legacy display
+strings. It does not execute commands, issue receipts, or implement riprAgent
+request DTOs.
+"""
+
+non_goals = [
+  "command execution",
+  "receipt provenance implementation",
+  "riprAgent request handling",
+  "legacy string removal",
+]
+
+return_conditions = [
+  "Return to root if action payloads reconstruct typed argv from display strings.",
+  "Return to root if malformed or role-mismatched specs enter an action payload.",
+  "Return to root if legacy command fields or refresh-only stale behavior changes.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:command-spec-action-projection",
+  "seam:ripr:lsp:command-spec-validation",
+]
+
+shared_seams = [
+  "seam:ripr:contract:repair-assurance-v1",
+  "seam:ripr:output:legacy-command-compatibility",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:agent:receipt-issuer",
+  "seam:ripr:lsp:ripr-agent-protocol",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0135#command-spec"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

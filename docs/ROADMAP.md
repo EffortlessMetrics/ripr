@@ -1,28 +1,146 @@
 # Roadmap
 
-This roadmap is the product plan for moving `ripr` from a published alpha to a
-live static exposure analyzer that developers and agents can rely on during a
-pull request.
+RIPR helps a developer reviewing changed behavior identify a missing or weak
+test discriminator and carry one bounded test repair through evidence,
+verification, and a receipt. It reports static exposure and explicit
+limitations; runtime mutation remains a separate confirmation step.
 
-The goal state is this loop:
+For first use, start with the [Quickstart](QUICKSTART.md) or
+[first successful PR workflow](FIRST_PR_WORKFLOW.md). This page is the builder
+entry point. The [retained history](#historical-roadmap-and-campaign-archive)
+preserves earlier campaigns without selecting current work.
+
+## Current product position
+
+The [support tiers](status/SUPPORT_TIERS.md) define what users may rely on.
+The [capability matrix](CAPABILITY_MATRIX.md) and its
+[machine-readable source](../metrics/capabilities.toml) carry the capability
+and proof inventory.
+
+Rust static exposure and bounded repair are `usable alpha`. Fixture,
+package, editor, and transaction evidence must remain separate from governed
+real-repository route yield and ordinary-user success. The support-tier
+promotion contract requires real repair and installed-user evidence; adding
+a roadmap entry or passing a fixture does not promote support.
+
+The shared product target remains:
 
 ```text
-Developer changes Rust behavior
--> ripr detects the changed behavior
--> ripr identifies the missing or weak discriminator
--> editor shows a precise diagnostic
--> hover explains the evidence path
--> code action emits agent-ready test intent
--> human or agent adds a targeted test
--> finding closes or downgrades
--> real mutation confirms later when the PR is ready
+changed behavior
+-> honest diagnostic or named limitation
+-> exact evidence and safe test target
+-> focused external test edit
+-> verification and before/after evidence
+-> receipt with an explicit outcome
 ```
 
-`ripr` stays focused on static oracle-gap analysis for diff-derived mutation
-probes. It does not become a full mutation runner, a coverage dashboard, a proof
-system, a second rust-analyzer, or a generic test generator.
+CLI, CI, editor, and agent surfaces should describe the same canonical item,
+evidence, next action, and limitation. The product stays one published
+`ripr` package with an experimental LSP sidecar; unsupported language or
+analysis behavior remains visible through its documented support boundary.
+
+## Now: continue the existing work
+
+[#1693](https://github.com/EffortlessMetrics/ripr-swarm/issues/1693) owns the
+usable-to-workable-to-release-ready outcome without authorizing a release.
+Its linked leaf acceptance governs each change. Re-read live issue and
+all-state PR evidence before using an older merge-front snapshot or starting
+a writer.
+
+These are entry points into existing work, not a replacement priority list:
+
+| User outcome | Existing owner and next bounded evidence |
+| --- | --- |
+| One useful Rust repair | [#3074](https://github.com/EffortlessMetrics/ripr-swarm/issues/3074) measures the governed post-producer route; [#3075](https://github.com/EffortlessMetrics/ripr-swarm/issues/3075) consumes a complete route for the first authorized test-only attempt; [#1560](https://github.com/EffortlessMetrics/ripr-swarm/issues/1560) owns the broader corpus and scorecard. Keep route observations distinct from counted repairs. |
+| Trustworthy quiet results | [#3164](https://github.com/EffortlessMetrics/ripr-swarm/issues/3164) owns judged quiet and emitted classifications with separate false-exposed and false-actionable denominators. Reuse landed panel work and advance its remaining proof; a seed panel does not establish broad accuracy. |
+| A usable editor and bounded agent interface | Follow the existing editor, interface, and real-usefulness leaves linked by [#1693](https://github.com/EffortlessMetrics/ripr-swarm/issues/1693). Acceptance includes honest stale/failure state, exact targets, bounded payloads, refresh, and clean shutdown. |
+| Recoverable documentation and next work | [#2324](https://github.com/EffortlessMetrics/ripr-swarm/issues/2324) owns roadmap, artifact lifecycle/support claims, current-state inventory, and cold-start recovery. This roadmap is [#2327](https://github.com/EffortlessMetrics/ripr-swarm/issues/2327); sibling work remains separate. |
+| An installable, qualified release | Use the source [release umbrella](https://github.com/EffortlessMetrics/ripr/issues/1463) and [execution board](https://github.com/EffortlessMetrics/ripr/issues/1606) for distribution, dependency/security decisions, first-hour proof, qualification, publication, and back-sync leaves. Ordinary swarm maintenance does not grant release authority. |
+
+## Next and blocked work
+
+Preserve each leaf's dependencies and existing candidate. In the real-repair
+lane, route observation precedes an authorized attempt; a packet requiring
+guessed targets or commands cannot satisfy the start condition. Broader corpus
+and installed-client claims require their own retained evidence.
+
+A missing input, source identity, permission, upstream capability, or proof
+remains a named blocker in its owning issue. Resolve an independently
+reviewable prerequisite first, then return to the dependent leaf. Independent
+documentation, correctness, and proof work can continue within its own
+accepted scope; the roadmap does not invent a repository-wide queue.
+
+Do not infer completion from an old issue checkbox, a merged child, an
+available command, or a green check with no subjects. Current source and
+retained exact-subject receipts decide what is delivered and what remains.
+Frequently changing inventories belong to the current-state work under
+[#2330](https://github.com/EffortlessMetrics/ripr-swarm/issues/2330), not copied
+counts in this document.
+
+## Current work-selection authority
+
+Start with the user-directed outcome, current repository contracts, and the
+live GitHub issue/PR graph. Follow [AGENTS.md](../AGENTS.md) and the narrowest
+repository procedure. Reuse an existing candidate for the same claim, respect
+live ownership, and build one coherent PR with acceptance, negative evidence,
+proof commands, non-goals, and cleanup.
+
+Runtime goal tracking supports the work; it does not replace issue acceptance,
+current-head review, required checks, or release authority. Retired singleton
+goal files and scheduler commands in the archive cannot select work or grant
+permission. Proposed portfolio tooling is also not a current execution gate.
+
+A completed slice records its exact proof and remaining limits, reconciles its
+issue and relevant source-of-truth documents, and removes only its own safe
+worktree, branch, and scratch artifacts. A partial slice keeps its residual
+acceptance visible for the next builder.
+
+## Release work and authority
+
+`EffortlessMetrics/ripr-swarm` is development authority;
+`EffortlessMetrics/ripr` is public release authority. Read the accepted
+immutable transaction receipts under
+[swarm #2379](https://github.com/EffortlessMetrics/ripr-swarm/issues/2379)
+together with [source #1463](https://github.com/EffortlessMetrics/ripr/issues/1463)
+and [source #1606](https://github.com/EffortlessMetrics/ripr/issues/1606)
+before acting on release work.
+
+The [release transaction runbook](RELEASE_TRANSACTION.md) and checked-in
+[live-head selection rule](release-candidates/0.11.0-live-head-selection.md)
+describe the transaction boundary. Current accepted pins and later source
+receipts belong to that transaction; rolling `main` movement or a version
+string does not select a replacement or establish qualification.
+
+This roadmap changes no release ordering, candidate membership, support tier,
+or publication permission. Exact artifact qualification, independent public
+verification, and ancestry-preserving back-sync retain their separate owners
+and acceptance. Publication, tagging, signing, and marketplace operations
+require their explicit authority.
+
+## Product boundaries
+
+RIPR remains a static mutation-exposure analyzer. It does not become a full
+mutation runner, a coverage dashboard, a proof system, a second rust-analyzer,
+or a generic test generator. A strong nearby assertion is not sufficient
+evidence unless it observes the changed behavior. Unknown and limited outcomes
+are useful results when their reason and next step are explicit.
+
+## Historical roadmap and campaign archive
+
+Everything below is retained planning and campaign history. Original section
+titles and anchors remain for existing links. Statements about then-current
+versions, completed proof, proposed ordering, or earlier selection mechanisms
+describe their historical context; the current sections above and linked live
+authorities govern new work.
+
+- [Earlier product target](#end-goal) and [parallel-lane model](#multi-lane-safe-swarm-autonomy).
+- [Campaign narratives](#current-position) and [release-era context](#release-position).
+- [Earlier strategy](#strategic-sequence), [quality rails](#quality-rail-sequence), and [PR queue](#pr-queue).
+- [Release frames](#release-frames), [canonical acceptance scenario](#canonical-acceptance-scenario), and [validation gate](#validation-gate-before-deeper-semantics).
 
 ## End Goal
+
+> Historical context; see [current direction](#current-product-position).
 
 `ripr`'s end goal is to be a repo-native, proof-carrying static exposure
 assistant.
@@ -49,6 +167,35 @@ proposal/spec/ADR/campaign/active goal/support tier/policy/evidence/closeout
 -> linked and checked PR by PR
 ```
 
+The CLI discoverability slice for that target is now closed: the default human
+`check` output routes findings to executable `explain` and `context` commands
+while preserving the analyzed scope. See the
+[CLI finding navigation closeout](handoffs/2026-07-28-cli-finding-navigation-discoverability-closeout.md).
+
+The next analyzer-honesty slice is also closed: policy scans include the
+editor's actual source languages, and repo/seam analysis discloses parser
+fallback through warm caches. See the [analyzer honesty and policy visibility
+closeout](handoffs/2026-07-29-analyzer-honesty-and-policy-visibility-closeout.md).
+
+The operator-signal slice is now closed: submodule changes, gate reasons, and
+GitHub annotation levels have explicit integrity proof, including the
+source-of-truth all-warning repair. See the [Campaign 35 closeout](handoffs/2026-07-29-operator-signal-integrity-closeout.md).
+
+Preview Projection Honesty is now closed: #2743 documents JSON ordering, and
+#2753 carries every configured TypeScript/Bun bridge profile through human,
+JSON, SARIF, and GitHub projections while preserving the documented
+first-profile compatibility alias without turning preview evidence into
+runtime or repair-packet authority. Follow-up #2764 records the remaining
+producer-through-renderer placement regression. See the [Campaign 36 closeout](handoffs/2026-07-29-preview-projection-honesty-closeout.md).
+
+The historical release-control campaign is tracked by #2766 and its
+dependent #2767/#2768/#2769 slices. Those slices are historical audit evidence;
+the active 0.11.0 authority now selects the exact live swarm head at the
+transaction boundary, with captured-input
+reports that fail closed on stale authority. It does not restore singleton
+active-goal authority or perform candidate qualification or publication. See
+the [Campaign 37 plan](../plans/release-control-0-11/implementation-plan.md).
+
 A PR is aligned when it moves one bounded capability, proves the movement,
 states the claim boundary, and leaves the next slice discoverable from the
 repo. The near-term product target is that a Rust PR author can use RIPR from
@@ -64,16 +211,16 @@ merge approval, or proof of correctness from static evidence alone.
 
 ## Multi-Lane Safe Swarm Autonomy
 
+> Historical context; see [current direction](#current-product-position).
+
 The swarm roadmap is intentionally **parallel-lane**, not a single serialized
 phase chain. Multiple lanes may move at the same time, but all lanes must
 converge through shared claim boundaries, evidence-level semantics, authority
 boundaries, and durable receipts.
 
-Roadmap eligibility is not execution authority. A lane starts only when current
-repo state selects it: an open PR, an accepted proposal/spec/plan work item, an
-active goal item, or an issue that links to those artifacts. If
-`cargo xtask goals next` says all unfinished items are blocked, this roadmap
-does not create a hidden ready item.
+This historical model used proposal/spec/plan items and active-goal metadata
+alongside GitHub lanes. The singleton goal selector and its command family
+were later retired; this model grants no current work-selection authority.
 
 The operating rule is:
 
@@ -114,11 +261,11 @@ All lanes must pass the same global gates:
 | F. Operator UX / Product Surface | First-useful "what now?" guidance and recovery docs | Roadmap/operator guidance artifacts | Create status-only docs churn |
 | G. Bounded Attempts (gated) | Attempt contracts and receipt model for dry-run/test-only work | Attempt schemas + attempt outcome receipts | Run production source edits by default |
 
-Lanes **A-F may proceed in parallel** only through PR-sized slices selected by
-the active goal, issue ledger, implementation plan, or source-of-truth stack.
-Lane **G is design-eligible** under the same selection rule, but execution
-remains gated on control-plane truth, judgment routing, evidence ladder
-readiness semantics, and explicit authority checks.
+In that historical model, lanes **A-F** were eligible for parallel PR-sized
+work. Lane **G** was design-eligible, while execution depended on control-plane
+truth, judgment routing, evidence ladder readiness semantics, and explicit
+authority checks. These historical eligibility labels do not select work
+today.
 
 ### Shared Evidence Vocabulary
 
@@ -141,6 +288,8 @@ These labels are descriptive; they do not grant source-promotion, dry-run, or
 merge authority without the linked proof and authority boundary.
 
 ## Current Position
+
+> Historical context; see [current direction](#current-product-position).
 
 The current alpha has the product shape in place:
 
@@ -481,12 +630,36 @@ editor changes, no generated tests, no mutation execution, no default CI
 blocking, no automatic config or baseline mutation, and no preview evidence
 promotion.
 
-## Current Operating Sequence: 0.9.0 Release and Evidence-To-Repair Routing
+## Release Position
 
-This section is the bridge between the closed campaign history above and the
-next product era. It records where the repo is, the end state the next era
-targets, and the only sanctioned path between them, so a maintainer or agent
-can resume this work from repository artifacts instead of chat history.
+> Historical context; see [current direction](#current-product-position).
+
+The current source package is `ripr` 0.11.0 (`crates/ripr/Cargo.toml`). Its
+release notes are staged as unreleased in [CHANGELOG.md](../CHANGELOG.md); the
+repository version now carries the 0.11.0 frame ahead of the publication
+transaction. The 0.9.0 language-adapter frame below is historical. The active
+0.11.0 selection rule is the exact transaction-boundary live swarm head in
+`release-candidates/0.11.0-live-head-selection.json`.
+
+### `0.11.0` - Replacement freeze (historical, superseded)
+
+The [historical 0.11.0 replacement freeze](release-candidates/0.11.0-replacement-freeze.json)
+and its [handoff](handoffs/2026-07-23-0.11.0-replacement-freeze.md) were the
+planning frame for that superseded transaction. They preserve the separation
+between static movement and externally run verification, and explicitly defer
+convenience, observability, historical-document, and optional-presentation changes. Do not
+read this candidate as a publication or as permission to bypass current source
+or release metadata.
+
+## Historical Operating Sequence: 0.9.0 Release and Evidence-To-Repair Routing
+
+> Historical context; see [current direction](#current-product-position).
+
+This section records the release-era bridge that preceded the current product
+campaign. The later Rust 0.10.0 frame made its post-0.9.0 activation condition
+historical. That period used `.ripr/goals/active.toml` and
+[RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md); the singleton
+selector has since been retired.
 
 ### Where the repo is
 
@@ -496,16 +669,17 @@ can resume this work from repository artifacts instead of chat history.
   RIPR-SPEC-0073 pin repo badge, PR gate, PR review cards, LSP/agent
   feedback, downstream review consumers, TypeScript/Bun evidence, large-repo
   diff-first operation, and receipts/outcomes/route quality.
-- [RIPR-PLAN-0061](../plans/use-case-specs/implementation-plan.md) sequences
-  the implementation work items for that spine. Active goals route through
-  that plan; this roadmap section does not create ready work items.
+- [RIPR-PLAN-0061](../plans/use-case-specs/implementation-plan.md) was the
+  release-era implementation sequence for that spine. It is historical;
+  [RIPR-PLAN-0062](../plans/rust-one-shot-evidence-to-repair.md) and the active
+  goal recorded that later selection; the goal is no longer a selector.
 - The post-freeze merge wave has been drained: the valid PRs deferred at
   freeze time were merged or closed with exact supersession citations.
 - The [0.9.0 swarm freeze note](handoffs/2026-06-05-0.9.0-swarm-freeze.md)
   records the original candidate SHA and the standing back-sync drift. Its
   deferred-PR list is stale by design: the merge wave landed the valid
-  deferred work after the note was written, so the candidate SHA must be
-  re-pinned before release.
+  deferred work after the note was written. Candidate refresh belonged to
+  that historical release transaction.
 
 ### Target end state
 
@@ -559,10 +733,10 @@ not fail.
 | R4 | Back-sync source `main` into swarm `main` with a merge commit. | Version and changelog parity restored (swarm `crates/ripr/Cargo.toml` still carries `0.7.0`; the `0.8.0` bump was source-side only); ahead/behind accounting works for future releases. This step is mandatory, not optional cleanup. |
 | R5 | Post-release cleanup sweep. | Stale worktrees, branches, stashes, `target/ripr` cache growth, generated reports, temp files, orphaned local processes, and rescue leftovers are removed; trunk is ready for implementation work. |
 
-### Phase I: implement from RIPR-PLAN-0061
+### Historical Phase I: implement from RIPR-PLAN-0061
 
-After R5, implementation resumes only through the active goal manifest
-routed at [RIPR-PLAN-0061](../plans/use-case-specs/implementation-plan.md),
+At release-planning time, implementation was to resume only through the active
+goal manifest routed at [RIPR-PLAN-0061](../plans/use-case-specs/implementation-plan.md),
 in the plan's own sequence: review file-and-line navigation, badge
 projection of canonical actionability and runtime status, advisory PR gate
 evidence delta, the first useful LSP action, downstream consumer export,
@@ -575,8 +749,8 @@ package, explicit claim boundary, explicit non-goals.
 
 ### Operating rules for this sequence
 
-- Work selection flows through `.ripr/goals/active.toml`; roadmap
-  eligibility is not execution authority.
+- At the time, work selection flowed through `.ripr/goals/active.toml`.
+  That singleton selection authority has since been retired.
 - PRs close only as merged, superseded with an exact replacement citation
   (PR, commit, or spec), or invalid with a cited reason. No vague deferral.
 - Actionability is never invented: raw findings are diagnostic material,
@@ -588,6 +762,8 @@ package, explicit claim boundary, explicit non-goals.
   requires them.
 
 ## Strategic Sequence
+
+> Historical context; see [current direction](#current-product-position).
 
 The load-bearing path is:
 
@@ -673,6 +849,8 @@ probe families are grounded in better facts.
 
 ## Quality Rail Sequence
 
+> Historical context; see [current direction](#current-product-position).
+
 Before large analyzer work, add the repo machinery that makes future PRs easy to
 write and review:
 
@@ -713,6 +891,8 @@ and [Scoped PR contract](SCOPED_PR_CONTRACT.md).
 
 ## Operating-System Cutoff
 
+> Historical context; see [current direction](#current-product-position).
+
 Do not wait for perfect automation before analyzer work. The cutoff is enough
 repo machinery that a future analyzer PR is pushed toward one production delta,
 one evidence package, and an actionable PR summary.
@@ -738,6 +918,8 @@ Nice later, not blocking:
 - local hook polish
 
 ## PR Queue
+
+> Historical context; see [current direction](#current-product-position).
 
 | Order | PR | Purpose | Release target |
 | ---: | --- | --- | --- |
@@ -783,6 +965,8 @@ Nice later, not blocking:
 | 37 | `policy-readiness-preview-evidence-governance` | Define when stable Rust and preview-language evidence can be shown, acknowledged, suppressed, baselined, calibrated, counted toward RIPR Zero, or gated without changing advisory defaults. | Lane 2 |
 
 ## Release Frames
+
+> Historical context; see [current direction](#current-product-position).
 
 ### `0.3.0` - Evidence Foundation
 
@@ -876,7 +1060,16 @@ Success condition:
 ripr can compare static exposure classes with real mutation results when explicit mutation data is present.
 ```
 
-### `0.9.0` - Language Adapter Preview
+### `0.10.0` - Honest-by-construction evidence and downstream gate adoption
+
+The current 0.10.0 frame is staged and unreleased. It hardens seam identity
+and sink-observation honesty across Rust, TypeScript, and Python, adds the
+consumer-verifiable `new_unsuppressed` gate receipt, cross-checks receipt
+ledger identity, and carries the evidence-promotion meta-gate. See the
+[0.10.0 changelog entry](../CHANGELOG.md#0100---honest-by-construction-evidence-and-downstream-gate-adoption)
+for the complete change and non-claim boundary.
+
+### `0.9.0` - Language Adapter Preview (released 2026-06-10)
 
 The shipped 0.9.0 content is recorded in the
 [0.9.0 swarm freeze note](handoffs/2026-06-05-0.9.0-swarm-freeze.md); the
@@ -931,6 +1124,8 @@ Common editor edits reclassify without rescanning the full workspace.
 ```
 
 ## Canonical Acceptance Scenario
+
+> Historical context; see [current direction](#current-product-position).
 
 Use one case as the product-in-miniature:
 
@@ -1007,6 +1202,8 @@ outputs with exact assertions, the finding disappears or downgrades.
 
 ## Validation Gate Before Deeper Semantics
 
+> Historical context; see [current direction](#current-product-position).
+
 Before investing in HIR, MIR, Charon, persistent storage, or wider probe
 families, the product should satisfy this suite:
 
@@ -1030,6 +1227,8 @@ families, the product should satisfy this suite:
 | Calibration | Imported mutation results are shown only as explicit calibration data. |
 
 ## Documentation Tracking
+
+> Historical context; see [current direction](#current-product-position).
 
 Every significant PR should update the matching docs:
 

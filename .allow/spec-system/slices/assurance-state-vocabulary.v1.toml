@@ -1,0 +1,59 @@
+schema_version = "2.0"
+id = "ripr.slice.assurance-state-vocabulary.v1"
+generation = 1
+
+source_issue = "issue:1978"
+design_reference = "RIPR-SPEC-0135#assurance-axes"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Defines the closed assurance vocabulary and design-only schema for static
+movement, explicit command execution, receipt issuance, and external runtime
+mutation evidence. Does not implement execution, receipts, gates, or runtime
+mutation confirmation.
+"""
+
+non_goals = [
+  "command execution",
+  "receipt provenance implementation",
+  "gate blocking",
+  "runtime mutation testing",
+  "support-tier promotion",
+]
+
+return_conditions = [
+  "Return to root if the assurance axes cannot preserve static-only compatibility with existing agent verify output.",
+  "Return to root if the future typed CommandSpec contract requires incompatible identity fields.",
+]
+
+owned_seams = [
+  "seam:ripr:contract:repair-assurance-v1",
+  "seam:ripr:docs:assurance-vocabulary",
+  "seam:ripr:fixtures:assurance-vocabulary",
+]
+
+shared_seams = [
+  "seam:ripr:agent:artifact-provenance",
+  "seam:ripr:docs:output-schema",
+  "seam:ripr:policy:document-artifact-ledger",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:agent:receipt-issuer",
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:analysis:runtime-mutation",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0135#assurance-axes"
+requirement_generation = 1
+
+[implementation_claim]
+status = "outstanding"
+
+[evidence]
+state = "design_only"
+
+[support_claim]
+state = "unchanged"

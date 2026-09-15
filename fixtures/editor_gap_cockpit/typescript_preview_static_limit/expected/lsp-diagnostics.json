@@ -18,6 +18,7 @@
       "source": "ripr",
       "message": "ripr preview gap: MissingMockedModuleAssertion; static limit: mocked_module; repair route: AddInteractionAssertion",
       "data": {
+        "diagnostic_id": "gap:ts:pricing:mocked-discount-client",
         "schema_version": "0.1",
         "source": "gap_decision_ledger",
         "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",

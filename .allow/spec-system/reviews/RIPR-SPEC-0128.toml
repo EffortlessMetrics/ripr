@@ -1,0 +1,16 @@
+schema_version = "1"
+producer = "xtask specs close"
+spec_id = "RIPR-SPEC-0128"
+spec_path = "docs/specs/RIPR-SPEC-0128-retired-active-goal-authority-audit.md"
+content_digest = "sha256:87daad1dca357c7235500b91c0d65a5d03ac4c5cd8b30a35df900ead8a8ba30b"
+status_observed = "deprecated"
+observed_at = "2026-08-30"
+reviewed_by = "ZCode agent (session 2026-08-30, verified by landing PR review)"
+disposition = "current_no_source_change"
+disposition_detail = "Deprecated tombstone is current by its own text reserving RIPR-SPEC-0128 as a deprecated historical identifier; its Required Evidence holds because the docs/specs/README.md index row lists the identifier as deprecated with the #1701 reason and the traceability ledger records the artifact, so no source change is needed and the identifier stays reserved."
+reasons_inspected = []
+evidence_refs = []
+limitations = []
+receipt_id = "sha256:0d81deb35407b5e73ed0ddaf17ace80cf6edbac6fa283d1a0b461b05900134c7"
+claim_boundary = "An asserted, content-bound record that this exact spec content was observed by the named reviewer and reached the labeled advisory maintenance disposition; the PR review that lands the receipt is the verification act."
+non_claims = ["specification correctness or completeness", "normative document status, requirement lifecycle, implementation, evidence, or support state", "acceptance, deprecation, supersession, migration, merge eligibility, or branch protection"]

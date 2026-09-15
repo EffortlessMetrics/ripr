@@ -49,6 +49,10 @@ The contract is:
   in decision metadata when present in inputs;
 - imported runtime mutation calibration is confidence evidence only; the gate
   never runs a mutation tool;
+- when targeted mutation is routed, the evidence packet carries a structured
+  producer-owned candidate and bounded command or a named static limitation;
+  a bare `requires_targeted_mutation` boolean is never the complete repair
+  route;
 - static decisions use RIPR static evidence vocabulary and never claim runtime
   adequacy;
 - every gate run writes deterministic JSON and Markdown before returning a
@@ -141,6 +145,12 @@ acknowledged, what stayed advisory, and why.
 `config_error` for malformed command-line arguments, unreadable required files,
 or invalid policy values.
 
+When `ripr gate evaluate` omits `--mode` and stderr is non-interactive, the CLI
+must print a warning that the default is `visible-only`, that it records
+advisory evidence, and that it never blocks. The warning must not change the
+decision, exit status, JSON, or Markdown report. An explicit
+`--mode visible-only` suppresses the warning; blocking modes remain opt-in.
+
 ## Labels And Acknowledgement
 
 `ripr-waive` is the default acknowledgement label. It means:
@@ -204,6 +214,26 @@ Stable identity comparison order:
 Canonical gap identity is semantic evidence identity, not a new policy mode.
 When present it lets reviewed baseline debt survive line movement and ordinary
 refactors without making generated workflows blocking by default.
+
+Rule 5 is the legacy fallback selector. It is the least stable identity: a
+stale entry left behind by a source edit, or a genuinely different gap that
+shares the anchor, collides with it. A baseline match that succeeds only via
+rule 5 is a legacy compatibility event and must not stay silent:
+
+- The match still suppresses blocking during the compatibility window
+  (`is_baseline_new` remains `false`). Flipping fallback-only matches to new
+  is a deferred deprecation decision; the destination is canonical-only
+  matching, after which a fallback-only collision blocks like any other new
+  candidate.
+- The evaluator must emit a report-level warning naming the candidate and the
+  matched legacy identity.
+- The evaluator must record `baseline_match_kind: "legacy_path_line_class"`
+  on the decision payload. The field is additive: canonical matches (rules
+  1-4) and baseline-new candidates omit it, so their rendered decisions stay
+  byte-identical.
+
+A match on any of rules 1-4 is a canonical identity match and carries no
+fallback disclosure, even when the fallback selector would also have matched.
 
 If the baseline is required but missing, unreadable, malformed, or produced by
 an incompatible schema, the evaluator returns `config_error`. It must not guess
@@ -505,6 +535,9 @@ Calibrated gates must not:
   suppressed or not applicable.
 - Ambiguous mutation calibration does not raise confidence enough to block.
 - Missing optional mutation calibration does not invent runtime confidence.
+- A severe RIPR gap with a safe Rust predicate/operator fact emits a bounded
+  targeted-mutation candidate; unsupported or ambiguous seam families emit a
+  named `static_limitation` instead.
 
 ## Test Mapping
 
@@ -514,6 +547,9 @@ Initial implementation should add tests for:
 - decision JSON and Markdown rendering;
 - acknowledgement label handling;
 - baseline comparison behavior;
+- `pr_evidence` candidate and limitation projection for targeted mutation;
+- `impacted_evidence` preserves the same targeted-mutation route without
+  executing a mutation engine;
 - high-confidence candidate filtering;
 - configured severity and suppression behavior;
 - missing and malformed input reports;

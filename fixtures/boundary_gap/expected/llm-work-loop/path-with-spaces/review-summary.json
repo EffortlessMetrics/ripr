@@ -18,11 +18,12 @@
       "recommended_action": "Run the next command listed by agent status."
     }
   },
+  "analysis_outcome": null,
   "next_command": {
     "step": "before_snapshot",
     "artifact": "target/ripr/workflow/before.repo-exposure.json",
     "reason": "before snapshot artifact is missing",
-    "command": "ripr check --root \"repo root\" --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+    "command": "ripr check --root 'repo root' --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
   },
   "surfaces": [
     {
@@ -32,7 +33,7 @@
       "state": "computed",
       "status": "incomplete",
       "required": true,
-      "summary": "0 required artifacts present, 6 missing, 0 warnings. Command: ripr agent status --root \"repo root\" --json > target/ripr/workflow/agent-status.json"
+      "summary": "0 required artifacts present, 7 missing, 0 warnings. Command: ripr agent status --root 'repo root' --json > target/ripr/workflow/agent-status.json"
     },
     {
       "name": "agent_workflow",
@@ -78,6 +79,15 @@
       "status": "optional_missing",
       "required": false,
       "summary": "LSP cockpit artifact is not present."
+    },
+    {
+      "name": "analysis_outcome",
+      "label": "Analysis outcome",
+      "path": "target/ripr/workflow/analysis-outcome.json",
+      "state": "missing",
+      "status": "missing",
+      "required": true,
+      "summary": "Analysis outcome artifact is missing."
     }
   ],
   "ci_artifacts": [
@@ -107,6 +117,11 @@
       "state": "missing"
     },
     {
+      "name": "analysis_outcome",
+      "path": "target/ripr/workflow/analysis-outcome.json",
+      "state": "missing"
+    },
+    {
       "name": "agent_receipt",
       "path": "target/ripr/reports/agent-receipt.json",
       "state": "missing"
@@ -123,13 +138,14 @@
     }
   ],
   "reviewer_summary": {
-    "headline": "Review packet is incomplete for unknown seam.",
-    "what_changed": "No static before/after movement is available because the agent receipt is missing.",
+    "headline": "Review packet is incomplete for unknown seam: producer analysis outcome is unavailable.",
+    "what_changed": "No producer-backed completeness result is available; static review evidence cannot be treated as complete.",
     "evidence": "Run agent receipt after verify to create review evidence.",
     "remaining": "Run the next command listed by agent status.",
     "reviewer_should_inspect": [
       "target/ripr/reports/agent-receipt.json",
       "target/ripr/workflow/agent-verify.json",
+      "target/ripr/workflow/analysis-outcome.json",
       "target/ripr/reports/operator-cockpit.json",
       "target/ripr/reports/repo-exposure.json"
     ]
@@ -141,4 +157,3 @@
     "generated_tests": false
   }
 }
-

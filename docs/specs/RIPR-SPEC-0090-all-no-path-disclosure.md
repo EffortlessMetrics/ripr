@@ -1,6 +1,6 @@
 # RIPR-SPEC-0090: All-No-Path Disclosure
 
-Status: proposed
+Status: accepted
 
 Owner: product / swarm
 
@@ -24,7 +24,13 @@ Linked issues:
 
 Linked PRs:
 
-- None yet
+- [#1188](https://github.com/EffortlessMetrics/ripr-swarm/pull/1188) -
+  implemented the all-no-path aggregate disclosure and closed #1185.
+- [#1203](https://github.com/EffortlessMetrics/ripr-swarm/pull/1203) -
+  removed runtime-mutation vocabulary from the guidance.
+- [#1300](https://github.com/EffortlessMetrics/ripr-swarm/pull/1300) -
+  replaced wording that implied no test exists with conservative
+  untraced-static-path language.
 
 Support-tier impact:
 
@@ -85,15 +91,31 @@ The disclosure does NOT fire when:
 
 ### Human output
 
-When the condition holds, the following advisory note is appended after the
-findings loop, before any preview-language advisories (RIPR-SPEC-0082):
+When the condition holds, the original proposal appended this advisory note
+after the findings loop, before any preview-language advisories
+(RIPR-SPEC-0082):
 
 ```
 Note: ripr found no static test path for any of the N changed expression(s) in this diff. This is not a coverage assessment — it means no co-located test was found that statically discriminates the changed behavior.
 ```
 
+The accepted implementation now appends this wording:
+
+```
+Note: ripr found no static test path for any of the N changed expression(s) in this diff. Scope analyzed: M changed Rust file(s), N changed expression(s), and T statically linked related test(s). This is not a coverage assessment. A test may already exercise these changes through macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, add co-located tests that observe the changed behavior.
+```
+
 Where N is the total no-path/unknown count
-(`no_static_path + infection_unknown + propagation_unknown + static_unknown`).
+(`no_static_path + infection_unknown + propagation_unknown + static_unknown`),
+M is `summary.changed_rust_files` when non-zero, and T is the count of unique
+related tests by file, name, and line across all findings.
+
+If `summary.changed_rust_files` is zero, the scope sentence omits the changed
+Rust file count rather than fabricating a file count:
+
+```
+Scope analyzed: N changed expression(s) and T statically linked related test(s).
+```
 
 The note does not change the exit code or pass/fail status.
 
@@ -123,8 +145,14 @@ bump. The JSON `check.json` shape is unchanged.
 
 - `CheckOutput.summary` fields: `findings`, `exposed`, `weakly_exposed`,
   `reachable_unrevealed`, `no_static_path`, `infection_unknown`,
-  `propagation_unknown`, `static_unknown`. These fields already exist in
-  `crates/ripr/src/domain/summary.rs` — no new fields needed.
+  `propagation_unknown`, `static_unknown`, and `changed_rust_files`. These
+  fields already exist in `crates/ripr/src/domain/summary.rs` - no new fields
+  needed.
+
+- `CheckOutput.findings[].related_tests` for the linked related-test count.
+  Tests are counted uniquely by file, name, and line across all findings. This
+  is a count of tests statically linked to the findings, not a full test
+  inventory.
 
 ## Inputs
 
@@ -133,6 +161,8 @@ bump. The JSON `check.json` shape is unchanged.
 | `summary.findings` | yes | Gate: only fire when findings > 0 |
 | `summary.exposed`, `summary.weakly_exposed`, `summary.reachable_unrevealed` | yes | Suppress disclosure when any finding is reached |
 | `summary.no_static_path + .infection_unknown + .propagation_unknown + .static_unknown` | yes | Count for the disclosure message |
+| `summary.changed_rust_files` | yes | Scope count when non-zero |
+| `findings[].related_tests` | yes | Statically linked related-test count |
 
 ## Outputs
 
@@ -145,7 +175,8 @@ bump. The JSON `check.json` shape is unchanged.
 
 1. **Primary case**: diff has 1 changed expression, no tests — human output
    includes `Note: ripr found no static test path for any of the 1 changed
-   expression(s) in this diff.`
+   expression(s) in this diff.` and the scope sentence names 1 changed Rust
+   file, 1 changed expression, and 0 statically linked related tests.
 2. **Multi-finding all-no-path**: diff has 5 changed expressions, all
    no-path — disclosure shows count 5.
 3. **Mixed case (do NOT emit)**: diff has 3 findings, 1 is `exposed`, 2 are
@@ -166,6 +197,7 @@ bump. The JSON `check.json` shape is unchanged.
 - `crates/ripr/src/output/human.rs::tests::render_omits_all_no_path_disclosure_when_zero_findings`
 - `crates/ripr/src/output/human.rs::tests::render_all_no_path_disclosure_uses_finding_count_not_probe_count`
 - `crates/ripr/src/output/human.rs::tests::render_all_no_path_disclosure_uses_conservative_static_language`
+- `crates/ripr/src/output/human.rs::tests::render_all_no_path_disclosure_counts_linked_related_tests`
 - `fixtures/all_no_path_disclosure` (golden fixture)
 
 ## Implementation Mapping
@@ -193,7 +225,7 @@ bump. The JSON `check.json` shape is unchanged.
 - Behavioral repro (a): `ripr check --diff fixtures/all_no_path_disclosure/diff.patch`
   on an all-no-path diff → human output includes
   `Note: ripr found no static test path for any of the 1 changed expression(s)`
-  and JSON output is unchanged.
+  plus the scope-count sentence, and JSON output is unchanged.
 - Behavioral repro (b): `ripr check --diff crates/ripr/examples/sample/example.diff`
   on a diff with exposed findings → human output does NOT include the
   all-no-path disclosure.
@@ -201,5 +233,6 @@ bump. The JSON `check.json` shape is unchanged.
 ## Metrics
 
 - Gate: all disclosure acceptance tests pass, including the golden fixture.
-- Promote to accepted when real-world usage confirms the all-no-path wall-of-N
-  result is no longer opaque to users.
+- Accepted after #1188 closed the wall-of-N usability gap and later
+  no-static-path wording work made the disclosure conservative about tests that
+  may exist behind unsupported static paths.

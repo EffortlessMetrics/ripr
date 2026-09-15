@@ -111,31 +111,31 @@ scorecard/regression signal. Candidate Lane 1 repairs include:
 The preceding report and handoff slices were validated with:
 
 ```text
-rtk cargo fmt --check
-rtk cargo test -p xtask finding_alignment_presentation_text
-rtk cargo test -p xtask evidence_quality_scorecard
-rtk cargo test -p xtask evidence_quality_trend
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-traceability
-rtk cargo xtask check-capabilities
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo fmt --check
+cargo test -p xtask finding_alignment_presentation_text
+cargo test -p xtask evidence_quality_scorecard
+cargo test -p xtask evidence_quality_trend
+cargo xtask check-output-contracts
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
 ```
 
 This closeout PR should run:
 
 ```text
-rtk cargo test -p xtask evidence_quality_benchmark
-rtk cargo xtask check-fixture-contracts
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-traceability
-rtk cargo xtask check-capabilities
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p xtask evidence_quality_benchmark
+cargo xtask check-fixture-contracts
+cargo xtask check-output-contracts
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-pr
+git diff --check
 ```
 
 ## Artifacts

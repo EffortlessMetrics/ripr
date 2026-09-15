@@ -102,16 +102,17 @@ lane:
 Full CI is opt-in by policy trigger (label/manual dispatch/main push/release/
 schedule/merge queue), not the default PR path.
 
-### 4) Hosted fallback boundary
+### 4) GitHub-hosted source route boundary
 
-- Do **not** remove, narrow, or relabel the current protected GitHub-hosted
-  Rust-small fallback without updating the routed-runner docs, active-goal
-  state, and branch-protection contract in the same PR.
-- The current routed Rust-small workflow may select GitHub-hosted when a PR is
-  untrusted, runner state cannot be read, or no idle image-ready CX53/CX43
-  runner is available. That result remains a valid protected-path success while
-  the CX53/CX43 proof closeout is blocked.
-- Do **not** replace a targeted Rust-small fallback with broader hosted full CI
+- Do **not** remove, narrow, or relabel the protected GitHub-hosted Rust-small
+  route without updating the routed docs and branch-protection contract in the
+  same PR.
+- GitHub-hosted execution is the source repository's intentional, fully
+  supported route, not a fallback (ripr#1446). Do **not** reintroduce
+  organization runner discovery, a private runner-read secret, or self-hosted
+  labels into the source workflow; that authority belongs to `ripr-swarm`, and
+  `check-workflows` rejects those tokens.
+- Do **not** replace the targeted Rust-small route with broader hosted full CI
   unless the PR names the cost, proof obligation, and explicit trigger such as
   `full-ci`, `release-check`, or `ci-budget-ack`.
 
@@ -267,22 +268,102 @@ implement and validate the lane-selection logic.
 | Label | Effect |
 | --- | --- |
 | `full-ci` | Run required, advisory, and release-like lanes. Demotes `ripr-waive` for this PR. Expected to cost more. |
-| `release-check` | Run the currently wired release-surface proof without opting into every `full-ci` lane. Today that is package list and publish dry-run. |
+| `release-check` | Run the currently wired release-surface proof without opting into every `full-ci` lane: package list, publish dry-run, and release-readiness. |
 | `vscode` | Run editor extension lanes even when no editor path changed. |
 | `coverage` | Run coverage lanes and upload coverage artifacts. |
 | `ripr-waive` | Acknowledge a soft static exposure finding for this PR. Does not skip CI and does not apply when `full-ci` is present. |
 | `ci-budget-ack` | Acknowledge that this PR intentionally exceeds the expected LEM band. |
 | `clippy-future` | Run future or candidate Clippy lint lanes in advisory mode. |
+| `windows-ci` | Run the advisory Windows lane on a pull request without opting into every `full-ci` lane. |
 
 New labels that affect CI must update this table, the PR template, and the
 budget/risk-pack policy files in the same PR.
 
 These labels are the documented target vocabulary. Today, `release-check` and
-`full-ci` activate the Rust workflow's package list and publish dry-run steps
-on pull requests. Other label effects remain target vocabulary until a later PR
+`full-ci` activate the Rust workflow's package list, publish dry-run, and
+release-readiness steps on pull requests. Other label effects remain target vocabulary until a later PR
 wires them into a PR plan or workflow condition. The GitHub Settings App
 contract in `.github/settings.yml` codifies these label names, descriptions,
 and colors so the reviewable vocabulary does not drift in the GitHub UI.
+
+### Advisory Windows Lane
+
+This repository is developed on Windows and Linux but was only continuously
+validated on Linux. Platform-specific test-harness bugs therefore shipped and
+stayed green on `main`: four separate classes were found only once someone ran
+the suite on Windows by hand — #2390 (path interpolated into JSON), #2391 (host
+separator compared against server output), #2409 (fixture swallowed a git
+failure), #2429 (host separator in a portable output contract).
+
+The drift runs in both directions. #2337 is the inverse case — goldens blessed
+on Windows that fail on Linux. Each platform was blind to the other's breakage,
+and single-platform CI was the root cause enabling both.
+
+`.github/workflows/windows-advisory.yml` (#2442) closes the gap:
+
+- **Scope.** `cargo test --workspace`, twice. No test or golden `cargo xtask`
+  gates and no blessing — a Windows lane that blessed or checked goldens would
+  institutionalize the #2337 drift it exists to catch. There is one required
+  `cargo xtask` step, `windows-advisory-summary`, which validates the two run
+  logs and their captured exit statuses; it is evidence validation, not a test
+  gate, and it fails the job when the evidence is missing or unusable.
+- **Two samples per run.** The suite runs twice on purpose: one sample cannot
+  separate a reproducible failure from a load-dependent flake. The summarizer
+  tracks three states per test (failed, observed pass, not observed) and reports
+  `masked_unknown` rather than guessing about a test it never saw. Two failures
+  are reported as `repeated_failure`, not "deterministic" — a shared race can
+  reproduce twice.
+- **Advisory outcomes, non-advisory evidence.** A failing test does not fail the
+  job. A missing log, a missing captured exit status, or a summarizer crash
+  does. A lane that reports success while proving nothing is exactly the
+  false-confidence condition it exists to prevent.
+- **Selection.** A daily schedule for standing signal, `workflow_dispatch`, and
+  pull requests labeled `windows-ci` or `full-ci`.
+
+Promotion to required is gated on #2430 and on stability across repeated runs on
+hardware that reproduces the failures — the hosted runner does not reproduce the
+parallel-load class in #2419 at all, so green runs there prove nothing about it.
+Promoting a lane that is already red converts a useful signal into background
+noise reviewers learn to skip, which is the false-confidence failure mode in
+reverse.
+
+Measured on `7b7d1322`: 3781 library tests and 150 CLI smoke tests pass on
+Windows. The original count of 14 known failures was reduced by #2417, #2416,
+and #2431. One failure remains — #2430,
+`lsp_lifecycle::compat_journey_collect_workspace_status_over_real_wire`, where
+`ripr.refresh` exceeds the harness's 15s response budget. Unlike the #2419
+class, it reproduces on the hosted runner: two independent `windows-latest` runs
+produced the identical `timed out waiting for response id 3`, and it reproduces
+5 of 5 on a Windows developer host. That is the lane doing its job — a platform
+question that could not be settled from one machine, settled by CI.
+
+### Advisory Specification Maintenance Digest
+
+The Source of Truth workflow owns the advisory spec maintenance digest
+(#3467). `cargo xtask specs digest` runs the same inventory pipeline as
+`specs maintenance` (one scan, one DTO) and writes the full
+`spec-maintenance.{json,md}` reports plus a short bounded
+`spec-maintenance-digest.md` for the step summary; the full report is
+retained as the `ripr-spec-maintenance` artifact.
+
+- **Triggers.** A weekly schedule (no more frequent than weekly), explicit
+  `workflow_dispatch`, and pull requests that touch spec governance paths
+  (`docs/specs/**`, `docs/templates/**`, `.ripr/traceability.toml`,
+  `.allow/spec-system/**`, `docs/status/SUPPORT_TIERS.md`, or the workflow
+  itself). Source-only PRs do not start it.
+- **Three states.** Candidates found (`maintenance_status:
+  attention_required`) and no candidates (`clean`) are both successful
+  observations; neither count changes the exit status. A structurally blind
+  scan (the spec index absent and nothing scanned) is `attention_required`,
+  not `clean`. An instrument failure (unreadable spec, serialization error)
+  exits nonzero with no digest written, the step fails visibly, and the
+  `if: always()` summary annotates `maintenance_status: instrument_failure`
+  — a failed advisory observation, not a failed required gate.
+- **Non-blocking by construction.** The digest job is `continue-on-error`
+  and is not in `.github/settings.yml` required contexts; a scheduled run
+  queues behind an active one (`cancel-in-progress: false`) so a nearly
+  complete inventory is not discarded. The lane creates no issues,
+  comments, labels, or branch-protection mutation.
 
 ### Cheaper Signal First
 
@@ -336,57 +417,94 @@ and should usually be split.
 
 ## Current Workflows
 
-### Swarm Routed Rust
+### Routed Rust
 
-`ripr-swarm` adds `.github/workflows/routed-rust.yml` as the development-trunk
-Rust gate. It exposes one branch-protection-facing check:
+`.github/workflows/routed-rust.yml` is the source repository's Rust gate. It
+exposes one branch-protection-facing check:
 
 ```text
 Ripr Rust Small Result
 ```
 
-The implementation jobs are conditional and should not be required directly:
+The implementation jobs are conditional and must not be required directly:
 
 ```text
 Route Ripr Rust Small
-Ripr Rust Small on CX53
-Ripr Rust Small on CX43
 Ripr Rust Small on GitHub Hosted
+Ripr Docs Gate
 ```
 
 Routing policy:
 
 ```text
-trusted same-repo PR or push:
-  CX53 if idle
-  CX43 if idle
-  GitHub-hosted otherwise
+every supported source subject:
+  GitHub-hosted Rust proof
 
-fork or otherwise untrusted PR:
-  GitHub-hosted only
+docs-only pull request:
+  docs gate; the Rust proof is not applicable
 ```
 
-The router uses the repository or organization `EM_RUNNER_READ_TOKEN` secret
-when available. It selects a self-hosted runner only when the runner is idle and
-has both the host label (`CX53` or `CX43`) and the `em-ci-rust-1.95`
-runner-image/toolchain readiness label. If runner state cannot be read, or a
-runner is idle but not image-ready, the workflow fails closed to GitHub-hosted
-rather than selecting a self-hosted runner by guesswork.
+The source repository proves its own pull requests on GitHub-hosted runners.
+Self-hosted runner capacity is `ripr-swarm` authority, so the source route
+performs no organization runner discovery, requests no private runner secret,
+and does not treat GitHub-hosted execution as a degraded fallback (ripr#1446).
+The route job emits three negative assertions that the normalized result job
+re-checks and fails closed on:
 
-The route job and protected result summaries include count-only runner
-diagnostics so operators can separate missing host runners, busy runners, and
-missing `em-ci-rust-1.95` readiness labels without exposing runner names,
-registration tokens, secrets, or full label inventories. The protected result
-job also receives those values as environment variables, so downloaded result
-logs are sufficient for issue proof.
+```text
+self_hosted_selection_attempted=false
+private_runner_secret_requested=false
+org_runner_query_attempted=false
+```
 
-The copyable self-hosted proof runbook is in
-[`docs/swarm-development.md`](swarm-development.md#self-hosted-proof-runbook).
-Use it to record CX53 primary proof, CX43 fallback proof, or the bounded
-runner availability blocker without exposing runner tokens or secrets.
+The selected child and result job retain three byte-owned JSON packets plus the
+human-readable plan under `target/ripr/reports/`:
+
+```text
+routed-rust-plan.json
+routed-rust-plan.md
+routed-rust-execution.json
+routed-rust-result.json
+```
+
+The plan owns the exact subject/tree, changed-path inventory digest, typed
+applicability, runner/toolchain/Cargo/lock/cache/artifact identities, and ordered
+required-proposition set. The execution packet binds to the SHA-256 of those
+exact plan bytes and records each required proposition as `passed`, `failed`, or
+`not_run`; every observed command row names the exact retained command and the
+SHA-256 of its uploaded log bytes. Its aggregate state may additionally be
+`cancelled` or `instrument_failure`. The result job independently observes the
+current subject, paths, typed applicability, environment identities, cache
+outputs, and artifact name, then validates the downloaded packet pair and log
+bytes together with the GitHub conclusion and all three route assertions before
+writing its own packet. Job outputs schedule work and cross-check observations;
+they are not durable proof by themselves.
+
+This workflow is restore-only for every event. It never writes a cache after
+executing candidate or manually selected code; trusted cache production belongs
+to a separately protected control path.
+
+The aggregate goes green only for an exact, complete `passed` packet pair. A
+missing proposition, unavailable or malformed packet, setup/instrument failure,
+subject mismatch, plan-digest mismatch, or contradiction with GitHub's child
+conclusion stays non-green.
+
+Workflow code does not make a check protected by itself. Repository protection
+must separately require `Ripr Rust Small Result`; until live protection does so,
+this job is normalized evidence but not merge authority.
+
+`ripr-swarm` keeps its own self-hosted routed lane; the copyable self-hosted
+proof runbook lives in
+[`docs/swarm-development.md`](swarm-development.md#self-hosted-proof-runbook)
+and applies to that repository, not to source pull requests.
 
 The routed lane runs the existing Rust/product command surface without release
-package or publish dry-run steps. It keeps advisory evidence artifacts
+package or publish dry-run steps. The required lane invokes the shared
+`cargo xtask precommit` gate table after the cargo build/test steps and keeps
+only the lane-only gates enumerated (`check-evidence-promotion-honesty`,
+`check-dependencies`, `check-process-policy`, `check-network-policy`,
+`goldens check`, `fixtures`); the docs-gate job runs the same precommit table
+for docs-only pull requests. It keeps advisory evidence artifacts
 non-blocking and uploads the normal `target/ripr` report packet when present.
 
 The legacy Rust workflow currently runs on pushes to `main` or `master`, manual
@@ -403,6 +521,7 @@ cargo xtask check-no-panic-family
 cargo xtask check-allow-attributes
 cargo xtask check-local-context
 cargo xtask check-file-policy
+cargo xtask check-covered-by
 cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
@@ -417,7 +536,6 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-goals
 cargo xtask check-pr-shape
 cargo xtask check-generated
 cargo xtask check-badge-diff-policy
@@ -434,6 +552,8 @@ release-surface package checks:
 ```bash
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
+release_version="$(cargo pkgid -p ripr | sed 's/.*#//')"
+cargo xtask release-readiness --version "$release_version"
 ```
 
 The CI workflow also has an explicit MSRV job that pins Rust `1.95.0` and runs:
@@ -448,8 +568,8 @@ toolchain, while the MSRV job proves the declared workspace baseline.
 The legacy Rust workflow's `rust` and `msrv` jobs run on `ubuntu-latest`. These
 jobs are release-surface proof on main and manual dispatches; they must not
 depend on self-hosted runner capacity when preparing a source release. The
-routed Rust-small workflow remains the swarm development lane that selects
-self-hosted runners when available and falls back to hosted capacity.
+routed Rust-small workflow is also GitHub-hosted by construction; it neither
+selects self-hosted runners nor treats hosted execution as fallback capacity.
 
 Local shaping commands are intentionally separate from CI because they mutate
 the worktree:
@@ -513,7 +633,9 @@ target/sample build residue and shares the same badge endpoint boundary.
 expected-output scaffolding without accepting output drift. `golden-drift`
 writes advisory Markdown and JSON summaries of semantic expected-output drift
 for reviewers. `test-oracle-report` writes an advisory baseline for the strength
-of `ripr`'s own Rust test oracles. `dogfood` writes a non-blocking
+of `ripr`'s own Rust test oracles. If no tests are selected, both report formats
+use status `not_run` and explain that oracle evidence was not established; this
+is distinct from a nonempty all-strong `pass` and remains advisory. `dogfood` writes a non-blocking
 `ripr`-on-`ripr` report from stable fixture diffs. `critic` writes an advisory
 adversarial review packet from the current diff, reports, and receipts.
 `reports index` writes a reviewer front door for generated reports and includes
@@ -559,7 +681,6 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
-cargo xtask check-goals
 cargo xtask check-pr-shape
 cargo xtask check-generated
 cargo xtask check-command-catalog
@@ -653,11 +774,17 @@ skip the Codecov test-results upload because repository secrets are unavailable.
 
 ### Self-Hosted Runner Placement
 
-The everyday required Rust gate routes through `routed-rust.yml`
-(`CX53 -> CX43 -> GitHub-hosted` fallback, shared `/mnt/ci-cache`, disk guards,
-and scratch cleanup) and exposes the single branch-protection check
-`Ripr Rust Small Result`. That lane is the migrated reference and is not changed
-by routine runner-placement edits.
+The everyday required Rust gate routes through `routed-rust.yml`, which runs on
+GitHub-hosted runners only and exposes the single branch-protection check
+`Ripr Rust Small Result`. It requests no self-hosted capacity, no organization
+runner discovery, and no private runner secret (ripr#1446), so runner-placement
+edits do not apply to it.
+
+Self-hosted capacity remains in use by the advisory bot lanes
+(`droid.yml`, `droid-review.yml`, `droid-security-scan.yml`, group
+`em-ci-review`) and by `scratch-gc.yml`, which garbage-collects the scratch
+mounts those runners share. None of those lanes gate the required source PR
+proof.
 
 The remaining (non-required) self-hosted lanes route to the smallest safe EM
 shared self-hosted tier by actual workload, each with explicit

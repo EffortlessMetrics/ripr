@@ -37,3 +37,11 @@ must remain unchanged — no new fields, no schema version bump.
 - Use mutation-testing runtime vocabulary that is banned by `check-static-language`.
 - Claim the code is safe, that tests pass, or that behavior is correct.
 - Suppress or alter the per-finding `no_static_path` output that already appears.
+- Claim "no static test path" when a finding actually reaches. The unknown
+  classes (`static_unknown` / `infection_unknown` / `propagation_unknown`) can
+  carry `reach: yes` — a test does reach the change, ripr just cannot classify or
+  propagate it. A reaching test IS a static test path, so the disclosure is
+  suppressed whenever any finding's reach stage is `yes`, even if every finding's
+  class is in the no-path-or-unknown set. (Dogfood: anyhow `Chain::len` — a
+  `static_unknown` change reached by an integration test must not be reported as
+  "no static test path".)

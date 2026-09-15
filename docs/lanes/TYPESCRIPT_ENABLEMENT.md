@@ -111,6 +111,27 @@ now includes:
   JSON, GitHub annotation, and SARIF surfaces;
 - dogfood receipts and route-quality rows for TypeScript and JavaScript preview
   evidence without promotion beyond preview.
+- advisory `ripr reports ts-limitations --check-output <check.json>` JSON and
+  Markdown reports that aggregate existing TypeScript-family limitation evidence
+  by kind without rerunning analysis, executing tests, or changing gate/badge
+  authority.
+- advisory TypeScript false-actionable audit projection through
+  `cargo xtask dogfood` and
+  `ripr reports ts-false-actionable --corpus fixtures/typescript-preview-false-actionable-audit/corpus.json`;
+  the current audit denominator is the checked rows that must remain
+  non-actionable, and the projection does not create repair-packet, gate, badge,
+  baseline, RIPR Zero, runtime, generated-test, provider, or support-tier
+  authority.
+- complete `typescript_repair_packet` findings can now be materialized from
+  check-output JSON into PR-local preview `GapRecord` packets, preview-limited
+  `ripr first-pr` start-here packets, and before/after `ripr outcome` receipts,
+  pinned by `fixtures/first_successful_pr/typescript-preview-gap`; the
+  `fixtures/real-repair-attempts` corpus also records a test-only closed
+  receipt for that packet while keeping TypeScript preview advisory-only and
+  ineligible for gate, badge, baseline, RIPR Zero, or support-tier authority.
+- `fixtures/typescript-preview-repair-loop/corpus.json` also checks the same
+  complete packet as a packet-ready advisory dogfood receipt with a closed
+  static outcome movement and the same no-promotion boundary.
 
 These are usefulness and precision improvements only. They do not make
 TypeScript/JavaScript repair-packet, gate, badge, baseline, or RIPR Zero
@@ -143,12 +164,17 @@ must not become actionable packets without stricter proof. It pins:
 - heuristic related-test links and owner-name-only test titles;
 - method receiver and static class-method repair-packet gaps, remaining
   receiver ambiguity, and module-initializer missing target shape;
+- helper-gated oracle and table-case named limitations that look
+  repair-shaped but still lack helper semantics or row binding;
 - mocked module, decorator-indirection, and dynamic-dispatch static limits.
 
 Each row points at an existing checked TypeScript-family fixture finding,
 records the current disposition, preserves `repair_packet_ready = false`, and
 names the future support route required before any repair-card or promotion
 claim can be considered.
+`cargo xtask dogfood` projects the same packet as
+`typescript_false_actionable_audit`, including `false_actionable_rate` and the
+packet-ready/actionable/complete-packet/preview-boundary violation rates.
 
 ## Validation
 

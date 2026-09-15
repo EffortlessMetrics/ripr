@@ -1,5 +1,12 @@
 # Run Codex Goals
 
+> **Retired model (2026-07-20, #1701 PR 3).** The `.ripr/goals/` scheduler and
+> its `cargo xtask goals` / `check-goals` / `check-campaign` commands were
+> deleted. Live work selection now comes from GitHub issues, PRs, checks,
+> reviews, and the local worktree. This guide is retained for campaign
+> workflow context; replace retired commands with the current reconciliation
+> flow described below.
+
 Use this guide when starting a Codex `/goal` run against `ripr`.
 
 Codex `/goal` is a multi-PR implementation campaign runner. It is not a command
@@ -9,14 +16,22 @@ for producing one PR and stopping automatically.
 
 Read:
 
-- [Codex Goals](../CODEX_GOALS.md)
+- [Codex Goals](../CODEX_GOALS.md) (retired — campaign history)
 - [Implementation campaigns](../IMPLEMENTATION_CAMPAIGNS.md)
 - [Implementation plan](../IMPLEMENTATION_PLAN.md)
 - [Scoped PR contract](../SCOPED_PR_CONTRACT.md)
 - [PR automation](../PR_AUTOMATION.md)
-- `.ripr/goals/active.toml`
 
-Run:
+Reconcile live state from GitHub and the local worktree:
+
+```bash
+git status --short
+git log --oneline -10
+gh issue list --state open --limit 20
+gh pr list --state open
+```
+
+Run the shaping and verification commands:
 
 ```bash
 cargo xtask shape
@@ -25,8 +40,6 @@ cargo xtask check-pr
 cargo xtask pr-summary
 cargo xtask receipts
 cargo xtask receipts check
-cargo xtask check-goals
-cargo xtask goals next
 ```
 
 ## Prompt

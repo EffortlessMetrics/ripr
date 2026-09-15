@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use tower_lsp_server::ls_types::Uri;
 
 mod percent_codec {
@@ -77,6 +77,25 @@ pub(super) fn path_from_file_uri(uri: &Uri) -> Option<PathBuf> {
     normalized_file_uri_path(uri).map(PathBuf::from)
 }
 
+/// Prove that a projected path stays inside the selected workspace root.
+/// Existing paths are canonicalized so symlink/junction escapes are rejected;
+/// missing paths fall back to normalized lexical containment for diagnostics
+/// and command payloads that refer to a future file.
+pub(super) fn path_is_within_root(root: &Path, path: &Path) -> bool {
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    };
+    let root = canonical_or_normalized(root);
+    let candidate = canonical_or_normalized(&candidate);
+    paths_equal_or_below(&root, &candidate)
+}
+
+pub(super) fn file_uri_is_within_root(root: &Path, uri: &Uri) -> bool {
+    path_from_file_uri(uri).is_some_and(|path| path_is_within_root(root, &path))
+}
+
 pub(super) fn file_uris_match(left: &Uri, right: &Uri) -> bool {
     if left == right {
         return true;
@@ -105,6 +124,80 @@ fn normalized_file_uri_path(uri: &Uri) -> Option<String> {
         decoded
     };
     Some(path.replace('\\', "/"))
+}
+
+/// Render a path with forward slashes for LSP display (diagnostic messages,
+/// hover text, context packets). Replaces native OS separators so Windows
+/// backslash paths display consistently. Previously duplicated as
+/// `display_lsp_path` in both `backend.rs` and `diagnostics.rs`.
+pub(super) fn display_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// Resolve a path to an absolute PathBuf, joining to `root` when relative.
+/// Previously duplicated as `absolute_context_path` in `backend.rs` and
+/// `absolute_path` in `diagnostics.rs` (byte-identical bodies, different names).
+pub(super) fn absolute_join(root: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    }
+}
+
+fn canonical_or_normalized(path: &Path) -> PathBuf {
+    canonicalize_with_missing_tail(path).unwrap_or_else(|| normalize_path(path))
+}
+
+fn canonicalize_with_missing_tail(path: &Path) -> Option<PathBuf> {
+    let mut current = path.to_path_buf();
+    let mut missing = Vec::new();
+    loop {
+        if let Ok(mut canonical) = current.canonicalize() {
+            for component in missing.iter().rev() {
+                canonical.push(component);
+            }
+            return Some(canonical);
+        }
+
+        let component = current.file_name()?.to_os_string();
+        missing.push(component);
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(value) => normalized.push(value),
+            Component::RootDir | Component::Prefix(_) => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
+}
+
+fn paths_equal_or_below(root: &Path, candidate: &Path) -> bool {
+    if cfg!(windows) {
+        let root_components = root
+            .components()
+            .map(|component| component.as_os_str().to_string_lossy().to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        let candidate_components = candidate
+            .components()
+            .map(|component| component.as_os_str().to_string_lossy().to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        candidate_components.len() >= root_components.len()
+            && candidate_components[..root_components.len()] == root_components[..]
+    } else {
+        candidate == root || candidate.starts_with(root)
+    }
 }
 
 pub(super) fn encode_uri_path(path: &str) -> String {
@@ -183,6 +276,81 @@ mod tests {
         let lower = parse_uri("file:///workspace/ripr/src/lib.rs")?;
 
         assert!(!file_uris_match(&upper, &lower));
+        Ok(())
+    }
+
+    #[test]
+    fn path_is_within_root_rejects_traversal_and_foreign_absolute_paths() {
+        let root = Path::new("/workspace/ripr");
+        assert!(path_is_within_root(root, Path::new("src/lib.rs")));
+        assert!(path_is_within_root(
+            root,
+            Path::new("/workspace/ripr/src/lib.rs")
+        ));
+        assert!(!path_is_within_root(root, Path::new("../outside.rs")));
+        assert!(!path_is_within_root(root, Path::new("/workspace/other.rs")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_drive_root_containment_uses_path_components() {
+        let separator = std::path::MAIN_SEPARATOR;
+        let root = PathBuf::from(format!("C:{separator}"));
+        let lower_case_child = PathBuf::from(format!("c:{separator}workspace{separator}src.rs"));
+        let workspace = PathBuf::from(format!("C:{separator}workspace"));
+        let workspace_sibling =
+            PathBuf::from(format!("C:{separator}workspace-sibling{separator}src.rs"));
+        assert!(paths_equal_or_below(&root, &lower_case_child));
+        let c_child = PathBuf::from(format!(
+            "C:{separator}workspace{separator}src{separator}lib.rs"
+        ));
+        let d_child = PathBuf::from(format!(
+            "D:{separator}workspace{separator}src{separator}lib.rs"
+        ));
+        assert!(paths_equal_or_below(&root, &c_child));
+        assert!(paths_equal_or_below(&root, &root));
+        assert!(!paths_equal_or_below(&workspace, &workspace_sibling));
+        assert!(!paths_equal_or_below(&root, &d_child));
+    }
+
+    #[test]
+    fn path_is_within_root_rejects_missing_leaf_under_symlink_ancestor() -> Result<(), String> {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("ripr-uri-root-{suffix}"));
+        let outside = std::env::temp_dir().join(format!("ripr-uri-outside-{suffix}"));
+        std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+        std::fs::create_dir_all(&outside).map_err(|err| err.to_string())?;
+        let link = root.join("linked");
+
+        #[cfg(unix)]
+        let link_result = std::os::unix::fs::symlink(&outside, &link);
+        #[cfg(windows)]
+        let link_result = std::os::windows::fs::symlink_dir(&outside, &link);
+        if let Err(err) = link_result {
+            eprintln!("skipping symlink containment test: {err}");
+            let _ = std::fs::remove_dir_all(&root);
+            let _ = std::fs::remove_dir_all(&outside);
+            return Ok(());
+        }
+
+        assert!(!path_is_within_root(&root, Path::new("linked/missing.rs")));
+        std::fs::remove_dir_all(&root).map_err(|err| err.to_string())?;
+        std::fs::remove_dir_all(&outside).map_err(|err| err.to_string())?;
+        Ok(())
+    }
+
+    #[test]
+    fn file_uri_is_within_root_rejects_non_file_and_foreign_uris() -> Result<(), String> {
+        let root = Path::new("/workspace/ripr");
+        let inside = parse_uri("file:///workspace/ripr/src/lib.rs")?;
+        let outside = parse_uri("file:///workspace/other/src/lib.rs")?;
+        let foreign = parse_uri("https://example.test/src/lib.rs")?;
+        assert!(file_uri_is_within_root(root, &inside));
+        assert!(!file_uri_is_within_root(root, &outside));
+        assert!(!file_uri_is_within_root(root, &foreign));
         Ok(())
     }
 }

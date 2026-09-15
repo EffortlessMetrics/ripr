@@ -5,7 +5,8 @@ index 0000000..1111111 100644
 @@ -1,4 +1,5 @@
  pub fn process(amount: i32) -> i32 {
 -    amount
-+    let _ = compute_fee(amount * 9);
++    let _ : i32 = compute_fee(amount * 9);
++    let _= compute_fee(amount * 9);
 +    amount
  }
 

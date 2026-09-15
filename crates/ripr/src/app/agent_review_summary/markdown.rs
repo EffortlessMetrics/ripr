@@ -1,4 +1,5 @@
 use super::types::AgentReviewSummaryReport;
+use crate::output::markdown::{COMMAND_SHELL_DISCLOSURE, powershell_command};
 
 pub(crate) fn render_agent_review_summary_markdown(report: &AgentReviewSummaryReport) -> String {
     let mut rendered = String::new();
@@ -9,6 +10,18 @@ pub(crate) fn render_agent_review_summary_markdown(report: &AgentReviewSummaryRe
         None => rendered.push_str("Target seam: unknown\n"),
     }
     rendered.push_str(&format!("Movement: {}\n", report.static_movement.state));
+    match &report.analysis_outcome {
+        Some(outcome) => rendered.push_str(&format!(
+            "Analysis outcome: {} ({})\n",
+            outcome.kind.as_str(),
+            if outcome.kind.is_complete() {
+                "complete"
+            } else {
+                "incomplete"
+            }
+        )),
+        None => rendered.push_str("Analysis outcome: unavailable (incomplete)\n"),
+    }
     if let Some(before) = &report.static_movement.before_class {
         let after = report
             .static_movement
@@ -39,10 +52,23 @@ pub(crate) fn render_agent_review_summary_markdown(report: &AgentReviewSummaryRe
         }
     }
     if let Some(next_command) = &report.next_command {
-        rendered.push_str("\nNext command:\n");
+        rendered.push_str("\nNext command:\n\n");
+        rendered.push_str(COMMAND_SHELL_DISCLOSURE);
         rendered.push_str("```bash\n");
         rendered.push_str(&next_command.command);
         rendered.push_str("\n```\n");
+        match powershell_command(&next_command.command) {
+            Some(line) => {
+                rendered.push_str("\n```powershell\n");
+                rendered.push_str(&line);
+                rendered.push_str("\n```\n");
+            }
+            None => rendered.push_str(&format!(
+                "{}: `{}`\n",
+                crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE,
+                next_command.command
+            )),
+        }
     }
     rendered.push_str("\n## Limits\n\n");
     rendered.push_str("- Static artifact relationship only.\n");

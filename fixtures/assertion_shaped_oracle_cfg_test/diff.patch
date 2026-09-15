@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,6 +9,6 @@ mod tests {
+     fn assert_normalized_paths_have_no_separators(paths: &[&str]) {
+         for path in paths {
+             let normalized = normalize_separator(path);
+-            let changed = if normalized.len() >= path.len() { 1 } else { 0 };
++            let changed = if normalized.len() > path.len() { 1 } else { 0 };
+             assert_eq!(changed, 0, "normalization changed the length of `{path}`");
+             assert!(

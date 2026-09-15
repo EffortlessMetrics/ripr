@@ -1,5 +1,6 @@
 pub fn process(amount: i32) -> i32 {
-    let _ = compute_fee(amount * 9);
+    let _ : i32 = compute_fee(amount * 9);
+    let _= compute_fee(amount * 9);
     amount
 }
 

@@ -1,5 +1,7 @@
 # `ripr` Soft-Gate
 
+For the current downstream acknowledgment procedure, see [ripr-gate-acknowledgement.md](ripr-gate-acknowledgement.md).
+
 The `ripr` soft-gate turns the advisory `ripr` self-dogfood lane into an
 **acknowledgeable gate**: narrow, calibrated, and explicit about what it
 does and does not block on.

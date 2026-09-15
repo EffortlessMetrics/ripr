@@ -1,0 +1,63 @@
+schema_version = "2.0"
+id = "ripr.slice.lsp-protocol-tracing.v1"
+generation = 1
+
+source_issue = "issue:2035"
+design_reference = "RIPR-SPEC-0137"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds the standard LSP trace lifecycle to the server: session-local
+`off | messages | verbose` state (default off, honoring
+`InitializeParams.trace`), a manually validated `$/setTrace` custom-method
+handler that updates state immediately without analysis/refresh/config
+reload/source access and rejects unknown values observably without
+crashing, and structurally redacted `$/logTrace` emission (direction,
+method, message class; bounded numeric metadata at verbose). Trace state
+never enters snapshot, input-identity, diagnostic, action, command, status,
+or receipt state. Does not claim payload tracing, free-text redaction,
+outbound-notification tracing, editor extension changes, or a per-family
+surface manifest.
+"""
+
+non_goals = [
+  "payload scrubbing or free-text trace content",
+  "tracing outbound server notifications",
+  "editor extension changes",
+  "per-message-family trace disposition manifest (#1995, not landed)",
+  "trace sinks other than $/logTrace",
+]
+
+return_conditions = [
+  "Return to root if tower-lsp-server adds a native $/setTrace handler or changes custom_method routing.",
+  "Return to root if any consumer needs payload-level tracing (would require a new redaction contract).",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:protocol-tracing",
+  "seam:ripr:docs:lsp-protocol-tracing-spec",
+]
+
+shared_seams = [
+  "seam:ripr:lsp:backend-handlers",
+  "seam:ripr:tests:lsp-stdio-harness",
+]
+
+forbidden_seams = [
+  "seam:ripr:repo:workflows",
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:editor:vscode-extension",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0137#lsp-protocol-tracing"
+requirement_generation = 1
+
+[implementation_claim]
+status = "outstanding"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

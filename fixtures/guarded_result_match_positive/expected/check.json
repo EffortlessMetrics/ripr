@@ -1,0 +1,344 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/guarded_result_match_positive/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":2,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:80b23c57fcfebac8cf52c20025d22cf6507e3777388b5b28a630c0a5d93a019d","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:error_path:94d13aee",
+      "classification": "exposed",
+      "severity": "warning",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:error_path:94d13aee",
+        "family": "error_path",
+        "delta": "value",
+        "file": "fixtures/guarded_result_match_positive/input/src/lib.rs",
+        "line": 9,
+        "expression": "return Err(ParseError::InvalidData)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach expect_ready: rejects_short_payload_with_variant_pattern, rejects_unready_kind_with_exact_error_routing"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: guarded Result match over the changed owner's result"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach expect_ready: rejects_short_payload_with_variant_pattern, rejects_unready_kind_with_exact_error_routing", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: guarded Result match over the changed owner's result", "local flow reaches error variant: Result::Err(ParseError::InvalidData) (line 9)", "related test tests/messages.rs:12 rejects_short_payload_with_variant_pattern uses strong guarded result match oracle: match expect_ready(..) { Ok(..) => .., Err(..) => Err(ParseError::UnexpectedEof) }", "related test tests/messages.rs:4 rejects_unready_kind_with_exact_error_routing uses strong guarded result match oracle: match expect_ready(..) { Err(..) => ParseError::InvalidData, _ => .. }", "observed enum variant value ParseError::InvalidData at line 5", "observed function argument value kind = \"busy\" at line 5", "observed function argument value len = 12 at line 5", "observed enum variant value ParseError::UnexpectedEof at line 13", "observed function argument value kind = \"ready\" at line 13", "observed function argument value len = 0 at line 13", "observed assertion argument value 0 at line 14", "missing discriminator ParseError::InvalidData: No exact error variant assertion for ParseError::InvalidData"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach expect_ready: rejects_short_payload_with_variant_pattern, rejects_unready_kind_with_exact_error_routing", "Strong oracle found: guarded Result match over the changed owner's result"],
+      "missing": ["Missing discriminator value: ParseError::InvalidData"],
+      "assertion_texts": {
+        "5": "match expect_ready(..) { Err(..) => ParseError::InvalidData, _ => .. }",
+        "13": "match expect_ready(..) { Ok(..) => .., Err(..) => Err(ParseError::UnexpectedEof) }",
+        "14": "assert_eq!(value, 0)"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "ParseError::InvalidData",
+            "context": "enum_variant"
+          },
+          {
+            "line": 5,
+            "value": "kind = \"busy\"",
+            "context": "function_argument",
+            "provenance": "match expect_ready(\"busy\", 12) {"
+          },
+          {
+            "line": 5,
+            "value": "len = 12",
+            "context": "function_argument",
+            "provenance": "match expect_ready(\"busy\", 12) {"
+          },
+          {
+            "line": 13,
+            "value": "ParseError::UnexpectedEof",
+            "context": "enum_variant"
+          },
+          {
+            "line": 13,
+            "value": "kind = \"ready\"",
+            "context": "function_argument",
+            "provenance": "match expect_ready(\"ready\", 0) {"
+          },
+          {
+            "line": 13,
+            "value": "len = 0",
+            "context": "function_argument",
+            "provenance": "match expect_ready(\"ready\", 0) {"
+          },
+          {
+            "line": 14,
+            "value": "0",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "ParseError::InvalidData",
+            "reason": "No exact error variant assertion for ParseError::InvalidData",
+            "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "ParseError::InvalidData",
+          "context": "enum_variant"
+        },
+        {
+          "line": 5,
+          "value": "kind = \"busy\"",
+          "context": "function_argument",
+          "provenance": "match expect_ready(\"busy\", 12) {"
+        },
+        {
+          "line": 5,
+          "value": "len = 12",
+          "context": "function_argument",
+          "provenance": "match expect_ready(\"busy\", 12) {"
+        },
+        {
+          "line": 13,
+          "value": "ParseError::UnexpectedEof",
+          "context": "enum_variant"
+        },
+        {
+          "line": 13,
+          "value": "kind = \"ready\"",
+          "context": "function_argument",
+          "provenance": "match expect_ready(\"ready\", 0) {"
+        },
+        {
+          "line": 13,
+          "value": "len = 0",
+          "context": "function_argument",
+          "provenance": "match expect_ready(\"ready\", 0) {"
+        },
+        {
+          "line": 14,
+          "value": "0",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "ParseError::InvalidData",
+          "reason": "No exact error variant assertion for ParseError::InvalidData",
+          "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
+        }
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "rejects_short_payload_with_variant_pattern",
+          "file": "tests/messages.rs",
+          "line": 12,
+          "oracle_strength": "strong",
+          "oracle_kind": "guarded_result_match",
+          "oracle": "match expect_ready(..) { Ok(..) => .., Err(..) => Err(ParseError::UnexpectedEof) }",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "rejects_unready_kind_with_exact_error_routing",
+          "file": "tests/messages.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "guarded_result_match",
+          "oracle": "match expect_ready(..) { Err(..) => ParseError::InvalidData, _ => .. }",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["fixture_opaque"],
+      "oracle_kind": "guarded_result_match",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:1f4cb0e7",
+      "classification": "exposed",
+      "severity": "warning",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:1f4cb0e7",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/guarded_result_match_positive/input/src/lib.rs",
+        "line": 9,
+        "expression": "return Err(ParseError::InvalidData)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach expect_ready: rejects_short_payload_with_variant_pattern, rejects_unready_kind_with_exact_error_routing"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: guarded Result match over the changed owner's result"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach expect_ready: rejects_short_payload_with_variant_pattern, rejects_unready_kind_with_exact_error_routing", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: guarded Result match over the changed owner's result", "local flow reaches error variant: Result::Err(ParseError::InvalidData) (line 9)", "related test tests/messages.rs:12 rejects_short_payload_with_variant_pattern uses strong guarded result match oracle: match expect_ready(..) { Ok(..) => .., Err(..) => Err(ParseError::UnexpectedEof) }", "related test tests/messages.rs:12 rejects_short_payload_with_variant_pattern uses strong exact value oracle: assert_eq!(value, 0)", "related test tests/messages.rs:4 rejects_unready_kind_with_exact_error_routing uses strong guarded result match oracle: match expect_ready(..) { Err(..) => ParseError::InvalidData, _ => .. }", "observed enum variant value ParseError::InvalidData at line 5", "observed function argument value kind = \"busy\" at line 5", "observed function argument value len = 12 at line 5", "observed enum variant value ParseError::UnexpectedEof at line 13", "observed function argument value kind = \"ready\" at line 13", "observed function argument value len = 0 at line 13", "observed assertion argument value 0 at line 14", "missing discriminator ParseError::InvalidData: No exact error variant assertion for ParseError::InvalidData"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach expect_ready: rejects_short_payload_with_variant_pattern, rejects_unready_kind_with_exact_error_routing", "Strong oracle found: guarded Result match over the changed owner's result"],
+      "missing": ["Missing discriminator value: ParseError::InvalidData"],
+      "assertion_texts": {
+        "5": "match expect_ready(..) { Err(..) => ParseError::InvalidData, _ => .. }",
+        "13": "match expect_ready(..) { Ok(..) => .., Err(..) => Err(ParseError::UnexpectedEof) }",
+        "14": "assert_eq!(value, 0)"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "ParseError::InvalidData",
+            "context": "enum_variant"
+          },
+          {
+            "line": 5,
+            "value": "kind = \"busy\"",
+            "context": "function_argument",
+            "provenance": "match expect_ready(\"busy\", 12) {"
+          },
+          {
+            "line": 5,
+            "value": "len = 12",
+            "context": "function_argument",
+            "provenance": "match expect_ready(\"busy\", 12) {"
+          },
+          {
+            "line": 13,
+            "value": "ParseError::UnexpectedEof",
+            "context": "enum_variant"
+          },
+          {
+            "line": 13,
+            "value": "kind = \"ready\"",
+            "context": "function_argument",
+            "provenance": "match expect_ready(\"ready\", 0) {"
+          },
+          {
+            "line": 13,
+            "value": "len = 0",
+            "context": "function_argument",
+            "provenance": "match expect_ready(\"ready\", 0) {"
+          },
+          {
+            "line": 14,
+            "value": "0",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "ParseError::InvalidData",
+            "reason": "No exact error variant assertion for ParseError::InvalidData",
+            "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "ParseError::InvalidData",
+          "context": "enum_variant"
+        },
+        {
+          "line": 5,
+          "value": "kind = \"busy\"",
+          "context": "function_argument",
+          "provenance": "match expect_ready(\"busy\", 12) {"
+        },
+        {
+          "line": 5,
+          "value": "len = 12",
+          "context": "function_argument",
+          "provenance": "match expect_ready(\"busy\", 12) {"
+        },
+        {
+          "line": 13,
+          "value": "ParseError::UnexpectedEof",
+          "context": "enum_variant"
+        },
+        {
+          "line": 13,
+          "value": "kind = \"ready\"",
+          "context": "function_argument",
+          "provenance": "match expect_ready(\"ready\", 0) {"
+        },
+        {
+          "line": 13,
+          "value": "len = 0",
+          "context": "function_argument",
+          "provenance": "match expect_ready(\"ready\", 0) {"
+        },
+        {
+          "line": 14,
+          "value": "0",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "ParseError::InvalidData",
+          "reason": "No exact error variant assertion for ParseError::InvalidData",
+          "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
+        }
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "rejects_short_payload_with_variant_pattern",
+          "file": "tests/messages.rs",
+          "line": 12,
+          "oracle_strength": "strong",
+          "oracle_kind": "guarded_result_match",
+          "oracle": "match expect_ready(..) { Ok(..) => .., Err(..) => Err(ParseError::UnexpectedEof) }",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "rejects_short_payload_with_variant_pattern",
+          "file": "tests/messages.rs",
+          "line": 12,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(value, 0)",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "rejects_unready_kind_with_exact_error_routing",
+          "file": "tests/messages.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "guarded_result_match",
+          "oracle": "match expect_ready(..) { Err(..) => ParseError::InvalidData, _ => .. }",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["fixture_opaque"],
+      "oracle_kind": "guarded_result_match",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

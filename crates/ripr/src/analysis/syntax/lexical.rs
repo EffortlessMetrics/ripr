@@ -1,4 +1,4 @@
-use crate::analysis::facts::{FileFacts, FunctionFact, TestFact};
+use crate::analysis::facts::{FileFacts, FunctionFact, FunctionSourceRole, TestFact};
 use crate::analysis::rust_index::{
     extract_assertions, extract_call_facts, extract_literal_facts, extract_return_facts,
 };
@@ -61,7 +61,13 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
             file_returns.extend(returns.clone());
             file_literals.extend(literals.clone());
             let function = FunctionFact {
-                id: SymbolId(format!("{}::{name}", path.display())),
+                // Same stable projection as the parser producer: lossy
+                // display would merge distinct raw-byte filenames in the
+                // shared FunctionFact.id namespace (#3609).
+                id: SymbolId(format!(
+                    "{}::{name}",
+                    crate::analysis::stable_path_text(path.as_path())
+                )),
                 name: name.clone(),
                 file: path.clone(),
                 start_line,
@@ -70,11 +76,26 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
                 calls: calls.clone(),
                 returns: returns.clone(),
                 literals: literals.clone(),
-                is_test: pending_test,
+                // Lexical fallback: the scanner only sees exact test-defining
+                // attribute prefixes, so it grants the executable-test role
+                // and never a cfg-test-module membership. The parser-fallback
+                // provenance stays on `FileFacts::used_lexical_fallback`.
+                source_role: if pending_test {
+                    FunctionSourceRole::TestAttribute
+                } else {
+                    FunctionSourceRole::Production
+                },
                 // Lexical fallback path: no parser, no AST attrs
                 // iterator, so attrs stay empty. Value-extraction-v2's
                 // rstest support is parser-only.
                 attrs: Vec::new(),
+                // #3727 Slice A: shadow facts are parser-only, mirroring
+                // probe_shapes. Consumers route this file's shadow decisions
+                // through the lexical scanners because
+                // `used_lexical_fallback` is true — the flag, not the
+                // emptiness, is the discriminator.
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
             };
             if pending_test {
                 tests.push(TestFact {
@@ -87,6 +108,10 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
                     assertions: extract_assertions(&body, start_line),
                     literals,
                     attrs: Vec::new(),
+                    // Parser-only shadow facts (#3727 Slice A): empty under
+                    // the lexical fallback, like `FunctionFact` above.
+                    nested_fn_names: Vec::new(),
+                    let_bindings: Vec::new(),
                 });
             }
             functions.push(function);
@@ -115,7 +140,19 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
         calls: file_calls,
         returns: file_returns,
         literals: file_literals,
+        // probe_shapes is intentionally empty: shape extraction is parser-only.
+        // Files summarized by the lexical adapter will not produce
+        // parser-derived probe families (ErrorPath, MatchArm, etc.), so the
+        // downstream classifier under-credits them (#2698).
         probe_shapes: Vec::new(),
+        // This function IS the lexical fallback; the flag is honest regardless
+        // of whether the caller is the adapter dispatcher or a direct test.
+        used_lexical_fallback: true,
+        // The lexical fallback cannot see module declarations without a
+        // parse; out-of-line test modules under fallback files keep the
+        // fail-closed standalone roles (#3533).
+        module_declarations: Vec::new(),
+        role_provenance: super::super::facts::SourceRoleProvenance::default(),
         source,
     }
 }
@@ -144,7 +181,7 @@ fn owner_changed_nodes(facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNod
         if let Some(function) = owners.first() {
             nodes.push(SyntaxNodeFact {
                 file: function.file.clone(),
-                kind: if function.is_test {
+                kind: if function.source_role.is_evidence_role() {
                     "test_function".to_string()
                 } else {
                     "function".to_string()
@@ -283,6 +320,26 @@ fn checks_value() {
                 .iter()
                 .flat_map(|test| test.assertions.iter())
                 .any(|assertion| assertion.kind == OracleKind::SmokeOnly)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn lexical_adapter_discloses_fallback_and_empty_probe_shapes() -> Result<(), String> {
+        // #2698: the lexical adapter must honestly report used_lexical_fallback
+        // and must not fabricate probe_shapes (shape extraction is parser-only).
+        let adapter = LexicalRustSyntaxAdapter;
+        let facts = adapter.summarize_file(
+            Path::new("src/lib.rs"),
+            "pub fn example() -> bool { true }\n",
+        )?;
+        assert!(
+            facts.used_lexical_fallback,
+            "lexical adapter must set used_lexical_fallback = true"
+        );
+        assert!(
+            facts.probe_shapes.is_empty(),
+            "lexical adapter must not fabricate probe_shapes (parser-only extraction)"
         );
         Ok(())
     }

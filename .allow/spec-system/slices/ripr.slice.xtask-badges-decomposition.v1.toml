@@ -1,0 +1,70 @@
+schema_version = "2.0"
+id = "ripr.slice.xtask-badges-decomposition.v1"
+generation = 1
+
+source_issue = "issue:2119"
+design_reference = "RIPR-SPEC-0066"
+change_class = "refactor"
+
+claim_boundary = """
+Moves the xtask badge command cluster verbatim out of `xtask/src/main.rs`
+into `xtask/src/reports/badges.rs`, which becomes the real module home in
+place of the existing re-export shim: the diff-scoped badge artifact
+generator (`badge-artifacts`), the repo-scoped badge artifact generator
+(`repo-badge-artifacts`), the badge basis audit (`badge-basis`), the ripr+
+receipt (`ripr-plus`), the public badge endpoint sync/check commands
+(`update-badge-endpoints`, `check-badge-endpoints`), the
+`check-badge-diff-policy` gate, and their exclusive JSON/Shields/markdown
+helpers. Moved bodies are byte-identical except `pub(crate)` visibility
+widening (items and struct fields referenced by `tests.rs`) and six
+rustfmt-forced, token-identical signature wraps caused by the widened
+prefix. Helpers shared with non-badge commands (`badge_refresh_context`,
+`badge_diff_policy_violations`, the generated-clean/worktree-doctor path
+classifiers, `normalize_report_path`, `markdown_cell`) stay in `main.rs`;
+wiring is limited to curated re-exports in `reports/mod.rs` and `main.rs`
+so `dispatch.rs` and `tests.rs` compile unchanged. No command behavior,
+output contract, golden, fixture, or test-list change is claimed.
+"""
+
+non_goals = [
+  "moving helpers shared with non-badge commands (generated-clean, worktree doctor, precommit)",
+  "dispatch.rs or tests.rs edits (re-exports keep both unchanged)",
+  "output schema, golden, fixture, or traceability changes (pure structure)",
+  "renames or signature changes beyond pub(crate) visibility widening",
+  "further main.rs decomposition slices (separate slices own those)",
+]
+
+return_conditions = [
+  "Return to root if any golden or test-list drift appears (stop, do not re-bless).",
+  "Return to root if a moved helper turns out to be shared with a non-badge command.",
+  "Return to root if the move appears to need an observable behavior change.",
+]
+
+owned_seams = [
+  "seam:ripr:xtask:badge-command-cluster",
+]
+
+shared_seams = [
+  "seam:ripr:xtask:main-rs-decomposition",
+  "seam:ripr:output:badge-endpoint-contract",
+]
+
+forbidden_seams = [
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:xtask:tests-rs",
+  "seam:ripr:repo:workflows",
+  "seam:ripr:output:check-json-contract",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0066"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

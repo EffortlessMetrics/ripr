@@ -1,0 +1,38 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/unsafe_boundary_probe/input
+
+Summary: 3 probe(s), 0 exposed, 0 weak, 0 unrevealed, 1 no path, 2 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 6 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
+
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/unsafe_boundary_probe/input/src/lib.rs:2
+  Static exposure: no_static_path (warning, confidence 0.48)
+  Why no_static_path: the changed behavior could not be traced to an observable output
+  Changed behavior: let mut total: u8 = 1;
+  Missing discriminator: let mut total: u8 = 1;
+  Next step: ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr…
+  Evidence:
+    - reach no: No static test path found for the changed owner
+    - infection unknown: No reachable tests were found, so infection cannot be established
+    - 4 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/unsafe_boundary_probe/input --diff fixtures/unsafe_boundary_probe/diff.patch --mode fast probe:src_lib.rs:field_construction:ca914e5b
+  ripr context --root fixtures/unsafe_boundary_probe/input --diff fixtures/unsafe_boundary_probe/diff.patch --mode fast --at probe:src_lib.rs:field_construction:ca914e5b
+
+Hidden:
+  2 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: ripr found no static test path for any of the 3 changed expression(s) in this diff. Scope
+  analyzed: 1 changed Rust file(s), 3 changed expression(s), and 0 statically linked related
+  test(s). This is not a coverage assessment. A test may already exercise these changes through
+  macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if
+  none does, add co-located tests that observe the changed behavior.

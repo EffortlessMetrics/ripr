@@ -89,7 +89,10 @@ Additive optional fields:
   `missing_import_graph`, `decorator_indirection`, `mocked_module`,
   `opaque_custom_assertion_helper`, `property_based_test`,
   `unresolved_pytest_fixture`, `unsupported_syntax`,
-  `cross_language_oracle_visibility_unresolved`).
+  `cross_language_oracle_visibility_unresolved`,
+  `rust_transitive_reach_unresolved`,
+  `rust_integration_public_api_path_unresolved`,
+  `rust_macro_reach_unresolved`).
 
 Reports gaining these fields:
 

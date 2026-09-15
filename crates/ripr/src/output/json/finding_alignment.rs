@@ -247,6 +247,13 @@ pub(super) fn report_for_findings(findings: &[Finding]) -> Option<FindingAlignme
         if used[index] {
             continue;
         }
+        // Candidate-actionable eligibility (#3281): base-side evidence and
+        // unresolved subjects never form alignment items — they cannot be
+        // actionable gaps. They stay visible in the findings array itself;
+        // the summary denominator below still counts every finding.
+        if !finding.is_candidate_actionable() {
+            continue;
+        }
 
         if let Some(declaration) = parse_config_policy_declaration(&finding.probe.expression) {
             let mut raw_indices = vec![index];
@@ -888,7 +895,7 @@ fn classify_presentation_text(
 ) -> PresentationTextClassification {
     let source_file = raw_findings
         .first()
-        .map(|finding| finding.probe.location.file.display().to_string())
+        .map(|finding| crate::output::path::display_path(&finding.probe.location.file))
         .unwrap_or_default();
 
     if is_internal_only_text(constant_name, &source_file) {
@@ -1046,7 +1053,7 @@ fn classify_config_policy_constant(
 ) -> ConfigPolicyClassification {
     let source_file = raw_findings
         .first()
-        .map(|finding| finding.probe.location.file.display().to_string())
+        .map(|finding| crate::output::path::display_path(&finding.probe.location.file))
         .unwrap_or_default();
 
     if is_internal_only_config_policy(constant_name, &source_file) {
@@ -1543,7 +1550,7 @@ fn observer_for_related_test(test: &RelatedTest) -> Option<(u8, &'static str)> {
 fn related_test_for(test: &RelatedTest) -> FindingAlignmentRelatedTest {
     FindingAlignmentRelatedTest {
         name: test.name.clone(),
-        file: test.file.display().to_string(),
+        file: crate::output::path::display_path(&test.file),
         line: test.line,
     }
 }
@@ -1568,7 +1575,7 @@ fn normalize_token_text(text: &str) -> String {
 
 fn raw_finding_for(finding: &Finding) -> FindingAlignmentRawFinding {
     FindingAlignmentRawFinding {
-        file: finding.probe.location.file.display().to_string(),
+        file: crate::output::path::display_path(&finding.probe.location.file),
         line: finding.probe.location.line,
         kind: finding.class.as_str().to_string(),
         expression: finding.probe.expression.clone(),
@@ -3521,6 +3528,7 @@ mod tests {
             observed_sink: None,
             oracle_alignment: None,
             alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
     }
 
@@ -3569,5 +3577,40 @@ mod tests {
 
     fn stage(summary: &str) -> StageEvidence {
         StageEvidence::new(StageState::Unknown, Confidence::Low, summary)
+    }
+
+    #[test]
+    fn base_deleted_findings_form_no_alignment_items() -> Result<(), String> {
+        // RIPR-SPEC-0152: base-side evidence never becomes an alignment
+        // item or an actionable gap; the candidate-current twin does.
+        let mut deleted = finding_at(
+            "del",
+            1,
+            ExposureClass::WeaklyExposed,
+            ProbeFamily::Predicate,
+            "pub const POLICY_LABEL: &str = \"x\";",
+        );
+        deleted.source_currentness = crate::domain::SourceCurrentness::BaseDeleted;
+        assert!(
+            report_for_findings(&[deleted]).is_none(),
+            "base-side evidence forms no alignment items"
+        );
+
+        let mut current = finding_at(
+            "cur",
+            1,
+            ExposureClass::WeaklyExposed,
+            ProbeFamily::Predicate,
+            "pub const POLICY_LABEL: &str = \"x\";",
+        );
+        current.source_currentness = crate::domain::SourceCurrentness::CandidateCurrent;
+        let report =
+            report_for_findings(&[current]).ok_or("candidate-current finding forms an item")?;
+        assert_eq!(report.summary.raw_signals, 1);
+        assert!(
+            !report.items.is_empty(),
+            "candidate-current twin still forms its alignment item"
+        );
+        Ok(())
     }
 }

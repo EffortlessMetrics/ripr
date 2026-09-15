@@ -40,9 +40,15 @@ The TypeScript preview adapter:
 - Emits `typescript_test_runner: ava` as an additive evidence field.
 - Emits `typescript_framework_hint: ava`.
 - Does NOT emit `typescript_package_limitation: typescript_test_runner_unresolved`.
+- Classifies the finding `exposed` with an `exact_value` (strong) oracle: the
+  Ava `t.is(result, ...)` assertion is recognized as an exact-value
+  discriminator via the execution-context (`t.*`) assertion shapes in
+  RIPR-SPEC-0085. (Before that recognition this was `weakly_exposed`.)
 
 ## Must Not
 
 - Emit `typescript_test_runner_unresolved` when ava appears in scripts.test.
 - Match `xo` or `build` as a known test runner.
 - Guess a runner when only unrecognised tools appear.
+- Promote the finding past `preview_advisory_only`: the `exposed` classification
+  is advisory evidence, not a repair packet (`repair_packet_ready` stays false).

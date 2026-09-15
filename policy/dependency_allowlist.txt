@@ -19,9 +19,14 @@
 # dependency only in the scoped parser PR. The ADR's original `ruff_python_parser`
 # pick was superseded after discovering that crate is `publish = false` inside
 # the astral-sh/ruff workspace and unavailable on crates.io.
+# rayon|production_parallelism|analysis|Issue #2300 approves data-parallel
+# ra_ap_syntax parsing in the facts index build; the parallel collect preserves
+# input order and byte-identical output. Add the Cargo dependency only in the
+# scoped parallelism PR.
 
 Cargo.lock|rust_workspace_lockfile|rust|Pinned Cargo dependency graph.
 Cargo.toml|rust_workspace_manifest|rust|Root Cargo workspace manifest.
+benchmarks/targeted_rerun_benchmark/**/Cargo.toml|fixture_input|targeted-rerun|Controlled SPEC-0123 benchmark workspace manifest.
 crates/**/Cargo.toml|rust_package_manifest|rust|Cargo package manifests.
 editors/vscode/package-lock.json|editor_extension_lockfile|lsp/editor|Pinned npm dependency graph for the VS Code extension.
 editors/vscode/package.json|editor_extension_manifest|lsp/editor|VS Code extension package manifest.
@@ -34,4 +39,6 @@ fixtures/first_successful_pr/python-preview-gap/pyproject.toml|fixture_input|ana
 fixtures/python/basic/pyproject.toml|fixture_input|analysis-fixtures|Python project detection fixture needs a project marker as analyzed input.
 fixtures/python_no_config_repair_gap/input/pyproject.toml|fixture_input|analysis-fixtures|Python no-config repair-routing fixture needs a project marker as analyzed input.
 fixtures/python_src_layout_repair_gap/input/pyproject.toml|fixture_input|analysis-fixtures|Python src-layout repair-routing fixture needs a project marker as analyzed input.
+metrics/rust-judged-behavior-panel/subjects/**/Cargo.lock|fixture_input|rust-judged-panel|Governed replay subjects pin their empty Cargo dependency graphs for deterministic offline materialization.
+metrics/rust-judged-behavior-panel/subjects/**/Cargo.toml|fixture_input|rust-judged-panel|Governed replay subjects carry analyzed Cargo package manifests for issue #3198.
 xtask/Cargo.toml|rust_tool_manifest|repo-policy|xtask package manifest.

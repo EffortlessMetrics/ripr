@@ -2,7 +2,7 @@ use std::path::Path;
 
 /// Render a path with stable slash separators for JSON and Markdown output.
 pub(crate) fn display_path(path: &Path) -> String {
-    display_path_text(&path.to_string_lossy())
+    display_path_text(&crate::analysis::stable_path_text(path))
 }
 
 /// Render path-like text with stable slash separators for JSON and Markdown output.

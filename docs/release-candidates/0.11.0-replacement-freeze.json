@@ -1,0 +1,104 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_swarm_release_candidate_freeze",
+  "status": "selected_ref_created_qualification_pending",
+  "release_line": "0.11.0",
+  "supersedes": {
+    "candidate_sha": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+    "freeze_ref": "freeze/source-sync-2026-07-21"
+  },
+  "candidate": {
+    "sha": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+    "freeze_ref": "freeze/source-sync-2026-07-23",
+    "supplemental_range": null,
+    "main_comparison_at_selection": "identical",
+    "repository": "EffortlessMetrics/ripr-swarm"
+  },
+  "source_parent_for_preflight": "2b45cffe4353cc055ce201070555450f4c85d6ac",
+  "source_parent_selection": {
+    "rule": "exact source main after EffortlessMetrics/ripr#1511 merged",
+    "audit_base_sha": "ec7dc6beaec8ad2efca4abd502f9253cdb4f939c",
+    "audit_merge_sha": "2b45cffe4353cc055ce201070555450f4c85d6ac",
+    "status": "selected"
+  },
+  "audit": {
+    "source_pr": "EffortlessMetrics/ripr#1511",
+    "source_issue": "EffortlessMetrics/ripr#1510",
+    "decision_issue": "EffortlessMetrics/ripr#1509",
+    "base_sha": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+    "record_count": 142,
+    "unique_count": 142,
+    "record_set_sha256": "ea7373162affc0ddb6e7e54cf5f3d8ab56c4f4f82d833b67e93b29565845c1e4",
+    "accepted_dispositions": {
+      "must_include_0_11": 94,
+      "release_infrastructure_only": 13,
+      "safe_defer_post_0_11": 15,
+      "source_only_followup": 1,
+      "structural_no_semantic_delta": 19
+    }
+  },
+  "accepted_release_themes": [
+    "focused static repair guidance with complete producer-owned gate and packet identity",
+    "provenance-bound static artifacts and receipts with explicit assurance boundaries",
+    "reliable saved-workspace LSP delivery, bounded transport and lifecycle, and fail-closed actions",
+    "partial-scope and repository-scope honesty rather than false completeness",
+    "cross-language preview honesty and adversarial non-promotion controls",
+    "security dependency, filesystem, path-confinement, and generated-CI hardening"
+  ],
+  "deferred_work": [
+    {
+      "issues": ["#2332", "#2333", "#2334"],
+      "posture": "post_0_11",
+      "release_nonclaim": "RIPR 0.11.0 does not execute verification commands and does not issue RepairReceiptV2. Static movement and externally run command outcomes remain separate evidence axes."
+    },
+    {
+      "posture": "safe_defer_post_0_11",
+      "count": 15,
+      "release_nonclaim": "Deferred convenience, observability, historical-doc, and optional presentation changes are not part of the 0.11.0 promise."
+    }
+  ],
+  "source_survivors": [
+    "bounded subprocess adapter recognition and RIPR-SPEC-0133",
+    "source staged 0.10.1 metadata until the separate 0.11.0 metadata PR",
+    "source release, signing, publishing, marketplace, badge, settings, and protected-check authority",
+    "source promotion runbook and history-preserving merge policy"
+  ],
+  "qualification": {
+    "hosted_workflow_runs_attached_to_candidate_merge_commit": false,
+    "reason": "GitHub returned no workflow runs for c86807ecdbf359594ef88c0ff38b10b446139dca.",
+    "state": "pending_exact_candidate_tree_proof",
+    "qualification_pr": "#2362",
+    "qualification_scope": "candidate code tree plus two docs-only freeze receipt files",
+    "required_checks": [
+      "cargo fmt --check",
+      "cargo check --workspace --all-targets --all-features --locked",
+      "cargo test --workspace --locked",
+      "cargo clippy --workspace --all-targets --all-features -- -D warnings",
+      "cargo doc --workspace --no-deps --locked",
+      "cargo xtask precommit",
+      "cargo xtask fixtures",
+      "cargo xtask goldens check",
+      "cargo xtask dogfood",
+      "cargo xtask check-evidence-promotion-honesty",
+      "cargo xtask check-output-contracts",
+      "cargo xtask check-workflows",
+      "cargo xtask check-dependencies",
+      "cargo xtask check-network-policy",
+      "cargo xtask check-process-policy",
+      "cargo package -p ripr --list --locked",
+      "cargo publish -p ripr --dry-run --locked",
+      "npm --prefix editors/vscode ci",
+      "npm --prefix editors/vscode run compile",
+      "npm --prefix editors/vscode run package"
+    ]
+  },
+  "next_steps": [
+    "record exact-candidate qualification on issue #2354",
+    "refresh source ripr#1478 merge preflight using source parent 2b45cffe4353cc055ce201070555450f4c85d6ac",
+    "run source ripr#1507 editor integration proof against the selected tree",
+    "construct the final direct two-parent join under ripr#1508",
+    "merge promotion-only PR ripr#1465",
+    "keep version and changelog changes in the later ripr#1466 metadata PR"
+  ],
+  "authority_boundary": "This freeze selects an immutable development candidate. It does not merge source history, change versions, tag, publish, sign, use release secrets, mutate marketplaces, or authorize a public release."
+}

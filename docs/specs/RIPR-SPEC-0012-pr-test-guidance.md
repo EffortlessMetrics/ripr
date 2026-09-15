@@ -299,6 +299,12 @@ Generated CI should publish this report in two default levels:
 Check annotations are the default line-level surface because they provide file
 and line guidance without adding persistent review-thread noise.
 
+The `ripr annotations` comments loader determines file presence with one
+direct read (#1958): a `NotFound` outcome is the intended optional-comments
+state, and every other I/O failure (permission denied, directory input,
+invalid UTF-8) remains an explicit fail-closed error. No separate existence
+pre-check may re-enter the loader.
+
 A custom inline review-comment publisher may be added by a repository as an
 explicit opt-in. Inline review comments must:
 

@@ -20,6 +20,9 @@ Linked plan:
 
 Linked issues:
 
+- #1162 - TS easy-to-use surfaces: explain enhancement, limitation leaderboard,
+  repo readiness cards
+
 - #1175 — TS adoption gap: silent empty result from repo-exposure scan on TS workspace
 
 Linked PRs:
@@ -98,6 +101,23 @@ completed normally.
     {
       "category": "typescript_diff_first",
       "ts_file_count": 2,
+      "typescript_readiness": {
+        "source": "repo_exposure_typescript_readiness.v1",
+        "authority_boundary": "preview_advisory_only",
+        "analysis_model": "diff_first",
+        "source_file_count": 2,
+        "test_file_count": 0,
+        "package_root_count": 1,
+        "package_confidence": "medium",
+        "runner_status": "no_tests_detected",
+        "verify_command_count": 0,
+        "top_blocker": "typescript_tests_not_detected",
+        "non_claims": [
+          "no full-repo TypeScript seam model",
+          "no runtime TypeScript execution",
+          "no gate or badge authority"
+        ]
+      },
       "repair_route": "TypeScript is analyzed diff-first; run 'ripr check --base origin/main' or '--diff <file>' to evaluate changed TypeScript behavior. Full-repo TypeScript exposure is not yet modeled (named limitation)."
     }
   ],
@@ -106,8 +126,31 @@ completed normally.
 }
 ```
 
-The `ts_file_count` field is the count of TS/JS source files detected in the
+The `ts_file_count` field is the count of TS/JS files detected in the
 workspace. It is never fabricated — it comes from `workspace::discover_preview_language_files`.
+
+The nested `typescript_readiness` object is root-level readiness for the
+diff-first TypeScript preview path. It reuses the TypeScript package/test
+discovery producers that diff-mode repair packets use:
+
+- `source`: stable producer id, currently
+  `repo_exposure_typescript_readiness.v1`.
+- `authority_boundary`: always `preview_advisory_only`.
+- `analysis_model`: always `diff_first`.
+- `source_file_count`: TS/JS files that are not detected as tests.
+- `test_file_count`: detected TS/JS test files.
+- `package_root_count`: distinct package roots resolved from detected TS/JS
+  files.
+- `package_confidence`: highest package discovery confidence across detected
+  TS/JS files: `none`, `low`, `medium`, or `high`.
+- `runner_status`: `no_tests_detected`, `resolved`, `partial`, or
+  `unresolved`.
+- `verify_command_count`: number of detected test files with a concrete
+  verify command.
+- `top_blocker`: the highest-count missing readiness signal, or `null` when
+  no blocker is detected.
+- `non_claims`: explicit boundaries. The card does not emit full-repo
+  TypeScript seams, execute TypeScript tests, or create gate/badge authority.
 
 ### Markdown output (`repo-exposure-md`)
 
@@ -121,6 +164,22 @@ A `## Limitations` section is inserted before the empty-seams message:
 TypeScript is analyzed diff-first; run 'ripr check --base origin/main' or
 '--diff <file>' to evaluate changed TypeScript behavior. Full-repo TypeScript
 exposure is not yet modeled (named limitation).
+
+TypeScript readiness (preview, advisory)
+
+| Signal | Value |
+| --- | --- |
+| source files | 2 |
+| test files | 0 |
+| package roots | 1 |
+| package confidence | medium |
+| runner status | no_tests_detected |
+| verify commands | 0 |
+| top blocker | typescript_tests_not_detected |
+
+This card is root-level readiness for diff-first TypeScript preview. It does
+not emit full-repo TypeScript seams, run TypeScript tests, or create gate or
+badge authority.
 ```
 
 ### Static-language rule
@@ -132,13 +191,14 @@ This spec uses no mutation-runtime vocabulary (the terms forbidden by the
 ## Fixture
 
 `fixtures/ts_full_repo_guidance` — a workspace with only TypeScript files and a
-`package.json`, no Rust. Expected outputs pin the guidance disclosure in both
-JSON and Markdown.
+`package.json`, no Rust. Expected outputs pin the guidance disclosure and
+readiness card in both JSON and Markdown.
 
 ## Required Evidence
 
 - `fixtures/ts_full_repo_guidance` golden fixture (check.json, human.txt, repo-exposure.json,
-  repo-exposure.md) pinning both JSON and Markdown guidance outputs.
+  repo-exposure.md) pinning both JSON and Markdown guidance outputs and the
+  readiness card.
 - Four unit tests in `crates/ripr/src/output/repo_exposure.rs` covering
   JSON emission, JSON alongside seam-limit, Markdown emission, and
   Markdown suppression for Rust workspace.
@@ -157,10 +217,12 @@ JSON and Markdown.
 ## Acceptance Examples
 
 - `ripr check --root fixtures/ts_full_repo_guidance/input --format repo-exposure-json`
-  emits `limitations: [{category: "typescript_diff_first", ts_file_count: 2, repair_route: "..."}]`
-  with `seams: []` and `run_status: "complete"`.
+  emits `limitations: [{category: "typescript_diff_first", ts_file_count: 2,
+  typescript_readiness: {...}, repair_route: "..."}]` with `seams: []` and
+  `run_status: "complete"`.
 - `ripr check --root fixtures/ts_full_repo_guidance/input --format repo-exposure-md`
-  emits a `## Limitations` section with `typescript_diff_first` and `ts_file_count: 2`.
+  emits a `## Limitations` section with `typescript_diff_first`,
+  `ts_file_count: 2`, and a preview/advisory TypeScript readiness card.
 - `ripr check --root crates/ripr/examples/sample --format repo-exposure-md`
   does NOT emit a `## Limitations` / `typescript_diff_first` section (Rust workspace
   with seams present).
@@ -189,6 +251,10 @@ JSON and Markdown.
 - `crates/ripr/src/cli/commands/pilot.rs` — file-write path uses
   `detect_ts_full_repo_guidance_pub` before calling both render functions.
 
+- `crates/ripr/src/analysis/mod.rs` - `workspace_typescript_repo_readiness`
+  supplies the preview/advisory readiness card from TypeScript package/test
+  discovery.
+
 ## CI Proof
 
 - `RUSTFLAGS="-D warnings" cargo build -p ripr -p xtask` — exit 0.
@@ -206,6 +272,7 @@ JSON and Markdown.
 ## Metrics
 
 - Gate: all four disclosure acceptance tests pass.
-- The fixture `ts_full_repo_guidance` golden pins both JSON and Markdown outputs.
+- The fixture `ts_full_repo_guidance` golden pins both JSON and Markdown outputs,
+  including the readiness card.
 - Promote to accepted when a TypeScript project confirms the guidance appears in
   practice and the silent-empty-result gap is confirmed closed.

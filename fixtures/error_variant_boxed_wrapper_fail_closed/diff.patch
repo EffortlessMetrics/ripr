@@ -1,0 +1,22 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -26,7 +26,7 @@ pub fn try_checksum_summary(payload: &str) -> Result<usize, ChecksumError> {
+ }
+
+ pub fn checksum_summary(payload: &str) -> Result<usize, Box<dyn Error>> {
+-    try_checksum_summary(payload).map_err(|error| error.to_string().into())
++    try_checksum_summary(payload).map_err(Into::into)
+ }
+
+ pub fn try_render_summary(raw: &str) -> Result<String, RenderError> {
+@@ -40,7 +40,7 @@ pub fn try_render_summary(raw: &str) -> Result<String, RenderError> {
+ }
+
+ pub fn render_summary(raw: &str) -> Result<String, Box<dyn Error>> {
+-    try_render_summary(raw).map_err(|error| error.to_string().into())
++    try_render_summary(raw).map_err(Into::into)
+ }
+
+ macro_rules! fixture_error {

@@ -1,6 +1,6 @@
 # ADR 0019: Language Adapters Reuse the Shared Packet Contract
 
-Status: proposed
+Status: accepted
 
 Date: 2026-06-13
 

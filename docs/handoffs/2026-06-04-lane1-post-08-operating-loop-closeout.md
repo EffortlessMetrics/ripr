@@ -94,32 +94,32 @@ badge semantics, or make default CI blocking decisions.
 Latest closeout PR validation:
 
 ```bash
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk git diff --check
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+git diff --check
 ```
 
 The immediately preceding surface-alignment PR also passed:
 
 ```bash
-rtk cargo test -p xtask dogfood_surface_projection_alignment -- --test-threads=1
-rtk cargo test -p xtask dogfood_user_surface_projection_alignment -- --test-threads=1
-rtk cargo xtask dogfood
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-doc-roles
-rtk git diff --check
+cargo test -p xtask dogfood_surface_projection_alignment -- --test-threads=1
+cargo test -p xtask dogfood_user_surface_projection_alignment -- --test-threads=1
+cargo xtask dogfood
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-doc-roles
+git diff --check
 ```
 
-Local `rtk cargo xtask check-pr` repeatedly timed out after ten minutes in the
+Local `cargo xtask check-pr` repeatedly timed out after ten minutes in the
 disposable tracker worktrees without diagnostics. PR CI provided the final
 green branch signal for the preceding tracker PRs.
 

@@ -47,6 +47,7 @@ pub(crate) fn typescript_actionability_for(
     static_limit: Option<&TypeScriptStaticLimit>,
     has_oracle_eligible_relation: bool,
     missing_discriminators: &[MissingDiscriminatorFact],
+    observed_evidence_label: &'static str,
 ) -> TypeScriptActionability {
     if let Some(limit) = static_limit {
         return TypeScriptActionability {
@@ -66,9 +67,9 @@ pub(crate) fn typescript_actionability_for(
         return TypeScriptActionability {
             gap_state: "already_observed",
             category: "strong_oracle_observed",
-            why_not_actionable:
-                "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
-                    .to_string(),
+            why_not_actionable: format!(
+                "{observed_evidence_label} already has a strong exact oracle; no repair packet should be emitted"
+            ),
             repair_route:
                 "keep the finding advisory preview and verify the existing assertion still targets the changed behavior"
                     .to_string(),

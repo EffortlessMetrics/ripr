@@ -1,5 +1,12 @@
 # Codex Goals
 
+> **Retired model (2026-07-20, #1701 PR 3).** `.ripr/goals/` and the
+> goal-manifest scheduling surfaces described here were deleted. Live work
+> selection comes from GitHub issues, PRs, checks, and the local worktree;
+> one PR's scope is its `ImplementationSliceV1` under
+> `.allow/spec-system/slices/`; normative behavior is RIPR-SPEC requirements.
+> This document remains as campaign history.
+
 Codex `/goal` is the autonomous campaign runner for `ripr`.
 
 A Codex goal is not one PR. A Codex goal is a long-running implementation
@@ -16,7 +23,7 @@ into RIPR's existing repo artifacts instead of adding a second task system:
 proposal/PRD means `docs/proposals/RIPR-PROP-*`, spec means
 `docs/specs/RIPR-SPEC-*`, ADR means `docs/adr/`, implementation plan means
 `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, or `plans/`,
-active goal means `.ripr/goals/active.toml`, policy ledger means `policy/*.toml`
+the retired active goal manifest meant `.ripr/goals/active.toml` (deleted), policy ledger means `policy/*.toml`
 or `.ripr/traceability.toml`, capability claims mean `docs/CAPABILITY_MATRIX.md`
 and `metrics/capabilities.toml`, support tiers mean
 `docs/status/SUPPORT_TIERS.md`, closeout means `docs/handoffs/`, and durable
@@ -84,6 +91,24 @@ Codex Goals runs should use repository artifacts instead of chat history:
 - `.ripr/goals/active.toml`
 - `target/ripr/reports/`
 
+## Issue Compilation Contract
+
+Before an implementation worker starts, the orchestrator compiles the work
+into a bounded issue packet containing verified repository state, one invariant
+or production delta, exact source-of-truth links, intended files or ownership
+seam, positive acceptance cases, adversarial and negative controls, explicit
+non-goals, proof commands, dependency and land order, and stop conditions for
+contradicted premises or architectural expansion.
+
+The implementation worker repairs concrete review or CI defects within that
+packet. When the packet premise is contradicted, required scope expands, or
+several workers repeat the same failure, return the work to orchestration for
+recompilation rather than escalating models or improvising architecture.
+
+Execution waves are limited by CI and merge capacity, not available model
+quota. Do not release another conflicting wave while protected-run queues,
+fixture runners, or integration collisions are saturated.
+
 ## Multiple PRs
 
 A Codex goal may create multiple scoped PRs in one run only when the work items
@@ -99,13 +124,40 @@ campaign manifest marks those work items as stackable.
 
 Goal manifests do not carry a special merge-permission field. Merge readiness
 comes from ordinary repo policy: branch protection, required checks, draft
-state, review comments, current operator direction, scope/risk, and whether the
-PR's issues have been reviewed and addressed.
+state, resolved review conversations, scope/risk, and whether the PR's issues
+have been reviewed and addressed.
+
+## Solo-Maintainer Review and Merge Contract
+
+`ripr-swarm` does not depend on an external approving reviewer for ordinary PRs.
+Codex or ChatGPT owns the technical review loop:
+
+1. Read the complete current-head diff, issue/spec, and PR claim boundary.
+2. Read every bot review, inline thread, and advisory CI report.
+3. Verify each finding against the current code.
+4. Fix valid findings; explain invalid, obsolete, or out-of-scope findings with
+   evidence.
+5. Improve tests, schemas, docs, and PR wording when review exposes a real gap.
+6. Resolve every review conversation.
+7. Confirm the exact reviewed head and the required `Ripr Rust Small Result`.
+8. Squash-merge or queue auto-merge, then clean the branch/worktree and continue.
+
+Bot reviews are inputs, not approval authorities. CodeRabbit, Codex review,
+Droid, ub-review, coverage, Codecov, Test Analytics, PR planning, and future
+Clippy remain advisory unless a focused policy change explicitly promotes one.
+Never ask the maintainer to arrange an external approval. If GitHub reports an
+approval requirement, diagnose live branch protection and rulesets as settings
+drift and route the repair through the repository-operations issue.
+
+A pending advisory review or flaky infrastructure job parks only the affected
+merge step. Continue an independent dependency-safe work item when available;
+do not mark the whole Codex Goal blocked. Issue at most one evidence-backed
+rerun for an infrastructure cancellation and preserve the original receipt.
 
 ## Stop Conditions
 
 A Codex Goals run should stop or write a blocked report when continuing would
-require human judgment or would broaden scope.
+require owner judgment or would broaden scope beyond the compiled work item.
 
 Stop for:
 
@@ -117,6 +169,10 @@ Stop for:
 - credential, publish, or marketplace decisions
 - non-stackable dependency boundaries for dependent work items
 - missing acceptance evidence that cannot be produced within the work item
+
+An external PR approval is not a normal stop condition. Neither is an unchanged
+advisory bot queue. Diagnose repository-policy drift, preserve the pending PR,
+and continue another independent lane where the campaign permits it.
 
 Blocked reports should be written to:
 
@@ -130,7 +186,7 @@ They should name:
 - work item
 - failing command
 - blocker
-- why continuing would broaden scope or require human judgment
+- why continuing would broaden scope or require owner judgment
 - recommended next action
 
 ## Campaign Manifest
@@ -141,34 +197,33 @@ The active campaign manifest is:
 .ripr/goals/active.toml
 ```
 
-It is the machine-readable pointer for campaign state. It names the active
+It was the machine-readable pointer for campaign state. It named the active
 campaign, end state, work items, dependencies, stackability, and required
-commands.
+commands. The file was deleted in #2056 along with the rest of `.ripr/goals/`;
+this section survives as history.
 
-The current `xtask` goals commands read this manifest:
+The `xtask` goals commands described below were **deleted in #2056** and no
+longer exist (`goals status|next|report`, `check-goals`, `check-campaign`,
+`pr-body --work-item`, `closeout`). They are kept here as campaign history
+only — do not run them; use the live GitHub board instead.
 
-```bash
-rtk cargo xtask goals status
-rtk cargo xtask goals next
-rtk cargo xtask goals report
-```
-
-Validate the manifest with:
+Historical record: the retired commands read the active manifest:
 
 ```bash
-rtk cargo xtask check-goals
+cargo xtask goals status
+cargo xtask goals next
+cargo xtask goals report
+cargo xtask check-goals
 ```
 
-`check-goals` validates the active execution manifest and the focused tracker
-rails around it. `check-campaign` remains a compatibility alias. Focused
-tracker manifests must stay outside
-`.ripr/goals/active.toml`, done work items must stay tied to proof commands,
-and declared source-of-truth paths must point at existing proposal, plan, spec,
-receipt, and closeout files. When campaign docs reference a tracker manifest,
-the referenced manifest path must exist.
+`check-goals` validated the active execution manifest and the focused tracker
+rails around it. Focused tracker manifests had to stay outside
+`.ripr/goals/active.toml`, done work items had to stay tied to proof commands,
+and declared source-of-truth paths had to point at existing proposal, plan,
+spec, receipt, and closeout files.
 
-Blocked work items are manifest state, not a separate mutation command. Record
-blocked work in the active manifest with `status = "blocked"`,
-`blocked_reason`, and `blocked_by` when applicable. `cargo xtask goals next`
-surfaces those blocked items and their reasons so agents do not infer ready work
-from chat history when the queue is intentionally blocked.
+Blocked work items were manifest state, not a separate mutation command, and
+`cargo xtask goals next` surfaced blocked items and reasons so agents did not
+infer ready work from chat history when the queue was intentionally blocked.
+Today the live GitHub board plays that role: open issues, PRs, and required
+checks are the queue.

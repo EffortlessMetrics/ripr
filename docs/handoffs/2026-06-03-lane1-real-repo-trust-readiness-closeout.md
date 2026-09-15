@@ -47,28 +47,28 @@ that landed afterward.
 Closeout validation passed in this PR:
 
 ```bash
-rtk cargo xtask check-goals
-rtk cargo xtask goals next
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-goals
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-pr
+git diff --check
 ```
 
 The merged PRs above carried their own focused tests and guards, including:
 
 ```bash
-rtk cargo test -p ripr review_comments -- --test-threads=1
-rtk cargo test -p ripr seam_cache -- --test-threads=1
-rtk cargo xtask cache report
-rtk cargo test -p ripr cross_language -- --test-threads=1
-rtk cargo xtask ripr-swarm readiness
-rtk cargo test -p ripr suggested_test -- --test-threads=1
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
+cargo test -p ripr review_comments -- --test-threads=1
+cargo test -p ripr seam_cache -- --test-threads=1
+cargo xtask cache report
+cargo test -p ripr cross_language -- --test-threads=1
+cargo xtask ripr-swarm readiness
+cargo test -p ripr suggested_test -- --test-threads=1
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-pr
 ```
 
 ## Claim Boundary

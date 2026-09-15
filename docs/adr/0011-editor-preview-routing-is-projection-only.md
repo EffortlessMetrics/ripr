@@ -1,6 +1,6 @@
 # ADR 0011: Editor Preview Routing Is Projection-Only
 
-Status: proposed
+Status: accepted
 
 Date: 2026-05-12
 

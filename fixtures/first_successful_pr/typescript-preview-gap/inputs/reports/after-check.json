@@ -1,0 +1,67 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "findings": [
+    {
+      "id": "probe:src_discount.ts:typescript_preview:2396aec1",
+      "classification": "exposed",
+      "probe": {
+        "family": "predicate",
+        "file": "src/discount.ts",
+        "line": 2
+      },
+      "ripr": {
+        "reach": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "related test reaches owner"
+        },
+        "infect": {
+          "state": "unknown",
+          "confidence": "low",
+          "summary": "preview infection unknown"
+        },
+        "propagate": {
+          "state": "unknown",
+          "confidence": "low",
+          "summary": "preview propagation unknown"
+        },
+        "observe": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Related test asserts the exact returned value."
+        },
+        "discriminate": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Equality boundary is asserted."
+        }
+      },
+      "missing_discriminators": [],
+      "related_tests": [
+        {
+          "name": "applyDiscount applies discount at threshold",
+          "file": "tests/discount.test.ts",
+          "line": 3,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "expect(result).toBe(50)"
+        }
+      ],
+      "typescript_repair_packet": {
+        "source": "typescript_preview_projection",
+        "canonical_gap_id": "gap:typescript:typescript_preview:2396aec1",
+        "language": "typescript",
+        "language_status": "preview",
+        "file": "src/discount.ts",
+        "line": 2,
+        "owner": "applyDiscount",
+        "repair_kind": "AddBoundaryAssertion",
+        "target_test": "tests/discount.test.ts::applyDiscount applies discount at threshold",
+        "verify_command": "jest tests/discount.test.ts"
+      },
+      "language": "typescript",
+      "language_status": "preview"
+    }
+  ]
+}

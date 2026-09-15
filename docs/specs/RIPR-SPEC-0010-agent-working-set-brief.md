@@ -46,6 +46,21 @@ The packet command expands a brief `packet_ref` into the existing
 second packet schema and must apply the same configured-off and hidden-class
 policy as the brief.
 
+The expanded packet may also carry the shared repair-loop handoff: a
+`next.before_snapshot_command` that prepares its artifact directories before
+the initial snapshot, an after-snapshot command, a verify command that writes
+the verify artifact, and a seam-scoped receipt command when the envelope
+selects exactly one actionable seam. A packet's `suggested_test_command` is a
+proposed Cargo name filter, not evidence that the named test already exists or
+has run; consumers must preserve that distinction.
+
+The working-set brief's nested `verification.*` and `next.*` fields are brief
+projection names. When `packet_ref` expands to the `agent-seam-packets-json`
+contract, the shared handoff is projected into the top-level `next` object as
+`before_snapshot_command`, `after_snapshot_command`, `verify_after_edit`, and
+`receipt_after_verify`; the packet contract is authoritative for those emitted
+field names.
+
 Related verification receipt:
 
 ```bash
@@ -201,7 +216,7 @@ The brief should use schema version `0.1`:
         "seam_id": "f3c9e4d21a0b7c88"
       },
       "verification": {
-        "before_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
+        "before_snapshot_command": "mkdir -p target/ripr/workflow target/ripr/reports && ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
         "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
         "suggested_test_command": "cargo test discounted_total_boundary_discriminator"

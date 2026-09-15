@@ -1,0 +1,110 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/harness_dead_construction_no_exposed_credit/input
+
+Summary: 3 probe(s), 0 exposed, 0 weak, 0 unrevealed, 3 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 4 changed line(s), 2 candidate line(s), 3 probe(s), 3 finding(s).
+
+WARNING fixtures/harness_dead_construction_no_exposed_credit/input/src/lib.rs:3
+
+Changed
+  before: raw.parse().unwrap_or(0)
+  after:  raw.parse().unwrap_or(1)
+
+Probe
+  family: call_deletion
+  delta:  effect
+  owner:  src/lib.rs::parse_limit
+
+Static exposure
+  no_static_path (warning, confidence 0.48)
+
+Evidence
+  - reach no: No static test path found for the changed owner
+  - infection unknown: No reachable tests were found, so infection cannot be established
+  - propagation yes: Changed behavior appears to influence call effect: raw.parse().unwrap_or(1)
+  - observation no: No reachable test oracle found
+  - discriminator no: No assertion can discriminate the changed behavior without a reachable test
+  - local flow reaches call effect: raw.parse().unwrap_or(1) (line 3)
+
+Weakness
+  - No relevant oracle was detected
+  - No static test path reaches the changed owner
+  - No strong discriminator was detected
+
+Next step
+  ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
+
+WARNING fixtures/harness_dead_construction_no_exposed_credit/input/src/lib.rs:8
+
+Changed
+  before: parse_limit(raw) > 0
+  after:  parse_limit(raw) > 1
+
+Probe
+  family: call_deletion
+  delta:  effect
+  owner:  src/lib.rs::limit_exceeds_default
+
+Static exposure
+  no_static_path (warning, confidence 0.48)
+
+Evidence
+  - reach no: No static test path found for the changed owner
+  - infection unknown: No reachable tests were found, so infection cannot be established
+  - propagation yes: Changed behavior appears to influence call effect: parse_limit(raw) > 1
+  - observation no: No reachable test oracle found
+  - discriminator no: No assertion can discriminate the changed behavior without a reachable test
+  - local flow reaches call effect: parse_limit(raw) > 1 (line 8)
+
+Weakness
+  - No relevant oracle was detected
+  - No static test path reaches the changed owner
+  - No strong discriminator was detected
+
+Next step
+  ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
+
+WARNING fixtures/harness_dead_construction_no_exposed_credit/input/src/lib.rs:8
+
+Changed
+  before: parse_limit(raw) > 0
+  after:  parse_limit(raw) > 1
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::limit_exceeds_default
+
+Static exposure
+  no_static_path (warning, confidence 0.35)
+
+Evidence
+  - reach no: No static test path found for the changed owner
+  - infection unknown: No tests were found, so activation/infection cannot be estimated
+  - propagation unknown: Propagation is not statically obvious from syntax-first analysis
+  - observation no: No reachable test oracle found
+  - discriminator no: No assertion can discriminate the changed behavior without a reachable test
+  - No assertion can discriminate the changed behavior without a reachable test
+  - No reachable test oracle found
+  - No static test path found for the changed owner
+  - No tests were found, so activation/infection cannot be estimated
+  - Propagation is not statically obvious from syntax-first analysis
+
+Weakness
+  - No detected boundary input for the changed predicate
+  - No relevant oracle was detected
+  - No static test path reaches the changed owner
+  - No strong discriminator was detected
+
+Next step
+  ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
+
+
+Note: ripr found no static test path for any of the 3 changed expression(s) in this diff. Scope
+  analyzed: 1 changed Rust file(s), 3 changed expression(s), and 0 statically linked related
+  test(s). This is not a coverage assessment. A test may already exercise these changes through
+  macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if
+  none does, add co-located tests that observe the changed behavior.

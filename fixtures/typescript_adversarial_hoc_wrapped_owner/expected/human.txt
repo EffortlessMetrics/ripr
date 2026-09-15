@@ -1,0 +1,38 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_adversarial_hoc_wrapped_owner/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: rust: 0, typescript: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/audit.ts:10
+  Language: typescript
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: return amount * 1.2;
+  Missing discriminator: Only heuristic TypeScript test links were found for `computeTotal`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+  Related test: tests/audit.test.ts:3 computes the total with tax
+  Next step: TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.
+  Evidence:
+    - reach weak: 1 related test(s) found for owner `computeTotal`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 5 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/typescript_adversarial_hoc_wrapped_owner/input --diff fixtures/typescript_adversarial_hoc_wrapped_owner/diff.patch --mode fast probe:src_audit.ts:typescript_preview:cef0d72c
+  ripr context --root fixtures/typescript_adversarial_hoc_wrapped_owner/input --diff fixtures/typescript_adversarial_hoc_wrapped_owner/diff.patch --mode fast --at probe:src_audit.ts:typescript_preview:cef0d72c
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

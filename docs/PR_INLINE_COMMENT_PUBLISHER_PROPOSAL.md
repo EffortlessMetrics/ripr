@@ -143,8 +143,6 @@ Campaign slices should use the scoped commands from `.ripr/goals/active.toml`.
 The campaign closeout should rerun:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language

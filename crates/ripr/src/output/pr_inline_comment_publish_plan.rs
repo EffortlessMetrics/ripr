@@ -3,6 +3,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::review_comments::SUMMARY_REASON_INLINE_CAP_REACHED;
+
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "pr_inline_comment_publish_plan";
 const STATUS: &str = "advisory";
@@ -471,7 +473,7 @@ pub(crate) fn render_comment_publish_plan_markdown(report: &CommentPublishPlanRe
     } else if report
         .skipped
         .iter()
-        .any(|skipped| skipped.skip_reason == "cap_reached")
+        .any(|skipped| skipped.skip_reason == SUMMARY_REASON_INLINE_CAP_REACHED)
     {
         out.push_str("- Never publishes summary-only guidance inline.\n");
     } else {
@@ -649,7 +651,7 @@ fn add_comment_item_plan(
             source_collection: "comments".to_string(),
             source_id,
             dedupe_key: Some(dedupe_key),
-            skip_reason: "cap_reached".to_string(),
+            skip_reason: SUMMARY_REASON_INLINE_CAP_REACHED.to_string(),
             message: "Default inline comment cap reached.".to_string(),
         });
         return;
@@ -992,7 +994,9 @@ fn reason_counts<'a>(reasons: impl Iterator<Item = &'a str>) -> Vec<(String, usi
 fn skipped_summary(reason: &str, count: usize) -> String {
     match reason {
         "summary_only" => format!("{count} recommendation remains in `comments.md`"),
-        "cap_reached" => format!("{count} recommendation was kept out of inline comments"),
+        SUMMARY_REASON_INLINE_CAP_REACHED => {
+            format!("{count} recommendation was kept out of inline comments")
+        }
         "suppressed" => format!("{count} suppressed recommendation remains visible"),
         "mode_off" => "inline comment planning is disabled".to_string(),
         _ => format!("{count} recommendation was skipped"),
@@ -1078,6 +1082,39 @@ mod tests {
             let expected_md = read_file(&repo_root()?.join(&case.expected_markdown))?;
             assert_eq!(rendered_md, expected_md, "case {}", case.id);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn inline_comment_publish_plan_uses_spec0068_inline_cap_token() -> Result<(), String> {
+        let report = build_comment_publish_plan_report(CommentPublishPlanInput {
+            root: ".".to_string(),
+            generated_at: "2026-05-10T12:00:00Z".to_string(),
+            mode: CommentMode::Plan,
+            max_inline_comments: 1,
+            pr_guidance_path: Some("comments.json".to_string()),
+            pr_guidance_json: Some(Ok(
+                r#"{"comments":[{"id":"one","dedupe_key":"ripr:one","placement":{"path":"src/lib.rs","line":1}},{"id":"two","dedupe_key":"ripr:two","placement":{"path":"src/lib.rs","line":2}}],"summary_only":[],"suppressed":[]}"#
+                    .to_string(),
+            )),
+            existing_comments_path: None,
+            existing_comments_json: None,
+            permission: CommentPermissionContext::default(),
+        });
+
+        assert_eq!(report.summary.publishable, 1);
+        assert_eq!(report.summary.skipped, 1);
+        assert_eq!(
+            report.skipped[0].skip_reason,
+            SUMMARY_REASON_INLINE_CAP_REACHED
+        );
+        assert!(
+            report
+                .skipped
+                .iter()
+                .all(|skipped| skipped.skip_reason != "cap_reached"),
+            "SPEC-0068 collapses the historical publish-plan cap_reached token"
+        );
         Ok(())
     }
 

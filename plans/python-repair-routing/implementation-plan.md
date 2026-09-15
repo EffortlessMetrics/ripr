@@ -2,6 +2,20 @@
 
 Status: proposed
 
+Delivery state: partially delivered; retained as a historical work-item ledger
+for the open promotion track.
+
+Delivery note (2026-08-14): the plan's early slices landed. The scoped
+Python repair-routing loop is governed `usable alpha` (#741), Python project
+detection can enable the adapter by default when config is absent, and the
+receipt/packet/first-pr bridges below are fixture-backed. Later sections are
+historical planning text, not the current queue. Every per-item `Status`,
+`Blocked by`, dependency, and progress field below is a snapshot of its original
+planning context, not a present-tense delivery verdict:
+[`current-state-inventory.md`](current-state-inventory.md) and
+[#1160](https://github.com/EffortlessMetrics/ripr-swarm/issues/1160) carry
+the current state and the open promotion work.
+
 Owner: language-adapter / swarm
 
 Created: 2026-05-29
@@ -26,15 +40,15 @@ Linked ADRs:
 
 Active goal:
 
-- Not active. The active execution manifest remains
-  [`.ripr/goals/active.toml`](../../.ripr/goals/active.toml). This plan does
-  not supersede the routed-runner proof goal unless a later activation PR
-  explicitly selects it.
+- Not active. The former active execution manifest `.ripr/goals/active.toml`
+  was deleted in #1701 PR 3. This plan does not supersede live GitHub issue/PR
+  state unless a later activation explicitly selects it.
 
 Support-tier impact:
 
-- None for this plan. Python remains `preview` until a dedicated support-tier
-  PR promotes a scoped claim.
+- Delivered for the scoped loop only: the scoped support-tier review (#741)
+  promotes Python repair routing to `usable alpha`. Broader Python static
+  facts remain preview/advisory; this plan text does not widen that claim.
 
 Policy impact:
 

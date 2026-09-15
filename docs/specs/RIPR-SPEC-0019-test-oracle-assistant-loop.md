@@ -2,6 +2,9 @@
 
 Status: proposed
 
+Lifecycle review: 2026-08-25. Retained as proposed; acceptance remains blocked
+on the full before/after, verify, receipt, and provenance proof chain.
+
 ## Problem
 
 RIPR now has the pieces needed for PR-time behavioral test guidance:

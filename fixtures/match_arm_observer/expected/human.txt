@@ -4,26 +4,25 @@ root: fixtures/match_arm_observer/input
 
 Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-INFO fixtures/match_arm_observer/input/src/lib.rs:7
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 1 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
-Changed
-  after:  Status::Idle => 0,
+Start here:
+  State: no_actionable_gap
+  Safe next action: no non-exposed diff finding was selected. This is not runtime proof, coverage adequacy, or mutation confirmation.
+  File: fixtures/match_arm_observer/input/src/lib.rs:7
+  Static exposure: exposed (warning, confidence 1.00)
+  Changed behavior: Status::Idle => 0,
+  Related test: tests/classify.rs:4 idle_arm_returns_zero
+  Evidence:
+    - reach yes: Related tests appear to reach classify: idle_arm_returns_zero
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 7 more evidence line(s) hidden
 
-Probe
-  family: match_arm
-  delta:  control
-  owner:  src/lib.rs::classify
+Next: drill into the top finding:
+  ripr explain --root fixtures/match_arm_observer/input --diff fixtures/match_arm_observer/diff.patch --mode fast probe:src_lib.rs:match_arm:43b1f2c8
+  ripr context --root fixtures/match_arm_observer/input --diff fixtures/match_arm_observer/diff.patch --mode fast --at probe:src_lib.rs:match_arm:43b1f2c8
 
-Static exposure
-  exposed (info, confidence 1.00)
-
-Evidence
-  - reach yes: Related tests appear to reach classify: idle_arm_returns_zero
-  - infection yes: Reachable tests can plausibly activate this changed behavior
-  - propagation yes: Changed behavior appears to influence match arm result: 0
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator yes: Strong oracle found: exact value or pattern assertion
-  - local flow reaches match arm result: 0 (line 7)
-  - related test tests/classify.rs:4 idle_arm_returns_zero uses strong exact value oracle: assert_eq!(classify(Status::Idle), 0);
-  - observed assertion argument value 0 at line 5
-  - observed enum variant value Status::Idle at line 5
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

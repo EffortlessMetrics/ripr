@@ -1,0 +1,4 @@
+[languages]
+# Enable the TypeScript preview adapter for this fixture so the adapter
+# actually runs against `.ts` changed files.
+enabled = ["rust", "typescript"]

@@ -1,10 +1,13 @@
+use crate::agent::command_specs::{AgentArtifactRoute, agent_regeneration_command_spec};
 use crate::agent::loop_commands::{
-    WORKFLOW_AGENT_RECEIPT_ARTIFACT, WORKFLOW_COMMANDS_MARKDOWN_ARTIFACT,
-    WORKFLOW_MANIFEST_ARTIFACT, agent_brief_command, agent_packet_command, agent_receipt_command,
-    agent_seam_packets_command, agent_start_command, agent_verify_command,
-    check_repo_exposure_command, display_path, workflow_artifact_path,
+    WORKFLOW_AGENT_RECEIPT_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+    WORKFLOW_COMMANDS_MARKDOWN_ARTIFACT, WORKFLOW_MANIFEST_ARTIFACT, agent_brief_command,
+    agent_packet_command, agent_receipt_command, agent_seam_packets_command, agent_start_command,
+    agent_verify_command, check_analysis_outcome_command, check_repo_exposure_command,
+    display_path, workflow_artifact_path,
 };
 use crate::app::Mode;
+use crate::domain::CommandSpec;
 use serde_json::Value;
 use std::path::Path;
 
@@ -73,6 +76,10 @@ pub(crate) struct AgentWorkflowCommand {
     pub(crate) artifact: String,
     pub(crate) purpose: String,
     pub(crate) command: String,
+    /// FIX #1617: the typed, direct-execution-safe form of the route where a
+    /// producer owns one (regeneration routes for the packet/brief steps);
+    /// `None` leaves the step legacy-string-only.
+    pub(crate) command_spec: Option<CommandSpec>,
 }
 
 pub(crate) fn build_agent_workflow_manifest(
@@ -123,6 +130,7 @@ struct AgentWorkflowPaths {
     commands_markdown: String,
     before_snapshot: String,
     after_snapshot: String,
+    analysis_outcome: String,
     agent_seam_packets: String,
     agent_packet: String,
     agent_brief: String,
@@ -146,6 +154,11 @@ impl AgentWorkflowPaths {
             ),
             before_snapshot: workflow_artifact_path(out_dir, "before.repo-exposure.json"),
             after_snapshot: workflow_artifact_path(out_dir, "after.repo-exposure.json"),
+            analysis_outcome: workflow_artifact_path_with_default(
+                out_dir,
+                "analysis-outcome.json",
+                WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+            ),
             agent_seam_packets: workflow_artifact_path(out_dir, "agent-seam-packets.json"),
             agent_packet: workflow_artifact_path(out_dir, "agent-packet.json"),
             agent_brief: workflow_artifact_path(out_dir, "agent-brief.json"),
@@ -168,6 +181,7 @@ fn workflow_commands(
         agent_packet_command_item(root, seam_id, paths),
         agent_brief_command_item(root, seam_id, paths),
         after_snapshot_command(root, mode, paths),
+        analysis_outcome_command_item(root, mode, paths),
         agent_verify_command_item(root, paths),
         agent_receipt_command_item(root, seam_id, paths),
     ]
@@ -180,6 +194,7 @@ fn workflow_manifest_command(
 ) -> AgentWorkflowCommand {
     AgentWorkflowCommand {
         step: "workflow_manifest".to_string(),
+        command_spec: None,
         artifact: paths.workflow_manifest.clone(),
         purpose: "Regenerate this source-edit-free workflow manifest.".to_string(),
         command: agent_start_command(root, seam_id, &paths.out_dir),
@@ -193,6 +208,7 @@ fn before_snapshot_command(
 ) -> AgentWorkflowCommand {
     AgentWorkflowCommand {
         step: "before_snapshot".to_string(),
+        command_spec: None,
         artifact: paths.before_snapshot.clone(),
         purpose: "Capture static seam evidence before editing tests.".to_string(),
         command: check_repo_exposure_command(root, mode.as_str(), &paths.before_snapshot),
@@ -206,6 +222,7 @@ fn agent_seam_packets_command_item(
 ) -> AgentWorkflowCommand {
     AgentWorkflowCommand {
         step: "agent_seam_packets".to_string(),
+        command_spec: None,
         artifact: paths.agent_seam_packets.clone(),
         purpose: "Render the full agent seam packet set for reference.".to_string(),
         command: agent_seam_packets_command(root, mode.as_str(), &paths.agent_seam_packets),
@@ -222,7 +239,30 @@ fn agent_packet_command_item(
         artifact: paths.agent_packet.clone(),
         purpose: "Expand the selected seam into a bounded agent packet.".to_string(),
         command: agent_packet_command(root, seam_id, &paths.agent_packet),
+        command_spec: regeneration_spec_if_root_relative(
+            AgentArtifactRoute::Packet,
+            root,
+            seam_id,
+            &paths.agent_packet,
+        ),
     }
+}
+
+/// FIX (round-1 review): the typed regeneration spec binds root-relative
+/// expected writes; an absolute workflow output directory would produce an
+/// invalid spec, so those steps stay legacy-string-only instead.
+fn regeneration_spec_if_root_relative(
+    route: AgentArtifactRoute,
+    root: &str,
+    seam_id: &str,
+    out_path: &str,
+) -> Option<CommandSpec> {
+    // FIX (round-3 review): the workflow must never advertise a spec that
+    // fails its own validation (an absolute or `..`-traversing output path,
+    // for instance) — those steps stay legacy-string-only instead.
+    let spec = agent_regeneration_command_spec(route, root, seam_id, out_path);
+    spec.validate().ok()?;
+    Some(spec)
 }
 
 fn agent_brief_command_item(
@@ -235,6 +275,12 @@ fn agent_brief_command_item(
         artifact: paths.agent_brief.clone(),
         purpose: "Refresh this seam's working-set brief.".to_string(),
         command: agent_brief_command(root, seam_id, &paths.agent_brief),
+        command_spec: regeneration_spec_if_root_relative(
+            AgentArtifactRoute::Brief,
+            root,
+            seam_id,
+            &paths.agent_brief,
+        ),
     }
 }
 
@@ -245,6 +291,7 @@ fn after_snapshot_command(
 ) -> AgentWorkflowCommand {
     AgentWorkflowCommand {
         step: "after_snapshot".to_string(),
+        command_spec: None,
         artifact: paths.after_snapshot.clone(),
         purpose: "Capture static seam evidence after adding one focused test.".to_string(),
         command: check_repo_exposure_command(root, mode.as_str(), &paths.after_snapshot),
@@ -254,6 +301,7 @@ fn after_snapshot_command(
 fn agent_verify_command_item(root: &str, paths: &AgentWorkflowPaths) -> AgentWorkflowCommand {
     AgentWorkflowCommand {
         step: "agent_verify".to_string(),
+        command_spec: None,
         artifact: paths.agent_verify.clone(),
         purpose: "Compare before and after static evidence for the agent loop.".to_string(),
         command: agent_verify_command(
@@ -265,6 +313,22 @@ fn agent_verify_command_item(root: &str, paths: &AgentWorkflowPaths) -> AgentWor
     }
 }
 
+fn analysis_outcome_command_item(
+    root: &str,
+    mode: &Mode,
+    paths: &AgentWorkflowPaths,
+) -> AgentWorkflowCommand {
+    AgentWorkflowCommand {
+        step: "analysis_outcome".to_string(),
+        command_spec: None,
+        artifact: paths.analysis_outcome.clone(),
+        purpose:
+            "Capture the producer-backed diff completeness outcome after the focused test change."
+                .to_string(),
+        command: check_analysis_outcome_command(root, mode.as_str(), &paths.analysis_outcome),
+    }
+}
+
 fn agent_receipt_command_item(
     root: &str,
     seam_id: &str,
@@ -272,6 +336,7 @@ fn agent_receipt_command_item(
 ) -> AgentWorkflowCommand {
     AgentWorkflowCommand {
         step: "agent_receipt".to_string(),
+        command_spec: None,
         artifact: paths.agent_receipt.clone(),
         purpose: "Write a review handoff receipt for the selected seam.".to_string(),
         command: agent_receipt_command(
@@ -306,6 +371,11 @@ fn workflow_artifacts(root: &Path, paths: &AgentWorkflowPaths) -> Vec<AgentWorkf
         ("agent_packet", "agent packet", &paths.agent_packet),
         ("agent_brief", "agent brief", &paths.agent_brief),
         ("after_snapshot", "after snapshot", &paths.after_snapshot),
+        (
+            "analysis_outcome",
+            "analysis outcome",
+            &paths.analysis_outcome,
+        ),
         ("agent_verify", "agent verify", &paths.agent_verify),
         ("agent_receipt", "agent receipt", &paths.agent_receipt),
     ]
@@ -384,6 +454,36 @@ fn first_nested_string(value: &Value, array_key: &str, field: &str) -> Option<St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// FIX (round-3 review): a typed regeneration spec is attached only when
+    /// it passes its own validation - root-relative writes, no `..`
+    /// traversal; escaping outputs keep the step legacy-string-only.
+    #[test]
+    fn regeneration_specs_require_valid_root_relative_writes() {
+        let good = regeneration_spec_if_root_relative(
+            AgentArtifactRoute::Packet,
+            ".",
+            "seam-a",
+            "target/ripr/workflow/agent-packet.json",
+        );
+        assert!(
+            good.is_some(),
+            "a root-relative write must keep the typed spec"
+        );
+        assert!(good.as_ref().is_some_and(|spec| spec.validate().is_ok()));
+
+        let escaping = regeneration_spec_if_root_relative(
+            AgentArtifactRoute::Packet,
+            ".",
+            "seam-a",
+            "../outside/agent-packet.json",
+        );
+        assert!(
+            escaping.is_none(),
+            "a `..`-traversing write must fall back to legacy-string-only"
+        );
+    }
+
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_workflow_test_dir(label: &str) -> std::path::PathBuf {
@@ -493,6 +593,12 @@ mod tests {
                     "target/ripr/workflow/after.repo-exposure.json",
                     "Capture static seam evidence after adding one focused test.",
                     "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+                ),
+                (
+                    "analysis_outcome",
+                    "target/ripr/workflow/analysis-outcome.json",
+                    "Capture the producer-backed diff completeness outcome after the focused test change.",
+                    "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json",
                 ),
                 (
                     "agent_verify",

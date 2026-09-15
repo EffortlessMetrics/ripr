@@ -77,8 +77,8 @@ or stale open PRs.
 Generate and inspect:
 
 ```bash
-rtk cargo xtask pr-triage-report
-rtk cargo xtask gh-pr-status --pr <number>
+cargo xtask pr-triage-report
+cargo xtask gh-pr-status --pr <number>
 ```
 
 ### Acceptance
@@ -283,13 +283,13 @@ handoff records remaining limits and non-goals.
 This reconciliation PR should run:
 
 ```bash
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-doc-roles
-rtk cargo xtask check-traceability
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-traceability
+cargo xtask check-pr
+git diff --check
 ```
 
 Behavior PRs must not continue under this closed plan. Open a fresh

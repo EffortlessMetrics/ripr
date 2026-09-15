@@ -1,0 +1,78 @@
+schema_version = "2.0"
+id = "ripr.slice.refresh-deadline.v1"
+generation = 1
+
+source_issue = "issue:1972"
+design_reference = "RIPR-SPEC-0136"
+change_class = "behavior_change"
+
+claim_boundary = """
+Amends RIPR-SPEC-0136 to add a seventh governed LSP session key,
+`refreshDeadlineMs` (default 600000ms): a physical deadline for one whole
+LSP refresh analysis attempt. When an attempt starts, the refresh path arms
+a timer that cancels the attempt's cooperative cancellation token with the
+named `DeadlineExceeded` abort kind on expiry; the timer is aborted as soon
+as the analysis returns, either way. Cancellation is cooperative only: the
+blocking analysis closure is never aborted from outside — it exits at new
+checkpoints in the Rust adapter's diff file-load and probe/classify loops,
+the workspace preview walk, and the seam-cache load boundaries — and
+commit/publish stays async-side behind the existing currency guard.
+First-cancel-wins means a deadline cancel loses to an earlier supersede or
+client cancel. An expired deadline drops the refresh fail-closed with the
+named `deadline_exceeded` attempt outcome: no limited snapshot is
+committed, no new `run_status` string is introduced, and the
+component-outcome schema is unchanged. The progress end maps the new kind
+to the distinct "analysis deadline exceeded" message; the exactly-once
+progress registry is unchanged and the scheduler returns to idle so the
+next request starts. Initialization/pushed values are lenient; pulled
+values validate fail-closed; the key has no ripr.toml slot. The CLI
+installs no token, so the checkpoints are no-ops there and CLI behavior is
+byte-identical to the pre-#1972 behavior. This slice does not change
+classification, finding sets, exposure vocabulary, output contracts,
+goldens, `repair_packet_ready` authority, or pass/fail behavior.
+"""
+
+non_goals = [
+  "CLI refresh deadline configuration (the CLI installs no token; checkpoints are no-ops)",
+  "a ripr.toml slot for refreshDeadlineMs",
+  "editor extension logic changes (one additive contributed setting declaration only)",
+  "scheduler coalescing, execution-gate, or progress-registry behavior changes",
+  "a committed limited snapshot, new run_status strings, or component-outcome schema changes on expiry",
+  "mutation-engine, coverage, or test-generation behavior",
+  "changes to classification, output schemas, or golden fixtures",
+]
+
+return_conditions = [
+  "Return to root if goldens drift or any CLI-visible output text changes.",
+  "Return to root if a deadline expiry ever commits a limited snapshot or introduces a new run_status string.",
+  "Return to root if the blocking analysis closure is aborted from outside instead of exiting cooperatively at checkpoints.",
+  "Return to root if a deadline cancel overrides an earlier supersede or client cancel outcome.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:refresh-scheduler",
+  "seam:ripr:lsp:input-identity",
+]
+
+shared_seams = [
+  "seam:ripr:analysis:diff-load",
+]
+
+forbidden_seams = [
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:cli:commands",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0136"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

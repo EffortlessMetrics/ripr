@@ -6,9 +6,14 @@
 //! `REPO_EXPOSURE_SCHEMA_VERSION`; bumping it requires updating the
 //! doc and any downstream consumers in lockstep.
 
+use crate::agent::artifact::{
+    CONTENT_SHA256_PLACEHOLDER, RepoExposureArtifactContext, Sha256Writer,
+    repo_exposure_artifact_metadata,
+};
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::SeamLimitInfo;
 use crate::analysis::SeamLimitSource;
+use crate::analysis::TypeScriptRepoReadiness;
 use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::seams::SeamGripClass;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
@@ -31,8 +36,11 @@ use std::path::Path;
 /// TS seams or exposes TS findings.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TsFullRepoGuidance {
-    /// Number of TypeScript/JavaScript source files detected in the workspace.
+    /// Number of TypeScript/JavaScript files detected in the workspace.
     pub(crate) ts_file_count: usize,
+    /// Root-level readiness facts derived from the same TypeScript preview
+    /// package/test discovery producers that diff-mode findings use.
+    pub(crate) readiness: TypeScriptRepoReadiness,
 }
 
 impl TsFullRepoGuidance {
@@ -86,6 +94,63 @@ pub(crate) fn write_repo_exposure_json<W: io::Write>(
     ts_guidance: Option<&TsFullRepoGuidance>,
     out: &mut W,
 ) -> io::Result<()> {
+    write_repo_exposure_json_document(classified, limit_info, ts_guidance, None, out)
+}
+
+/// Stream a producer-owned repo-exposure artifact with repository, revision,
+/// worktree, and content identity.  The first pass hashes the exact document
+/// with the fixed content placeholder; the second pass emits the same bytes
+/// with the resulting digest.  This preserves the bounded-memory writer path.
+pub(crate) fn write_repo_exposure_json_with_context<W: io::Write>(
+    classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
+    ts_guidance: Option<&TsFullRepoGuidance>,
+    context: &RepoExposureArtifactContext,
+    out: &mut W,
+) -> Result<(), String> {
+    let placeholder = repo_exposure_artifact_metadata(context, CONTENT_SHA256_PLACEHOLDER)?;
+    let mut hasher = Sha256Writer::new();
+    write_repo_exposure_json_document(
+        classified,
+        limit_info,
+        ts_guidance,
+        Some(&placeholder),
+        &mut hasher,
+    )
+    .map_err(|err| format!("hash repo exposure JSON failed: {err}"))?;
+    let content_sha256 = hasher.finish();
+    let mut metadata = placeholder;
+    metadata["content_sha256"] = serde_json::Value::String(content_sha256);
+    write_repo_exposure_json_document(classified, limit_info, ts_guidance, Some(&metadata), out)
+        .map_err(|err| format!("write repo exposure JSON failed: {err}"))
+}
+
+/// Render a producer-owned repo-exposure artifact for non-streaming library
+/// callers.  The CLI uses the streaming sibling above.
+pub(crate) fn render_repo_exposure_json_with_context(
+    classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
+    ts_guidance: Option<&TsFullRepoGuidance>,
+    context: &RepoExposureArtifactContext,
+) -> Result<String, String> {
+    let mut bytes = Vec::new();
+    write_repo_exposure_json_with_context(
+        classified,
+        limit_info,
+        ts_guidance,
+        context,
+        &mut bytes,
+    )?;
+    String::from_utf8(bytes).map_err(|err| format!("repo exposure JSON was not UTF-8: {err}"))
+}
+
+fn write_repo_exposure_json_document<W: io::Write>(
+    classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
+    ts_guidance: Option<&TsFullRepoGuidance>,
+    artifact: Option<&serde_json::Value>,
+    out: &mut W,
+) -> io::Result<()> {
     let metrics = ExposureMetrics::from(classified);
     let canonical_gaps = canonical_gap_identities(classified);
 
@@ -95,6 +160,9 @@ pub(crate) fn write_repo_exposure_json<W: io::Write>(
         "  \"schema_version\": \"{}\",",
         REPO_EXPOSURE_SCHEMA_VERSION
     )?;
+    if let Some(artifact) = artifact {
+        writeln!(out, "  \"artifact\": {},", artifact)?;
+    }
     writeln!(out, "  \"scope\": \"repo\",")?;
 
     // run_status and limitations[]:
@@ -150,6 +218,59 @@ pub(crate) fn write_repo_exposure_json<W: io::Write>(
                 TsFullRepoGuidance::CATEGORY
             )?;
             writeln!(out, "      \"ts_file_count\": {},", guidance.ts_file_count)?;
+            writeln!(out, "      \"typescript_readiness\": {{")?;
+            writeln!(
+                out,
+                "        \"source\": \"repo_exposure_typescript_readiness.v1\","
+            )?;
+            writeln!(
+                out,
+                "        \"authority_boundary\": \"preview_advisory_only\","
+            )?;
+            writeln!(out, "        \"analysis_model\": \"diff_first\",")?;
+            writeln!(
+                out,
+                "        \"source_file_count\": {},",
+                guidance.readiness.source_file_count
+            )?;
+            writeln!(
+                out,
+                "        \"test_file_count\": {},",
+                guidance.readiness.test_file_count
+            )?;
+            writeln!(
+                out,
+                "        \"package_root_count\": {},",
+                guidance.readiness.package_root_count
+            )?;
+            writeln!(
+                out,
+                "        \"package_confidence\": \"{}\",",
+                json_escape(&guidance.readiness.package_confidence)
+            )?;
+            writeln!(
+                out,
+                "        \"runner_status\": \"{}\",",
+                json_escape(&guidance.readiness.runner_status)
+            )?;
+            writeln!(
+                out,
+                "        \"verify_command_count\": {},",
+                guidance.readiness.verify_command_count
+            )?;
+            match guidance.readiness.top_blocker.as_ref() {
+                Some(blocker) => writeln!(
+                    out,
+                    "        \"top_blocker\": \"{}\",",
+                    json_escape(blocker)
+                )?,
+                None => writeln!(out, "        \"top_blocker\": null,")?,
+            }
+            writeln!(
+                out,
+                "        \"non_claims\": [\"no full-repo TypeScript seam model\", \"no runtime TypeScript execution\", \"no gate or badge authority\"]"
+            )?;
+            writeln!(out, "      }},")?;
             writeln!(
                 out,
                 "      \"repair_route\": \"{}\"",
@@ -390,7 +511,7 @@ fn push_classified_json(
     out.push_str(&format!("      \"kind\": \"{}\",\n", seam.kind().as_str()));
     out.push_str(&format!(
         "      \"file\": \"{}\",\n",
-        json_escape(&seam.file().to_string_lossy())
+        json_escape(&display_path(seam.file()))
     ));
     out.push_str(&format!("      \"line\": {},\n", seam.display_line()));
     out.push_str(&format!(
@@ -454,7 +575,7 @@ fn push_classified_json(
             ));
             out.push_str(&format!(
                 "\"file\": \"{}\", ",
-                json_escape(&grip.file.to_string_lossy())
+                json_escape(&display_path(&grip.file))
             ));
             out.push_str(&format!("\"line\": {}, ", grip.line));
             out.push_str(&format!(
@@ -580,6 +701,7 @@ pub(crate) fn render_repo_exposure_md(
             ));
             out.push_str(TsFullRepoGuidance::REPAIR_ROUTE);
             out.push('\n');
+            push_typescript_readiness_md(&mut out, &guidance.readiness);
         }
     }
 
@@ -637,7 +759,7 @@ fn push_top_gap_md(out: &mut String, entry: &ClassifiedSeam) {
     let evidence = &entry.evidence;
     out.push_str(&format!(
         "### {}:{} {}\n\n",
-        md_escape(&seam.file().to_string_lossy()),
+        md_escape(&display_path(seam.file())),
         seam.display_line(),
         seam.kind().as_str()
     ));
@@ -693,6 +815,49 @@ fn push_top_gap_md(out: &mut String, entry: &ClassifiedSeam) {
         }
     }
     out.push('\n');
+}
+
+fn push_typescript_readiness_md(out: &mut String, readiness: &TypeScriptRepoReadiness) {
+    out.push_str("\nTypeScript readiness (preview, advisory)\n\n");
+    out.push_str("| Signal | Value |\n| --- | --- |\n");
+    out.push_str(&format!(
+        "| source files | {} |\n",
+        readiness.source_file_count
+    ));
+    out.push_str(&format!("| test files | {} |\n", readiness.test_file_count));
+    out.push_str(&format!(
+        "| package roots | {} |\n",
+        readiness.package_root_count
+    ));
+    out.push_str(&format!(
+        "| package confidence | {} |\n",
+        md_escape_table_cell(&readiness.package_confidence)
+    ));
+    out.push_str(&format!(
+        "| runner status | {} |\n",
+        md_escape_table_cell(&readiness.runner_status)
+    ));
+    out.push_str(&format!(
+        "| verify commands | {} |\n",
+        readiness.verify_command_count
+    ));
+    out.push_str(&format!(
+        "| top blocker | {} |\n",
+        readiness
+            .top_blocker
+            .as_deref()
+            .map(md_escape_table_cell)
+            .unwrap_or_else(|| "none".to_string())
+    ));
+    out.push_str(
+        "\nThis card is root-level readiness for diff-first TypeScript preview. \
+         It does not emit full-repo TypeScript seams, run TypeScript tests, or \
+         create gate or badge authority.\n",
+    );
+}
+
+fn md_escape_table_cell(text: &str) -> String {
+    text.replace('|', "\\|").replace('\n', " ")
 }
 
 /// Escape values that get wrapped in inline-code spans. Inside
@@ -793,6 +958,21 @@ mod tests {
         )
     }
 
+    fn ts_guidance(ts_file_count: usize) -> TsFullRepoGuidance {
+        TsFullRepoGuidance {
+            ts_file_count,
+            readiness: TypeScriptRepoReadiness {
+                source_file_count: ts_file_count.saturating_sub(1),
+                test_file_count: 1,
+                package_root_count: 1,
+                package_confidence: "high".to_string(),
+                runner_status: "resolved".to_string(),
+                verify_command_count: 1,
+                top_blocker: None,
+            },
+        }
+    }
+
     fn classified_at(file: &str, owner: &str, line: usize, class: SeamGripClass) -> ClassifiedSeam {
         let seam = RepoSeam::new(
             file,
@@ -812,6 +992,13 @@ mod tests {
                 test_name: "below_threshold_has_no_discount".to_string(),
                 file: std::path::PathBuf::from("tests/pricing_tests.rs"),
                 line: 5,
+                test_target: Some(
+                    crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                        "below_threshold_has_no_discount",
+                        std::path::Path::new("tests/pricing_tests.rs"),
+                        5,
+                    ),
+                ),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
                 evidence_summary: "exact value assertion".to_string(),
@@ -913,7 +1100,7 @@ mod tests {
 
     #[test]
     fn json_emits_ts_guidance_limitations_when_ts_workspace_and_empty_seams() {
-        let guidance = TsFullRepoGuidance { ts_file_count: 3 };
+        let guidance = ts_guidance(3);
         let json = render_repo_exposure_json(&[], None, Some(&guidance));
         assert!(
             json.contains("\"limitations\""),
@@ -926,6 +1113,30 @@ mod tests {
         assert!(
             json.contains("\"ts_file_count\": 3"),
             "ts_file_count missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"typescript_readiness\""),
+            "typescript_readiness missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"source_file_count\": 2"),
+            "source_file_count missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"test_file_count\": 1"),
+            "test_file_count missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"package_confidence\": \"high\""),
+            "package_confidence missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"runner_status\": \"resolved\""),
+            "runner_status missing in:\n{json}"
+        );
+        assert!(
+            json.contains("\"top_blocker\": null"),
+            "top_blocker null missing in:\n{json}"
         );
         assert!(
             json.contains("ripr check --base origin/main"),
@@ -948,7 +1159,7 @@ mod tests {
             total: 5,
             source: SeamLimitSource::Default,
         };
-        let guidance = TsFullRepoGuidance { ts_file_count: 2 };
+        let guidance = ts_guidance(2);
         let json = render_repo_exposure_json(&[], Some(&info), Some(&guidance));
         assert!(
             json.contains("\"category\": \"repo_seam_limit_applied\""),
@@ -1117,7 +1328,7 @@ mod tests {
 
     #[test]
     fn markdown_emits_ts_guidance_section_when_ts_workspace_and_empty_seams() {
-        let guidance = TsFullRepoGuidance { ts_file_count: 5 };
+        let guidance = ts_guidance(5);
         let md = render_repo_exposure_md(&[], None, Some(&guidance));
         assert!(
             md.contains("typescript_diff_first"),
@@ -1130,6 +1341,22 @@ mod tests {
         assert!(
             md.contains("ts_file_count: 5"),
             "ts_file_count missing in:\n{md}"
+        );
+        assert!(
+            md.contains("TypeScript readiness (preview, advisory)"),
+            "readiness card missing in:\n{md}"
+        );
+        assert!(
+            md.contains("| source files | 4 |"),
+            "source file count missing in:\n{md}"
+        );
+        assert!(
+            md.contains("| package confidence | high |"),
+            "package confidence missing in:\n{md}"
+        );
+        assert!(
+            md.contains("| runner status | resolved |"),
+            "runner status missing in:\n{md}"
         );
         // Must also contain the empty seams message
         assert!(
@@ -1239,6 +1466,49 @@ mod tests {
             "Markdown missing direct_owner_call tag: {md}"
         );
         assert!(md.contains("high"), "Markdown missing confidence tag: {md}");
+    }
+
+    #[test]
+    fn repo_exposure_json_normalizes_seam_and_related_test_paths() -> Result<(), String> {
+        let mut classified = classified_at(
+            r"crates\faultline-app\src\lib.rs",
+            "faultline_app::calculate",
+            7,
+            SeamGripClass::WeaklyGripped,
+        );
+        classified.evidence.related_tests[0].file =
+            std::path::PathBuf::from(r"crates\faultline-app\tests\integration.rs");
+        classified.evidence.related_tests[0].test_target = Some(
+            crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                "below_threshold_has_no_discount",
+                std::path::Path::new(r"crates\faultline-app\tests\integration.rs"),
+                5,
+            ),
+        );
+
+        let json = render_repo_exposure_json(&[classified], None, None);
+        let value: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|err| format!("parse repo exposure JSON failed: {err}\n{json}"))?;
+        let seam = value["seams"]
+            .as_array()
+            .and_then(|seams| seams.first())
+            .ok_or_else(|| format!("repo exposure JSON missing first seam: {value}"))?;
+        let seam_file = seam["file"]
+            .as_str()
+            .ok_or_else(|| format!("seam file is not a string: {seam}"))?;
+        let related_file = seam["related_tests"][0]["file"]
+            .as_str()
+            .ok_or_else(|| format!("related test file is not a string: {seam}"))?;
+
+        if seam_file != "crates/faultline-app/src/lib.rs" {
+            return Err(format!("seam file must use forward slashes: {seam_file}"));
+        }
+        if related_file != "crates/faultline-app/tests/integration.rs" {
+            return Err(format!(
+                "related test file must use forward slashes: {related_file}"
+            ));
+        }
+        Ok(())
     }
 
     #[test]

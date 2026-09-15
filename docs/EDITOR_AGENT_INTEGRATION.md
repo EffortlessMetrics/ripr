@@ -87,8 +87,6 @@ aligned.
 Docs-only audit PRs use the campaign and contract checks:
 
 ```bash
-cargo xtask check-campaign
-cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask check-traceability
 cargo xtask check-capabilities

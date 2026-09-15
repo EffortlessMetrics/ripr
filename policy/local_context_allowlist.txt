@@ -6,3 +6,5 @@
 # This policy is for narrow generic examples only. Real machine paths, Codex
 # memory paths, sandbox paths, uploaded-file references, and session transcripts
 # should be removed instead of allowlisted.
+crates/ripr/src/review_input.rs|C:/path/to/repo|2|Generic Windows drive-path fixture for review_root_spelling_preserves_platform_identity; owner repo-policy; issue #1686.
+crates/ripr/src/review_input.rs|C:\path\to\repo|1|Generic Windows drive-path fixture for review_root_spelling_preserves_platform_identity; owner repo-policy; issue #1686.

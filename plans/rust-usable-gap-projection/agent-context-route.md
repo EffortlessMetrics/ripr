@@ -87,17 +87,17 @@ Choose the narrow commands that match the changed surface, then run
 `check-pr` before opening a PR.
 
 ```bash
-rtk cargo test -p ripr gap_decision_ledger --lib
-rtk cargo test -p ripr reports_gap_ledger --lib
-rtk cargo test -p ripr review_comments --lib
-rtk cargo test -p ripr gate --lib
-rtk cargo test -p ripr lsp --lib
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-traceability
-rtk cargo xtask check-capabilities
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p ripr gap_decision_ledger --lib
+cargo test -p ripr reports_gap_ledger --lib
+cargo test -p ripr review_comments --lib
+cargo test -p ripr gate --lib
+cargo test -p ripr lsp --lib
+cargo xtask check-output-contracts
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
 ```
 
 ## Stop Conditions

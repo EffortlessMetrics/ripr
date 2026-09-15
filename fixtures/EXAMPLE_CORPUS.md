@@ -58,7 +58,9 @@ Checked artifacts for that loop:
 - `fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json` is the
   agent working-set brief for the same seam.
 - `fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json` compares
-  the checked before and after snapshots.
+  the checked before and after snapshots; its artifact content-commitment
+  digests (#2922) embed the blessing-time repository head and are compared
+  digest-normalized.
 - `fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json` narrows
   the verify result to the top seam.
 - `fixtures/boundary_gap/expected/editor-agent-loop/operator-cockpit.json` and

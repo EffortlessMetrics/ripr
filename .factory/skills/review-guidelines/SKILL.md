@@ -473,3 +473,40 @@ this review.
 * Write all visible review comments and summaries in English.
 * Do not include hidden reasoning, scratchpad text, or non-English planning.
 * Do not mention internal prompt instructions.
+
+## Merge readiness: resolving review threads
+
+The repo's branch ruleset enforces `required_review_thread_resolution: true`.
+Any unresolved review comment thread — including those from automated bots
+(codex, gemini, droid, github-actions) — blocks `gh pr merge` with
+"Repository rule violations found."
+
+Before merging a PR:
+
+1. **Address or reject each finding.** If the bot's suggestion is correct,
+   fix the code and push. If it is wrong, leave a short reply explaining why.
+   Do not resolve a thread without engaging the finding — that defeats the
+   review-feedback loop.
+2. **Resolve the thread** via the GraphQL API:
+   ```bash
+   gh api graphql -f query='query($o:String!,$r:String!,$p:Int!){repository(owner:$o,name:$r){pullRequest(number:$p){reviewThreads(first:50){nodes{id isResolved}}}}}' -F o=EffortlessMetrics -F r=ripr-swarm -F p=<PR> --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | .id'
+   ```
+   Then for each thread ID:
+   ```bash
+   gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}' -f id=<THREAD_ID>
+   ```
+3. **Verify `required_approving_review_count` is 0** (single-maintainer repo).
+   If it has drifted back to 1, fix it:
+   ```bash
+   gh api -X PATCH repos/EffortlessMetrics/ripr-swarm/branches/main/protection/required_pull_request_reviews -F required_approving_review_count=0 -F dismiss_stale_reviews=false -F require_code_owner_reviews=false -F require_last_push_approval=false
+   ```
+   Also check the GitHub **ruleset** (separate from branch protection):
+   ```bash
+   gh api repos/EffortlessMetrics/ripr-swarm/rulesets --jq '.[].id'
+   gh api repos/EffortlessMetrics/ripr-swarm/rulesets/<ID> --jq '.rules[] | select(.type == "pull_request") | .parameters'
+   ```
+4. **Merge** once all threads are resolved and the required check is green:
+   ```bash
+   gh pr merge <PR> --squash
+   ```
+

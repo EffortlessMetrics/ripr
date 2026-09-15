@@ -30,7 +30,7 @@ Planned operations:
   - verify: `ripr agent verify`
 
 Skipped:
-- cap_reached: 1 recommendation was kept out of inline comments
+- inline_comment_cap_reached: 1 recommendation was kept out of inline comments
 
 Limits:
 - Advisory inline-comment publish plan only.

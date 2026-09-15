@@ -3,6 +3,7 @@
     {
       "code": "exposed",
       "data": {
+        "diagnostic_id": "finding:2451dd5c1f6e15b1",
         "classification": "exposed",
         "confidence": 0.6,
         "finding_id": "probe:src_discount.ts:typescript_preview:2396aec1",

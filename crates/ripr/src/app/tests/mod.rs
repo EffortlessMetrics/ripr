@@ -11,6 +11,8 @@ use std::path::PathBuf;
 
 mod badge_rendering;
 mod mode_and_selector;
+mod preview_analyzed_outcome;
+mod python_packet_eligibility;
 mod rendering_contracts;
 
 fn sample_finding(file: &str, line: usize) -> Finding {
@@ -68,11 +70,13 @@ fn sample_finding(file: &str, line: usize) -> Finding {
         observed_sink: None,
         oracle_alignment: None,
         alignment_reason: None,
+        source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
     }
 }
 
 fn check_output_with(findings: Vec<Finding>) -> CheckOutput {
     CheckOutput {
+        harness_projections: Vec::new(),
         schema_version: CHECK_OUTPUT_SCHEMA_VERSION.to_string(),
         tool: "ripr".to_string(),
         mode: Mode::Draft,
@@ -81,7 +85,12 @@ fn check_output_with(findings: Vec<Finding>) -> CheckOutput {
         summary: Summary::default(),
         findings,
         preview_language_advisories: Vec::new(),
+        language_runs: Vec::new(),
         no_scope_provided: false,
+        unanalyzed_working_tree: false,
+        suppression: None,
+        analysis_outcome: None,
+        partial_scope: None,
     }
 }
 

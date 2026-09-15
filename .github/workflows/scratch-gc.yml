@@ -9,18 +9,17 @@ name: Scratch GC
 # same routed lanes with the same /mnt/ci-scratch layout and the same disk guard,
 # so each accumulates the same orphaned scratch dirs when a run is cancelled
 # before its cleanup step (the 2026-06-06 outage failure mode). One matrix job
-# per pool sweeps a runner in that pool; fail-fast is off so an offline pool does
-# not suppress the others. This is a GitHub-Actions-level sweep (one runner per
-# pool per fire), not a per-host daemon — see #1058 for host-level disk guards.
+# per pool sweeps a runner in that pool; fail-fast is off AND the concurrency
+# group is keyed per pool, so an offline pool suppresses neither the other pools'
+# jobs nor their later scheduled fires. fail-fast alone did not achieve that:
+# with a workflow-level group the pools shared one queue slot (#3274). This is a
+# GitHub-Actions-level sweep (one runner per pool per fire), not a per-host
+# daemon — see #1058 for host-level disk guards.
 
 on:
   schedule:
     - cron: "17,47 * * * *"
   workflow_dispatch:
-
-concurrency:
-  group: scratch-gc-${{ github.repository }}
-  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -42,6 +41,17 @@ jobs:
     runs-on:
       group: em-ci-small
       labels: ${{ matrix.labels }}
+    # Per-pool, not per-repository (#3274). A workflow-level group couples all
+    # three matrix pools into one queue slot: the run is not complete until
+    # every pool's job is, so a pool with no available runner holds the slot,
+    # every later scheduled fire queues behind it, and each fire is cancelled
+    # by the next one. That starved the lane for 22 consecutive runs with a
+    # `cancelled` conclusion, which never trips a required check or a
+    # notification. `fail-fast: false` decouples pool *failure*; it does not
+    # decouple queue occupancy. Keying the group on the pool restores that.
+    concurrency:
+      group: scratch-gc-${{ github.repository }}-${{ matrix.pool }}
+      cancel-in-progress: false
     timeout-minutes: 15
     steps:
       - name: Reclaim scratch and report disk

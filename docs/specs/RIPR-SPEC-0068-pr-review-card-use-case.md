@@ -112,8 +112,12 @@ Every rendered review card must include:
   `placement.mode`) or, when no safe changed-line placement exists,
   an explicit `source_location` with a summary reason. A card with
   neither is invalid.
-- `canonical_gap_id` when the card projects a gap-ledger record;
-  `seam_id` whenever a seam identity exists.
+- `canonical_gap_id` on every card — projected unchanged from the canonical
+  domain identity for working-set seams or from `GapRecord.canonical_gap_id`
+  for the gap-ledger path. It is `null` when the producing domain has no
+  eligible identity; the renderer never synthesizes one from file, line,
+  expression, or test navigation. `seam_id` remains the source-locator
+  identity whenever a seam identity exists.
 - `gap_state` using the canonical actionability vocabulary
   (RIPR-SPEC-0061); cards never invent an alternate state. Today
   `gap_state` ships on gap-ledger cards and cross-language
@@ -165,9 +169,9 @@ the rename is traceable string-for-string:
 
 | Reason token | Status | Meaning |
 | --- | --- | --- |
-| `inline_comment_cap_reached` | planned — tokenizes today's free-text `summary_reason` "inline comment cap reached"; the existing publish-plan skip reason `cap_reached` (`pr_inline_comment_publish_plan.rs`) and the RIPR-SPEC-0025 metric name `pr_inline_comment_cap_reached` name the same condition, and the slice must collapse the three names into this one token | placement existed; the inline cap was already filled. |
-| `no_safe_changed_line_placement` | planned — tokenizes today's free-text `summary_reason` "no safe changed-line placement was available for this seam" | no changed production line was a safe anchor; card moves to summary with `source_location`. |
-| `navigation_only_cross_language_target` | planned — tokenizes today's free-text `summary_reason` "navigation-only cross-language target limitation; no PR repair comment emitted" | cross-language test target unresolved; navigation context only, no repair comment. |
+| `inline_comment_cap_reached` | implemented for review guidance and the publish-plan cap skip path; tokenizes the former free-text `summary_reason` "inline comment cap reached" and replaces the historical publish-plan skip reason `cap_reached`. The RIPR-SPEC-0025 metric name `pr_inline_comment_cap_reached` names the same condition. | placement existed; the inline cap was already filled. |
+| `no_safe_changed_line_placement` | implemented for review guidance; tokenizes the former free-text `summary_reason` "no safe changed-line placement was available for this seam" | no changed production line was a safe anchor; card moves to summary with `source_location`. |
+| `navigation_only_cross_language_target` | implemented for review guidance; tokenizes the former free-text `summary_reason` "navigation-only cross-language target limitation; no PR repair comment emitted" | cross-language test target unresolved; navigation context only, no repair comment. |
 | `nearby_test_changed` | existing | the recommended test file changed in this PR; the author is already working there. |
 | `summary_cap` | existing | the summary item cap was reached. |
 | `missing_verification_command` | existing (emitted on the gap-ledger path today; the working-set path adopts it in the same slice) | actionable guidance requires a verify command; without one the card is suppressed, not weakened. |
@@ -186,17 +190,18 @@ the same closure rule applies to that set.
 
 The working-set (diff-scoped) guidance artifact carries an
 `analysis_scope` with `run_status` (`limited_diff_scope` in
-production today; `scoped` exists only in a test helper and a
-production `scoped` run_status is contract-to-implement), `basis`
+production today; `scoped` exists only in a test helper), `basis`
 (for diff-scoped runs:
 `changed_production_files_plus_immediate_callers`),
 `downstream_consumable`, a named `limitation`, and a `repair_route`.
 The gap-ledger guidance artifact
-(`render_gap_record_review_comments_json`) carries no
-`analysis_scope` today; extending `analysis_scope` to every
-guidance artifact is contract-to-implement in the linked plan
-slice. Diff-scoped guidance must never present itself as a
-full-repo verdict.
+(`render_gap_record_review_comments_json`) carries an
+`analysis_scope` with `run_status = "artifact_scope"`, `basis =
+"supplied_gap_decision_ledger"`, the supplied ledger anchor files, a named
+`review_comments_gap_ledger_artifact_scope_only` limitation, and the
+`reports/gap-decision-ledger` repair route. Diff-scoped guidance must never
+present itself as a full-repo verdict, and gap-ledger guidance must never imply
+that RIPR reran diff or full-repo analysis while rendering supplied records.
 
 ### Required and forbidden wording
 
@@ -271,10 +276,9 @@ these states as success:
   changed owner, the missing discriminator, a suggested assertion
   shape, a related test with file and line, and a copyable verify
   command. Clicking the placement lands on the changed line.
-- A fourth qualifying seam appears in the summary with reason
-  `inline_comment_cap_reached` (the planned token for today's
-  free-text "inline comment cap reached"), keeping the inline
-  surface sparse.
+- A fourth qualifying seam appears in the summary, or is skipped by
+  the inline-comment publish plan, with reason
+  `inline_comment_cap_reached`, keeping the inline surface sparse.
 - A cross-language card whose test target does not resolve renders
   as navigation-only with `gap_state = "static_limitation"`,
   `repairability = "no_action"`, and the `repair_route` attached to
@@ -297,13 +301,21 @@ these states as success:
   — every rendered card (inline, summary-only, cross-language) carries gap_state.
 - `crates/ripr/src/output/review_comments.rs::tests::spec0068_summary_reason_is_closed_vocabulary`
   — every summary_reason value is a member of the closed vocabulary constants.
+- `crates/ripr/src/output/review_comments.rs::tests::review_comments_gap_ledger_renders_only_eligible_repair_cards`
+  — gap-ledger review guidance carries `analysis_scope.run_status =
+  "artifact_scope"` and the named ledger-artifact limitation.
+- `crates/ripr/src/cli/commands.rs::tests::review_comments_gap_ledger_writes_repair_cards_without_loading_diff`
+  — `ripr review-comments --gap-ledger` writes the same ledger-artifact scope
+  without loading the diff.
+- `crates/ripr/src/output/pr_inline_comment_publish_plan.rs::tests::inline_comment_publish_plan_uses_spec0068_inline_cap_token`
+  — the publish-plan cap skip reason uses `inline_comment_cap_reached`, not
+  the historical `cap_reached` token.
 
-**Deferral note (working-set canonical_gap_id):** the gap-ledger path already emits
-`canonical_gap_id` from `record.canonical_gap_id`. The working-set path does not
-thread a `CanonicalGapIdentity` through `review_recommendation_json` today; emitting
-`canonical_gap_id` on working-set cards is deferred to the linked plan slice when the
-working-set render path gets access to the canonical gap identity. The seam_id and
-source_location contract is fully enforced now.
+**Canonical working-set identity (shipped):** the gap-ledger path preserves
+`record.canonical_gap_id`. The working-set renderer projects the ID returned by
+`analysis::canonical_gap_identity`; it does not derive a replacement from a path,
+line, expression, or test name. The field is required by the review-comments schema
+and is `null` only when the domain marks a seam ineligible for canonical identity.
 
 ## Implementation Mapping
 
@@ -317,7 +329,9 @@ source_location contract is fully enforced now.
 - `crates/ripr/src/output/pr_inline_comment_publish_plan.rs` — publish plan.
 - `schemas/ripr/review-comments.schema.json` — schema updated to allow
   `gap_state`, `receipt_command`, `non_claims`, `why_not_actionable`,
-  `canonical_gap_id` on recommendation cards.
+  `canonical_gap_id` on recommendation cards, the structured
+  `suggested_test.related_test` object, and the
+  `gap_ledger_artifact` / `artifact_scope` analysis-scope tokens.
 - `docs/OUTPUT_SCHEMA.md` — card fields documented.
 - `.ripr/traceability.toml` — SPEC-0068 mapped to the five reject-list tests.
 
@@ -335,15 +349,56 @@ source_location contract is fully enforced now.
 - `why_not_actionable` (first static-limitation reason) on every
   `gap_state == "static_limitation"` card.
 - `non_claims` (`language_status`, `authority_boundary`) on every limitation card.
+- `analysis_scope` on gap-ledger review guidance via
+  `ReviewCommentsAnalysisScope::gap_ledger_artifact`.
 - Five reject-list unit tests (SPEC-0068 prefix).
 - Golden fixtures re-blessed for all pr-guidance cases.
 
-### Deferred (linked plan slice)
+### Shipped (related-test object follow-up)
 
-- `canonical_gap_id` on working-set cards (gap-ledger path already has it).
-- Structured related-test object `{name, file, line}`.
-- Card-level `oracle_kind` / `oracle_strength`.
-- `analysis_scope` on the gap-ledger guidance artifact.
+- Structured related-test object `{name, file, line}` on `suggested_test`
+  for both card paths: the working-set card projects the nearest strong
+  related test (`nearest_strong_test_to_imitate`) via `display_path`; the
+  gap-ledger card projects `GapRepairRoute.{related_test, target_file,
+  target_line}` through `gap_record_related_test`. The field is always present:
+  the working-set card emits a fully navigable object or `null`, while the
+  gap-ledger card may emit a name-only object with `file` / `line` set to
+  `null` when its source route does not carry a resolved location. The flat
+  `recommended_file` / `recommended_name` / `near_test` strings are retained
+  alongside it.
+- `related_test` registered in `schemas/ripr/review-comments.schema.json`
+  (object-or-null with required `name`; `file` / `line` nullable for the
+  gap-ledger path) and documented in `docs/OUTPUT_SCHEMA.md`.
+- Output-contract test `spec0068_card_carries_structured_related_test` pins
+  the navigational object shape against rendered cards.
+
+### Shipped (card-level oracle follow-up)
+
+- Card-level `oracle_kind` / `oracle_strength` on every working-set card,
+  projecting the representative related test's oracle (the nearest strong
+  related test, else the top-ranked related test) from the closed domain
+  vocabulary. When no related test observes the seam they degrade honestly to
+  `oracle_kind = "unknown"` / `oracle_strength = "none"`, never a fabricated
+  observer. The review card projects the same oracle facts agent briefs and
+  seam packets carry; it computes no oracle of its own. The gap-ledger artifact
+  path carries no related-test oracle source and does not emit these fields.
+- Both fields registered as closed enums on the `recommendation` card in
+  `schemas/ripr/review-comments.schema.json` and documented in
+  `docs/OUTPUT_SCHEMA.md`.
+- Output-contract tests `spec0068_card_carries_oracle_kind_and_strength` and
+  `working_set_card_reports_no_oracle_without_related_tests` pin the closed
+  vocabulary and the honest no-oracle degradation.
+
+### Canonical working-set identity (shipped)
+
+- Working-set cards carry the exact `canonical_gap_id` supplied by
+  `analysis::canonical_gap_identity`; source-line movement may change `seam_id`
+  while the canonical gap ID remains stable according to the domain contract.
+- The gap-ledger projection remains unchanged and preserves
+  `GapRecord.canonical_gap_id`.
+- `spec0068_working_set_card_projects_domain_canonical_gap_id` pins the bridge
+  between domain identity and the rendered card. It also keeps canonical gap
+  identity independent of the nullable, navigation-only `related_test` object.
 
 ## Metrics
 

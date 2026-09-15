@@ -300,6 +300,15 @@ pub(crate) fn owner_call_relation(
         return class_method_owner_call_relation(test, owner, alias_map, workspace_root)
             .then_some(TypeScriptRelationKind::ClassMethodCall);
     }
+    // Owner-module mock guard (issue #2269): when the test mocks the changed
+    // owner's own module, every owner call below executes the mock, not the
+    // changed code, so no owner-call relation may be credited — the same
+    // guard the Method/ClassMethod/ModuleFunction paths above already apply.
+    // The heuristic fallback may still link the test as advisory proximity
+    // evidence (fail-closed: at most `weakly_exposed`).
+    if test_mocks_owner_module(test, owner, alias_map, workspace_root) {
+        return None;
+    }
     if contains_call_name(&test.body_text, &owner.name)
         && !owner_name_shadowed_by_unrelated_import(test, owner, alias_map, workspace_root)
     {

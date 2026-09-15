@@ -22,6 +22,10 @@ The disclosure carries:
 
 - `category`: `typescript_diff_first`
 - `ts_file_count`: 2
+- a nested `typescript_readiness` card / Markdown readiness table with
+  `source_file_count`: 2, `test_file_count`: 0, `package_root_count`: 1,
+  `package_confidence`: `medium`, `runner_status`: `no_tests_detected`, and
+  `top_blocker`: `typescript_tests_not_detected`
 - `repair_route`: pointing to `ripr check --base origin/main` or `--diff <file>`
 
 The `seams` array is empty — no fabricated TypeScript seams are emitted.

@@ -88,13 +88,13 @@ This rail does not own:
 ## Standard Commands
 
 ```bash
-rtk cargo xtask pr-triage-report
-rtk cargo xtask worktree doctor
-rtk cargo xtask pr-ready
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-traceability
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask pr-triage-report
+cargo xtask worktree doctor
+cargo xtask pr-ready
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-pr
+git diff --check
 ```

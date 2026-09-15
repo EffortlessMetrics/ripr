@@ -1,0 +1,68 @@
+schema_version = "2.0"
+id = "ripr.slice.packet-authority-lsp.v1"
+generation = 1
+
+source_issue = "issue:2028"
+design_reference = "RIPR-SPEC-0087"
+change_class = "refactor"
+
+claim_boundary = """
+Routes the LSP repair-packet decision surfaces through the single
+producer-owned authority landed in PR 1 (#2212): the seam targeted-test-brief
+code action now gates on `repair_packet_eligibility(...).eligible()` instead
+of hand-conjoining `repair_projection_ready` with the cross-language helper;
+the actionable-gaps render-field contract exists once in
+`lsp/gap_artifacts::require_actionable_packet_render_fields` and is called by
+both the ingest boundary and the command-time repair-packet renderer in
+`lsp/backend.rs`; the ledger-gap cross-language suppression consumes the
+producer-emitted category constant; and `check-architecture` gains a coupling
+guard forbidding direct `repair_projection_ready` / `repair_route_readiness`
+calls outside the authority and its declared compatibility exemptions.
+Behavior-preserving except one documented fail-closed (withhold-only) delta:
+the brief action now also honors the cross-language oracle-visibility
+conjunct (RIPR-SPEC-0087 §8.4). Does not claim changes to the authority
+itself, fixtures, goldens, editor extension, workflows, or any schema.
+"""
+
+non_goals = [
+  "changes to analysis/repair_route.rs (the authority itself is PR 1, merged)",
+  "fixture or golden changes (zero drift is the regression net)",
+  "new user-facing text at withheld LSP actions that do not already explain themselves",
+  "a second JSON-shaped validator authority (the shared GapRecord validator and the single packet render-field contract are the two arms)",
+  "gate repair-route predicate changes (different input shape; documented note only)",
+]
+
+return_conditions = [
+  "Return to root if any golden or evidence-promotion-honesty drift appears (stop, do not re-bless).",
+  "Return to root if a migrated site needs an observable behavior change beyond the documented fail-closed brief delta.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:repair-packet-action-routing",
+  "seam:ripr:xtask:repair-packet-authority-guard",
+]
+
+shared_seams = [
+  "seam:ripr:output:gap-decision-ledger-contract",
+  "seam:ripr:spec:0087-repair-packet-contract",
+]
+
+forbidden_seams = [
+  "seam:ripr:analysis:repair-route-authority",
+  "seam:ripr:repo:workflows",
+  "seam:ripr:editor:vscode-extension",
+  "seam:ripr:output:check-json-contract",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0087#producer-owned-repair-packet-authority"
+requirement_generation = 1
+
+[implementation_claim]
+status = "outstanding"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

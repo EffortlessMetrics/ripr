@@ -19,7 +19,7 @@ fn configured_finding_severity_applies_to_human_json_and_github() -> Result<(), 
     let json = render_check_with_config(&output, &OutputFormat::Json, &config)?;
     let github = render_check_with_config(&output, &OutputFormat::Github, &config)?;
 
-    if !human.contains("INFO src/lib.rs:1") {
+    if !human.contains("Static exposure: weakly_exposed (info, confidence") {
         return Err(format!("human severity was not configured: {human}"));
     }
     if !json.contains("\"severity\": \"info\"") {

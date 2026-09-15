@@ -38,6 +38,7 @@ cargo xtask ci-full
 cargo xtask check-static-language
 cargo xtask check-no-panic-family
 cargo xtask check-file-policy
+cargo xtask check-covered-by
 cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
@@ -70,9 +71,62 @@ The current test suite covers:
 
 - unified diff parsing
 - Rust test/assertion extraction
+- harness trial-subject evidence parity (helper callbacks, method
+  oracles, dormant templates, shadow fail-closed boundaries)
 - JSON escaping
 - simple end-to-end diff analysis
 - CLI smoke behavior
+- property-based parser invariants (diff parser)
+
+## Property-Based Tests
+
+The diff parser (`crates/ripr/src/analysis/diff/parse.rs`) has property-based
+tests using [`proptest`](https://crates.io/crates/proptest) (a dev-dependency).
+These generalize the hand-rolled LCG fuzz tests with automatic shrinking and
+broader input coverage.
+
+Properties checked:
+
+1. **Totality**: `parse_unified_diff` never panics on arbitrary string input.
+2. **Structural invariants**: no empty paths, no newlines in line text, for
+   generated diff-like text.
+3. **Line number validity**: every added line's `new_side_line` is >= 1.
+
+Convention: property tests use `Result<(), String>` bodies, no `unwrap`/`expect`,
+per the workspace lint posture. See `docs/TEST_TAXONOMY.md` for the Property
+and Fuzz test type definitions.
+
+## Harness Trial-Subject Evidence Parity Scan
+
+The repository-governed test-harness registry
+(`crates/ripr/src/analysis/facts/harness_registry.rs`, [RIPR-SPEC-0173](specs/RIPR-SPEC-0173-trial-subject-evidence-parity.md))
+derives evidence for registered harness trial subjects (for example
+libtest_mimic `Trial::test` registrations). Its parity scan keeps a trial
+subject's observation evidence aligned with what an ordinary `#[test]`
+carrying the same code would show, and every widening is fail-closed.
+The discriminating unit tests live in
+`crates/ripr/src/analysis/facts/harness_registry/tests.rs`:
+
+- helper-callback bodies contribute one level of parsed evidence
+  (calls, oracles, literals) with real line attribution, only when the
+  callback name provably binds the file-level fn (`shadowed_callback_...`
+  and `..._const_or_static_shadow_...` pins block let/parameter/const/
+  static/import/nested-module shadows);
+- method-position `.unwrap()`/`.expect()` calls register smoke oracles
+  with receiver-ful text across keyword, indexed, cast, operator, and
+  negation receiver forms (`trial_method_oracle_receivers_...`);
+- assertion macros in every delimiter Rust permits (`(...)`, `[...]`,
+  `{...}`) keep their complete invocation text, classification, and
+  observed tokens (`trial_alternative_delimiters_...`);
+- dormant `macro_rules!` templates — in any delimiter, in a closure or
+  a helper body — contribute no oracle, call, or literal evidence while
+  live surrounding evidence still admits (`trial_dormant_...` and
+  `given_dormant_template_in_helper_...` pins).
+
+When you touch the trial evidence scan, work fixture-first: verify the
+new discriminating test fails on the pre-fix head, then check the
+ordinary-parser parity pins and the fail-closed negative controls
+together, so a widened admit cannot land without its boundary.
 
 ## Error-Handling Bar
 
@@ -101,13 +155,19 @@ The test suite:
 
 - opens a fixture Rust workspace (`test-fixtures/workspace/Cargo.toml`)
 - activates the extension
-- asserts commands are registered (`ripr.restartServer`, `ripr.showOutput`,
+- asserts commands are registered (`ripr.restartServer`, `ripr.selectWorkspaceRoot`,
+  `ripr.showOutput`,
   `ripr.copyContext`, `ripr.copySuggestedAssertion`,
   `ripr.copyTargetedTestBrief`, `ripr.copyAgentPacketCommand`,
   `ripr.copyAgentBriefCommand`, `ripr.copyAfterSnapshotCommand`,
   `ripr.copyAgentVerifyCommand`, `ripr.copyAgentReceiptCommand`,
   `ripr.openRelatedTest`, `ripr.openSettings`)
 - verifies the defaults-first editor check mode is `draft`
+- pins the `contributes.menus` editor/context repair-loop entries (ripr
+  groups, `resourceLangId` gating) and the two default
+  `contributes.keybindings`, keeps the payload-bound targeted-test and
+  agent-loop commands code-action-only, and fails closed when a menu or
+  keybinding references an unregistered command
 - verifies `copyContext` completes without crash when no editor is active
 - verifies `copyContext` accepts a structured target with `finding_id` and
   `probe_id` without crashing

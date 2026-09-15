@@ -21,6 +21,7 @@ pub(crate) fn route(path: &Path) -> Option<LanguageId> {
         "rs" => Some(LanguageId::Rust),
         "ts" | "tsx" | "js" | "jsx" => Some(LanguageId::TypeScript),
         "py" => Some(LanguageId::Python),
+        "pm" | "pl" | "t" | "psgi" => Some(LanguageId::Perl),
         _ => None,
     }
 }
@@ -43,6 +44,14 @@ mod tests {
         for (path, expected) in cases {
             assert_eq!(route(Path::new(path)), Some(expected));
         }
+    }
+
+    #[test]
+    fn route_perl_extensions_regardless_of_adapter_availability() {
+        assert_eq!(route(Path::new("lib/My/App.pm")), Some(LanguageId::Perl));
+        assert_eq!(route(Path::new("script/run.pl")), Some(LanguageId::Perl));
+        assert_eq!(route(Path::new("t/app.t")), Some(LanguageId::Perl));
+        assert_eq!(route(Path::new("app.psgi")), Some(LanguageId::Perl));
     }
 
     #[test]

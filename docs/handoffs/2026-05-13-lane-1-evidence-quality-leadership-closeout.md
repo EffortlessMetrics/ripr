@@ -92,18 +92,18 @@ mutation execution belong to their owning lanes.
 Latest local proof on the #885 branch before merge:
 
 ```text
-rtk cargo test -p xtask evidence_quality_trend
-rtk cargo xtask evidence-quality-scorecard
-rtk cargo xtask evidence-quality-trend
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-traceability
-rtk cargo xtask check-capabilities
-rtk cargo xtask check-spec-format
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo test -p xtask evidence_quality_trend
+cargo xtask evidence-quality-scorecard
+cargo xtask evidence-quality-trend
+cargo xtask check-output-contracts
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-spec-format
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
 ```
 
 GitHub proof for #885:
@@ -117,15 +117,15 @@ Required CI completed before merge.
 This closeout PR should run:
 
 ```text
-rtk cargo xtask check-campaign
-rtk cargo xtask check-doc-index
-rtk cargo xtask markdown-links
-rtk cargo xtask check-static-language
-rtk cargo xtask check-traceability
-rtk cargo xtask check-capabilities
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-pr
-rtk git diff --check
+cargo xtask check-campaign
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-output-contracts
+cargo xtask check-pr
+git diff --check
 ```
 
 ## Artifacts

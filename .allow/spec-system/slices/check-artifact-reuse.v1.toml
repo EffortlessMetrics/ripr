@@ -1,0 +1,67 @@
+schema_version = "2.0"
+id = "ripr.slice.check-artifact-reuse.v1"
+generation = 1
+
+source_issue = "issue:2107"
+design_reference = "RIPR-SPEC-0140"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds the explicit `ripr check --write-artifact` / `ripr explain|context
+--from` pair: a full-fidelity `CheckArtifactV1` envelope written atomically,
+a fail-closed identity gate (diff bytes hash + source, root, mode, enabled
+languages, analysis options, versioned config identity, analyzer version),
+and byte-identical reused selection/rendering. It does not change the
+`check --json` output contract, add any implicit cache, cache repository
+content identity, feed any gate/badge/proof route, or support `--worktree`
+artifacts or managed `[perl] producer` packet generation (named
+limitations, fail closed).
+"""
+
+non_goals = [
+  "implicit or content-addressed cross-invocation caching",
+  "check --json output contract changes",
+  "per-file fact cache (#1912 / #1967)",
+  "LSP warm refresh (#1908)",
+  "--worktree artifact support",
+  "managed [perl] producer packet generation as an artifact input",
+  "full-repository content fingerprinting in the identity gate",
+  "gate, badge, support-tier, or proof-route authority for artifacts",
+]
+
+return_conditions = [
+  "Return to root if reusing an artifact cannot produce byte-identical explain/context output.",
+  "Return to root if any identity mismatch path cannot fail closed with the mismatched fields named.",
+  "Return to root if `check --json` golden bytes drift.",
+]
+
+owned_seams = [
+  "seam:ripr:app:check-artifact",
+  "seam:ripr:cli:check-artifact-flags",
+  "seam:ripr:config:check-artifact-identity",
+]
+
+shared_seams = [
+  "seam:ripr:domain:probe-serde",
+  "seam:ripr:contract:check-artifact-v1",
+]
+
+forbidden_seams = [
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:lsp:input-identity",
+  "seam:ripr:analysis:fact-cache",
+  "seam:ripr:fixtures:goldens",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0140"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

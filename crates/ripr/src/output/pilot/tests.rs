@@ -47,6 +47,13 @@ fn related_test() -> RelatedTestGrip {
         test_name: "below_threshold_has_no_discount".to_string(),
         file: PathBuf::from("tests/pricing.rs"),
         line: 12,
+        test_target: Some(
+            crate::analysis::test_grip_evidence::TestTargetEvidence::fixture(
+                "below_threshold_has_no_discount",
+                std::path::Path::new("tests/pricing.rs"),
+                12,
+            ),
+        ),
         oracle_kind: OracleKind::ExactValue,
         oracle_strength: OracleStrength::Strong,
         evidence_summary: "exact value assertion".to_string(),
@@ -329,15 +336,70 @@ fn pilot_summary_md_spells_out_first_screen_recommendation() {
         "## Top Recommendation",
         "- Inspected seam:",
         "- Why it matters: missing discriminator: input that hits the boundary: amount >= discount_threshold",
-        "- Focused test: add `discounted_total_boundary_discriminator` in `tests/pricing.rs`",
-        "- Candidate value: `input that hits the boundary: amount >= discount_threshold`",
+        "- Focused test: not applicable (route limited: producer-owned route readiness is not eligible for a repair target)",
         "Target seam:",
-        "Add a targeted test:",
+        "Target placement blocked:",
         "## Next Commands",
         "ripr outcome --before target/ripr/pilot/repo-exposure.json",
     ] {
         assert!(md.contains(needle), "missing markdown needle: {needle}");
     }
+}
+
+/// The bash fence content is pinned byte-for-byte: adding the PowerShell
+/// variant must never reshape the form existing consumers copy today (#2628).
+#[test]
+fn pilot_summary_md_pairs_bash_next_commands_with_powershell_variants() -> Result<(), String> {
+    let entry = classified_with(
+        SeamGripClass::WeaklyGripped,
+        "src/pricing.rs",
+        88,
+        vec![missing()],
+        vec![related_test()],
+    );
+    let artifacts = pilot_artifacts();
+    let md = render_pilot_summary_md(&[entry], pilot_context(&artifacts));
+
+    let bash_block = "```bash\nripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json\nripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json\n```";
+    assert!(
+        md.contains(bash_block),
+        "bash next-commands block drifted:\n{md}"
+    );
+    // The default pilot path is unquoted in the bash form; PowerShell parses
+    // method-call arguments in expression mode, so the WriteAllText target must
+    // arrive as a quoted literal (PR #3617 review), and the write is guarded by
+    // $LASTEXITCODE with the status propagated so a failed run cannot publish
+    // the artifact (PR #3625 review, codex P1).
+    let powershell_snapshot = "$ripr = ((ripr check --root . --mode draft --format repo-exposure-json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/pilot/after.repo-exposure.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }";
+    assert!(
+        md.contains(powershell_snapshot),
+        "powershell after-snapshot translation missing:\n{md}"
+    );
+    // Disclosure precedes the first copyable command, mirroring the landed
+    // agent_workflow ordering, and states the cmd.exe boundary.
+    let disclosure = md
+        .find("cmd.exe is not supported")
+        .ok_or_else(|| format!("pilot markdown must state the cmd.exe boundary: {md}"))?;
+    let first_fence = md
+        .find("```bash")
+        .ok_or_else(|| format!("pilot markdown must fence the bash commands: {md}"))?;
+    assert!(
+        disclosure < first_fence,
+        "shell disclosure at {disclosure} must precede the first command fence at {first_fence}"
+    );
+    // The redirect-free outcome command translates to itself in PowerShell, so
+    // the variant fence still carries a runnable second command.
+    let powershell_block = md
+        .find("```powershell\n")
+        .map(|start| &md[start..])
+        .ok_or_else(|| format!("pilot markdown must fence the powershell commands: {md}"))?;
+    assert!(
+        powershell_block.contains(
+            "ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json"
+        ),
+        "powershell outcome command missing:\n{powershell_block}"
+    );
+    Ok(())
 }
 
 #[test]
@@ -360,14 +422,13 @@ fn pilot_terminal_prints_top_test_and_follow_up_commands() {
         "Top recommendation:",
         "inspected seam: src/pricing.rs:88 predicate_boundary in pricing::discounted_total (weakly_gripped)",
         "why it matters: missing discriminator: input that hits the boundary: amount >= discount_threshold",
-        "focused test: add discounted_total_boundary_discriminator in tests/pricing.rs",
-        "candidate value: input that hits the boundary: amount >= discount_threshold",
-        "assertion: assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)",
+        "focused test: not applicable (route limited: producer-owned route readiness is not eligible for a repair target)",
+        "assertion: not_applicable",
         "Detailed brief:",
         "target/ripr/pilot/pilot-summary.md",
         "Structured packet:",
         "target/ripr/pilot/agent-seam-packets.json",
-        "Run after adding the focused test:",
+        "Run after producer evidence makes a repair route actionable:",
         "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
         "ripr outcome --before target/ripr/pilot/repo-exposure.json",
     ] {
@@ -448,6 +509,36 @@ fn timeout_summary_md_explains_partial_status_and_retry_command() {
     ] {
         assert!(md.contains(needle), "missing timeout-md needle: {needle}");
     }
+}
+
+/// The retry command carries no redirect and no quoting, so its PowerShell
+/// form is the same text; the fences must still both be present and the bash
+/// form must stay byte-identical (#2628).
+#[test]
+fn timeout_summary_md_pairs_bash_retry_with_powershell_variant() -> Result<(), String> {
+    let artifacts = pilot_artifacts();
+    let md = render_pilot_timeout_summary_md(pilot_context(&artifacts));
+
+    let retry = "ripr pilot --root . --out target/ripr/pilot --mode draft --max-seams 5 --timeout-ms 120000";
+    assert!(
+        md.contains(&format!("```bash\n{retry}\n```")),
+        "bash retry block drifted:\n{md}"
+    );
+    assert!(
+        md.contains(&format!("```powershell\n{retry}\n```")),
+        "powershell retry block missing or drifted:\n{md}"
+    );
+    let disclosure = md
+        .find("cmd.exe is not supported")
+        .ok_or_else(|| format!("pilot timeout markdown must state the cmd.exe boundary: {md}"))?;
+    let first_fence = md
+        .find("```bash")
+        .ok_or_else(|| format!("pilot timeout markdown must fence the bash command: {md}"))?;
+    assert!(
+        disclosure < first_fence,
+        "shell disclosure at {disclosure} must precede the first command fence at {first_fence}"
+    );
+    Ok(())
 }
 
 #[test]

@@ -140,26 +140,32 @@ asks whether a line *executed*. `ripr` asks whether a test would *notice* the
 changed behavior being wrong — whether some oracle actually observes the value
 the change moves.
 
-The two come apart constantly. A test can execute every branch of a function and
-assert almost nothing (`assert result is not None`, a smoke check, a mock that
-never inspects the value). Every line is covered; nothing is discriminated. So
-`ripr 0` (no exposure gaps) is already a higher bar than 100% coverage, and
-`ripr+ 0` (no exposure gaps *and* no weak oracles — every changed behavior under
-a strong, aligned discriminator) is higher still. Most repositories at 100%
-coverage sit well below `ripr+ 0`.
+A test can execute every branch of a function and assert almost nothing
+(`assert result is not None`, a smoke check, or a mock that never inspects the
+changed value). Execution alone does not establish a discriminator. A strong,
+aligned discriminator asks more of the test than line coverage does.
 
-The bars form a ladder, not a synonym set:
+That distinction between evidence types is not a guarantee about analyzer
+output. Under the [badge projection](#public-badge-projection), `ripr 0` means
+zero unresolved actionable gaps in the eligible projection. Limited, excluded,
+unresolved, or non-routable behavior does not become positively credited merely
+because it contributes no actionable gap. `ripr+ 0` additionally has no projected
+actionable test-efficiency repairs; it does not establish that every changed
+behavior has a strong oracle.
+
+Read the signals separately:
 
 ```text
-100% coverage     every changed line executed under test
-   <  ripr 0      every changed behavior reached by *some* discriminator
-   <  ripr+ 0     every changed behavior under a *strong, aligned* discriminator
-                  (no exposure gaps and no weak oracles)
+coverage         execution evidence for the measured test run
+RIPR evidence    static relation, activation, propagation, and oracle evidence
+runtime mutation an observed outcome for a concrete executed counterfactual
 ```
 
-A repository can stand on the bottom rung and fail the top two: full coverage,
-yet changed behavior that no test would notice breaking. That gap between
-"executed" and "discriminated" is the whole surface `ripr` reports on.
+The useful question remains whether a test discriminates the changed behavior.
+How reliably RIPR answers it, and how much downstream verification its evidence
+can justify displacing, require independent evaluation rather than a zero-badge
+count. See [Two error rates](#two-error-rates) and the historical panel boundary
+below.
 
 ### The alignment invariant
 
@@ -210,6 +216,60 @@ Trust in `ripr` rests on two error rates, not one:
 The second is the more dangerous: it is the failure that makes a discriminator
 indistinguishable from coverage, and the one a cheap robustness sweep
 structurally cannot see.
+
+### The static/runtime boundary
+
+`exposed` is a **static** claim: *a strong oracle observes the changed sink's
+output*. It is **not** the runtime claim *the mutant is killed under this test's
+inputs*. Those differ whenever a test observes the changed output but its concrete
+input makes the old and new behavior coincide. Adversarial sweeps surface many such
+cases; they split into two kinds, and only one is a `ripr` bug.
+
+- **Runtime-equivalence floor (out of contract).** The oracle genuinely observes the
+  changed output, but only *evaluation* reveals old ≡ new for the chosen input:
+  an operator identity (`total += amount` vs `-=` tested with `amount == 0`), a
+  coincident result (`s[::2]` and `s[::3]` both yield `"aa"` for `"aaaa"`), a
+  boolean short-circuit, or an ASCII-only `lower()`/`casefold()`. Detecting these
+  requires running the (mutated) expression under the test's arguments — i.e.
+  mutation testing — which `ripr` does not do. `ripr` cannot distinguish a
+  discriminating `compute(10, 3) == 7` from a non-discriminating
+  `apply_discount(5, 100) == 5` without evaluation, so it must not over-tighten here:
+  a conservative downgrade would also drop the genuine discriminators. This is the
+  honest floor of static exposure analysis, not a defect.
+
+- **Static missing-discriminator (in contract).** A predicate/boundary change has a
+  discriminator `ripr` *can name syntactically*: `if total >= threshold` → `>` is
+  discriminated only by an input where `total == threshold`. A test that exercises a
+  value far from the boundary does not discriminate the change — and `ripr` should
+  not call it `exposed` — but the gap is nameable (`missing discriminator: total ==
+  threshold`) and therefore a valid static **repair-routing candidate**, not floor.
+
+The line to hold: *input-specific old/new equivalence is a runtime floor; a
+syntactically nameable missing discriminator stays in scope as a gap.* `exposed`
+should never silently mean "the mutant survives for this input."
+
+## Repository-local Rust includes
+
+Rust analysis treats a parser-recognized, file-level repository-local literal
+`include!("path.rs")` as part of its parent file's compilation unit. Functions
+from the included fragment therefore use the parent's semantic owner identity,
+while findings retain the fragment's real path and line for review. This keeps
+private parent state and nearby parent tests visible without rewriting the
+source into synthetic modules.
+
+Resolution is deliberately bounded and fail-closed. Nested module contexts,
+dynamic expressions, missing or ambiguous targets, repository or symlink
+escapes, cycles, excessive depth, more than 512 include edges, and included
+files over 4 MiB remain unsupported. Human-facing analysis routes disclose
+these boundaries with stable `rust_include_*` reason codes; parser fallback
+retains the analyzer's existing lexical-fallback disclosure. Included files
+must also be present in the selected analysis scope, so `instant` mode can
+disclose an unindexed target while `ready` mode supplies workspace-wide
+evidence.
+
+This support does not expand macros or claim compiler-equivalent name
+resolution. It preserves the analyzer's syntax-first boundary while avoiding
+the previous false standalone-module identity for the bounded literal form.
 
 ## Finding Shape
 
@@ -268,22 +328,31 @@ proxies; the artifact is ground truth.
 
 ### Two error rates, measured on real code
 
-The Tier A sweep and Tier B judging across eight real external Python
-repositories put numbers on the two error directions from
-[Two error rates](#two-error-rates):
+The retained June 13–14, 2026 Python artifacts contain **seven historical manual
+judgments**: three in the
+[starter panel](../fixtures/python-judged-pr-panel/starter-judged.json) and four
+in the [scaled panel](../fixtures/python-judged-pr-panel/scaled-judged.json).
+The separate Tier A manifest selected eight repositories; its timeout row does
+not create an eighth structural judgment.
 
-- **false-`exposed`** (silent over-credit — calling a behavior covered when no
-  oracle discriminates it): **zero** across the corpus. `ripr` does not hand out
-  false confidence; the conservative `exposed` rule held on code it did not
-  author.
-- **false-actionable** (over-suggestion — routing a repair for a behavior that a
-  test already discriminates): common, and traced to one cause — `ripr` cannot
-  follow a discriminating oracle back to its owner through an indirect call. The
-  discriminating test exists; the syntax-first analysis cannot see it.
+The stored post-repair labels record zero false-`exposed` cases and three
+false-actionable cases across those seven judgments. These are observations of
+the selected historical cases, not current or representative error rates. The
+remaining over-suggestions include indirect-call and framework-observation
+relations the analyzer did not resolve.
 
-The *shape* of the error is load-bearing: `ripr` errs toward the visible,
-conservative side (over-suggest) and away from the silent, dangerous side
-(over-credit). It is **safe** — and currently **imprecise** on idiomatic code, a
-precision ceiling set by indirect-call blindness in relation and oracle
-extraction, not by the exposure model. Safety is the harder half and it is in
-hand; precision is the tractable, bounded next step.
+The distinction between denominators matters. In those retained post-repair
+rows, only one actual classification is `exposed`. Seven total judgments is
+therefore not the denominator for estimating error **conditional on static
+credit**. An expected `should_stay_quiet` label is independent judgment, not
+proof that the analyzer actually granted credit. A timeout or absent output is
+not an `exposed` result either.
+
+The pilot identified useful failure families and informed targeted repairs. It
+does not establish that RIPR is generally safe, that silent over-credit is
+absent, or that a zero-gap result can replace runtime verification.
+[The current Python panel work](https://github.com/EffortlessMetrics/ripr-swarm/issues/3555)
+requires exact replay identities, independent judgments and derived denominators.
+[The Rust quiet-set audit](https://github.com/EffortlessMetrics/ripr-swarm/issues/3164)
+separately samples credited and emitted behavior. Neither programme may inherit
+a stronger safety or support claim from the historical seven-case result.

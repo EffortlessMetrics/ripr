@@ -23,6 +23,12 @@ promoting Python beyond advisory preview status. Its outcome receipt fixtures
 also show the same canonical Python gap closing, staying unchanged, and opening
 from check-output before/after snapshots.
 
+The `typescript-preview-gap` case pins the same bridge for TypeScript preview:
+an explicit `typescript_repair_packet` from saved check-output JSON becomes a
+preview-limited `start-here` packet with a concrete Jest verify command while
+remaining advisory-only. Its outcome receipt fixture shows the same canonical
+TypeScript gap closing from check-output before/after snapshots.
+
 The `python-return-gap`, `python-exception-gap`, `python-field-gap`, and
 `python-output-gap` cases
 extend that receipt proof beyond predicate boundaries: broad return,

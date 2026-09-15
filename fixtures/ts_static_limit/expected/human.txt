@@ -4,71 +4,34 @@ root: fixtures/ts_static_limit/input
 
 Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-INFO src/cache.ts:2
+Changed file(s) by language: rust: 0, typescript: 1.
 
-Changed
-  after:      handlers[key]();
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
-Probe
-  family: side_effect
-  delta:  effect
-  owner:  typescript:src/cache.ts::dispatchAction
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.
+  File: src/cache.ts:2
+  Language: typescript
+  Language status: preview
+  Static exposure: exposed (warning, confidence 0.60)
+  Changed behavior: handlers[key]();
+  Discriminator (observed, advisory): Related test reaches `dispatchAction` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminat…
+  Related test: tests/cache.test.ts:3 dispatchAction calls the named handler
+  Next step: TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before is…
+  Evidence:
+    - reach yes: 1 related test(s) found for owner `dispatchAction`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 4 more evidence line(s) hidden
 
-Language
-  language: typescript
-  status: preview
-  owner kind: function
+Next: drill into the top finding:
+  ripr explain --root fixtures/ts_static_limit/input --diff fixtures/ts_static_limit/diff.patch --mode fast probe:src_cache.ts:typescript_preview:bac50022
+  ripr context --root fixtures/ts_static_limit/input --diff fixtures/ts_static_limit/diff.patch --mode fast --at probe:src_cache.ts:typescript_preview:bac50022
 
-Preview actionability
-  authority: preview_advisory_only
-  gap state: static_limitation
-  category: dynamic_dispatch
-  repair packet ready: false
-  why not actionable: static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance
-  repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet
-  evidence needed: resolve the named static limit and re-run TypeScript preview evidence extraction
-  raw evidence: src/cache.ts:2 (typescript_preview_probe) source=probe:src_cache.ts:typescript_preview:bac50022 owner=dispatchAction
-
-Static exposure
-  exposed (info, confidence 0.60)
-
-Evidence
-  - reach yes: 1 related test(s) found for owner `dispatchAction`
-  - infection unknown: TypeScript preview adapter does not yet model infection.
-  - propagation unknown: TypeScript preview adapter does not yet model propagation.
-  - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
-  - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
-  - related test tests/cache.test.ts:3 dispatchAction calls the named handler uses strong exact value oracle: expect(...).toBe(...)
-
-Weakness
-  - Related test reaches `dispatchAction` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
-  - Static limit `dynamic_dispatch`: the TypeScript preview adapter saw a computed member call such as `obj[name](...)`; syntax alone cannot resolve the called behavior. Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.
-
-TypeScript preview card (advisory)
-  card version: typescript_preview_card.v1
-  authority: preview_advisory_only (typescript/preview)
-  owner: dispatchAction
-  owner kind: function
-  changed behavior: side_effect changed at src/cache.ts:2: `handlers[key]();`
-  related test: tests/cache.test.ts:3 dispatchAction calls the named handler
-  oracle: exact_value (strong)
-  suggested assertion shape: Resolve the named static limitation before selecting an assertion shape.
-  static limits: dynamic_dispatch
-  repair packet ready: false
-  why not actionable: static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance
-  repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet
-  limits:
-    - Syntax-first TypeScript/JavaScript preview evidence only.
-    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
-    - This card is advisory and is not a repair packet.
-
-TypeScript repair packet (advisory)
-  status: not actionable
-  limitation: static limit `dynamic_dispatch` prevents bounded TypeScript repair guidance
-  next capability needed: resolve the named static limit and re-run TypeScript preview evidence extraction
-
-Next step
-  TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before issuing a repair packet.; no actionable repair packet is emitted.
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
 
 
 Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

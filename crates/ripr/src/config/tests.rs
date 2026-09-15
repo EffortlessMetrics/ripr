@@ -1,9 +1,10 @@
-use super::python::PYTHON_PROJECT_EXCLUDED_DIRS;
+use super::python::{PYTHON_EXCLUDED_DIRS, PYTHON_VENDOR_DIR};
 #[cfg(feature = "lang-python")]
 use super::python::{PYTHON_PROJECT_MARKERS, PYTHON_SOURCE_DIR_MARKERS};
 use super::*;
 use crate::analysis::seams::SeamGripClass;
 use crate::domain::{ExposureClass, OracleKind};
+use proptest::prelude::*;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -14,6 +15,10 @@ fn temp_root(name: &str) -> Result<PathBuf, String> {
         .unwrap_or(0);
     let root = std::env::temp_dir().join(format!("ripr-config-{name}-{stamp}"));
     fs::create_dir_all(&root).map_err(|err| format!("create temp root failed: {err}"))?;
+    // The configured temp directory may be inside the host repository.
+    // These fixtures own their configuration and must not inherit its policy.
+    fs::create_dir(root.join(".git"))
+        .map_err(|err| format!("create fixture repository boundary failed: {err}"))?;
     Ok(root)
 }
 
@@ -100,7 +105,11 @@ fn missing_config_does_not_treat_empty_src_or_tests_as_python() -> Result<(), St
 #[test]
 fn missing_config_ignores_excluded_python_directories_and_generated_files() -> Result<(), String> {
     let root = temp_root("excluded-python-sources")?;
-    for excluded_dir in PYTHON_PROJECT_EXCLUDED_DIRS {
+    for excluded_dir in PYTHON_EXCLUDED_DIRS
+        .iter()
+        .copied()
+        .chain([PYTHON_VENDOR_DIR])
+    {
         write_file(
             &root.join("src").join(excluded_dir).join("ignored.py"),
             "x = 1\n",
@@ -154,6 +163,57 @@ enabled = ["rust"]
     )?;
     assert_eq!(config.languages().enabled_owned(), vec![LanguageId::Rust]);
     Ok(())
+}
+
+#[test]
+fn languages_section_accepts_custom_generated_file_patterns() -> Result<(), String> {
+    let config = parse_config(
+        r#"
+[languages]
+enabled = ["rust"]
+
+[languages.rust]
+generated_file_patterns = ["*.gen.rs", "src/generated/**/*.rs"]
+"#,
+    )?;
+
+    assert_eq!(
+        config.languages().generated_file_patterns(),
+        &["*.gen.rs".to_string(), "src/generated/**/*.rs".to_string()]
+    );
+    Ok(())
+}
+
+#[test]
+fn generated_file_patterns_reject_empty_duplicate_and_escape_values() {
+    for (text, expected) in [
+        (
+            "[languages.rust]\ngenerated_file_patterns = [\"\"]\n",
+            "must not be empty",
+        ),
+        (
+            "[languages.rust]\ngenerated_file_patterns = [\"*.gen.rs\", \"*.gen.rs\"]\n",
+            "more than once",
+        ),
+        (
+            "[languages.rust]\ngenerated_file_patterns = [\"../generated/**/*.rs\"]\n",
+            "must stay within the repository",
+        ),
+        (
+            "[languages.rust]\ngenerated_file_patterns = ['src\\generated\\*.rs']\n",
+            "uses backslashes",
+        ),
+        (
+            "[languages.rust]\ngenerated_file_patterns = [\"*.gen.rs\\u000A\"]\n",
+            "control characters",
+        ),
+    ] {
+        let result = parse_config(text);
+        assert!(
+            matches!(result, Err(ref message) if message.contains(expected)),
+            "expected {expected:?} in {result:?}"
+        );
+    }
 }
 
 #[cfg(all(feature = "lang-typescript", feature = "lang-python"))]
@@ -672,6 +732,24 @@ fn generated_init_config_matches_checked_in_example() -> Result<(), String> {
 }
 
 #[test]
+fn unknown_language_error_includes_perl_fact_packet_guidance() -> Result<(), String> {
+    let Err(error) = parse_config(
+        r#"
+[languages]
+enabled = ["ruby"]
+"#,
+    ) else {
+        return Err("unknown language should fail configuration parsing".to_string());
+    };
+    if !error.contains("--perl-facts <path>") {
+        return Err(format!(
+            "unknown-language guidance should name the Perl fact packet option: {error}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn config_file_discovery_records_source_metadata() -> Result<(), String> {
     let root = temp_root("present")?;
     let config_path = root.join(CONFIG_FILE_NAME);
@@ -679,10 +757,79 @@ fn config_file_discovery_records_source_metadata() -> Result<(), String> {
         .map_err(|err| format!("write config failed: {err}"))?;
 
     let config = load_for_root(&root)?;
+    let expected_path = fs::canonicalize(&config_path)
+        .map_err(|err| format!("canonicalize config failed: {err}"))?;
+    let source_path = config.source_path().map(Path::to_path_buf);
+    let source_text = config.source_text().map(str::to_owned);
+    let mode = config.analysis().mode().cloned();
+    fs::remove_dir_all(&root).map_err(|err| format!("remove present fixture failed: {err}"))?;
 
-    assert_eq!(config.source_path(), Some(config_path.as_path()));
-    assert_eq!(config.source_text(), Some("[analysis]\nmode = \"fast\"\n"));
-    assert_eq!(config.analysis().mode(), Some(&Mode::Fast));
+    if source_path != Some(expected_path) {
+        return Err(format!("unexpected source path: {source_path:?}"));
+    }
+    if source_text.as_deref() != Some("[analysis]\nmode = \"fast\"\n") {
+        return Err(format!("unexpected source text: {source_text:?}"));
+    }
+    if mode != Some(Mode::Fast) {
+        return Err(format!("unexpected config mode: {mode:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn config_file_discovery_walks_up_from_nested_root() -> Result<(), String> {
+    let root = temp_root("nested")?;
+    let nested = root.join("crates/member/src");
+    fs::create_dir_all(&nested).map_err(|err| format!("create nested root failed: {err}"))?;
+    write_file(
+        &root.join(CONFIG_FILE_NAME),
+        "[analysis]\nmode = \"fast\"\n",
+    )?;
+    write_file(
+        &root.join("Cargo.toml"),
+        "[package]\nname = \"nested-config\"\nversion = \"0.1.0\"\n",
+    )?;
+
+    let config = load_for_root(&nested)?;
+    let source_path = config.source_path().map(Path::to_path_buf);
+    let mode = config.analysis().mode().cloned();
+    let expected_source_path = fs::canonicalize(root.join(CONFIG_FILE_NAME))
+        .map_err(|err| format!("canonicalize discovered config failed: {err}"))?;
+    fs::remove_dir_all(&root).map_err(|err| format!("remove nested fixture failed: {err}"))?;
+
+    if source_path != Some(expected_source_path) {
+        return Err(format!(
+            "unexpected discovered config path: {source_path:?}"
+        ));
+    }
+    if mode != Some(Mode::Fast) {
+        return Err(format!("unexpected discovered config mode: {mode:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn config_file_discovery_stops_at_git_boundary() -> Result<(), String> {
+    let root = temp_root("git-boundary")?;
+    let boundary = root.join("isolated");
+    let nested = boundary.join("src");
+    fs::create_dir_all(&nested).map_err(|err| format!("create nested root failed: {err}"))?;
+    fs::create_dir(boundary.join(".git"))
+        .map_err(|err| format!("create git boundary failed: {err}"))?;
+    write_file(
+        &root.join(CONFIG_FILE_NAME),
+        "[analysis]\nmode = \"fast\"\n",
+    )?;
+
+    let config = load_for_root(&nested)?;
+    let source_path = config.source_path().map(Path::to_path_buf);
+    fs::remove_dir_all(&root).map_err(|err| format!("remove boundary fixture failed: {err}"))?;
+
+    if source_path.is_some() {
+        return Err(format!(
+            "config discovery crossed .git boundary: {source_path:?}"
+        ));
+    }
     Ok(())
 }
 
@@ -805,4 +952,514 @@ fn oracle_policy_rewrites_configurable_oracle_strengths() {
         policy.strength_for_kind(&OracleKind::ExactValue, OracleStrength::Strong),
         OracleStrength::Strong
     );
+}
+
+// ── Check-artifact config identity (RIPR-SPEC-0140) ──
+
+/// The closed config-identity contract: every `ripr.toml` field is
+/// classified exactly once. The producer
+/// (`RiprConfig::check_artifact_identity_fields`) destructures every config
+/// struct without a `..` rest pattern, so an unclassified new field fails
+/// compilation; this test pins the classification itself so a silent
+/// re-classification fails CI.
+#[test]
+fn check_artifact_identity_fields_classify_every_config_field() -> Result<(), String> {
+    let fields = RiprConfig::default().check_artifact_identity_fields();
+    let mut actual = fields
+        .iter()
+        .map(|field| (field.name, field.role))
+        .collect::<Vec<_>>();
+    actual.sort_by(|left, right| left.0.cmp(right.0));
+
+    let finding_affecting = [
+        "languages.rust.generated_file_patterns",
+        "analysis.production_like_targets",
+        "analysis.test_harnesses",
+        "oracles.broad_error_strength",
+        "oracles.mock_expectation_strength",
+        "oracles.snapshot_strength",
+        "perl.cache_dir",
+        "perl.executable",
+        "perl.producer",
+        "perl.timeout_ms",
+        "typescript.resolve_tsconfig_paths",
+    ];
+    let captured_elsewhere = [
+        "analysis.include_unchanged_tests",
+        "analysis.mode",
+        "languages.enabled",
+    ];
+    let mut expected = finding_affecting
+        .iter()
+        .map(|name| (*name, ConfigIdentityRole::FindingAffecting))
+        .chain(
+            captured_elsewhere
+                .iter()
+                .map(|name| (*name, ConfigIdentityRole::CapturedElsewhere)),
+        )
+        .collect::<Vec<_>>();
+    for name in [
+        "severity.findings.exposed",
+        "severity.findings.weakly_exposed",
+        "severity.findings.reachable_unrevealed",
+        "severity.findings.no_static_path",
+        "severity.findings.infection_unknown",
+        "severity.findings.propagation_unknown",
+        "severity.findings.static_unknown",
+        "severity.seams.strongly_gripped",
+        "severity.seams.weakly_gripped",
+        "severity.seams.ungripped",
+        "severity.seams.reachable_unrevealed",
+        "severity.seams.activation_unknown",
+        "severity.seams.propagation_unknown",
+        "severity.seams.observation_unknown",
+        "severity.seams.discrimination_unknown",
+        "severity.seams.opaque",
+        "severity.seams.intentional",
+        "severity.seams.suppressed",
+        "lsp.seam_diagnostics",
+        "lsp.diagnostic_profile",
+        "reports.max_related_tests",
+        "suppressions.path",
+        "profiles.bun_ub",
+        "source_path",
+        "source_text",
+    ] {
+        expected.push((name, ConfigIdentityRole::Excluded));
+    }
+    expected.sort_by(|left, right| left.0.cmp(right.0));
+
+    if actual != expected {
+        return Err(format!(
+            "config identity classification drifted\nexpected: {expected:?}\nactual:   {actual:?}"
+        ));
+    }
+
+    // Every finding-affecting field carries a canonical value; every other
+    // field names where it is captured or why it is excluded.
+    for field in &fields {
+        match field.role {
+            ConfigIdentityRole::FindingAffecting => {
+                if field.value.is_none() {
+                    return Err(format!(
+                        "finding-affecting field {} has no canonical value",
+                        field.name
+                    ));
+                }
+            }
+            _ => {
+                if field.note.is_empty() {
+                    return Err(format!(
+                        "field {} has no capture/exclusion note",
+                        field.name
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn check_artifact_config_identity_hash_tracks_finding_affecting_fields_only() -> Result<(), String>
+{
+    let base = RiprConfig::default();
+    let base_hash = check_artifact_config_identity_hash(&base);
+
+    // A finding-affecting change (oracle policy) changes the identity.
+    let oracles_changed = tests_only_parse("[oracles]\nsnapshot_strength = \"strong\"\n")?;
+    if check_artifact_config_identity_hash(&oracles_changed) == base_hash {
+        return Err("oracle policy change must change the config identity".to_string());
+    }
+
+    // A finding-affecting change (TypeScript adapter option) changes it too.
+    let ts_changed = tests_only_parse("[typescript]\nresolve_tsconfig_paths = true\n")?;
+    if check_artifact_config_identity_hash(&ts_changed) == base_hash {
+        return Err(
+            "typescript.resolve_tsconfig_paths change must change the config identity".to_string(),
+        );
+    }
+
+    // A finding-affecting change (custom Rust generated-file patterns) changes
+    // which source files enter the analysis and therefore changes identity.
+    let generated_patterns_changed = tests_only_parse(
+        "[languages]\nenabled = [\"rust\"]\n\n[languages.rust]\ngenerated_file_patterns = [\"*.gen.rs\"]\n",
+    )?;
+    if check_artifact_config_identity_hash(&generated_patterns_changed) == base_hash {
+        return Err(
+            "languages.rust.generated_file_patterns change must change the config identity"
+                .to_string(),
+        );
+    }
+
+    // Rust-only configuration does not affect a Python-only analysis identity.
+    let mut python_only = RiprConfig::default();
+    python_only.languages.enabled = vec![LanguageId::Python];
+    let mut python_only_with_rust_patterns = python_only.clone();
+    python_only_with_rust_patterns
+        .languages
+        .rust
+        .generated_file_patterns = vec!["*.gen.rs".to_string()];
+    if check_artifact_config_identity_hash(&python_only_with_rust_patterns)
+        != check_artifact_config_identity_hash(&python_only)
+    {
+        return Err(
+            "Rust generated-file patterns must not change a Python-only config identity"
+                .to_string(),
+        );
+    }
+
+    // A render-only change (severity display) does NOT change the identity:
+    // render-time knobs are honored fresh by the consuming command.
+    let severity_changed = tests_only_parse("[severity.findings]\nexposed = \"warning\"\n")?;
+    if check_artifact_config_identity_hash(&severity_changed) != base_hash {
+        return Err("severity display is render-only and must not change the identity".to_string());
+    }
+
+    // A render-only change (reports bound) does NOT change it either.
+    let reports_changed = tests_only_parse("[reports]\nmax_related_tests = 9\n")?;
+    if check_artifact_config_identity_hash(&reports_changed) != base_hash {
+        return Err(
+            "reports.max_related_tests is render-only and must not change the identity".to_string(),
+        );
+    }
+    Ok(())
+}
+
+// --- Property-based tests (#2751) ---
+//
+// The raw model is deliberately separate from the effective configuration:
+// TOML parsing applies defaults and validates policy values. These properties
+// therefore check both boundaries independently: serde must preserve a valid
+// raw document, and the production parser must accept that document.
+
+proptest! {
+    #[test]
+    fn proptest_valid_raw_configs_round_trip_and_parse(
+        mode in prop::option::of(prop::sample::select(vec![
+            "instant".to_string(),
+            "draft".to_string(),
+            "fast".to_string(),
+            "deep".to_string(),
+            "ready".to_string(),
+        ])),
+        include_unchanged_tests in prop::option::of(any::<bool>()),
+        snapshot_strength in prop::option::of(prop::sample::select(valid_oracle_strengths())),
+        mock_expectation_strength in prop::option::of(prop::sample::select(valid_oracle_strengths())),
+        broad_error_strength in prop::option::of(prop::sample::select(valid_oracle_strengths())),
+        exposed in prop::option::of(prop::sample::select(valid_finding_severities())),
+        weakly_exposed in prop::option::of(prop::sample::select(valid_finding_severities())),
+        strongly_gripped in prop::option::of(prop::sample::select(valid_seam_severities())),
+        seam_diagnostics in prop::option::of(any::<bool>()),
+        diagnostic_profile in prop::option::of(prop::sample::select(vec![
+            "actionable".to_string(),
+            "full".to_string(),
+        ])),
+        max_related_tests in any::<usize>(),
+        suppression_path in valid_repository_paths(),
+        resolve_tsconfig_paths in any::<bool>(),
+        producer in any::<String>(),
+        executable in any::<String>(),
+        timeout_ms in any::<u64>(),
+        cache_dir in any::<String>(),
+    ) {
+        let raw = RawConfig {
+            analysis: Some(RawAnalysisConfig {
+                mode,
+                include_unchanged_tests,
+                production_like_targets: None,
+                test_harnesses: None,
+            }),
+            oracles: Some(RawOraclePolicy {
+                snapshot_strength,
+                mock_expectation_strength,
+                broad_error_strength,
+            }),
+            severity: Some(RawSeverityConfig {
+                findings: Some(RawFindingSeverityConfig {
+                    exposed,
+                    weakly_exposed,
+                    ..Default::default()
+                }),
+                seams: Some(RawSeamSeverityConfig {
+                    strongly_gripped,
+                    ..Default::default()
+                }),
+            }),
+            lsp: Some(RawLspConfig {
+                seam_diagnostics,
+                diagnostic_profile,
+            }),
+            reports: Some(RawReportsConfig {
+                max_related_tests: Some(max_related_tests),
+            }),
+            suppressions: Some(RawSuppressionsConfig {
+                path: Some(suppression_path),
+            }),
+            languages: Some(RawLanguagesConfig {
+                enabled: Some(vec!["rust".to_string()]),
+                rust: None,
+            }),
+            profiles: None,
+            typescript: Some(RawTypescriptConfig {
+                resolve_tsconfig_paths: Some(resolve_tsconfig_paths),
+            }),
+            perl: Some(RawPerlConfig {
+                producer: Some(producer),
+                executable: Some(executable),
+                timeout_ms: Some(timeout_ms),
+                cache_dir: Some(cache_dir),
+            }),
+        };
+
+        let serialized = match toml::to_string(&raw) {
+            Ok(serialized) => serialized,
+            Err(error) => {
+                prop_assert!(false, "valid raw config must serialize: {error}");
+                return Ok(());
+            }
+        };
+        let reparsed = match toml::from_str::<RawConfig>(&serialized) {
+            Ok(reparsed) => reparsed,
+            Err(error) => {
+                prop_assert!(false, "serialized raw config must deserialize: {error}");
+                return Ok(());
+            }
+        };
+
+        prop_assert_eq!(reparsed, raw);
+        let effective = parse_config(&serialized);
+        prop_assert!(
+            effective.is_ok(),
+            "serialized valid config must parse: {effective:?}\n{serialized}"
+        );
+    }
+}
+
+fn valid_oracle_strengths() -> Vec<String> {
+    ["strong", "medium", "weak", "smoke", "none", "unknown"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn valid_finding_severities() -> Vec<String> {
+    ["info", "warning", "note"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn valid_seam_severities() -> Vec<String> {
+    ["off", "info", "warning", "note"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn valid_repository_paths() -> impl Strategy<Value = String> {
+    prop::sample::select(vec![
+        ".ripr/suppressions.toml".to_string(),
+        "config/ripr.toml".to_string(),
+        "fixtures/policy.toml".to_string(),
+    ])
+}
+
+#[test]
+fn parse_config_reads_production_like_targets() -> Result<(), String> {
+    // #3283: the opt-in parses as workspace-relative paths and joins the
+    // check-artifact identity as FindingAffecting.
+    let raw = toml::from_str::<RawConfig>(
+        "[analysis]\nproduction_like_targets = [\"tests/api_contract.rs\", \"benches/perf.rs\"]\n",
+    )
+    .map_err(|error| error.to_string())?;
+    let config = RiprConfig::from_raw(raw)?;
+    let targets = config.analysis().production_like_targets();
+    assert_eq!(targets.len(), 2);
+    assert!(
+        targets.contains(&std::path::PathBuf::from("tests/api_contract.rs"))
+            && targets.contains(&std::path::PathBuf::from("benches/perf.rs"))
+    );
+    let identity = config.check_artifact_identity_fields();
+    let field = identity
+        .iter()
+        .find(|field| field.name == "analysis.production_like_targets")
+        .ok_or("identity must classify the opt-in")?;
+    assert_eq!(
+        field.value.as_deref(),
+        Some("2\u{0}benches/perf.rs\u{0}tests/api_contract.rs"),
+        "the identity encoding must be injective: count + NUL separators"
+    );
+    Ok(())
+}
+
+#[test]
+fn parse_config_rejects_absolute_production_like_target() -> Result<(), String> {
+    // Fail closed: an absolute path can never match a workspace-relative
+    // discovery identity, so it must be a named parse error. TOML literal
+    // strings (single quotes) keep backslashes intact for the windows arm.
+    let outside = if cfg!(windows) {
+        concat!("C:", '\\', "outside", '\\', "target.rs")
+    } else {
+        "/outside/target.rs"
+    };
+    let text = format!("[analysis]\nproduction_like_targets = ['{outside}']\n");
+    let raw = toml::from_str::<RawConfig>(&text).map_err(|error| error.to_string())?;
+    match RiprConfig::from_raw(raw) {
+        Err(error) => assert!(
+            error.contains("production_like_targets"),
+            "error must name the field: {error}"
+        ),
+        Ok(_) => return Err("absolute opt-in paths must fail closed".to_string()),
+    }
+    Ok(())
+}
+
+#[test]
+fn parse_config_normalizes_curdir_harness_targets_to_canonical_identity() -> Result<(), String> {
+    // `./tests/a.rs` and `tests/a.rs` must be one target identity: the
+    // canonical form drops `.` segments while keeping `/` separators, so
+    // the duplicate-target guard cannot be bypassed by a `./` prefix and
+    // shared `./`-prefixed path settings keep loading.
+    let registrations = parse_test_harnesses(
+        "[[analysis.test_harnesses]]
+registration_id = 'x'
+target = './tests/a.rs'
+kind = 'custom_harness'
+adapter = 'libtest_mimic_v1'
+marker = 'libtest_mimic'
+",
+    )?;
+    assert_eq!(
+        registrations[0].target,
+        std::path::PathBuf::from("tests/a.rs")
+    );
+    Ok(())
+}
+
+fn parse_test_harnesses(toml_text: &str) -> Result<Vec<TestHarnessRegistration>, String> {
+    let raw = toml::from_str::<RawConfig>(toml_text).map_err(|error| error.to_string())?;
+    RiprConfig::from_raw(raw).map(|config| config.analysis.test_harnesses)
+}
+
+/// The named parse error a registration config must produce; `Err` when it
+/// unexpectedly parsed.
+fn harness_parse_error(toml_text: &str) -> Result<String, String> {
+    match parse_test_harnesses(toml_text) {
+        Err(error) => Ok(error),
+        Ok(_) => Err("harness registrations must fail closed".to_string()),
+    }
+}
+
+#[test]
+fn parse_config_reads_exact_harness_registrations() -> Result<(), String> {
+    // #3532: both supported families parse with exact identities and join
+    // the check-artifact identity as FindingAffecting.
+    let config_text = r#"
+[analysis]
+[[analysis.test_harnesses]]
+registration_id = "mimic-suite"
+target = "tests/price_mimic.rs"
+kind = "custom_harness"
+adapter = "libtest_mimic_v1"
+marker = "libtest_mimic"
+
+[[analysis.test_harnesses]]
+registration_id = "contract-tests"
+target = "crates/pricing/tests/api.rs"
+kind = "registered_attribute"
+adapter = "exact_attribute_v1"
+marker = "myco::contract_test"
+"#;
+    let registrations = parse_test_harnesses(config_text)?;
+    assert_eq!(registrations.len(), 2);
+    assert_eq!(registrations[0].registration_id, "mimic-suite");
+    assert_eq!(
+        registrations[0].target,
+        std::path::PathBuf::from("tests/price_mimic.rs")
+    );
+    assert_eq!(registrations[0].kind, TestHarnessKind::CustomHarnessTarget);
+    assert_eq!(registrations[0].adapter, TestHarnessAdapter::LibtestMimicV1);
+    assert_eq!(registrations[0].marker, "libtest_mimic");
+    assert_eq!(registrations[1].marker, "myco::contract_test");
+
+    let identity = RiprConfig::from_raw(
+        toml::from_str::<RawConfig>(config_text).map_err(|error| error.to_string())?,
+    )?
+    .check_artifact_identity_fields();
+    let field = identity
+        .iter()
+        .find(|field| field.name == "analysis.test_harnesses")
+        .ok_or("identity must classify test_harnesses")?;
+    assert_eq!(field.role, ConfigIdentityRole::FindingAffecting);
+    // Pin the canonical encoding itself: the value feeds artifact reuse,
+    // so an accidental encoding drift must fail here (a deliberate change
+    // bumps CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION and this pin).
+    assert_eq!(
+        field.value.as_deref(),
+        Some(
+            "2 11:mimic-suite 20:tests/price_mimic.rs 14:custom_harness 16:libtest_mimic_v1 13:libtest_mimic  14:contract-tests 27:crates/pricing/tests/api.rs 20:registered_attribute 18:exact_attribute_v1 19:myco::contract_test "
+        )
+    );
+    Ok(())
+}
+
+#[test]
+fn parse_config_rejects_unknown_harness_adapter_version() -> Result<(), String> {
+    // Unknown adapter/schema versions fail closed at parse time.
+    let error = harness_parse_error(
+        "[[analysis.test_harnesses]]\nregistration_id = 'x'\ntarget = 'tests/a.rs'\nkind = 'custom_harness'\nadapter = 'libtest_mimic_v9'\nmarker = 'libtest_mimic'\n",
+    )?;
+    assert!(
+        error.contains("libtest_mimic_v9") && error.contains("unknown"),
+        "the error must name the rejected value: {error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn parse_config_rejects_harness_kind_adapter_mismatch() -> Result<(), String> {
+    let error = harness_parse_error(
+        "[[analysis.test_harnesses]]\nregistration_id = 'x'\ntarget = 'tests/a.rs'\nkind = 'registered_attribute'\nadapter = 'libtest_mimic_v1'\nmarker = 'contract_test'\n",
+    )?;
+    assert!(error.contains("does not support kind"), "{error}");
+    Ok(())
+}
+
+#[test]
+fn parse_config_rejects_harness_root_escape_and_lookalike_marker() -> Result<(), String> {
+    // Root escape fails closed through the shared relative-path rule.
+    let escape_error = harness_parse_error(
+        "[[analysis.test_harnesses]]\nregistration_id = 'x'\ntarget = '../outside/mimic.rs'\nkind = 'custom_harness'\nadapter = 'libtest_mimic_v1'\nmarker = 'libtest_mimic'\n",
+    )?;
+    assert!(escape_error.contains("target"), "{escape_error}");
+
+    // A lookalike wildcard marker never parses: registration is exact.
+    let marker_error = harness_parse_error(
+        "[[analysis.test_harnesses]]\nregistration_id = 'x'\ntarget = 'tests/a.rs'\nkind = 'registered_attribute'\nadapter = 'exact_attribute_v1'\nmarker = 'myco::contract_*'\n",
+    )?;
+    assert!(
+        marker_error.contains("exact identifier path"),
+        "{marker_error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn parse_config_rejects_conflicting_harness_registrations() -> Result<(), String> {
+    // Duplicate registration ids are non-clean.
+    let id_error = harness_parse_error(
+        "[[analysis.test_harnesses]]\nregistration_id = 'same'\ntarget = 'tests/a.rs'\nkind = 'custom_harness'\nadapter = 'libtest_mimic_v1'\nmarker = 'libtest_mimic'\n\n[[analysis.test_harnesses]]\nregistration_id = 'same'\ntarget = 'tests/b.rs'\nkind = 'custom_harness'\nadapter = 'libtest_mimic_v1'\nmarker = 'libtest_mimic'\n",
+    )?;
+    assert!(id_error.contains("registered twice"), "{id_error}");
+
+    // Two registrations claiming the same target are non-clean.
+    let target_error = harness_parse_error(
+        "[[analysis.test_harnesses]]\nregistration_id = 'one'\ntarget = 'tests/a.rs'\nkind = 'custom_harness'\nadapter = 'libtest_mimic_v1'\nmarker = 'libtest_mimic'\n\n[[analysis.test_harnesses]]\nregistration_id = 'two'\ntarget = 'tests/a.rs'\nkind = 'custom_harness'\nadapter = 'libtest_mimic_v1'\nmarker = 'libtest_mimic'\n",
+    )?;
+    assert!(
+        target_error.contains("claimed by two registrations"),
+        "{target_error}"
+    );
+    Ok(())
 }

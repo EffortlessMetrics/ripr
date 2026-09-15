@@ -1,0 +1,45 @@
+schema_version = "2.0"
+id = "ripr.slice.annotations-direct-read.v1"
+generation = 1
+
+source_issue = "issue:1958"
+design_reference = "RIPR-SPEC-0012#github-projection"
+change_class = "behavior_change"
+
+claim_boundary = """
+Removes the exists()-then-read pattern from the ripr annotations comments
+loader: one direct read determines presence, NotFound stays the intended
+optional-comments state, and all other I/O failures remain explicit
+fail-closed errors. External behavior for valid and missing inputs is
+unchanged; no filesystem race resistance or sandboxing is claimed.
+"""
+
+non_goals = [
+  "comprehensive filesystem race resistance",
+  "a broad filesystem abstraction or new dependency",
+  "write-capable hardening for ripr init (tracked in issue:1948)",
+]
+
+return_conditions = [
+  "Return to root if any input class changes its external behavior beyond the intended error-preservation.",
+]
+
+owned_seams = [
+  "seam:ripr:app:annotations-comments-loader",
+]
+
+shared_seams = []
+forbidden_seams = []
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0012#github-projection"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

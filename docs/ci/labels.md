@@ -9,32 +9,56 @@ vocabulary; the next section separates current wiring from target behavior.
 
 | Label | Effect |
 | --- | --- |
-| `full-ci` | Runs all lanes including release-surface proof. Maps forecast to release band; suppresses budget warnings. |
-| `release-check` | Runs the currently wired release-surface proof without opting into every `full-ci` lane. Today that means the legacy Rust package list and publish dry-run steps. |
+| `full-ci` | Runs the currently wired broad advisory, editor, MSRV, and release-surface proof. Maps forecast to release band; suppresses budget warnings. |
+| `release-check` | Runs the release-surface proof without opting into every `full-ci` lane: package list, publish dry-run, and release-readiness. |
 | `ci-budget-ack` | Acknowledges an over-budget forecast at the `large` band. Budget-neutral; does not run additional lanes. |
 | `vscode` | Target label for forcing the VS Code extension lane on PRs that do not touch `editors/vscode/` but need it. |
-| `coverage` | Documented target label for future coverage-lane selection; current coverage workflow runs on PRs, pushes, and manual dispatch without reading this label. |
+| `coverage` | Runs the advisory coverage lane for the labeled pull request. `full-ci` also selects `coverage`. |
 | `clippy-future` | Runs future or candidate Clippy lint lanes in advisory mode. |
 | `ripr-waive` | Target label for acknowledging a `ripr` soft-gate finding for this PR. Requires a written reason in the PR body. |
 
+### Status labels (`status/*`)
+
+The `status/*` set is the closed status vocabulary used by the status-comment
+verification contract (`AGENTS.md` § "Status-comment verification contract").
+A status label is the primary status signal; a status comment is secondary and
+must not contradict the label. See `AGENTS.md` for the full contract — this
+table only documents the label meanings.
+
+| Label | Meaning |
+| --- | --- |
+| `status/done-open` | Delivered; the issue is intentionally kept open. |
+| `status/blocked-upstream` | Blocked on `cargo-allow` or an external repository. |
+| `status/blocked-repo` | Blocked on a tracked in-repo item (PR, issue, or code). |
+| `status/needs-work` | Actionable and not started. Do **not** use it for partially landed work; that understates delivery and invites duplicate implementation. |
+| `status/mis-scoped` | Re-scope, close, or supersede — the issue is the wrong scope or stale. |
+| `status/partial` | A bounded portion has merged to `main` (or another authoritative repository) and the residual acceptance plus next owner are recorded. Apply only when a merged deliverable exists — never merely planned. |
+
+These labels do not modify CI lane selection. They are consumed by agents and
+reviewers as the durable campaign-record signal; the open-issue list is the
+campaign record and a low-truth status comment buries substantive signal.
+
 ## When labels take effect
 
-Current behavior: labels are read directly by the workflows that already have
-label conditions. Today, `release-check` and `full-ci` affect the legacy Rust
-workflow package list and publish dry-run steps, `full-ci` affects the legacy
-VS Code CI job, and `clippy-future` or `full-ci` activates the future-Clippy
-advisory workflow. The `vscode`, `coverage`, `ci-budget-ack`, and
-`ripr-waive` labels are documented policy vocabulary, but not all of them are
-wired to lane-selection behavior yet; see
-[`current-state.md`](current-state.md).
+Current behavior:
+
+- `release-check` activates Perl and release-surface proof.
+- `full-ci` activates Perl/release proof, the named MSRV proof, VS Code
+  integration, `coverage`, Test Analytics, and future-Clippy advisory proof.
+- `coverage` activates the advisory coverage workflow.
+- `clippy-future` activates the future-Clippy advisory workflow.
+- `vscode`, `ci-budget-ack`, and `ripr-waive` remain documented policy
+  vocabulary that is not yet wired to every target planner behavior; see
+  [`current-state.md`](current-state.md).
+
+The workflows that consume these labels subscribe to pull-request label events,
+so applying or removing a wired label starts a new selection run. A new commit
+is not required merely to make `coverage`, `full-ci`, `release-check`, or
+`clippy-future` take effect.
 
 Target behavior: the PR Plan step runs first and emits a `ci-plan.json` that
 includes the resolved label set. Subsequent lane jobs read the plan to decide
 whether to run.
-
-Applying a label after a workflow run has already started requires a
-re-synchronize (push or empty commit) or a manual workflow dispatch to pick up
-the new label.
 
 ## Label authorization
 
