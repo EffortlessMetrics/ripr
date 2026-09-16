@@ -200,7 +200,7 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
             "source and W7 network-policy headers differ; reviewer resolution required".to_string(),
         );
     }
-    let decisions = parse_decisions(&inputs.decisions, inputs)?;
+    let (decisions, decisions_bytes) = parse_decisions(&inputs.decisions, inputs)?;
     let mut inventory = inventory_tree(&inputs.preview_tree)?;
     complete_parent_inventory(
         &inputs.preview_tree,
@@ -290,7 +290,7 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
             "source_sha256": sha256(&source_policy_bytes),
             "swarm_blob": swarm_policy_blob,
             "swarm_sha256": sha256(&swarm_policy_bytes),
-            "reviewer_decisions_sha256": sha256(&fs::read(&inputs.decisions).map_err(|error| format!("failed to read {}: {error}", inputs.decisions.display()))?),
+            "reviewer_decisions_sha256": sha256(&decisions_bytes),
         },
         "rows": resolution_rows,
         "final_ledger": {
@@ -479,7 +479,11 @@ fn parse_policy(label: &str, bytes: &[u8]) -> Result<Vec<PolicyRow>, String> {
     Ok(rows)
 }
 
-fn parse_decisions(path: &Path, inputs: &Inputs) -> Result<ReviewerDecisions, String> {
+fn parse_decisions(path: &Path, inputs: &Inputs) -> Result<(ReviewerDecisions, Vec<u8>), String> {
+    // Return the exact bytes that were parsed alongside the decisions: the
+    // receipt digest must bind those bytes, not a second later read, because
+    // tree reproduction and the production-checker build separate the parse
+    // from receipt rendering by a minutes-long window.
     let bytes = fs::read(path)
         .map_err(|error| format!("failed to read decisions {}: {error}", path.display()))?;
     let document: Value = serde_json::from_slice(&bytes)
@@ -527,7 +531,7 @@ fn parse_decisions(path: &Path, inputs: &Inputs) -> Result<ReviewerDecisions, St
             ));
         }
     }
-    Ok(decisions)
+    Ok((decisions, bytes))
 }
 
 fn validate_decision_authority(document: &Value, inputs: &Inputs) -> Result<(), String> {
@@ -712,18 +716,8 @@ fn inventory_tree(tree: &str) -> Result<TreeInventory, String> {
             let rest = line.strip_prefix(&prefix).ok_or_else(|| {
                 format!("git grep emitted an unexpected tree identity for {pattern}: {line}")
             })?;
-            let (path_and_line, _) = rest
-                .rsplit_once(':')
-                .ok_or_else(|| format!("git grep output is missing match text: {line}"))?;
-            let (path, line_number) = path_and_line
-                .rsplit_once(':')
-                .ok_or_else(|| format!("git grep output is missing a line number: {line}"))?;
-            line_number
-                .parse::<usize>()
-                .map_err(|error| format!("git grep line number is invalid in {line}: {error}"))?;
-            *counts
-                .entry((path.to_string(), pattern.clone()))
-                .or_default() += 1;
+            let path = parse_inventory_line(rest, pattern, line)?;
+            *counts.entry((path, pattern.clone())).or_default() += 1;
         }
     }
     let mut blobs = BTreeMap::<String, String>::new();
@@ -739,6 +733,24 @@ fn inventory_tree(tree: &str) -> Result<TreeInventory, String> {
         inventory.insert((path, pattern), (count, blob));
     }
     Ok(inventory)
+}
+
+fn parse_inventory_line(rest: &str, pattern: &str, line: &str) -> Result<String, String> {
+    // git grep -o emits exactly one literal pattern occurrence as the match
+    // text, so the line always ends with the pattern. Strip that known suffix
+    // first: some governed patterns carry colons that would otherwise corrupt
+    // a naive rsplit(':') split of path and line number.
+    let path_and_line = rest
+        .strip_suffix(pattern)
+        .and_then(|value| value.strip_suffix(':'))
+        .ok_or_else(|| format!("git grep output is missing match text: {line}"))?;
+    let (path, line_number) = path_and_line
+        .rsplit_once(':')
+        .ok_or_else(|| format!("git grep output is missing a line number: {line}"))?;
+    line_number
+        .parse::<usize>()
+        .map_err(|error| format!("git grep line number is invalid in {line}: {error}"))?;
+    Ok(path.to_string())
 }
 
 fn complete_parent_inventory<'a>(
@@ -1830,6 +1842,78 @@ mod tests {
         let ledger = render_ledger(&header, &[resolution]);
         if !ledger.starts_with("# Reviewed header\n# second line\n\n") {
             return Err("resolved ledger did not preserve the parent header".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn inventory_line_parser_survives_colon_bearing_patterns() -> Result<(), String> {
+        // git grep -o emits the literal pattern as the match text; some
+        // governed patterns carry colons that a naive rsplit(':') parse would
+        // mistake for the path/line separator. Split with concat! (and build
+        // the fixture lines at runtime) so this test does not itself add
+        // governed literals to the source tree.
+        let colon_pattern = concat!("tokio::", "net");
+        let raw = format!("src/net.rs:42:{colon_pattern}");
+        let path = super::parse_inventory_line(&raw, colon_pattern, &format!("deadbeef:{raw}"))?;
+        if path != "src/net.rs" {
+            return Err(format!("colon-bearing match parsed to {path:?}"));
+        }
+        let plain_pattern = concat!("cu", "rl");
+        let raw = format!("src/lib.rs:7:{plain_pattern}");
+        let path = super::parse_inventory_line(&raw, plain_pattern, &format!("deadbeef:{raw}"))?;
+        if path != "src/lib.rs" {
+            return Err(format!("plain match parsed to {path:?}"));
+        }
+        let raw = format!("src/lib.rs:not-a-number:{plain_pattern}");
+        if super::parse_inventory_line(&raw, plain_pattern, "line").is_ok() {
+            return Err("invalid line number unexpectedly passed".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_decisions_returns_the_bytes_it_parsed() -> Result<(), String> {
+        // The receipt digest must bind the parsed bytes, not a second later
+        // read: tree reproduction and the checker build separate the two by a
+        // minutes-long window.
+        let inputs = Inputs {
+            preflight: PathBuf::from("preflight.json"),
+            decisions: PathBuf::from("decisions.json"),
+            preflight_sha256: "a".repeat(64),
+            p0_artifact_sha256: "b".repeat(64),
+            source: "c".repeat(40),
+            swarm: "d".repeat(40),
+            merge_base: "e".repeat(40),
+            preview_tree: "f".repeat(40),
+            rejected_j5: "1".repeat(40),
+            rejected_j5_tree: "2".repeat(40),
+            output_dir: PathBuf::from("out"),
+        };
+        let root =
+            std::env::temp_dir().join(format!("ripr-decisions-bytes-{}", std::process::id()));
+        std::fs::create_dir_all(&root)
+            .map_err(|error| format!("failed to create fixture dir: {error}"))?;
+        let path = root.join("decisions.json");
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "schema": "ripr.source_promotion_network_policy_decisions.v1",
+            "p0_receipt_sha256": inputs.preflight_sha256,
+            "p0_artifact_sha256": inputs.p0_artifact_sha256,
+            "rejected_j5": inputs.rejected_j5,
+            "rejected_j5_tree": inputs.rejected_j5_tree,
+            "decisions": [],
+        }))
+        .map_err(|error| format!("failed to render fixture: {error}"))?;
+        std::fs::write(&path, &bytes)
+            .map_err(|error| format!("failed to write fixture: {error}"))?;
+        let (decisions, returned) = super::parse_decisions(&path, &inputs)?;
+        std::fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to remove fixture dir {}: {error}", root.display()))?;
+        if !decisions.is_empty() {
+            return Err("empty decisions unexpectedly produced rows".to_string());
+        }
+        if returned != bytes {
+            return Err("parse_decisions did not return the bytes it parsed".to_string());
         }
         Ok(())
     }
