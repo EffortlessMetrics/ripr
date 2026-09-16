@@ -58,7 +58,7 @@ function main(): void {
     }
     serialized = fs.readFileSync(catalogPath, 'utf8');
   } catch (error) {
-    fail(`catalog file is unreadable: ${(error as Error).message}`);
+    fail(`catalog file is unreadable: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   try {
@@ -93,7 +93,7 @@ function main(): void {
     };
     process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
   } catch (error) {
-    fail((error as Error).message);
+    fail(error instanceof Error ? error.message : String(error));
   }
 }
 

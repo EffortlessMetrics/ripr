@@ -196,13 +196,17 @@ export function resolveDistributionRequest(
 
 /** Returns a placement-neutral identity for the immutable server generation. */
 export function distributionDescriptorIdentity(descriptor: DistributionDescriptor): string {
+  // Release identity fields are optional: schema 1 catalogs predate them and
+  // schema 2 development catalogs must not carry them. Appending an absent
+  // field would serialize it as null, so only defined fields join the
+  // canonical form.
   const releaseIdentity =
     descriptor.schema === 2
       ? [
           descriptor.distributionGeneration,
           descriptor.manifestSha256,
           descriptor.targetSetDigest
-        ]
+        ].filter((field): field is string => field !== undefined)
       : [];
   const canonical = JSON.stringify([
     descriptor.schema,

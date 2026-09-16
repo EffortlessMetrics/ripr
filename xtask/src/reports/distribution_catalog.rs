@@ -171,12 +171,10 @@ fn rc_placement(product_version: &str, rc_tag: &str) -> Result<String, String> {
         .ok_or_else(|| {
             format!("RC placement `{rc_tag}` must tag product `{product_version}` as `v{product_version}-rc.N`")
         })?;
-    if suffix != "0" && (suffix.starts_with('0') || !suffix.chars().all(|c| c.is_ascii_digit())) {
-        return Err(format!(
-            "RC placement `{rc_tag}` carries a non-canonical RC number"
-        ));
-    }
-    if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
+    if suffix.is_empty()
+        || !suffix.chars().all(|c| c.is_ascii_digit())
+        || (suffix.starts_with('0') && suffix != "0")
+    {
         return Err(format!(
             "RC placement `{rc_tag}` carries a non-canonical RC number"
         ));
@@ -205,7 +203,7 @@ fn digest_field(
 }
 
 fn read_bounded_manifest(path: &str) -> Result<Vec<u8>, String> {
-    let metadata = fs::symlink_metadata(path)
+    let metadata = fs::metadata(path)
         .map_err(|err| format!("release manifest `{path}` is unavailable: {err}"))?;
     if !metadata.file_type().is_file() {
         return Err(format!("release manifest `{path}` is not a regular file"));
@@ -227,7 +225,7 @@ fn normalize_source_repository(repository: &str) -> Result<NormalizedRepository,
     let repository = repository.trim();
     if let Some(rest) = repository.strip_prefix("https://") {
         let rest = rest.trim_end_matches('/');
-        if rest.contains(['?', '#', '@', ' ', '\t', '\n']) {
+        if rest.contains(['?', '#', '@', ' ', '\t', '\n', '\r']) {
             return Err(format!(
                 "source repository `{repository}` must not carry credentials, query, or fragment"
             ));
@@ -283,4 +281,55 @@ fn optional_release_arg(args: &[String], flag: &str, env_name: &str) -> Option<S
         }
     }
     std::env::var(env_name).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_source_repository, rc_placement};
+
+    #[test]
+    fn rc_placement_accepts_canonical_numbers_including_zero() {
+        assert_eq!(
+            rc_placement("0.11.0", "v0.11.0-rc.0"),
+            Ok("v0.11.0-rc.0".to_string())
+        );
+        assert_eq!(
+            rc_placement("0.11.0", "v0.11.0-rc.12"),
+            Ok("v0.11.0-rc.12".to_string())
+        );
+    }
+
+    #[test]
+    fn rc_placement_rejects_non_canonical_numbers() {
+        for tag in [
+            "v0.11.0-rc.",
+            "v0.11.0-rc.01",
+            "v0.11.0-rc.1a",
+            "v0.11.0-rc. 1",
+            "v0.12.0-rc.1",
+        ] {
+            assert!(
+                rc_placement("0.11.0", tag).is_err(),
+                "expected rejection for `{tag}`"
+            );
+        }
+        assert!(
+            rc_placement("0.11.0", "").is_err(),
+            "expected rejection for an empty RC tag"
+        );
+    }
+
+    #[test]
+    fn source_repository_rejects_control_characters() {
+        for repository in [
+            "https://github.com/own\rer/repo",
+            "https://github.com/own\ner/repo",
+            "https://github.com/owner/re\tpo",
+        ] {
+            assert!(
+                normalize_source_repository(repository).is_err(),
+                "expected rejection for `{repository:?}`"
+            );
+        }
+    }
 }

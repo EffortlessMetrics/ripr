@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -9,6 +10,7 @@ import {
 } from '../../src/serverResolver';
 import {
   DistributionDescriptor,
+  distributionDescriptorIdentity,
   distributionManifestUrl,
   distributionPlacements,
   parseDistributionDescriptor,
@@ -319,6 +321,28 @@ suite('distribution descriptor schema 2', () => {
     assert.throws(() => parseDistributionDescriptor(JSON.stringify({ ...stable2, manifestSha256: digest('B') })), /manifestSha256 must be a 64-character/);
     assert.throws(() => parseDistributionDescriptor(JSON.stringify({ ...stable2, targetSetDigest: 'abc' })), /targetSetDigest must be a 64-character/);
     assert.throws(() => parseDistributionDescriptor(JSON.stringify({ ...stable2, distributionGeneration: 42 as unknown as string })), /distributionGeneration must be a 64-character/);
+  });
+
+  test('keeps absent release identity out of development descriptor identity', () => {
+    const { distributionGeneration: _generation, manifestSha256: _manifest, targetSetDigest: _targets, ...bareDevelopment2 } = {
+      ...stable2,
+      channel: 'development' as const
+    };
+    const parsed = parseDistributionDescriptor(JSON.stringify(bareDevelopment2));
+    const expected = crypto
+      .createHash('sha256')
+      .update(
+        JSON.stringify([
+          2,
+          '0.11.0',
+          'ripr-server-manifest-v0.11.0.json',
+          'https://github.com/EffortlessMetrics/ripr'
+        ]),
+        'utf8'
+      )
+      .digest('hex');
+    assert.strictEqual(parsed.distributionGeneration, undefined);
+    assert.strictEqual(distributionDescriptorIdentity(parsed), `sha256:${expected}`);
   });
 
   test('rejects release identity on development catalogs and predates it on schema 1', () => {
