@@ -4,6 +4,11 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { RiprConfig } from './config';
 import {
+  distributionManifestUrl,
+  distributionPlacements,
+  ResolvedDistributionRequest
+} from './distributionDescriptor';
+import {
   installManagedServer,
   ManagedServerInstallation,
   ManagedServerInstallRequest,
@@ -27,7 +32,8 @@ export async function downloadServer(
   config: RiprConfig,
   platform: RiprPlatform,
   version: string,
-  output: vscode.OutputChannel
+  output: vscode.OutputChannel,
+  distribution?: ResolvedDistributionRequest
 ): Promise<ManagedServerInstallation> {
   const managedVersion = validateManagedServerVersion(version);
   const origin = downloadOriginLabel(config, managedVersion);
@@ -37,7 +43,8 @@ export async function downloadServer(
       title: `ripr: downloading server ${managedVersion} for ${platform.target} from ${origin}`,
       cancellable: false
     },
-    (progress) => downloadServerWithProgress(context, config, platform, managedVersion, output, progress)
+    (progress) =>
+      downloadServerWithProgress(context, config, platform, managedVersion, output, progress, distribution)
   );
 }
 
@@ -47,13 +54,18 @@ async function downloadServerWithProgress(
   platform: RiprPlatform,
   version: string,
   output: vscode.OutputChannel,
-  progress: vscode.Progress<{ message?: string; increment?: number }>
+  progress: vscode.Progress<{ message?: string; increment?: number }>,
+  distribution?: ResolvedDistributionRequest
 ): Promise<ManagedServerInstallation> {
   const request = installRequest(context, version, platform);
   return installManagedServer(request, {
     resolveArchive: async () => {
       progress.report({ message: 'Fetching release manifest…' });
-      const manifest = await fetchManifest(manifestUrl(config.downloadBaseUrl, version));
+      const manifest = await fetchManifestForDistribution(
+        config.downloadBaseUrl,
+        distribution,
+        version
+      );
       if (manifest.version !== version) {
         throw new Error(`Server manifest version ${manifest.version} does not match requested version ${version}.`);
       }
@@ -96,6 +108,54 @@ function installRequest(
     executableName: platform.executableName,
     archiveExtension: platform.archiveExtension
   };
+}
+
+/**
+ * Ordered release-manifest URLs for one download: the preferred placement
+ * first, then the bounded predeclared fallbacks. A configured mirror is an
+ * explicit transport choice and serves the preferred placement only — it
+ * never falls through to RC. Without a descriptor the legacy
+ * version-pinned URL is the only candidate.
+ */
+export function manifestCandidatesForDistribution(
+  baseUrl: string,
+  distribution: ResolvedDistributionRequest | undefined,
+  version: string
+): string[] {
+  if (!distribution) {
+    return [manifestUrl(baseUrl, version)];
+  }
+  if (baseUrl.trim().length > 0) {
+    return [distributionManifestUrl(baseUrl, distribution, distribution.preferredPlacement)];
+  }
+  return distributionPlacements(distribution).map((placement) =>
+    distributionManifestUrl('', distribution, placement)
+  );
+}
+
+async function fetchManifestForDistribution(
+  baseUrl: string,
+  distribution: ResolvedDistributionRequest | undefined,
+  version: string
+): Promise<ServerManifest> {
+  const candidates = manifestCandidatesForDistribution(baseUrl, distribution, version);
+  let lastError: string | undefined;
+  for (const url of candidates) {
+    try {
+      return await fetchManifest(url);
+    } catch (error) {
+      // An unavailable placement falls through to the next predeclared
+      // placement. A fetched manifest is validated by the caller, which
+      // fails fast: a contradictory manifest must not be masked by a
+      // fallback.
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  throw new Error(
+    `No release manifest is available for server ${version}${
+      lastError ? `: ${lastError}` : '.'
+    }`
+  );
 }
 
 function downloadOriginLabel(config: RiprConfig, version: string): string {
