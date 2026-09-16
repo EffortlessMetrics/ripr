@@ -44,10 +44,16 @@ fn parameter_declaration_retains_unknown_instead_of_field_construction() -> Resu
         "a changed parameter must not disappear from analysis"
     );
     assert!(
-        probes.iter().all(|probe| probe.family == ProbeFamily::StaticUnknown),
+        probes
+            .iter()
+            .all(|probe| probe.family == ProbeFamily::StaticUnknown),
         "parameter syntax is not executable field construction: {probes:?}"
     );
-    assert!(probes.iter().any(|probe| probe.expression.contains("out: &Path")));
+    assert!(
+        probes
+            .iter()
+            .any(|probe| probe.expression.contains("out: &Path"))
+    );
     Ok(())
 }
 
