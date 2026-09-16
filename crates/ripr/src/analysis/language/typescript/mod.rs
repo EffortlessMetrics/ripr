@@ -292,8 +292,12 @@ impl LanguageAdapter for TypeScriptAdapter {
                 .with_detail(limit.reason.clone())
             })
             .collect::<Result<Vec<_>, String>>()?;
+        // Same-text lines under one owner share a content-addressed probe
+        // id; disambiguate repeats so stable ids stay unique in this run.
+        let mut unique_findings = findings;
+        probes::dedup_finding_probe_ids(&mut unique_findings);
         Ok(LanguageDiffResult {
-            findings,
+            findings: unique_findings,
             harness_projections: Vec::new(),
             changed_files: changed_count,
             candidate_line_count: 0,

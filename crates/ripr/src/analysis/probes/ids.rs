@@ -101,6 +101,42 @@ pub(crate) fn repo_probe_id(
     fingerprint_probe_id("repo-probe", &sp, family_str, owner_str, &norm, ordinal)
 }
 
+/// Post-hoc collision dedup for adapter findings: scan `findings` in order;
+/// for any probe id that appears more than once, rewrite the 2nd+
+/// occurrences to append `.2`, `.3`, … (the first keeps its id as-is, i.e.
+/// ordinal 1). Same-fingerprint collisions arise when one owner has several
+/// same-text lines (e.g. repeated `}` closers): the content-addressed id is
+/// deliberately line-independent so it survives line movement, so the
+/// ordinal carries within-run uniqueness instead.
+///
+/// Mirrors `dedup_probe_ids` for bare probes, extended to findings:
+/// `Finding.id` follows the probe, and `source_id=<id>` evidence lines are
+/// rebound so consumers that join evidence to probes keep resolving.
+/// Without this, duplicate stable ids fail the PR evidence contract.
+pub(crate) fn dedup_finding_probe_ids(findings: &mut [crate::domain::Finding]) {
+    use std::collections::HashMap;
+    let mut seen: HashMap<String, u32> = HashMap::new();
+    for finding in findings.iter_mut() {
+        let count = seen.entry(finding.probe.id.0.clone()).or_insert(0);
+        *count += 1;
+        if *count > 1 {
+            let old = finding.probe.id.0.clone();
+            let new = format!("{old}.{count}");
+            finding.probe.id.0 = new.clone();
+            if finding.id == old {
+                finding.id = new.clone();
+            }
+            let needle = format!("source_id={old}");
+            let replacement = format!("source_id={new}");
+            for line in finding.evidence.iter_mut() {
+                if line.contains(&needle) {
+                    *line = line.replace(&needle, &replacement);
+                }
+            }
+        }
+    }
+}
+
 pub(crate) fn sanitize_path(path: &Path) -> String {
     crate::analysis::stable_path_text(path)
         .replace(['/', '\\', ':'], "_")
@@ -218,5 +254,111 @@ mod tests {
         assert_eq!(normalize_expression("  if   x > 0  {  "), "if x > 0 {");
         assert_eq!(normalize_expression("hello"), "hello");
         assert_eq!(normalize_expression(""), "");
+    }
+
+    #[test]
+    fn dedup_finding_probe_ids_suffixes_repeats_and_rebinds_evidence() {
+        use crate::domain::{
+            ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily,
+            ProbeId, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+        };
+
+        fn stage() -> StageEvidence {
+            StageEvidence::new(StageState::Unknown, Confidence::Unknown, "dedup test")
+        }
+
+        fn finding(id: &str, line: usize) -> Finding {
+            let probe_id = format!("probe:file_ts:typescript_preview:{id}");
+            Finding {
+                id: probe_id.clone(),
+                canonical_gap: None,
+                probe: Probe {
+                    id: ProbeId(probe_id.clone()),
+                    location: SourceLocation::new("file.ts", line, 1),
+                    owner: None,
+                    family: ProbeFamily::Predicate,
+                    delta: DeltaKind::Control,
+                    before: None,
+                    after: Some("}".to_string()),
+                    expression: "}".to_string(),
+                    expected_sinks: Vec::new(),
+                    required_oracles: Vec::new(),
+                },
+                class: ExposureClass::ReachableUnrevealed,
+                ripr: RiprEvidence {
+                    reach: stage(),
+                    infect: stage(),
+                    propagate: stage(),
+                    reveal: RevealEvidence {
+                        observe: stage(),
+                        discriminate: stage(),
+                    },
+                },
+                confidence: 0.0,
+                evidence: vec![format!(
+                    "raw_evidence_ref: leg=x;source_id={probe_id};owner=o"
+                )],
+                missing: Vec::new(),
+                flow_sinks: Vec::new(),
+                activation: ActivationEvidence::default(),
+                stop_reasons: Vec::new(),
+                related_tests: Vec::new(),
+                recommended_next_step: None,
+                language: None,
+                language_status: None,
+                owner_kind: None,
+                static_limit_kind: None,
+                changed_sink: None,
+                observed_sink: None,
+                oracle_alignment: None,
+                alignment_reason: None,
+                source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
+            }
+        }
+
+        // Two same-fingerprint findings (repeated `}` closers) plus one
+        // distinct probe: only the repeat is suffixed, in order.
+        let mut findings = vec![
+            finding("bcd59d90", 48),
+            finding("bcd59d90", 51),
+            finding("aaaa1111", 7),
+        ];
+        dedup_finding_probe_ids(&mut findings);
+        assert_eq!(
+            findings[0].probe.id.0,
+            "probe:file_ts:typescript_preview:bcd59d90"
+        );
+        assert_eq!(findings[0].id, "probe:file_ts:typescript_preview:bcd59d90");
+        assert_eq!(
+            findings[1].probe.id.0,
+            "probe:file_ts:typescript_preview:bcd59d90.2"
+        );
+        assert_eq!(
+            findings[1].id,
+            "probe:file_ts:typescript_preview:bcd59d90.2"
+        );
+        assert!(
+            findings[1].evidence[0]
+                .contains("source_id=probe:file_ts:typescript_preview:bcd59d90.2"),
+            "evidence must rebind to the suffixed id: {}",
+            findings[1].evidence[0]
+        );
+        assert!(
+            !findings[0].evidence[0].contains(".2"),
+            "first occurrence keeps the bare id: {}",
+            findings[0].evidence[0]
+        );
+        assert_eq!(
+            findings[2].probe.id.0,
+            "probe:file_ts:typescript_preview:aaaa1111"
+        );
+        // Stable ids are unique across the run.
+        let mut ids: Vec<&str> = findings
+            .iter()
+            .map(|finding| finding.probe.id.0.as_str())
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), findings.len(), "stable ids must be unique");
     }
 }
