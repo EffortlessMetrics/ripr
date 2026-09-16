@@ -131,7 +131,7 @@ mod markdown {
         lines.push(String::new());
         lines.push("This workflow packet is advisory and source-edit-free. It gives a human or agent the static context and commands for one focused test loop.".to_string());
         lines.push(String::new());
-        lines.push("Each step includes Bash and PowerShell command variants. The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and UTF-8 `Out-File` redirection. cmd.exe is not supported. On Windows, use either Git Bash or PowerShell. WSL bash is not a drop-in substitute: paths here keep their Windows drive-letter prefix, which WSL resolves as a relative path, so running them there requires rewriting each path under `/mnt/` and having ripr available inside WSL.".to_string());
+        lines.push("Each step includes Bash command forms and, where supported, PowerShell forms; unavailable variants are disclosed. The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and UTF-8 `Out-File` redirection. cmd.exe is not supported. On Windows, use either Git Bash or PowerShell. WSL bash is not a drop-in substitute: paths here keep their Windows drive-letter prefix, which WSL resolves as a relative path, so running them there requires rewriting each path under `/mnt/` and having ripr available inside WSL.".to_string());
         lines.push(String::new());
     }
 
@@ -327,7 +327,7 @@ mod tests {
         // imported from production would make this test agree with whatever the
         // renderer happens to emit.
         let disclosure = rendered
-            .find("Each step includes Bash and PowerShell command variants.")
+            .find("Each step includes Bash command forms and, where supported, PowerShell forms; unavailable variants are disclosed.")
             .ok_or_else(|| format!("commands.md must disclose both command shells: {rendered}"))?;
         let first_fence = rendered
             .find("```bash")
