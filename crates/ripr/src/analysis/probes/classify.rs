@@ -25,6 +25,22 @@ pub(crate) fn parser_probe_shapes_for_changed_line<'a>(
     let Some(facts) = file_facts(index, file) else {
         return Vec::new();
     };
+    // #1453: a line in a parsed function parameter is declaration syntax,
+    // not executable field construction.  Emit one parser-owned unknown
+    // before the lexical fallback can misread `name: Type` as a record field.
+    // This is deliberately added-side/current-source authority only: removed
+    // lines do not call this producer, and parse failure falls through to the
+    // existing conservative path rather than inventing context.
+    if let Some((start_byte, text)) = parser_parameter_for_changed_line(facts, line) {
+        return vec![ParserProbeShape {
+            family: ProbeFamily::StaticUnknown,
+            start_line: line,
+            start_byte,
+            text,
+            standalone_call: true,
+            unsafe_boundary: false,
+        }];
+    }
     let mut selected = Vec::<ParserProbeShape<'a>>::new();
     for shape in &facts.probe_shapes {
         if shape.start_line > line || line > shape.end_line {
@@ -86,6 +102,27 @@ pub(crate) fn parser_probe_shapes_for_changed_line<'a>(
             .then(left.text.cmp(right.text))
     });
     selected
+}
+
+fn parser_parameter_for_changed_line(facts: &FileFacts, line: usize) -> Option<(usize, &str)> {
+    let line_range = source_line_byte_range(&facts.source, line)?;
+    let parse = SourceFile::parse(&facts.source, Edition::CURRENT);
+    if !parse.errors().is_empty() {
+        return None;
+    }
+    for parameter in parse.tree().syntax().descendants().filter_map(ast::Param::cast) {
+        let range = parameter.syntax().text_range();
+        let start = u32::from(range.start()) as usize;
+        let end = u32::from(range.end()) as usize;
+        if start >= line_range.end || end <= line_range.start {
+            continue;
+        }
+        let text = facts.source.get(start..end)?.trim();
+        if !text.is_empty() {
+            return Some((start, text));
+        }
+    }
+    None
 }
 
 /// A line-only diff cannot identify which bytes changed when code outside an
