@@ -7,7 +7,7 @@
 /// `agent_workflow` disclosure so every generated-command surface states the
 /// same contract. Shared here — beside the translation it describes — so the
 /// fenced command surfaces do not fork one disclosure per module.
-pub(crate) const COMMAND_SHELL_DISCLOSURE: &str = "Each command includes Bash and PowerShell variants. The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and UTF-8 `Out-File` redirection. cmd.exe is not supported. On Windows, use either Git Bash or PowerShell. WSL bash is not a drop-in substitute: paths keep their Windows drive-letter prefix, which WSL resolves as a relative path.\n\n";
+pub(crate) const COMMAND_SHELL_DISCLOSURE: &str = "Commands include Bash forms and, where supported, PowerShell forms; unavailable variants are disclosed. The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and UTF-8 `Out-File` redirection. cmd.exe is not supported. On Windows, use either Git Bash or PowerShell. WSL bash is not a drop-in substitute: paths keep their Windows drive-letter prefix, which WSL resolves as a relative path.\n\n";
 
 pub(crate) fn render_string_section(out: &mut String, title: &str, values: &[String]) {
     out.push_str(&format!("\n## {title}\n\n"));
@@ -25,11 +25,11 @@ pub(crate) fn markdown_text(value: &str) -> String {
 }
 
 /// One-line disclosure emitted in place of a PowerShell variant when the bash
-/// command is compound and no honest translation exists (#2628). Standalone
-/// emitters append the sentence period; emitters that name the command append
-/// `: <command>`.
+/// command is unsupported or compound and no honest translation exists
+/// (#2628). Standalone emitters append the sentence period; emitters that
+/// name the command append `: <command>`.
 pub(crate) const POWERSHELL_UNAVAILABLE_DISCLOSURE: &str =
-    "PowerShell form unavailable for compound commands";
+    "PowerShell form unavailable for unsupported or compound commands";
 
 /// Translate a bash-rendered advisory command into its PowerShell form.
 ///
@@ -55,6 +55,8 @@ pub(crate) const POWERSHELL_UNAVAILABLE_DISCLOSURE: &str =
 ///   path is a parse error (PR #3617 review) — and the redirect is detected
 ///   only outside single- and double-quoted regions, so a quoted `>` inside
 ///   an argument cannot hijack it. A quote of the other kind is literal data.
+///   A second redirect withholds: anything after the first operator is the
+///   artifact path, and `>` is not a valid Windows filename character.
 /// - The artifact write is guarded: the invocation's output is captured, the
 ///   write happens only `if ($LASTEXITCODE -eq 0)`, and a nonzero status
 ///   throws `"ripr exited with code $LASTEXITCODE"`. Without the guard, a
@@ -80,7 +82,15 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
     let command = command.replace("'\\''", "''");
     if let Some(index) = powershell_redirect_offset(&command) {
         let invocation = command[..index].trim_end();
-        let output = powershell_literal(command[index + 1..].trim());
+        let target = command[index + 1..].trim();
+        // A second redirect leaves `>` inside the artifact path, which has
+        // no Windows translation (`>` is not a valid filename character
+        // there), so the whole form withholds instead of emitting a
+        // WriteAllText call that rejects its own path.
+        if target.contains('>') {
+            return None;
+        }
+        let output = powershell_literal(target);
         return Some(format!(
             "$ripr = (({invocation}) | Out-String); if ($LASTEXITCODE -eq 0) {{ [System.IO.File]::WriteAllText({output}, $ripr, [System.Text.UTF8Encoding]::new($false)) }} else {{ throw \"ripr exited with code $LASTEXITCODE\" }}"
         ));
@@ -135,12 +145,23 @@ fn powershell_redirect_offset(command: &str) -> Option<usize> {
 /// PR #3625 review round 3, devin); inside double quotes, where bash still
 /// expands them: `$(` and backtick. The one exception is `\'` outside quotes,
 /// which is the close-escape-reopen idiom inside a `'\''`-escaped token and
-/// must keep translating. When in doubt the caller under-emits: a false
-/// "compound" costs one disclosure line, a false "simple" would publish an
-/// invalid or semantically different PowerShell line. Unquoted LF, CRLF, and
-/// bare CR are withheld before redirect parsing: a command list must not be
-/// folded into one invocation or mistaken for part of an artifact path. Quoted
-/// line separators are argument data and keep the normal translation path.
+/// must keep translating. Shell-expansion forms that PowerShell would read
+/// differently are withheld too: glob characters (`*`, `?`, `[`, `]`), brace
+/// expansion (`{`, `}`), subshell and grouping parentheses, `@` splatting,
+/// `~` expansion, `#` comments, `$` expansion anywhere (including inside
+/// double quotes), and any `>` that is not the spaced ` > ` redirect operator
+/// (`2>err`, `>&2`, `>>`). Anything else outside the allowlist
+/// (alphanumerics, whitespace, `.`, `/`, `_`, `-`, `:`) fails closed: an
+/// unlisted character withholds the translation, so `--%`, `KEY=value`, and
+/// other unsupported tokens never ship a line the shells would read
+/// differently. A trailing unbalanced quote withholds as well: the bash form
+/// is malformed there, so there is no honest line to translate. When in doubt
+/// the caller under-emits: a false "compound" costs one disclosure line, a
+/// false "simple" would publish an invalid or semantically different
+/// PowerShell line. Unquoted LF, CRLF, and bare CR are withheld before
+/// redirect parsing: a command list must not be folded into one invocation or
+/// mistaken for part of an artifact path. Quoted line separators are argument
+/// data and keep the normal translation path.
 fn is_compound_bash_command(command: &str) -> bool {
     let chars: Vec<char> = command.chars().collect();
     let mut index = 0;
@@ -160,10 +181,13 @@ fn is_compound_bash_command(command: &str) -> bool {
                 // Bash treats `\$` inside double quotes as literal data, but
                 // PowerShell evaluates `$(...)` as a subexpression — the
                 // same text changes meaning across shells, so any
-                // double-quoted backslash under-emits (#3625 review).
+                // double-quoted backslash under-emits (#3625 review). Any
+                // double-quoted `$` under-emits too: PowerShell would expand
+                // `$VAR` and `$()` forms that bash may leave literal, so the
+                // same pasted text can run differently across shells.
                 '\\' => return true,
                 '`' => return true,
-                '$' if next == Some('(') => return true,
+                '$' => return true,
                 _ => {}
             }
             index += 1;
@@ -182,17 +206,48 @@ fn is_compound_bash_command(command: &str) -> bool {
                     None => index += 1,
                 },
                 ';' | '\n' | '\r' => return true,
+                '>' => {
+                    // Only the spaced ` > ` operator translates (detected by
+                    // `powershell_redirect_offset`); any other `>` form
+                    // (`2>err`, `>&2`, `>>`, `a>b`) tokenizes differently
+                    // across shells.
+                    let previous = index.checked_sub(1).and_then(|offset| chars.get(offset));
+                    if previous != Some(&' ') || next != Some(' ') {
+                        return true;
+                    }
+                }
                 '&' => return true,
                 '|' => return true,
                 '<' => return true,
                 '`' => return true,
-                '$' if next == Some('(') => return true,
-                _ => {}
+                '$' => return true,
+                '#' if index == 0
+                    || chars
+                        .get(index - 1)
+                        .is_some_and(|character| character.is_whitespace()) =>
+                {
+                    return true;
+                }
+                '*' | '?' | '[' | ']' => return true,
+                '{' | '}' => return true,
+                '(' | ')' => return true,
+                '@' => return true,
+                '~' if index == 0
+                    || chars
+                        .get(index - 1)
+                        .is_some_and(|character| character.is_whitespace()) =>
+                {
+                    return true;
+                }
+                _ if ch.is_alphanumeric()
+                    || ch.is_ascii_whitespace()
+                    || matches!(ch, '.' | '/' | '_' | '-' | ':') => {}
+                _ => return true,
             }
             index += 1;
         }
     }
-    false
+    in_single_quote || in_double_quote
 }
 
 /// Render one value as a PowerShell single-quoted string literal.
@@ -321,14 +376,58 @@ mod tests {
     /// through with its interior `''` doubling intact.
     #[test]
     fn powershell_command_redirect_target_escapes_embedded_quotes() {
-        assert_eq!(
-            powershell_command("ripr check --root . > it's.json"),
-            Some("$ripr = ((ripr check --root .) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('it''s.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
-        );
+        // An unbalanced quote withholds: the bash form is malformed there
+        // (the `'` opens a quote that never closes), so there is no honest
+        // line to translate — the caller discloses instead.
+        assert_eq!(powershell_command("ripr check --root . > it's.json"), None);
         assert_eq!(
             powershell_command("ripr check --root . > 'it'\\''s.json'"),
             Some("$ripr = ((ripr check --root .) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('it''s.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
+    }
+
+    /// Fail-closed shell-expansion guards: forms PowerShell would read
+    /// differently never ship a translated line. Quoted forms stay data and
+    /// keep translating.
+    #[test]
+    fn powershell_command_withholds_shell_expansion_forms() {
+        for command in [
+            "ripr check {a,b}",
+            "ripr check (echo literal)",
+            "ripr check @missing",
+            "ripr check --% data",
+            "ripr check KEY=value",
+            "ripr check --root ~/report",
+            "ripr check ~",
+            "ripr check # diagnostic",
+            "ripr check $HOME",
+            "cargo test \"prefix $HOME suffix\"",
+            "cargo test \"$HOME\"",
+            "ripr check *.rs",
+            "ripr check a?b",
+            "ripr check 2>err.json",
+            "ripr check a>b.json",
+            "ripr check > first.json > second.json",
+            "ripr check !important",
+        ] {
+            assert_eq!(
+                powershell_command(command),
+                None,
+                "must withhold {command:?}"
+            );
+        }
+        // Quoted expansion characters are argument data, not shell syntax.
+        for command in [
+            "cargo test '{a,b}'",
+            "cargo test '(echo literal)'",
+            "ripr receipt write --gap 'a;b'",
+            "cargo test '$HOME'",
+        ] {
+            assert!(
+                powershell_command(command).is_some(),
+                "must translate quoted data {command:?}"
+            );
+        }
     }
 
     /// The artifact write must sit inside the success branch, and a nonzero
