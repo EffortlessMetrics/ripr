@@ -18,6 +18,13 @@ export interface InstallReceiptV1 {
   readonly archiveSha256: string;
   readonly executableSha256: string;
   readonly binaryVersion: string;
+  /**
+   * Placement-neutral identity of the distribution descriptor that produced
+   * this install. Absent on legacy receipts; a distribution-bound request
+   * never accepts those, so a binary verified against a different producer
+   * cannot be selected for the same version.
+   */
+  readonly distributionIdentity?: string;
 }
 
 export interface ManagedServerInstallation {
@@ -32,6 +39,12 @@ export interface ManagedServerInstallRequest {
   readonly platformTarget: string;
   readonly executableName: string;
   readonly archiveExtension: string;
+  /**
+   * Distribution generation the install must belong to. When present, only
+   * receipts stamped with the same identity are cache-eligible; legacy
+   * receipts without the stamp are reinstalled rather than reused.
+   */
+  readonly distributionIdentity?: string;
 }
 
 export interface ResolvedArchive {
@@ -231,7 +244,10 @@ async function stageAndPromote(
       executableName: request.executableName,
       archiveSha256,
       executableSha256,
-      binaryVersion
+      binaryVersion,
+      ...(request.distributionIdentity !== undefined
+        ? { distributionIdentity: request.distributionIdentity }
+        : {})
     };
     await fs.promises.rm(archivePath, { force: true });
     await fs.promises.rm(extractDir, { recursive: true, force: true });
@@ -300,7 +316,8 @@ function isMatchingReceipt(value: unknown, request: ManagedServerInstallRequest)
     && typeof receipt.archiveSha256 === 'string'
     && isSha256(receipt.archiveSha256)
     && typeof receipt.executableSha256 === 'string'
-    && isSha256(receipt.executableSha256);
+    && isSha256(receipt.executableSha256)
+    && (request.distributionIdentity === undefined || receipt.distributionIdentity === request.distributionIdentity);
 }
 
 function isSha256(value: string): boolean {

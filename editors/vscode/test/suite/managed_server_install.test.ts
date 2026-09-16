@@ -152,6 +152,28 @@ suite('Managed Server Installation', () => {
     assert.strictEqual(combined.installationState, 'complete');
   });
 
+  test('distribution-bound cache rejects unstamped and foreign receipts', async () => {
+    const legacy = installRequest(root, '7.0.0');
+    const installed = await installManagedServer(legacy, operations('legacy-binary', '7.0.0'));
+    assert.strictEqual(installed.receipt.distributionIdentity, undefined);
+
+    const home = { ...legacy, distributionIdentity: 'sha256:home-generation' };
+    assert.strictEqual(await readManagedServerInstallation(home), undefined);
+
+    const foreign = { ...legacy, distributionIdentity: 'sha256:foreign-generation' };
+    const reinstalled = await installManagedServer(foreign, operations('foreign-binary', '7.0.0'));
+    assert.strictEqual(reinstalled.receipt.distributionIdentity, 'sha256:foreign-generation');
+    assert.strictEqual(
+      (await readManagedServerInstallation(foreign))?.executablePath,
+      reinstalled.executablePath
+    );
+    assert.strictEqual(
+      await readManagedServerInstallation({ ...legacy, distributionIdentity: 'sha256:other-generation' }),
+      undefined
+    );
+    assert.ok(await readManagedServerInstallation(legacy));
+  });
+
   test('authoritative provisioning guide matches the completed receipt contract', async () => {
     const repoRoot = path.resolve(__dirname, '../../../../..');
     const guide = await fs.promises.readFile(path.join(repoRoot, 'docs', 'SERVER_PROVISIONING.md'), 'utf8');

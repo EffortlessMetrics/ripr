@@ -73,7 +73,10 @@ Concurrent extension hosts converge on that one completed installation.
 A cached executable is eligible only when the receipt has
 `installationState: "complete"`, its requested/manifest version, target, and
 executable name match the request, and its current executable SHA-256 matches
-the receipt. Binary-only, partial, malformed, or tampered directories are not
+the receipt. A distribution-bound request additionally requires the receipt's
+recorded distribution identity to match the requested server generation, so a
+binary verified against a different producer is reinstalled rather than
+reused. Binary-only, partial, malformed, or tampered directories are not
 probed as cache candidates. A failed install for a new version leaves an
 already completed prior version unchanged. Contenders never reclaim an
 existing lock based only on age; they fail closed after a bounded wait rather
@@ -109,6 +112,14 @@ The manifest shape is:
 The checksum is for the downloaded archive. The extension verifies the archive
 before extraction and admits the result only after the staged binary's
 `ripr --version` probe and completed-receipt validation pass.
+
+The packaged extension embeds a `distribution.json` descriptor naming the
+server generation and its ordered release placements. Managed resolution
+binds the requested version, the cache identity, and the manifest URLs to
+that descriptor; a present but unreadable descriptor fails closed instead of
+falling back to the legacy version-pinned URL, and an explicit
+`ripr.server.version` bypasses the descriptor as a legacy transport
+override.
 
 ## Previous Public Release Proof
 

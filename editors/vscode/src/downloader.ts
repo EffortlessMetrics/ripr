@@ -4,6 +4,11 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { RiprConfig } from './config';
 import {
+  distributionManifestUrl,
+  distributionPlacements,
+  ResolvedDistributionRequest
+} from './distributionDescriptor';
+import {
   installManagedServer,
   ManagedServerInstallation,
   ManagedServerInstallRequest,
@@ -27,7 +32,8 @@ export async function downloadServer(
   config: RiprConfig,
   platform: RiprPlatform,
   version: string,
-  output: vscode.OutputChannel
+  output: vscode.OutputChannel,
+  distribution?: ResolvedDistributionRequest
 ): Promise<ManagedServerInstallation> {
   const managedVersion = validateManagedServerVersion(version);
   const origin = downloadOriginLabel(config, managedVersion);
@@ -37,7 +43,8 @@ export async function downloadServer(
       title: `ripr: downloading server ${managedVersion} for ${platform.target} from ${origin}`,
       cancellable: false
     },
-    (progress) => downloadServerWithProgress(context, config, platform, managedVersion, output, progress)
+    (progress) =>
+      downloadServerWithProgress(context, config, platform, managedVersion, output, progress, distribution)
   );
 }
 
@@ -47,13 +54,18 @@ async function downloadServerWithProgress(
   platform: RiprPlatform,
   version: string,
   output: vscode.OutputChannel,
-  progress: vscode.Progress<{ message?: string; increment?: number }>
+  progress: vscode.Progress<{ message?: string; increment?: number }>,
+  distribution?: ResolvedDistributionRequest
 ): Promise<ManagedServerInstallation> {
-  const request = installRequest(context, version, platform);
+  const request = installRequest(context, version, platform, distribution);
   return installManagedServer(request, {
     resolveArchive: async () => {
       progress.report({ message: 'Fetching release manifest…' });
-      const manifest = await fetchManifest(manifestUrl(config.downloadBaseUrl, version));
+      const manifest = await fetchManifestForDistribution(
+        config.downloadBaseUrl,
+        distribution,
+        version
+      );
       if (manifest.version !== version) {
         throw new Error(`Server manifest version ${manifest.version} does not match requested version ${version}.`);
       }
@@ -64,7 +76,7 @@ async function downloadServerWithProgress(
 
       output.appendLine(`Downloading ripr server ${version} for ${platform.target}.`);
       progress.report({ message: `Downloading ${platform.executableName}…` });
-      const bytes = await fetchBuffer(asset.url);
+      const { body: bytes } = await fetchBuffer(asset.url);
       progress.report({ message: 'Verifying checksum…' });
       return { manifestVersion: manifest.version, expectedSha256: asset.sha256, bytes };
     },
@@ -79,23 +91,99 @@ async function downloadServerWithProgress(
 export function cachedServerInstallation(
   context: vscode.ExtensionContext,
   version: string,
-  platform: RiprPlatform
+  platform: RiprPlatform,
+  distribution?: ResolvedDistributionRequest
 ): Promise<ManagedServerInstallation | undefined> {
-  return readManagedServerInstallation(installRequest(context, version, platform));
+  return readManagedServerInstallation(installRequest(context, version, platform, distribution));
 }
 
 function installRequest(
   context: vscode.ExtensionContext,
   version: string,
-  platform: RiprPlatform
+  platform: RiprPlatform,
+  distribution?: ResolvedDistributionRequest
 ): ManagedServerInstallRequest {
   return {
     serversRoot: path.join(context.globalStorageUri.fsPath, 'servers'),
     version,
     platformTarget: platform.target,
     executableName: platform.executableName,
-    archiveExtension: platform.archiveExtension
+    archiveExtension: platform.archiveExtension,
+    ...(distribution !== undefined ? { distributionIdentity: distribution.descriptorIdentity } : {})
   };
+}
+
+/**
+ * Ordered release-manifest URLs for one download: the preferred placement
+ * first, then the bounded predeclared fallbacks. A configured mirror is an
+ * explicit transport choice and serves the preferred placement only — it
+ * never falls through to RC. Without a descriptor the legacy
+ * version-pinned URL is the only candidate.
+ */
+export function manifestCandidatesForDistribution(
+  baseUrl: string,
+  distribution: ResolvedDistributionRequest | undefined,
+  version: string
+): string[] {
+  if (!distribution) {
+    return [manifestUrl(baseUrl, version)];
+  }
+  if (baseUrl.trim().length > 0) {
+    return [distributionManifestUrl(baseUrl, distribution, distribution.preferredPlacement)];
+  }
+  return distributionPlacements(distribution).map((placement) =>
+    distributionManifestUrl('', distribution, placement)
+  );
+}
+
+/**
+ * Failure of one manifest fetch that records whether the candidate is
+ * simply unpublished. Only a direct (non-redirected) initial HTTP 404
+ * means "this placement has no manifest"; every other failure —
+ * transport errors, timeouts, HTTP 5xx, redirect-chain failures, malformed
+ * bodies — propagates instead of selecting a different placement.
+ */
+export class ManifestFetchError extends Error {
+  readonly statusCode?: number;
+  readonly redirected: boolean;
+
+  constructor(message: string, options: { statusCode?: number; redirected: boolean }) {
+    super(message);
+    this.name = 'ManifestFetchError';
+    this.statusCode = options.statusCode;
+    this.redirected = options.redirected;
+  }
+}
+
+/** True when a manifest fetch failed because the candidate URL is unpublished. */
+export function isDirectManifestNotFound(error: unknown): boolean {
+  return error instanceof ManifestFetchError && error.statusCode === 404 && !error.redirected;
+}
+
+export type FetchManifest = (url: string) => Promise<ServerManifest>;
+
+export async function fetchManifestForDistribution(
+  baseUrl: string,
+  distribution: ResolvedDistributionRequest | undefined,
+  version: string,
+  fetchImpl: FetchManifest = fetchManifest
+): Promise<ServerManifest> {
+  // The candidate list holds the preferred placement first and at most one
+  // bounded predeclared fallback. Only the preferred placement may fall
+  // through to that fallback, and only when its own initial response is a
+  // direct 404. Every other failure propagates with its original error, and
+  // a fetched manifest is validated by the caller, which fails fast: a
+  // contradictory manifest must not be masked by a fallback.
+  const [preferred, ...fallbacks] = manifestCandidatesForDistribution(baseUrl, distribution, version);
+  try {
+    return await fetchImpl(preferred);
+  } catch (error) {
+    const fallback = fallbacks[0];
+    if (fallback === undefined || !isDirectManifestNotFound(error)) {
+      throw error;
+    }
+    return fetchImpl(fallback);
+  }
 }
 
 function downloadOriginLabel(config: RiprConfig, version: string): string {
@@ -116,7 +204,7 @@ function manifestUrl(baseUrl: string, version: string): string {
 }
 
 async function fetchManifest(url: string): Promise<ServerManifest> {
-  const body = await fetchBuffer(url);
+  const { body } = await fetchBuffer(url);
   const parsed: unknown = JSON.parse(body.toString('utf8'));
   if (!parsed || typeof parsed !== 'object') {
     throw new Error('Server manifest is not an object.');
@@ -137,7 +225,7 @@ async function fetchManifest(url: string): Promise<ServerManifest> {
   return parsed as ServerManifest;
 }
 
-function fetchBuffer(url: string, redirects = 0): Promise<Buffer> {
+function fetchBuffer(url: string, redirects = 0, redirected = false): Promise<{ body: Buffer; redirected: boolean }> {
   return new Promise((resolve, reject) => {
     const request = https.get(url, (response) => {
       const statusCode = response.statusCode ?? 0;
@@ -145,22 +233,22 @@ function fetchBuffer(url: string, redirects = 0): Promise<Buffer> {
       if (statusCode >= 300 && statusCode < 400 && location) {
         response.resume();
         if (redirects >= 5) {
-          reject(new Error(`Too many redirects while fetching ${url}.`));
+          reject(new ManifestFetchError(`Too many redirects while fetching ${url}.`, { statusCode, redirected: true }));
           return;
         }
-        const redirected = new URL(location, url).toString();
-        fetchBuffer(redirected, redirects + 1).then(resolve, reject);
+        const next = new URL(location, url).toString();
+        fetchBuffer(next, redirects + 1, true).then(resolve, reject);
         return;
       }
       if (statusCode < 200 || statusCode >= 300) {
         response.resume();
-        reject(new Error(`GET ${url} failed with HTTP ${statusCode}.`));
+        reject(new ManifestFetchError(`GET ${url} failed with HTTP ${statusCode}.`, { statusCode, redirected }));
         return;
       }
 
       const chunks: Buffer[] = [];
       response.on('data', (chunk: Buffer) => chunks.push(chunk));
-      response.on('end', () => resolve(Buffer.concat(chunks)));
+      response.on('end', () => resolve({ body: Buffer.concat(chunks), redirected }));
     });
     request.on('error', reject);
     request.setTimeout(30_000, () => {
