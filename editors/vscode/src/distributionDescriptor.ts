@@ -11,7 +11,7 @@ export interface DistributionPlacement {
 
 /** Describes the installed extension's server generation and allowed placements. */
 export interface DistributionDescriptor {
-  readonly schema: 1;
+  readonly schema: 1 | 2;
   readonly productVersion: string;
   /** Preferred placement. The final 0.11 catalog prefers stable. */
   readonly channel: DistributionChannel;
@@ -21,6 +21,14 @@ export interface DistributionDescriptor {
   readonly fallbackPlacements?: readonly DistributionPlacement[];
   readonly manifestFile: string;
   readonly sourceRepository: string;
+  /**
+   * Schema 2 release identity, emitted by the release catalog producer and
+   * required for rc/stable catalogs. Development catalogs must not carry
+   * release identity; schema 1 catalogs predate it.
+   */
+  readonly distributionGeneration?: string;
+  readonly manifestSha256?: string;
+  readonly targetSetDigest?: string;
 }
 
 export type DistributionRequestOrigin = 'embedded_descriptor' | 'explicit_legacy_override' | 'development_fixture';
@@ -29,6 +37,9 @@ export interface ResolvedDistributionRequest {
   readonly productVersion: string;
   readonly manifestFile: string;
   readonly sourceRepository: string;
+  readonly distributionGeneration?: string;
+  readonly manifestSha256?: string;
+  readonly targetSetDigest?: string;
   readonly preferredPlacement: DistributionPlacement;
   readonly fallbackPlacements: readonly DistributionPlacement[];
   readonly origin: DistributionRequestOrigin;
@@ -58,7 +69,10 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
     'releaseRef',
     'fallbackPlacements',
     'manifestFile',
-    'sourceRepository'
+    'sourceRepository',
+    'distributionGeneration',
+    'manifestSha256',
+    'targetSetDigest'
   ]);
   const unknownField = Object.keys(value).find((key) => !allowedFields.has(key));
   if (unknownField) {
@@ -73,7 +87,7 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
   const manifestFile = value.manifestFile;
   const sourceRepository = value.sourceRepository;
   if (
-    schema !== 1 ||
+    (schema !== 1 && schema !== 2) ||
     typeof productVersion !== 'string' ||
     typeof channel !== 'string' ||
     typeof releaseTag !== 'string' ||
@@ -83,6 +97,11 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
   ) {
     throw new Error('missing release descriptor field or unsupported schema');
   }
+  validateReleaseIdentity(value.schema, value.channel, {
+    distributionGeneration: value.distributionGeneration,
+    manifestSha256: value.manifestSha256,
+    targetSetDigest: value.targetSetDigest
+  });
   if (!isChannel(channel)) {
     throw new Error(`unsupported release descriptor channel: ${channel}`);
   }
@@ -119,6 +138,14 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
     throw new Error(`invalid source repository: ${error instanceof Error ? error.message : String(error)}`);
   }
 
+  const releaseIdentity =
+    schema === 2
+      ? {
+          distributionGeneration: value.distributionGeneration as string,
+          manifestSha256: value.manifestSha256 as string,
+          targetSetDigest: value.targetSetDigest as string
+        }
+      : {};
   return {
     schema,
     productVersion,
@@ -127,7 +154,8 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
     releaseRef,
     fallbackPlacements,
     manifestFile,
-    sourceRepository
+    sourceRepository,
+    ...releaseIdentity
   };
 }
 
@@ -155,6 +183,9 @@ export function resolveDistributionRequest(
     productVersion: validated.productVersion,
     manifestFile: validated.manifestFile,
     sourceRepository: validated.sourceRepository,
+    distributionGeneration: validated.distributionGeneration,
+    manifestSha256: validated.manifestSha256,
+    targetSetDigest: validated.targetSetDigest,
     preferredPlacement: placementFromDescriptor(validated),
     fallbackPlacements: validated.fallbackPlacements ?? [],
     origin,
@@ -165,11 +196,20 @@ export function resolveDistributionRequest(
 
 /** Returns a placement-neutral identity for the immutable server generation. */
 export function distributionDescriptorIdentity(descriptor: DistributionDescriptor): string {
+  const releaseIdentity =
+    descriptor.schema === 2
+      ? [
+          descriptor.distributionGeneration,
+          descriptor.manifestSha256,
+          descriptor.targetSetDigest
+        ]
+      : [];
   const canonical = JSON.stringify([
     descriptor.schema,
     descriptor.productVersion,
     descriptor.manifestFile,
-    descriptor.sourceRepository
+    descriptor.sourceRepository,
+    ...releaseIdentity
   ]);
   return sha256Identity(canonical);
 }
@@ -238,6 +278,46 @@ function parseFallbackPlacements(value: unknown, productVersion: string): readon
     validatePlacement(productVersion, placement, `fallback ${index}`);
     return placement;
   });
+}
+
+/**
+ * Enforces schema-versioned release identity: schema 1 predates it, schema 2
+ * development catalogs must not carry it, and schema 2 rc/stable catalogs
+ * must bind all three digests. The digests mirror the release manifest v2
+ * producer; the downloader admits them against fetched bytes downstream.
+ */
+function validateReleaseIdentity(
+  schema: unknown,
+  channel: unknown,
+  identity: {
+    distributionGeneration: unknown;
+    manifestSha256: unknown;
+    targetSetDigest: unknown;
+  }
+): void {
+  const fields = [
+    ['distributionGeneration', identity.distributionGeneration],
+    ['manifestSha256', identity.manifestSha256],
+    ['targetSetDigest', identity.targetSetDigest]
+  ] as const;
+  const carried = fields.find(([, field]) => field !== undefined);
+  if (schema === 1) {
+    if (carried) {
+      throw new Error(`release descriptor field ${carried[0]} requires schema 2`);
+    }
+    return;
+  }
+  if (channel === 'development') {
+    if (carried) {
+      throw new Error(`development catalog must not carry release identity field ${carried[0]}`);
+    }
+    return;
+  }
+  for (const [name, field] of fields) {
+    if (typeof field !== 'string' || !/^[0-9a-f]{64}$/.test(field)) {
+      throw new Error(`release descriptor field ${name} must be a 64-character lowercase hex digest`);
+    }
+  }
 }
 
 function validatePlacement(productVersion: string, placement: DistributionPlacement, role: string): void {

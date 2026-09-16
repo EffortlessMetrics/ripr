@@ -299,6 +299,27 @@ jobs:
         shell: bash
         run: cargo xtask release-server-manifest --version "$QUALIFICATION_VERSION" --repository "$REPOSITORY"
 
+      - name: Generate distribution catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${QUALIFICATION_VERSION#v}"
+          cargo xtask release-distribution-catalog --product-version "${version}" --channel stable --stable-tag "v${version}" --manifest "dist/ripr-server-manifest-v${version}.json" --repository "$REPOSITORY" --out dist/ripr-distribution-catalog.json
+          manifest_sha="$(sha256sum "dist/ripr-server-manifest-v${version}.json" | awk '{print $1}')"
+          jq -e --arg version "${version}" --arg manifest_sha "${manifest_sha}" '
+            .schema == 2 and
+            .productVersion == $version and
+            .channel == "stable" and
+            .releaseTag == ("v" + $version) and
+            .releaseRef == ("refs/tags/v" + $version) and
+            .fallbackPlacements == [] and
+            .manifestFile == ("ripr-server-manifest-v" + $version + ".json") and
+            (.distributionGeneration | test("^[0-9a-f]{64}$")) and
+            (.manifestSha256 == $manifest_sha) and
+            (.targetSetDigest | test("^[0-9a-f]{64}$"))
+          ' dist/ripr-distribution-catalog.json >/dev/null
+          test "$(jq -r .distributionGeneration dist/ripr-distribution-catalog.json)" = "$(jq -r .distributionGeneration "dist/ripr-server-manifest-v${version}.json")"
+
       - name: Verify exact manifest inventory
         shell: bash
         env:
@@ -312,7 +333,7 @@ jobs:
             [[ "${target}" == "x86_64-pc-windows-msvc" ]] && archive="zip"
             expected_files+=("ripr-server-v${version}-${target}.${archive}" "ripr-server-v${version}-${target}.${archive}.sha256")
           done < <(jq -r '.[]' <<< "${EXPECTED_TARGETS}")
-          expected_files+=("ripr-server-manifest-v${version}.json" "SHA256SUMS" "ripr-server-assembly-v${version}.receipt.json")
+          expected_files+=("ripr-server-manifest-v${version}.json" "SHA256SUMS" "ripr-server-assembly-v${version}.receipt.json" "ripr-distribution-catalog.json")
           while IFS= read -r target; do
             expected_files+=("ripr-server-v${version}-${target}.receipt.json")
           done < <(jq -r '.[]' <<< "${EXPECTED_TARGETS}")
@@ -323,9 +344,19 @@ jobs:
           manifest="dist/ripr-server-manifest-v${version}.json"
           test -f "${manifest}"
           jq -e --arg version "${version}" --arg repository "${REPOSITORY}" --argjson targets "${EXPECTED_TARGETS}" '
-            .version == $version and
+            .schema_version == "2" and
+            .product_version == $version and
+            .source_repository == $repository and
+            (.distribution_generation | test("^[0-9a-f]{64}$")) and
+            (.target_set.targets | sort == ($targets | sort)) and
+            (.target_set.digest | test("^[0-9a-f]{64}$")) and
             (.assets | keys == ($targets | sort)) and
-            (all(.assets[]; (.sha256 | test("^[0-9a-f]{64}$")) and (.url | startswith("https://github.com/" + $repository + "/releases/download/v" + $version + "/"))))
+            (all(.assets[];
+              (.sha256 | test("^[0-9a-f]{64}$")) and
+              (.subject | test("^ripr-server-v[0-9A-Za-z._+]+-.+\\.(tar\\.gz|zip)$")) and
+              (.executable.sha256 | test("^[0-9a-f]{64}$")) and
+              ((has("url") | not)))) and
+            ((tostring | contains("https://") | not))
           ' "${manifest}" >/dev/null
           while IFS= read -r target; do
             archive="tar.gz"
@@ -334,7 +365,7 @@ jobs:
             actual_sha="$(sha256sum "dist/${file}" | awk '{print $1}')"
             test "${actual_sha}" = "$(tr -d '[:space:]' < "dist/${file}.sha256")"
             test "${actual_sha}" = "$(jq -r --arg target "${target}" '.assets[$target].sha256' "${manifest}")"
-            test "$(jq -r --arg target "${target}" '.assets[$target].url' "${manifest}")" = "https://github.com/${REPOSITORY}/releases/download/v${version}/${file}"
+            test "$(jq -r --arg target "${target}" '.assets[$target].subject' "${manifest}")" = "${file}"
           done < <(jq -r '.[]' <<< "${EXPECTED_TARGETS}")
 
       - name: Verify aggregate checksums and write receipt
@@ -358,7 +389,7 @@ jobs:
             --arg ruleset_response_sha256 "${RULESET_RESPONSE_SHA256}" \
             --arg ruleset_id "${RULESET_ID}" \
             --argjson targets '["x86_64-pc-windows-msvc","x86_64-unknown-linux-gnu","aarch64-unknown-linux-gnu","x86_64-apple-darwin","aarch64-apple-darwin"]' \
-            '{schema_version: 1, status: "qualified_archive_shape", candidate_sha: $candidate_sha, candidate_tag: $candidate_tag, version: $version, targets: $targets, ruleset: {mode: $ruleset_mode, source_url: $ruleset_source_url, response_sha256: $ruleset_response_sha256, repository: $repository, id: $ruleset_id}, actions_artifacts_only: true, release_assets_created: false, repository_contents_written: false, secrets_required: false, limitations: ["Actions artifact retention is not a public release", "Manifest URLs are prospective and were not fetched"]}' \
+            '{schema_version: 1, status: "qualified_archive_shape", candidate_sha: $candidate_sha, candidate_tag: $candidate_tag, version: $version, targets: $targets, ruleset: {mode: $ruleset_mode, source_url: $ruleset_source_url, response_sha256: $ruleset_response_sha256, repository: $repository, id: $ruleset_id}, actions_artifacts_only: true, release_assets_created: false, repository_contents_written: false, secrets_required: false, limitations: ["Actions artifact retention is not a public release", "Manifest carries relative subjects only; retrieval composes from catalog placement and was not fetched"]}' \
             > dist/server-archive-qualification-receipt.json
           {
             echo "# Server archive qualification receipt"
@@ -383,6 +414,7 @@ jobs:
           name: ripr-server-qualification-manifest
           path: |
             dist/ripr-server-manifest-*.json
+            dist/ripr-distribution-catalog.json
             dist/SHA256SUMS
             dist/ripr-server-v*.receipt.json
             dist/ripr-server-assembly-*.receipt.json

@@ -266,3 +266,70 @@ suite('distribution descriptor', () => {
     }
   });
 });
+
+suite('distribution descriptor schema 2', () => {
+  const digest = (char: string) => char.repeat(64);
+  const releaseIdentity = {
+    distributionGeneration: digest('a'),
+    manifestSha256: digest('b'),
+    targetSetDigest: digest('c')
+  };
+  const stable2: DistributionDescriptor = {
+    schema: 2,
+    productVersion: '0.11.0',
+    channel: 'stable',
+    releaseTag: 'v0.11.0',
+    releaseRef: 'refs/tags/v0.11.0',
+    manifestFile: 'ripr-server-manifest-v0.11.0.json',
+    sourceRepository: 'https://github.com/EffortlessMetrics/ripr',
+    ...releaseIdentity
+  };
+  const catalog2: DistributionDescriptor = {
+    ...stable2,
+    fallbackPlacements: [
+      {
+        channel: 'rc',
+        releaseTag: 'v0.11.0-rc.1',
+        releaseRef: 'refs/tags/v0.11.0-rc.1'
+      }
+    ]
+  };
+
+  test('resolves a schema-2 catalog and exposes release identity', () => {
+    const request = resolveDistributionRequest('0.11.0', catalog2);
+    assert.strictEqual(request.distributionGeneration, digest('a'));
+    assert.strictEqual(request.manifestSha256, digest('b'));
+    assert.strictEqual(request.targetSetDigest, digest('c'));
+    assert.strictEqual(request.descriptorIdentity, resolveDistributionRequest('0.11.0', stable2).descriptorIdentity);
+    assert.notStrictEqual(request.catalogIdentity, resolveDistributionRequest('0.11.0', stable2).catalogIdentity);
+  });
+
+  test('binds descriptor identity to the release generation', () => {
+    const first = resolveDistributionRequest('0.11.0', stable2);
+    const second = resolveDistributionRequest('0.11.0', {
+      ...stable2,
+      distributionGeneration: digest('d')
+    });
+    assert.notStrictEqual(first.descriptorIdentity, second.descriptorIdentity);
+  });
+
+  test('rejects schema-2 release catalogs with missing or malformed digests', () => {
+    const { distributionGeneration: _dropped, ...missingGeneration } = stable2;
+    assert.throws(() => parseDistributionDescriptor(JSON.stringify(missingGeneration)), /distributionGeneration must be a 64-character/);
+    assert.throws(() => parseDistributionDescriptor(JSON.stringify({ ...stable2, manifestSha256: digest('B') })), /manifestSha256 must be a 64-character/);
+    assert.throws(() => parseDistributionDescriptor(JSON.stringify({ ...stable2, targetSetDigest: 'abc' })), /targetSetDigest must be a 64-character/);
+    assert.throws(() => parseDistributionDescriptor(JSON.stringify({ ...stable2, distributionGeneration: 42 as unknown as string })), /distributionGeneration must be a 64-character/);
+  });
+
+  test('rejects release identity on development catalogs and predates it on schema 1', () => {
+    const development2: DistributionDescriptor = {
+      ...stable2,
+      channel: 'development'
+    };
+    assert.throws(() => parseDistributionDescriptor(JSON.stringify(development2)), /development catalog must not carry release identity/);
+    const { distributionGeneration: _generation, manifestSha256: _manifest, targetSetDigest: _targets, ...bareDevelopment2 } = development2;
+    assert.strictEqual(parseDistributionDescriptor(JSON.stringify(bareDevelopment2)).schema, 2);
+    assert.throws(() => parseDistributionDescriptor(JSON.stringify({ ...stable2, schema: 1 })), /requires schema 2/);
+    assert.throws(() => parseDistributionDescriptor(JSON.stringify({ ...stable2, schema: 3 })), /unsupported schema/);
+  });
+});

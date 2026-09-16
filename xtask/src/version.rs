@@ -5,6 +5,7 @@ use std::process::Command;
 const WORKSPACE_MANIFEST: &str = "Cargo.toml";
 const EXTENSION_MANIFEST: &str = "editors/vscode/package.json";
 const EXTENSION_LOCKFILE: &str = "editors/vscode/package-lock.json";
+const EXTENSION_DISTRIBUTION: &str = "editors/vscode/distribution.json";
 
 pub(crate) fn bump_version(args: &[String]) -> Result<(), String> {
     let [version] = args else {
@@ -15,15 +16,22 @@ pub(crate) fn bump_version(args: &[String]) -> Result<(), String> {
     let workspace = read_file(WORKSPACE_MANIFEST)?;
     let extension = read_file(EXTENSION_MANIFEST)?;
     let lockfile = read_file(EXTENSION_LOCKFILE)?;
-    let update = prepare_update(&workspace, &extension, &lockfile, version)?;
+    let descriptor = read_file(EXTENSION_DISTRIBUTION)?;
+    let update = prepare_update(&workspace, &extension, &lockfile, &descriptor, version)?;
 
     let paths = [
         Path::new(WORKSPACE_MANIFEST),
         Path::new(EXTENSION_MANIFEST),
         Path::new(EXTENSION_LOCKFILE),
+        Path::new(EXTENSION_DISTRIBUTION),
     ];
-    let originals = [&workspace, &extension, &lockfile];
-    let updated = [&update.workspace, &update.extension, &update.lockfile];
+    let originals = [&workspace, &extension, &lockfile, &descriptor];
+    let updated = [
+        &update.workspace,
+        &update.extension,
+        &update.lockfile,
+        &update.descriptor,
+    ];
 
     for (index, path) in paths.iter().enumerate() {
         if let Err(error) = fs::write(path, updated[index]) {
@@ -40,7 +48,7 @@ pub(crate) fn bump_version(args: &[String]) -> Result<(), String> {
     }
 
     println!(
-        "updated release version {} -> {} in {WORKSPACE_MANIFEST}, {EXTENSION_MANIFEST}, and {EXTENSION_LOCKFILE}",
+        "updated release version {} -> {} in {WORKSPACE_MANIFEST}, {EXTENSION_MANIFEST}, {EXTENSION_LOCKFILE}, and {EXTENSION_DISTRIBUTION}",
         update.old_version, version
     );
     Ok(())
@@ -52,12 +60,14 @@ struct VersionUpdate {
     workspace: String,
     extension: String,
     lockfile: String,
+    descriptor: String,
 }
 
 fn prepare_update(
     workspace: &str,
     extension: &str,
     lockfile: &str,
+    descriptor: &str,
     new_version: &str,
 ) -> Result<VersionUpdate, String> {
     let current_workspace = section_version(workspace, "workspace.package")?;
@@ -78,6 +88,8 @@ fn prepare_update(
         replace_json_version_lines(extension, &current_workspace, new_version, 1)?;
     let updated_lockfile =
         replace_json_version_lines(lockfile, &current_workspace, new_version, 2)?;
+    let updated_descriptor =
+        update_development_descriptor(descriptor, &current_workspace, new_version)?;
 
     verify_updated_json(&updated_extension, EXTENSION_MANIFEST, new_version, 1)?;
     verify_updated_lockfile(&updated_lockfile, new_version)?;
@@ -87,7 +99,63 @@ fn prepare_update(
         workspace: updated_workspace,
         extension: updated_extension,
         lockfile: updated_lockfile,
+        descriptor: updated_descriptor,
     })
+}
+
+/// Moves the tracked development distribution template with the release
+/// version. Release catalogs are producer-owned and never bumped here: a
+/// non-development channel fails closed so placement authority cannot drift
+/// through the generic version bump.
+fn update_development_descriptor(
+    descriptor: &str,
+    old_version: &str,
+    new_version: &str,
+) -> Result<String, String> {
+    let mut value: serde_json::Value = serde_json::from_str(descriptor)
+        .map_err(|error| format!("{EXTENSION_DISTRIBUTION} is not valid JSON: {error}"))?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| format!("{EXTENSION_DISTRIBUTION} must be a JSON object"))?;
+    let product_version = object
+        .get("productVersion")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("{EXTENSION_DISTRIBUTION} has no usable productVersion field"))?;
+    if product_version != old_version {
+        return Err(format!(
+            "release version drift detected before bump: {EXTENSION_DISTRIBUTION} productVersion={product_version}, workspace={old_version}"
+        ));
+    }
+    let channel = object
+        .get("channel")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    if channel != "development" {
+        return Err(format!(
+            "{EXTENSION_DISTRIBUTION} channel `{channel}` is producer-owned; bump-version only moves the development template"
+        ));
+    }
+    let old_tag = format!("v{old_version}");
+    let new_tag = format!("v{new_version}");
+    let old_ref = format!("refs/tags/{old_tag}");
+    let new_ref = format!("refs/tags/{new_tag}");
+    object.insert(
+        "productVersion".to_string(),
+        serde_json::Value::String(new_version.to_string()),
+    );
+    object.insert(
+        "manifestFile".to_string(),
+        serde_json::Value::String(format!("ripr-server-manifest-v{new_version}.json")),
+    );
+    if object.get("releaseTag").and_then(serde_json::Value::as_str) == Some(old_tag.as_str()) {
+        object.insert("releaseTag".to_string(), serde_json::Value::String(new_tag));
+    }
+    if object.get("releaseRef").and_then(serde_json::Value::as_str) == Some(old_ref.as_str()) {
+        object.insert("releaseRef".to_string(), serde_json::Value::String(new_ref));
+    }
+    let rendered = serde_json::to_string_pretty(&value)
+        .map_err(|error| format!("failed to render {EXTENSION_DISTRIBUTION}: {error}"))?;
+    Ok(format!("{rendered}\n"))
 }
 
 fn validate_version_input(version: &str) -> Result<(), String> {
@@ -344,10 +412,11 @@ fn unquote(value: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        EXTENSION_LOCKFILE, EXTENSION_MANIFEST, WORKSPACE_MANIFEST, bump_version,
-        cargo_metadata_validation, format_write_failure, json_root_version, lockfile_versions,
-        prepare_update, replace_json_version_lines, replace_section_version, restore_files,
-        section_version, validate_version_input, verify_updated_json, verify_updated_lockfile,
+        EXTENSION_DISTRIBUTION, EXTENSION_LOCKFILE, EXTENSION_MANIFEST, WORKSPACE_MANIFEST,
+        bump_version, cargo_metadata_validation, format_write_failure, json_root_version,
+        lockfile_versions, prepare_update, replace_json_version_lines, replace_section_version,
+        restore_files, section_version, validate_version_input, verify_updated_json,
+        verify_updated_lockfile,
     };
     use std::fs;
     use std::io;
@@ -359,7 +428,9 @@ mod tests {
         let extension = "{\n  \"name\": \"ripr\",\n  \"version\": \"0.10.0\",\n  \"publisher\": \"EffortlessMetrics\"\n}\n";
         let lockfile = "{\n  \"name\": \"ripr\",\n  \"version\": \"0.10.0\",\n  \"packages\": {\n    \"\": {\n      \"name\": \"ripr\",\n      \"version\": \"0.10.0\"\n    },\n    \"node_modules/example\": {\n      \"version\": \"1.0.0\"\n    }\n  }\n}\n";
 
-        let update = prepare_update(workspace, extension, lockfile, "0.11.0")?;
+        let descriptor = "{\n  \"schema\": 1,\n  \"productVersion\": \"0.10.0\",\n  \"channel\": \"development\",\n  \"releaseTag\": \"v0.10.0\",\n  \"releaseRef\": \"refs/tags/v0.10.0\",\n  \"manifestFile\": \"ripr-server-manifest-v0.10.0.json\",\n  \"sourceRepository\": \"https://github.com/EffortlessMetrics/ripr\"\n}\n";
+
+        let update = prepare_update(workspace, extension, lockfile, descriptor, "0.11.0")?;
         if update.old_version != "0.10.0" {
             return Err(format!("unexpected old version: {}", update.old_version));
         }
@@ -368,6 +439,18 @@ mod tests {
             || update.lockfile.matches("\"version\": \"0.11.0\"").count() != 2
         {
             return Err("not all release version surfaces were updated".to_string());
+        }
+        if !update.descriptor.contains("\"productVersion\": \"0.11.0\"")
+            || !update
+                .descriptor
+                .contains("\"manifestFile\": \"ripr-server-manifest-v0.11.0.json\"")
+            || !update.descriptor.contains("\"releaseTag\": \"v0.11.0\"")
+            || !update
+                .descriptor
+                .contains("\"releaseRef\": \"refs/tags/v0.11.0\"")
+            || !update.descriptor.contains("\"channel\": \"development\"")
+        {
+            return Err("development descriptor did not move with the release version".to_string());
         }
         if !update.lockfile.contains("1.0.0") {
             return Err("dependency version was unexpectedly changed".to_string());
@@ -381,6 +464,7 @@ mod tests {
             "[workspace.package]\nversion = \"0.10.0\"\n",
             "{\"version\":\"0.9.0\"}",
             "{\"version\":\"0.10.0\",\"packages\":{\"\":{\"version\":\"0.10.0\"}}}",
+            "{\"productVersion\":\"0.10.0\",\"channel\":\"development\"}",
             "0.11.0",
         );
         match result {
@@ -427,6 +511,11 @@ mod tests {
                 "{\n  \"version\": \"0.10.0\",\n  \"packages\": {\n    \"\": {\n      \"version\": \"0.10.0\"\n    }\n  }\n}\n",
             )
             .map_err(|error| error.to_string())?;
+            fs::write(
+                root.join(EXTENSION_DISTRIBUTION),
+                "{\n  \"schema\": 1,\n  \"productVersion\": \"0.10.0\",\n  \"channel\": \"development\",\n  \"releaseTag\": \"v0.10.0\",\n  \"releaseRef\": \"refs/tags/v0.10.0\",\n  \"manifestFile\": \"ripr-server-manifest-v0.10.0.json\",\n  \"sourceRepository\": \"https://github.com/EffortlessMetrics/ripr\"\n}\n",
+            )
+            .map_err(|error| error.to_string())?;
 
             bump_version(&["0.11.0".to_string()])?;
             let workspace = fs::read_to_string(root.join(WORKSPACE_MANIFEST))
@@ -435,14 +524,51 @@ mod tests {
                 .map_err(|error| error.to_string())?;
             let lockfile = fs::read_to_string(root.join(EXTENSION_LOCKFILE))
                 .map_err(|error| error.to_string())?;
+            let descriptor = fs::read_to_string(root.join(EXTENSION_DISTRIBUTION))
+                .map_err(|error| error.to_string())?;
             if !workspace.contains("version = \"0.11.0\"")
                 || !extension.contains("\"version\": \"0.11.0\"")
                 || lockfile.matches("\"version\": \"0.11.0\"").count() != 2
             {
                 return Err("fixture release files did not receive the new version".to_string());
             }
+            if !descriptor.contains("\"productVersion\": \"0.11.0\"")
+                || !descriptor.contains("\"manifestFile\": \"ripr-server-manifest-v0.11.0.json\"")
+            {
+                return Err("fixture distribution template did not move with the bump".to_string());
+            }
             Ok(())
         })
+    }
+
+    #[test]
+    fn rejects_descriptor_drift_and_producer_owned_channels() -> Result<(), String> {
+        let workspace = "[workspace.package]\nversion = \"0.10.0\"\n";
+        let extension = "{\n  \"version\": \"0.10.0\"\n}\n";
+        let lockfile = "{\n  \"version\": \"0.10.0\",\n  \"packages\": {\n    \"\": {\n      \"version\": \"0.10.0\"\n    }\n  }\n}\n";
+        let stale = "{\"productVersion\":\"0.9.0\",\"channel\":\"development\"}";
+        let error = prepare_update(workspace, extension, lockfile, stale, "0.11.0")
+            .err()
+            .ok_or_else(|| "stale descriptor productVersion must fail closed".to_string())?;
+        if !error.contains("distribution.json") || !error.contains("drift") {
+            return Err(format!("unexpected descriptor drift error: {error}"));
+        }
+        let release_owned = "{\"productVersion\":\"0.10.0\",\"channel\":\"stable\"}";
+        let error = prepare_update(workspace, extension, lockfile, release_owned, "0.11.0")
+            .err()
+            .ok_or_else(|| "producer-owned channel must fail closed".to_string())?;
+        if !error.contains("producer-owned") {
+            return Err(format!("unexpected channel ownership error: {error}"));
+        }
+        let malformed = prepare_update(workspace, extension, lockfile, "not json", "0.11.0")
+            .err()
+            .ok_or_else(|| "malformed descriptor must fail closed".to_string())?;
+        if !malformed.contains("not valid JSON") {
+            return Err(format!(
+                "unexpected malformed descriptor error: {malformed}"
+            ));
+        }
+        Ok(())
     }
 
     #[test]
@@ -559,6 +685,7 @@ mod tests {
             "[workspace.package]\nversion = \"0.10.0\"\n",
             "{\"version\":\"0.10.0\"}",
             "{\"version\":\"0.10.0\",\"packages\":{\"\":{\"version\":\"0.10.0\"}}}",
+            "{\"productVersion\":\"0.10.0\",\"channel\":\"development\"}",
             "0.10.0",
         )
         .is_ok()

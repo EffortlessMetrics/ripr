@@ -258,9 +258,13 @@ use repo_readiness::{
     run_readiness_step,
 };
 #[cfg(test)]
+pub(crate) use reports::distribution_catalog::release_distribution_catalog;
+#[cfg(test)]
 pub(crate) use reports::release_server::{
-    ReleaseServerAsset, normalize_release_version, release_server_archive, release_server_assets,
-    release_server_manifest, release_server_readme, required_release_arg,
+    ReleaseServerAsset, normalize_product_version, normalize_release_version,
+    release_distribution_generation, release_server_archive, release_server_assets,
+    release_server_manifest, release_server_readme, release_server_target_set,
+    release_server_target_set_digest, required_release_arg,
     validate_configured_release_server_targets, validate_release_server_receipts,
     validate_release_server_staging_inventory, write_release_server_outputs_transactional,
 };
@@ -1262,13 +1266,209 @@ fn vscode_compile() -> Result<(), String> {
     run_cwd_command(&vscode_compile_command())
 }
 
-fn vscode_package() -> Result<(), String> {
+fn vscode_package(args: &[String]) -> Result<(), String> {
+    let staged_catalog = parse_vscode_package_args(args)?;
     let extension_dir = vscode_extension_dir();
     let dist = extension_dir.join("dist");
     fs::create_dir_all(&dist)
         .map_err(|err| format!("failed to create {}: {err}", dist.display()))?;
+    vscode_compile()?;
     let version = vscode_package_version(&extension_dir.join("package.json"))?;
-    run_cwd_command(&vscode_package_command(&version))
+    let tracked_path = extension_dir.join("distribution.json");
+    let tracked_bytes = fs::read(&tracked_path)
+        .map_err(|err| format!("failed to read {}: {err}", tracked_path.display()))?;
+    if let Some(staged) = &staged_catalog {
+        let staged_bytes = fs::read(staged)
+            .map_err(|err| format!("failed to read staged catalog {}: {err}", staged.display()))?;
+        fs::write(&tracked_path, &staged_bytes).map_err(|err| {
+            format!(
+                "failed to stage catalog into {}: {err}",
+                tracked_path.display()
+            )
+        })?;
+    }
+    let outcome = vscode_package_admitted(&extension_dir, &version, staged_catalog.is_some());
+    if staged_catalog.is_some() {
+        fs::write(&tracked_path, &tracked_bytes).map_err(|err| {
+            format!(
+                "failed to restore {} after staged packaging: {err}",
+                tracked_path.display()
+            )
+        })?;
+        let restored = fs::read(&tracked_path).map_err(|err| {
+            format!(
+                "failed to re-read {} after restore: {err}",
+                tracked_path.display()
+            )
+        })?;
+        if restored != tracked_bytes {
+            return Err(format!(
+                "packaging left tracked {} changed after restore",
+                tracked_path.display()
+            ));
+        }
+    }
+    let receipt = outcome?;
+    let receipt_path = dist.join(format!("ripr-{version}.package.receipt.json"));
+    fs::write(&receipt_path, format!("{receipt}\n"))
+        .map_err(|err| format!("failed to write {}: {err}", receipt_path.display()))?;
+    eprintln!("wrote {}", receipt_path.display());
+    Ok(())
+}
+
+fn parse_vscode_package_args(args: &[String]) -> Result<Option<PathBuf>, String> {
+    if args.is_empty() {
+        return Ok(None);
+    }
+    if args.len() == 2 && args[0] == "--catalog" {
+        return Ok(Some(PathBuf::from(&args[1])));
+    }
+    if args.len() == 1
+        && let Some(path) = args[0].strip_prefix("--catalog=")
+    {
+        if path.is_empty() {
+            return Err("Usage: cargo xtask vscode-package [--catalog <path>]".to_string());
+        }
+        return Ok(Some(PathBuf::from(path)));
+    }
+    Err("Usage: cargo xtask vscode-package [--catalog <path>]".to_string())
+}
+
+/// Admits the staged catalog, packages the VSIX, and proves the packaged
+/// catalog bytes equal the admitted bytes. Every packaging path runs the
+/// same Node admission authority as the runtime parser.
+fn vscode_package_admitted(
+    extension_dir: &Path,
+    version: &str,
+    staged_release: bool,
+) -> Result<String, String> {
+    let catalog_path = extension_dir.join("distribution.json");
+    let admission =
+        admit_distribution_catalog(extension_dir, &catalog_path, version, !staged_release)?;
+    let admission_value: Value = serde_json::from_str(&admission)
+        .map_err(|err| format!("admission receipt is not valid JSON: {err}"))?;
+    run_cwd_command(&vscode_package_command(version))?;
+    let vsix_name = format!("ripr-{version}.vsix");
+    let vsix_path = extension_dir.join("dist").join(&vsix_name);
+    let packaged = read_vsix_catalog(&vsix_path)?;
+    let staged_bytes = fs::read(&catalog_path).map_err(|err| {
+        format!(
+            "failed to re-read {} after packaging: {err}",
+            catalog_path.display()
+        )
+    })?;
+    if packaged != staged_bytes {
+        return Err(
+            "packaged VSIX catalog bytes differ from the admitted staged catalog".to_string(),
+        );
+    }
+    let vsix_sha256 = sha256_file(&vsix_path)?;
+    let receipt = serde_json::json!({
+        "schema_version": "package-receipt/1",
+        "producer": "xtask vscode-package",
+        "package_version": version,
+        "vsix": {
+            "file": vsix_name,
+            "sha256": vsix_sha256,
+        },
+        "catalog": {
+            "file": "distribution.json",
+            "sha256": admission_value.get("catalogSha256").cloned().unwrap_or(Value::Null),
+        },
+        "admission": admission_value,
+        "tracked_template_restored": staged_release,
+        "publication_mutation_attempted": false,
+    });
+    serde_json::to_string_pretty(&receipt)
+        .map_err(|err| format!("failed to render package receipt: {err}"))
+}
+
+fn admit_distribution_catalog(
+    extension_dir: &Path,
+    catalog_path: &Path,
+    package_version: &str,
+    allow_dev: bool,
+) -> Result<String, String> {
+    let script = extension_dir
+        .join("out")
+        .join("scripts")
+        .join("admit-distribution-catalog.js");
+    if !script.is_file() {
+        return Err(format!(
+            "admission script {} is missing; run cargo xtask vscode-compile first",
+            script.display()
+        ));
+    }
+    let mut command = std::process::Command::new("node");
+    command
+        .arg(&script)
+        .arg("--catalog")
+        .arg(catalog_path)
+        .arg("--package-version")
+        .arg(package_version)
+        .current_dir(extension_dir);
+    if allow_dev {
+        command.arg("--allow-dev");
+    }
+    let output = command
+        .output()
+        .map_err(|err| format!("failed to run distribution catalog admission: {err}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "distribution catalog admission rejected {}: {}",
+            catalog_path.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    String::from_utf8(output.stdout)
+        .map(|stdout| stdout.trim().to_string())
+        .map_err(|err| format!("admission receipt is not UTF-8: {err}"))
+}
+
+/// Reads the single packaged `extension/distribution.json` from a VSIX and
+/// rejects duplicate or shadow catalogs.
+fn read_vsix_catalog(vsix_path: &Path) -> Result<Vec<u8>, String> {
+    let file = fs::File::open(vsix_path)
+        .map_err(|err| format!("packaged VSIX {} is missing: {err}", vsix_path.display()))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|err| format!("packaged VSIX {} is not a zip: {err}", vsix_path.display()))?;
+    let mut found: Option<Vec<u8>> = None;
+    for index in 0..archive.len() {
+        let mut member = archive.by_index(index).map_err(|err| {
+            format!(
+                "failed to read {} member {index}: {err}",
+                vsix_path.display()
+            )
+        })?;
+        let name = member.name().to_string();
+        if name == "extension/distribution.json" {
+            if found.is_some() {
+                return Err(format!(
+                    "packaged VSIX {} carries a duplicate catalog",
+                    vsix_path.display()
+                ));
+            }
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut member, &mut bytes).map_err(|err| {
+                format!(
+                    "failed to read packaged catalog from {}: {err}",
+                    vsix_path.display()
+                )
+            })?;
+            found = Some(bytes);
+        } else if name == "distribution.json" || name.ends_with("/distribution.json") {
+            return Err(format!(
+                "packaged VSIX {} carries a shadow catalog `{name}`",
+                vsix_path.display()
+            ));
+        }
+    }
+    found.ok_or_else(|| {
+        format!(
+            "packaged VSIX {} has no extension/distribution.json",
+            vsix_path.display()
+        )
+    })
 }
 
 fn vscode_test() -> Result<(), String> {

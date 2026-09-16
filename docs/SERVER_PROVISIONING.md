@@ -95,23 +95,40 @@ The extension downloads a manifest from GitHub Releases unless
 https://github.com/EffortlessMetrics/ripr/releases/download/v<VERSION>/ripr-server-manifest-v<VERSION>.json
 ```
 
-The manifest shape is:
+The manifest shape (schema 2, placement-independent) is:
 
 ```json
 {
-  "version": "0.7.0",
+  "schema_version": "2",
+  "product_version": "0.11.0",
+  "distribution_generation": "<sha256 of product/candidate/target-set>",
+  "source_repository": "EffortlessMetrics/ripr",
+  "target_set": {
+    "targets": ["aarch64-apple-darwin", "..."],
+    "digest": "<sha256 of the configured target set>"
+  },
+  "producer": {"tool": "xtask release-server-manifest", "schema": "server-manifest/2"},
+  "build_identity": {"repository": "...", "candidate_sha": "...", "...": "..."},
   "assets": {
     "x86_64-pc-windows-msvc": {
-      "url": "https://github.com/EffortlessMetrics/ripr/releases/download/v0.7.0/ripr-server-v0.7.0-x86_64-pc-windows-msvc.zip",
-      "sha256": "..."
+      "subject": "ripr-server-v0.11.0-x86_64-pc-windows-msvc.zip",
+      "archive_format": "zip",
+      "archive_size": 123456,
+      "sha256": "...",
+      "executable": {"path": "ripr.exe", "size": 12345, "sha256": "..."},
+      "receipt": {"path": "...", "sha256": "...", "schema_version": "0.2", "target": "x86_64-pc-windows-msvc"}
     }
   }
 }
 ```
 
-The checksum is for the downloaded archive. The extension verifies the archive
-before extraction and admits the result only after the staged binary's
-`ripr --version` probe and completed-receipt validation pass.
+The manifest carries relative subject identity only: no scheme, host,
+repository, tag, port, query, fragment, or absolute URL may enter manifest
+bytes. Retrieval URLs compose later from the accepted installed catalog
+placement plus the relative subject. The checksum is for the downloaded
+archive. The extension verifies the archive before extraction and admits the
+result only after the staged binary's `ripr --version` probe and
+completed-receipt validation pass.
 
 The packaged extension embeds a `distribution.json` descriptor naming the
 server generation and its ordered release placements. Managed resolution
