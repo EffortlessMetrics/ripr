@@ -9,6 +9,31 @@ are scoped or reviewed.
 
 ## Unreleased
 
+## 0.11.0 - Swarm promotion and fail-closed output hardening
+
+Release date: staged (unreleased).
+
+RIPR 0.11.0 promotes the swarm development line through the reviewed
+source join: a repository-governed Rust test-harness registry
+(`[analysis.test_harnesses]`, exact registrations only), Python
+repo-mode evidence, complete direct propagation witnesses, and the
+currentness-gated actionability surfaces. It supersedes the staged-only
+0.10.1 (no 0.10.1 tag or crate was published) and includes its bounded
+subprocess-adapter analysis.
+
+User-visible hardening on top of the join: generated shell renderers
+fail closed on unsupported tokens and withheld PowerShell forms
+(guidance instead of a misleading translation), same-fingerprint probe
+IDs are disambiguated within a run so suppressions track code, the
+VS Code managed server flow resolves an embedded distribution
+descriptor and binds its cache to the descriptor generation, and the
+Python repair-trust binding hashes the live driver image through
+`/proc/self/exe` on Linux/Android.
+
+Version plumbing is a single source of truth again: `crates/ripr`
+inherits the workspace package version, so the released binary
+identity matches the release metadata.
+
 ## 0.10.1 - Bounded subprocess adapter analysis
 
 Release date: staged (unreleased).

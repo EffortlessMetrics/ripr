@@ -4,24 +4,24 @@
       "base_revision": null,
       "command": "ripr check --format repo-exposure-json",
       "format": "repo-exposure-json",
-      "input_identity": "input:v3:fnv1a64:698f427af1217c9a",
+      "input_identity": "input:v3:fnv1a64:6019807aeb8b9ee6",
       "mode": "draft",
       "profile": "draft",
       "worktree": "dirty"
     },
     "canonicalization": "raw_json_placeholder_v1",
-    "content_sha256": "sha256:d9d0ecb94aae1542a1437b0212319c11e145496facf3ac363d097cbd246295bd",
+    "content_sha256": "sha256:b35c84811002ddb61802a12824b601880f2a140b2cb41c2c6c1bf3c287d6232d",
     "kind": "repo_exposure",
     "producer": {
       "tool": "ripr",
-      "version": "0.10.1"
+      "version": "0.11.0"
     },
     "repository": {
       "head": "8a00693e680c8ad5172d5191bbb08484cbd5e300",
       "root": "."
     },
     "schema_version": "1",
-    "snapshot_identity": "snapshot:input:v3:fnv1a64:698f427af1217c9a;revision:8a00693e680c8ad5172d5191bbb08484cbd5e300"
+    "snapshot_identity": "snapshot:input:v3:fnv1a64:6019807aeb8b9ee6;revision:8a00693e680c8ad5172d5191bbb08484cbd5e300"
   },
   "metrics": {
     "activation_unknown": 0,
