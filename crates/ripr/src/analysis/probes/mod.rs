@@ -18,3 +18,6 @@ pub(crate) use diff::resolve_probe_source_currentness;
 pub(crate) use expectations::{expected_sinks, required_oracles};
 pub(crate) use ids::{dedup_finding_probe_ids, fingerprint_probe_id, normalize_expression};
 pub use repo::probes_for_repo_file;
+
+#[cfg(test)]
+mod parameter_boundary_tests;
