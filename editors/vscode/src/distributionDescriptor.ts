@@ -131,12 +131,22 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
   };
 }
 
-/** Binds a descriptor to the package version used by the installed extension. */
+/**
+ * Binds a descriptor to the package version used by the installed extension.
+ * An embedded development catalog is never eligible for managed resolution:
+ * it names no public placement, so accepting it would permit managed cache
+ * reuse for a generation the download path must reject. The
+ * `development_fixture` origin keeps development descriptors available to
+ * unit harnesses.
+ */
 export function resolveDistributionRequest(
   packageVersion: string,
   descriptor: DistributionDescriptor,
   origin: DistributionRequestOrigin = 'embedded_descriptor'
 ): ResolvedDistributionRequest {
+  if (origin === 'embedded_descriptor' && descriptor.channel === 'development') {
+    throw new Error('embedded development distribution is not eligible for managed resolution');
+  }
   if (packageVersion !== descriptor.productVersion) {
     throw new Error(`product version mismatch: package ${packageVersion}, descriptor ${descriptor.productVersion}`);
   }

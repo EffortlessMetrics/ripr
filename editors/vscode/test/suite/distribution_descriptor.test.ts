@@ -232,4 +232,37 @@ suite('distribution descriptor', () => {
       'https://github.com/EffortlessMetrics/ripr/releases/download/v0.10.1/ripr-server-manifest-v0.10.1.json'
     ]);
   });
+
+  test('rejects an embedded development catalog but keeps the fixture origin', () => {
+    const development: DistributionDescriptor = {
+      ...rc,
+      channel: 'development',
+      releaseTag: 'v0.11.0',
+      releaseRef: 'refs/tags/v0.11.0'
+    };
+    assert.throws(
+      () => resolveDistributionRequest('0.11.0', development),
+      /embedded development distribution is not eligible/
+    );
+    const fixture = resolveDistributionRequest('0.11.0', development, 'development_fixture');
+    assert.strictEqual(fixture.origin, 'development_fixture');
+    assert.strictEqual(fixture.preferredPlacement.channel, 'development');
+  });
+
+  test('treats an embedded development descriptor as absent for managed resolution', () => {
+    const development: DistributionDescriptor = {
+      ...rc,
+      channel: 'development',
+      releaseTag: 'v0.11.0',
+      releaseRef: 'refs/tags/v0.11.0'
+    };
+    const { root, context } = contextWithDescriptor(development, '0.11.0');
+    try {
+      const config = { serverVersion: '' } as never;
+      assert.strictEqual(requestedServerDistribution(context), undefined);
+      assert.strictEqual(requestedServerVersion(context, config), '0.11.0');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

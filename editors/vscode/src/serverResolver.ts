@@ -74,12 +74,26 @@ export async function resolveServer(
   }
 
   const platform = currentRiprPlatform();
+  // The distribution is resolved once and shared by version binding, cache
+  // lookup, and download: a descriptor that is present but unreadable fails
+  // closed here instead of downgrading the download to the legacy
+  // version-only flow. An explicit ripr.server.version bypasses the
+  // descriptor entirely as a legacy transport override.
   let version: string;
+  let distribution: ResolvedDistributionRequest | undefined;
   try {
-    version = requestedServerVersion(context, config);
+    const override = serverVersionOverride(config);
+    if (override !== undefined) {
+      version = override;
+    } else {
+      distribution = requestedServerDistribution(context);
+      version = distribution?.productVersion ?? packageServerVersion(context);
+    }
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    return { message: 'ripr.server.version is invalid.', detail };
+    return config.serverVersion.trim().length > 0
+      ? { message: 'ripr.server.version is invalid.', detail }
+      : { message: 'ripr distribution descriptor is invalid.', detail };
   }
   let downloadFailure: string | undefined;
 
@@ -98,7 +112,7 @@ export async function resolveServer(
       output.appendLine(`Skipping bundled server: ${bundledResult.detail}`);
     }
 
-    const cached = await cachedServerInstallation(context, version, platform);
+    const cached = await cachedServerInstallation(context, version, platform, distribution);
     if (cached) {
       const cachedResult = await runtime.probeCandidate(
         cached.executablePath,
@@ -113,18 +127,6 @@ export async function resolveServer(
       output.appendLine(`Skipping completed cached server: ${cachedResult.detail}`);
     }
 
-    // The descriptor is resolved for the download path; an explicit
-    // ripr.server.version bypasses it as a legacy transport override. The
-    // version above is already bound, so a transient re-read failure here
-    // stays on the version-only flow instead of crashing resolution.
-    let distribution: ResolvedDistributionRequest | undefined;
-    if (config.serverVersion.trim().length === 0) {
-      try {
-        distribution = requestedServerDistribution(context);
-      } catch {
-        distribution = undefined;
-      }
-    }
     if (config.autoDownload) {
       try {
         const downloaded = await downloadServer(context, config, platform, version, output, distribution);
@@ -180,20 +182,34 @@ export async function resolveServer(
 }
 
 export function requestedServerVersion(context: vscode.ExtensionContext, config: RiprConfig): string {
-  const configured = config.serverVersion.trim();
-  if (configured.length > 0) {
-    return validateManagedServerVersion(configured.replace(/^v/, ''));
+  const override = serverVersionOverride(config);
+  if (override !== undefined) {
+    return override;
   }
   return requestedServerDistribution(context)?.productVersion ?? packageServerVersion(context);
 }
 
 /**
+ * Parses an explicit ripr.server.version into a legacy transport override.
+ * Returns undefined when no override is configured; the descriptor governs
+ * managed resolution in that case.
+ */
+function serverVersionOverride(config: RiprConfig): string | undefined {
+  const configured = config.serverVersion.trim();
+  if (configured.length === 0) {
+    return undefined;
+  }
+  return validateManagedServerVersion(configured.replace(/^v/, ''));
+}
+
+/**
  * Resolves the embedded distribution descriptor to the server generation
  * the managed cache/download flow must install. Returns undefined when the
- * asset is absent (source checkouts and unit harnesses keep the legacy
- * package-version path); a present descriptor must agree with the package
- * version or resolution fails. An explicit ripr.server.version bypasses the
- * descriptor entirely as a legacy transport override.
+ * asset is absent or names a development channel (source checkouts and unit
+ * harnesses keep the legacy package-version path); a releasable descriptor
+ * must agree with the package version or resolution fails. An explicit
+ * ripr.server.version bypasses the descriptor entirely as a legacy
+ * transport override.
  */
 export function requestedServerDistribution(
   context: vscode.ExtensionContext
@@ -207,6 +223,9 @@ export function requestedServerDistribution(
     return undefined;
   }
   const descriptor = parseDistributionDescriptor(fs.readFileSync(descriptorPath, 'utf8'));
+  if (descriptor.channel === 'development') {
+    return undefined;
+  }
   return resolveDistributionRequest(packageServerVersion(context), descriptor, 'embedded_descriptor');
 }
 
