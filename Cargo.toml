@@ -9,7 +9,7 @@ resolver = "2"
 # by `cargo xtask release-readiness` (`extension-version-match`). Bumping a
 # release means editing this line plus the two editor manifests, not three
 # scattered package versions (#2711).
-version = "0.10.0"
+version = "0.11.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
