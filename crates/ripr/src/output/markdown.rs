@@ -55,6 +55,8 @@ pub(crate) const POWERSHELL_UNAVAILABLE_DISCLOSURE: &str =
 ///   path is a parse error (PR #3617 review) — and the redirect is detected
 ///   only outside single- and double-quoted regions, so a quoted `>` inside
 ///   an argument cannot hijack it. A quote of the other kind is literal data.
+///   A second redirect withholds: anything after the first operator is the
+///   artifact path, and `>` is not a valid Windows filename character.
 /// - The artifact write is guarded: the invocation's output is captured, the
 ///   write happens only `if ($LASTEXITCODE -eq 0)`, and a nonzero status
 ///   throws `"ripr exited with code $LASTEXITCODE"`. Without the guard, a
@@ -80,7 +82,15 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
     let command = command.replace("'\\''", "''");
     if let Some(index) = powershell_redirect_offset(&command) {
         let invocation = command[..index].trim_end();
-        let output = powershell_literal(command[index + 1..].trim());
+        let target = command[index + 1..].trim();
+        // A second redirect leaves `>` inside the artifact path, which has
+        // no Windows translation (`>` is not a valid filename character
+        // there), so the whole form withholds instead of emitting a
+        // WriteAllText call that rejects its own path.
+        if target.contains('>') {
+            return None;
+        }
+        let output = powershell_literal(target);
         return Some(format!(
             "$ripr = (({invocation}) | Out-String); if ($LASTEXITCODE -eq 0) {{ [System.IO.File]::WriteAllText({output}, $ripr, [System.Text.UTF8Encoding]::new($false)) }} else {{ throw \"ripr exited with code $LASTEXITCODE\" }}"
         ));
@@ -397,6 +407,7 @@ mod tests {
             "ripr check a?b",
             "ripr check 2>err.json",
             "ripr check a>b.json",
+            "ripr check > first.json > second.json",
             "ripr check !important",
         ] {
             assert_eq!(
