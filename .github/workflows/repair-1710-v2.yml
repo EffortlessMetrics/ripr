@@ -87,6 +87,13 @@ jobs:
           if script.count(destructure_old) != 1:
               raise SystemExit('could not locate the exact failed development-descriptor replacement')
           script = script.replace(destructure_old, destructure_new)
+
+          schema_old = "const producer = parseDistributionProducer(value.producer, value.schema, channel);"
+          schema_new = "const producer = parseDistributionProducer(value.producer, schema, channel);"
+          if script.count(schema_old) != 1:
+              raise SystemExit('could not locate the raw schema call')
+          script = script.replace(schema_old, schema_new)
+
           exec(compile(script, 'repair-1710-extracted.py', 'exec'))
           PY
           rm .github/workflows/repair-1710-v2.yml
