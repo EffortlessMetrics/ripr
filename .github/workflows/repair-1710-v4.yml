@@ -1,4 +1,4 @@
-name: Repair 1710 candidate v3
+name: Repair 1710 candidate v4
 
 on:
   push:
@@ -9,14 +9,14 @@ permissions:
   contents: write
 
 concurrency:
-  group: repair-1710-candidate-v3
+  group: repair-1710-candidate-v4
   cancel-in-progress: false
 
 jobs:
   repair:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
         with:
@@ -49,13 +49,10 @@ jobs:
           script = textwrap.dedent(workflow[start:end])
           exec(compile(script, 'repair-1710-v2-extracted.py', 'exec'))
           PY
-          rm -f .github/workflows/repair-1710.yml
-          rm -f .github/workflows/repair-1710-v2.yml
-          rm -f .github/workflows/repair-1710-v3.yml
           cargo fmt --all
           git diff --check
 
-      - name: Focused proof
+      - name: Focused product proof
         shell: bash
         run: |
           set -euo pipefail
@@ -67,22 +64,51 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb
           xvfb-run -a npm --prefix editors/vscode test
+          npm --prefix editors/vscode run package
+          cargo xtask check-command-catalog
+          cargo xtask check-generated-clean
+          git diff --check
+
+      - name: Commit product repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name EffortlessSteven
+          git config user.email 15812269+EffortlessSteven@users.noreply.github.com
+          git add . ':!.github/workflows/repair-1710-v2.yml' ':!.github/workflows/repair-1710-v4.yml'
+          git diff --cached --stat
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "fix(release): bind catalog production and packaging admission"
+
+      - name: Remove repair transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f .github/workflows/repair-1710-v2.yml .github/workflows/repair-1710-v4.yml
+          git commit -m "chore(ci): remove distribution repair transport"
+
+      - name: Prove final net tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          test ! -e .github/workflows/repair-1710.yml
+          test ! -e .github/workflows/repair-1710-v2.yml
+          test ! -e .github/workflows/repair-1710-v3.yml
+          test ! -e .github/workflows/repair-1710-v4.yml
+          cargo fmt --all -- --check
+          cargo xtask check-workflows
           cargo xtask check-command-catalog
           cargo xtask check-process-policy
           cargo xtask check-network-policy
           cargo xtask check-generated-clean
           cargo xtask precommit
-          git diff --check
+          git diff --check origin/main...HEAD
 
-      - name: Commit repaired candidate
+      - name: Publish repaired candidate
         shell: bash
         env:
           BRANCH: release/manifest-v2-producer-catalog
         run: |
           set -euo pipefail
-          git config user.name EffortlessSteven
-          git config user.email 15812269+EffortlessSteven@users.noreply.github.com
-          git add -A
-          git diff --cached --stat
-          git commit -m "fix(release): bind catalog production and packaging admission"
           git push origin "HEAD:${BRANCH}"
