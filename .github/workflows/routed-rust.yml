@@ -312,6 +312,12 @@ jobs:
           # keep the explicit safety envelope narrowly above that denominator.
           RIPR_MAX_DIFF_CHANGED_RUST_LINES: "5400"
           RIPR_PARTIAL_DIFF_LINE_BUDGET: "5400"
+          # PR #1710 evidence analysis measures ~500s locally (18 files,
+          # 1,709-line diff, complete_with_findings packet, 2026-09-16), so
+          # the 120s evidence-producer default is ~4x too small and the step
+          # times out on CI runners; the 1,800s ceiling stays well under the
+          # 45-minute job cap (precedent: rust-gates.yml sets 3,600s).
+          RIPR_PR_EVIDENCE_TIMEOUT_SECS: "1800"
         run: |
           set -euo pipefail
           R="cargo run --locked -p xtask -- ci-record-command --id"
@@ -500,6 +506,12 @@ jobs:
           # keep the explicit safety envelope narrowly above that denominator.
           RIPR_MAX_DIFF_CHANGED_RUST_LINES: "5400"
           RIPR_PARTIAL_DIFF_LINE_BUDGET: "5400"
+          # PR #1710 evidence analysis measures ~500s locally (18 files,
+          # 1,709-line diff, complete_with_findings packet, 2026-09-16), so
+          # the 120s evidence-producer default is ~4x too small and the step
+          # times out on CI runners; the 1,800s ceiling stays well under the
+          # 45-minute job cap (precedent: rust-gates.yml sets 3,600s).
+          RIPR_PR_EVIDENCE_TIMEOUT_SECS: "1800"
         run: |
           set -euo pipefail
           R="cargo run --locked -p xtask -- ci-record-command --id"
