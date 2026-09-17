@@ -22,7 +22,10 @@ jobs:
   rust:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Product gates take ~28 min; the PR-evidence step allows 1,800s, so the
+    # 45-minute cap kills evidence past ~17 min (observed 2026-09-17). 90
+    # matches routed rust-github and covers gates plus a full evidence run.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
         with:
@@ -201,7 +204,9 @@ jobs:
     name: Perl and release proof
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Same evidence-ceiling composition as the rust job: gates plus a 1,800s
+    # evidence step do not fit in 45 minutes.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
         with:
