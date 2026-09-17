@@ -46058,6 +46058,44 @@ fn vscode_package_inspection_accepts_single_catalog() -> Result<(), String> {
 }
 
 #[test]
+fn vscode_package_verify_binds_vsix_catalog_to_admission_digest() -> Result<(), String> {
+    use crate::reports::release_server::sha256_bytes;
+
+    let admitted = b"{\"schema\":2,\"producer\":{\"tool\":\"xtask release-distribution-catalog\",\"schema\":\"distribution-catalog/1\"}}";
+    let admission = serde_json::from_str::<Value>(&format!(
+        "{{\"catalogSha256\":\"{}\"}}",
+        sha256_bytes(admitted)
+    ))
+    .map_err(|err| format!("fixture admission receipt is not valid JSON: {err}"))?;
+    super::verify_packaged_catalog_against_admission(admitted, &admission)?;
+
+    // A post-admission mutation of distribution.json changes the packaged
+    // bytes without changing the receipt. The old disk re-read comparison
+    // (packaged == staged) still passes on this pair, so only the receipt
+    // binding fails closed here.
+    let mut mutated = admitted.to_vec();
+    mutated[12] = b'3';
+    let staged_reread = mutated.clone();
+    assert_eq!(mutated, staged_reread);
+    let Err(error) = super::verify_packaged_catalog_against_admission(&mutated, &admission) else {
+        return Err("post-admission catalog mutation must fail closed".to_string());
+    };
+    assert!(
+        error.contains("differ from the admission receipt catalogSha256"),
+        "{error}"
+    );
+
+    let Err(error) = super::verify_packaged_catalog_against_admission(
+        admitted,
+        &Value::Object(Default::default()),
+    ) else {
+        return Err("a receipt without catalogSha256 must fail closed".to_string());
+    };
+    assert!(error.contains("carries no catalogSha256"), "{error}");
+    Ok(())
+}
+
+#[test]
 fn vscode_commands_use_extension_cwd_and_local_bins() {
     let extension_dir = vscode_extension_dir();
     let node_bin_extension = if cfg!(windows) { ".cmd" } else { "" };

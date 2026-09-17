@@ -318,7 +318,7 @@ jobs:
             (.manifestSha256 == $manifest_sha) and
             (.targetSetDigest | test("^[0-9a-f]{64}$"))
           ' dist/ripr-distribution-catalog.json >/dev/null
-          test "$(jq -r .distributionGeneration dist/ripr-distribution-catalog.json)" = "$(jq -r .distributionGeneration "dist/ripr-server-manifest-v${version}.json")"
+          test "$(jq -r .distributionGeneration dist/ripr-distribution-catalog.json)" = "$(jq -r .distribution_generation "dist/ripr-server-manifest-v${version}.json")"
 
       - name: Verify exact manifest inventory
         shell: bash

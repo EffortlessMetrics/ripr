@@ -1230,10 +1230,10 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
         command_entry(
             "release-distribution-catalog --product-version <version> --channel <stable|rc> --stable-tag <tag> [--rc-tag <tag>] --manifest <path> --repository <owner/repo> [--out <path>]",
             "mutating",
-            "target/release artifacts",
+            "dist/ripr-distribution-catalog.json by default (--out or DISTRIBUTION_CATALOG_OUT overrides)",
             false,
             true,
-            "Builds the candidate release distribution catalog outside tracked source.",
+            "Builds the candidate release distribution catalog outside tracked source at dist/ripr-distribution-catalog.json by default; --out or DISTRIBUTION_CATALOG_OUT selects the output path.",
         ),
         command_entry(
             "release-server-archive --version <version> --target <triple> --executable <name> --archive <zip|tar.gz>",

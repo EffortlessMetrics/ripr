@@ -268,7 +268,7 @@ pub(crate) use reports::release_server::{
     validate_configured_release_server_targets, validate_release_server_receipts,
     validate_release_server_staging_inventory, write_release_server_outputs_transactional,
 };
-use reports::release_server::{create_zip_archive, sha256_file};
+use reports::release_server::{create_zip_archive, sha256_bytes, sha256_file};
 #[cfg(test)]
 pub(crate) use reports::{
     BADGE_ENDPOINT_FILES, BadgeArtifactJob, BadgeBasisReport, BadgeBasisSignal,
@@ -1334,9 +1334,33 @@ fn parse_vscode_package_args(args: &[String]) -> Result<Option<PathBuf>, String>
     Err("Usage: cargo xtask vscode-package [--catalog <path>]".to_string())
 }
 
-/// Admits the staged catalog, packages the VSIX, and proves the packaged
-/// catalog bytes equal the admitted bytes. Every packaging path runs the
-/// same Node admission authority as the runtime parser.
+/// Admits the staged catalog, packages the VSIX, and proves the catalog
+/// extracted from the VSIX hashes to the immutable catalogSha256 captured
+/// in the admission receipt. A post-admission mutation of distribution.json
+/// changes the packaged bytes without changing the receipt, so it fails
+/// closed instead of moving both sides of the comparison together.
+/// Every packaging path runs the same Node admission authority as the
+/// runtime parser.
+fn verify_packaged_catalog_against_admission(
+    packaged: &[u8],
+    admission: &Value,
+) -> Result<(), String> {
+    let admitted = admission
+        .get("catalogSha256")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            "admission receipt carries no catalogSha256 digest; refusing to trust the packaged catalog"
+                .to_string()
+        })?;
+    if sha256_bytes(packaged) != admitted {
+        return Err(
+            "packaged VSIX catalog bytes differ from the admission receipt catalogSha256"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 fn vscode_package_admitted(
     extension_dir: &Path,
     version: &str,
@@ -1351,17 +1375,7 @@ fn vscode_package_admitted(
     let vsix_name = format!("ripr-{version}.vsix");
     let vsix_path = extension_dir.join("dist").join(&vsix_name);
     let packaged = read_vsix_catalog(&vsix_path)?;
-    let staged_bytes = fs::read(&catalog_path).map_err(|err| {
-        format!(
-            "failed to re-read {} after packaging: {err}",
-            catalog_path.display()
-        )
-    })?;
-    if packaged != staged_bytes {
-        return Err(
-            "packaged VSIX catalog bytes differ from the admitted staged catalog".to_string(),
-        );
-    }
+    verify_packaged_catalog_against_admission(&packaged, &admission_value)?;
     let vsix_sha256 = sha256_file(&vsix_path)?;
     let receipt = serde_json::json!({
         "schema_version": "package-receipt/1",
