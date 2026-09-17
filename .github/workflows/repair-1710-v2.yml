@@ -48,13 +48,13 @@ jobs:
           end = workflow.index(end_marker, start)
           script = textwrap.dedent(workflow[start:end])
 
-          old = """replace(
+          interface_old = """replace(
               'editors/vscode/src/distributionDescriptor.ts',
               '  readonly targetSetDigest?: string;\\n}',
               '  readonly targetSetDigest?: string;\\n  readonly producer?: DistributionProducer;\\n}',
               expected=2,
           )"""
-          new = """replace(
+          interface_new = """replace(
               'editors/vscode/src/distributionDescriptor.ts',
               '  readonly targetSetDigest?: string;\\n}',
               '  readonly targetSetDigest?: string;\\n  readonly producer?: DistributionProducer;\\n}',
@@ -64,9 +64,29 @@ jobs:
               '  readonly targetSetDigest?: string;\\n  readonly preferredPlacement:',
               '  readonly targetSetDigest?: string;\\n  readonly producer?: DistributionProducer;\\n  readonly preferredPlacement:',
           )"""
-          if script.count(old) != 1:
+          if script.count(interface_old) != 1:
               raise SystemExit('could not locate the exact failed interface replacement')
-          script = script.replace(old, new)
+          script = script.replace(interface_old, interface_new)
+
+          destructure_old = """replace(
+              'editors/vscode/test/suite/distribution_descriptor.test.ts',
+              'const { distributionGeneration: _generation, manifestSha256: _manifest, targetSetDigest: _targets, ...bareDevelopment2 } = {',
+              'const { distributionGeneration: _generation, manifestSha256: _manifest, targetSetDigest: _targets, producer: _producer, ...bareDevelopment2 } = {',
+              expected=2,
+          )"""
+          destructure_new = """replace(
+              'editors/vscode/test/suite/distribution_descriptor.test.ts',
+              'const { distributionGeneration: _generation, manifestSha256: _manifest, targetSetDigest: _targets, ...bareDevelopment2 } = {',
+              'const { distributionGeneration: _generation, manifestSha256: _manifest, targetSetDigest: _targets, producer: _producer, ...bareDevelopment2 } = {',
+          )
+          replace(
+              'editors/vscode/test/suite/distribution_descriptor.test.ts',
+              'const { distributionGeneration: _generation, manifestSha256: _manifest, targetSetDigest: _targets, ...bareDevelopment2 } = development2;',
+              'const { distributionGeneration: _generation, manifestSha256: _manifest, targetSetDigest: _targets, producer: _producer, ...bareDevelopment2 } = development2;',
+          )"""
+          if script.count(destructure_old) != 1:
+              raise SystemExit('could not locate the exact failed development-descriptor replacement')
+          script = script.replace(destructure_old, destructure_new)
           exec(compile(script, 'repair-1710-extracted.py', 'exec'))
           PY
           rm .github/workflows/repair-1710-v2.yml
