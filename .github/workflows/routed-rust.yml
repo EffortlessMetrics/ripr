@@ -402,7 +402,10 @@ jobs:
     needs: [route, detect-docs-only]
     if: github.event_name == 'pull_request' && needs.detect-docs-only.outputs.docs_only == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Must exceed the PR-evidence step ceiling (RIPR_PR_EVIDENCE_TIMEOUT_SECS
+    # allows 1,800s); matches the 45-minute cap of the CI rust/release-proof
+    # jobs that run the same evidence producer.
+    timeout-minutes: 45
     outputs:
       observed_subject_sha: ${{ steps.subject.outputs.observed_subject_sha }}
       observed_subject_tree: ${{ steps.subject.outputs.observed_subject_tree }}
