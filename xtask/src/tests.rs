@@ -8456,22 +8456,46 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
             .map_err(|err| format!("read release manifest: {err}"))?;
         let manifest: Value = serde_json::from_str(&manifest_text)
             .map_err(|err| format!("parse release manifest: {err}"))?;
-        assert_eq!(manifest["version"], "1.2.3");
+        assert_eq!(manifest["product_version"], "1.2.3");
         let assembly_receipt: Value = serde_json::from_str(
             &fs::read_to_string(dist.join("ripr-server-assembly-v1.2.3.receipt.json"))
                 .map_err(|err| format!("read assembly receipt: {err}"))?,
         )
         .map_err(|err| format!("parse assembly receipt: {err}"))?;
-        assert_eq!(assembly_receipt["schema_version"], "0.1");
+        assert_eq!(assembly_receipt["schema_version"], "0.2");
         assert_eq!(assembly_receipt["version"], "1.2.3");
         assert_eq!(assembly_receipt["disposition"], "assembled");
         assert_eq!(assembly_receipt["publication_mutation_attempted"], false);
+        assert_eq!(assembly_receipt["placement_independent"], true);
         assert_eq!(assembly_receipt["inputs"]["receipt_count"], 5);
         assert_eq!(assembly_receipt["accepted_subject_count"], 5);
-        assert_eq!(manifest["schema_version"], "0.1");
+        assert_eq!(manifest["schema_version"], "2");
+        assert_eq!(manifest["source_repository"], "EffortlessMetrics/ripr");
         assert!(manifest["build_identity"]["repository"].is_string());
         assert!(manifest["build_identity"]["candidate_sha"].is_string());
         assert!(manifest["build_identity"]["candidate_tree"].is_string());
+        let generation = manifest["distribution_generation"]
+            .as_str()
+            .ok_or("manifest distribution_generation is not a string")?;
+        assert_eq!(generation.len(), 64);
+        assert!(
+            generation
+                .chars()
+                .all(|character| character.is_ascii_hexdigit()),
+            "distribution generation must be lowercase hex"
+        );
+        assert_eq!(assembly_receipt["distribution_generation"], generation);
+        let target_set = manifest["target_set"]["targets"]
+            .as_array()
+            .ok_or("manifest target_set.targets is not an array")?;
+        assert_eq!(target_set.len(), 5);
+        assert!(manifest["target_set"]["digest"].is_string());
+        assert_eq!(manifest["producer"]["schema"], "server-manifest/2");
+        // Placement independence: no absolute URL may enter manifest bytes.
+        assert!(
+            !manifest_text.contains("https://") && !manifest_text.contains("http://"),
+            "manifest bytes must not select a network origin"
+        );
         assert_eq!(
             manifest["assets"]["x86_64-unknown-linux-gnu"]["receipt"]["schema_version"],
             "0.2"
@@ -8481,12 +8505,30 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
             "x86_64-unknown-linux-gnu"
         );
         assert_eq!(
-            manifest["assets"]["x86_64-unknown-linux-gnu"]["archive"]["path"],
+            manifest["assets"]["x86_64-unknown-linux-gnu"]["subject"],
             "ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"
         );
         assert_eq!(
-            manifest["assets"]["x86_64-unknown-linux-gnu"]["url"],
-            "https://github.com/EffortlessMetrics/ripr/releases/download/v1.2.3/ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"
+            manifest["assets"]["x86_64-unknown-linux-gnu"]["archive_format"],
+            "tar.gz"
+        );
+        assert!(manifest["assets"]["x86_64-unknown-linux-gnu"]["archive_size"].is_number());
+        assert_eq!(
+            manifest["assets"]["x86_64-unknown-linux-gnu"]["sha256"],
+            linux_sha
+        );
+        assert_eq!(
+            manifest["assets"]["x86_64-unknown-linux-gnu"]["executable"]["path"],
+            "ripr"
+        );
+        assert!(manifest["assets"]["x86_64-unknown-linux-gnu"]["executable"]["sha256"].is_string());
+        assert_eq!(
+            manifest["assets"]["x86_64-pc-windows-msvc"]["subject"],
+            "ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip"
+        );
+        assert_eq!(
+            manifest["assets"]["x86_64-pc-windows-msvc"]["archive_format"],
+            "zip"
         );
         assert_eq!(
             manifest["assets"]["x86_64-pc-windows-msvc"]["sha256"],
@@ -8540,6 +8582,314 @@ fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
         );
         assert!(!assets.contains_key("SHA256SUMS"));
         assert!(!assets.contains_key("checksums.txt"));
+        Ok(())
+    })
+}
+
+#[test]
+fn release_server_manifest_is_byte_identical_across_runs() -> Result<(), String> {
+    with_temp_cwd("release-server-manifest-determinism", |root| {
+        let dist = root.join("dist");
+        write(&root.join("LICENSE-MIT"), "mit");
+        write(&root.join("LICENSE-APACHE"), "apache");
+        for (target, executable, archive) in [
+            ("x86_64-pc-windows-msvc", "ripr.exe", "zip"),
+            ("x86_64-unknown-linux-gnu", "ripr", "tar.gz"),
+            ("aarch64-unknown-linux-gnu", "ripr", "tar.gz"),
+            ("x86_64-apple-darwin", "ripr", "tar.gz"),
+            ("aarch64-apple-darwin", "ripr", "tar.gz"),
+        ] {
+            write(
+                &root
+                    .join("target")
+                    .join(target)
+                    .join("release")
+                    .join(executable),
+                target,
+            );
+            let archive_args = vec![
+                "--version".to_string(),
+                "1.2.3".to_string(),
+                "--target".to_string(),
+                target.to_string(),
+                "--executable".to_string(),
+                executable.to_string(),
+                "--archive".to_string(),
+                archive.to_string(),
+            ];
+            super::release_server_archive(&archive_args)?;
+        }
+        let args = vec![
+            "--version".to_string(),
+            "v1.2.3".to_string(),
+            "--repository".to_string(),
+            "EffortlessMetrics/ripr".to_string(),
+        ];
+        super::release_server_manifest(&args)?;
+        let first = fs::read_to_string(dist.join("ripr-server-manifest-v1.2.3.json"))
+            .map_err(|err| format!("read first manifest render: {err}"))?;
+        super::release_server_manifest(&args)?;
+        let second = fs::read_to_string(dist.join("ripr-server-manifest-v1.2.3.json"))
+            .map_err(|err| format!("read second manifest render: {err}"))?;
+        assert_eq!(
+            first, second,
+            "the same candidate inputs must render byte-identical manifest bytes across runs"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn release_distribution_generation_is_candidate_bound() -> Result<(), String> {
+    assert_eq!(
+        super::release_server_target_set(),
+        [
+            "x86_64-pc-windows-msvc",
+            "x86_64-unknown-linux-gnu",
+            "aarch64-unknown-linux-gnu",
+            "x86_64-apple-darwin",
+            "aarch64-apple-darwin",
+        ]
+    );
+    let target_digest = super::release_server_target_set_digest();
+    assert_eq!(target_digest.len(), 64);
+    let first = super::release_distribution_generation("1.2.3", "sha-a", "tree-a", &target_digest);
+    let repeat = super::release_distribution_generation("1.2.3", "sha-a", "tree-a", &target_digest);
+    assert_eq!(first, repeat);
+    let next_candidate =
+        super::release_distribution_generation("1.2.3", "sha-b", "tree-a", &target_digest);
+    assert_ne!(
+        first, next_candidate,
+        "a new candidate must yield a new distribution generation"
+    );
+    Ok(())
+}
+
+#[test]
+fn release_server_subjects_reject_channel_suffixed_version() -> Result<(), String> {
+    assert_eq!(super::normalize_product_version("v1.2.3")?, "1.2.3");
+    let Err(error) = super::normalize_product_version("1.2.3-rc.1") else {
+        return Err("channel-suffixed product version must reject".to_string());
+    };
+    assert!(error.contains("channel"), "{error}");
+    let Err(error) = super::normalize_product_version("1.2.3+../escape") else {
+        return Err("unsafe product version must reject".to_string());
+    };
+    assert!(error.contains("unsupported characters"), "{error}");
+    with_temp_cwd("release-server-subjects-channel-version", |_root| {
+        let manifest_args = vec![
+            "--version".to_string(),
+            "1.2.3-rc.1".to_string(),
+            "--repository".to_string(),
+            "EffortlessMetrics/ripr".to_string(),
+        ];
+        let Err(error) = super::release_server_manifest(&manifest_args) else {
+            return Err(
+                "channel-suffixed product version must reject manifest assembly".to_string(),
+            );
+        };
+        assert!(error.contains("channel"), "{error}");
+        let archive_args = vec![
+            "--version".to_string(),
+            "1.2.3-rc.1".to_string(),
+            "--target".to_string(),
+            "x86_64-unknown-linux-gnu".to_string(),
+            "--executable".to_string(),
+            "ripr".to_string(),
+            "--archive".to_string(),
+            "tar.gz".to_string(),
+        ];
+        let Err(error) = super::release_server_archive(&archive_args) else {
+            return Err(
+                "channel-suffixed product version must reject archive assembly".to_string(),
+            );
+        };
+        assert!(error.contains("channel"), "{error}");
+        Ok(())
+    })
+}
+
+fn write_distribution_catalog_manifest(
+    dist: &std::path::Path,
+    version: &str,
+    repository: &str,
+) -> Result<(), String> {
+    let manifest = serde_json::json!({
+        "schema_version": "2",
+        "product_version": version,
+        "distribution_generation": "a".repeat(64),
+        "source_repository": repository,
+        "target_set": {
+            "targets": [
+                "aarch64-apple-darwin",
+                "aarch64-unknown-linux-gnu",
+                "x86_64-apple-darwin",
+                "x86_64-unknown-linux-gnu",
+                "x86_64-pc-windows-msvc",
+            ],
+            "digest": "c".repeat(64),
+        },
+        "producer": {"tool": "xtask release-server-manifest", "schema": "server-manifest/2"},
+        "build_identity": {},
+        "assets": {},
+    });
+    let text = serde_json::to_string_pretty(&manifest)
+        .map_err(|err| format!("render catalog test manifest: {err}"))?;
+    write(
+        &dist.join(format!("ripr-server-manifest-v{version}.json")),
+        &format!("{text}\n"),
+    );
+    Ok(())
+}
+
+fn distribution_catalog_args(root: &std::path::Path, extra: &[&str]) -> Vec<String> {
+    let mut args = vec![
+        "--product-version".to_string(),
+        "1.2.3".to_string(),
+        "--channel".to_string(),
+        "stable".to_string(),
+        "--stable-tag".to_string(),
+        "v1.2.3".to_string(),
+        "--manifest".to_string(),
+        root.join("dist")
+            .join("ripr-server-manifest-v1.2.3.json")
+            .to_string_lossy()
+            .to_string(),
+        "--repository".to_string(),
+        "EffortlessMetrics/ripr".to_string(),
+        "--out".to_string(),
+        root.join("dist")
+            .join("catalog.json")
+            .to_string_lossy()
+            .to_string(),
+    ];
+    for chunk in extra.chunks(2) {
+        args.push(chunk[0].to_string());
+        args.push(chunk[1].to_string());
+    }
+    args
+}
+
+#[test]
+fn release_distribution_catalog_builds_stable_catalog_with_rc_fallback() -> Result<(), String> {
+    with_temp_cwd("release-distribution-catalog-stable", |root| {
+        let dist = root.join("dist");
+        std::fs::create_dir_all(&dist).map_err(|err| format!("create dist: {err}"))?;
+        write_distribution_catalog_manifest(&dist, "1.2.3", "EffortlessMetrics/ripr")?;
+        let args = distribution_catalog_args(root, &["--rc-tag", "v1.2.3-rc.1"]);
+        super::release_distribution_catalog(&args)?;
+        super::release_distribution_catalog(&args)?;
+        let catalog_path = dist.join("catalog.json");
+        let first =
+            fs::read_to_string(&catalog_path).map_err(|err| format!("read catalog: {err}"))?;
+        let catalog: Value =
+            serde_json::from_str(&first).map_err(|err| format!("parse catalog: {err}"))?;
+        assert_eq!(catalog["schema"], 2);
+        assert_eq!(catalog["productVersion"], "1.2.3");
+        assert_eq!(catalog["channel"], "stable");
+        assert_eq!(catalog["releaseTag"], "v1.2.3");
+        assert_eq!(catalog["releaseRef"], "refs/tags/v1.2.3");
+        assert_eq!(
+            catalog["fallbackPlacements"],
+            serde_json::json!([{
+                "channel": "rc",
+                "releaseTag": "v1.2.3-rc.1",
+                "releaseRef": "refs/tags/v1.2.3-rc.1",
+            }])
+        );
+        assert_eq!(catalog["manifestFile"], "ripr-server-manifest-v1.2.3.json");
+        assert_eq!(
+            catalog["sourceRepository"],
+            "https://github.com/EffortlessMetrics/ripr"
+        );
+        assert_eq!(catalog["distributionGeneration"], "a".repeat(64));
+        assert_eq!(catalog["targetSetDigest"], "c".repeat(64));
+        let expected_manifest_sha =
+            super::sha256_file(&dist.join("ripr-server-manifest-v1.2.3.json"))?;
+        assert_eq!(catalog["manifestSha256"], expected_manifest_sha);
+        assert_eq!(catalog["producer"]["schema"], "distribution-catalog/1");
+        Ok(())
+    })
+}
+
+#[test]
+fn release_distribution_catalog_builds_rc_catalog_without_fallback() -> Result<(), String> {
+    with_temp_cwd("release-distribution-catalog-rc", |root| {
+        let dist = root.join("dist");
+        std::fs::create_dir_all(&dist).map_err(|err| format!("create dist: {err}"))?;
+        write_distribution_catalog_manifest(&dist, "1.2.3", "EffortlessMetrics/ripr")?;
+        let mut args = distribution_catalog_args(root, &["--rc-tag", "v1.2.3-rc.1"]);
+        for pair in args.chunks_mut(2) {
+            if pair[0] == "--channel" {
+                pair[1] = "rc".to_string();
+            }
+        }
+        super::release_distribution_catalog(&args)?;
+        let catalog: Value = serde_json::from_str(
+            &fs::read_to_string(dist.join("catalog.json"))
+                .map_err(|err| format!("read catalog: {err}"))?,
+        )
+        .map_err(|err| format!("parse catalog: {err}"))?;
+        assert_eq!(catalog["channel"], "rc");
+        assert_eq!(catalog["releaseTag"], "v1.2.3-rc.1");
+        assert_eq!(catalog["releaseRef"], "refs/tags/v1.2.3-rc.1");
+        assert_eq!(catalog["fallbackPlacements"], serde_json::json!([]));
+        Ok(())
+    })
+}
+
+#[test]
+fn release_distribution_catalog_rejects_mismatched_identity() -> Result<(), String> {
+    with_temp_cwd("release-distribution-catalog-reject", |root| {
+        let dist = root.join("dist");
+        std::fs::create_dir_all(&dist).map_err(|err| format!("create dist: {err}"))?;
+        write_distribution_catalog_manifest(&dist, "1.2.3", "EffortlessMetrics/ripr")?;
+        let base = distribution_catalog_args(root, &[]);
+        // Channel-suffixed product version.
+        let mut args = base.clone();
+        args[1] = "1.2.3-rc.1".to_string();
+        let Err(error) = super::release_distribution_catalog(&args) else {
+            return Err("channel-suffixed product must reject catalog assembly".to_string());
+        };
+        assert!(error.contains("channel"), "{error}");
+        // Stable placement must equal the product tag.
+        let mut args = base.clone();
+        args[5] = "v9.9.9".to_string();
+        let Err(error) = super::release_distribution_catalog(&args) else {
+            return Err("wrong stable placement must reject catalog assembly".to_string());
+        };
+        assert!(error.contains("must equal the product tag"), "{error}");
+        // Non-canonical RC number.
+        let args = distribution_catalog_args(root, &["--rc-tag", "v1.2.3-rc.01"]);
+        let Err(error) = super::release_distribution_catalog(&args) else {
+            return Err("non-canonical RC number must reject catalog assembly".to_string());
+        };
+        assert!(error.contains("non-canonical RC number"), "{error}");
+        // RC channel without a preferred RC placement.
+        let mut args = base.clone();
+        args[3] = "rc".to_string();
+        let Err(error) = super::release_distribution_catalog(&args) else {
+            return Err("RC channel without --rc-tag must reject catalog assembly".to_string());
+        };
+        assert!(error.contains("--rc-tag"), "{error}");
+        // Repository mismatch against the manifest.
+        let mut args = base.clone();
+        args[9] = "OtherOrg/ripr".to_string();
+        let Err(error) = super::release_distribution_catalog(&args) else {
+            return Err("repository mismatch must reject catalog assembly".to_string());
+        };
+        assert!(error.contains("does not match manifest source"), "{error}");
+        // Missing manifest file.
+        let mut args = base.clone();
+        args[7] = root
+            .join("dist")
+            .join("missing.json")
+            .to_string_lossy()
+            .to_string();
+        let Err(error) = super::release_distribution_catalog(&args) else {
+            return Err("missing manifest must reject catalog assembly".to_string());
+        };
+        assert!(error.contains("unavailable"), "{error}");
         Ok(())
     })
 }
@@ -45622,6 +45972,127 @@ fn vscode_package_version_reads_extension_manifest() -> Result<(), String> {
         assert_eq!(vscode_package_version(&package_json)?, "0.4.0");
         Ok(())
     })
+}
+
+#[test]
+fn vscode_package_args_parse_catalog_staging() -> Result<(), String> {
+    assert!(super::parse_vscode_package_args(&[])?.is_none());
+    assert_eq!(
+        super::parse_vscode_package_args(&["--catalog".to_string(), "catalog.json".to_string()])?,
+        Some(std::path::PathBuf::from("catalog.json"))
+    );
+    assert_eq!(
+        super::parse_vscode_package_args(&["--catalog=catalog.json".to_string()])?,
+        Some(std::path::PathBuf::from("catalog.json"))
+    );
+    for args in [
+        vec!["--bogus".to_string()],
+        vec!["--catalog".to_string()],
+        vec!["--catalog=".to_string()],
+        vec!["--catalog".to_string(), "a".to_string(), "b".to_string()],
+    ] {
+        let Err(error) = super::parse_vscode_package_args(&args) else {
+            return Err(format!("packaging args {args:?} must fail closed"));
+        };
+        assert!(error.contains("Usage"), "{error}");
+    }
+    Ok(())
+}
+
+fn write_packaging_test_vsix(
+    path: &std::path::Path,
+    members: &[(&str, &str)],
+) -> Result<(), String> {
+    let file = fs::File::create(path)
+        .map_err(|err| format!("failed to create {}: {err}", path.display()))?;
+    let mut writer = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default();
+    for (name, body) in members {
+        writer
+            .start_file(*name, options)
+            .map_err(|err| format!("failed to stage {name}: {err}"))?;
+        std::io::Write::write_all(&mut writer, body.as_bytes())
+            .map_err(|err| format!("failed to write {name}: {err}"))?;
+    }
+    writer
+        .finish()
+        .map_err(|err| format!("failed to seal {}: {err}", path.display()))?;
+    Ok(())
+}
+
+#[test]
+fn vscode_package_inspection_accepts_single_catalog() -> Result<(), String> {
+    with_temp_cwd("vscode-package-inspection", |root| {
+        let vsix = root.join("ripr-0.4.0.vsix");
+        write_packaging_test_vsix(
+            &vsix,
+            &[
+                ("extension/package.json", "{}"),
+                ("extension/distribution.json", "{\"schema\":2}"),
+            ],
+        )?;
+        assert_eq!(super::read_vsix_catalog(&vsix)?, b"{\"schema\":2}".to_vec());
+        let shadow = root.join("shadow.vsix");
+        write_packaging_test_vsix(
+            &shadow,
+            &[
+                ("extension/distribution.json", "{}"),
+                ("extension/nested/distribution.json", "{}"),
+            ],
+        )?;
+        let Err(error) = super::read_vsix_catalog(&shadow) else {
+            return Err("shadow packaged catalog must fail closed".to_string());
+        };
+        assert!(error.contains("shadow catalog"), "{error}");
+        let missing = root.join("missing.vsix");
+        write_packaging_test_vsix(&missing, &[("extension/package.json", "{}")])?;
+        let Err(error) = super::read_vsix_catalog(&missing) else {
+            return Err("VSIX without a catalog must fail closed".to_string());
+        };
+        assert!(
+            error.contains("has no extension/distribution.json"),
+            "{error}"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn vscode_package_verify_binds_vsix_catalog_to_admission_digest() -> Result<(), String> {
+    use crate::reports::release_server::sha256_bytes;
+
+    let admitted = b"{\"schema\":2,\"producer\":{\"tool\":\"xtask release-distribution-catalog\",\"schema\":\"distribution-catalog/1\"}}";
+    let admission = serde_json::from_str::<Value>(&format!(
+        "{{\"catalogSha256\":\"{}\"}}",
+        sha256_bytes(admitted)
+    ))
+    .map_err(|err| format!("fixture admission receipt is not valid JSON: {err}"))?;
+    super::verify_packaged_catalog_against_admission(admitted, &admission)?;
+
+    // A post-admission mutation of distribution.json changes the packaged
+    // bytes without changing the receipt. The old disk re-read comparison
+    // (packaged == staged) still passes on this pair, so only the receipt
+    // binding fails closed here.
+    let mut mutated = admitted.to_vec();
+    mutated[12] = b'3';
+    let staged_reread = mutated.clone();
+    assert_eq!(mutated, staged_reread);
+    let Err(error) = super::verify_packaged_catalog_against_admission(&mutated, &admission) else {
+        return Err("post-admission catalog mutation must fail closed".to_string());
+    };
+    assert!(
+        error.contains("differ from the admission receipt catalogSha256"),
+        "{error}"
+    );
+
+    let Err(error) = super::verify_packaged_catalog_against_admission(
+        admitted,
+        &Value::Object(Default::default()),
+    ) else {
+        return Err("a receipt without catalogSha256 must fail closed".to_string());
+    };
+    assert!(error.contains("carries no catalogSha256"), "{error}");
+    Ok(())
 }
 
 #[test]

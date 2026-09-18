@@ -133,6 +133,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::ReleaseServerManifest(args) => {
             super::reports::release_server::release_server_manifest(&args)
         }
+        XtaskCommand::ReleaseDistributionCatalog(args) => {
+            super::reports::distribution_catalog::release_distribution_catalog(&args)
+        }
         XtaskCommand::ReleaseUploadAssets(args) => {
             super::reports::release_server::release_upload_assets(&args)
         }
@@ -216,7 +219,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckDocRoles => super::check_doc_roles(),
         XtaskCommand::CheckReleaseTargets => super::check_release_targets(),
         XtaskCommand::VscodeCompile => super::vscode_compile(),
-        XtaskCommand::VscodePackage => super::vscode_package(),
+        XtaskCommand::VscodePackage(args) => super::vscode_package(&args),
         XtaskCommand::VscodeTest => super::vscode_test(),
         XtaskCommand::VscodeTestE2e => super::vscode_test_e2e(),
         XtaskCommand::Package => {

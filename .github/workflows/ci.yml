@@ -22,7 +22,10 @@ jobs:
   rust:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Product gates take ~28 min; the PR-evidence step allows 1,800s, so the
+    # 45-minute cap kills evidence past ~17 min (observed 2026-09-17). 90
+    # matches routed rust-github and covers gates plus a full evidence run.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
         with:
@@ -112,6 +115,12 @@ jobs:
           # keep the explicit safety envelope narrowly above that denominator.
           RIPR_MAX_DIFF_CHANGED_RUST_LINES: "5400"
           RIPR_PARTIAL_DIFF_LINE_BUDGET: "5400"
+          # PR #1710 evidence analysis measures ~500s locally (18 files,
+          # 1,709-line diff, complete_with_findings packet, 2026-09-16), so
+          # the 120s evidence-producer default is ~4x too small and the step
+          # times out on CI runners; the 1,800s ceiling stays well under the
+          # 45-minute job cap (precedent: rust-gates.yml sets 3,600s).
+          RIPR_PR_EVIDENCE_TIMEOUT_SECS: "1800"
         run: |
           cargo xtask ripr-pr --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}"
           cargo xtask ripr-pr --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check
@@ -195,7 +204,9 @@ jobs:
     name: Perl and release proof
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Same evidence-ceiling composition as the rust job: gates plus a 1,800s
+    # evidence step do not fit in 45 minutes.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
         with:
@@ -259,6 +270,12 @@ jobs:
           # keep the explicit safety envelope narrowly above that denominator.
           RIPR_MAX_DIFF_CHANGED_RUST_LINES: "5400"
           RIPR_PARTIAL_DIFF_LINE_BUDGET: "5400"
+          # PR #1710 evidence analysis measures ~500s locally (18 files,
+          # 1,709-line diff, complete_with_findings packet, 2026-09-16), so
+          # the 120s evidence-producer default is ~4x too small and the step
+          # times out on CI runners; the 1,800s ceiling stays well under the
+          # 45-minute job cap (precedent: rust-gates.yml sets 3,600s).
+          RIPR_PR_EVIDENCE_TIMEOUT_SECS: "1800"
         run: |
           cargo xtask ripr-pr --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}"
           cargo xtask ripr-pr --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check

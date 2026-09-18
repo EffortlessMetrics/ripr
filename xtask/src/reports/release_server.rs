@@ -16,7 +16,7 @@ pub(crate) fn release_server_archive(args: &[String]) -> Result<(), String> {
     let target = required_release_arg(args, "target", "TARGET")?;
     let executable = required_release_arg(args, "executable", "EXECUTABLE")?;
     let archive = required_release_arg(args, "archive", "ARCHIVE")?;
-    let version = normalize_release_version(&version);
+    let version = normalize_product_version(&version)?;
     let asset_name = format!("ripr-server-v{version}-{target}.{archive}");
     let package_dir = Path::new("package");
     let dist_dir = Path::new("dist");
@@ -95,7 +95,11 @@ pub(crate) fn release_server_archive(args: &[String]) -> Result<(), String> {
 pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     let version = required_release_arg(args, "version", "RAW_VERSION")?;
     let repository = required_release_arg(args, "repository", "REPOSITORY")?;
-    let version = normalize_release_version(&version);
+    // Placement-independent subject identity: the manifest describes product
+    // bytes, never a publication channel. A channel-suffixed version would
+    // fork subject names between RC and stable, so it fails closed here;
+    // placement travels in the installed catalog, not the manifest.
+    let version = normalize_product_version(&version)?;
     let dist_dir = Path::new("dist");
     // Published as `SHA256SUMS` (the near-universal ecosystem convention) so
     // consumers can run `sha256sum -c SHA256SUMS` against the release assets.
@@ -138,6 +142,15 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     )?;
     let mut assets = serde_json::Map::new();
     let build_identity = &receipt_set.baseline;
+    let target_set_digest = release_server_target_set_digest();
+    let mut target_set_names = release_server_target_set().to_vec();
+    target_set_names.sort_unstable();
+    let distribution_generation = release_distribution_generation(
+        &version,
+        &build_identity.candidate_sha,
+        &build_identity.candidate_tree,
+        &target_set_digest,
+    );
     for asset in discovered_assets {
         let receipt = receipt_set
             .receipts
@@ -152,33 +165,46 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
                 asset.file_name
             ));
         }
-        let url = format!(
-            "https://github.com/{repository}/releases/download/v{version}/{}",
-            asset.file_name
-        );
+        // Placement-independent subject identity only. No scheme, host,
+        // repository, tag, port, query, fragment, or absolute URL may enter
+        // manifest bytes: retrieval URLs compose later from the accepted
+        // installed catalog placement plus this relative subject.
+        let subject = asset.file_name.clone();
         assets.insert(
             asset.target,
             serde_json::json!({
-                "url": url,
+                "subject": subject,
+                "archive_format": receipt.archive_format,
+                "archive_size": receipt.archive.size,
                 "sha256": sha,
+                "executable": {
+                    "path": receipt.executable.path,
+                    "size": receipt.executable.size,
+                    "sha256": receipt.executable.sha256,
+                },
                 "receipt": {
                     "path": receipt.path,
                     "sha256": receipt.sha256,
                     "schema_version": receipt.schema_version,
                     "target": receipt.target,
                 },
-                "archive": {
-                    "path": receipt.archive.path,
-                    "size": receipt.archive.size,
-                    "sha256": receipt.archive.sha256,
-                },
             }),
         );
     }
 
     let manifest = serde_json::json!({
-        "schema_version": "0.1",
-        "version": version,
+        "schema_version": "2",
+        "product_version": version,
+        "distribution_generation": distribution_generation.clone(),
+        "source_repository": repository,
+        "target_set": {
+            "targets": target_set_names,
+            "digest": target_set_digest,
+        },
+        "producer": {
+            "tool": "xtask release-server-manifest",
+            "schema": "server-manifest/2",
+        },
         "build_identity": {
             "repository": build_identity.repository,
             "candidate_sha": build_identity.candidate_sha,
@@ -224,9 +250,11 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     ));
     let checksum_text = format!("{}\n", checksum_lines.join("\n"));
     let assembly_receipt = serde_json::json!({
-        "schema_version": "0.1",
+        "schema_version": "0.2",
         "assembler": "xtask",
         "version": version,
+        "placement_independent": true,
+        "distribution_generation": distribution_generation,
         "build_identity": {
             "repository": build_identity.repository,
             "candidate_sha": build_identity.candidate_sha,
@@ -386,18 +414,12 @@ pub(crate) fn release_server_assets(
 pub(crate) fn validate_configured_release_server_targets(
     assets: &[ReleaseServerAsset],
 ) -> Result<(), String> {
-    const CONFIGURED_TARGETS: [&str; 5] = [
-        "x86_64-pc-windows-msvc",
-        "x86_64-unknown-linux-gnu",
-        "aarch64-unknown-linux-gnu",
-        "x86_64-apple-darwin",
-        "aarch64-apple-darwin",
-    ];
+    let configured_targets = release_server_target_set();
     let observed = assets
         .iter()
         .map(|asset| asset.target.as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    for expected in CONFIGURED_TARGETS {
+    for expected in configured_targets {
         if !observed.contains(expected) {
             return Err(format!(
                 "missing configured release server target `{expected}`"
@@ -405,7 +427,7 @@ pub(crate) fn validate_configured_release_server_targets(
         }
     }
     for target in observed {
-        if !CONFIGURED_TARGETS.contains(&target) {
+        if !configured_targets.contains(&target) {
             return Err(format!(
                 "unknown configured release server target `{target}`"
             ));
@@ -436,6 +458,69 @@ pub(crate) fn required_release_arg(
 
 pub(crate) fn normalize_release_version(version: &str) -> String {
     version.trim().trim_start_matches('v').to_string()
+}
+
+/// Product-version admission for server subject producers (archives and the
+/// server manifest). Subjects are product identity: a release-channel suffix
+/// would fork archive and manifest names between RC and stable, so it fails
+/// closed here. Placement travels in the installed distribution catalog.
+pub(crate) fn normalize_product_version(version: &str) -> Result<String, String> {
+    let version = normalize_release_version(version);
+    if version.is_empty() {
+        return Err("release product version must not be empty".to_string());
+    }
+    if version.contains('-') {
+        return Err(format!(
+            "release product version `{version}` must not carry a release-channel suffix; subjects are product identity and placement travels in the installed catalog"
+        ));
+    }
+    if !version.chars().all(|character| {
+        character.is_ascii_alphanumeric()
+            || character == '.'
+            || character == '+'
+            || character == '_'
+    }) {
+        return Err(format!(
+            "release product version `{version}` contains unsupported characters"
+        ));
+    }
+    Ok(version)
+}
+
+/// Canonical configured server target set. One definition feeds validation,
+/// the manifest `target_set` identity, and the distribution generation.
+pub(crate) fn release_server_target_set() -> [&'static str; 5] {
+    [
+        "x86_64-pc-windows-msvc",
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "aarch64-apple-darwin",
+    ]
+}
+
+pub(crate) fn release_server_target_set_digest() -> String {
+    let mut targets = release_server_target_set().to_vec();
+    targets.sort_unstable();
+    sha256_bytes(targets.join("\n").as_bytes())
+}
+
+/// Content-derived distribution generation: identical candidate bytes always
+/// yield the same generation across RC and stable placements, and any new
+/// candidate yields a new generation. Byte equality is still enforced by
+/// per-artifact digests, never by this label alone.
+pub(crate) fn release_distribution_generation(
+    product_version: &str,
+    candidate_sha: &str,
+    candidate_tree: &str,
+    target_set_digest: &str,
+) -> String {
+    sha256_bytes(
+        format!(
+            "server-manifest/2|{product_version}|{candidate_sha}|{candidate_tree}|{target_set_digest}"
+        )
+        .as_bytes(),
+    )
 }
 
 fn copy_release_file(file_name: &str, package_dir: &Path) -> Result<(), String> {
@@ -925,7 +1010,9 @@ struct ReleaseServerReceiptSummary {
     sha256: String,
     schema_version: String,
     target: String,
+    archive_format: String,
     archive: ReleaseServerFile,
+    executable: ReleaseServerFile,
 }
 
 pub(crate) struct ReleaseServerReceiptSet {
@@ -1034,7 +1121,9 @@ pub(crate) fn validate_release_server_receipts(
                 sha256: sha256_file(&path)?,
                 schema_version: receipt.schema_version.clone(),
                 target: receipt.target.clone(),
+                archive_format: receipt.archive_format.clone(),
                 archive: receipt.archive.clone(),
+                executable: receipt.executable.clone(),
             },
         );
         if let Some(expected) = &baseline {
@@ -1225,7 +1314,7 @@ pub(crate) fn write_release_server_outputs_transactional(
     Ok(())
 }
 
-fn sha256_bytes(bytes: &[u8]) -> String {
+pub(crate) fn sha256_bytes(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     format!("{digest:x}")
 }

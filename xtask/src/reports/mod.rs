@@ -4,6 +4,7 @@ mod badges;
 mod bun;
 mod candidate_control;
 mod ci_budget;
+pub(crate) mod distribution_catalog;
 mod dogfood;
 mod eval_sweep;
 mod eval_sweep_check;
