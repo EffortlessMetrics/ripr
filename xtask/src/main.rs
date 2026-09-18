@@ -30,6 +30,7 @@ pub mod convergence;
 mod dispatch;
 mod dogfood;
 mod driver;
+mod droid_admit;
 mod evidence_audit;
 mod evidence_promotion;
 mod evidence_quality;
