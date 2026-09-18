@@ -1,7 +1,9 @@
 import * as cp from 'child_process';
+import * as fs from 'fs';
 import * as https from 'https';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { extractAdmittedArchive } from './archiveInventory';
 import { RiprConfig } from './config';
 import {
   distributionManifestUrl,
@@ -101,7 +103,15 @@ async function downloadServerWithProgress(
     },
     extractArchive: async (archivePath, destination) => {
       progress.report({ message: 'Extracting…' });
-      await extractArchive(archivePath, destination, platform);
+      // Inventory authority (#1641): checksum-verified bytes are decoded by
+      // the owned parser, policed, and budgeted before any file is created.
+      // No system extractor ever touches archive bytes on this path.
+      await extractAdmittedArchive(
+        await fs.promises.readFile(archivePath),
+        platform.archiveExtension,
+        destination,
+        platform.executableName
+      );
     },
     probeExecutable: (executablePath) => probeDownloadedExecutable(executablePath)
   });
@@ -372,35 +382,6 @@ function fetchBuffer(
       request.destroy(new Error(`Timed out while fetching ${url}.`));
     });
   });
-}
-
-function extractArchive(archivePath: string, destination: string, platform: RiprPlatform): Promise<void> {
-  if (platform.archiveExtension === 'zip') {
-    return runProcess('powershell.exe', [
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-Command',
-      `Expand-Archive -LiteralPath ${quotePowerShell(archivePath)} -DestinationPath ${quotePowerShell(destination)} -Force`
-    ]);
-  }
-  return runProcess('tar', ['-xzf', archivePath, '-C', destination]);
-}
-
-function runProcess(command: string, args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    cp.execFile(command, args, (error, _stdout, stderr) => {
-      if (error) {
-        reject(new Error(stderr.trim() || error.message));
-      } else {
-        resolve();
-      }
-    });
-  });
-}
-
-function quotePowerShell(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
 }
 
 function probeDownloadedExecutable(executablePath: string): Promise<string> {
