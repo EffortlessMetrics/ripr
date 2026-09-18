@@ -2754,7 +2754,26 @@ mod tests {
             .ok_or_else(|| format!("missing retargeted finding: {:?}", result.findings))?;
         assert_eq!(finding.probe.location.line, 4, "probe sits on the use");
         assert_ne!(finding.class, ExposureClass::StaticUnknown);
-        assert!(finding.static_limit_kind.is_none());
+        // #1429: the operand value is admitted-unresolved (see the
+        // `binding_predicate_value_unresolved` evidence below), so the
+        // missing discriminator is unconfirmed: the finding carries
+        // the named limitation and withholds the boundary-test
+        // prescription instead of asserting no limit.
+        assert_eq!(
+            finding.static_limit_kind,
+            Some(StaticLimitKind::RustValuePropagationUnresolved),
+            "unresolved operand must carry the named limitation: {:?}",
+            finding.static_limit_kind
+        );
+        assert!(
+            finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("rust_value_propagation_unresolved")
+                    && !step.contains("Add boundary tests")),
+            "no specific boundary input may be prescribed: {:?}",
+            finding.recommended_next_step
+        );
         assert!(
             finding.evidence.iter().any(|line| line
                 .contains("binding_predicate_relation: changed binding `end` initializer")),

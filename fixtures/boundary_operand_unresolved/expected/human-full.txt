@@ -1,0 +1,131 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/boundary_operand_unresolved/input
+
+Summary: 3 probe(s), 0 exposed, 3 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 4 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
+
+WARNING fixtures/boundary_operand_unresolved/input/src/lib.rs:4
+
+Changed
+  before: if end > start {
+  after:  end == start
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::quote_body
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body
+  - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+  - propagation yes: Changed behavior appears to influence returned value: Some("")
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - local flow reaches returned value: Some("") (line 5)
+  - related test tests/q.rs:4 empty_body_equality_case uses strong exact value oracle: assert_eq!(quote_body("[]", '[', ']'), Some(""));
+  - related test tests/q.rs:14 missing_close_returns_none uses strong exact value oracle: assert_eq!(quote_body("[ab", '[', ']'), None);
+  - related test tests/q.rs:9 nonempty_body uses strong exact value oracle: assert_eq!(quote_body("[ab]", '[', ']'), Some("ab"));
+  - observed assertion argument value "" at line 5
+  - observed function argument value open = '[' at line 5
+  - observed function argument value open = ']' at line 5
+  - observed function argument value rest = "[]" at line 5
+  - observed assertion argument value "ab" at line 10
+  - observed function argument value open = '[' at line 10
+  - observed function argument value open = ']' at line 10
+  - observed function argument value rest = "[ab]" at line 10
+
+Weakness
+  - missing discriminator end == start: No related test call uses end equal to start; observed end values: unknown; boundary operand value unresolved: `end` flows through `rest.rfind(close)?` (earliest unsupported edge: expression `close)?` is not a supported operation chain)
+
+Static limitation
+  rust_value_propagation_unresolved — A changed Rust value binding uses a bounded string or character operation, but ripr cannot carry that value into the same-owner equality predicate. This is a named analyzer limitation, not a coverage or repair claim.
+
+Next step
+  Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the boundary operand values through the producer operations, so it does not prescribe a specific boundary input the suite may already cover. Verify via real mutation testing whether the asserted sink observes the missing discriminator value.
+
+WARNING fixtures/boundary_operand_unresolved/input/src/lib.rs:5
+
+Changed
+  before: if end > start {
+  after:  Some("")
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::quote_body
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Complete propagation witness reaches returned value: Some("")
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches returned value: Some("") (line 5)
+  - related test tests/q.rs:4 empty_body_equality_case uses strong exact value oracle: assert_eq!(quote_body("[]", '[', ']'), Some(""));
+  - related test tests/q.rs:14 missing_close_returns_none uses strong exact value oracle: assert_eq!(quote_body("[ab", '[', ']'), None);
+  - related test tests/q.rs:9 nonempty_body uses strong exact value oracle: assert_eq!(quote_body("[ab]", '[', ']'), Some("ab"));
+  - observed assertion argument value "" at line 5
+  - observed function argument value open = '[' at line 5
+  - observed function argument value open = ']' at line 5
+  - observed function argument value rest = "[]" at line 5
+  - observed assertion argument value "ab" at line 10
+  - observed function argument value open = '[' at line 10
+  - observed function argument value open = ']' at line 10
+  - observed function argument value rest = "[ab]" at line 10
+
+Weakness
+  - No strong discriminator was detected
+
+Next step
+  Replace broad assertions with exact equality or a property that constrains the changed returned value.
+
+WARNING fixtures/boundary_operand_unresolved/input/src/lib.rs:6
+
+Changed
+  before: if end > start {
+  after:  end > start
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::quote_body
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body
+  - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+  - propagation yes: Changed behavior appears to influence returned value: Some(&rest[start..end])
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - local flow reaches returned value: Some(&rest[start..end]) (line 7)
+  - related test tests/q.rs:4 empty_body_equality_case uses strong exact value oracle: assert_eq!(quote_body("[]", '[', ']'), Some(""));
+  - related test tests/q.rs:14 missing_close_returns_none uses strong exact value oracle: assert_eq!(quote_body("[ab", '[', ']'), None);
+  - related test tests/q.rs:9 nonempty_body uses strong exact value oracle: assert_eq!(quote_body("[ab]", '[', ']'), Some("ab"));
+  - observed assertion argument value "" at line 5
+  - observed function argument value open = '[' at line 5
+  - observed function argument value open = ']' at line 5
+  - observed function argument value rest = "[]" at line 5
+  - observed assertion argument value "ab" at line 10
+  - observed function argument value open = '[' at line 10
+  - observed function argument value open = ']' at line 10
+  - observed function argument value rest = "[ab]" at line 10
+
+Weakness
+  - missing discriminator end == start: No related test call uses end equal to start; observed end values: unknown; boundary operand value unresolved: `end` flows through `rest.rfind(close)?` (earliest unsupported edge: expression `close)?` is not a supported operation chain)
+
+Static limitation
+  rust_value_propagation_unresolved — A changed Rust value binding uses a bounded string or character operation, but ripr cannot carry that value into the same-owner equality predicate. This is a named analyzer limitation, not a coverage or repair claim.
+
+Next step
+  Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the boundary operand values through the producer operations, so it does not prescribe a specific boundary input the suite may already cover. Verify via real mutation testing whether the asserted sink observes the missing discriminator value.

@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/boundary_operand_unresolved/input
+
+Summary: 3 probe(s), 0 exposed, 3 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 4 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
+
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/boundary_operand_unresolved/input/src/lib.rs:4
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: the evidence path is partially complete — see full form for details
+  Changed behavior: end == start
+  Missing discriminator: end == start
+  Related test: tests/q.rs:4 empty_body_equality_case
+  Next step: Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the boundary operand values through the producer operations, so it does not prescribe a …
+  Evidence:
+    - reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body
+    - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+    - 15 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/boundary_operand_unresolved/input --diff fixtures/boundary_operand_unresolved/diff.patch --mode fast probe:src_lib.rs:predicate:28000360
+  ripr context --root fixtures/boundary_operand_unresolved/input --diff fixtures/boundary_operand_unresolved/diff.patch --mode fast --at probe:src_lib.rs:predicate:28000360
+
+Hidden:
+  2 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

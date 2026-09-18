@@ -1,8 +1,16 @@
 use super::evidence::ClassifiedProbeEvidence;
 use crate::analysis::classify::{
-    ProbeContext, body_contains_owner_call, ensure_unknown_stop_reason, exact_error_variant,
-    missing_evidence, recommended_next_step, stop_reasons,
+    BOUNDARY_OPERAND_UNRESOLVED_MARKER, ProbeContext, body_contains_owner_call,
+    ensure_unknown_stop_reason, exact_error_variant, missing_evidence, recommended_next_step,
+    stop_reasons,
 };
+
+/// #1429: repair assignment for a predicate boundary discriminator the
+/// analyzer cannot confirm missing. It must not prescribe a specific
+/// boundary input the suite may already contain; the typed limitation
+/// names what static analysis cannot establish, deferring the
+/// discrimination verdict to real mutation testing.
+pub(in crate::analysis) const BOUNDARY_OPERAND_UNRESOLVED_NEXT_STEP: &str = "Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the boundary operand values through the producer operations, so it does not prescribe a specific boundary input the suite may already cover. Verify via real mutation testing whether the asserted sink observes the missing discriminator value.";
 use crate::analysis::rust_index::TestSummary;
 use crate::domain::*;
 
@@ -33,9 +41,25 @@ pub(in crate::analysis) fn build_finding(
             &context.related_tests,
             &evidence,
         );
+    // #1429: a predicate boundary discriminator whose operand values the
+    // bounded evaluator cannot resolve (e.g. `rfind(?)/len_utf8`
+    // producers) is unconfirmed, not established-missing. Prescribing a
+    // specific boundary input would instruct the user to add a test the
+    // suite may already contain, so the typed static limitation replaces
+    // the prescription. The class stays `WeaklyExposed`: the gap is
+    // still visible, only the impossible repair assignment is withheld.
+    let boundary_operand_unresolved = class == ExposureClass::WeaklyExposed
+        && matches!(context.probe.family, ProbeFamily::Predicate)
+        && evidence
+            .activation
+            .missing_discriminators
+            .iter()
+            .any(|fact| fact.reason.contains(BOUNDARY_OPERAND_UNRESOLVED_MARKER));
     let recommended_next_step =
         if class == ExposureClass::WeaklyExposed && exact_oracle_covers_direct_sink {
             None
+        } else if boundary_operand_unresolved {
+            Some(BOUNDARY_OPERAND_UNRESOLVED_NEXT_STEP.to_string())
         } else {
             recommended_next_step(context.probe, &class, context.owner_assertion_shaped)
         };
@@ -47,6 +71,12 @@ pub(in crate::analysis) fn build_finding(
     if class == ExposureClass::WeaklyExposed && exact_oracle_covers_direct_sink {
         evidence_lines.push(
             "static limitation: exact oracle established; no assertion repair is indicated"
+                .to_string(),
+        );
+    }
+    if boundary_operand_unresolved {
+        evidence_lines.push(
+            "Typed static limitation (rust_value_propagation_unresolved): boundary operand values are not statically resolvable, so the missing discriminator is unconfirmed and no specific boundary input is prescribed"
                 .to_string(),
         );
     }
@@ -83,7 +113,15 @@ pub(in crate::analysis) fn build_finding(
         language: None,
         language_status: None,
         owner_kind: None,
-        static_limit_kind: None,
+        // #1429: carry the #3271 named limitation so CLI, ledger, gate,
+        // LSP, and packet projections consume the same limitation fact.
+        // The language adapter only assigns a limit when none is set,
+        // so this producer-assigned kind is never overwritten.
+        static_limit_kind: if boundary_operand_unresolved {
+            Some(StaticLimitKind::RustValuePropagationUnresolved)
+        } else {
+            None
+        },
         changed_sink: None,
         observed_sink: None,
         oracle_alignment: None,
