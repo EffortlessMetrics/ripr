@@ -222,6 +222,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::VscodePackage(args) => super::vscode_package(&args),
         XtaskCommand::VscodeTest => super::vscode_test(),
         XtaskCommand::VscodeTestE2e => super::vscode_test_e2e(),
+        XtaskCommand::DroidAdmit(args) => super::droid_admit::droid_admit(&args),
         XtaskCommand::Package => {
             super::run("cargo", &["package", "-p", "ripr", "--list"]).map(|_| ())
         }
