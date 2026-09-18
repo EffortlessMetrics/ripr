@@ -52,8 +52,8 @@ crates/ripr/tests/perl_two_binary_harness.rs|use std::process::Command|1|perl-tw
 crates/ripr/tests/python_repair_attempt.rs|Command::new|5|python-repair-driver-binding|#3569/#3570: the end-to-end driver binding and verification case matrices spawn the built ripr binary and real git plumbing against unique fixture repositories to prove prepare/apply binding, staleness, cage escapes, the four durable states, bounded verification execution, and the rollback proof; no shell, network, or user-repository mutation.
 editors/vscode/src/client.ts|child_process|1|lsp/editor|VS Code client invokes ripr context through the resolved server command.
 editors/vscode/src/client.ts|cp.execFile|1|lsp/editor|VS Code client invokes ripr context without shell expansion.
-editors/vscode/src/downloader.ts|child_process|1|lsp/editor|Downloader extracts archives with platform tools.
-editors/vscode/src/downloader.ts|cp.execFile|2|lsp/editor|Downloader invokes tar or PowerShell archive extraction without shell expansion.
+editors/vscode/src/downloader.ts|child_process|1|lsp/editor|Downloader probes the downloaded server executable version.
+editors/vscode/src/downloader.ts|cp.execFile|1|lsp/editor|#1641: downloader probes the downloaded executable version without shell expansion; archive extraction no longer spawns platform tools.
 editors/vscode/src/lspCompatibility.ts|child_process|1|lsp/editor|#1745 / RIPR-SPEC-0129: the shared version/LSP probe owner spawns only the selected ripr candidate through a bounded platform process-tree controller.
 editors/vscode/src/lspCompatibility.ts|cp.spawn|3|lsp/editor|#1745 / RIPR-SPEC-0129: one POSIX process-group spawn, one Windows kill-on-close Job Object wrapper spawn, and the idempotent taskkill fallback own every version/LSP terminal path; no protocol payload reaches a shell.
 editors/vscode/test/runTest.ts|child_process|1|vscode-packaged-integration|#2528: packaged Electron proof creates an isolated external Git fixture and launches the opt-in trust-boundary host through bounded child-process calls; no shell expansion.
