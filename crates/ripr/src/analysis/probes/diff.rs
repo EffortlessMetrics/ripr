@@ -365,11 +365,14 @@ fn test_module_ranges_for(index: &RustIndex, path: &Path) -> Vec<InlineModuleRan
 }
 
 /// Whether `line` (1-based) sits inside a `requires_test` inline-module
-/// range (#3718).
+/// range (#3718). The closing brace belongs to its module (#1428): it is
+/// test-only text, and excluding it mints production-debt seams on added
+/// test modules. The opener stays outside: it may carry the module's own
+/// declaration weight.
 fn line_in_module_ranges(ranges: &[InlineModuleRange], line: usize) -> bool {
     ranges
         .iter()
-        .any(|range| range.requires_test && range.open_line < line && line < range.close_line)
+        .any(|range| range.requires_test && range.open_line < line && line <= range.close_line)
 }
 
 /// Whether `line` (1-based) sits inside an inline `mod` block whose own
@@ -1865,5 +1868,27 @@ mod source_currentness_tests {
              \x20   const VALUE: u32 = 3;\n\
              }\n";
         assert!(line_in_cfg_test_module(spaced, 3));
+    }
+
+    /// #1428: the closing brace of a requires_test inline module is test
+    /// evidence like its contents; a production closing brace stays
+    /// eligible, and the module opener stays outside the scope.
+    #[test]
+    fn cfg_test_module_scope_includes_closing_brace() {
+        let source = "#[cfg(test)]\n\
+             mod tests {\n\
+             \x20   #[test]\n\
+             \x20   fn case() {\n\
+             \x20       assert!(true);\n\
+             \x20   }\n\
+             }\n";
+        assert!(!line_in_cfg_test_module(source, 2));
+        assert!(line_in_cfg_test_module(source, 4));
+        assert!(line_in_cfg_test_module(source, 6));
+        assert!(line_in_cfg_test_module(source, 7));
+        let production = "pub fn live() -> bool {\n\
+             \x20   true\n\
+             }\n";
+        assert!(!line_in_cfg_test_module(production, 3));
     }
 }
