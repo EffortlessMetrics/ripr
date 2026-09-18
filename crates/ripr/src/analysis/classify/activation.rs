@@ -571,9 +571,13 @@ pub(in crate::analysis) const BOUNDARY_OPERAND_UNRESOLVED_MARKER: &str =
 /// #1429: name the earliest unsupported producer edge when a boundary
 /// operand is a computed local whose value the bounded evaluator
 /// cannot resolve on any related-test row (e.g. `rfind(?)/len_utf8`
-/// producers). Returns `None` for directly observed operands
-/// (parameters, literals, or rows with exact values) so those keep
-/// the honest missing listing and its satisfiable repair.
+/// producers). Every row must evaluate to `Unsupported`: a single row
+/// with a concrete outcome (exact, or a demonstrated invalid
+/// boundary) means the operand is not unresolved, so the marker
+/// stays withheld no matter the row order (#1724 review). Returns
+/// `None` for directly
+/// observed operands (parameters, literals, or rows with exact values)
+/// so those keep the honest missing listing and its satisfiable repair.
 fn unresolved_local_operand_edge(
     operand: &str,
     resolved: &Option<ResolvedOperand>,
@@ -587,17 +591,25 @@ fn unresolved_local_operand_edge(
     let ResolvedOperand::Local(_, initializer) = resolved.as_ref()? else {
         return None;
     };
-    let first_row = call_values.first()?;
-    let inputs: super::value_transfer::ExactInputs = first_row
-        .iter()
-        .map(|cell| (cell.parameter.clone(), cell.value.clone()))
-        .collect();
-    match super::value_transfer::evaluate_initializer(initializer, &inputs) {
-        super::value_transfer::EvalOutcome::Unsupported { earliest_edge } => Some(format!(
-            "{BOUNDARY_OPERAND_UNRESOLVED_MARKER}: `{operand}` flows through `{initializer}` (earliest unsupported edge: {earliest_edge})"
-        )),
-        _ => None,
+    let mut earliest_unsupported: Option<String> = None;
+    for row in call_values {
+        let inputs: super::value_transfer::ExactInputs = row
+            .iter()
+            .map(|cell| (cell.parameter.clone(), cell.value.clone()))
+            .collect();
+        match super::value_transfer::evaluate_initializer(initializer, &inputs) {
+            super::value_transfer::EvalOutcome::Unsupported { earliest_edge } => {
+                if earliest_unsupported.is_none() {
+                    earliest_unsupported = Some(earliest_edge);
+                }
+            }
+            _ => return None,
+        }
     }
+    let earliest_edge = earliest_unsupported?;
+    Some(format!(
+        "{BOUNDARY_OPERAND_UNRESOLVED_MARKER}: `{operand}` flows through `{initializer}` (earliest unsupported edge: {earliest_edge})"
+    ))
 }
 
 fn missing_boundary_discriminator(
@@ -1256,21 +1268,25 @@ fn split_top_level_args(text: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut start = 0usize;
     let mut depth = 0i32;
-    let mut in_string = false;
+    let mut literal: Option<char> = None;
     let mut escaped = false;
     for (idx, ch) in text.char_indices() {
-        if in_string {
+        if let Some(quote) = literal {
             if escaped {
                 escaped = false;
             } else if ch == '\\' {
                 escaped = true;
-            } else if ch == '"' {
-                in_string = false;
+            } else if ch == quote {
+                literal = None;
             }
             continue;
         }
         match ch {
-            '"' => in_string = true,
+            // String and char literals alike: brackets inside `'['`
+            // must not affect depth, or the top-level comma is lost
+            // and later arguments are mislabeled (#1724 review).
+            // Same discipline as `split_call_arguments` in value_transfer.
+            '"' | '\'' => literal = Some(ch),
             '(' | '[' | '{' => depth += 1,
             ')' | ']' | '}' => depth -= 1,
             ',' if depth == 0 => {
@@ -1675,6 +1691,47 @@ mod tests {
         assert!(
             reason.contains("rfind"),
             "reason must name the earliest unresolved producer edge: {reason}"
+        );
+    }
+
+    // #1724 review order-inversion control: one row with a concrete
+    // invalid UTF-8 boundary and one row the evaluator cannot resolve.
+    // The marker must stay withheld in both orders — a resolved row
+    // disproves "cannot resolve on any related-test row", and row order
+    // must not decide whether the prescription is withheld.
+    #[test]
+    fn unresolved_marker_withholds_when_rows_disagree() {
+        let resolved = || ResolvedOperand::Local("end".to_string(), "text[0..1]".to_string());
+        let row = |value: &str, line: usize| {
+            vec![ParameterValue {
+                parameter: "text".to_string(),
+                value: value.to_string(),
+                line,
+                text: format!("trim({value})"),
+            }]
+        };
+        let invalid = row("\"é\"", 9);
+        let unsupported = row("dynamic", 5);
+        let orders = vec![
+            vec![unsupported.clone(), invalid.clone()],
+            vec![invalid, unsupported],
+        ];
+        for rows in &orders {
+            assert!(
+                unresolved_local_operand_edge("end", &Some(resolved()), true, true, rows).is_none(),
+                "mixed InvalidBoundary/Unsupported rows must withhold the marker: {rows:?}"
+            );
+        }
+    }
+
+    // #1724 review: the splitter ignored char literals, so brackets
+    // inside `'['`/`']'` suppressed the top-level comma and `close`
+    // was mislabeled as `open` in the boundary fixture goldens.
+    #[test]
+    fn split_top_level_args_respects_char_literals() {
+        assert_eq!(
+            split_top_level_args("\"[]\", '[', ']'"),
+            vec!["\"[]\"".to_string(), "'['".to_string(), "']'".to_string()]
         );
     }
 

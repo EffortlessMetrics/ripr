@@ -24,3 +24,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — boundary_operand_unresolved (3)
+
+Reason:
+RIPR-SPEC-0158: #1724 review corrections to unresolved-operand evidence text (char-literal argument labels, complete try-operator edge)
+
+Command:
+`cargo xtask goldens bless boundary_operand_unresolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

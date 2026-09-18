@@ -47,3 +47,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — binding_value_fail_closed (2)
+
+Reason:
+RIPR-SPEC-0158: #1724 review fixture-input coherence carries the claimed candidate hunk
+
+Command:
+`cargo xtask goldens bless binding_value_fail_closed --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
