@@ -423,6 +423,32 @@
       ]
     },
     {
+      "id": "rust_match_arm_shared_result_oracle",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_shared_result_no_promotion",
+      "vector": "sibling_call_sharing_result_literal_does_not_select_changed_arm",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "rust_match_arm_diagnostic_literal_oracle",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_diagnostic_literal_no_promotion",
+      "vector": "diagnostic_message_literal_does_not_select_changed_arm",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "rust_strong_error_oracle_control",
       "language": "rust",
       "tier": "pure",
