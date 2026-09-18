@@ -477,4 +477,199 @@ mod tests {
         }
         Ok(())
     }
+
+    // #1429: a predicate boundary discriminator the bounded evaluator
+    // cannot resolve (historical `rfind(?)/len_utf8` shape) keeps its
+    // `WeaklyExposed` class but carries the typed static limitation
+    // instead of a prescription to add a possibly-present test.
+    #[test]
+    fn unresolved_boundary_operand_withholds_repair_prescription() -> Result<(), String> {
+        use crate::analysis::classifier::finding::BOUNDARY_OPERAND_UNRESOLVED_NEXT_STEP;
+        use crate::analysis::facts::CallFact;
+        use crate::domain::{ExposureClass, StaticLimitKind};
+
+        let probe = Probe {
+            id: ProbeId("probe:fixture:unresolved-boundary".to_string()),
+            location: SourceLocation::new("src/lib.rs", 4, 1),
+            owner: Some(SymbolId("src/lib.rs::quote_body".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("if end == start {".to_string()),
+            expression: "if end == start {".to_string(),
+            expected_sinks: Vec::new(),
+            required_oracles: Vec::new(),
+        };
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::quote_body".to_string()),
+            name: "quote_body".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 11,
+            body: "pub fn quote_body(rest: &str, open: char, close: char) -> Option<&str> {\n    let start = open.len_utf8();\n    let end = rest.rfind(close)?;\n    if end == start {\n        Some(\"\")\n    } else if end > start {\n        Some(&rest[start..end])\n    } else {\n        None\n    }\n}"
+                .to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            source_role: FunctionSourceRole::Production,
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let test = TestSummary {
+            name: "empty_body_equality_case".to_string(),
+            file: PathBuf::from("tests/q.rs"),
+            start_line: 4,
+            end_line: 6,
+            body: "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));".to_string(),
+            calls: vec![CallFact {
+                name: "quote_body".to_string(),
+                line: 5,
+                text: "quote_body(\"[]\", '[', ']')".to_string(),
+            }],
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let index = RustIndex::default();
+        let context = ProbeContext::new(
+            &probe,
+            Some(&owner),
+            vec![(&test, RelationReason::DirectOwnerCall)],
+            false,
+            &index,
+            true,
+        );
+        let evidence = ClassifiedProbeEvidence::gather(&context, "end == start");
+        let finding = build_finding(&context, ExposureClass::WeaklyExposed, evidence);
+
+        if finding.class != ExposureClass::WeaklyExposed {
+            return Err("the limitation must not change the exposure class".to_string());
+        }
+        if finding.recommended_next_step.as_deref() != Some(BOUNDARY_OPERAND_UNRESOLVED_NEXT_STEP) {
+            return Err(format!(
+                "expected the typed limitation step, got {:?}",
+                finding.recommended_next_step
+            ));
+        }
+        if finding.static_limit_kind != Some(StaticLimitKind::RustValuePropagationUnresolved) {
+            return Err(format!(
+                "expected the named propagation limitation, got {:?}",
+                finding.static_limit_kind
+            ));
+        }
+        if !finding.evidence.iter().any(|line| {
+            line.contains("rust_value_propagation_unresolved")
+                && line.contains("no specific boundary input is prescribed")
+        }) {
+            return Err("the limitation evidence line is missing".to_string());
+        }
+        Ok(())
+    }
+
+    // #1429 paired control: a predicate over direct parameters with a
+    // genuinely missing equality row keeps the satisfiable bounded
+    // repair and carries no static limitation.
+    #[test]
+    fn parameter_boundary_keeps_repair_prescription() -> Result<(), String> {
+        use crate::analysis::facts::CallFact;
+        use crate::domain::ExposureClass;
+
+        let probe = Probe {
+            id: ProbeId("probe:fixture:parameter-boundary".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::discounted_total".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("if amount >= discount_threshold {".to_string()),
+            expression: "if amount >= discount_threshold {".to_string(),
+            expected_sinks: Vec::new(),
+            required_oracles: Vec::new(),
+        };
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::discounted_total".to_string()),
+            name: "discounted_total".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 7,
+            body: "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {\n    if amount >= discount_threshold {\n        amount - 10\n    } else {\n        amount\n    }\n}"
+                .to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            source_role: FunctionSourceRole::Production,
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let above = TestSummary {
+            name: "above_threshold".to_string(),
+            file: PathBuf::from("tests/d.rs"),
+            start_line: 4,
+            end_line: 6,
+            body: "assert_eq!(discounted_total(150, 100), 140);".to_string(),
+            calls: vec![CallFact {
+                name: "discounted_total".to_string(),
+                line: 5,
+                text: "discounted_total(150, 100)".to_string(),
+            }],
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let below = TestSummary {
+            name: "below_threshold".to_string(),
+            file: PathBuf::from("tests/d.rs"),
+            start_line: 8,
+            end_line: 10,
+            body: "assert_eq!(discounted_total(50, 100), 50);".to_string(),
+            calls: vec![CallFact {
+                name: "discounted_total".to_string(),
+                line: 9,
+                text: "discounted_total(50, 100)".to_string(),
+            }],
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let index = RustIndex::default();
+        let context = ProbeContext::new(
+            &probe,
+            Some(&owner),
+            vec![
+                (&above, RelationReason::DirectOwnerCall),
+                (&below, RelationReason::DirectOwnerCall),
+            ],
+            false,
+            &index,
+            true,
+        );
+        let evidence = ClassifiedProbeEvidence::gather(&context, "amount >= discount_threshold");
+        let finding = build_finding(&context, ExposureClass::WeaklyExposed, evidence);
+
+        if finding.recommended_next_step.as_deref()
+            != Some(
+                "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+            )
+        {
+            return Err(format!(
+                "the genuine gap must keep its bounded repair, got {:?}",
+                finding.recommended_next_step
+            ));
+        }
+        if finding.static_limit_kind.is_some() {
+            return Err(format!(
+                "no static limitation applies to observed parameters, got {:?}",
+                finding.static_limit_kind
+            ));
+        }
+        Ok(())
+    }
 }

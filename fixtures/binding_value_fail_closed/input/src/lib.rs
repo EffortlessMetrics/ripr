@@ -20,7 +20,7 @@ pub fn via_shifted_closure(input: &str, delim: char) -> &str {
 
 pub fn via_dynamic_needle(input: &str, delim: char) -> bool {
     let needle = delim.to_string();
-    let end = input.rfind(needle.as_str()).map_or(0, |idx| idx);
+    let end = input.rfind(needle.as_str()).map_or(1, |idx| idx);
     let start = delim.len_utf8();
     end == start
 }

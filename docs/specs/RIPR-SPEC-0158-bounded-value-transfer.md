@@ -42,6 +42,18 @@ exercised boundary from a missing one.
   any row observes the boundary: the missing-discriminator fact
   disappears, `end == start` joins the observed values, and the
   infection stage can reach `yes` at the changed boundary.
+- Unresolvable operands stay visibly limited (#1429): when a boundary
+  operand is a computed local the evaluator reports `Unsupported` for
+  on every related-test row (and no parameter/literal observation
+  covers that side), the missing-discriminator reason keeps the
+  `unknown` listing and appends the earliest unsupported edge
+  (`boundary operand value unresolved: ...`) instead of a plain
+  absence claim. A `weakly_exposed` predicate finding with such a fact
+  keeps its class but carries `rust_value_propagation_unresolved`
+  with a typed limitation step rather than a boundary-test
+  prescription the suite may already satisfy. Directly observed
+  parameter/literal operands keep the honest listing and its
+  satisfiable repair.
 - Char literals in test-call arguments are extracted as exact inputs
   (lifetimes are not).
 
@@ -93,9 +105,17 @@ exercised boundary from a missing one.
 
 `analysis/classify/value_transfer.rs` `tests`;
 `analysis/classify/activation.rs`
-`activation_evidence_resolves_computed_local_boundary_operands`;
-`analysis/language/rust.rs` end-to-end retarget+evaluation tests;
-fixtures `binding_predicate_equality_boundary` (re-blessed flip) and
+`activation_evidence_resolves_computed_local_boundary_operands`,
+`activation_evidence_marks_unresolved_boundary_operand`,
+`activation_evidence_keeps_plain_claim_for_parameter_boundary`;
+`analysis/classifier/evidence.rs`
+`unresolved_boundary_operand_withholds_repair_prescription`,
+`parameter_boundary_keeps_repair_prescription`;
+`analysis/language/rust.rs` end-to-end retarget+evaluation tests
+(including the #1429 limitation-carrying retarget assertion);
+fixtures `binding_predicate_equality_boundary` (re-blessed flip),
+`binding_value_fail_closed` (re-blessed reason enrichment),
+`boundary_operand_unresolved` (historical #1429 shape) and
 the #3295 family fixtures.
 
 ## Non-Goals
@@ -115,7 +135,12 @@ the #3295 family fixtures.
 - `analysis/classify/value_transfer.rs` — the typed evaluator.
 - `analysis/classify/activation.rs` — exact operand resolution and the
   boundary/missing-discriminator wiring; char-literal extraction in
-  `scalar_values`.
+  `scalar_values`; the #1429 unresolved-operand marker naming the
+  earliest unsupported edge.
+- `analysis/classifier/finding.rs` — the #1429 withhold branch: a
+  `weakly_exposed` predicate finding with a marked fact keeps its
+  class and carries `rust_value_propagation_unresolved` with the typed
+  limitation step.
 
 ## Metrics
 

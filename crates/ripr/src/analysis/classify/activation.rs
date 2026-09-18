@@ -559,6 +559,59 @@ fn missing_discriminator_facts(
     missing
 }
 
+/// #1429: stable reason marker for a boundary discriminator whose
+/// operand values the bounded evaluator cannot statically resolve.
+/// The producer appends it to the fact reason; the finding builder
+/// matches on it to withhold an unverifiable repair prescription.
+/// Shared as a constant (like the value prefix in `domain`) so the
+/// two sides cannot drift apart.
+pub(in crate::analysis) const BOUNDARY_OPERAND_UNRESOLVED_MARKER: &str =
+    "boundary operand value unresolved";
+
+/// #1429: name the earliest unsupported producer edge when a boundary
+/// operand is a computed local whose value the bounded evaluator
+/// cannot resolve on any related-test row (e.g. `rfind(?)/len_utf8`
+/// producers). Every row must evaluate to `Unsupported`: a single row
+/// with a concrete outcome (exact, or a demonstrated invalid
+/// boundary) means the operand is not unresolved, so the marker
+/// stays withheld no matter the row order (#1724 review). Returns
+/// `None` for directly
+/// observed operands (parameters, literals, or rows with exact values)
+/// so those keep the honest missing listing and its satisfiable repair.
+fn unresolved_local_operand_edge(
+    operand: &str,
+    resolved: &Option<ResolvedOperand>,
+    exact_empty: bool,
+    observed_empty: bool,
+    call_values: &[Vec<ParameterValue>],
+) -> Option<String> {
+    if !exact_empty || !observed_empty {
+        return None;
+    }
+    let ResolvedOperand::Local(_, initializer) = resolved.as_ref()? else {
+        return None;
+    };
+    let mut earliest_unsupported: Option<String> = None;
+    for row in call_values {
+        let inputs: super::value_transfer::ExactInputs = row
+            .iter()
+            .map(|cell| (cell.parameter.clone(), cell.value.clone()))
+            .collect();
+        match super::value_transfer::evaluate_initializer(initializer, &inputs) {
+            super::value_transfer::EvalOutcome::Unsupported { earliest_edge } => {
+                if earliest_unsupported.is_none() {
+                    earliest_unsupported = Some(earliest_edge);
+                }
+            }
+            _ => return None,
+        }
+    }
+    let earliest_edge = earliest_unsupported?;
+    Some(format!(
+        "{BOUNDARY_OPERAND_UNRESOLVED_MARKER}: `{operand}` flows through `{initializer}` (earliest unsupported edge: {earliest_edge})"
+    ))
+}
+
 fn missing_boundary_discriminator(
     probe: &Probe,
     owner_fn: Option<&FunctionSummary>,
@@ -677,7 +730,28 @@ fn missing_boundary_discriminator(
         .as_deref()
         .and_then(|parameter| parameter_value_set(&call_values, parameter));
     let right_literal = literal_operand_value(&right);
-    let reason = if let Some(right_values) = right_parameter_values {
+    // #1429: an `unknown` listing for a computed local the evaluator
+    // cannot resolve records analyzer inability, not test absence.
+    let mut unresolved_notes = Vec::new();
+    if let Some(note) = unresolved_local_operand_edge(
+        &left,
+        &left_resolved,
+        exact_rows.iter().all(|(lefts, _)| lefts.is_empty()),
+        left_values.is_empty(),
+        &call_values,
+    ) {
+        unresolved_notes.push(note);
+    }
+    if let Some(note) = unresolved_local_operand_edge(
+        &right,
+        &right_resolved,
+        exact_rows.iter().all(|(_, rights)| rights.is_empty()),
+        right_parameter_values.is_none() && right_literal.is_none(),
+        &call_values,
+    ) {
+        unresolved_notes.push(note);
+    }
+    let mut reason = if let Some(right_values) = right_parameter_values {
         format!(
             "No related test call uses {left} equal to {right}; observed {left} values: {}; observed {right} values: {}",
             list_or_unknown(&left_values),
@@ -694,6 +768,10 @@ fn missing_boundary_discriminator(
             list_or_unknown(&left_values)
         )
     };
+    for note in &unresolved_notes {
+        reason.push_str("; ");
+        reason.push_str(note);
+    }
 
     Some(MissingDiscriminatorFact {
         value: format!("{left} == {right}"),
@@ -1190,21 +1268,25 @@ fn split_top_level_args(text: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut start = 0usize;
     let mut depth = 0i32;
-    let mut in_string = false;
+    let mut literal: Option<char> = None;
     let mut escaped = false;
     for (idx, ch) in text.char_indices() {
-        if in_string {
+        if let Some(quote) = literal {
             if escaped {
                 escaped = false;
             } else if ch == '\\' {
                 escaped = true;
-            } else if ch == '"' {
-                in_string = false;
+            } else if ch == quote {
+                literal = None;
             }
             continue;
         }
         match ch {
-            '"' => in_string = true,
+            // String and char literals alike: brackets inside `'['`
+            // must not affect depth, or the top-level comma is lost
+            // and later arguments are mislabeled (#1724 review).
+            // Same discipline as `split_call_arguments` in value_transfer.
+            '"' | '\'' => literal = Some(ch),
             '(' | '[' | '{' => depth += 1,
             ')' | ']' | '}' => depth -= 1,
             ',' if depth == 0 => {
@@ -1527,6 +1609,224 @@ mod tests {
         assert!(activation.observed_values.iter().any(|fact| {
             fact.context == ValueContext::FunctionArgument && fact.value == "end == start"
         }));
+    }
+
+    // #1429: the historical `rfind(?)/len_utf8` equality shape. The
+    // equality test is present, but the bounded evaluator cannot
+    // resolve the computed locals, so the missing fact must carry the
+    // unresolved-operand marker naming the earliest unsupported edge
+    // instead of a plain absence claim.
+    #[test]
+    fn activation_evidence_marks_unresolved_boundary_operand() {
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::quote_body".to_string()),
+            name: "quote_body".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 11,
+            body: "pub fn quote_body(rest: &str, open: char, close: char) -> Option<&str> {\n    let start = open.len_utf8();\n    let end = rest.rfind(close)?;\n    if end == start {\n        Some(\"\")\n    } else if end > start {\n        Some(&rest[start..end])\n    } else {\n        None\n    }\n}".to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            source_role: FunctionSourceRole::Production,
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let test = TestSummary {
+            name: "empty_body_equality_case".to_string(),
+            file: PathBuf::from("tests/q.rs"),
+            start_line: 4,
+            end_line: 6,
+            body: "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));".to_string(),
+            calls: vec![CallFact {
+                name: "quote_body".to_string(),
+                line: 5,
+                text: "quote_body(\"[]\", '[', ']')".to_string(),
+            }],
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib.rs:predicate:unresolved".to_string()),
+            location: SourceLocation::new("src/lib.rs", 4, 1),
+            owner: Some(SymbolId("src/lib.rs::quote_body".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("if end == start {".to_string()),
+            expression: "if end == start {".to_string(),
+            expected_sinks: Vec::new(),
+            required_oracles: Vec::new(),
+        };
+
+        let activation = activation_evidence(
+            &probe,
+            Some(&owner),
+            &[&test],
+            &[],
+            None,
+            &crate::analysis::rust_index::RustIndex::default(),
+            false,
+        );
+
+        let reason = activation
+            .missing_discriminators
+            .iter()
+            .find(|fact| fact.value == "end == start")
+            .map(|fact| fact.reason.as_str())
+            .unwrap_or("");
+        assert!(
+            !reason.is_empty(),
+            "expected an unconfirmed end == start discriminator, got {:?}",
+            activation.missing_discriminators
+        );
+        assert!(
+            reason.contains(BOUNDARY_OPERAND_UNRESOLVED_MARKER),
+            "reason must carry the unresolved marker: {reason}"
+        );
+        assert!(
+            reason.contains("rfind"),
+            "reason must name the earliest unresolved producer edge: {reason}"
+        );
+    }
+
+    // #1724 review order-inversion control: one row with a concrete
+    // invalid UTF-8 boundary and one row the evaluator cannot resolve.
+    // The marker must stay withheld in both orders — a resolved row
+    // disproves "cannot resolve on any related-test row", and row order
+    // must not decide whether the prescription is withheld.
+    #[test]
+    fn unresolved_marker_withholds_when_rows_disagree() {
+        let resolved = || ResolvedOperand::Local("end".to_string(), "text[0..1]".to_string());
+        let row = |value: &str, line: usize| {
+            vec![ParameterValue {
+                parameter: "text".to_string(),
+                value: value.to_string(),
+                line,
+                text: format!("trim({value})"),
+            }]
+        };
+        let invalid = row("\"é\"", 9);
+        let unsupported = row("dynamic", 5);
+        let orders = vec![
+            vec![unsupported.clone(), invalid.clone()],
+            vec![invalid, unsupported],
+        ];
+        for rows in &orders {
+            assert!(
+                unresolved_local_operand_edge("end", &Some(resolved()), true, true, rows).is_none(),
+                "mixed InvalidBoundary/Unsupported rows must withhold the marker: {rows:?}"
+            );
+        }
+    }
+
+    // #1724 review: the splitter ignored char literals, so brackets
+    // inside `'['`/`']'` suppressed the top-level comma and `close`
+    // was mislabeled as `open` in the boundary fixture goldens.
+    #[test]
+    fn split_top_level_args_respects_char_literals() {
+        assert_eq!(
+            split_top_level_args("\"[]\", '[', ']'"),
+            vec!["\"[]\"".to_string(), "'['".to_string(), "']'".to_string()]
+        );
+    }
+
+    // #1429 paired control: a predicate over direct parameters with a
+    // genuinely missing equality row keeps the plain absence claim
+    // (no unresolved marker) so its bounded repair stays prescribable.
+    #[test]
+    fn activation_evidence_keeps_plain_claim_for_parameter_boundary() {
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::discounted_total".to_string()),
+            name: "discounted_total".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 7,
+            body: "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {\n    if amount >= discount_threshold {\n        amount - 10\n    } else {\n        amount\n    }\n}".to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            source_role: FunctionSourceRole::Production,
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let above = TestSummary {
+            name: "above_threshold".to_string(),
+            file: PathBuf::from("tests/d.rs"),
+            start_line: 4,
+            end_line: 6,
+            body: "assert_eq!(discounted_total(150, 100), 140);".to_string(),
+            calls: vec![CallFact {
+                name: "discounted_total".to_string(),
+                line: 5,
+                text: "discounted_total(150, 100)".to_string(),
+            }],
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let below = TestSummary {
+            name: "below_threshold".to_string(),
+            file: PathBuf::from("tests/d.rs"),
+            start_line: 8,
+            end_line: 10,
+            body: "assert_eq!(discounted_total(50, 100), 50);".to_string(),
+            calls: vec![CallFact {
+                name: "discounted_total".to_string(),
+                line: 9,
+                text: "discounted_total(50, 100)".to_string(),
+            }],
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib.rs:predicate:plain".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::discounted_total".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("if amount >= discount_threshold {".to_string()),
+            expression: "if amount >= discount_threshold {".to_string(),
+            expected_sinks: Vec::new(),
+            required_oracles: Vec::new(),
+        };
+
+        let activation = activation_evidence(
+            &probe,
+            Some(&owner),
+            &[&above, &below],
+            &[],
+            None,
+            &crate::analysis::rust_index::RustIndex::default(),
+            false,
+        );
+
+        let reason = activation
+            .missing_discriminators
+            .iter()
+            .find(|fact| fact.value == "amount == discount_threshold")
+            .map(|fact| fact.reason.as_str())
+            .unwrap_or("");
+        assert!(
+            !reason.is_empty(),
+            "expected a genuinely missing equality discriminator, got {:?}",
+            activation.missing_discriminators
+        );
+        assert!(
+            !reason.contains(BOUNDARY_OPERAND_UNRESOLVED_MARKER),
+            "parameter operands are directly observed; no unresolved marker: {reason}"
+        );
     }
 
     #[test]

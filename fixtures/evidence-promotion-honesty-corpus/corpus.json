@@ -462,6 +462,20 @@
       ]
     },
     {
+      "id": "rust_boundary_operand_unresolved_limitation",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/boundary_operand_unresolved",
+      "vector": "computed_local_boundary_operand_withholds_impossible_prescription",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_not_promote" },
+        { "type": "expected_finding_count", "count": 3 },
+        { "type": "maximum_class", "class": "weakly_exposed" },
+        { "type": "must_emit_limitation", "expected_limit_kind": "rust_value_propagation_unresolved" }
+      ]
+    },
+    {
       "id": "rust_strong_error_oracle_control",
       "language": "rust",
       "tier": "pure",
