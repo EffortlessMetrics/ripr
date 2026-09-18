@@ -10,6 +10,7 @@ import {
 } from './distributionDescriptor';
 import {
   AdmittedServerManifest,
+  admitInitialRequestTarget,
   admitManifestBytes,
   admitRedirectTarget,
   assetUrlForSubject,
@@ -71,6 +72,13 @@ async function downloadServerWithProgress(
   const request = installRequest(context, version, platform, distribution);
   return installManagedServer(request, {
     resolveArchive: async () => {
+      // Descriptor-bound downloads never fetch or parse unadmitted bytes:
+      // branch before any manifest fetch so a replaced manifest cannot even
+      // be retrieved, let alone select its own asset host.
+      if (distribution?.manifestSha256 !== undefined) {
+        return downloadAdmittedAsset(config, distribution, platform, version, output, progress);
+      }
+
       progress.report({ message: 'Fetching release manifest…' });
       const manifest = await fetchManifestForDistribution(
         config.downloadBaseUrl,
@@ -83,13 +91,6 @@ async function downloadServerWithProgress(
       const asset = manifest.assets[platform.target];
       if (!asset) {
         throw new Error(`No ripr server asset is listed for ${platform.target} in manifest ${manifest.version}.`);
-      }
-
-      // Descriptor-bound downloads never trust manifest-selected bytes: the
-      // admitted manifest digest gates every field below, and the asset URL
-      // composes from the accepted placement plus the admitted bare subject.
-      if (distribution?.manifestSha256 !== undefined) {
-        return downloadAdmittedAsset(config, distribution, platform, version, output, progress);
       }
 
       output.appendLine(`Downloading ripr server ${version} for ${platform.target}.`);
@@ -316,8 +317,14 @@ function fetchBuffer(
   redirects = 0,
   redirected = false
 ): Promise<{ body: Buffer; redirected: boolean }> {
+  let first: string;
+  try {
+    first = admitInitialRequestTarget(url, policy);
+  } catch (error) {
+    return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+  }
   return new Promise((resolve, reject) => {
-    const request = https.get(url, (response) => {
+    const request = https.get(first, (response) => {
       const statusCode = response.statusCode ?? 0;
       const location = response.headers.location;
       if (statusCode >= 300 && statusCode < 400 && location) {

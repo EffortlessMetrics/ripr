@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as crypto from 'crypto';
 import {
+  admitInitialRequestTarget,
   admitManifestBytes,
   admitRedirectTarget,
   assetUrlForSubject,
@@ -163,6 +164,22 @@ suite('release redirect and asset URL policy', () => {
     ];
     for (const location of hostile) {
       assert.throws(() => admitRedirectTarget(current, location, policy('github.com')), /redirect/i, location);
+    }
+  });
+
+  test('admits a clean initial request destination before any byte is fetched', () => {
+    const policy = { initialHost: 'github.com', admittedHosts: RELEASE_ASSET_HOSTS };
+    assert.strictEqual(
+      admitInitialRequestTarget('https://github.com/a/m.json', policy),
+      'https://github.com/a/m.json'
+    );
+    for (const hostile of [
+      'http://github.com/a/m.json',
+      'https://user@github.com/a/m.json',
+      'https://127.0.0.1/a/m.json',
+      'https://[::1]/a/m.json'
+    ]) {
+      assert.throws(() => admitInitialRequestTarget(hostile, policy), /redirect|URL|host|HTTPS/i, hostile);
     }
   });
 

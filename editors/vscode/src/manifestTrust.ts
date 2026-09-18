@@ -228,6 +228,16 @@ export function admitRedirectTarget(currentUrl: string, location: string, policy
   return next.toString();
 }
 
+/**
+ * Admit an initial request destination before any byte is fetched. Redirect
+ * checks cannot protect hop zero, so the first URL passes the same scheme,
+ * credential, visibility, and port rules; the allowlist leg always holds
+ * because the policy host derives from this same URL.
+ */
+export function admitInitialRequestTarget(url: string, policy: RedirectPolicy): string {
+  return admitRedirectTarget(url, url, policy);
+}
+
 function isPrivateHost(host: string): boolean {
   if (/^127\./.test(host) || host === '0.0.0.0') {
     return true;

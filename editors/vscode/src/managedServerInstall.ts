@@ -227,9 +227,12 @@ async function stageAndPromote(
         `Server manifest version ${resolved.manifestVersion} does not match requested version ${request.version}.`
       );
     }
-    if (request.expectedManifestSha256 !== undefined && resolved.admittedManifestSha256 === undefined) {
+    if (
+      request.expectedManifestSha256 !== undefined &&
+      resolved.admittedManifestSha256 !== request.expectedManifestSha256
+    ) {
       throw new Error(
-        'Distribution-bound install requires an admitted manifest digest, but the archive was resolved without admission.'
+        'Distribution-bound install requires the archive admitted under the expected manifest digest; refusing before extraction.'
       );
     }
     if (!isSha256(resolved.expectedSha256)) {

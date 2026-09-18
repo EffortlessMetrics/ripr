@@ -70,8 +70,25 @@ suite('Managed Server Installation', () => {
     const request: ManagedServerInstallRequest = { ...installRequest(root, '1.2.3'), expectedManifestSha256: 'd'.repeat(64) };
     await assert.rejects(
       installManagedServer(request, operations('binary-v1', '1.2.3')),
-      /admitted manifest digest/
+      /expected manifest digest/
     );
+  });
+
+  test('bound installs reject a mismatched admission stamp before extraction', async () => {
+    let extracted = false;
+    const request: ManagedServerInstallRequest = { ...installRequest(root, '1.2.3'), expectedManifestSha256: 'd'.repeat(64) };
+    const mismatched = operations('binary-v1', '1.2.3', async () => {
+      extracted = true;
+    });
+    const operationsWithWrongStamp: ManagedServerInstallOperations = {
+      ...mismatched,
+      resolveArchive: async () => ({ ...(await mismatched.resolveArchive()), admittedManifestSha256: 'e'.repeat(64) })
+    };
+    await assert.rejects(
+      installManagedServer(request, operationsWithWrongStamp),
+      /expected manifest digest/
+    );
+    assert.strictEqual(extracted, false);
   });
 
   test('concurrent installs stage once and converge on one completed installation', async () => {
