@@ -1,0 +1,94 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/match_arm_shared_result_no_promotion/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:dace8204c9d77375c6db1aa746969700b76344b8940a63b431da667d8ea79455","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:match_arm:e063ad32",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:match_arm:e063ad32",
+        "family": "match_arm",
+        "delta": "control",
+        "file": "fixtures/match_arm_shared_result_no_promotion/input/src/lib.rs",
+        "line": 3,
+        "expression": "\"sensor\" =>"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach route: sibling_proof_arm_is_observed"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence match arm result: \"sensor\" =>"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach route: sibling_proof_arm_is_observed", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence match arm result: \"sensor\" =>", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches match arm result: \"sensor\" => (line 3)", "related test tests/route.rs:7 sibling_proof_arm_is_observed uses strong exact value oracle: assert_eq!(route(\"focused-test\"), \"sensor-v2\");", "observed assertion argument value \"sensor-v2\" at line 8", "observed function argument value kind = \"focused-test\" at line 8"],
+      "flow_sinks": [
+        {"kind":"match_arm","text":"\"sensor\" =>","line":3}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence match arm result: \"sensor\" =>", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach route: sibling_proof_arm_is_observed"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "8": "assert_eq!(route(\"focused-test\"), \"sensor-v2\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 8,
+            "value": "\"sensor-v2\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 8,
+            "value": "kind = \"focused-test\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 8,
+          "value": "\"sensor-v2\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 8,
+          "value": "kind = \"focused-test\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "sibling_proof_arm_is_observed",
+          "file": "tests/route.rs",
+          "line": 7,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(route(\"focused-test\"), \"sensor-v2\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

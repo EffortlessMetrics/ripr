@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 1111111..2222222 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,7 +1,7 @@
+ pub fn route(kind: &str) -> &'static str {
+     match kind {
+-        "sensor" => "sensor-v1",
++        "sensor" => "sensor-v2",
+         "focused-test" => "proof",
+         _ => "other",
+     }
+ }
