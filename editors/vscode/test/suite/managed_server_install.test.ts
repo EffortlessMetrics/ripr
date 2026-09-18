@@ -39,6 +39,41 @@ suite('Managed Server Installation', () => {
     assert.strictEqual(await readManagedServerInstallation(request), undefined);
   });
 
+  test('bound requests stamp and reuse the admitted manifest digest', async () => {
+    const digest = 'a'.repeat(64);
+    const request: ManagedServerInstallRequest = { ...installRequest(root, '1.2.3'), expectedManifestSha256: digest };
+    const admitted = operations('binary-v1', '1.2.3');
+    const withStamp: ManagedServerInstallOperations = {
+      ...admitted,
+      resolveArchive: async () => ({ ...(await admitted.resolveArchive()), admittedManifestSha256: digest })
+    };
+    const installed = await installManagedServer(request, withStamp);
+    assert.strictEqual(installed.receipt.manifestSha256, digest);
+
+    const cached = await readManagedServerInstallation(request);
+    assert.notStrictEqual(cached, undefined);
+    assert.strictEqual(cached?.receipt.manifestSha256, digest);
+  });
+
+  test('bound requests reject unstamped and mismatched receipts', async () => {
+    const digest = 'b'.repeat(64);
+    const request: ManagedServerInstallRequest = { ...installRequest(root, '1.2.3'), expectedManifestSha256: digest };
+
+    await installManagedServer(installRequest(root, '1.2.3'), operations('binary-v1', '1.2.3'));
+    assert.strictEqual(await readManagedServerInstallation(request), undefined);
+
+    const other: ManagedServerInstallRequest = { ...installRequest(root, '1.2.3'), expectedManifestSha256: 'c'.repeat(64) };
+    assert.strictEqual(await readManagedServerInstallation(other), undefined);
+  });
+
+  test('bound installs fail closed without an admission stamp', async () => {
+    const request: ManagedServerInstallRequest = { ...installRequest(root, '1.2.3'), expectedManifestSha256: 'd'.repeat(64) };
+    await assert.rejects(
+      installManagedServer(request, operations('binary-v1', '1.2.3')),
+      /admitted manifest digest/
+    );
+  });
+
   test('concurrent installs stage once and converge on one completed installation', async () => {
     const request = installRequest(root, '2.0.0');
     let extractCalls = 0;

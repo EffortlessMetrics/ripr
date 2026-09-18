@@ -9,10 +9,21 @@ import {
   ResolvedDistributionRequest
 } from './distributionDescriptor';
 import {
+  AdmittedServerManifest,
+  admitManifestBytes,
+  admitRedirectTarget,
+  assetUrlForSubject,
+  MAX_LEGACY_ARCHIVE_BYTES,
+  MAX_MANIFEST_BYTES,
+  RedirectPolicy,
+  RELEASE_ASSET_HOSTS
+} from './manifestTrust';
+import {
   installManagedServer,
   ManagedServerInstallation,
   ManagedServerInstallRequest,
   readManagedServerInstallation,
+  ResolvedArchive,
   validateManagedServerVersion
 } from './managedServerInstall';
 import { RiprPlatform } from './platform';
@@ -74,9 +85,16 @@ async function downloadServerWithProgress(
         throw new Error(`No ripr server asset is listed for ${platform.target} in manifest ${manifest.version}.`);
       }
 
+      // Descriptor-bound downloads never trust manifest-selected bytes: the
+      // admitted manifest digest gates every field below, and the asset URL
+      // composes from the accepted placement plus the admitted bare subject.
+      if (distribution?.manifestSha256 !== undefined) {
+        return downloadAdmittedAsset(config, distribution, platform, version, output, progress);
+      }
+
       output.appendLine(`Downloading ripr server ${version} for ${platform.target}.`);
       progress.report({ message: `Downloading ${platform.executableName}…` });
-      const { body: bytes } = await fetchBuffer(asset.url);
+      const { body: bytes } = await fetchBuffer(asset.url, MAX_LEGACY_ARCHIVE_BYTES, fetchPolicyFor(asset.url));
       progress.report({ message: 'Verifying checksum…' });
       return { manifestVersion: manifest.version, expectedSha256: asset.sha256, bytes };
     },
@@ -109,8 +127,74 @@ function installRequest(
     platformTarget: platform.target,
     executableName: platform.executableName,
     archiveExtension: platform.archiveExtension,
-    ...(distribution !== undefined ? { distributionIdentity: distribution.descriptorIdentity } : {})
+    ...(distribution !== undefined ? { distributionIdentity: distribution.descriptorIdentity } : {}),
+    ...(distribution?.manifestSha256 !== undefined ? { expectedManifestSha256: distribution.manifestSha256 } : {})
   };
+}
+
+/**
+ * Descriptor-bound asset download. The manifest digest gates the raw bytes
+ * before any field is read; the asset URL composes from the accepted
+ * placement plus the admitted bare subject, so a replaced manifest cannot
+ * select its own host. The returned admission stamp flows into the install
+ * receipt, binding the cache entry to the exact descriptor/manifest tuple.
+ */
+async function downloadAdmittedAsset(
+  config: RiprConfig,
+  distribution: ResolvedDistributionRequest,
+  platform: RiprPlatform,
+  version: string,
+  output: vscode.OutputChannel,
+  progress: vscode.Progress<{ message?: string; increment?: number }>
+): Promise<ResolvedArchive> {
+  const expectedDigest = distribution.manifestSha256 as string;
+  const [preferred, ...fallbacks] = manifestCandidatesForDistribution(config.downloadBaseUrl, distribution, version);
+  let admitted: { manifest: AdmittedServerManifest; manifestUrl: string };
+  try {
+    admitted = {
+      manifest: await fetchAdmittedManifest(preferred, expectedDigest),
+      manifestUrl: preferred
+    };
+  } catch (error) {
+    const fallback = fallbacks[0];
+    if (fallback === undefined || !isDirectManifestNotFound(error)) {
+      throw error;
+    }
+    throw new Error(
+      `Preferred placement manifest is unpublished and the fallback carries no admitted digest; refusing unadmitted fallback ${fallback}.`
+    );
+  }
+  if (admitted.manifest.productVersion !== version) {
+    throw new Error(
+      `Admitted manifest product version ${admitted.manifest.productVersion} does not match requested version ${version}.`
+    );
+  }
+  const asset = admitted.manifest.assets[platform.target];
+  if (!asset) {
+    throw new Error(`No ripr server asset is listed for ${platform.target} in the admitted manifest.`);
+  }
+  const placementBase = admitted.manifestUrl.slice(0, admitted.manifestUrl.lastIndexOf('/'));
+  const assetUrl = assetUrlForSubject(placementBase, asset.subject);
+  output.appendLine(`Downloading ripr server ${version} for ${platform.target} from admitted placement.`);
+  progress.report({ message: `Downloading ${platform.executableName}…` });
+  const { body: bytes } = await fetchBuffer(assetUrl, asset.archiveSize, fetchPolicyFor(assetUrl));
+  progress.report({ message: 'Verifying checksum…' });
+  return { manifestVersion: admitted.manifest.productVersion, expectedSha256: asset.sha256, bytes, admittedManifestSha256: expectedDigest };
+}
+
+export async function fetchAdmittedManifest(url: string, expectedDigest: string): Promise<AdmittedServerManifest> {
+  const { body } = await fetchBuffer(url, MAX_MANIFEST_BYTES, fetchPolicyFor(url));
+  return admitManifestBytes(body, expectedDigest);
+}
+
+export function fetchPolicyFor(url: string): RedirectPolicy {
+  let host = '';
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    throw new Error(`Release URL ${JSON.stringify(url)} is not a valid URL.`);
+  }
+  return { initialHost: host, admittedHosts: RELEASE_ASSET_HOSTS };
 }
 
 /**
@@ -204,7 +288,7 @@ function manifestUrl(baseUrl: string, version: string): string {
 }
 
 async function fetchManifest(url: string): Promise<ServerManifest> {
-  const { body } = await fetchBuffer(url);
+  const { body } = await fetchBuffer(url, MAX_MANIFEST_BYTES, fetchPolicyFor(url));
   const parsed: unknown = JSON.parse(body.toString('utf8'));
   if (!parsed || typeof parsed !== 'object') {
     throw new Error('Server manifest is not an object.');
@@ -225,7 +309,13 @@ async function fetchManifest(url: string): Promise<ServerManifest> {
   return parsed as ServerManifest;
 }
 
-function fetchBuffer(url: string, redirects = 0, redirected = false): Promise<{ body: Buffer; redirected: boolean }> {
+function fetchBuffer(
+  url: string,
+  maxBytes: number,
+  policy: RedirectPolicy,
+  redirects = 0,
+  redirected = false
+): Promise<{ body: Buffer; redirected: boolean }> {
   return new Promise((resolve, reject) => {
     const request = https.get(url, (response) => {
       const statusCode = response.statusCode ?? 0;
@@ -236,8 +326,14 @@ function fetchBuffer(url: string, redirects = 0, redirected = false): Promise<{ 
           reject(new ManifestFetchError(`Too many redirects while fetching ${url}.`, { statusCode, redirected: true }));
           return;
         }
-        const next = new URL(location, url).toString();
-        fetchBuffer(next, redirects + 1, true).then(resolve, reject);
+        let next: string;
+        try {
+          next = admitRedirectTarget(url, location, policy);
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
+        fetchBuffer(next, maxBytes, policy, redirects + 1, true).then(resolve, reject);
         return;
       }
       if (statusCode < 200 || statusCode >= 300) {
@@ -247,8 +343,22 @@ function fetchBuffer(url: string, redirects = 0, redirected = false): Promise<{ 
       }
 
       const chunks: Buffer[] = [];
-      response.on('data', (chunk: Buffer) => chunks.push(chunk));
-      response.on('end', () => resolve({ body: Buffer.concat(chunks), redirected }));
+      let received = 0;
+      let capped = false;
+      response.on('data', (chunk: Buffer) => {
+        received += chunk.length;
+        if (received > maxBytes) {
+          capped = true;
+          request.destroy(new ManifestFetchError(`Response for ${url} exceeds the ${maxBytes}-byte bound.`, { statusCode, redirected }));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on('end', () => {
+        if (!capped) {
+          resolve({ body: Buffer.concat(chunks), redirected });
+        }
+      });
     });
     request.on('error', reject);
     request.setTimeout(30_000, () => {

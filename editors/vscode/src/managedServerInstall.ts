@@ -19,6 +19,13 @@ export interface InstallReceiptV1 {
   readonly executableSha256: string;
   readonly binaryVersion: string;
   /**
+   * Descriptor-admitted manifest digest bound at install time. Absent on
+   * legacy and undescribed-flow receipts; a distribution-bound request
+   * carrying an expected digest never accepts those, so a cache entry
+   * admitted under a different manifest cannot be reused.
+   */
+  readonly manifestSha256?: string;
+  /**
    * Placement-neutral identity of the distribution descriptor that produced
    * this install. Absent on legacy receipts; a distribution-bound request
    * never accepts those, so a binary verified against a different producer
@@ -45,12 +52,25 @@ export interface ManagedServerInstallRequest {
    * receipts without the stamp are reinstalled rather than reused.
    */
   readonly distributionIdentity?: string;
+  /**
+   * Descriptor-admitted manifest digest the install must be bound to. When
+   * present, only receipts stamped with the same digest are cache-eligible;
+   * a changed manifest under an otherwise identical version/ref rejects as
+   * contradiction instead of overwriting or reusing the live entry.
+   */
+  readonly expectedManifestSha256?: string;
 }
 
 export interface ResolvedArchive {
   readonly manifestVersion: string;
   readonly expectedSha256: string;
   readonly bytes: Buffer;
+  /**
+   * Descriptor-admitted manifest digest the archive was selected under.
+   * Present only when the downloader admitted the manifest bytes against
+   * the resolved distribution; the staged receipt binds to it below.
+   */
+  readonly admittedManifestSha256?: string;
 }
 
 export interface ManagedServerInstallOperations {
@@ -207,6 +227,11 @@ async function stageAndPromote(
         `Server manifest version ${resolved.manifestVersion} does not match requested version ${request.version}.`
       );
     }
+    if (request.expectedManifestSha256 !== undefined && resolved.admittedManifestSha256 === undefined) {
+      throw new Error(
+        'Distribution-bound install requires an admitted manifest digest, but the archive was resolved without admission.'
+      );
+    }
     if (!isSha256(resolved.expectedSha256)) {
       throw new Error('Server manifest asset digest is not a SHA-256 value.');
     }
@@ -247,6 +272,9 @@ async function stageAndPromote(
       binaryVersion,
       ...(request.distributionIdentity !== undefined
         ? { distributionIdentity: request.distributionIdentity }
+        : {}),
+      ...(resolved.admittedManifestSha256 !== undefined
+        ? { manifestSha256: resolved.admittedManifestSha256 }
         : {})
     };
     await fs.promises.rm(archivePath, { force: true });
@@ -317,7 +345,8 @@ function isMatchingReceipt(value: unknown, request: ManagedServerInstallRequest)
     && isSha256(receipt.archiveSha256)
     && typeof receipt.executableSha256 === 'string'
     && isSha256(receipt.executableSha256)
-    && (request.distributionIdentity === undefined || receipt.distributionIdentity === request.distributionIdentity);
+    && (request.distributionIdentity === undefined || receipt.distributionIdentity === request.distributionIdentity)
+    && (request.expectedManifestSha256 === undefined || receipt.manifestSha256 === request.expectedManifestSha256);
 }
 
 function isSha256(value: string): boolean {
