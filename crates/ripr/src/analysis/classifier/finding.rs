@@ -117,11 +117,8 @@ pub(in crate::analysis) fn build_finding(
         // LSP, and packet projections consume the same limitation fact.
         // The language adapter only assigns a limit when none is set,
         // so this producer-assigned kind is never overwritten.
-        static_limit_kind: if boundary_operand_unresolved {
-            Some(StaticLimitKind::RustValuePropagationUnresolved)
-        } else {
-            None
-        },
+        static_limit_kind: boundary_operand_unresolved
+            .then_some(StaticLimitKind::RustValuePropagationUnresolved),
         changed_sink: None,
         observed_sink: None,
         oracle_alignment: None,
