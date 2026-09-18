@@ -2007,12 +2007,12 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Runs VS Code end-to-end tests.",
         ),
         command_entry(
-            "droid-admit --event-name NAME --event PATH --repo OWNER/NAME --fresh-head SHA --fresh-base SHA --receipt PATH",
+            "droid-admit --mode auto-review|dispatch --event-name NAME --repo OWNER/NAME --receipt PATH [--event PATH --fresh-head SHA --fresh-base SHA | --facts PATH]",
             "non_mutating_check",
             "droid admission receipt",
             false,
             false,
-            "Admits a pull_request_target subject for trusted Droid analysis and writes the admission receipt.",
+            "Admits a pull_request_target or dispatched Droid subject for trusted analysis and writes the admission receipt.",
         ),
         command_entry(
             "package",
