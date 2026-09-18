@@ -506,3 +506,37 @@ fn raw_diagnostic_call_never_supplies_the_compared_input() -> Result<(), String>
         ExposureClass::WeaklyExposed,
     )
 }
+
+#[test]
+fn quoted_pattern_comments_do_not_select_the_changed_arm() -> Result<(), String> {
+    for pattern in [
+        "\"sensor\" /* \"focused-test\" */",
+        "\"sensor\" /* outer /* r#\"focused-test\"# */ tail */",
+    ] {
+        check_literal_syntax_case(
+            pattern,
+            "route(\"focused-test\")",
+            "\"proof\"",
+            "",
+            ExposureClass::WeaklyExposed,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn quoted_pattern_comments_preserve_real_observation() -> Result<(), String> {
+    for pattern in [
+        "\"sensor\" /* \"focused-test\" */",
+        "\"sensor\" /* outer /* r#\"focused-test\"# */ tail */",
+    ] {
+        check_literal_syntax_case(
+            pattern,
+            "route(\"sensor\")",
+            "\"sensor-v2\"",
+            "",
+            ExposureClass::Exposed,
+        )?;
+    }
+    Ok(())
+}

@@ -606,24 +606,9 @@ fn lex_opaque_ranges(text: &str) -> Vec<(usize, usize)> {
             continue;
         }
         if rest.starts_with("/*") {
-            let mut depth = 0usize;
-            let mut cursor = index;
-            while cursor < bytes.len() {
-                if rest_at(text, cursor).starts_with("/*") {
-                    depth += 1;
-                    cursor += 2;
-                } else if rest_at(text, cursor).starts_with("*/") {
-                    depth -= 1;
-                    cursor += 2;
-                    if depth == 0 {
-                        break;
-                    }
-                } else {
-                    cursor += 1;
-                }
-            }
-            opaque.push((index, cursor));
-            index = cursor;
+            let end = block_comment_end(text, index);
+            opaque.push((index, end));
+            index = end;
             continue;
         }
         if rest.starts_with('\'')
@@ -638,17 +623,52 @@ fn lex_opaque_ranges(text: &str) -> Vec<(usize, usize)> {
     opaque
 }
 
+/// End byte index of the nesting-aware block comment opening at `start`.
+/// An unterminated comment extends to the end of the text so structural
+/// scans fail closed instead of reading past it.
+fn block_comment_end(text: &str, start: usize) -> usize {
+    let bytes = text.as_bytes();
+    let mut depth = 0usize;
+    let mut cursor = start;
+    while cursor < bytes.len() {
+        if rest_at(text, cursor).starts_with("/*") {
+            depth += 1;
+            cursor += 2;
+        } else if rest_at(text, cursor).starts_with("*/") {
+            depth -= 1;
+            cursor += 2;
+            if depth == 0 {
+                break;
+            }
+        } else {
+            cursor += 1;
+        }
+    }
+    cursor
+}
+
 /// String literals as `(span_start, span_end, decoded_value)`. Cooked
 /// literals decode standard escapes; raw literals contribute verbatim
-/// content. An undecodable literal keeps its span with no value, and an
-/// unterminated literal extends to the end of the text with no value, so
-/// downstream structural scans fail closed instead of reading past it.
+/// content. Line and (nesting-aware) block comments are skipped, so quoted
+/// comment text never contributes a value while genuine strings containing
+/// comment delimiters still lex as strings. An undecodable literal keeps
+/// its span with no value, and an unterminated literal extends to the end
+/// of the text with no value, so downstream structural scans fail closed
+/// instead of reading past it.
 fn lex_strings(text: &str) -> Vec<(usize, usize, Option<String>)> {
     let mut literals = Vec::new();
     let mut index = 0usize;
     let bytes = text.as_bytes();
     while index < bytes.len() {
         let rest = rest_at(text, index);
+        if rest.starts_with("//") {
+            index = rest.find('\n').map_or(text.len(), |offset| index + offset);
+            continue;
+        }
+        if rest.starts_with("/*") {
+            index = block_comment_end(text, index);
+            continue;
+        }
         if let Some((end, value)) = raw_string_at(text, index) {
             literals.push((index, end, Some(value)));
             index = end;
@@ -2239,6 +2259,47 @@ mod tests {
             "/* if */ \"sensor\" => \"sensor-v2\""
         ));
         assert!(!match_arm_pattern_has_guard("Mode::If => 1"));
+    }
+
+    #[test]
+    fn match_arm_pattern_literals_ignore_comment_text() {
+        assert_eq!(
+            match_arm_pattern_literals("\"sensor\" /* \"focused-test\" */ => \"sensor-v2\""),
+            vec!["sensor".to_string()]
+        );
+        assert_eq!(
+            match_arm_pattern_literals(
+                "\"sensor\" /* outer /* r#\"focused-test\"# */ tail */ => \"sensor-v2\""
+            ),
+            vec!["sensor".to_string()]
+        );
+        assert_eq!(
+            match_arm_pattern_literals("\"sensor\" // \"focused-test\"\n => \"sensor-v2\""),
+            vec!["sensor".to_string()]
+        );
+        assert_eq!(
+            match_arm_pattern_literals("/* \"focused-test\" */ \"sensor\" => \"sensor-v2\""),
+            vec!["sensor".to_string()]
+        );
+        assert_eq!(
+            match_arm_pattern_literals("// \"focused-test\"\n\"sensor\" => \"sensor-v2\""),
+            vec!["sensor".to_string()]
+        );
+        assert_eq!(
+            match_arm_pattern_literals("\"/*\" => \"comment-like\""),
+            vec!["/*".to_string()]
+        );
+        assert_eq!(
+            match_arm_pattern_literals("r#\"//\"# => \"comment-like\""),
+            vec!["//".to_string()]
+        );
+        // An unterminated comment swallows the separator, so no arm
+        // identity is established at all (fail closed, not a partial
+        // literal).
+        assert_eq!(
+            match_arm_pattern_literals("\"sensor\" /* unterminated => \"sensor-v2\""),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
