@@ -311,6 +311,12 @@ pub(crate) fn check_droid_review_config() -> Result<(), String> {
             ));
         }
 
+        if !has_active_line(&lines, "ref: ${{ github.event.pull_request.base.sha }}") {
+            violations.push(format!(
+                "{droid_review_path}: checkouts must evaluate the base-sha expression, not a literal ref"
+            ));
+        }
+
         if !has_active_line(&lines, "automatic_review: true") {
             violations.push(format!(
                 "{droid_review_path}: automatic_review must be true"
@@ -352,7 +358,72 @@ pub(crate) fn check_droid_review_config() -> Result<(), String> {
             ));
         }
 
-        check_droid_common(&mut violations, droid_path, &text, true, true);
+        // #1654 PR 2: only base-defined triggers may reach the privileged
+        // jobs. Review, review-comment, PR-body, and assignment triggers are
+        // explicitly withheld until App credentials exist. Trigger assertions
+        // anchor to the pre-jobs block with exact-line matches so permission
+        // lines cannot satisfy them.
+        let jobs_index = lines.iter().position(|line| line == "jobs:");
+        let triggers = jobs_index
+            .map(|index| &lines[..index])
+            .unwrap_or(lines.as_slice());
+        let has_trigger = |name: &str| triggers.iter().any(|line| line == name);
+        if !has_trigger("issue_comment:") || !has_trigger("issues:") {
+            violations.push(format!(
+                "{droid_path}: triggers must be issue_comment and issues (base-defined)"
+            ));
+        }
+        for withheld in [
+            "pull_request_review",
+            "pull_request_review_comment",
+            "pull_request:",
+            "assigned",
+        ] {
+            if triggers.iter().any(|line| line.contains(withheld)) {
+                violations.push(format!(
+                    "{droid_path}: trigger {withheld} is withheld until App credentials exist"
+                ));
+            }
+        }
+        if !has_active_line(&lines, "ref: ${{ github.event.repository.default_branch }}") {
+            violations.push(format!(
+                "{droid_path}: checkouts must evaluate the default-branch expression, not a literal ref"
+            ));
+        }
+
+        if !has_active_line(&lines, "droid-admit")
+            || !has_active_line(&lines, "--mode dispatch")
+            || !has_active_line(&lines, "--facts")
+        {
+            violations.push(format!(
+                "{droid_path}: subjects must admit through droid-admit --mode dispatch over refetched facts"
+            ));
+        }
+
+        if !has_active_line(&lines, "expected_head_sha:") {
+            violations.push(format!(
+                "{droid_path}: PR analysis must bind expected_head_sha from admission"
+            ));
+        }
+
+        if !has_active_line(&lines, "MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}") {
+            violations.push(format!(
+                "{droid_path}: MINIMAX_API_KEY must be job-level env"
+            ));
+        }
+
+        // Per-mode write scoping: each write permission lives in exactly one
+        // job, never combined.
+        for scoped in ["pull-requests: write", "issues: write"] {
+            let count = lines.iter().filter(|line| line.contains(scoped)).count();
+            if count != 1 {
+                violations.push(format!(
+                    "{droid_path}: {scoped} must appear in exactly one per-mode job, found {count}"
+                ));
+            }
+        }
+
+        check_droid_common(&mut violations, droid_path, &text, false, true);
     } else {
         violations.push(format!("{droid_path}: file not found or unreadable"));
     }

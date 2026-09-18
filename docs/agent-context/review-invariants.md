@@ -126,6 +126,8 @@ For Droid workflows:
 - `MINIMAX_API_KEY` must be job-level env referencing `${{ secrets.MINIMAX_API_KEY }}`.
 - Action refs must be immutable 40-character commit SHAs.
 - The manual workflow (`droid.yml`) must have trusted actor guards (`OWNER`, `MEMBER`, `COLLABORATOR`).
+- The tag workflow (`droid.yml`) admits only `issue_comment` and `issues/opened` triggers (base-defined); review, review-comment, PR-body, and assignment triggers are explicitly withheld until App credentials exist. Subjects admit only through `cargo xtask droid-admit --mode dispatch` over API-refetched facts, with per-mode write scoping (`pull-requests: write` and `issues: write` in separate jobs) and `expected_head_sha` binding on the PR path.
+- Checkout `ref:` values in Droid workflows must be `${{ }}` expressions evaluating to base SHAs or the default branch; literal refs check out attacker-named branches.
 - The scheduled security scan must keep `workflow_dispatch`, the weekly Monday
   08:00 UTC schedule, repo-scoped concurrency, `security_scan_schedule: true`,
   `security_scan_days: 7`, `security_severity_threshold: medium`,

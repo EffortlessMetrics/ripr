@@ -10,7 +10,7 @@
 
 .github/workflows/droid-review.yml|curl|1|ci/droid|Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh.
 .github/workflows/droid-security-scan.yml|curl|1|ci/droid|Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh.
-.github/workflows/droid.yml|curl|1|ci/droid|Droid action bootstrap downloads a pinned GitHub CLI archive when the self-hosted runner does not provide gh.
+.github/workflows/droid.yml|curl|2|ci/droid|#1654 PR 2: admit and analyze-pr jobs each bootstrap the pinned GitHub CLI archive independently because tool PATH does not cross jobs or runners.
 .github/workflows/publish-extension.yml|curl|1|release/ci|Release workflow polls GitHub Releases for the server manifest before publishing extension packages.
 .github/workflows/server-archive-qualification.yml|curl|1|ci/release-qualification|Issue #3155 exact public ruleset detail read for active tag update/deletion protection; bounded retries, rate-limit and response-digest diagnostics, no token, artifact-only qualification, reviewed 2026-08-11.
 .github/workflows/source-promotion-contract.yml|curl|1|release/source-promotion|Fixed public GitHub ruleset 20661783 provenance for source-promotion admission; evidence is the workflow jq predicate and review is required on contract changes.

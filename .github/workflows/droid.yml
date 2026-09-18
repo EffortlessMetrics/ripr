@@ -1,19 +1,27 @@
 name: Droid Tag
 
+# #1654 PR 2: privileged tag handling runs only from default-branch bytes.
+# issue_comment and issues/opened triggers execute the base definition.
+# Review, review-comment, PR-body, and assignment triggers are explicitly
+# withheld: no trusted trigger exists for them without App credentials, and
+# a candidate-defined workflow must never reach model secrets or write
+# authority. Assigned-issue summoning is withheld in particular because the
+# issue creation time cannot bound an assignment-time request inside the
+# replay window. Use a PR or issue conversation comment to summon Droid.
+# (App-token follow-up may restore those forms behind a trusted entrypoint.)
 on:
   issue_comment:
     types: [created]
-  pull_request_review_comment:
-    types: [created]
   issues:
-    types: [opened, assigned]
-  pull_request_review:
-    types: [submitted]
-  pull_request:
-    types: [opened, edited]
+    types: [opened]
+
+permissions: {}
 
 jobs:
-  droid:
+  admit:
+    # No secrets are reachable in this job. The mention and association
+    # routing below selects candidates; the classifier admits only what an
+    # API refetch proves, and writes the receipt before analysis may run.
     if: |
       (
         github.event_name == 'issue_comment' &&
@@ -21,27 +29,116 @@ jobs:
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
       ) ||
       (
-        github.event_name == 'pull_request_review_comment' &&
-        contains(github.event.comment.body, '@droid') &&
-        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
-      ) ||
-      (
-        github.event_name == 'pull_request_review' &&
-        contains(github.event.review.body, '@droid') &&
-        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association)
-      ) ||
-      (
         github.event_name == 'issues' &&
         (contains(github.event.issue.body, '@droid') || contains(github.event.issue.title, '@droid')) &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
-      ) ||
-      (
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        (contains(github.event.pull_request.body, '@droid') || contains(github.event.pull_request.title, '@droid')) &&
-        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
       )
 
+    runs-on:
+      group: em-ci-review
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, droid-review]
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+
+    outputs:
+      admitted: ${{ steps.admit.outputs.admitted }}
+      mode: ${{ steps.admit.outputs.mode }}
+      head: ${{ steps.admit.outputs.head }}
+      receipt: ${{ steps.admit.outputs.receipt }}
+
+    steps:
+      - name: Checkout default-branch authority
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: 1.95.0
+
+      - name: Ensure GitHub CLI for Droid Action
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            gh --version
+            exit 0
+          fi
+          gh_archive="gh_2.82.1_linux_amd64.tar.gz"
+          gh_sha256="afada88676dfccea384e6cc28ae990b3e31bbc55f9d75c4697f902c757fa462b"
+          gh_url="https://github.com/cli/cli/releases/download/v2.82.1/${gh_archive}"
+          gh_root="${RUNNER_TEMP:-/tmp}/gh-cli-2.82.1-${GITHUB_RUN_ID:-manual}"
+          mkdir -p "$gh_root"
+          curl -fsSL "$gh_url" -o "$gh_root/$gh_archive"
+          printf '%s  %s\n' "$gh_sha256" "$gh_root/$gh_archive" > "$gh_root/gh.sha256"
+          sha256sum -c "$gh_root/gh.sha256"
+          tar -xzf "$gh_root/$gh_archive" -C "$gh_root"
+          echo "$gh_root/gh_2.82.1_linux_amd64/bin" >> "$GITHUB_PATH"
+          "$gh_root/gh_2.82.1_linux_amd64/bin/gh" --version
+
+      - name: Refetch subject facts
+        id: facts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DROID_EVENT: ${{ github.event_name }}
+          DROID_REPO: ${{ github.repository }}
+          DROID_ISSUE: ${{ github.event.issue.number }}
+          DROID_COMMENT: ${{ github.event.comment.id }}
+          DROID_ACTION: ${{ github.event.action }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess as sp
+          e = os.environ.get
+          repo, issue = e("DROID_REPO", ""), e("DROID_ISSUE", "")
+          j = lambda a: json.loads(sp.run(a, capture_output=True, text=True, check=True).stdout)
+          item = j(["gh", "api", f"repos/{repo}/issues/{issue}"])
+          on_pr = isinstance(item.get("pull_request"), dict)
+          f = {"repository": repo, "mode": "comment" if on_pr else "issue", "pr": issue if on_pr else 0, "issue": issue,
+              "comment_id": int(e("DROID_COMMENT", "0") or 0), "action": e("DROID_ACTION", ""), "title": item.get("title") or "",
+              "association": "", "created_at": "", "head": "", "base": "", "slip_head": "", "slip_base": "", "labels": [], "body": ""}
+          if on_pr:
+              pr = j(["gh", "api", f"repos/{repo}/pulls/{issue}"])
+              f.update(head=pr["head"]["sha"], base=pr["base"]["sha"])
+          src = j(["gh", "api", f"repos/{repo}/issues/{issue}/comments/{f['comment_id']}"]) if e("DROID_EVENT", "") == "issue_comment" else item
+          f.update(body=src.get("body") or "", association=src.get("author_association") or "", created_at=src.get("created_at") or "")
+          f["labels"] = [{"name": x["name"]} for x in item.get("labels", [])]
+          open("facts.json", "w").write(json.dumps(f) + "\n")
+          print(f["mode"], issue)
+          PY
+
+      - name: Admit dispatched subject
+        id: admit
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/droid-admission"
+          cargo run --locked -q -p xtask -- droid-admit \
+            --mode dispatch \
+            --event-name tag-dispatch \
+            --repo '${{ github.repository }}' \
+            --facts "$GITHUB_WORKSPACE/facts.json" \
+            --receipt "$GITHUB_WORKSPACE/droid-admission/receipt.json"
+          cat "$GITHUB_WORKSPACE/droid-admission/receipt.json"
+
+      - name: Upload admission receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: droid-tag-admission-receipt
+          path: droid-admission/receipt.json
+          retention-days: 7
+          if-no-files-found: error
+
+  analyze-pr:
+    needs: [admit]
+    if: |
+      needs.admit.outputs.admitted == 'true' &&
+      needs.admit.outputs.mode == 'comment'
     runs-on:
       group: em-ci-review
       labels: [self-hosted, Linux, X64, em-ci, trusted-pr, droid-review]
@@ -53,15 +150,14 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      issues: write
-      actions: read
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Checkout default-branch authority
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
-          allow-unsafe-pr-checkout: false
+          persist-credentials: false
 
       - name: Configure MiniMax BYOK for Factory Droid
         shell: bash
@@ -102,13 +198,74 @@ jobs:
           echo "$gh_root/gh_2.82.1_linux_amd64/bin" >> "$GITHUB_PATH"
           "$gh_root/gh_2.82.1_linux_amd64/bin/gh" --version
 
-      - name: Run Droid Exec with MiniMax M3 BYOK
+      - name: Run Droid tag analysis with MiniMax M3 BYOK
         uses: EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec # based on Factory-AI/droid-action v5; raw debug artifact upload disabled
         env:
           ANTHROPIC_AUTH_TOKEN: ""
           ANTHROPIC_BASE_URL: ""
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          github_token: ${{ github.token }}
+          upload_debug_artifacts: false
+          expected_head_sha: ${{ needs.admit.outputs.head }}
+
+          review_depth: shallow
+          review_model: "custom:MiniMax-M3-0"
+          security_model: "custom:MiniMax-M3-0"
+          show_full_output: false
+
+  analyze-issue:
+    needs: [admit]
+    if: |
+      needs.admit.outputs.admitted == 'true' &&
+      needs.admit.outputs.mode == 'issue'
+    runs-on:
+      group: em-ci-review
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, droid-review]
+    timeout-minutes: 30
+
+    env:
+      MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout default-branch authority
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Configure MiniMax BYOK for Factory Droid
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.factory"
+          cat > "$HOME/.factory/settings.json" <<'JSON'
+          {
+            "customModels": [
+              {
+                "displayName": "MiniMax-M3",
+                "model": "MiniMax-M3",
+                "baseUrl": "https://api.minimax.io/anthropic",
+                "apiKey": "${MINIMAX_API_KEY}",
+                "provider": "anthropic",
+                "maxOutputTokens": 64000
+              }
+            ]
+          }
+          JSON
+
+      - name: Run Droid tag analysis with MiniMax M3 BYOK
+        uses: EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec # based on Factory-AI/droid-action v5; raw debug artifact upload disabled
+        env:
+          ANTHROPIC_AUTH_TOKEN: ""
+          ANTHROPIC_BASE_URL: ""
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          github_token: ${{ github.token }}
           upload_debug_artifacts: false
 
           review_depth: shallow
