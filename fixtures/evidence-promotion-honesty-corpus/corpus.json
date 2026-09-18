@@ -449,6 +449,19 @@
       ]
     },
     {
+      "id": "rust_match_arm_comment_literal_oracle",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_comment_literal_no_promotion",
+      "vector": "pattern_comment_quoted_text_does_not_select_changed_arm",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "rust_strong_error_oracle_control",
       "language": "rust",
       "tier": "pure",

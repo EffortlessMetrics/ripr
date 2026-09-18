@@ -166,7 +166,12 @@ pub(crate) struct CachedSeamLimitInfo {
 /// re-reading a single file — so the file-fact generation bump alone
 /// cannot reach it: old classified entries would serve pre-#3727
 /// shadow classification for warm workspaces indefinitely.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.12";
+/// `1.12` -> `1.13`: match-arm pattern literals (#3766, EffortlessMetrics/ripr#1714)
+/// exclude quoted comment text, so a sibling assertion observed only
+/// through a pattern comment stops confirming the changed arm. Old
+/// classified entries would serve comment-literal over-credits for warm
+/// workspaces.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.13";
 /// `0.2` → `0.3`: same semantic transition as the outer cache (#3273 /
 /// #3286) — sharded entries derive from the same facts and cannot bypass
 /// the outer generation bump.
@@ -206,7 +211,10 @@ pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.12";
 /// `0.17` -> `0.18`: the parser-backed shadow facts (#3727 Slice A) change
 /// which shadow defeats the classification sees — same semantic transition
 /// as the outer classified-seam cache.
-const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.18";
+/// `0.18` -> `0.19`: match-arm pattern literals exclude quoted comment
+/// text (#3766) — same semantic transition as the outer classified-seam
+/// cache.
+const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.19";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
@@ -252,7 +260,10 @@ const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.18";
 /// `0.18` -> `0.19`: the parser-backed shadow facts (#3727 Slice A) change
 /// which shadow defeats the classification sees — same semantic transition
 /// as the outer classified-seam cache.
-pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.19";
+/// `0.19` -> `0.20`: match-arm pattern literals exclude quoted comment
+/// text (#3766) — same semantic transition as the outer classified-seam
+/// cache.
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.20";
 
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only
@@ -2836,15 +2847,21 @@ mod tests {
         // BEFORE any file-fact rebuild, so the 1.8 file-fact bump cannot
         // reach it — a warm pre-bump classified hit would serve pre-#3727
         // shadow classification for warm workspaces indefinitely.
-        assert_eq!(CACHE_SCHEMA_VERSION, "1.12");
+        // 1.12 -> 1.13: match-arm pattern literals exclude quoted comment
+        // text (#3766), so a sibling assertion observed only through a
+        // pattern comment stops confirming the changed arm.
+        assert_eq!(CACHE_SCHEMA_VERSION, "1.13");
         // 0.12 -> 0.13 through 0.14 / 0.15 / 0.16 / 0.17 / 0.18: same
         // #3731 semantic transition as the outer classified-seam cache,
         // for the sharded and compact envelopes.
         // 0.18 (sharded) / 0.19 (compact): the #3727 Slice A shadow
         // authority transition — same semantic transition as the outer
         // classified-seam cache.
-        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.18");
-        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.19");
+        // 0.19 (sharded) / 0.20 (compact): the #3766 comment-literal
+        // exclusion — same semantic transition as the outer
+        // classified-seam cache.
+        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.19");
+        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.20");
     }
 
     #[test]
