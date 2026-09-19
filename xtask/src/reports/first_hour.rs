@@ -390,6 +390,17 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
             fixture_root.display()
         ));
     }
+    // The receipt must outlive cleanup: --out equal to or nested under the
+    // harness-cleaned fixture root would be written and then deleted before
+    // the command returns success.
+    let out_root = PathBuf::from(&parsed.out);
+    if out_root == fixture_root || out_root.starts_with(&fixture_root) {
+        return Err(format!(
+            "first-hour --out `{}` must not equal or nest under --fixture-root `{}`; the receipt would be cleaned before return",
+            out_root.display(),
+            fixture_root.display()
+        ));
+    }
     let prefix = PathBuf::from(&parsed.prefix);
     let subject = install_package(&mut harness, &parsed.crate_path, &prefix)?;
     admit_installed_executable(&subject, &subject.executable)?;
@@ -538,6 +549,34 @@ mod tests {
         // The pre-existing directory and its contents survive.
         assert!(std::fs::read(&sentinel).expect("sentinel survives") == b"precious");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn receipt_nested_under_fixture_root_is_refused_before_any_work() {
+        let base =
+            std::env::temp_dir().join(format!("ripr-first-hour-overlap-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let refused = first_hour(&[
+            "--crate".to_string(),
+            "missing.crate".to_string(),
+            "--prefix".to_string(),
+            base.join("prefix").to_string_lossy().to_string(),
+            "--out".to_string(),
+            base.join("fixtures")
+                .join("out")
+                .to_string_lossy()
+                .to_string(),
+            "--fixture-root".to_string(),
+            base.join("fixtures").to_string_lossy().to_string(),
+        ]);
+        assert!(refused.is_err());
+        assert!(
+            refused
+                .unwrap_err()
+                .contains("must not equal or nest under")
+        );
+        // Nothing was created: no install, no fixture root, no receipt.
+        assert!(!base.exists());
     }
 
     #[test]
