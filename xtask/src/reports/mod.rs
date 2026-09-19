@@ -10,6 +10,7 @@ mod eval_sweep;
 mod eval_sweep_check;
 mod eval_sweep_refresh;
 mod eval_sweep_report;
+mod first_hour;
 mod first_pr;
 mod fixtures;
 mod impacted_evidence;
@@ -91,6 +92,7 @@ pub(crate) use bun::{bun_ub_calibration, bun_ub_preview_summary, configured_brid
 pub(crate) use ci_budget::ci_budget;
 pub(crate) use dogfood::dogfood;
 pub(crate) use eval_sweep::eval_sweep;
+pub(crate) use first_hour::first_hour;
 pub(crate) use first_pr::first_pr;
 pub(crate) use fixtures::{
     FixtureCheckFormat, fixture_dirs, fixtures, fixtures_with_args, golden_drift, goldens,
