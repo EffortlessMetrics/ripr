@@ -3880,6 +3880,23 @@ mod python_eval_sweep_refresh {
         }
         let manifest_path = write_manifest_and_diffs(&root, &pins)?;
         let binary = built_ripr_binary()?;
+        // #1712: execute an invocation-owned copy of the analyzer. Under full
+        // nextest load a sibling test can rebuild target/debug/ripr mid-run,
+        // drifting the content identity the route re-verifies after every
+        // subject and downgrading rows to tempfail. The copy is immutable for
+        // the life of this invocation, so a concurrent rebuild cannot move
+        // the executed bytes underneath it.
+        let owned_bin_dir = root.join("bin");
+        std::fs::create_dir_all(&owned_bin_dir)
+            .map_err(|error| format!("create owned bin dir: {error}"))?;
+        let binary_path = PathBuf::from(&binary);
+        let binary_name = binary_path
+            .file_name()
+            .ok_or_else(|| "built ripr binary has no file name".to_string())?;
+        let owned_binary = owned_bin_dir.join(binary_name);
+        std::fs::copy(&binary_path, &owned_binary)
+            .map_err(|error| format!("stage owned analyzer copy: {error}"))?;
+        let binary = owned_binary.to_string_lossy().to_string();
         let out = root.join("out");
 
         let args = vec![
