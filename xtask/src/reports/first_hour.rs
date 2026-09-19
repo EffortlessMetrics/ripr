@@ -1,4 +1,5 @@
-//! Installed first-hour qualification harness — #1674 slice A (harness core).
+//! Installed first-hour qualification harness — #1674 slices A (harness core)
+//! and B (fixture + installed check journey).
 //!
 //! Report-only `cargo xtask first-hour`. Owns the installed-artifact
 //! authority every later slice consumes: an explicit `.crate`/installed
@@ -7,6 +8,11 @@
 //! Product behavior is exercised only through the installed executable;
 //! a PATH/worktree binary, existing cache, or helper API is never a
 //! substitute.
+//!
+//! Slice B builds the disposable baseline repository (exact-boundary change
+//! under a weak mid-range-only test) and runs the installed `check` journey
+//! (human `Start here` front door plus JSON evidence) under fresh
+//! cache/HOME roots.
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,9 +28,10 @@ use super::eval_sweep_check::sha256_hex;
 const USAGE: &str = "\
 cargo xtask first-hour --crate <path.crate> --prefix <clean-dir> --out <receipt-dir>
   --fixture-root <dir>
-Installs the packaged candidate into a clean prefix and records the
-installed-artifact identity. Later slices consume the receipt; this slice
-proves the authority (identity + ledger + cleanup), not any journey.";
+Installs the packaged candidate into a clean prefix, builds the disposable
+baseline fixture, and runs the installed check journey (human Start-here
+front door plus JSON evidence) under fresh cache/HOME roots. Records the
+installed-artifact identity and journey evidence in the receipt.";
 
 const RECEIPT_FILE: &str = "first-hour.json";
 const SCHEMA_VERSION: &str = "0.1";
@@ -441,6 +448,323 @@ fn admit_installed_executable(subject: &InstalledSubject, candidate: &Path) -> R
 }
 
 // ---------------------------------------------------------------------------
+// Slice B: fixture journey (baseline + installed check evidence)
+// ---------------------------------------------------------------------------
+
+/// Fixture repository layout: the checkout path itself carries spaces and
+/// non-ASCII text, so the journey proves argv-array invocation (never shell
+/// interpolation) survives hostile-but-legal paths.
+const FIXTURE_REPO_REL: [&str; 3] = ["first hour", "grüße", "repo"];
+
+const FIXTURE_CARGO_TOML: &str =
+    "[package]\nname = \"fixture-firsthour\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
+const FIXTURE_LIB_BASE: &str = "pub fn fee(order_total_cents: u64) -> u64 {\n    if order_total_cents > 10_000 {\n        500\n    } else {\n        0\n    }\n}\n";
+const FIXTURE_LIB_HEAD: &str = "pub fn fee(order_total_cents: u64) -> u64 {\n    if order_total_cents >= 10_000 {\n        500\n    } else {\n        0\n    }\n}\n";
+const FIXTURE_TEST: &str =
+    "#[test]\nfn mid_range_pays_no_fee() {\n    assert_eq!(fixture_firsthour::fee(100), 0);\n}\n";
+
+/// Fixed commit timestamps keep fixture SHAs deterministic across runs.
+const FIXTURE_BASE_DATE: &str = "2026-01-01T00:00:00Z";
+const FIXTURE_HEAD_DATE: &str = "2026-01-02T00:00:00Z";
+
+/// Human marker the journey requires in the installed human output: the
+/// exact `Start here` section header observed in the real rendering.
+const HUMAN_START_HERE: &str = "Start here:";
+
+struct FixtureRepo {
+    path: PathBuf,
+    base_sha: String,
+    head_sha: String,
+}
+
+/// Runs one child with the harness ledger recording the exact argv and the
+/// real child cwd. Commands that must run inside the fixture repo use the
+/// tool's own location flag (`git -C`, `ripr --root`); the process cwd is
+/// never mutated, so parallel lanes cannot disturb each other.
+fn journey_run(
+    harness: &mut Harness,
+    step: &str,
+    program: &str,
+    args: &[String],
+    envs: &[(&str, &str)],
+) -> Result<String, String> {
+    let mut argv = vec![program.to_string()];
+    argv.extend(args.iter().cloned());
+    let cwd = std::env::current_dir().map_err(|error| format!("current dir: {error}"))?;
+    let started = unix_epoch_secs();
+    let outcome = run::run_output_owned_with_envs(program, args, envs);
+    let status = match &outcome {
+        Ok(_) => "ok".to_string(),
+        Err(error) => error.clone(),
+    };
+    harness.ledger.push(LedgerEntry {
+        step: step.to_string(),
+        argv,
+        cwd: cwd.to_string_lossy().to_string(),
+        started_epoch_secs: started,
+        status,
+    });
+    outcome
+}
+
+fn fixture_git(
+    harness: &mut Harness,
+    repo: &Path,
+    args: &[&str],
+    date: &str,
+) -> Result<String, String> {
+    let repo_arg = repo.to_string_lossy().to_string();
+    let owned = args
+        .iter()
+        .map(|arg| (*arg).to_string())
+        .collect::<Vec<_>>();
+    let mut full = vec![
+        "-C".to_string(),
+        repo_arg,
+        "-c".to_string(),
+        "user.name=first-hour".to_string(),
+        "-c".to_string(),
+        "user.email=first-hour@example.com".to_string(),
+        "-c".to_string(),
+        "commit.gpgsign=false".to_string(),
+    ];
+    full.extend(owned);
+    journey_run(
+        harness,
+        "fixture-git",
+        "git",
+        &full,
+        &[
+            ("GIT_AUTHOR_NAME", "first-hour"),
+            ("GIT_AUTHOR_EMAIL", "first-hour@example.com"),
+            ("GIT_COMMITTER_NAME", "first-hour"),
+            ("GIT_COMMITTER_EMAIL", "first-hour@example.com"),
+            ("GIT_AUTHOR_DATE", date),
+            ("GIT_COMMITTER_DATE", date),
+        ],
+    )
+}
+
+/// Builds the disposable baseline repository: base commit (production +
+/// weak mid-range-only test), head commit (exact-boundary `>` to `>=`
+/// change the weak test cannot discriminate). Returns base/head SHAs.
+fn build_fixture_repo(harness: &mut Harness, fixture_root: &Path) -> Result<FixtureRepo, String> {
+    let mut repo = fixture_root.to_path_buf();
+    for component in FIXTURE_REPO_REL {
+        repo.push(component);
+    }
+    let src = repo.join("src");
+    let tests = repo.join("tests");
+    std::fs::create_dir_all(&src).map_err(|error| format!("create fixture src: {error}"))?;
+    std::fs::create_dir_all(&tests).map_err(|error| format!("create fixture tests: {error}"))?;
+    std::fs::write(repo.join("Cargo.toml"), FIXTURE_CARGO_TOML)
+        .map_err(|error| format!("write fixture Cargo.toml: {error}"))?;
+    std::fs::write(src.join("lib.rs"), FIXTURE_LIB_BASE)
+        .map_err(|error| format!("write fixture lib: {error}"))?;
+    std::fs::write(tests.join("boundary.rs"), FIXTURE_TEST)
+        .map_err(|error| format!("write fixture test: {error}"))?;
+    fixture_git(
+        harness,
+        &repo,
+        &["init", "-qb", "main", "."],
+        FIXTURE_BASE_DATE,
+    )?;
+    fixture_git(harness, &repo, &["add", "-A"], FIXTURE_BASE_DATE)?;
+    fixture_git(
+        harness,
+        &repo,
+        &["commit", "-qm", "base"],
+        FIXTURE_BASE_DATE,
+    )?;
+    let base_sha = fixture_git(harness, &repo, &["rev-parse", "HEAD"], FIXTURE_BASE_DATE)?
+        .trim()
+        .to_string();
+    std::fs::write(src.join("lib.rs"), FIXTURE_LIB_HEAD)
+        .map_err(|error| format!("write fixture head lib: {error}"))?;
+    fixture_git(
+        harness,
+        &repo,
+        &["commit", "-qam", "head"],
+        FIXTURE_HEAD_DATE,
+    )?;
+    let head_sha = fixture_git(harness, &repo, &["rev-parse", "HEAD"], FIXTURE_HEAD_DATE)?
+        .trim()
+        .to_string();
+    Ok(FixtureRepo {
+        path: repo,
+        base_sha,
+        head_sha,
+    })
+}
+
+/// Observed evidence from one installed `ripr check` JSON rendering.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CheckEvidence {
+    findings: usize,
+    classifications: Vec<String>,
+    summary_probes: u64,
+}
+
+/// Parses installed JSON output and requires at least one finding: a
+/// journey that finds nothing proves the invocation ran, not that the
+/// installed binary discriminates the boundary change.
+fn check_evidence_json(stdout: &str) -> Result<CheckEvidence, String> {
+    let parsed: Value =
+        serde_json::from_str(stdout).map_err(|error| format!("parse installed JSON: {error}"))?;
+    let findings = parsed
+        .get("findings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "installed JSON holds no findings array".to_string())?;
+    if findings.is_empty() {
+        return Err(
+            "installed JSON reports zero findings; the boundary change went unobserved".to_string(),
+        );
+    }
+    let mut classifications = Vec::new();
+    for finding in findings {
+        if let Some(classification) = finding.get("classification").and_then(Value::as_str)
+            && !classifications.contains(&classification.to_string())
+        {
+            classifications.push(classification.to_string());
+        }
+    }
+    let summary_probes = parsed
+        .get("summary")
+        .and_then(|summary| summary.get("probes"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    Ok(CheckEvidence {
+        findings: findings.len(),
+        classifications,
+        summary_probes,
+    })
+}
+
+/// Requires the fixture's designed oracle: exactly one finding classified
+/// `weakly_exposed`. The mid-range-only test cannot discriminate the
+/// exact-boundary change, so `weakly_exposed` is the earned strength — a
+/// promotion to `exposed` would be the false-confidence family (a strong
+/// oracle must observe the changed sink), and any other shape means the
+/// fixture no longer proves what it claims. Either case fails loudly for
+/// fixture redesign instead of recording a passing slice B.
+fn require_boundary_oracle(evidence: &CheckEvidence) -> Result<(), String> {
+    if evidence.findings == 1 && evidence.classifications == ["weakly_exposed".to_string()] {
+        Ok(())
+    } else {
+        Err(format!(
+            "installed journey must observe exactly one weakly_exposed finding; observed {} finding(s) [{}]; refusing a pass the fixture cannot prove",
+            evidence.findings,
+            evidence.classifications.join(",")
+        ))
+    }
+}
+
+/// Requires the installed human rendering to contain its `Start here`
+/// action section: exit 0 plus JSON alone would not prove the human front
+/// door renders.
+fn require_start_here(human: &str) -> Result<(), String> {
+    if human.contains(HUMAN_START_HERE) {
+        Ok(())
+    } else {
+        Err("installed human output holds no `Start here:` section".to_string())
+    }
+}
+
+struct JourneyEvidence {
+    repo_rel: String,
+    base_sha: String,
+    head_sha: String,
+    human_digest: String,
+    human_bytes: usize,
+    json_digest: String,
+    json_bytes: usize,
+    evidence: CheckEvidence,
+}
+
+/// Runs the installed check journey (issue steps 1-2): human rendering for
+/// the `Start here` front door plus JSON evidence, both through the admitted
+/// installed executable under fresh cache/HOME roots.
+fn run_check_journey(
+    harness: &mut Harness,
+    subject: &InstalledSubject,
+    repo: &FixtureRepo,
+    fixture_root: &Path,
+) -> Result<JourneyEvidence, String> {
+    admit_installed_executable(subject, &subject.executable)?;
+    let cache_dir = fixture_root.join("cache").join("ripr");
+    let home_dir = fixture_root.join("home");
+    std::fs::create_dir_all(&cache_dir)
+        .map_err(|error| format!("create journey cache: {error}"))?;
+    std::fs::create_dir_all(&home_dir).map_err(|error| format!("create journey home: {error}"))?;
+    let executable = subject.executable.to_string_lossy().to_string();
+    let root = repo.path.to_string_lossy().to_string();
+    let human_args = vec![
+        "check".to_string(),
+        "--root".to_string(),
+        root.clone(),
+        "--base".to_string(),
+        repo.base_sha.clone(),
+    ];
+    let human = journey_run(
+        harness,
+        "installed-check-human",
+        &executable,
+        &human_args,
+        &[
+            ("RIPR_CACHE_DIR", &cache_dir.to_string_lossy()),
+            ("HOME", &home_dir.to_string_lossy()),
+        ],
+    )
+    .map_err(|error| format!("installed check (human) failed: {error}"))?;
+    require_start_here(&human)?;
+    let mut json_args = human_args.clone();
+    json_args.push("--json".to_string());
+    let json_stdout = journey_run(
+        harness,
+        "installed-check-json",
+        &executable,
+        &json_args,
+        &[
+            ("RIPR_CACHE_DIR", &cache_dir.to_string_lossy()),
+            ("HOME", &home_dir.to_string_lossy()),
+        ],
+    )
+    .map_err(|error| format!("installed check (json) failed: {error}"))?;
+    let evidence = check_evidence_json(&json_stdout)?;
+    require_boundary_oracle(&evidence)?;
+    Ok(JourneyEvidence {
+        repo_rel: FIXTURE_REPO_REL.join("/"),
+        base_sha: repo.base_sha.clone(),
+        head_sha: repo.head_sha.clone(),
+        human_digest: sha256_hex(human.as_bytes()),
+        human_bytes: human.len(),
+        json_digest: sha256_hex(json_stdout.as_bytes()),
+        json_bytes: json_stdout.len(),
+        evidence,
+    })
+}
+
+fn journey_json(evidence: &JourneyEvidence) -> Value {
+    json!({
+        "repo": evidence.repo_rel,
+        "base_sha": evidence.base_sha,
+        "head_sha": evidence.head_sha,
+        "human": {
+            "sha256": evidence.human_digest,
+            "bytes": evidence.human_bytes,
+            "has_start_here": true,
+        },
+        "json": {
+            "sha256": evidence.json_digest,
+            "bytes": evidence.json_bytes,
+            "findings": evidence.evidence.findings,
+            "classifications": evidence.evidence.classifications,
+            "summary_probes": evidence.evidence.summary_probes,
+        },
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Receipt skeleton
 // ---------------------------------------------------------------------------
 
@@ -454,7 +778,12 @@ fn ledger_json(entry: &LedgerEntry) -> Value {
     })
 }
 
-fn write_receipt(out: &Path, subject: &InstalledSubject, harness: &Harness) -> Result<(), String> {
+fn write_receipt(
+    out: &Path,
+    subject: &InstalledSubject,
+    harness: &Harness,
+    journey: Option<&JourneyEvidence>,
+) -> Result<(), String> {
     let receipt = json!({
         "schema_version": SCHEMA_VERSION,
         "subject": {
@@ -467,7 +796,8 @@ fn write_receipt(out: &Path, subject: &InstalledSubject, harness: &Harness) -> R
             "version_output": subject.version_output,
         },
         "ledger": harness.ledger.iter().map(ledger_json).collect::<Vec<_>>(),
-        "slices_completed": ["A"],
+        "journey": journey.map(journey_json),
+        "slices_completed": if journey.is_some() { vec!["A", "B"] } else { vec!["A"] },
     });
     std::fs::create_dir_all(out).map_err(|error| format!("create out dir: {error}"))?;
     let text = serde_json::to_string_pretty(&receipt)
@@ -532,12 +862,19 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
     admit_installed_executable(&subject, &subject.executable)?;
     std::fs::create_dir_all(&fixture_root)
         .map_err(|error| format!("create fixture root: {error}"))?;
-    harness.roots.push(fixture_root);
-    write_receipt(Path::new(&parsed.out), &subject, &harness)?;
+    harness.roots.push(fixture_root.clone());
+    // Slice B: baseline fixture plus the installed check journey. Every
+    // product invocation resolves through the admitted installed
+    // executable; the journey fails loudly when the boundary change goes
+    // unobserved or the human front door does not render.
+    let repo = build_fixture_repo(&mut harness, &fixture_root)?;
+    let journey = run_check_journey(&mut harness, &subject, &repo, &fixture_root)?;
+    write_receipt(Path::new(&parsed.out), &subject, &harness, Some(&journey))?;
     println!(
-        "first-hour slice A: installed {} ({}) ledger {} steps",
+        "first-hour slice B: {} finding(s) [{}] through {} ledger {} steps",
+        journey.evidence.findings,
+        journey.evidence.classifications.join(","),
         subject.executable.display(),
-        subject.version_output,
         harness.ledger.len()
     );
     Ok(())
@@ -862,6 +1199,118 @@ mod tests {
                 root.display()
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn installed_json_evidence_requires_an_observed_finding() -> Result<(), String> {
+        let observed = json!({
+            "schema_version": "1",
+            "summary": {"probes": 1, "findings": 1},
+            "findings": [{"id": "probe:src_lib.rs:predicate:e4a96c16", "classification": "weakly_exposed"}],
+        });
+        let evidence = check_evidence_json(&observed.to_string())?;
+        assert_eq!(
+            evidence,
+            CheckEvidence {
+                findings: 1,
+                classifications: vec!["weakly_exposed".to_string()],
+                summary_probes: 1,
+            }
+        );
+        // Exit 0 plus valid JSON is not enough: zero findings means the
+        // boundary change went unobserved and the journey must fail.
+        let empty = json!({"summary": {"probes": 0}, "findings": []});
+        assert!(matches!(
+            check_evidence_json(&empty.to_string()),
+            Err(error) if error.contains("zero findings")
+        ));
+        assert!(matches!(
+            check_evidence_json("{not json"),
+            Err(error) if error.contains("parse installed JSON")
+        ));
+        assert!(matches!(
+            check_evidence_json("{}"),
+            Err(error) if error.contains("no findings array")
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn journey_requires_the_designed_weakly_exposed_oracle() -> Result<(), String> {
+        require_boundary_oracle(&CheckEvidence {
+            findings: 1,
+            classifications: vec!["weakly_exposed".to_string()],
+            summary_probes: 1,
+        })?;
+        // A promotion to exposed is the false-confidence family: the
+        // mid-range-only test never observes the changed sink.
+        assert!(matches!(
+            require_boundary_oracle(&CheckEvidence {
+                findings: 1,
+                classifications: vec!["exposed".to_string()],
+                summary_probes: 1,
+            }),
+            Err(error) if error.contains("exactly one weakly_exposed")
+        ));
+        // Any other shape (demotion, multiplicity, silence) also refuses.
+        assert!(matches!(
+            require_boundary_oracle(&CheckEvidence {
+                findings: 1,
+                classifications: vec!["reachable_unrevealed".to_string()],
+                summary_probes: 1,
+            }),
+            Err(error) if error.contains("exactly one weakly_exposed")
+        ));
+        assert!(matches!(
+            require_boundary_oracle(&CheckEvidence {
+                findings: 2,
+                classifications: vec!["weakly_exposed".to_string()],
+                summary_probes: 2,
+            }),
+            Err(error) if error.contains("exactly one weakly_exposed")
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn human_front_door_requires_its_start_here_section() -> Result<(), String> {
+        require_start_here(
+            "ripr static RIPR exposure analysis\n\nStart here:\n  State: top_gap\n",
+        )?;
+        assert!(matches!(
+            require_start_here("Summary: 0 probe(s)\n"),
+            Err(error) if error.contains("Start here")
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn journey_run_records_exact_argv_and_real_cwd() -> Result<(), String> {
+        let mut harness = Harness {
+            roots: Vec::new(),
+            ledger: Vec::new(),
+        };
+        let output = journey_run(
+            &mut harness,
+            "probe-step",
+            "git",
+            &["--version".to_string()],
+            &[],
+        )?;
+        assert!(output.contains("git version"));
+        assert_eq!(harness.ledger.len(), 1);
+        let entry = &harness.ledger[0];
+        assert_eq!(entry.step, "probe-step");
+        assert_eq!(entry.argv, vec!["git".to_string(), "--version".to_string()]);
+        assert_eq!(entry.status, "ok");
+        // The recorded cwd is the real child cwd, never a claim.
+        assert_eq!(
+            entry.cwd,
+            std::env::current_dir()
+                .map_err(|error| format!("current dir: {error}"))?
+                .to_string_lossy()
+        );
         Ok(())
     }
 
