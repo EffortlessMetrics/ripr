@@ -224,6 +224,20 @@ mod tests {
     use super::super::tests::{args, repo_root, unique_command_test_dir};
     use super::*;
 
+    /// Removes owned temporary roots when the test returns, including `?`
+    /// failures and assertion panics.
+    struct TempRootGuard {
+        roots: Vec<std::path::PathBuf>,
+    }
+
+    impl Drop for TempRootGuard {
+        fn drop(&mut self) {
+            for root in &self.roots {
+                let _ = std::fs::remove_dir_all(root);
+            }
+        }
+    }
+
     #[test]
     fn gate_parses_full_option_surface() {
         let options = parse_gate_options(&args(&[
@@ -421,12 +435,15 @@ mod tests {
         // repository evidence.
         let dir = unique_command_test_dir("gate-blocked-owned");
         std::fs::create_dir_all(&dir).map_err(|err| format!("create gate dir: {err}"))?;
+        let ambient = unique_command_test_dir("gate-blocked-ambient");
+        let _cleanup = TempRootGuard {
+            roots: vec![dir.clone(), ambient.clone()],
+        };
         std::fs::copy(
             repo_root().join("fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json"),
             dir.join("comments.json"),
         )
         .map_err(|err| format!("stage owned pr-guidance: {err}"))?;
-        let ambient = unique_command_test_dir("gate-blocked-ambient");
         let ambient_pr = ambient.join("target").join("ripr").join("pr");
         std::fs::create_dir_all(&ambient_pr)
             .map_err(|err| format!("create ambient residue dir: {err}"))?;
@@ -457,8 +474,6 @@ mod tests {
         let ambient_after = std::fs::read_to_string(ambient_pr.join("canonical-delta.json"))
             .map_err(|err| format!("re-read ambient residue: {err}"))?;
         assert_eq!(ambient_after, stale);
-        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove gate dir: {err}"))?;
-        std::fs::remove_dir_all(&ambient).map_err(|err| format!("remove ambient dir: {err}"))?;
         Ok(())
     }
 }
