@@ -738,11 +738,11 @@ fn run_check_journey(
     base_sha: &str,
 ) -> Result<JourneyEvidence, String> {
     admit_installed_executable(subject, &subject.executable)?;
-    let cache_dir = fixture_root.join("cache").join("ripr");
-    let home_dir = fixture_root.join("home");
-    std::fs::create_dir_all(&cache_dir)
-        .map_err(|error| format!("create journey cache: {error}"))?;
-    std::fs::create_dir_all(&home_dir).map_err(|error| format!("create journey home: {error}"))?;
+    // Each rendering runs cold under its own fresh cache/HOME: the JSON
+    // gate must not warm the cache the human front door then runs on, or a
+    // cold-cache-only human regression would pass undetected.
+    let cache_root = fixture_root.join("cache").join("ripr");
+    let home_root = fixture_root.join("home");
     let executable = subject.executable.to_string_lossy().to_string();
     let root = repo.path.to_string_lossy().to_string();
     let human_args = vec![
@@ -755,6 +755,12 @@ fn run_check_journey(
     // Machine evidence before human rendering: the JSON gate pins the exact
     // oracle, so an empty or misclassified observation refuses here with
     // its own typed error instead of falling through to the human gate.
+    let json_cache = cache_root.join("json");
+    let json_home = home_root.join("json");
+    std::fs::create_dir_all(&json_cache)
+        .map_err(|error| format!("create journey json cache: {error}"))?;
+    std::fs::create_dir_all(&json_home)
+        .map_err(|error| format!("create journey json home: {error}"))?;
     let mut json_args = human_args.clone();
     json_args.push("--json".to_string());
     let json_stdout = journey_run(
@@ -763,21 +769,27 @@ fn run_check_journey(
         &executable,
         &json_args,
         &[
-            ("RIPR_CACHE_DIR", &cache_dir.to_string_lossy()),
-            ("HOME", &home_dir.to_string_lossy()),
+            ("RIPR_CACHE_DIR", &json_cache.to_string_lossy()),
+            ("HOME", &json_home.to_string_lossy()),
         ],
     )
     .map_err(|error| format!("installed check (json) failed: {error}"))?;
     let evidence = check_evidence_json(&json_stdout)?;
     require_boundary_oracle(&evidence)?;
+    let human_cache = cache_root.join("human");
+    let human_home = home_root.join("human");
+    std::fs::create_dir_all(&human_cache)
+        .map_err(|error| format!("create journey human cache: {error}"))?;
+    std::fs::create_dir_all(&human_home)
+        .map_err(|error| format!("create journey human home: {error}"))?;
     let human = journey_run(
         harness,
         "installed-check-human",
         &executable,
         &human_args,
         &[
-            ("RIPR_CACHE_DIR", &cache_dir.to_string_lossy()),
-            ("HOME", &home_dir.to_string_lossy()),
+            ("RIPR_CACHE_DIR", &human_cache.to_string_lossy()),
+            ("HOME", &human_home.to_string_lossy()),
         ],
     )
     .map_err(|error| format!("installed check (human) failed: {error}"))?;
