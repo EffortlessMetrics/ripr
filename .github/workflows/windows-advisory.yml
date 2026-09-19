@@ -137,10 +137,10 @@ jobs:
       # a missing exit status, or a summarizer crash fails this step and therefore
       # the job — otherwise the lane could report success while proving nothing,
       # which is the false-confidence condition it exists to prevent.
-      # if: always() so a wedged or killed test step still yields whatever
+      # if: always() so a wedged or terminated test step still yields whatever
       # verdict the partial logs support (or a loud summarizer failure naming
-      # the missing evidence) instead of a silent job-timeout kill with no
-      # verdict at all (#1729).
+      # the missing evidence) instead of a silent job-timeout cancellation
+      # with no verdict at all (#1729).
       - name: Summarize verdicts and repeated-run stability
         if: always()
         shell: bash
