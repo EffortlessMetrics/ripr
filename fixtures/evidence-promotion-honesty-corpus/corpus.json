@@ -1416,6 +1416,20 @@
         { "type": "expected_class", "class": "weakly_exposed" },
         { "type": "maximum_class", "class": "weakly_exposed" }
       ]
+    },
+    {
+      "id": "rust_error_return_guard_unresolved_limitation",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/error_return_unresolved_guard",
+      "vector": "guard_carried_error_return_withholds_impossible_prescription",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_not_promote" },
+        { "type": "expected_finding_count", "count": 1 },
+        { "type": "maximum_class", "class": "infection_unknown" },
+        { "type": "must_emit_limitation", "expected_limit_kind": "rust_value_propagation_unresolved" }
+      ]
     }
   ]
 }
