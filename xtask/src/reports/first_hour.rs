@@ -216,6 +216,19 @@ impl Harness {
     /// and `cargo install` would refuse it.
     fn owned_staging(&mut self, label: &str) -> Result<PathBuf, String> {
         let base = staging_base()?;
+        Self::owned_staging_in(self, &base, label)
+    }
+
+    /// Staging creation under an explicit base, so tests can prove a
+    /// not-yet-existing base (the home-cache fallback on a fresh runner) is
+    /// created, not assumed.
+    fn owned_staging_in(harness: &mut Self, base: &Path, label: &str) -> Result<PathBuf, String> {
+        // The base itself (temp dir or home cache fallback) may not exist
+        // yet — the fallback is only constructed, never created. Creating
+        // it is safe: create_dir_all never deletes, and exclusivity below
+        // still applies to the candidate, never the base.
+        std::fs::create_dir_all(base)
+            .map_err(|error| format!("create {label} staging base: {error}"))?;
         for attempt in 0..100 {
             let root = base.join(format!(
                 "ripr-first-hour-{label}-{}-{:?}-{attempt}-{}",
@@ -225,7 +238,7 @@ impl Harness {
             ));
             match std::fs::create_dir(&root) {
                 Ok(()) => {
-                    self.roots.push(root.clone());
+                    harness.roots.push(root.clone());
                     return Ok(root);
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -811,6 +824,29 @@ mod tests {
         assert!(!second.exists());
         assert!(squatter.exists());
         let _ = std::fs::remove_dir_all(&squatter);
+        Ok(())
+    }
+
+    #[test]
+    fn staging_creates_a_missing_base_instead_of_assuming_it() -> Result<(), String> {
+        // The home-cache fallback on a fresh runner does not exist yet;
+        // exclusive creation must build the base, or every later step fails
+        // with a staging error that masks the real work (observed on the
+        // hosted lane: hostile-archive test failed with a staging error).
+        let missing = std::env::temp_dir().join(format!(
+            "ripr-first-hour-missing-base-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&missing);
+        let mut harness = Harness {
+            roots: Vec::new(),
+            ledger: Vec::new(),
+        };
+        let root = Harness::owned_staging_in(&mut harness, &missing, "missing-base")?;
+        assert!(root.is_dir());
+        drop(harness);
+        assert!(!root.exists());
+        let _ = std::fs::remove_dir_all(&missing);
         Ok(())
     }
 
