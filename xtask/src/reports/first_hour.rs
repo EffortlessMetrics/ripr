@@ -640,6 +640,25 @@ fn check_evidence_json(stdout: &str) -> Result<CheckEvidence, String> {
     })
 }
 
+/// Requires the fixture's designed oracle: exactly one finding classified
+/// `weakly_exposed`. The mid-range-only test cannot discriminate the
+/// exact-boundary change, so `weakly_exposed` is the earned strength — a
+/// promotion to `exposed` would be the false-confidence family (a strong
+/// oracle must observe the changed sink), and any other shape means the
+/// fixture no longer proves what it claims. Either case fails loudly for
+/// fixture redesign instead of recording a passing slice B.
+fn require_boundary_oracle(evidence: &CheckEvidence) -> Result<(), String> {
+    if evidence.findings == 1 && evidence.classifications == ["weakly_exposed".to_string()] {
+        Ok(())
+    } else {
+        Err(format!(
+            "installed journey must observe exactly one weakly_exposed finding; observed {} finding(s) [{}]; refusing a pass the fixture cannot prove",
+            evidence.findings,
+            evidence.classifications.join(",")
+        ))
+    }
+}
+
 /// Requires the installed human rendering to contain its `Start here`
 /// action section: exit 0 plus JSON alone would not prove the human front
 /// door renders.
@@ -712,6 +731,7 @@ fn run_check_journey(
     )
     .map_err(|error| format!("installed check (json) failed: {error}"))?;
     let evidence = check_evidence_json(&json_stdout)?;
+    require_boundary_oracle(&evidence)?;
     Ok(JourneyEvidence {
         repo_rel: FIXTURE_REPO_REL.join("/"),
         base_sha: repo.base_sha.clone(),
@@ -1212,6 +1232,43 @@ mod tests {
         assert!(matches!(
             check_evidence_json("{}"),
             Err(error) if error.contains("no findings array")
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn journey_requires_the_designed_weakly_exposed_oracle() -> Result<(), String> {
+        require_boundary_oracle(&CheckEvidence {
+            findings: 1,
+            classifications: vec!["weakly_exposed".to_string()],
+            summary_probes: 1,
+        })?;
+        // A promotion to exposed is the false-confidence family: the
+        // mid-range-only test never observes the changed sink.
+        assert!(matches!(
+            require_boundary_oracle(&CheckEvidence {
+                findings: 1,
+                classifications: vec!["exposed".to_string()],
+                summary_probes: 1,
+            }),
+            Err(error) if error.contains("exactly one weakly_exposed")
+        ));
+        // Any other shape (demotion, multiplicity, silence) also refuses.
+        assert!(matches!(
+            require_boundary_oracle(&CheckEvidence {
+                findings: 1,
+                classifications: vec!["reachable_unrevealed".to_string()],
+                summary_probes: 1,
+            }),
+            Err(error) if error.contains("exactly one weakly_exposed")
+        ));
+        assert!(matches!(
+            require_boundary_oracle(&CheckEvidence {
+                findings: 2,
+                classifications: vec!["weakly_exposed".to_string()],
+                summary_probes: 2,
+            }),
+            Err(error) if error.contains("exactly one weakly_exposed")
         ));
         Ok(())
     }
