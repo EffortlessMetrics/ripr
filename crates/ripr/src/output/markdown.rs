@@ -82,7 +82,7 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
     }
     let command = command.replace("'\\''", "''");
     if let Some(index) = powershell_redirect_offset(&command) {
-        let invocation = command[..index].trim_end();
+        let invocation = invoke_quoted_program(command[..index].trim_end());
         let target = command[index + 1..].trim();
         // A second redirect leaves `>` inside the artifact path, which has
         // no Windows translation (`>` is not a valid filename character
@@ -96,7 +96,20 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
             "$ripr = (({invocation}) | Out-String); if ($LASTEXITCODE -eq 0) {{ [System.IO.File]::WriteAllText({output}, $ripr, [System.Text.UTF8Encoding]::new($false)) }} else {{ throw \"ripr exited with code $LASTEXITCODE\" }}"
         ));
     }
-    Some(command)
+    Some(invoke_quoted_program(&command))
+}
+
+/// A quoted program path in command position is a string expression in
+/// PowerShell, not an invocation: without the call operator the copied line
+/// echoes the path and exits 0 without running anything (native proof,
+/// #1672 — the recorder never ran, so no stdout marker and no argv record
+/// appeared). Unquoted program names invoke directly and need no operator.
+fn invoke_quoted_program(invocation: &str) -> String {
+    if invocation.starts_with('\'') || invocation.starts_with('"') {
+        format!("& {invocation}")
+    } else {
+        invocation.to_string()
+    }
 }
 
 /// Find the generated ` > ` operator after apostrophe translation. This is
@@ -354,6 +367,27 @@ mod tests {
         assert_eq!(
             powershell_command("ripr receipt write --gap 'gap > file'"),
             Some("ripr receipt write --gap 'gap > file'".to_string())
+        );
+    }
+
+    /// A quoted program path in command position needs the call operator:
+    /// PowerShell reads a bare quoted string as a string expression, so the
+    /// translated line would echo the path and exit 0 without executing
+    /// anything (native proof, #1672). Unquoted program names invoke
+    /// directly and keep the line unchanged.
+    #[test]
+    fn powershell_command_invokes_quoted_program_paths_with_call_operator() {
+        assert_eq!(
+            powershell_command("'C:\\tools\\recorder.exe' --gap 'it''s'"),
+            Some("& 'C:\\tools\\recorder.exe' --gap 'it''s'".to_string())
+        );
+        assert_eq!(
+            powershell_command("'C:\\tools\\recorder.exe' --gap > 'C:\\out\\after.json'"),
+            Some("$ripr = ((& 'C:\\tools\\recorder.exe' --gap) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('C:\\out\\after.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+        );
+        assert_eq!(
+            powershell_command("cargo test --gap"),
+            Some("cargo test --gap".to_string())
         );
     }
 
