@@ -103,9 +103,14 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
 /// PowerShell, not an invocation: without the call operator the copied line
 /// echoes the path and exits 0 without running anything (native proof,
 /// #1672 — the recorder never ran, so no stdout marker and no argv record
-/// appeared). Unquoted program names invoke directly and need no operator.
+/// appeared). The quote may follow leading whitespace, which the compound
+/// check accepts; the operator still applies and the spacing is preserved.
+/// Unquoted program names invoke directly and need no operator.
 fn invoke_quoted_program(invocation: &str) -> String {
-    if invocation.starts_with('\'') || invocation.starts_with('"') {
+    if matches!(
+        invocation.trim_start().chars().next(),
+        Some('\'') | Some('"')
+    ) {
         format!("& {invocation}")
     } else {
         invocation.to_string()
@@ -388,6 +393,12 @@ mod tests {
         assert_eq!(
             powershell_command("cargo test --gap"),
             Some("cargo test --gap".to_string())
+        );
+        // Leading whitespace does not hide the quoted program: the operator
+        // still applies and the spacing is preserved.
+        assert_eq!(
+            powershell_command("  'my tools\\recorder.exe' --gap"),
+            Some("&   'my tools\\recorder.exe' --gap".to_string())
         );
     }
 
