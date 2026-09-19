@@ -378,12 +378,12 @@ mod tests {
     #[test]
     fn powershell_command_invokes_quoted_program_paths_with_call_operator() {
         assert_eq!(
-            powershell_command("'C:\\tools\\recorder.exe' --gap 'it''s'"),
-            Some("& 'C:\\tools\\recorder.exe' --gap 'it''s'".to_string())
+            powershell_command("'my tools\\recorder.exe' --gap 'it''s'"),
+            Some("& 'my tools\\recorder.exe' --gap 'it''s'".to_string())
         );
         assert_eq!(
-            powershell_command("'C:\\tools\\recorder.exe' --gap > 'C:\\out\\after.json'"),
-            Some("$ripr = ((& 'C:\\tools\\recorder.exe' --gap) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('C:\\out\\after.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            powershell_command("'my tools\\recorder.exe' --gap > 'out\\after.json'"),
+            Some("$ripr = ((& 'my tools\\recorder.exe' --gap) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('out\\after.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
         assert_eq!(
             powershell_command("cargo test --gap"),
