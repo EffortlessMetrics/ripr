@@ -99,6 +99,27 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(sha256_hex(&bytes))
 }
 
+/// Base directory for harness-owned staging: the process temp directory
+/// unless it sits inside the enclosing Cargo workspace (observed when
+/// `TMPDIR` points at a repo-local target dir), in which case the user's
+/// home cache. An extracted candidate staged inside the workspace would
+/// be discovered as a member and refused by `cargo install`.
+fn staging_base() -> Result<PathBuf, String> {
+    let temp = std::env::temp_dir();
+    let workspace = std::env::current_dir()
+        .ok()
+        .and_then(|cwd| enclosing_workspace_root(&cwd));
+    match workspace {
+        Some(root) if temp.starts_with(&root) => std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join(".cache").join("ripr-first-hour"))
+            .ok_or_else(|| {
+                "temp dir sits inside the cargo workspace and HOME is unset".to_string()
+            }),
+        _ => Ok(temp),
+    }
+}
+
 fn unix_epoch_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -126,12 +147,38 @@ struct Harness {
     ledger: Vec<LedgerEntry>,
 }
 
+/// Workspace root enclosing `dir`, if any: the nearest ancestor holding a
+/// manifest that declares `[workspace]`.
+fn enclosing_workspace_root(dir: &Path) -> Option<PathBuf> {
+    let mut current = if dir.is_file() {
+        dir.parent().map(Path::to_path_buf)
+    } else {
+        Some(dir.to_path_buf())
+    };
+    while let Some(candidate) = current {
+        let manifest = candidate.join("Cargo.toml");
+        if manifest.is_file() {
+            if let Ok(text) = std::fs::read_to_string(&manifest) {
+                if text.lines().any(|line| line.trim() == "[workspace]") {
+                    return Some(candidate);
+                }
+            }
+        }
+        current = candidate.parent().map(Path::to_path_buf);
+    }
+    None
+}
+
 impl Harness {
     /// Creates a harness-owned staging directory registered for Drop-guard
     /// cleanup. Only directories this function creates are ever registered:
-    /// caller-supplied paths are never adopted for deletion.
+    /// caller-supplied paths are never adopted for deletion. Staging is
+    /// always placed outside the enclosing Cargo workspace: an extracted
+    /// package staged inside it would be discovered as a workspace member
+    /// and `cargo install` would refuse it.
     fn owned_staging(&mut self, label: &str) -> Result<PathBuf, String> {
-        let root = std::env::temp_dir().join(format!(
+        let base = staging_base()?;
+        let root = base.join(format!(
             "ripr-first-hour-{label}-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
@@ -260,8 +307,13 @@ fn install_package(
     }
     let crate_digest = sha256_file(Path::new(crate_path))?;
     let package_root = extract_crate_archive(harness, Path::new(crate_path))?;
+    // `--locked`: the shipped package carries its Cargo.lock. Fresh index
+    // resolution drifts dependency versions (observed: unicode-ident /
+    // unicode-properties skew breaking the build); qualification installs
+    // the exact locked bytes or fails loudly.
     let argv = vec![
         "install".to_string(),
+        "--locked".to_string(),
         "--root".to_string(),
         prefix.to_string_lossy().to_string(),
         "--path".to_string(),
@@ -577,6 +629,20 @@ mod tests {
         );
         // Nothing was created: no install, no fixture root, no receipt.
         assert!(!base.exists());
+    }
+
+    #[test]
+    fn staging_base_never_sits_inside_the_enclosing_workspace() {
+        let base = staging_base().expect("staging base");
+        let cwd = std::env::current_dir().expect("cwd");
+        if let Some(root) = enclosing_workspace_root(&cwd) {
+            assert!(
+                !base.starts_with(&root),
+                "staging `{}` sits inside workspace `{}`",
+                base.display(),
+                root.display()
+            );
+        }
     }
 
     #[test]
