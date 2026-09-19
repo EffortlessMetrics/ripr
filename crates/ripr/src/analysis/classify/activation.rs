@@ -645,9 +645,13 @@ pub(in crate::analysis) fn unresolved_guard_error_edge(
         return None;
     }
     let owner = owner_fn?;
+    // #1726 review: `function_parameters` preserves `mut`, so a
+    // mutable guard (`mut cancelled: bool`) must match the bare probe
+    // guard. Only the comparison is normalized; call-row and helper
+    // binding keep consuming the raw positional names.
     if !function_parameters(owner)
         .iter()
-        .any(|parameter| parameter == guard)
+        .any(|parameter| parameter.strip_prefix("mut ").unwrap_or(parameter) == guard)
     {
         return None;
     }
@@ -2547,6 +2551,32 @@ assert_eq!(input.amount, 100);"#
         function(
             "pub fn score(cancelled: bool) -> i32 {\n    if cancelled {\n        1\n    } else {\n        0\n    }\n}",
         )
+    }
+
+    // #1726 review T1: a mutable guard parameter (`mut cancelled`)
+    // still names the guard edge; only the comparison is normalized.
+    #[test]
+    fn guard_error_edge_names_mutable_guard_parameter() -> Result<(), String> {
+        let mut owner = guard_owner();
+        owner.body = "pub fn score(mut cancelled: bool) -> i32 {\n    if cancelled {\n        1\n    } else {\n        0\n    }\n}"
+            .to_string();
+        let mut probe = probe(ProbeFamily::Predicate, "cancelled");
+        probe.location = SourceLocation::new("src/lib.rs", 2, 5);
+        let test = guard_test(
+            "cancelled_return_is_exact",
+            "let err = score(true).expect_err(\"x\");\nassert_eq!(err, cancelled_error());",
+            true,
+        );
+
+        let Some(reason) =
+            unresolved_guard_error_edge(&probe, Some(&owner), &[&test], &[guard_sink(3)], None)
+        else {
+            return Err("mutable guard must name the edge".to_string());
+        };
+        if !reason.contains("`cancelled`") {
+            return Err(format!("reason must name the guard: {reason}"));
+        }
+        Ok(())
     }
 
     fn guard_sink(line: usize) -> FlowSinkFact {

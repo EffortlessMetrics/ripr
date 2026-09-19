@@ -79,6 +79,12 @@ pub(in crate::analysis) fn build_finding(
             &evidence.flow_sinks,
             context.helper_chain.as_ref(),
         )
+        .filter(|_| {
+            strong_assertion_observes_owner_result(
+                &context.related_tests,
+                context.owner_fn.map(|owner| owner.name.as_str()),
+            )
+        })
     } else {
         None
     };
@@ -211,6 +217,32 @@ fn exact_oracle_aligns_with_sink(
             owner_name,
             test.body.as_str(),
         )
+    })
+}
+
+/// #1726 review: the guard producer accepts a strong assertion in any
+/// owner-calling test, so a strong assertion on an unrelated value
+/// could take the limitation. The consumer additionally requires the
+/// strong assertion to mention an identifier bound from an owner call
+/// (the same owner-bound authority `oracle_binds_sink_identity`
+/// applies to value sinks), so only an observer of the owner result
+/// withholds the prescription. A directly asserted owner call with no
+/// `let` binding stays fail-closed and keeps its repair.
+fn strong_assertion_observes_owner_result(
+    related_tests: &[(&TestSummary, RelationReason)],
+    owner_name: Option<&str>,
+) -> bool {
+    let Some(owner_name) = owner_name else {
+        return false;
+    };
+    related_tests.iter().any(|(test, _)| {
+        let bound = bound_identifiers_from_owner_calls(&test.body, owner_name);
+        test.assertions.iter().any(|assertion| {
+            assertion.strength == OracleStrength::Strong
+                && bound
+                    .iter()
+                    .any(|name| contains_identifier(&assertion.text, name))
+        })
     })
 }
 
@@ -393,6 +425,7 @@ mod tests {
     use super::{
         bound_identifiers_from_owner_calls, exact_oracle_aligns_with_sink,
         oracle_binds_sink_identity, oracle_text_aligns_with_sink, sink_kind_corresponds,
+        strong_assertion_observes_owner_result,
     };
     use crate::analysis::classifier::evidence::ClassifiedProbeEvidence;
     use crate::analysis::rust_index::TestSummary;
@@ -778,6 +811,81 @@ mod tests {
             "assert_eq!(other, Ok(amount))",
             "let other = recalculate(5);",
             Some("calculate")
+        ));
+    }
+
+    // #1726 review T2: the guard limitation needs a strong assertion
+    // observing an owner-bound result, not just any strong assertion
+    // in an owner-calling test.
+    #[test]
+    fn owner_result_observation_requires_bound_strong_assertion() {
+        use crate::analysis::rust_index::OracleFact;
+
+        fn summary(body: &str, assertions: Vec<OracleFact>) -> TestSummary {
+            TestSummary {
+                name: "case".to_string(),
+                file: PathBuf::from("tests/errors.rs"),
+                start_line: 1,
+                end_line: 6,
+                body: body.to_string(),
+                calls: Vec::new(),
+                assertions,
+                literals: Vec::new(),
+                attrs: Vec::new(),
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
+            }
+        }
+
+        fn strong(text: &str) -> OracleFact {
+            OracleFact {
+                kind: OracleKind::ExactValue,
+                strength: OracleStrength::Strong,
+                line: 2,
+                text: text.to_string(),
+                observed_tokens: Vec::new(),
+                ok_value_observed: None,
+            }
+        }
+
+        fn paired(test: &TestSummary) -> Vec<(&TestSummary, RelationReason)> {
+            vec![(test, RelationReason::DirectOwnerCall)]
+        }
+
+        // A strong assertion on the owner-bound result observes it.
+        let bound = summary(
+            "let err = calculate(true).expect_err(\"x\");",
+            vec![strong("assert_eq!(err, cancelled_error());")],
+        );
+        assert!(strong_assertion_observes_owner_result(
+            &paired(&bound),
+            Some("calculate")
+        ));
+        // A strong assertion on an unrelated value does not, even
+        // when the test calls the owner.
+        let unbound = summary(
+            "calculate(true);\nassert_eq!(other, 42);",
+            vec![strong("assert_eq!(other, 42);")],
+        );
+        assert!(!strong_assertion_observes_owner_result(
+            &paired(&unbound),
+            Some("calculate")
+        ));
+        // A weak assertion on the bound result does not qualify.
+        let mut weak_assertion = strong("assert_eq!(err, cancelled_error());");
+        weak_assertion.strength = OracleStrength::Weak;
+        let weak = summary(
+            "let err = calculate(true).expect_err(\"x\");",
+            vec![weak_assertion],
+        );
+        assert!(!strong_assertion_observes_owner_result(
+            &paired(&weak),
+            Some("calculate")
+        ));
+        // No owner means no binding to observe through.
+        assert!(!strong_assertion_observes_owner_result(
+            &paired(&bound),
+            None
         ));
     }
 
