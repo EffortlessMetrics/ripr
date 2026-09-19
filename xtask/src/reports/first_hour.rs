@@ -157,12 +157,11 @@ fn enclosing_workspace_root(dir: &Path) -> Option<PathBuf> {
     };
     while let Some(candidate) = current {
         let manifest = candidate.join("Cargo.toml");
-        if manifest.is_file() {
-            if let Ok(text) = std::fs::read_to_string(&manifest) {
-                if text.lines().any(|line| line.trim() == "[workspace]") {
-                    return Some(candidate);
-                }
-            }
+        if manifest.is_file()
+            && let Ok(text) = std::fs::read_to_string(&manifest)
+            && text.lines().any(|line| line.trim() == "[workspace]")
+        {
+            return Some(candidate);
         }
         current = candidate.parent().map(Path::to_path_buf);
     }
@@ -473,16 +472,27 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    /// Returns the harness's typed error, or fails the test when the call
+    /// succeeded (the expect_err shape without the banned method).
+    fn refusal_of<T>(result: Result<T, String>) -> Result<String, String> {
+        match result {
+            Ok(_) => Err("expected a typed refusal; the call succeeded".to_string()),
+            Err(error) => Ok(error),
+        }
+    }
+
     #[test]
-    fn wrong_binary_is_refused_against_the_installed_identity() {
+    fn wrong_binary_is_refused_against_the_installed_identity() -> Result<(), String> {
         let dir =
             std::env::temp_dir().join(format!("ripr-first-hour-wrong-bin-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("fixture dir");
+        std::fs::create_dir_all(&dir).map_err(|error| format!("fixture dir: {error}"))?;
         let real = dir.join("ripr");
         let impostor = dir.join("other-ripr");
-        std::fs::write(&real, b"installed-bytes").expect("write real");
-        std::fs::write(&impostor, b"different-bytes").expect("write impostor");
+        std::fs::write(&real, b"installed-bytes")
+            .map_err(|error| format!("write real: {error}"))?;
+        std::fs::write(&impostor, b"different-bytes")
+            .map_err(|error| format!("write impostor: {error}"))?;
         let subject = InstalledSubject {
             crate_path: "fixture.crate".to_string(),
             crate_sha256: "0".repeat(64),
@@ -492,45 +502,52 @@ mod tests {
             executable_size: 15,
             version_output: "ripr 0.11.0".to_string(),
         };
-        assert!(admit_installed_executable(&subject, &real).is_ok());
-        let refused = admit_installed_executable(&subject, &impostor);
-        assert!(refused.is_err());
-        assert!(refused.unwrap_err().contains("wrong binary"));
+        assert!(matches!(
+            admit_installed_executable(&subject, &real),
+            Ok(())
+        ));
+        assert!(matches!(
+            admit_installed_executable(&subject, &impostor),
+            Err(error) if error.contains("wrong binary")
+        ));
         let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     #[test]
-    fn install_refuses_a_live_prefix() {
+    fn install_refuses_a_live_prefix() -> Result<(), String> {
         let dir = std::env::temp_dir().join(format!(
             "ripr-first-hour-live-prefix-{}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("live prefix fixture");
+        std::fs::create_dir_all(&dir).map_err(|error| format!("live prefix fixture: {error}"))?;
         let mut harness = Harness {
             roots: Vec::new(),
             ledger: Vec::new(),
         };
-        let refused = install_package(&mut harness, "missing.crate", &dir);
-        assert!(refused.is_err());
-        assert!(refused.unwrap_err().contains("already exists"));
+        assert!(matches!(
+            install_package(&mut harness, "missing.crate", &dir),
+            Err(error) if error.contains("already exists")
+        ));
         let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     #[test]
-    fn hostile_archive_members_are_rejected_before_extraction() {
+    fn hostile_archive_members_are_rejected_before_extraction() -> Result<(), String> {
         use flate2::Compression;
         use flate2::write::GzEncoder;
-        use tar::Builder;
         let dir = std::env::temp_dir().join(format!(
             "ripr-first-hour-hostile-crate-{}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("fixture dir");
+        std::fs::create_dir_all(&dir).map_err(|error| format!("fixture dir: {error}"))?;
         let archive = dir.join("evil.crate");
         {
-            let file = std::fs::File::create(&archive).expect("archive file");
+            let file = std::fs::File::create(&archive)
+                .map_err(|error| format!("archive file: {error}"))?;
             let mut raw: Vec<u8> = Vec::new();
             // Raw ustar member with an exact (possibly hostile) name,
             // bypassing safe builders that refuse to construct it.
@@ -559,82 +576,93 @@ mod tests {
             raw_member(&mut raw, b"../escape", b"evil");
             use std::io::Write;
             let mut encoder = GzEncoder::new(file, Compression::default());
-            encoder.write_all(&raw).expect("gzip body");
-            encoder.write_all(&[0u8; 1024]).expect("trailer");
-            encoder.finish().expect("flush");
+            encoder
+                .write_all(&raw)
+                .map_err(|error| format!("gzip body: {error}"))?;
+            encoder
+                .write_all(&[0u8; 1024])
+                .map_err(|error| format!("gzip trailer: {error}"))?;
+            encoder
+                .finish()
+                .map_err(|error| format!("gzip flush: {error}"))?;
         }
         let mut harness = Harness {
             roots: Vec::new(),
             ledger: Vec::new(),
         };
-        let refused = extract_crate_archive(&mut harness, &archive);
-        assert!(refused.is_err());
-        assert!(refused.unwrap_err().contains("escapes extraction root"));
+        assert!(matches!(
+            extract_crate_archive(&mut harness, &archive),
+            Err(error) if error.contains("escapes extraction root")
+        ));
         // Nothing materialized outside staging.
         assert!(!dir.join("escape").exists());
         drop(harness);
         let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     #[test]
-    fn pre_existing_fixture_root_is_never_adopted_for_deletion() {
+    fn pre_existing_fixture_root_is_never_adopted_for_deletion() -> Result<(), String> {
         let dir = std::env::temp_dir().join(format!(
             "ripr-first-hour-preexisting-{}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("pre-existing dir");
+        std::fs::create_dir_all(&dir).map_err(|error| format!("pre-existing dir: {error}"))?;
         let sentinel = dir.join("user-data.txt");
-        std::fs::write(&sentinel, b"precious").expect("sentinel");
-        let refused = first_hour(&[
-            "--crate".to_string(),
-            "missing.crate".to_string(),
-            "--prefix".to_string(),
-            dir.join("prefix").to_string_lossy().to_string(),
-            "--out".to_string(),
-            dir.join("out").to_string_lossy().to_string(),
-            "--fixture-root".to_string(),
-            dir.to_string_lossy().to_string(),
-        ]);
-        assert!(refused.is_err());
-        assert!(refused.unwrap_err().contains("already exists"));
+        std::fs::write(&sentinel, b"precious").map_err(|error| format!("sentinel: {error}"))?;
+        assert!(matches!(
+            first_hour(&[
+                "--crate".to_string(),
+                "missing.crate".to_string(),
+                "--prefix".to_string(),
+                dir.join("prefix").to_string_lossy().to_string(),
+                "--out".to_string(),
+                dir.join("out").to_string_lossy().to_string(),
+                "--fixture-root".to_string(),
+                dir.to_string_lossy().to_string(),
+            ]),
+            Err(error) if error.contains("already exists")
+        ));
         // The pre-existing directory and its contents survive.
-        assert!(std::fs::read(&sentinel).expect("sentinel survives") == b"precious");
+        assert!(
+            std::fs::read(&sentinel).map_err(|error| format!("sentinel survives: {error}"))?
+                == b"precious"
+        );
         let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     #[test]
-    fn receipt_nested_under_fixture_root_is_refused_before_any_work() {
+    fn receipt_nested_under_fixture_root_is_refused_before_any_work() -> Result<(), String> {
         let base =
             std::env::temp_dir().join(format!("ripr-first-hour-overlap-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
-        let refused = first_hour(&[
-            "--crate".to_string(),
-            "missing.crate".to_string(),
-            "--prefix".to_string(),
-            base.join("prefix").to_string_lossy().to_string(),
-            "--out".to_string(),
-            base.join("fixtures")
-                .join("out")
-                .to_string_lossy()
-                .to_string(),
-            "--fixture-root".to_string(),
-            base.join("fixtures").to_string_lossy().to_string(),
-        ]);
-        assert!(refused.is_err());
-        assert!(
-            refused
-                .unwrap_err()
-                .contains("must not equal or nest under")
-        );
+        assert!(matches!(
+            first_hour(&[
+                "--crate".to_string(),
+                "missing.crate".to_string(),
+                "--prefix".to_string(),
+                base.join("prefix").to_string_lossy().to_string(),
+                "--out".to_string(),
+                base.join("fixtures")
+                    .join("out")
+                    .to_string_lossy()
+                    .to_string(),
+                "--fixture-root".to_string(),
+                base.join("fixtures").to_string_lossy().to_string(),
+            ]),
+            Err(error) if error.contains("must not equal or nest under")
+        ));
         // Nothing was created: no install, no fixture root, no receipt.
         assert!(!base.exists());
+        Ok(())
     }
 
     #[test]
-    fn staging_base_never_sits_inside_the_enclosing_workspace() {
-        let base = staging_base().expect("staging base");
-        let cwd = std::env::current_dir().expect("cwd");
+    fn staging_base_never_sits_inside_the_enclosing_workspace() -> Result<(), String> {
+        let base = staging_base()?;
+        let cwd = std::env::current_dir().map_err(|error| format!("current dir: {error}"))?;
         if let Some(root) = enclosing_workspace_root(&cwd) {
             assert!(
                 !base.starts_with(&root),
@@ -643,13 +671,14 @@ mod tests {
                 root.display()
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn arg_surface_requires_every_identity_input() {
-        assert!(parse_args(&[]).is_err());
-        assert!(parse_args(&["--crate".to_string(), "a.crate".to_string(),]).is_err());
-        let parsed = parse_args(&[
+    fn arg_surface_requires_every_identity_input() -> Result<(), String> {
+        let _ = refusal_of(parse_args(&[]))?;
+        let _ = refusal_of(parse_args(&["--crate".to_string(), "a.crate".to_string()]))?;
+        let Ok(parsed) = parse_args(&[
             "--crate".to_string(),
             "a.crate".to_string(),
             "--prefix".to_string(),
@@ -658,7 +687,10 @@ mod tests {
             "o".to_string(),
             "--fixture-root".to_string(),
             "f".to_string(),
-        ]);
-        assert!(parsed.is_ok());
+        ]) else {
+            return Err("complete arg surface must parse".to_string());
+        };
+        assert_eq!(parsed.prefix, "p");
+        Ok(())
     }
 }
