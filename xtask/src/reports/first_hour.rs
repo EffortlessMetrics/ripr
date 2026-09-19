@@ -188,16 +188,6 @@ impl Harness {
         self.roots.push(root.clone());
         Ok(root)
     }
-
-    fn record(&mut self, step: &str, argv: Vec<String>, cwd: &Path, status: String) {
-        self.ledger.push(LedgerEntry {
-            step: step.to_string(),
-            argv,
-            cwd: cwd.to_string_lossy().to_string(),
-            started_epoch_secs: unix_epoch_secs(),
-            status,
-        });
-    }
 }
 
 impl Drop for Harness {
@@ -348,17 +338,20 @@ fn install_package(
         .map_err(|error| format!("stat installed binary: {error}"))?
         .len();
     let version_argv = vec!["--version".to_string()];
+    let step_argv = vec![
+        executable.to_string_lossy().to_string(),
+        "--version".to_string(),
+    ];
+    let started_version = unix_epoch_secs();
     let version_output = run::run_output_owned(&executable.to_string_lossy(), &version_argv)
         .map_err(|error| format!("installed --version failed: {error}"))?;
-    harness.record(
-        "installed-version",
-        vec![
-            executable.to_string_lossy().to_string(),
-            "--version".to_string(),
-        ],
-        &cwd,
-        "recorded".to_string(),
-    );
+    harness.ledger.push(LedgerEntry {
+        step: "installed-version".to_string(),
+        argv: step_argv,
+        cwd: cwd.to_string_lossy().to_string(),
+        started_epoch_secs: started_version,
+        status: "recorded".to_string(),
+    });
     Ok(InstalledSubject {
         crate_path: crate_path.to_string(),
         crate_sha256: crate_digest,
