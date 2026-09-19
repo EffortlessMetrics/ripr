@@ -15,7 +15,9 @@ mod text;
 mod transitive_reach;
 mod value_transfer;
 
-pub(in crate::analysis) use activation::{BOUNDARY_OPERAND_UNRESOLVED_MARKER, activation_evidence};
+pub(in crate::analysis) use activation::{
+    BOUNDARY_OPERAND_UNRESOLVED_MARKER, activation_evidence, unresolved_guard_error_edge,
+};
 pub(in crate::analysis) use context::ProbeContext;
 pub(in crate::analysis) use decision::{
     classify, confidence_score, ensure_unknown_stop_reason, missing_evidence,

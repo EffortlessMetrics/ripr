@@ -592,7 +592,9 @@ fn parse_index_literal(text: &str) -> Option<usize> {
     trimmed.parse().ok()
 }
 
-fn is_identifier(text: &str) -> bool {
+// Shared bare-identifier predicate so the guard producer (`activation`)
+// and the evaluator apply the same identifier rule.
+pub(in crate::analysis) fn is_identifier(text: &str) -> bool {
     !text.is_empty()
         && text
             .chars()

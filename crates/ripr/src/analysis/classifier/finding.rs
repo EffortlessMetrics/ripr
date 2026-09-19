@@ -2,7 +2,7 @@ use super::evidence::ClassifiedProbeEvidence;
 use crate::analysis::classify::{
     BOUNDARY_OPERAND_UNRESOLVED_MARKER, ProbeContext, body_contains_owner_call,
     ensure_unknown_stop_reason, exact_error_variant, missing_evidence, recommended_next_step,
-    stop_reasons,
+    stop_reasons, unresolved_guard_error_edge,
 };
 
 /// #1429: repair assignment for a predicate boundary discriminator the
@@ -11,6 +11,13 @@ use crate::analysis::classify::{
 /// names what static analysis cannot establish, deferring the
 /// discrimination verdict to real mutation testing.
 pub(in crate::analysis) const BOUNDARY_OPERAND_UNRESOLVED_NEXT_STEP: &str = "Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the boundary operand values through the producer operations, so it does not prescribe a specific boundary input the suite may already cover. Verify via real mutation testing whether the asserted sink observes the missing discriminator value.";
+/// #1579: repair assignment for a changed error return behind a
+/// boolean guard the analyzer cannot carry the producing expression
+/// through. It must not prescribe a boundary or error-assertion test
+/// the suite already contains; the typed limitation names the guard
+/// edge static analysis cannot establish, deferring the
+/// discrimination verdict to real mutation testing.
+pub(in crate::analysis) const ERROR_RETURN_GUARD_UNRESOLVED_NEXT_STEP: &str = "Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the changed error return's producing expression through the boolean guard, so it does not prescribe a boundary or error-assertion test the suite may already contain. Verify via real mutation testing whether the exact observer discriminates the producing expression.";
 use crate::analysis::rust_index::TestSummary;
 use crate::domain::*;
 
@@ -55,11 +62,33 @@ pub(in crate::analysis) fn build_finding(
             .missing_discriminators
             .iter()
             .any(|fact| fact.reason.contains(BOUNDARY_OPERAND_UNRESOLVED_MARKER));
+    // #1579: a bare-guard predicate over a changed error return an
+    // exact observer already covers is unconfirmed, not
+    // established-missing. Prescribing a boundary or error-assertion
+    // test would instruct the user to add a test the suite already
+    // contains, so the typed static limitation replaces the
+    // prescription. The class stays `InfectionUnknown`: the gap is
+    // still visible, only the impossible repair assignment is withheld.
+    let error_guard_unresolved: Option<String> = if class == ExposureClass::InfectionUnknown
+        && matches!(context.probe.family, ProbeFamily::Predicate)
+    {
+        unresolved_guard_error_edge(
+            context.probe,
+            context.owner_fn,
+            &test_summaries,
+            &evidence.flow_sinks,
+            context.helper_chain.as_ref(),
+        )
+    } else {
+        None
+    };
     let recommended_next_step =
         if class == ExposureClass::WeaklyExposed && exact_oracle_covers_direct_sink {
             None
         } else if boundary_operand_unresolved {
             Some(BOUNDARY_OPERAND_UNRESOLVED_NEXT_STEP.to_string())
+        } else if error_guard_unresolved.is_some() {
+            Some(ERROR_RETURN_GUARD_UNRESOLVED_NEXT_STEP.to_string())
         } else {
             recommended_next_step(context.probe, &class, context.owner_assertion_shaped)
         };
@@ -79,6 +108,11 @@ pub(in crate::analysis) fn build_finding(
             "Typed static limitation (rust_value_propagation_unresolved): boundary operand values are not statically resolvable, so the missing discriminator is unconfirmed and no specific boundary input is prescribed"
                 .to_string(),
         );
+    }
+    if let Some(reason) = &error_guard_unresolved {
+        evidence_lines.push(format!(
+            "Typed static limitation (rust_value_propagation_unresolved): {reason}, so the missing discriminator is unconfirmed and no boundary or error-assertion test is prescribed"
+        ));
     }
     if invalid_propagation_witness {
         evidence_lines
@@ -117,7 +151,7 @@ pub(in crate::analysis) fn build_finding(
         // LSP, and packet projections consume the same limitation fact.
         // The language adapter only assigns a limit when none is set,
         // so this producer-assigned kind is never overwritten.
-        static_limit_kind: boundary_operand_unresolved
+        static_limit_kind: (boundary_operand_unresolved || error_guard_unresolved.is_some())
             .then_some(StaticLimitKind::RustValuePropagationUnresolved),
         changed_sink: None,
         observed_sink: None,
