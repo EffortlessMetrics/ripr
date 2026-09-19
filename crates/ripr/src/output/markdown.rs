@@ -72,16 +72,17 @@ pub(crate) const POWERSHELL_UNAVAILABLE_DISCLOSURE: &str =
 /// lives beside the markdown render helpers because every generated-command
 /// surface renders both shell variants from this one implementation.
 ///
-/// Disclosed limitation: the tests pin these forms as strings, and the CI
-/// environment that runs them cannot assume a pwsh runtime oracle, so the
-/// guard and the translations carry no executed regression on that lane.
+/// Test depth: the string pins below run on every lane, and the
+/// Windows-gated `powershell_translation_preserves_native_argv_and_artifact_bytes`
+/// executes the translated lines under a real `pwsh` on the Windows lane,
+/// where a missing `pwsh` fails closed instead of skipping.
 pub(crate) fn powershell_command(command: &str) -> Option<String> {
     if is_compound_bash_command(command) {
         return None;
     }
     let command = command.replace("'\\''", "''");
     if let Some(index) = powershell_redirect_offset(&command) {
-        let invocation = command[..index].trim_end();
+        let invocation = invoke_quoted_program(command[..index].trim_end());
         let target = command[index + 1..].trim();
         // A second redirect leaves `>` inside the artifact path, which has
         // no Windows translation (`>` is not a valid filename character
@@ -95,7 +96,25 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
             "$ripr = (({invocation}) | Out-String); if ($LASTEXITCODE -eq 0) {{ [System.IO.File]::WriteAllText({output}, $ripr, [System.Text.UTF8Encoding]::new($false)) }} else {{ throw \"ripr exited with code $LASTEXITCODE\" }}"
         ));
     }
-    Some(command)
+    Some(invoke_quoted_program(&command))
+}
+
+/// A quoted program path in command position is a string expression in
+/// PowerShell, not an invocation: without the call operator the copied line
+/// echoes the path and exits 0 without running anything (native proof,
+/// #1672 — the recorder never ran, so no stdout marker and no argv record
+/// appeared). The quote may follow leading whitespace, which the compound
+/// check accepts; the operator still applies and the spacing is preserved.
+/// Unquoted program names invoke directly and need no operator.
+fn invoke_quoted_program(invocation: &str) -> String {
+    if matches!(
+        invocation.trim_start().chars().next(),
+        Some('\'') | Some('"')
+    ) {
+        format!("& {invocation}")
+    } else {
+        invocation.to_string()
+    }
 }
 
 /// Find the generated ` > ` operator after apostrophe translation. This is
@@ -356,6 +375,33 @@ mod tests {
         );
     }
 
+    /// A quoted program path in command position needs the call operator:
+    /// PowerShell reads a bare quoted string as a string expression, so the
+    /// translated line would echo the path and exit 0 without executing
+    /// anything (native proof, #1672). Unquoted program names invoke
+    /// directly and keep the line unchanged.
+    #[test]
+    fn powershell_command_invokes_quoted_program_paths_with_call_operator() {
+        assert_eq!(
+            powershell_command("'my tools\\recorder.exe' --gap 'it''s'"),
+            Some("& 'my tools\\recorder.exe' --gap 'it''s'".to_string())
+        );
+        assert_eq!(
+            powershell_command("'my tools\\recorder.exe' --gap > 'out\\after.json'"),
+            Some("$ripr = ((& 'my tools\\recorder.exe' --gap) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('out\\after.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+        );
+        assert_eq!(
+            powershell_command("cargo test --gap"),
+            Some("cargo test --gap".to_string())
+        );
+        // Leading whitespace does not hide the quoted program: the operator
+        // still applies and the spacing is preserved.
+        assert_eq!(
+            powershell_command("  'my tools\\recorder.exe' --gap"),
+            Some("&   'my tools\\recorder.exe' --gap".to_string())
+        );
+    }
+
     /// PowerShell parses method-call arguments in expression mode, where a
     /// bare path like `target/ripr/out.json` is a parse error before anything
     /// runs (PR #3617 review, gemini HIGH + codex P1): the redirect target
@@ -438,9 +484,9 @@ mod tests {
     /// follow-up review): `throw` aborts a pasted or scripted block — in a
     /// composed fence a failed snapshot stops the sequence before its outcome
     /// command — while leaving an interactive session open, where `exit`
-    /// would close the reader's shell. String-pinned only — see the disclosed
-    /// limitation on [`powershell_command`] for why no pwsh runtime oracle
-    /// backs this.
+    /// would close the reader's shell. String-pinned here; the native
+    /// execution of the guard is covered by
+    /// `powershell_translation_preserves_native_argv_and_artifact_bytes`.
     #[test]
     fn powershell_command_guard_only_writes_the_artifact_on_success() -> Result<(), String> {
         let line = powershell_command(
@@ -557,5 +603,266 @@ mod tests {
             powershell_command("ripr check --root 'café\nrepo' > 'résumé.json'"),
             Some("$ripr = ((ripr check --root 'café\nrepo') | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('résumé.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
+    }
+
+    /// Benign argv recorder for the native Windows proof (#1672): writes each
+    /// received argument length-prefixed so the test compares bytes exactly,
+    /// prints one stdout marker, and exits with the `RIPR_EXIT_CODE` status
+    /// (default 0). No network, no credentials, no writes outside the
+    /// `RIPR_ARGV_RECORD` path. Compiled at test time with the same `rustc`
+    /// that runs the suite, into a disposable root.
+    const NATIVE_PROOF_RECORDER: &str = r#"use std::env;
+use std::fs;
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    let mut out: Vec<u8> = Vec::new();
+    for arg in env::args_os().skip(1) {
+        let bytes = arg.as_encoded_bytes();
+        out.extend_from_slice(bytes.len().to_string().as_bytes());
+        out.push(b':');
+        out.extend_from_slice(bytes);
+        out.push(b'\n');
+    }
+    if let Ok(record) = env::var("RIPR_ARGV_RECORD") {
+        if !record.is_empty() {
+            fs::write(&record, &out).unwrap();
+        }
+    }
+    println!("RECORDER_OK");
+    let code: u8 = env::var("RIPR_EXIT_CODE")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    ExitCode::from(code)
+}
+"#;
+
+    /// Disposable root for one native-proof case. Unique per call (timestamp
+    /// plus pid) so parallel tests never share it.
+    fn native_proof_root(name: &str) -> Result<std::path::PathBuf, String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-pwsh-proof-{name}-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir)
+            .map_err(|error| format!("failed to create proof root: {error}"))?;
+        Ok(dir)
+    }
+
+    /// Compile the recorder into the disposable root. A missing or broken
+    /// `rustc` fails the proof: without the fixture executable there is no
+    /// native observation to assert.
+    fn compile_native_proof_recorder(root: &std::path::Path) -> Result<std::path::PathBuf, String> {
+        let source = root.join("recorder.rs");
+        std::fs::write(&source, NATIVE_PROOF_RECORDER)
+            .map_err(|error| format!("failed to stage recorder source: {error}"))?;
+        let exe = root.join("recorder.exe");
+        let output = std::process::Command::new("rustc")
+            .arg("--edition=2021")
+            .arg("-O")
+            .arg(&source)
+            .arg("-o")
+            .arg(&exe)
+            .output()
+            .map_err(|error| format!("failed to spawn rustc for recorder: {error}"))?;
+        if !output.status.success() || !exe.exists() {
+            return Err(format!(
+                "recorder did not compile: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        Ok(exe)
+    }
+
+    /// Resolve a `pwsh` instrument by actually running it. A missing
+    /// instrument fails the proof — it never passes through a skip (#1672).
+    fn resolve_pwsh(program: &str) -> Result<(), String> {
+        match std::process::Command::new(program)
+            .arg("--version")
+            .output()
+        {
+            Ok(output) if output.status.success() => Ok(()),
+            _ => Err(format!("{program} is not runnable")),
+        }
+    }
+
+    /// The recorder source must stay compilable on every lane, including
+    /// lanes without `pwsh`: this guards the fixture against rot where the
+    /// native test itself cannot run.
+    #[test]
+    fn native_proof_recorder_source_compiles() -> Result<(), String> {
+        let root = native_proof_root("compile")?;
+        let exe = compile_native_proof_recorder(&root)?;
+        assert!(exe.exists(), "recorder executable missing after compile");
+        Ok(())
+    }
+
+    /// The instrument resolver must report an absent program instead of
+    /// passing silently.
+    #[test]
+    fn native_proof_pwsh_resolver_reports_absent_instrument() {
+        assert!(resolve_pwsh("ripr-nonexistent-pwsh-probe").is_err());
+    }
+
+    #[cfg(windows)]
+    fn run_pwsh_line(
+        line: &str,
+        cwd: &std::path::Path,
+        record: &std::path::Path,
+        exit_code: &str,
+    ) -> Result<std::process::Output, String> {
+        std::process::Command::new("pwsh")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(line)
+            .current_dir(cwd)
+            .env("RIPR_ARGV_RECORD", record)
+            .env("RIPR_EXIT_CODE", exit_code)
+            .output()
+            .map_err(|error| format!("failed to spawn pwsh: {error}"))
+    }
+
+    #[cfg(windows)]
+    fn recorded_argv_matches(record: &std::path::Path, expected: &[&str]) -> Result<(), String> {
+        let bytes = std::fs::read(record)
+            .map_err(|error| format!("failed to read argv record: {error}"))?;
+        let mut want: Vec<u8> = Vec::new();
+        for arg in expected {
+            want.extend_from_slice(arg.len().to_string().as_bytes());
+            want.push(b':');
+            want.extend_from_slice(arg.as_bytes());
+            want.push(b'\n');
+        }
+        if bytes != want {
+            return Err(format!(
+                "native argv mismatch: observed {bytes:?}, wanted {want:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// Native Windows proof (#1672): the translated lines are executed by a
+    /// real `pwsh`, not compared as strings. The bash input is built with the
+    /// production [`crate::agent::loop_commands::shell_arg`] renderer, the
+    /// translation comes from [`powershell_command`], and the oracle compares
+    /// observed argv/artifact bytes against semantic inputs — never against
+    /// translator-derived expectations.
+    #[cfg(windows)]
+    #[test]
+    fn powershell_translation_preserves_native_argv_and_artifact_bytes() -> Result<(), String> {
+        use crate::agent::loop_commands::shell_arg;
+
+        let root = native_proof_root("argv")?;
+        let recorder = compile_native_proof_recorder(&root)?;
+        resolve_pwsh("pwsh").map_err(|_| {
+            "pwsh is required for the native proof and was not found: failing closed instead of skipping"
+                .to_string()
+        })?;
+        let recorder_arg = shell_arg(
+            recorder
+                .to_str()
+                .ok_or_else(|| "recorder path is not UTF-8".to_string())?,
+        );
+        // Positive controls: spaces, apostrophe, Unicode, empty, and
+        // shell-special data plus one plain token.
+        let args = ["--gap", "it's", "café", "", "--verify=x;y", "plain"];
+        let mut bash = recorder_arg.clone();
+        for arg in args {
+            bash.push(' ');
+            bash.push_str(&shell_arg(arg));
+        }
+        let line = powershell_command(&bash)
+            .ok_or_else(|| format!("supported invocation must translate: {bash}"))?;
+        let record = root.join("argv.record");
+        let output = run_pwsh_line(&line, &root, &record, "0")?;
+        if !output.status.success() {
+            return Err(format!(
+                "translated invocation failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        if !output
+            .stdout
+            .windows(b"RECORDER_OK".len())
+            .any(|window| window == b"RECORDER_OK")
+        {
+            return Err("recorder stdout marker missing from pwsh output".to_string());
+        }
+        recorded_argv_matches(&record, &args)?;
+
+        // Redirect control: the artifact carries the invocation's output
+        // bytes as BOM-free UTF-8.
+        let artifact = root.join("after.json");
+        let redirect_bash = format!(
+            "{bash} > {}",
+            shell_arg(
+                artifact
+                    .to_str()
+                    .ok_or_else(|| "artifact path is not UTF-8".to_string())?
+            )
+        );
+        let redirect_line = powershell_command(&redirect_bash)
+            .ok_or_else(|| format!("supported redirect must translate: {redirect_bash}"))?;
+        let redirect_record = root.join("redirect.record");
+        let redirect_output = run_pwsh_line(&redirect_line, &root, &redirect_record, "0")?;
+        if !redirect_output.status.success() {
+            return Err(format!(
+                "translated redirect failed: {}",
+                String::from_utf8_lossy(&redirect_output.stderr)
+            ));
+        }
+        recorded_argv_matches(&redirect_record, &args)?;
+        let artifact_bytes = std::fs::read(&artifact)
+            .map_err(|error| format!("failed to read artifact: {error}"))?;
+        if artifact_bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+            return Err("artifact carries a UTF-8 BOM".to_string());
+        }
+        if !artifact_bytes
+            .windows(b"RECORDER_OK".len())
+            .any(|window| window == b"RECORDER_OK")
+        {
+            return Err("artifact misses the recorder stdout marker".to_string());
+        }
+
+        // Failure control: a nonzero invocation throws without publishing
+        // the artifact over the pre-existing bytes.
+        std::fs::write(&artifact, b"SENTINEL")
+            .map_err(|error| format!("failed to stage sentinel artifact: {error}"))?;
+        let failure_record = root.join("failure.record");
+        let failure_output = run_pwsh_line(&redirect_line, &root, &failure_record, "1")?;
+        if failure_output.status.success() {
+            return Err("failing invocation must not exit zero".to_string());
+        }
+        let preserved = std::fs::read(&artifact)
+            .map_err(|error| format!("failed to re-read artifact: {error}"))?;
+        if preserved != b"SENTINEL" {
+            return Err("failing invocation published over the artifact".to_string());
+        }
+
+        // Withholding controls: unsupported forms never reach a subprocess.
+        // There is nothing to execute, so the proof is that translation
+        // withholds and the would-be artifact is never created.
+        let ghost = root.join("ghost.record");
+        for withheld in [
+            format!("{bash} && {bash}"),
+            format!("{bash} > {} > {}", shell_arg("a.json"), shell_arg("b.json")),
+            format!("{bash} < {}", shell_arg("input.json")),
+            format!("{bash} --gap 'unterminated"),
+        ] {
+            assert!(
+                powershell_command(&withheld).is_none(),
+                "must withhold: {withheld:?}"
+            );
+        }
+        assert!(
+            !ghost.exists(),
+            "withheld forms must take no subprocess/output action"
+        );
+        Ok(())
     }
 }
