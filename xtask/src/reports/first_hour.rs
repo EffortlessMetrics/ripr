@@ -168,25 +168,75 @@ fn enclosing_workspace_root(dir: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Absolute, lexically normalized form of a caller-supplied path for
+/// containment checks. Relative paths resolve against the current
+/// directory; `.` pops nothing and `..` pops one normal component, so a
+/// `..` that would escape the anchor is refused instead of silently
+/// changing which tree a check compares. Symlinked ancestors of
+/// not-yet-existing paths cannot be resolved — callers pass paths that
+/// must not exist yet, so the check stays lexical and fail-closed.
+fn absolute_normalized(path: &Path) -> Result<PathBuf, String> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| format!("current dir: {error}"))?
+            .join(path)
+    };
+    let mut normalized = PathBuf::new();
+    for component in absolute.components() {
+        use std::path::Component::{CurDir, Normal, ParentDir, Prefix, RootDir};
+        match component {
+            Prefix(_) | RootDir => normalized.push(component.as_os_str()),
+            CurDir => {}
+            ParentDir => {
+                if !normalized.pop() {
+                    return Err(format!(
+                        "first-hour path `{}` escapes its anchor",
+                        path.display()
+                    ));
+                }
+            }
+            Normal(_) => normalized.push(component.as_os_str()),
+        }
+    }
+    Ok(normalized)
+}
+
 impl Harness {
     /// Creates a harness-owned staging directory registered for Drop-guard
     /// cleanup. Only directories this function creates are ever registered:
-    /// caller-supplied paths are never adopted for deletion. Staging is
+    /// caller-supplied paths are never adopted for deletion. Ownership is
+    /// claimed with exclusive creation: a fresh salted candidate is created
+    /// with `create_dir`, and an `AlreadyExists` collision retries with a
+    /// new candidate instead of deleting whatever occupies the path — the
+    /// harness never removes a directory it did not create. Staging is
     /// always placed outside the enclosing Cargo workspace: an extracted
     /// package staged inside it would be discovered as a workspace member
     /// and `cargo install` would refuse it.
     fn owned_staging(&mut self, label: &str) -> Result<PathBuf, String> {
         let base = staging_base()?;
-        let root = base.join(format!(
-            "ripr-first-hour-{label}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root)
-            .map_err(|error| format!("create {label} staging: {error}"))?;
-        self.roots.push(root.clone());
-        Ok(root)
+        for attempt in 0..100 {
+            let root = base.join(format!(
+                "ripr-first-hour-{label}-{}-{:?}-{attempt}-{}",
+                std::process::id(),
+                std::thread::current().id(),
+                unix_epoch_secs()
+            ));
+            match std::fs::create_dir(&root) {
+                Ok(()) => {
+                    self.roots.push(root.clone());
+                    return Ok(root);
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => {
+                    return Err(format!("create {label} staging: {error}"));
+                }
+            }
+        }
+        Err(format!(
+            "create {label} staging: no free candidate after 100 tries"
+        ))
     }
 }
 
@@ -427,6 +477,10 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
     // Fail-closed ownership, checked before any install work: a
     // pre-existing fixture root is never adopted for deletion. The harness
     // creates it, so cleanup can only remove what the harness made.
+    // Comparisons use absolute lexically-normalized paths: a raw
+    // `starts_with` on unresolved components would miss a `--fixture-root`
+    // containing `..` and let the receipt (or the install tree) land inside
+    // the cleanup tree.
     let fixture_root = PathBuf::from(&parsed.fixture_root);
     if fixture_root.exists() {
         return Err(format!(
@@ -434,11 +488,13 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
             fixture_root.display()
         ));
     }
+    let fixture_norm = absolute_normalized(&fixture_root)?;
     // The receipt must outlive cleanup: --out equal to or nested under the
     // harness-cleaned fixture root would be written and then deleted before
     // the command returns success.
     let out_root = PathBuf::from(&parsed.out);
-    if out_root == fixture_root || out_root.starts_with(&fixture_root) {
+    let out_norm = absolute_normalized(&out_root)?;
+    if out_norm == fixture_norm || out_norm.starts_with(&fixture_norm) {
         return Err(format!(
             "first-hour --out `{}` must not equal or nest under --fixture-root `{}`; the receipt would be cleaned before return",
             out_root.display(),
@@ -446,6 +502,19 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
         ));
     }
     let prefix = PathBuf::from(&parsed.prefix);
+    // The install tree must outlive cleanup too: a --prefix equal to or
+    // nested under --fixture-root would be created by `cargo install`
+    // before the fixture root exists, then adopted into the cleanup set —
+    // the command would return success after deleting the installed
+    // executable the receipt points at.
+    let prefix_norm = absolute_normalized(&prefix)?;
+    if prefix_norm == fixture_norm || prefix_norm.starts_with(&fixture_norm) {
+        return Err(format!(
+            "first-hour --prefix `{}` must not equal or nest under --fixture-root `{}`; the install tree would be cleaned before return",
+            prefix.display(),
+            fixture_root.display()
+        ));
+    }
     let subject = install_package(&mut harness, &parsed.crate_path, &prefix)?;
     admit_installed_executable(&subject, &subject.executable)?;
     std::fs::create_dir_all(&fixture_root)
@@ -649,6 +718,99 @@ mod tests {
         ));
         // Nothing was created: no install, no fixture root, no receipt.
         assert!(!base.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn prefix_nested_under_fixture_root_is_refused_before_any_work() -> Result<(), String> {
+        let base = std::env::temp_dir().join(format!(
+            "ripr-first-hour-prefix-nest-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        assert!(matches!(
+            first_hour(&[
+                "--crate".to_string(),
+                "missing.crate".to_string(),
+                "--prefix".to_string(),
+                base.join("fixtures")
+                    .join("prefix")
+                    .to_string_lossy()
+                    .to_string(),
+                "--out".to_string(),
+                base.join("out").to_string_lossy().to_string(),
+                "--fixture-root".to_string(),
+                base.join("fixtures").to_string_lossy().to_string(),
+            ]),
+            Err(error) if error.contains("must not equal or nest under")
+        ));
+        // Nothing was created: no install tree, no fixture root, no receipt.
+        assert!(!base.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn dotdot_evasion_of_receipt_containment_is_refused() -> Result<(), String> {
+        let base =
+            std::env::temp_dir().join(format!("ripr-first-hour-dotdot-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        // `--out base/fixtures/../fixtures/out` normalizes inside the
+        // fixture root; a raw lexical check on the un-normalized form would
+        // still catch this spelling, so also cover the reverse: a fixture
+        // root that escapes to the parent of --out.
+        assert!(matches!(
+            first_hour(&[
+                "--crate".to_string(),
+                "missing.crate".to_string(),
+                "--prefix".to_string(),
+                base.join("prefix").to_string_lossy().to_string(),
+                "--out".to_string(),
+                base.join("fixtures")
+                    .join("out")
+                    .to_string_lossy()
+                    .to_string(),
+                "--fixture-root".to_string(),
+                base.join("other")
+                    .join("..")
+                    .join("fixtures")
+                    .to_string_lossy()
+                    .to_string(),
+            ]),
+            Err(error) if error.contains("must not equal or nest under")
+        ));
+        assert!(!base.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn staging_claims_exclusive_ownership_without_deleting() -> Result<(), String> {
+        let mut harness = Harness {
+            roots: Vec::new(),
+            ledger: Vec::new(),
+        };
+        let first = harness.owned_staging("exclusive")?;
+        let second = harness.owned_staging("exclusive")?;
+        assert!(first != second);
+        // A squatter the harness did not create is never removed: occupy a
+        // neighbouring path and prove it survives staging creation.
+        let squatter = first
+            .parent()
+            .ok_or_else(|| "staging has no parent".to_string())?
+            .join("ripr-first-hour-squatter");
+        let _ = std::fs::remove_dir_all(&squatter);
+        std::fs::create_dir_all(&squatter).map_err(|error| format!("squatter: {error}"))?;
+        let sentinel = squatter.join("keep.txt");
+        std::fs::write(&sentinel, b"not-ours").map_err(|error| format!("sentinel: {error}"))?;
+        let _third = harness.owned_staging("exclusive")?;
+        assert!(
+            std::fs::read(&sentinel).map_err(|error| format!("squatter survives: {error}"))?
+                == b"not-ours"
+        );
+        drop(harness);
+        assert!(!first.exists());
+        assert!(!second.exists());
+        assert!(squatter.exists());
+        let _ = std::fs::remove_dir_all(&squatter);
         Ok(())
     }
 
