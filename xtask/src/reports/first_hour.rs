@@ -11,7 +11,9 @@
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use flate2::read::GzDecoder;
 use serde_json::{Value, json};
+use tar::Archive;
 
 use crate::run;
 
@@ -125,6 +127,22 @@ struct Harness {
 }
 
 impl Harness {
+    /// Creates a harness-owned staging directory registered for Drop-guard
+    /// cleanup. Only directories this function creates are ever registered:
+    /// caller-supplied paths are never adopted for deletion.
+    fn owned_staging(&mut self, label: &str) -> Result<PathBuf, String> {
+        let root = std::env::temp_dir().join(format!(
+            "ripr-first-hour-{label}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root)
+            .map_err(|error| format!("create {label} staging: {error}"))?;
+        self.roots.push(root.clone());
+        Ok(root)
+    }
+
     fn record(&mut self, step: &str, argv: Vec<String>, cwd: &Path, status: String) {
         self.ledger.push(LedgerEntry {
             step: step.to_string(),
@@ -152,9 +170,83 @@ fn executable_name() -> String {
     format!("ripr{}", std::env::consts::EXE_SUFFIX)
 }
 
+/// Extracts a `.crate` archive into an owned staging directory, enforcing
+/// the packaged-crate shape (one top-level root, no traversal/absolute/link
+/// members — the same admission policy as the release installer). Returns
+/// the extracted package root for `cargo install --path`.
+fn extract_crate_archive(harness: &mut Harness, archive: &Path) -> Result<PathBuf, String> {
+    let staging = harness.owned_staging("crate-extract")?;
+    let file = std::fs::File::open(archive)
+        .map_err(|error| format!("open package archive `{}`: {error}", archive.display()))?;
+    let mut tar = Archive::new(GzDecoder::new(file));
+    let mut expected_root: Option<PathBuf> = None;
+    for (index, entry_result) in tar
+        .entries()
+        .map_err(|error| format!("read package archive entries: {error}"))?
+        .enumerate()
+    {
+        let mut entry =
+            entry_result.map_err(|error| format!("read package entry {index}: {error}"))?;
+        let enclosed = entry
+            .path()
+            .map_err(|error| format!("read package entry {index} path: {error}"))?
+            .into_owned();
+        if enclosed.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        }) {
+            return Err(format!(
+                "package entry {enclosed:?} escapes extraction root"
+            ));
+        }
+        let mut root = PathBuf::new();
+        root.push(
+            enclosed
+                .components()
+                .next()
+                .ok_or_else(|| format!("package entry {index} is empty"))?,
+        );
+        match &expected_root {
+            Some(expected) if *expected == root => {}
+            Some(expected) => {
+                return Err(format!(
+                    "package entry {enclosed:?} is outside expected root {expected:?}"
+                ));
+            }
+            None => expected_root = Some(root),
+        }
+        if entry.header().entry_type().is_symlink() || entry.header().entry_type().is_hard_link() {
+            return Err(format!("package entry {enclosed:?} is a link"));
+        }
+        let output = staging.join(&enclosed);
+        if let Some(parent) = output.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("create package parent: {error}"))?;
+        }
+        entry
+            .unpack(&output)
+            .map_err(|error| format!("extract package entry {enclosed:?}: {error}"))?;
+    }
+    let root = expected_root.ok_or_else(|| "package archive holds no entries".to_string())?;
+    let package_root = staging.join(root);
+    if !package_root.join("Cargo.toml").is_file() {
+        return Err(format!(
+            "extracted package root `{}` holds no Cargo.toml",
+            package_root.display()
+        ));
+    }
+    Ok(package_root)
+}
+
 /// Installs the packaged candidate into a clean prefix with ordinary Cargo
 /// installation tooling and binds the installed identity. The prefix must
-/// not exist: reinstalling over a live prefix would mix generations.
+/// not exist: reinstalling over a live prefix would mix generations. The
+/// `.crate` archive is extracted into harness-owned staging first: `cargo
+/// install --path` requires a package directory, never the archive itself.
 fn install_package(
     harness: &mut Harness,
     crate_path: &str,
@@ -167,12 +259,13 @@ fn install_package(
         ));
     }
     let crate_digest = sha256_file(Path::new(crate_path))?;
+    let package_root = extract_crate_archive(harness, Path::new(crate_path))?;
     let argv = vec![
         "install".to_string(),
         "--root".to_string(),
         prefix.to_string_lossy().to_string(),
         "--path".to_string(),
-        crate_path.to_string(),
+        package_root.to_string_lossy().to_string(),
     ];
     let step_argv = std::iter::once("cargo".to_string())
         .chain(argv.clone())
@@ -287,10 +380,19 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
         roots: Vec::new(),
         ledger: Vec::new(),
     };
+    // Fail-closed ownership, checked before any install work: a
+    // pre-existing fixture root is never adopted for deletion. The harness
+    // creates it, so cleanup can only remove what the harness made.
+    let fixture_root = PathBuf::from(&parsed.fixture_root);
+    if fixture_root.exists() {
+        return Err(format!(
+            "first-hour --fixture-root `{}` already exists; slice A never deletes pre-existing directories",
+            fixture_root.display()
+        ));
+    }
     let prefix = PathBuf::from(&parsed.prefix);
     let subject = install_package(&mut harness, &parsed.crate_path, &prefix)?;
     admit_installed_executable(&subject, &subject.executable)?;
-    let fixture_root = PathBuf::from(&parsed.fixture_root);
     std::fs::create_dir_all(&fixture_root)
         .map_err(|error| format!("create fixture root: {error}"))?;
     harness.roots.push(fixture_root);
@@ -349,6 +451,92 @@ mod tests {
         let refused = install_package(&mut harness, "missing.crate", &dir);
         assert!(refused.is_err());
         assert!(refused.unwrap_err().contains("already exists"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn hostile_archive_members_are_rejected_before_extraction() {
+        use flate2::Compression;
+        use flate2::write::GzEncoder;
+        use tar::Builder;
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-first-hour-hostile-crate-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("fixture dir");
+        let archive = dir.join("evil.crate");
+        {
+            let file = std::fs::File::create(&archive).expect("archive file");
+            let mut raw: Vec<u8> = Vec::new();
+            // Raw ustar member with an exact (possibly hostile) name,
+            // bypassing safe builders that refuse to construct it.
+            // Decimal byte offsets per POSIX ustar: name 0, mode 100,
+            // uid 108, gid 116, size 124, mtime 136, chksum 148,
+            // typeflag 156, magic 257.
+            fn raw_member(out: &mut Vec<u8>, name: &[u8], data: &[u8]) {
+                let mut header = [0u8; 512];
+                header[..name.len().min(100)].copy_from_slice(&name[..name.len().min(100)]);
+                header[100..108].copy_from_slice(b"0000644\0");
+                header[108..116].copy_from_slice(b"0000000\0");
+                header[116..124].copy_from_slice(b"0000000\0");
+                let size = format!("{:011o}\0", data.len());
+                header[124..136].copy_from_slice(&size.as_bytes()[..12]);
+                header[136..148].copy_from_slice(b"00000000000\0");
+                header[148..156].copy_from_slice(b"        ");
+                header[156] = b'0';
+                header[257..263].copy_from_slice(b"ustar\0");
+                let checksum: u32 = header.iter().map(|byte| *byte as u32).sum();
+                header[148..156].copy_from_slice(format!("{checksum:06o}\0 ").as_bytes());
+                out.extend_from_slice(&header);
+                out.extend_from_slice(data);
+                out.resize(out.len() + (512 - data.len() % 512) % 512, 0);
+            }
+            raw_member(&mut raw, b"pkg-evil/Cargo.toml", b"evil");
+            raw_member(&mut raw, b"../escape", b"evil");
+            use std::io::Write;
+            let mut encoder = GzEncoder::new(file, Compression::default());
+            encoder.write_all(&raw).expect("gzip body");
+            encoder.write_all(&[0u8; 1024]).expect("trailer");
+            encoder.finish().expect("flush");
+        }
+        let mut harness = Harness {
+            roots: Vec::new(),
+            ledger: Vec::new(),
+        };
+        let refused = extract_crate_archive(&mut harness, &archive);
+        assert!(refused.is_err());
+        assert!(refused.unwrap_err().contains("escapes extraction root"));
+        // Nothing materialized outside staging.
+        assert!(!dir.join("escape").exists());
+        drop(harness);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pre_existing_fixture_root_is_never_adopted_for_deletion() {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-first-hour-preexisting-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("pre-existing dir");
+        let sentinel = dir.join("user-data.txt");
+        std::fs::write(&sentinel, b"precious").expect("sentinel");
+        let refused = first_hour(&[
+            "--crate".to_string(),
+            "missing.crate".to_string(),
+            "--prefix".to_string(),
+            dir.join("prefix").to_string_lossy().to_string(),
+            "--out".to_string(),
+            dir.join("out").to_string_lossy().to_string(),
+            "--fixture-root".to_string(),
+            dir.to_string_lossy().to_string(),
+        ]);
+        assert!(refused.is_err());
+        assert!(refused.unwrap_err().contains("already exists"));
+        // The pre-existing directory and its contents survive.
+        assert!(std::fs::read(&sentinel).expect("sentinel survives") == b"precious");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
