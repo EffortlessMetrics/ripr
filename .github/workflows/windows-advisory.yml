@@ -30,17 +30,17 @@ concurrency:
 # disproved by being broken:
 #
 #   - **Test outcomes are advisory.** A failing test does not fail this job and
-#     does not gate merges. Known failures (#2419, #2430) will show up as
+#     does not gate merges. Known failures (#1729) will show up as
 #     verdicts in the summary while the job stays green.
 #   - **Evidence generation is not advisory.** A missing log, a missing captured
 #     exit status, a summarizer crash, or a broken workflow fails the job. A lane
 #     that reports success while proving nothing is the false-confidence
 #     condition it exists to prevent.
 #
-# It is not a required check, and must not be promoted to required until #2419
-# and #2430 are resolved and the lane shows stability across repeated runs on
+# It is not a required check, and must not be promoted to required until #1729
+# is resolved and the lane shows stability across repeated runs on
 # hardware that can actually reproduce them — the hosted runner does not
-# reproduce the #2419 flakes at all, so green runs there prove nothing about
+# reproduce the #1729 flakes at all, so green runs there prove nothing about
 # them.
 #
 # Triggers:
@@ -137,12 +137,18 @@ jobs:
       # a missing exit status, or a summarizer crash fails this step and therefore
       # the job — otherwise the lane could report success while proving nothing,
       # which is the false-confidence condition it exists to prevent.
+      # if: always() so a wedged or killed test step still yields whatever
+      # verdict the partial logs support (or a loud summarizer failure naming
+      # the missing evidence) instead of a silent job-timeout kill with no
+      # verdict at all (#1729).
       - name: Summarize verdicts and repeated-run stability
+        if: always()
         shell: bash
         run: |
           cargo xtask windows-advisory-summary --run1 target/windows-run1.log --run1-status target/windows-run1.status --run2 target/windows-run2.log --run2-status target/windows-run2.status | tee target/windows-verdict.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize feature-combination results
+        if: always()
         shell: bash
         run: |
           echo "" >> target/windows-verdict.md
