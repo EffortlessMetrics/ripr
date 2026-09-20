@@ -104,6 +104,9 @@ pub(crate) struct RepairAttemptManifest {
 pub(crate) struct RepairAttemptAfter {
     pub(crate) attempt_id: RepairAttemptId,
     pub(crate) repository_head: String,
+    /// Hash of the agent-attributable delta (operational writes excluded),
+    /// not the full cage delta: RIPR's own finalization outputs land after
+    /// this record and must not perturb re-invoked receipt bindings.
     pub(crate) delta_sha256: String,
     pub(crate) packet_sha256: String,
     pub(crate) current: bool,
@@ -209,9 +212,20 @@ pub(crate) fn receipt_binding(
     let baseline: AttemptBaseline = serde_json::from_slice(&baseline_bytes)
         .map_err(|error| format!("decode edit-cage baseline failed: {error}"))?;
     let (delta, verdict) = evaluate_repository_edit_cage_with_delta(&baseline)?;
-    let delta_bytes = serde_json::to_vec(&delta)
+    // Same agent-attributable restriction as the after-phase record:
+    // RIPR's own finalization outputs must not perturb this comparison.
+    let agent_delta = crate::edit_cage::agent_attributable_delta(baseline.policy(), &delta);
+    let agent_delta_bytes = serde_json::to_vec(&agent_delta)
         .map_err(|error| format!("serialize repair delta failed: {error}"))?;
-    if sha256_bytes(&delta_bytes) != after.delta_sha256 || verdict != after.verdict {
+    // The verdict comparison binds status plus violations only, not the
+    // changed-paths display list: operational outputs extend that list
+    // after the after phase records it, while the agent-attributable hash
+    // above already binds every agent-surface path addition, deletion, or
+    // kind change. Status or violation drift still refuses.
+    if sha256_bytes(&agent_delta_bytes) != after.delta_sha256
+        || verdict.status != after.verdict.status
+        || verdict.violations != after.verdict.violations
+    {
         return Err("repair attempt after verdict binding is tampered or stale".to_string());
     }
     let manifest_path = display_path(&manifest_path);
@@ -897,12 +911,18 @@ pub(crate) fn finish_repair_attempt(
     if !current {
         verdict.status = crate::edit_cage::EditCageVerdictStatus::Incomparable;
     }
-    let delta_bytes = serde_json::to_vec(&delta)
+    // The durable binding covers the agent-attributable delta only:
+    // RIPR's own finalization outputs (receipt, status, apply record) land
+    // after this record, and hashing them would refuse every re-invoked
+    // receipt as stale (#1738). The verdict above still evaluated the full
+    // delta, so policy violations refuse here before anything is recorded.
+    let agent_delta = crate::edit_cage::agent_attributable_delta(baseline.policy(), &delta);
+    let agent_delta_bytes = serde_json::to_vec(&agent_delta)
         .map_err(|error| format!("serialize repair delta failed: {error}"))?;
     let after = RepairAttemptAfter {
         attempt_id: manifest.repair_attempt_id.clone(),
         repository_head: current_head,
-        delta_sha256: sha256_bytes(&delta_bytes),
+        delta_sha256: sha256_bytes(&agent_delta_bytes),
         packet_sha256,
         current,
         verdict,

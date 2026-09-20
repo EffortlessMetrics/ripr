@@ -492,6 +492,39 @@ fn delta_from_repository_states(before: &AttemptBaseline, after: &AttemptBaselin
     }
 }
 
+/// Restricts a cage delta to agent-attributable changes by dropping change
+/// entries whose path matches the policy's expected operational writes.
+/// RIPR's own finalization outputs (receipt, status, and apply-record
+/// artifacts under `target/ripr`) necessarily land after the after phase
+/// records its delta; hashing them would make every re-invoked receipt
+/// refuse as stale (#1738). The agent's edit surface stays fully bound,
+/// and the full verdict (computed over the unfiltered delta) still
+/// refuses policy violations. Consumed artifacts carry individual content
+/// bindings (packet, baseline, and verify digests), so ignoring
+/// operational path-set churn loses no content-integrity evidence the
+/// delta hash ever carried — it binds path sets, never contents.
+pub(crate) fn agent_attributable_delta(
+    policy: &EditCagePolicy,
+    delta: &AttemptDelta,
+) -> AttemptDelta {
+    AttemptDelta {
+        comparable: delta.comparable,
+        changes: delta
+            .changes
+            .iter()
+            .filter(|change| {
+                let normalized = normalize_repo_relative_path(&change.path)
+                    .unwrap_or_else(|_| change.path.to_string_lossy().to_string());
+                !policy
+                    .expected_operational_writes
+                    .iter()
+                    .any(|rule| rule.matches(&normalized))
+            })
+            .cloned()
+            .collect(),
+    }
+}
+
 fn canonical_repository_root(root: &Path) -> Result<PathBuf, String> {
     let requested = fs::canonicalize(root)
         .map_err(|err| format!("canonicalize repository root {}: {err}", root.display()))?;
@@ -2631,6 +2664,55 @@ mod tests {
         assert_eq!(verdict.status, EditCageVerdictStatus::Incomparable);
         assert_eq!(verdict.changed_paths, vec!["tests/pricing.rs".to_string()]);
         assert!(verdict.violations.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn agent_delta_ignores_operational_churn_but_binds_agent_surface() -> Result<(), String> {
+        let policy = policy()?;
+        // RIPR's own finalization outputs land after the after phase
+        // records its delta; they must not perturb the binding (#1738).
+        let with_churn = AttemptDelta {
+            comparable: true,
+            changes: vec![
+                AttemptPathChange::modified("tests/pricing.rs"),
+                AttemptPathChange::added("target/ripr/reports/agent-receipt.json"),
+                AttemptPathChange::modified(
+                    "target/ripr/repair-attempts/repair-attempt-x/attempt.json",
+                ),
+            ],
+        };
+        let filtered = agent_attributable_delta(&policy, &with_churn);
+        assert!(filtered.comparable);
+        assert_eq!(
+            filtered.changes,
+            vec![AttemptPathChange::modified("tests/pricing.rs")]
+        );
+        // Operational churn alone hashes identically: the re-invoked
+        // receipt sees the same agent delta after RIPR writes its outputs.
+        let without_churn = AttemptDelta {
+            comparable: true,
+            changes: vec![AttemptPathChange::modified("tests/pricing.rs")],
+        };
+        let clean = agent_attributable_delta(&policy, &without_churn);
+        assert_eq!(
+            serde_json::to_vec(&filtered).map_err(|err| err.to_string())?,
+            serde_json::to_vec(&clean).map_err(|err| err.to_string())?
+        );
+        // An agent-surface addition still changes the bound delta.
+        let tampered = AttemptDelta {
+            comparable: true,
+            changes: vec![
+                AttemptPathChange::modified("tests/pricing.rs"),
+                AttemptPathChange::added("tests/extra.rs"),
+            ],
+        };
+        let bound = agent_attributable_delta(&policy, &tampered);
+        assert!(
+            serde_json::to_vec(&bound).map_err(|err| err.to_string())?
+                != serde_json::to_vec(&clean).map_err(|err| err.to_string())?,
+            "agent-surface churn must perturb the binding"
+        );
         Ok(())
     }
 }

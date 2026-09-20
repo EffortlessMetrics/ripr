@@ -567,9 +567,10 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
                 crate::app::python_repair_binding::confirm_manifest_unchanged(binding)?;
             }
 
-            // Finish only after all command-owned after artifacts exist. This
-            // makes the durable delta the exact delta the receipt binds, while
-            // the receipt itself remains outside the measured edit window.
+            // Finish only after all command-owned after artifacts exist. The
+            // durable binding covers the agent-attributable delta, so the
+            // receipt, status, and apply-record outputs below do not perturb
+            // it; the agent's edit surface stays bound instead.
             let cage_after = crate::app::repair_attempt::finish_repair_attempt(
                 &root,
                 &attempt.attempt_id,
@@ -606,8 +607,8 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
             })?;
 
             // The apply record is published last: the receipt re-evaluates the
-            // edit cage over the exact delta finish measured, so no artifact
-            // write may land between finish and the receipt binding.
+            // edit cage over the agent-attributable delta finish measured,
+            // so operational outputs below do not perturb the binding.
             // The retained binding's manifest bytes are confirmed once more
             // immediately before the record write: the earlier confirmation
             // ran before the durable finish, so a manifest replaced inside
