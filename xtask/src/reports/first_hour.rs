@@ -1764,6 +1764,10 @@ fn repair_json(evidence: &RepairEvidence) -> Value {
 /// Product command identifiers the journey observes in the initialize
 /// result instead of assuming: the server owns its command vocabulary.
 const LSP_STATUS_COMMAND: &str = "ripr.collectWorkspaceStatus";
+/// The explicit seam-inventory refresh: the interactive keystroke path
+/// honestly defers seams (`seams_deferred`, RIPR-SPEC-0105), so a committed
+/// `full` snapshot requires this command, never just open/save.
+const LSP_REFRESH_COMMAND: &str = "ripr.refresh";
 /// Each blocking wait on the installed server is bounded: a wedged server
 /// refuses the journey instead of hanging the harness.
 const LSP_RESPONSE_TIMEOUT_SECS: u64 = 60;
@@ -1907,9 +1911,9 @@ fn await_lsp_response(
 }
 
 /// Requires the initialize result to advertise exactly the surface the
-/// journey drives: hover plus the workspace-status command. A server that
-/// answers initialize without that surface cannot satisfy the bounded
-/// saved-workspace inspection below.
+/// journey drives: hover, the workspace-status command, and the explicit
+/// refresh command. A server that answers initialize without that surface
+/// cannot satisfy the bounded saved-workspace inspection below.
 fn lsp_initialize_capabilities(response: &Value) -> Result<Vec<String>, String> {
     let capabilities = response
         .get("result")
@@ -1931,6 +1935,11 @@ fn lsp_initialize_capabilities(response: &Value) -> Result<Vec<String>, String> 
     if !names.iter().any(|name| name == LSP_STATUS_COMMAND) {
         return Err(format!(
             "installed LSP server advertises no `{LSP_STATUS_COMMAND}` command"
+        ));
+    }
+    if !names.iter().any(|name| name == LSP_REFRESH_COMMAND) {
+        return Err(format!(
+            "installed LSP server advertises no `{LSP_REFRESH_COMMAND}` command"
         ));
     }
     Ok(names)
@@ -1967,18 +1976,27 @@ fn lsp_workspace_status(response: &Value, expected_root: &str) -> Result<String,
 }
 
 /// Poll outcome for the saved-workspace analysis gate: either the opened
-/// document's saved content is committed into a full snapshot, the
-/// analysis is still in flight, or the state refuses the claim outright.
+/// document's saved content is committed into a snapshot with a disclosed
+/// run status, the analysis is still in flight, or the state refuses the
+/// claim outright.
 enum LspAnalysisPoll {
-    Ready(String),
+    Ready { digest: String, run: String },
     Pending,
 }
 
+/// Committed run states that still prove the save was analyzed: `full`
+/// after an explicit refresh, or the honestly disclosed interactive
+/// `seams_deferred` (RIPR-SPEC-0105). Anything else (`no_snapshot`,
+/// `stale`, limited states) means no committed analysis of this save.
+fn lsp_committed_run(run_status: &str) -> bool {
+    matches!(run_status, "full" | "seams_deferred")
+}
+
 /// Requires the workspace-status result to prove the saved workspace was
-/// analyzed, not merely selected: a committed `full` snapshot plus the
-/// opened document bound to its saved content by digest — clean state,
-/// recorded save, analyzed save, all equal. Anything else is either still
-/// in flight (`Pending`) or a hard refusal.
+/// analyzed, not merely selected: a committed snapshot whose run status is
+/// disclosed, plus the opened document bound to its saved content by
+/// digest — clean state, recorded save, analyzed save, all equal.
+/// Anything else is either still in flight (`Pending`) or a hard refusal.
 fn lsp_saved_workspace_analysis(
     response: &Value,
     doc_uri: &str,
@@ -1990,7 +2008,7 @@ fn lsp_saved_workspace_analysis(
         .get("run_status")
         .and_then(Value::as_str)
         .ok_or_else(|| "installed LSP status holds no run_status".to_string())?;
-    if run_status != "full" {
+    if !lsp_committed_run(run_status) {
         return Ok(LspAnalysisPoll::Pending);
     }
     let documents = result
@@ -2012,12 +2030,13 @@ fn lsp_saved_workspace_analysis(
         (Some(saved), Some(analyzed))
             if !saved.is_null() && !analyzed.is_null() && saved == analyzed =>
         {
-            Ok(LspAnalysisPoll::Ready(
-                analyzed
+            Ok(LspAnalysisPoll::Ready {
+                digest: analyzed
                     .as_str()
                     .unwrap_or("non-string-identity")
                     .to_string(),
-            ))
+                run: run_status.to_string(),
+            })
         }
         _ => Ok(LspAnalysisPoll::Pending),
     }
@@ -2070,6 +2089,10 @@ fn run_lsp_journey(
     let root_uri = lsp_file_uri(&repo.path);
     let doc_uri = lsp_file_uri(&lib_path);
     let expected_root = repo.path.to_string_lossy().replace('\\', "/");
+    // The analysis base is the fixture base commit: without it the server
+    // falls back to `origin/main`, which the disposable fixture never has,
+    // and every refresh fails instead of analyzing the head change.
+    let base_sha = repo.base_sha.clone();
     let started = unix_epoch_secs();
     let mut child = std::process::Command::new(&subject.executable)
         .args(["lsp", "--stdio"])
@@ -2181,9 +2204,14 @@ fn run_lsp_journey(
                     "processId": null,
                     "rootUri": root_uri,
                     "capabilities": {},
+                    "initializationOptions": {"baseRef": base_sha},
                 },
             }),
         )?;
+        // Every phase pairs to an observed response before the next phase
+        // is sent: notifications dispatched while the async initialize
+        // handler is still running are refused with -32002, so pipelining
+        // the handshake would silently drop open/save.
         let initialize =
             await_lsp_response(&receiver, id, response_deadline(), &mut notifications)?;
         lsp_initialize_capabilities(&initialize)?;
@@ -2211,16 +2239,18 @@ fn run_lsp_journey(
             &json!({
                 "jsonrpc": "2.0",
                 "method": "textDocument/didSave",
-                "params": {"textDocument": {"uri": doc_uri}},
+                "params": {"textDocument": {"uri": doc_uri, "text": lib_text}},
             }),
         )?;
         // Root selection alone does not prove the save was analyzed: poll
-        // the status command until a committed `full` snapshot binds the
-        // opened document to its saved content by digest, or refuse at the
-        // poll deadline.
+        // the status command until a committed snapshot binds the opened
+        // document to its saved content by digest, or refuse at the poll
+        // deadline. The interactive scope honestly discloses
+        // `seams_deferred`; the `full` snapshot below needs the explicit
+        // refresh command.
         let poll_deadline =
             std::time::Instant::now() + std::time::Duration::from_secs(LSP_ANALYSIS_TIMEOUT_SECS);
-        let (root_state, analyzed_identity) = loop {
+        let root_state = loop {
             if std::time::Instant::now() >= poll_deadline {
                 return Err(format!(
                     "installed LSP saved workspace analysis never committed within {LSP_ANALYSIS_TIMEOUT_SECS}s"
@@ -2233,8 +2263,51 @@ fn run_lsp_journey(
             let status = await_lsp_response(&receiver, id, poll_deadline, &mut notifications)?;
             let bound = lsp_workspace_status(&status, &expected_root)?;
             match lsp_saved_workspace_analysis(&status, &doc_uri)? {
-                LspAnalysisPoll::Ready(digest) => break (bound, digest),
+                LspAnalysisPoll::Ready { .. } => break bound,
                 LspAnalysisPoll::Pending => {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            }
+        };
+        // Commit the seam inventory explicitly, then poll until the `full`
+        // snapshot still binds the opened document to its saved content.
+        // The refresh command accepts (null result) when queued; completion
+        // is observed through the status poll, never the acceptance.
+        let id = next_id;
+        next_id += 1;
+        send(
+            &mut stdin,
+            &json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "workspace/executeCommand",
+                "params": {"command": LSP_REFRESH_COMMAND, "arguments": []},
+            }),
+        )?;
+        let refresh = await_lsp_response(&receiver, id, response_deadline(), &mut notifications)?;
+        if refresh.get("result") != Some(&Value::Null) {
+            return Err(format!(
+                "installed LSP refresh returned a non-null result: {}",
+                refresh.get("result").unwrap_or(&Value::Null)
+            ));
+        }
+        let refresh_deadline =
+            std::time::Instant::now() + std::time::Duration::from_secs(LSP_ANALYSIS_TIMEOUT_SECS);
+        let analyzed_identity = loop {
+            if std::time::Instant::now() >= refresh_deadline {
+                return Err(format!(
+                    "installed LSP refresh never committed a full snapshot within {LSP_ANALYSIS_TIMEOUT_SECS}s"
+                ));
+            }
+            let id = next_id;
+            next_id += 1;
+            send(&mut stdin, &status_command(id))?;
+            status_polls += 1;
+            let status = await_lsp_response(&receiver, id, refresh_deadline, &mut notifications)?;
+            let _ = lsp_workspace_status(&status, &expected_root)?;
+            match lsp_saved_workspace_analysis(&status, &doc_uri)? {
+                LspAnalysisPoll::Ready { digest, run } if run == "full" => break digest,
+                LspAnalysisPoll::Ready { .. } | LspAnalysisPoll::Pending => {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
             }
@@ -3567,7 +3640,7 @@ mod tests {
         for (name, doc) in [
             (
                 "no-hover",
-                json!({"result": {"capabilities": {"executeCommandProvider": {"commands": ["ripr.collectWorkspaceStatus"]}}}}),
+                json!({"result": {"capabilities": {"executeCommandProvider": {"commands": ["ripr.collectWorkspaceStatus", "ripr.refresh"]}}}}),
             ),
             (
                 "no-commands",
@@ -3576,6 +3649,10 @@ mod tests {
             (
                 "no-status-command",
                 json!({"result": {"capabilities": {"hoverProvider": true, "executeCommandProvider": {"commands": ["ripr.refresh"]}}}}),
+            ),
+            (
+                "no-refresh-command",
+                json!({"result": {"capabilities": {"hoverProvider": true, "executeCommandProvider": {"commands": ["ripr.collectWorkspaceStatus"]}}}}),
             ),
         ] {
             assert!(
@@ -3691,7 +3768,24 @@ mod tests {
         });
         assert!(matches!(
             lsp_saved_workspace_analysis(&ready, "file:///tmp/root/src/lib.rs")?,
-            LspAnalysisPoll::Ready(digest) if digest == "sha256:abc"
+            LspAnalysisPoll::Ready { digest, run } if digest == "sha256:abc" && run == "full"
+        ));
+        // The honestly disclosed interactive scope also proves the save was
+        // analyzed; only the seam inventory waits for explicit refresh.
+        let deferred = json!({
+            "result": {
+                "run_status": "seams_deferred",
+                "open_documents": [{
+                    "uri": "file:///tmp/root/src/lib.rs",
+                    "state": "clean",
+                    "last_saved_content_identity": "sha256:abc",
+                    "analyzed_saved_content_identity": "sha256:abc",
+                }],
+            },
+        });
+        assert!(matches!(
+            lsp_saved_workspace_analysis(&deferred, "file:///tmp/root/src/lib.rs")?,
+            LspAnalysisPoll::Ready { digest, run } if digest == "sha256:abc" && run == "seams_deferred"
         ));
         // Still in flight: stale snapshot or unanalyzed save polls on.
         for (name, doc) in [
