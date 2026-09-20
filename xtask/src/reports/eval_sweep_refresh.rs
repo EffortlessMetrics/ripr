@@ -4044,6 +4044,23 @@ mod python_eval_sweep_refresh {
                 .and_then(Value::as_str)
                 .is_some()
         );
+        // #1712: the repair invariant — the route executed the
+        // invocation-owned copy, not the shared target binary a sibling
+        // test can rebuild mid-run. The executed path stays under this
+        // invocation's root, and the receipt digest matches the staged
+        // bytes exactly; reverting the staging revives the drift window
+        // and fails here.
+        assert!(
+            PathBuf::from(&binary).starts_with(&root),
+            "the executed analyzer is the owned copy under {root:?}, got {binary}"
+        );
+        let staged_bytes = std::fs::read(&binary)
+            .map_err(|error| format!("re-read staged analyzer copy: {error}"))?;
+        assert_eq!(
+            exec.pointer("/ripr/binary_digest").and_then(Value::as_str),
+            Some(sha256_hex(&staged_bytes).as_str()),
+            "the receipt digest is the staged copy's digest"
+        );
         assert!(
             exec.pointer("/network_authorization/granted")
                 .and_then(Value::as_bool)
