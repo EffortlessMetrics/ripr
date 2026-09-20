@@ -702,6 +702,26 @@ fn require_boundary_oracle(evidence: &CheckEvidence) -> Result<(), String> {
     }
 }
 
+/// Normalizes installed output for cross-run comparison: absolute run
+/// locations (fixture root, checkout path) are attested elsewhere in the
+/// receipt (ledger argv, repo SHAs), so the evidence digests hash the
+/// output with those locations replaced by a stable placeholder. Two runs
+/// of the same candidate agree on the normalized digest; the raw byte
+/// count is retained so normalization itself stays auditable.
+fn normalize_output(stdout: &str, locations: &[&str]) -> String {
+    // Longest first: a fixture root that prefixes the checkout path must
+    // not shadow the longer, more specific replacement.
+    let mut ordered = locations.to_vec();
+    ordered.sort_by_key(|location| std::cmp::Reverse(location.len()));
+    let mut normalized = stdout.to_string();
+    for location in ordered {
+        if !location.is_empty() {
+            normalized = normalized.replace(location, "<run-location>");
+        }
+    }
+    normalized
+}
+
 /// Requires the installed human rendering to contain its `Start here`
 /// action section: exit 0 plus JSON alone would not prove the human front
 /// door renders.
@@ -718,8 +738,10 @@ struct JourneyEvidence {
     base_sha: String,
     head_sha: String,
     human_digest: String,
+    human_normalized_digest: String,
     human_bytes: usize,
     json_digest: String,
+    json_normalized_digest: String,
     json_bytes: usize,
     evidence: CheckEvidence,
 }
@@ -794,13 +816,22 @@ fn run_check_journey(
     )
     .map_err(|error| format!("installed check (human) failed: {error}"))?;
     require_start_here(&human)?;
+    let locations = [
+        repo.path.to_string_lossy().to_string(),
+        fixture_root.to_string_lossy().to_string(),
+    ];
+    let location_refs = locations.iter().map(String::as_str).collect::<Vec<_>>();
     Ok(JourneyEvidence {
         repo_rel: format!("{label}/{}", FIXTURE_REPO_REL.join("/")),
         base_sha: repo.base_sha.clone(),
         head_sha: repo.head_sha.clone(),
         human_digest: sha256_hex(human.as_bytes()),
+        human_normalized_digest: sha256_hex(normalize_output(&human, &location_refs).as_bytes()),
         human_bytes: human.len(),
         json_digest: sha256_hex(json_stdout.as_bytes()),
+        json_normalized_digest: sha256_hex(
+            normalize_output(&json_stdout, &location_refs).as_bytes(),
+        ),
         json_bytes: json_stdout.len(),
         evidence,
     })
@@ -813,11 +844,13 @@ fn journey_json(evidence: &JourneyEvidence) -> Value {
         "head_sha": evidence.head_sha,
         "human": {
             "sha256": evidence.human_digest,
+            "normalized_sha256": evidence.human_normalized_digest,
             "bytes": evidence.human_bytes,
             "has_start_here": true,
         },
         "json": {
             "sha256": evidence.json_digest,
+            "normalized_sha256": evidence.json_normalized_digest,
             "bytes": evidence.json_bytes,
             "findings": evidence.evidence.findings,
             "classifications": evidence.evidence.classifications,
@@ -1621,8 +1654,10 @@ mod tests {
             base_sha: "b".to_string(),
             head_sha: "h".to_string(),
             human_digest: "d".to_string(),
+            human_normalized_digest: "dn".to_string(),
             human_bytes: 1,
             json_digest: "j".to_string(),
+            json_normalized_digest: "jn".to_string(),
             json_bytes: 1,
             evidence: CheckEvidence {
                 findings: 1,
@@ -1729,6 +1764,24 @@ mod tests {
         ));
         assert!(!dir.join("prefix").exists());
         let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn output_normalization_hides_only_run_locations() -> Result<(), String> {
+        let locations = ["/tmp/fh-d1/fixtures", "/tmp/fh-d1/fixtures/journey/x"];
+        let normalized = normalize_output(
+            "root: /tmp/fh-d1/fixtures/journey/x finding weakly_exposed",
+            &locations,
+        );
+        assert_eq!(normalized, "root: <run-location> finding weakly_exposed");
+        // Longer locations first is unnecessary: replacement is exact and
+        // the evidence vocabulary survives byte-identical.
+        assert_eq!(
+            normalize_output("weakly_exposed: 1 probe", &locations),
+            "weakly_exposed: 1 probe"
+        );
+        assert_eq!(normalize_output("unchanged", &[""]), "unchanged");
         Ok(())
     }
 
