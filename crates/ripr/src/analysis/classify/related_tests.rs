@@ -1139,6 +1139,71 @@ mod tests {
         assert_eq!(related[0].1, RelationReason::DirectOwnerCall);
     }
 
+    /// #1748: the matched set is complete pre-cap. `finalize_related_tests`
+    /// sorts by name and the check-JSON render caps `related_tests` at 8
+    /// entries, so a same-diff test sorting past the cap is invisible in the
+    /// display while still driving classification. Ten same-package tests all
+    /// calling the unique owner must all be returned — in particular the
+    /// alphabetically-last same-diff test that the JSON cap would elide.
+    /// Panel "0 links" reads taken from capped JSON are display artifacts
+    /// unless the row's `related_tests_total` is also small; per-instance
+    /// characterization runs through the uncapped set (`context` with a
+    /// raised `reports.max_related_tests`), never the capped array.
+    #[test]
+    fn given_ten_callers_when_same_diff_test_sorts_past_json_cap_then_matched_set_is_complete() {
+        let owner = function("crates/crate_a/src/lib.rs", "score");
+        let mut tests = vec![
+            test_with_call(
+                "crates/crate_a/tests/boundary.rs",
+                "z_withhold_boundary",
+                "assert_eq!(score(9), 9);",
+                "score",
+            ),
+            test_with_call(
+                "crates/crate_a/tests/other.rs",
+                "i_mid_table",
+                "assert_eq!(score(8), 8);",
+                "score",
+            ),
+        ];
+        for name in [
+            "a_first",
+            "b_second",
+            "c_third",
+            "d_fourth",
+            "e_fifth",
+            "f_sixth",
+            "g_seventh",
+            "h_eighth",
+        ] {
+            tests.push(test_with_call(
+                "crates/crate_a/tests/score.rs",
+                name,
+                "assert_eq!(score(1), 1);",
+                "score",
+            ));
+        }
+        let index = RustIndex {
+            functions: vec![owner.clone()],
+            tests,
+            ..RustIndex::default()
+        };
+        let probe = probe("crates/crate_a/src/lib.rs", "score + 1");
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+
+        assert_eq!(
+            related.len(),
+            10,
+            "every caller must be in the pre-cap matched set, including past-cap names"
+        );
+        let same_diff = related
+            .iter()
+            .find(|(test, _)| test.name == "z_withhold_boundary")
+            .expect("same-diff test sorting past the JSON cap must still be matched");
+        assert_eq!(same_diff.1, RelationReason::DirectOwnerCall);
+    }
+
     /// An impl-method owner is reachable only through a receiver, so a `.`
     /// before the name must not disqualify the call. The `propagate_*` goldens
     /// are exactly this shape — owner `Ledger::apply`, test body
