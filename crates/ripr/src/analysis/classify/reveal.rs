@@ -81,18 +81,17 @@ struct RevealAssertionAnalysis {
     strongest_kind: OracleKind,
     matched_any: bool,
     /// True when the DISCRIMINATING oracle — the strongest matched assertion
-    /// that drives `discriminate` — is bound to the changed SINK, not merely
-    /// the file, module, or name around it. File-level proximity
-    /// (`SameTestFile`, `SameModule`), name mention (`OwnerNamedTest`), and
-    /// token coincidence (`WeakTokenSubstring`) observe a nearby value at
-    /// best: a same-file test asserting a different function in the file
-    /// cannot discriminate this sink (#1746). Only entity-bound relations
-    /// confer identity (`DirectOwnerCall`, `HelperOwnerCall`,
-    /// `AssertionTargetAffinity`, `OwnerNamedTest` — the last preserving
-    /// the spec'd variant-bound credit, RIPR-SPEC-0106 Part B): reach established by
-    /// one test and oracle strength by another do not combine into
+    /// that drives `discriminate` — is bound to the changed sink. File-level
+    /// proximity (`SameTestFile`, `SameModule`) and token coincidence
+    /// (`WeakTokenSubstring`) observe a nearby value at best: a same-file
+    /// test asserting a different function in the file cannot discriminate
+    /// this sink (#1746). Identity-conferring relations are the call-level
+    /// and target-level ones (`DirectOwnerCall`, `HelperOwnerCall`,
+    /// `AssertionTargetAffinity`) plus `OwnerNamedTest`, which preserves the
+    /// spec'd variant-bound credit (RIPR-SPEC-0106 Part B): reach established
+    /// by one test and oracle strength by another do not combine into
     /// discrimination unless the discriminating oracle itself is
-    /// same-sink evidence. Ties at the top rank also confer identity.
+    /// entity-level evidence. Ties at the top rank also confer identity.
     strongest_identity: bool,
     /// True when this probe's family requires a `token_match` to confirm that
     /// an assertion actually references the specific changed sub-expression, and
