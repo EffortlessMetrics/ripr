@@ -1150,7 +1150,8 @@ mod tests {
     /// characterization runs through the uncapped set (`context` with a
     /// raised `reports.max_related_tests`), never the capped array.
     #[test]
-    fn given_ten_callers_when_same_diff_test_sorts_past_json_cap_then_matched_set_is_complete() {
+    fn given_ten_callers_when_same_diff_test_sorts_past_json_cap_then_matched_set_is_complete()
+    -> Result<(), String> {
         let owner = function("crates/crate_a/src/lib.rs", "score");
         let mut tests = vec![
             test_with_call(
@@ -1200,8 +1201,9 @@ mod tests {
         let same_diff = related
             .iter()
             .find(|(test, _)| test.name == "z_withhold_boundary")
-            .expect("same-diff test sorting past the JSON cap must still be matched");
+            .ok_or("same-diff test sorting past the JSON cap must still be matched")?;
         assert_eq!(same_diff.1, RelationReason::DirectOwnerCall);
+        Ok(())
     }
 
     /// An impl-method owner is reachable only through a receiver, so a `.`
