@@ -4,12 +4,13 @@ Spec: RIPR-SPEC-0108
 
 ## Given
 
-`describe_entry` renders a catalog entry's description text.
+`default_check_description` renders the description text for the `check`
+catalog entry; `build_catalog` stores it in the asserted `Catalog`.
 `entry_description_violations` checks structural consistency only
 (duplicate/empty names and descriptions) and never inspects the wording.
-One test calls the changed owner and asserts zero violations with a strong
-exact oracle; the assertion text shares probe-expression tokens, so the
-observation guard clears on coincidence.
+One test reaches the changed owner directly and asserts zero violations
+with a strong exact oracle; the assertion shares a probe-expression token
+(`catalog`), so the observation guard clears on coincidence.
 
 ## When
 
@@ -17,7 +18,8 @@ observation guard clears on coincidence.
 cargo xtask fixtures rust_catalog_description_structural_oracle
 ```
 
-The diff changes the rendered wording (`"{} - {}"` -> `"{}: {}"`).
+The diff changes the rendered wording (`"checks catalog consistency"` ->
+`"verifies catalog consistency"`).
 
 ## Then
 
