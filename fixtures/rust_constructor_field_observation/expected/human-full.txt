@@ -26,7 +26,7 @@ Evidence
   - infection yes: Reachable tests can plausibly activate this changed behavior
   - propagation unknown: Propagation is not statically obvious from syntax-first analysis
   - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Discriminator uncredited: strongest oracle reaches only through weak-token linkage without same-entity evidence (identity_unresolved)
+  - discriminator weak: Discriminator uncredited: strongest oracle reaches only through weak_token_substring linkage without sink-level evidence (identity_unresolved)
   - local flow reaches unknown sink: unknown sink (line 15)
   - related test tests/lower.rs:4 lower_ast_preserves_storage uses strong exact value oracle: assert_eq!(statement.storage, Storage::Our);
   - observed enum variant value Storage::Our at line 6

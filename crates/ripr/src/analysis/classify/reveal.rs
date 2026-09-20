@@ -65,10 +65,15 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
     // evidence (owner/helper call, assertion-target affinity, owner-named
     // test).
     if discriminate.state == StageState::Yes && !analysis.strongest_identity {
+        let linkage = analysis
+            .strongest_reason
+            .map_or("unknown", RelationReason::as_str);
         discriminate = StageEvidence::new(
             StageState::Weak,
             Confidence::Medium,
-            "Discriminator uncredited: strongest oracle reaches only through weak-token linkage without same-entity evidence (identity_unresolved)",
+            format!(
+                "Discriminator uncredited: strongest oracle reaches only through {linkage} linkage without sink-level evidence (identity_unresolved)"
+            ),
         );
     }
 
@@ -93,6 +98,10 @@ struct RevealAssertionAnalysis {
     /// discrimination unless the discriminating oracle itself is
     /// entity-level evidence. Ties at the top rank also confer identity.
     strongest_identity: bool,
+    /// Relation of the oracle that set the strongest rank (first setter on
+    /// ties), so a withheld discriminator names the actual unresolved
+    /// linkage instead of always blaming token coincidence.
+    strongest_reason: Option<RelationReason>,
     /// True when this probe's family requires a `token_match` to confirm that
     /// an assertion actually references the specific changed sub-expression, and
     /// no such match has fired yet.
@@ -312,6 +321,7 @@ fn analyze_related_assertions(
     let mut strongest_kind = OracleKind::Unknown;
     let mut matched_any = false;
     let mut strongest_identity = false;
+    let mut strongest_reason: Option<RelationReason> = None;
     // For families that need token confirmation: start pessimistic and clear
     // once a token_match fires.
     let mut observation_unverified = false;
@@ -401,6 +411,7 @@ fn analyze_related_assertions(
                     strongest = relative_strength.clone();
                     strongest_kind = assertion.kind.clone();
                     strongest_identity = identity;
+                    strongest_reason = Some(*reason);
                 } else if relative_strength.rank() == strongest.rank() {
                     strongest_identity = strongest_identity || identity;
                 }
@@ -424,6 +435,7 @@ fn analyze_related_assertions(
         strongest_kind,
         matched_any,
         strongest_identity,
+        strongest_reason,
         observation_unverified,
     }
 }
@@ -2158,6 +2170,74 @@ mod tests {
             reveal_evidence(&probe, &[(&neighbor, RelationReason::SameTestFile)]);
 
         assert_eq!(discriminate.state, StageState::Weak);
+        assert!(
+            discriminate.summary.contains("same_test_file"),
+            "withheld discriminator must name the actual linkage: {}",
+            discriminate.summary
+        );
+    }
+
+    #[test]
+    fn reveal_evidence_tie_order_weak_then_direct_stays_yes() {
+        // Equal-strength ties confer identity regardless of assertion order:
+        // weak-token oracle first, direct-owner oracle second.
+        let probe = probe(ProbeFamily::Predicate, "current.status == recorded.status");
+        let weak = test_with_assertions(
+            "artifact_terminal_status_is_observed",
+            vec![oracle(
+                "assert_eq!(record.status, \"terminal\");",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let direct = test_with_assertions(
+            "binding_status_change_refuses",
+            vec![oracle(
+                "assert_eq!(record.status, \"terminal\");",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_, discriminate, _) = reveal_evidence(
+            &probe,
+            &[
+                (&weak, RelationReason::WeakTokenSubstring),
+                (&direct, RelationReason::DirectOwnerCall),
+            ],
+        );
+
+        assert_eq!(discriminate.state, StageState::Yes);
+    }
+
+    #[test]
+    fn reveal_evidence_tie_order_direct_then_weak_stays_yes() {
+        // Mirror order: direct-owner oracle first, weak-token oracle second.
+        let probe = probe(ProbeFamily::Predicate, "current.status == recorded.status");
+        let weak = test_with_assertions(
+            "artifact_terminal_status_is_observed",
+            vec![oracle(
+                "assert_eq!(record.status, \"terminal\");",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let direct = test_with_assertions(
+            "binding_status_change_refuses",
+            vec![oracle(
+                "assert_eq!(record.status, \"terminal\");",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_, discriminate, _) = reveal_evidence(
+            &probe,
+            &[
+                (&direct, RelationReason::DirectOwnerCall),
+                (&weak, RelationReason::WeakTokenSubstring),
+            ],
+        );
+
+        assert_eq!(discriminate.state, StageState::Yes);
     }
 
     #[test]
