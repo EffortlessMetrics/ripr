@@ -1771,6 +1771,10 @@ const LSP_RESPONSE_TIMEOUT_SECS: u64 = 60;
 /// process past this budget is killed and refuses the journey as an
 /// orphan — never silently adopted.
 const LSP_EXIT_TIMEOUT_SECS: u64 = 10;
+/// The saved-workspace analysis poll budget: didSave refresh runs
+/// asynchronously, so the status command repeats until a committed `full`
+/// snapshot binds the opened document — or the journey refuses.
+const LSP_ANALYSIS_TIMEOUT_SECS: u64 = 60;
 
 /// Percent-encodes one filesystem path as an LSP `file:` URI. Only
 /// unreserved characters, `/`, and `:` survive literally; everything else
@@ -1856,18 +1860,28 @@ fn parse_lsp_frames(buffer: &[u8]) -> Result<(Vec<Value>, Vec<u8>), String> {
     Ok((frames, rest.to_vec()))
 }
 
-/// Waits for the response carrying one request id, collecting interleaved
-/// server notifications on the way. A foreign id, a response `error`, or
-/// the timeout refuses — the journey never pairs a verdict with the wrong
-/// request.
+/// Waits for the response carrying one request id against one absolute
+/// deadline, collecting id-less server notifications on the way. A foreign
+/// response id, a response `error`, or the deadline refuses — the journey
+/// never pairs a verdict with the wrong request, and a chatty server can
+/// never stretch one wait past its deadline by dribbling notifications.
 fn await_lsp_response(
     receiver: &std::sync::mpsc::Receiver<Result<Option<Value>, String>>,
     id: u64,
+    deadline: std::time::Instant,
     notifications: &mut Vec<Value>,
 ) -> Result<Value, String> {
-    let deadline = std::time::Duration::from_secs(LSP_RESPONSE_TIMEOUT_SECS);
     loop {
-        let frame = receiver.recv_timeout(deadline).map_err(|error| {
+        if deadline
+            .saturating_duration_since(std::time::Instant::now())
+            .is_zero()
+        {
+            return Err(format!(
+                "installed LSP request {id} exceeded its response deadline"
+            ));
+        }
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        let frame = receiver.recv_timeout(remaining).map_err(|error| {
             format!("installed LSP server answered nothing for request {id}: {error}")
         })??;
         let Some(message) = frame else {
@@ -1875,18 +1889,20 @@ fn await_lsp_response(
                 "installed LSP stdout closed before request {id} was answered"
             ));
         };
-        let matches_id = message
-            .get("id")
-            .and_then(Value::as_u64)
-            .is_some_and(|observed| observed == id);
-        if !matches_id {
-            notifications.push(message);
-            continue;
+        match message.get("id").and_then(Value::as_u64) {
+            Some(observed) if observed == id => {
+                if let Some(error) = message.get("error") {
+                    return Err(format!("installed LSP request {id} errored: {error}"));
+                }
+                return Ok(message);
+            }
+            Some(observed) => {
+                return Err(format!(
+                    "installed LSP answered request {id} with foreign response id {observed}; refusing"
+                ));
+            }
+            None => notifications.push(message),
         }
-        if let Some(error) = message.get("error") {
-            return Err(format!("installed LSP request {id} errored: {error}"));
-        }
-        return Ok(message);
     }
 }
 
@@ -1950,10 +1966,70 @@ fn lsp_workspace_status(response: &Value, expected_root: &str) -> Result<String,
     Ok(root_state.to_string())
 }
 
+/// Poll outcome for the saved-workspace analysis gate: either the opened
+/// document's saved content is committed into a full snapshot, the
+/// analysis is still in flight, or the state refuses the claim outright.
+enum LspAnalysisPoll {
+    Ready(String),
+    Pending,
+}
+
+/// Requires the workspace-status result to prove the saved workspace was
+/// analyzed, not merely selected: a committed `full` snapshot plus the
+/// opened document bound to its saved content by digest — clean state,
+/// recorded save, analyzed save, all equal. Anything else is either still
+/// in flight (`Pending`) or a hard refusal.
+fn lsp_saved_workspace_analysis(
+    response: &Value,
+    doc_uri: &str,
+) -> Result<LspAnalysisPoll, String> {
+    let result = response
+        .get("result")
+        .ok_or_else(|| "installed LSP status holds no result".to_string())?;
+    let run_status = result
+        .get("run_status")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "installed LSP status holds no run_status".to_string())?;
+    if run_status != "full" {
+        return Ok(LspAnalysisPoll::Pending);
+    }
+    let documents = result
+        .get("open_documents")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "installed LSP status holds no open_documents".to_string())?;
+    let document = documents
+        .iter()
+        .find(|document| document.get("uri").and_then(Value::as_str) == Some(doc_uri))
+        .ok_or_else(|| format!("installed LSP status omits the opened document `{doc_uri}`"))?;
+    if document.get("state").and_then(Value::as_str) != Some("clean") {
+        return Err(format!(
+            "installed LSP opened document is not clean: {document}"
+        ));
+    }
+    let saved = document.get("last_saved_content_identity");
+    let analyzed = document.get("analyzed_saved_content_identity");
+    match (saved, analyzed) {
+        (Some(saved), Some(analyzed))
+            if !saved.is_null() && !analyzed.is_null() && saved == analyzed =>
+        {
+            Ok(LspAnalysisPoll::Ready(
+                analyzed
+                    .as_str()
+                    .unwrap_or("non-string-identity")
+                    .to_string(),
+            ))
+        }
+        _ => Ok(LspAnalysisPoll::Pending),
+    }
+}
+
 struct LspEvidence {
     repo_rel: String,
     root_state: String,
     effective_root: String,
+    run_status: String,
+    analyzed_saved_content_identity: String,
+    status_polls: u32,
     frames_read: usize,
     notifications: usize,
     stdout_bytes: u64,
@@ -2080,12 +2156,26 @@ fn run_lsp_journey(
             .and_then(|()| stdin.flush())
             .map_err(|error| format!("write installed LSP stdin: {error}"))
     };
+    let response_deadline =
+        || std::time::Instant::now() + std::time::Duration::from_secs(LSP_RESPONSE_TIMEOUT_SECS);
+    let status_command = |id: u64| {
+        json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "workspace/executeCommand",
+            "params": {"command": LSP_STATUS_COMMAND, "arguments": []},
+        })
+    };
+    let mut next_id = 1_u64;
+    let mut status_polls = 0_u32;
     let outcome: Result<LspEvidence, String> = (|| {
+        let id = next_id;
+        next_id += 1;
         send(
             &mut stdin,
             &json!({
                 "jsonrpc": "2.0",
-                "id": 1,
+                "id": id,
                 "method": "initialize",
                 "params": {
                     "processId": null,
@@ -2094,7 +2184,8 @@ fn run_lsp_journey(
                 },
             }),
         )?;
-        let initialize = await_lsp_response(&receiver, 1, &mut notifications)?;
+        let initialize =
+            await_lsp_response(&receiver, id, response_deadline(), &mut notifications)?;
         lsp_initialize_capabilities(&initialize)?;
         send(
             &mut stdin,
@@ -2123,22 +2214,38 @@ fn run_lsp_journey(
                 "params": {"textDocument": {"uri": doc_uri}},
             }),
         )?;
+        // Root selection alone does not prove the save was analyzed: poll
+        // the status command until a committed `full` snapshot binds the
+        // opened document to its saved content by digest, or refuse at the
+        // poll deadline.
+        let poll_deadline =
+            std::time::Instant::now() + std::time::Duration::from_secs(LSP_ANALYSIS_TIMEOUT_SECS);
+        let (root_state, analyzed_identity) = loop {
+            if std::time::Instant::now() >= poll_deadline {
+                return Err(format!(
+                    "installed LSP saved workspace analysis never committed within {LSP_ANALYSIS_TIMEOUT_SECS}s"
+                ));
+            }
+            let id = next_id;
+            next_id += 1;
+            send(&mut stdin, &status_command(id))?;
+            status_polls += 1;
+            let status = await_lsp_response(&receiver, id, poll_deadline, &mut notifications)?;
+            let bound = lsp_workspace_status(&status, &expected_root)?;
+            match lsp_saved_workspace_analysis(&status, &doc_uri)? {
+                LspAnalysisPoll::Ready(digest) => break (bound, digest),
+                LspAnalysisPoll::Pending => {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            }
+        };
+        let id = next_id;
+        next_id += 1;
         send(
             &mut stdin,
-            &json!({
-                "jsonrpc": "2.0",
-                "id": 2,
-                "method": "workspace/executeCommand",
-                "params": {"command": LSP_STATUS_COMMAND, "arguments": []},
-            }),
+            &json!({"jsonrpc": "2.0", "id": id, "method": "shutdown", "params": null}),
         )?;
-        let status = await_lsp_response(&receiver, 2, &mut notifications)?;
-        let root_state = lsp_workspace_status(&status, &expected_root)?;
-        send(
-            &mut stdin,
-            &json!({"jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null}),
-        )?;
-        let shutdown = await_lsp_response(&receiver, 3, &mut notifications)?;
+        let shutdown = await_lsp_response(&receiver, id, response_deadline(), &mut notifications)?;
         if shutdown.get("result") != Some(&Value::Null) {
             return Err(format!(
                 "installed LSP shutdown returned a non-null result: {}",
@@ -2149,7 +2256,8 @@ fn run_lsp_journey(
             &mut stdin,
             &json!({"jsonrpc": "2.0", "method": "exit", "params": null}),
         )?;
-        drop(stdin);
+        // stdin drops in the outer cleanup below so the reap always runs,
+        // even when the exchange above refused midway.
         // The exit notification must actually stop the server: poll for the
         // process, then kill-and-refuse when it lingers as an orphan.
         let mut waited_ms = 0_u64;
@@ -2175,13 +2283,21 @@ fn run_lsp_journey(
             return Err(format!("installed LSP server exited with {exit_status}"));
         }
         // Drain the reader to clean EOF so every stdout byte proves framed;
-        // the channel already refused any framing violation inline. The
-        // three awaited responses were consumed above, so the total frame
-        // count adds those plus the interleaved notifications observed.
-        let deadline = std::time::Duration::from_secs(LSP_RESPONSE_TIMEOUT_SECS);
+        // the channel already refused any framing violation inline. Every
+        // issued request id consumed exactly one response above, so the
+        // total frame count adds those plus the interleaved notifications
+        // observed and the drained remainder.
+        let drain_deadline = response_deadline();
         let mut drained = 0_usize;
         loop {
-            match receiver.recv_timeout(deadline) {
+            if drain_deadline
+                .saturating_duration_since(std::time::Instant::now())
+                .is_zero()
+            {
+                return Err("installed LSP reader stalled before clean EOF".to_string());
+            }
+            let remaining = drain_deadline.saturating_duration_since(std::time::Instant::now());
+            match receiver.recv_timeout(remaining) {
                 Ok(Ok(Some(_))) => drained += 1,
                 Ok(Ok(None)) => break,
                 Ok(Err(error)) => return Err(error),
@@ -2190,19 +2306,46 @@ fn run_lsp_journey(
                 }
             }
         }
-        let frames_read = 3 + notifications.len() + drained;
+        let frames_read = (next_id - 1) as usize + notifications.len() + drained;
         Ok(LspEvidence {
             repo_rel,
             root_state,
             effective_root: expected_root,
+            run_status: "full".to_string(),
+            analyzed_saved_content_identity: analyzed_identity,
+            status_polls,
             frames_read,
             notifications: notifications.len(),
             stdout_bytes: 0,
             stderr_bytes: 0,
         })
     })();
-    // Reader and stderr threads always join: byte counts come from the
-    // threads even when the exchange above refused midway.
+    // Cleanup on every path before the pipe readers join: drop stdin, reap
+    // the child (kill when it lingers past a short grace), and only then
+    // join. A live server — the malfunctioning candidate this harness is
+    // built to test — can never hold the joins hostage or escape as an
+    // orphan.
+    drop(stdin);
+    let mut reaped_ms = 0_u64;
+    loop {
+        match child
+            .try_wait()
+            .map_err(|error| format!("reap installed LSP server: {error}"))?
+        {
+            Some(_) => break,
+            None if reaped_ms >= 2_000 => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break;
+            }
+            None => {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                reaped_ms += 50;
+            }
+        }
+    }
+    // Reader and stderr threads join after the reap: byte counts come from
+    // the threads even when the exchange above refused midway.
     let stdout_bytes = reader_handle.join().unwrap_or(0);
     let stderr_bytes_vec = stderr_handle.join().unwrap_or_default();
     let stderr_bytes = stderr_bytes_vec.len() as u64;
@@ -2223,8 +2366,10 @@ fn run_lsp_journey(
             .to_string(),
         started_epoch_secs: started,
         status: format!(
-            "ok root_state={} frames={} notifications={} stdout={}B stderr={}B",
+            "ok root_state={} run={} polls={} frames={} notifications={} stdout={}B stderr={}B",
             evidence.root_state,
+            evidence.run_status,
+            evidence.status_polls,
             evidence.frames_read,
             evidence.notifications,
             evidence.stdout_bytes,
@@ -2243,6 +2388,9 @@ fn lsp_json(evidence: &LspEvidence) -> Value {
         "repo": evidence.repo_rel,
         "root_state": evidence.root_state,
         "effective_root": evidence.effective_root,
+        "run_status": evidence.run_status,
+        "analyzed_saved_content_identity": evidence.analyzed_saved_content_identity,
+        "status_polls": evidence.status_polls,
         "frames_read": evidence.frames_read,
         "notifications": evidence.notifications,
         "stdout_bytes": evidence.stdout_bytes,
@@ -3468,6 +3616,10 @@ mod tests {
         Ok(())
     }
 
+    fn lsp_test_deadline() -> std::time::Instant {
+        std::time::Instant::now() + std::time::Duration::from_secs(5)
+    }
+
     #[test]
     fn lsp_response_wait_pairs_ids_and_surfaces_errors() -> Result<(), String> {
         let (sender, receiver) = std::sync::mpsc::channel::<Result<Option<Value>, String>>();
@@ -3482,7 +3634,7 @@ mod tests {
             )))
             .map_err(|error| format!("stage response: {error}"))?;
         let mut notifications = Vec::new();
-        let response = await_lsp_response(&receiver, 2, &mut notifications)?;
+        let response = await_lsp_response(&receiver, 2, lsp_test_deadline(), &mut notifications)?;
         assert_eq!(response["result"], json!({"ok": true}));
         assert_eq!(notifications.len(), 1);
         // An error response never passes as a verdict.
@@ -3491,10 +3643,115 @@ mod tests {
                 json!({"jsonrpc": "2.0", "id": 3, "error": {"code": -32601}}),
             )))
             .map_err(|error| format!("stage error: {error}"))?;
-        let _ = refusal_of(await_lsp_response(&receiver, 3, &mut Vec::new()).map(|_| ()))?;
+        let _ = refusal_of(
+            await_lsp_response(&receiver, 3, lsp_test_deadline(), &mut Vec::new()).map(|_| ()),
+        )?;
+        // A foreign response id refuses at once instead of queuing as a
+        // notification for a later verdict to absorb.
+        sender
+            .send(Ok(Some(json!({"jsonrpc": "2.0", "id": 99, "result": {}}))))
+            .map_err(|error| format!("stage foreign id: {error}"))?;
+        sender
+            .send(Ok(Some(
+                json!({"jsonrpc": "2.0", "id": 4, "result": {"ok": true}}),
+            )))
+            .map_err(|error| format!("stage late response: {error}"))?;
+        let _ = refusal_of(
+            await_lsp_response(&receiver, 4, lsp_test_deadline(), &mut Vec::new()).map(|_| ()),
+        )?;
+        // An expired deadline refuses without waiting, even with a queued
+        // notification a fresh timeout would have consumed first.
+        sender
+            .send(Ok(Some(
+                json!({"jsonrpc": "2.0", "method": "ripr/analysisStatus"}),
+            )))
+            .map_err(|error| format!("stage chatter: {error}"))?;
+        let past = std::time::Instant::now() - std::time::Duration::from_secs(1);
+        let _ = refusal_of(await_lsp_response(&receiver, 5, past, &mut Vec::new()).map(|_| ()))?;
         // A closed stdout without the id refuses instead of hanging.
         drop(sender);
-        let _ = refusal_of(await_lsp_response(&receiver, 9, &mut Vec::new()).map(|_| ()))?;
+        let _ = refusal_of(
+            await_lsp_response(&receiver, 9, lsp_test_deadline(), &mut Vec::new()).map(|_| ()),
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn lsp_analysis_gate_requires_committed_saved_content() -> Result<(), String> {
+        let ready = json!({
+            "result": {
+                "run_status": "full",
+                "open_documents": [{
+                    "uri": "file:///tmp/root/src/lib.rs",
+                    "state": "clean",
+                    "last_saved_content_identity": "sha256:abc",
+                    "analyzed_saved_content_identity": "sha256:abc",
+                }],
+            },
+        });
+        assert!(matches!(
+            lsp_saved_workspace_analysis(&ready, "file:///tmp/root/src/lib.rs")?,
+            LspAnalysisPoll::Ready(digest) if digest == "sha256:abc"
+        ));
+        // Still in flight: stale snapshot or unanalyzed save polls on.
+        for (name, doc) in [
+            (
+                "stale-run",
+                json!({"result": {"run_status": "stale", "open_documents": []}}),
+            ),
+            (
+                "no-snapshot",
+                json!({"result": {"run_status": "no_snapshot", "open_documents": []}}),
+            ),
+            (
+                "unanalyzed-save",
+                json!({"result": {"run_status": "full", "open_documents": [{
+                    "uri": "file:///tmp/root/src/lib.rs",
+                    "state": "clean",
+                    "last_saved_content_identity": "sha256:abc",
+                    "analyzed_saved_content_identity": serde_json::Value::Null,
+                }]}}),
+            ),
+            (
+                "divergent-digest",
+                json!({"result": {"run_status": "full", "open_documents": [{
+                    "uri": "file:///tmp/root/src/lib.rs",
+                    "state": "clean",
+                    "last_saved_content_identity": "sha256:new",
+                    "analyzed_saved_content_identity": "sha256:old",
+                }]}}),
+            ),
+        ] {
+            assert!(
+                matches!(
+                    lsp_saved_workspace_analysis(&doc, "file:///tmp/root/src/lib.rs")?,
+                    LspAnalysisPoll::Pending
+                ),
+                "analysis `{name}` must poll, not decide"
+            );
+        }
+        // Hard refusals: quarantined, missing, or malformed.
+        for (name, doc) in [
+            (
+                "quarantined",
+                json!({"result": {"run_status": "full", "open_documents": [{
+                    "uri": "file:///tmp/root/src/lib.rs",
+                    "state": "quarantined",
+                    "last_saved_content_identity": "sha256:abc",
+                    "analyzed_saved_content_identity": "sha256:abc",
+                }]}}),
+            ),
+            (
+                "missing-doc",
+                json!({"result": {"run_status": "full", "open_documents": []}}),
+            ),
+            ("no-result", json!({})),
+        ] {
+            let _ = refusal_of(
+                lsp_saved_workspace_analysis(&doc, "file:///tmp/root/src/lib.rs").map(|_| ()),
+            )
+            .map_err(|error| format!("analysis `{name}` must refuse: {error}"))?;
+        }
         Ok(())
     }
 
