@@ -1430,6 +1430,18 @@
         { "type": "maximum_class", "class": "infection_unknown" },
         { "type": "must_emit_limitation", "expected_limit_kind": "rust_value_propagation_unresolved" }
       ]
+    },
+    {
+      "id": "rust_binding_status_wrong_owner_observer",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_binding_status_wrong_owner_observer",
+      "vector": "nearby_value_oracle_does_not_observe_binding_decision",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
     }
   ]
 }
