@@ -1,6 +1,6 @@
 //! Installed first-hour qualification harness — #1674 slices A (harness core),
-//! B (fixture + installed check journey), and C (negative controls against
-//! the production journey).
+//! B (fixture + installed check journey), C (negative controls against the
+//! production journey), D (rerun comparison), and E (installed init journey).
 //!
 //! Report-only `cargo xtask first-hour`. Owns the installed-artifact
 //! authority every later slice consumes: an explicit `.crate`/installed
@@ -30,8 +30,9 @@ const USAGE: &str = "\
 cargo xtask first-hour --crate <path.crate> --prefix <clean-dir> --out <receipt-dir>
   --fixture-root <dir>
 Installs the packaged candidate into a clean prefix, builds the disposable
-baseline fixture, and runs the installed check journey (human Start-here
-front door plus JSON evidence) under fresh cache/HOME roots. Records the
+baseline fixture, runs the installed check journey (human Start-here front
+door plus JSON evidence) and the installed init journey (advisory defaults,
+no-overwrite conflicts, working --force) under fresh roots. Records the
 installed-artifact identity and journey evidence in the receipt.";
 
 const RECEIPT_FILE: &str = "first-hour.json";
@@ -860,6 +861,228 @@ fn journey_json(evidence: &JourneyEvidence) -> Value {
 }
 
 // ---------------------------------------------------------------------------
+// Slice E: installed init journey (advisory defaults, no overwrite)
+// ---------------------------------------------------------------------------
+
+/// Required advisory markers in the generated `ripr.toml`: draft analysis
+/// mode with unchanged tests included — the documented built-in defaults.
+fn toml_advisory_markers(toml: &str) -> Result<(), String> {
+    for marker in ["mode = \"draft\"", "include_unchanged_tests = true"] {
+        if !toml.contains(marker) {
+            return Err(format!(
+                "generated ripr.toml holds no advisory marker `{marker}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Required advisory markers in the generated workflow: non-blocking
+/// execution, SARIF upload gating, and the supported install reference.
+/// A blocking default here would turn an advisory scaffold into an
+/// enforcement gate.
+fn workflow_advisory_markers(workflow: &str) -> Result<(), String> {
+    for marker in [
+        "continue-on-error",
+        "RIPR_UPLOAD_SARIF",
+        "cargo install ripr --locked",
+        "ripr pilot",
+    ] {
+        if !workflow.contains(marker) {
+            return Err(format!(
+                "generated workflow holds no advisory marker `{marker}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+struct InitEvidence {
+    repo_rel: String,
+    toml_digest: String,
+    workflow_digest: String,
+    user_workflow_preserved: bool,
+    rerun_refused: bool,
+    toml_conflict_preserved: bool,
+    workflow_conflict_refused: bool,
+    force_overwrites: bool,
+}
+
+/// Runs the installed init journey (issue step 3) on an isolated checkout:
+/// fresh generation with advisory proof, a user-owned workflow sentinel
+/// that must survive byte-identical, then the conflict sequence — a rerun
+/// over generated output refuses, a preexisting `ripr.toml` alone is
+/// preserved while generation continues (exit 0), a preexisting `ripr.yml`
+/// refuses without `--force` (nonzero exit, preserved), and `--force`
+/// provably overwrites.
+fn run_init_journey(
+    harness: &mut Harness,
+    subject: &InstalledSubject,
+    fixture_root: &Path,
+) -> Result<InitEvidence, String> {
+    admit_installed_executable(subject, &subject.executable)?;
+    let repo = build_fixture_repo(harness, fixture_root, "init", true)?;
+    let repo_rel = format!("init/{}", FIXTURE_REPO_REL.join("/"));
+    let executable = subject.executable.to_string_lossy().to_string();
+    let root = repo.path.to_string_lossy().to_string();
+    let home_root = fixture_root.join("home-init");
+    let cache_root = fixture_root.join("cache-init");
+    std::fs::create_dir_all(&home_root).map_err(|error| format!("create init home: {error}"))?;
+    std::fs::create_dir_all(&cache_root).map_err(|error| format!("create init cache: {error}"))?;
+    let envs = [
+        ("RIPR_CACHE_DIR", cache_root.to_string_lossy().to_string()),
+        ("HOME", home_root.to_string_lossy().to_string()),
+    ];
+    let env_refs = envs
+        .iter()
+        .map(|(name, value)| (*name, value.as_str()))
+        .collect::<Vec<_>>();
+    let mut init_args = vec![
+        "init".to_string(),
+        "--root".to_string(),
+        root.clone(),
+        "--ci".to_string(),
+        "github".to_string(),
+    ];
+    // A user-owned workflow beside the generated one: init must never
+    // touch what it did not generate.
+    let workflows = repo.path.join(".github").join("workflows");
+    std::fs::create_dir_all(&workflows)
+        .map_err(|error| format!("create workflows dir: {error}"))?;
+    let sentinel = workflows.join("user.yml");
+    std::fs::write(&sentinel, "# user owned\n")
+        .map_err(|error| format!("write user sentinel: {error}"))?;
+    journey_run(
+        harness,
+        "installed-init-fresh",
+        &executable,
+        &init_args,
+        &env_refs,
+    )
+    .map_err(|error| format!("installed init (fresh) failed: {error}"))?;
+    let toml_path = repo.path.join("ripr.toml");
+    let workflow_path = workflows.join("ripr.yml");
+    let toml = std::fs::read_to_string(&toml_path)
+        .map_err(|error| format!("read generated ripr.toml: {error}"))?;
+    let workflow = std::fs::read_to_string(&workflow_path)
+        .map_err(|error| format!("read generated workflow: {error}"))?;
+    toml_advisory_markers(&toml)?;
+    workflow_advisory_markers(&workflow)?;
+    let sentinel_after = std::fs::read_to_string(&sentinel)
+        .map_err(|error| format!("read user sentinel: {error}"))?;
+    if sentinel_after != "# user owned\n" {
+        return Err("installed init modified the user-owned workflow".to_string());
+    }
+    // Rerun as-is: the generated workflow already exists, so the rerun
+    // must refuse with the --force remedy instead of silently succeeding.
+    let rerun = journey_run(
+        harness,
+        "installed-init-rerun-refusal",
+        &executable,
+        &init_args,
+        &env_refs,
+    );
+    let rerun_error = match rerun {
+        Ok(_) => {
+            return Err("installed init reran over its own output without --force".to_string());
+        }
+        Err(error) => error,
+    };
+    if !rerun_error.contains("--force") {
+        return Err(format!(
+            "rerun refusal names no --force remedy: {rerun_error}"
+        ));
+    }
+    // Conflict 1: a preexisting user ripr.toml — with no workflow present
+    // to trigger the workflow refusal — is preserved byte-identical while
+    // generation continues with success exit.
+    std::fs::remove_file(&workflow_path)
+        .map_err(|error| format!("remove generated workflow: {error}"))?;
+    std::fs::write(&toml_path, "user = true\n")
+        .map_err(|error| format!("plant user ripr.toml: {error}"))?;
+    journey_run(
+        harness,
+        "installed-init-toml-conflict",
+        &executable,
+        &init_args,
+        &env_refs,
+    )
+    .map_err(|error| format!("installed init (toml conflict) failed: {error}"))?;
+    let toml_kept = std::fs::read_to_string(&toml_path)
+        .map_err(|error| format!("read kept ripr.toml: {error}"))?;
+    if toml_kept != "user = true\n" {
+        return Err("installed init overwrote the user-owned ripr.toml".to_string());
+    }
+    // Conflict 2: a preexisting user ripr.yml refuses without --force.
+    std::fs::write(&workflow_path, "# user workflow\n")
+        .map_err(|error| format!("plant user workflow: {error}"))?;
+    let conflict = journey_run(
+        harness,
+        "installed-init-workflow-conflict",
+        &executable,
+        &init_args,
+        &env_refs,
+    );
+    let conflict_error = match conflict {
+        Ok(_) => {
+            return Err(
+                "installed init overwrote the user-owned workflow without --force".to_string(),
+            );
+        }
+        Err(error) => error,
+    };
+    if !conflict_error.contains("--force") {
+        return Err(format!(
+            "workflow-conflict refusal names no --force remedy: {conflict_error}"
+        ));
+    }
+    let workflow_kept = std::fs::read_to_string(&workflow_path)
+        .map_err(|error| format!("read kept workflow: {error}"))?;
+    if workflow_kept != "# user workflow\n" {
+        return Err("installed init overwrote the user-owned workflow".to_string());
+    }
+    // The documented escape hatch provably works on the disposable checkout.
+    init_args.push("--force".to_string());
+    journey_run(
+        harness,
+        "installed-init-force",
+        &executable,
+        &init_args,
+        &env_refs,
+    )
+    .map_err(|error| format!("installed init (--force) failed: {error}"))?;
+    let toml_forced = std::fs::read_to_string(&toml_path)
+        .map_err(|error| format!("read forced ripr.toml: {error}"))?;
+    let workflow_forced = std::fs::read_to_string(&workflow_path)
+        .map_err(|error| format!("read forced workflow: {error}"))?;
+    toml_advisory_markers(&toml_forced)?;
+    workflow_advisory_markers(&workflow_forced)?;
+    Ok(InitEvidence {
+        repo_rel,
+        toml_digest: sha256_hex(toml.as_bytes()),
+        workflow_digest: sha256_hex(workflow.as_bytes()),
+        user_workflow_preserved: true,
+        rerun_refused: true,
+        toml_conflict_preserved: true,
+        workflow_conflict_refused: true,
+        force_overwrites: true,
+    })
+}
+
+fn init_json(evidence: &InitEvidence) -> Value {
+    json!({
+        "repo": evidence.repo_rel,
+        "toml_sha256": evidence.toml_digest,
+        "workflow_sha256": evidence.workflow_digest,
+        "user_workflow_preserved": evidence.user_workflow_preserved,
+        "rerun_refused": evidence.rerun_refused,
+        "toml_conflict_preserved": evidence.toml_conflict_preserved,
+        "workflow_conflict_refused": evidence.workflow_conflict_refused,
+        "force_overwrites": evidence.force_overwrites,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Receipt skeleton
 // ---------------------------------------------------------------------------
 
@@ -878,6 +1101,7 @@ fn write_receipt(
     subject: &InstalledSubject,
     harness: &Harness,
     journey: Option<&JourneyEvidence>,
+    init: Option<&InitEvidence>,
 ) -> Result<(), String> {
     let receipt = json!({
         "schema_version": SCHEMA_VERSION,
@@ -892,7 +1116,14 @@ fn write_receipt(
         },
         "ledger": harness.ledger.iter().map(ledger_json).collect::<Vec<_>>(),
         "journey": journey.map(journey_json),
-        "slices_completed": if journey.is_some() { vec!["A", "B"] } else { vec!["A"] },
+        "init": init.map(init_json),
+        "slices_completed": if init.is_some() {
+            vec!["A", "B", "E"]
+        } else if journey.is_some() {
+            vec!["A", "B"]
+        } else {
+            vec!["A"]
+        },
     });
     std::fs::create_dir_all(out).map_err(|error| format!("create out dir: {error}"))?;
     let text = serde_json::to_string_pretty(&receipt)
@@ -990,9 +1221,11 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
         "journey",
         &base_sha,
     )?;
-    write_receipt(&paths.out, &subject, &harness, Some(&journey))?;
+    // Slice E: installed init journey on its own isolated checkout.
+    let init = run_init_journey(&mut harness, &subject, &paths.fixture_root)?;
+    write_receipt(&paths.out, &subject, &harness, Some(&journey), Some(&init))?;
     println!(
-        "first-hour slice B: {} finding(s) [{}] through {} ledger {} steps",
+        "first-hour slice E: {} finding(s) [{}] + init advisory-ok through {} ledger {} steps",
         journey.evidence.findings,
         journey.evidence.classifications.join(","),
         subject.executable.display(),
@@ -1782,6 +2015,30 @@ mod tests {
             "weakly_exposed: 1 probe"
         );
         assert_eq!(normalize_output("unchanged", &[""]), "unchanged");
+        Ok(())
+    }
+
+    #[test]
+    fn init_generation_must_stay_advisory() -> Result<(), String> {
+        toml_advisory_markers("mode = \"draft\"\ninclude_unchanged_tests = true\n")?;
+        workflow_advisory_markers(
+            "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: cargo install ripr --locked\nrun: ripr pilot\n",
+        )?;
+        // A blocking default or an unpinned install reference refuses.
+        assert!(matches!(
+            toml_advisory_markers("mode = \"ready\"\ninclude_unchanged_tests = true\n"),
+            Err(error) if error.contains("mode = \"draft\"")
+        ));
+        assert!(matches!(
+            workflow_advisory_markers("run: cargo install ripr\nrun: ripr pilot\n"),
+            Err(error) if error.contains("continue-on-error")
+        ));
+        assert!(matches!(
+            workflow_advisory_markers(
+                "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: ripr pilot\n"
+            ),
+            Err(error) if error.contains("cargo install ripr --locked")
+        ));
         Ok(())
     }
 
