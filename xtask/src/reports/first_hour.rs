@@ -1841,12 +1841,17 @@ fn parse_lsp_frames(buffer: &[u8]) -> Result<(Vec<Value>, Vec<u8>), String> {
                 return Err(format!("LSP header line holds no colon: `{line}`"));
             };
             if name.trim().eq_ignore_ascii_case("content-length") {
-                length = Some(
-                    value
-                        .trim()
-                        .parse::<usize>()
-                        .map_err(|error| format!("LSP Content-Length is not a number: {error}"))?,
-                );
+                // Conflicting duplicates would select the wrong body
+                // boundary and misframe the stream; identical repeats are
+                // unambiguous and stay accepted.
+                let parsed = value
+                    .trim()
+                    .parse::<usize>()
+                    .map_err(|error| format!("LSP Content-Length is not a number: {error}"))?;
+                if length.is_some_and(|previous| previous != parsed) {
+                    return Err("LSP frame holds conflicting Content-Length headers".to_string());
+                }
+                length = Some(parsed);
             }
         }
         let length =
@@ -3611,12 +3616,30 @@ mod tests {
             ("bad-length", b"Content-Length: many\r\n\r\n{}".as_slice()),
             ("colonless", b"Content-Length\r\n\r\n{}".as_slice()),
             ("non-json", b"Content-Length: 4\r\n\r\nnope".as_slice()),
+            (
+                "conflicting-lengths",
+                b"Content-Length: 2\r\nContent-Length: 99\r\n\r\n{}".as_slice(),
+            ),
         ] {
             assert!(
                 parse_lsp_frames(bytes).is_err(),
                 "framing `{name}` must refuse"
             );
         }
+        // Identical repeated lengths are unambiguous and stay accepted.
+        let framed = encode_lsp_message(&first);
+        let split = framed
+            .windows(2)
+            .position(|window| window == b"\r\n")
+            .unwrap_or(framed.len());
+        let mut repeated = Vec::new();
+        repeated.extend_from_slice(&framed[..split]);
+        repeated.extend_from_slice(b"\r\n");
+        repeated.extend_from_slice(&framed[..split]);
+        repeated.extend_from_slice(&framed[split..]);
+        let (frames, rest) = parse_lsp_frames(&repeated)?;
+        assert_eq!(frames, vec![first]);
+        assert!(rest.is_empty());
         Ok(())
     }
 
