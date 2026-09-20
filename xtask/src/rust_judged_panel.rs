@@ -41,6 +41,14 @@ struct RustJudgedPanelItem {
     #[serde(default)]
     tree_identity: Nullable<String>,
     diff_path: String,
+    /// Release tier only: the frozen capture's content digest (prefix).
+    /// Absent in seed items; required by the release validator.
+    #[serde(default)]
+    diff_sha256: Nullable<String>,
+    /// Release tier only: per-row scope stance. Absent in seed items;
+    /// required by the release validator.
+    #[serde(default)]
+    scope_authorization: Nullable<String>,
     expected_direction: String,
     behavior_family: String,
     anchor: RustJudgedPanelAnchor,
@@ -70,6 +78,13 @@ struct RustJudgedPanelAnchor {
     owner: String,
     changed_behavior: String,
     required_discriminator: String,
+    /// Release tier only: `code` (default) proves the changed behavior as
+    /// a Rust token subsequence of the anchored added line; `string_literal`
+    /// proves pure string-literal changes by exact added-line equality
+    /// (the token proof filters string contents, so it cannot bind
+    /// wording). Absent in seed items, which always use `code`.
+    #[serde(default)]
+    anchor_kind: Nullable<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1080,6 +1095,625 @@ fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+// ---------------------------------------------------------------------------
+// Release-challenge selection (#1675 freeze inputs)
+// ---------------------------------------------------------------------------
+//
+// The same manifest schema and strict parser as the seed panel, with a
+// different authority/tier and release-specific rules. This is one shared
+// enforcement layer, not a fork: the item struct, duplicate-key rejection,
+// and require_* helpers are reused; only the header expectations and the
+// per-item contracts that genuinely differ (real base/head identities,
+// weak-oracle vocabulary, scope authorization) are tier-dispatched.
+
+pub(crate) const RELEASE_SELECTION_PATH: &str =
+    "metrics/rust-judged-behavior-panel/release-selection.json";
+const RELEASE_RERUN_COMMAND: &str = "cargo xtask check-release-challenge-selection";
+const RELEASE_AUTHORITY: &str = "EffortlessMetrics/ripr#1675";
+const RELEASE_TIER: &str = "release-challenge";
+const RELEASE_FROZEN: &str = "frozen";
+
+/// Acceptance floors (#1675): reported machine-readable, never lowered. The
+/// gate fails on structural violations; unmet floors are data for #1469,
+/// not merge blockers for the manifest itself.
+const FLOOR_MIN_CASES: usize = 9;
+const FLOOR_MIN_REPOS: usize = 2;
+const FLOOR_MIN_DIRECTION_ROWS: usize = 3;
+const FLOOR_MIN_QUIET_BASELINE: usize = 3;
+
+const RELEASE_DIRECTIONS: [&str; 3] = ["should_gap", "should_stay_quiet", "should_limit"];
+const RELEASE_ACTIONABILITY: [&str; 4] = [
+    "no_action",
+    "repair_candidate",
+    "limited_route",
+    "undetermined",
+];
+const RELEASE_DISPOSITIONS: [&str; 4] = [
+    "judged_first_pass",
+    "tentative_pending_freeze",
+    "needs_freeze_sampling",
+    "needs_freeze_verification",
+];
+const RELEASE_SCOPE_FLAGS: [&str; 3] = ["authorized", "proposed_unauthorized", "not_applicable"];
+
+pub(crate) fn check_release_selection() -> Result<(), String> {
+    let manifest = check_release_selection_at(Path::new("."))?;
+    let floors = release_floor_status(&manifest);
+    let mut body = format!(
+        "# release-challenge selection\n\nmanifest: {RELEASE_SELECTION_PATH}\nitems: {}\ncases: {}\nrepositories: {}\n",
+        manifest.items.len(),
+        floors.cases,
+        floors.repositories.join(", "),
+    );
+    for direction in RELEASE_DIRECTIONS {
+        let count = floors.per_direction.get(direction).copied().unwrap_or(0);
+        body.push_str(&format!("direction {direction}: {count}\n"));
+    }
+    body.push_str(&format!(
+        "baseline-quiet rows: {}\nauthorized swarm rows: {}\n",
+        floors.quiet_baseline, floors.authorized_swarm_rows,
+    ));
+    for floor in &floors.unmet {
+        body.push_str(&format!("floor UNMET: {floor}\n"));
+    }
+    if floors.unmet.is_empty() {
+        body.push_str("floors: all met\n");
+    }
+    crate::write_report("release-selection.md", &body)?;
+    // Documented structured floor artifact for automated consumers
+    // (#1469): same counts as the Markdown report, machine-readable.
+    // Serialized with serde_json so repository names and floor text with
+    // quotes or backslashes cannot produce invalid JSON (hand-rolled
+    // string concatenation escaped only the unmet entries).
+    let floors_value = serde_json::json!({
+        "schema_version": "0.1",
+        "manifest": RELEASE_SELECTION_PATH,
+        "items": manifest.items.len(),
+        "cases": floors.cases,
+        "repositories": floors.repositories,
+        "per_direction": RELEASE_DIRECTIONS
+            .iter()
+            .map(|direction| {
+                (
+                    (*direction).to_string(),
+                    serde_json::Value::from(
+                        floors.per_direction.get(*direction).copied().unwrap_or(0),
+                    ),
+                )
+            })
+            .collect::<serde_json::Map<String, serde_json::Value>>(),
+        "quiet_baseline_rows": floors.quiet_baseline,
+        "authorized_swarm_rows": floors.authorized_swarm_rows,
+        "unmet_floors": floors.unmet,
+    });
+    let floors_json = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&floors_value).map_err(|error| error.to_string())?
+    );
+    crate::write_report("release-selection-floors.json", &floors_json)?;
+    println!(
+        "Release-challenge selection valid: manifest={RELEASE_SELECTION_PATH} items={} cases={} directions={} floors_unmet={}",
+        manifest.items.len(),
+        floors.cases,
+        RELEASE_DIRECTIONS.join(","),
+        floors.unmet.len(),
+    );
+    for floor in &floors.unmet {
+        println!("floor UNMET (reported, not lowered): {floor}");
+    }
+    Ok(())
+}
+
+pub(crate) fn check_release_selection_at(root: &Path) -> Result<RustJudgedPanelManifest, String> {
+    let body = fs::read_to_string(root.join(RELEASE_SELECTION_PATH)).map_err(|error| {
+        format!("read release-challenge selection `{RELEASE_SELECTION_PATH}`: {error}")
+    })?;
+    let value = parse_json_without_duplicate_keys(&body).map_err(|error| {
+        format!("parse release-challenge selection `{RELEASE_SELECTION_PATH}`: {error}")
+    })?;
+    let manifest: RustJudgedPanelManifest = serde_json::from_value(value).map_err(|error| {
+        format!("parse release-challenge selection `{RELEASE_SELECTION_PATH}`: {error}")
+    })?;
+    let mut violations = validate_release_selection(root, &manifest);
+    violations.sort();
+    violations.dedup();
+    if violations.is_empty() {
+        Ok(manifest)
+    } else {
+        Err(format!(
+            "Release-challenge selection `{RELEASE_SELECTION_PATH}` has {} semantic violation(s):\n- {}\nrerun: {RELEASE_RERUN_COMMAND}",
+            violations.len(),
+            violations.join("\n- ")
+        ))
+    }
+}
+
+struct ReleaseFloors {
+    cases: usize,
+    repositories: Vec<String>,
+    per_direction: BTreeMap<String, usize>,
+    quiet_baseline: usize,
+    authorized_swarm_rows: usize,
+    unmet: Vec<String>,
+}
+
+fn release_floor_status(manifest: &RustJudgedPanelManifest) -> ReleaseFloors {
+    let mut cases = BTreeSet::new();
+    let mut repositories = BTreeSet::new();
+    let mut per_direction: BTreeMap<String, usize> = BTreeMap::new();
+    let mut quiet_baseline = 0usize;
+    let mut authorized_swarm_rows = 0usize;
+    for item in &manifest.items {
+        cases.insert(item.diff_path.clone());
+        repositories.insert(item.repository.clone());
+        *per_direction
+            .entry(item.expected_direction.clone())
+            .or_insert(0) += 1;
+        // Only quiet-direction rows count toward the quiet baseline: a
+        // `no_findings` classification on a gap or limit row must not make
+        // the reported quiet floor pass.
+        if item.expected_classification == "no_findings"
+            && item.expected_direction == "should_stay_quiet"
+        {
+            quiet_baseline += 1;
+        }
+        if item.repository.contains("ripr-swarm")
+            && item
+                .scope_authorization
+                .value()
+                .is_some_and(|flag| flag == "authorized")
+        {
+            authorized_swarm_rows += 1;
+        }
+    }
+    let mut unmet = Vec::new();
+    if cases.len() < FLOOR_MIN_CASES {
+        unmet.push(format!(
+            "cases: {} < {FLOOR_MIN_CASES} (9+ real cases)",
+            cases.len()
+        ));
+    }
+    if repositories.len() < FLOOR_MIN_REPOS {
+        unmet.push(format!(
+            "repositories: {} < {FLOOR_MIN_REPOS} (2+ repos)",
+            repositories.len()
+        ));
+    }
+    for direction in RELEASE_DIRECTIONS {
+        let count = per_direction.get(direction).copied().unwrap_or(0);
+        if count < FLOOR_MIN_DIRECTION_ROWS {
+            unmet.push(format!(
+                "direction {direction}: {count} < {FLOOR_MIN_DIRECTION_ROWS}"
+            ));
+        }
+    }
+    if quiet_baseline < FLOOR_MIN_QUIET_BASELINE {
+        unmet.push(format!(
+            "baseline-quiet rows: {quiet_baseline} < {FLOOR_MIN_QUIET_BASELINE}"
+        ));
+    }
+    if authorized_swarm_rows == 0 && repositories.iter().any(|repo| repo.contains("ripr-swarm")) {
+        unmet.push(
+            "swarm scope: 0 authorized rows (second-repo scope proposed, not authorized)"
+                .to_string(),
+        );
+    }
+    ReleaseFloors {
+        cases: cases.len(),
+        repositories: repositories.into_iter().collect(),
+        per_direction,
+        quiet_baseline,
+        authorized_swarm_rows,
+        unmet,
+    }
+}
+
+fn validate_release_selection(root: &Path, manifest: &RustJudgedPanelManifest) -> Vec<String> {
+    let mut violations = Vec::new();
+    require_equal(
+        &mut violations,
+        "manifest.schema_version",
+        &manifest.schema_version,
+        "0.1",
+    );
+    require_equal(
+        &mut violations,
+        "manifest.kind",
+        &manifest.kind,
+        "rust_judged_behavior_panel_manifest",
+    );
+    require_equal(
+        &mut violations,
+        "manifest.authority",
+        &manifest.authority,
+        RELEASE_AUTHORITY,
+    );
+    require_equal(
+        &mut violations,
+        "manifest.tier",
+        &manifest.tier,
+        RELEASE_TIER,
+    );
+    require_equal(
+        &mut violations,
+        "manifest.selection_status",
+        &manifest.selection_status,
+        RELEASE_FROZEN,
+    );
+    require_non_empty(
+        &mut violations,
+        "manifest.description",
+        &manifest.description,
+    );
+    if manifest.limits.is_empty() || manifest.limits.iter().any(|limit| limit.trim().is_empty()) {
+        violations.push("manifest.limits: require non-empty release non-claims".to_string());
+    }
+    validate_required_directions(&manifest.required_directions, &mut violations);
+    if manifest.items.is_empty() {
+        violations.push("manifest.items: frozen denominator must not be empty".to_string());
+    }
+    let mut seen_ids = BTreeSet::new();
+    // Row slices sharing one frozen capture must agree on the case
+    // identity: same repository, base, head, and tree. Per-slice drift
+    // means the freeze no longer binds one case.
+    let mut case_binding: BTreeMap<String, (String, String, String, String)> = BTreeMap::new();
+    for (index, item) in manifest.items.iter().enumerate() {
+        let subject = format!("items[{index}] ({})", item.id);
+        // A blank id would pass the duplicate check on first insertion and
+        // leave the frozen row without a stable identity, so it is rejected
+        // before the duplicate check (same rule as the seed tier).
+        if item.id.trim().is_empty() {
+            violations.push(format!("{subject}.id: must not be blank"));
+        } else if !seen_ids.insert(item.id.clone()) {
+            violations.push(format!("{subject}.id: duplicate item id"));
+        }
+        let binding = (
+            item.repository.clone(),
+            item.base.value().cloned().unwrap_or_default(),
+            item.head.value().cloned().unwrap_or_default(),
+            item.tree_identity.value().cloned().unwrap_or_default(),
+        );
+        match case_binding.get(&item.diff_path) {
+            Some(first) if first != &binding => violations.push(format!(
+                "{subject}: row slices of `{}` disagree on the frozen case identity",
+                item.diff_path
+            )),
+            Some(_) => {}
+            None => {
+                case_binding.insert(item.diff_path.clone(), binding);
+            }
+        }
+        validate_release_item(root, item, &subject, &mut violations);
+    }
+    violations
+}
+
+fn validate_release_item(
+    root: &Path,
+    item: &RustJudgedPanelItem,
+    subject: &str,
+    violations: &mut Vec<String>,
+) {
+    require_non_empty(
+        violations,
+        &format!("{subject}.repository"),
+        &item.repository,
+    );
+    require_non_empty(
+        violations,
+        &format!("{subject}.behavior_family"),
+        &item.behavior_family,
+    );
+    require_non_empty(violations, &format!("{subject}.reason"), &item.reason);
+    if item.must_not_claim.is_empty()
+        || item
+            .must_not_claim
+            .iter()
+            .any(|claim| claim.trim().is_empty())
+    {
+        violations.push(format!(
+            "{subject}.must_not_claim: require at least one non-empty guard"
+        ));
+    }
+    // Row slices sharing one frozen capture must agree on the case
+    // identity; per-slice drift means the freeze no longer binds one case.
+    // (Enforced across items in validate_release_selection.)
+    // Frozen Git identities are abbreviated object IDs, not free text:
+    // hexadecimal, 7..=40 characters (abbrev through full SHA-1).
+    for (field, value) in [
+        ("base", item.base.value()),
+        ("head", item.head.value()),
+        ("tree_identity", item.tree_identity.value()),
+    ] {
+        let text = value.map_or("", |identity| identity.trim());
+        if !(text.len() >= 7
+            && text.len() <= 40
+            && text.chars().all(|cell| cell.is_ascii_hexdigit()))
+        {
+            violations.push(format!(
+                "{subject}.{field}: release tier requires a 7..=40 hexadecimal object id, found `{text}`"
+            ));
+        }
+    }
+    // The committed diff is the frozen capture: a normalized relative file
+    // under the governed diff root (same confinement as the seed tier),
+    // and its content digest must match the recorded prefix.
+    let diff_path = Path::new(&item.diff_path);
+    if normalize_path(diff_path) != item.diff_path || !is_confined_diff_path(diff_path) {
+        violations.push(format!(
+            "{subject}.diff_path: `{}` must be a relative file under `{DIFF_ROOT}` without parent traversal",
+            item.diff_path
+        ));
+        return;
+    }
+    let canonical_root = match fs::canonicalize(root) {
+        Ok(path) => path,
+        Err(error) => {
+            violations.push(format!(
+                "{subject}.diff_path: failed to resolve repository root: {error}"
+            ));
+            return;
+        }
+    };
+    let full_path = root.join(diff_path);
+    if !full_path.is_file() {
+        violations.push(format!(
+            "{subject}.diff_path: `{}` is missing or is not a file",
+            item.diff_path
+        ));
+        return;
+    }
+    let confined_root = match fs::canonicalize(root.join(DIFF_ROOT)) {
+        Ok(path) => path,
+        Err(error) => {
+            violations.push(format!(
+                "{subject}.diff_path: failed to resolve governed diff root: {error}"
+            ));
+            return;
+        }
+    };
+    if !confined_root.starts_with(&canonical_root) {
+        violations.push(format!(
+            "{subject}.diff_path: governed diff root resolves outside the repository root"
+        ));
+        return;
+    }
+    let resolved = match fs::canonicalize(&full_path) {
+        Ok(path) => path,
+        Err(error) => {
+            violations.push(format!(
+                "{subject}.diff_path: failed to resolve `{}`: {error}",
+                item.diff_path
+            ));
+            return;
+        }
+    };
+    if !resolved.starts_with(&confined_root) {
+        violations.push(format!(
+            "{subject}.diff_path: `{}` resolves outside `{DIFF_ROOT}`",
+            item.diff_path
+        ));
+        return;
+    }
+    // The recorded digest is a binding, not a label: blank, whitespace,
+    // non-hex, or undersized values would accept any file bytes, so the
+    // form is enforced before the comparison (8..=64 lowercase hex).
+    let recorded = match item.diff_sha256.value() {
+        Some(digest) => digest.trim().to_string(),
+        None => {
+            violations.push(format!(
+                "{subject}.diff_sha256: release tier requires the recorded content digest"
+            ));
+            return;
+        }
+    };
+    if recorded.len() < 8
+        || recorded.len() > 64
+        || !recorded.chars().all(|cell| cell.is_ascii_hexdigit())
+    {
+        violations.push(format!(
+            "{subject}.diff_sha256: require 8..=64 hexadecimal characters, found `{recorded}`"
+        ));
+        return;
+    }
+    let body = match fs::read_to_string(&resolved) {
+        Ok(body) => body,
+        Err(error) => {
+            violations.push(format!(
+                "{subject}.diff_sha256: cannot read resolved diff: {error}"
+            ));
+            return;
+        }
+    };
+    let actual = crate::python_judged_panel_replay::sha256_hex(body.as_bytes());
+    if !actual.starts_with(&recorded) {
+        violations.push(format!(
+            "{subject}.diff_sha256: content digest `{actual}` does not match recorded `{recorded}`"
+        ));
+        return;
+    }
+    // The anchor proof (same rule as the seed tier): the anchored line
+    // must be an added line in the frozen capture. `code` anchors (the
+    // default) additionally require the added line to contain the declared
+    // changed-behavior Rust token sequence; `string_literal` anchors cover
+    // pure string-literal changes (wording) by exact added-line equality,
+    // because the token proof filters string contents and cannot bind
+    // wording. Row-slice anchors bind the exact changed rows; test-only
+    // rows anchor their changed test lines, never a line-1 placeholder.
+    let kind = item
+        .anchor
+        .anchor_kind
+        .value()
+        .map_or("code", String::as_str);
+    if kind != "code" && kind != "string_literal" {
+        violations.push(format!(
+            "{subject}.anchor.anchor_kind: require `code` or `string_literal`, found `{kind}`"
+        ));
+        return;
+    }
+    match added_line_at(&body, &item.anchor.file, item.anchor.line) {
+        Ok(Some(line))
+            if kind == "code"
+                && contains_rust_token_sequence(line, &item.anchor.changed_behavior) => {}
+        Ok(Some(line))
+            if kind == "string_literal"
+                && line.trim() == item.anchor.changed_behavior.trim() => {}
+        Ok(Some(line)) => violations.push(format!(
+            "{subject}.anchor.changed_behavior: added line {} in `{}` is `{}`, which does not prove `{}`",
+            item.anchor.line,
+            item.anchor.file,
+            line.trim(),
+            item.anchor.changed_behavior
+        )),
+        Ok(None) => violations.push(format!(
+            "{subject}.anchor: `{}` line {} is not an added-file line in `{}`",
+            item.anchor.file, item.anchor.line, item.diff_path
+        )),
+        Err(error) => violations.push(format!("{subject}.diff_path: {error}")),
+    }
+    // Scope authorization is explicit per row: swarm rows must take a
+    // stance (authorized vs proposed_unauthorized), never stay silent.
+    match item.scope_authorization.value() {
+        Some(flag) if RELEASE_SCOPE_FLAGS.contains(&flag.as_str()) => {
+            if item.repository.contains("ripr-swarm") && flag == "not_applicable" {
+                violations.push(format!(
+                    "{subject}.scope_authorization: swarm rows must record authorized or proposed_unauthorized"
+                ));
+            }
+        }
+        _ => violations.push(format!(
+            "{subject}.scope_authorization: require one of {}",
+            RELEASE_SCOPE_FLAGS.join(", ")
+        )),
+    }
+    if !RELEASE_DIRECTIONS.contains(&item.expected_direction.as_str()) {
+        violations.push(format!(
+            "{subject}.expected_direction: require one of {}",
+            RELEASE_DIRECTIONS.join(", ")
+        ));
+    }
+    if !RELEASE_ACTIONABILITY.contains(&item.expected_actionability.as_str()) {
+        violations.push(format!(
+            "{subject}.expected_actionability: require one of {}",
+            RELEASE_ACTIONABILITY.join(", ")
+        ));
+    }
+    if !RELEASE_DISPOSITIONS.contains(&item.disposition.as_str()) {
+        violations.push(format!(
+            "{subject}.disposition: require one of {}",
+            RELEASE_DISPOSITIONS.join(", ")
+        ));
+    }
+    require_non_empty(
+        violations,
+        &format!("{subject}.judgment_source"),
+        item.judgment_source
+            .value()
+            .map_or("", |source| source.as_str()),
+    );
+    if item.judged_by.is_empty() || item.judged_by.iter().any(|name| name.trim().is_empty()) {
+        violations.push(format!(
+            "{subject}.judged_by: require at least one non-empty reviewer identity"
+        ));
+    }
+    // `judged_at` is part of the release item model alongside
+    // `judgment_source` and `judged_by`; no timestamp format is enforced,
+    // but a missing, null, or blank value leaves judgment provenance
+    // incomplete, so presence is required.
+    require_non_empty(
+        violations,
+        &format!("{subject}.judged_at"),
+        item.judged_at.value().map_or("", |stamp| stamp.as_str()),
+    );
+    require_non_empty(
+        violations,
+        &format!("{subject}.expected_classification"),
+        &item.expected_classification,
+    );
+    let anchor = &item.anchor;
+    require_non_empty(violations, &format!("{subject}.anchor.file"), &anchor.file);
+    // Normalized repository-relative form (same rule as the seed tier);
+    // existence is not required here because swarm-repo anchors live in
+    // the subject repository, not this checkout.
+    let anchor_file = Path::new(&anchor.file);
+    if normalize_path(anchor_file) != anchor.file || !is_confined_relative_path(anchor_file) {
+        violations.push(format!(
+            "{subject}.anchor.file: `{}` must be a normalized repository-relative path",
+            anchor.file
+        ));
+    }
+    if anchor.line == 0 {
+        violations.push(format!("{subject}.anchor.line: require the changed line"));
+    }
+    require_non_empty(
+        violations,
+        &format!("{subject}.anchor.owner"),
+        &anchor.owner,
+    );
+    require_non_empty(
+        violations,
+        &format!("{subject}.anchor.changed_behavior"),
+        &anchor.changed_behavior,
+    );
+    require_non_empty(
+        violations,
+        &format!("{subject}.anchor.required_discriminator"),
+        &anchor.required_discriminator,
+    );
+    let evidence = &item.test_evidence;
+    for (field, value) in [
+        ("test_evidence.relation_basis", &evidence.relation_basis),
+        ("test_evidence.oracle_kind", &evidence.oracle_kind),
+        ("test_evidence.oracle_strength", &evidence.oracle_strength),
+    ] {
+        require_non_empty(violations, &format!("{subject}.{field}"), value);
+    }
+    if evidence
+        .observed_inputs
+        .iter()
+        .any(|input| input.trim().is_empty())
+    {
+        violations.push(format!(
+            "{subject}.test_evidence.observed_inputs: entries must not be blank"
+        ));
+    }
+    let dimensions = &item.selection_dimensions;
+    for (field, value) in [
+        (
+            "selection_dimensions.relation_basis",
+            &dimensions.relation_basis,
+        ),
+        (
+            "selection_dimensions.oracle_family",
+            &dimensions.oracle_family,
+        ),
+        (
+            "selection_dimensions.propagation_witness",
+            &dimensions.propagation_witness,
+        ),
+        ("selection_dimensions.target_kind", &dimensions.target_kind),
+    ] {
+        require_non_empty(violations, &format!("{subject}.{field}"), value);
+    }
+    // The frozen selection records selection and expected directions only:
+    // no replay result and no verdict (same rule as the seed tier). Any
+    // other status, or a non-null outcome/evidence_ref, would smuggle a
+    // runtime verdict into the freeze.
+    if item.runtime_calibration.status != "not_run" {
+        violations.push(format!(
+            "{subject}.runtime_calibration.status: release tier requires `not_run`, found `{}`",
+            item.runtime_calibration.status
+        ));
+    }
+    if !item.runtime_calibration.outcome.is_null()
+        || !item.runtime_calibration.evidence_ref.is_null()
+    {
+        violations.push(format!(
+            "{subject}.runtime_calibration: `not_run` requires null outcome and evidence_ref"
+        ));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -1832,6 +2466,343 @@ mod tests {
                     "all-violations output omitted `{fragment}`: {first}"
                 ));
             }
+        }
+        Ok(())
+    }
+
+    fn valid_release_item(
+        id: &str,
+        direction: &str,
+        repository: &str,
+        diff_path: String,
+        scope: &str,
+        anchor: (&str, u64, &str),
+    ) -> Value {
+        let (anchor_file, anchor_line, anchor_behavior) = anchor;
+        let digest = crate::python_judged_panel_replay::sha256_hex(diff_path.as_bytes());
+        json!({
+            "id": id,
+            "repository": repository,
+            "base": "aaaaaaa1",
+            "head": "bbbbbbb2",
+            "tree_identity": "ccccccc3",
+            "diff_path": diff_path,
+            "diff_sha256": digest[..8].to_string(),
+            "scope_authorization": scope,
+            "expected_direction": direction,
+            "behavior_family": "test_behavior",
+            "anchor": {
+                "file": anchor_file,
+                "line": anchor_line,
+                "owner": "test_owner",
+                "changed_behavior": anchor_behavior,
+                "required_discriminator": "test discriminator"
+            },
+            "test_evidence": {
+                "relation_basis": "direct_owner_call",
+                "oracle_kind": "exact_value",
+                "oracle_strength": "strong",
+                "observed_inputs": [],
+                "aligned_observer": "test_observer",
+                "missing": null
+            },
+            "expected_classification": "exposed",
+            "expected_static_limit_kind": null,
+            "expected_actionability": "no_action",
+            "selection_dimensions": {
+                "relation_basis": "direct_owner_call",
+                "oracle_family": "exact_value",
+                "propagation_witness": "direct_return",
+                "target_kind": "same_diff_test"
+            },
+            "labels": {
+                "structural_judgment": true,
+                "false_actionable": false,
+                "false_exposed": false,
+                "static_under_credit": null,
+                "wrong_target": false,
+                "limitation_correct": null
+            },
+            "runtime_calibration": {
+                "status": "not_run",
+                "outcome": null,
+                "evidence_ref": null
+            },
+            "judgment_source": "test rounds record",
+            "judged_at": "2026-09-20T00:00:00Z",
+            "judged_by": ["test-reviewer"],
+            "disposition": "judged_first_pass",
+            "must_not_claim": ["do not treat the test fixture as a replay result"],
+            "reason": "test reason"
+        })
+    }
+
+    fn write_release_manifest(fixture: &TempFixture, manifest: &Value) -> Result<(), String> {
+        let path = fixture.root.join(super::RELEASE_SELECTION_PATH);
+        let parent = path
+            .parent()
+            .ok_or_else(|| "test release manifest path has no parent".to_string())?;
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        let body = serde_json::to_string_pretty(manifest).map_err(|error| error.to_string())?;
+        fs::write(path, body).map_err(|error| error.to_string())
+    }
+
+    fn valid_release_manifest(fixture: &TempFixture) -> Result<Value, String> {
+        let quiet_path = fixture.write_diff("release-quiet", "src/quiet.rs", "quiet_behavior()")?;
+        let gap_path = fixture.write_diff("release-gap", "src/gap.rs", "gap_behavior()")?;
+        // The digest validator hashes file bytes, so record the real digest
+        // of each staged diff rather than the placeholder above.
+        let mut manifest = json!({
+            "schema_version": "0.1",
+            "kind": "rust_judged_behavior_panel_manifest",
+            "authority": "EffortlessMetrics/ripr#1675",
+            "tier": "release-challenge",
+            "description": "Test release selection proving tier-dispatched validation.",
+            "selection_status": "frozen",
+            "limits": ["test non-claims"],
+            "required_directions": ["should_gap", "should_stay_quiet", "should_limit"],
+            "items": []
+        });
+        let mut items = Vec::new();
+        // The staged test diffs add one behavior line each at new-file
+        // line 6 (`write_diff` hunk `@@ -5,3 +5,3 @@`); anchors bind it.
+        for (id, direction, repository, path, scope, anchor_file, anchor_behavior) in [
+            (
+                "release-quiet-id",
+                "should_stay_quiet",
+                "EffortlessMetrics/ripr",
+                quiet_path,
+                "not_applicable",
+                "src/quiet.rs",
+                "quiet_behavior()",
+            ),
+            (
+                "release-gap-id",
+                "should_gap",
+                "EffortlessMetrics/ripr-swarm",
+                gap_path,
+                "proposed_unauthorized",
+                "src/gap.rs",
+                "gap_behavior()",
+            ),
+        ] {
+            let bytes = fs::read(fixture.root.join(&path)).map_err(|error| error.to_string())?;
+            let mut item = valid_release_item(
+                id,
+                direction,
+                repository,
+                path,
+                scope,
+                (anchor_file, 6, anchor_behavior),
+            );
+            let digest = crate::python_judged_panel_replay::sha256_hex(&bytes);
+            item["diff_sha256"] = json!(digest[..8].to_string());
+            items.push(item);
+        }
+        manifest["items"] = Value::Array(items);
+        Ok(manifest)
+    }
+
+    #[test]
+    fn release_selection_accepts_tier_dispatched_manifest() -> Result<(), String> {
+        let fixture = TempFixture::new("release-valid")?;
+        let manifest = valid_release_manifest(&fixture)?;
+        write_release_manifest(&fixture, &manifest)?;
+        let parsed = super::check_release_selection_at(&fixture.root)?;
+        if parsed.items.len() != 2 {
+            return Err(format!(
+                "release denominator must contain 2 items, found {}",
+                parsed.items.len()
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn release_selection_rejects_structural_violations() -> Result<(), String> {
+        let fixture = TempFixture::new("release-invalid")?;
+        let manifest = valid_release_manifest(&fixture)?;
+        write_release_manifest(&fixture, &manifest)?;
+        // Tamper the staged diff so the recorded digest no longer matches.
+        let tampered = fixture
+            .root
+            .join("metrics/rust-judged-behavior-panel/diffs/release-gap.diff");
+        fs::write(&tampered, "tampered content").map_err(|error| error.to_string())?;
+        let error = super::check_release_selection_at(&fixture.root)
+            .err()
+            .ok_or_else(|| "tampered diff passed release validation".to_string())?;
+        if !error.contains(".diff_sha256") {
+            return Err(format!("digest mismatch not named: {error}"));
+        }
+        // Duplicate ids, silent swarm scope, and unknown direction fail
+        // too. Restore the pristine manifest and diff bytes first so the
+        // tampered diff above does not mask these violations (digest
+        // mismatch returns before the vocabulary checks run).
+        write_release_manifest(&fixture, &manifest)?;
+        fixture.write_diff("release-gap", "src/gap.rs", "gap_behavior()")?;
+        let mut broken = manifest;
+        broken["items"][1]["id"] = broken["items"][0]["id"].clone();
+        broken["items"][1]["scope_authorization"] = json!("not_applicable");
+        broken["items"][1]["expected_direction"] = json!("should_maybe");
+        write_release_manifest(&fixture, &broken)?;
+        let error = super::check_release_selection_at(&fixture.root)
+            .err()
+            .ok_or_else(|| "broken release manifest passed validation".to_string())?;
+        for fragment in [
+            "duplicate item id",
+            ".scope_authorization",
+            ".expected_direction",
+        ] {
+            if !error.contains(fragment) {
+                return Err(format!("violation `{fragment}` not named: {error}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn release_selection_reports_unmet_floors_without_failing() -> Result<(), String> {
+        let fixture = TempFixture::new("release-floors")?;
+        let manifest = valid_release_manifest(&fixture)?;
+        write_release_manifest(&fixture, &manifest)?;
+        // Structurally valid (2 items) but far below every acceptance floor.
+        super::check_release_selection_at(&fixture.root).map(|_| ())?;
+        let parsed = super::check_release_selection_at(&fixture.root)?;
+        let floors = super::release_floor_status(&parsed);
+        if floors.unmet.is_empty() {
+            return Err("two-item selection must report unmet floors".to_string());
+        }
+        for fragment in ["direction should_limit", "swarm scope"] {
+            if !floors.unmet.iter().any(|floor| floor.contains(fragment)) {
+                return Err(format!(
+                    "floor `{fragment}` not reported: {:?}",
+                    floors.unmet
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn release_selection_rejects_malformed_bindings() -> Result<(), String> {
+        let fixture = TempFixture::new("release-bindings")?;
+        let manifest = valid_release_manifest(&fixture)?;
+        write_release_manifest(&fixture, &manifest)?;
+        // Blank digest, malformed identity, cross-slice drift, and a
+        // fabricated anchor each fail with a named violation.
+        let mut broken = manifest;
+        let real_digest = broken["items"][0]["diff_sha256"].clone();
+        broken["items"][0]["diff_sha256"] = json!("   ");
+        broken["items"][0]["base"] = json!("not-a-commit");
+        // Share the first item's capture with a different base to force
+        // cross-slice drift; copy its real digest too so the digest check
+        // passes and the anchor proof runs for the fabricated anchor.
+        broken["items"][1]["diff_path"] = broken["items"][0]["diff_path"].clone();
+        broken["items"][1]["diff_sha256"] = real_digest;
+        broken["items"][1]["base"] = json!("bbbbbbb9");
+        broken["items"][1]["anchor"]["line"] = json!(1);
+        broken["items"][1]["anchor"]["changed_behavior"] = json!("unrelated prose");
+        write_release_manifest(&fixture, &broken)?;
+        let error = super::check_release_selection_at(&fixture.root)
+            .err()
+            .ok_or_else(|| "malformed bindings passed release validation".to_string())?;
+        for fragment in [
+            ".diff_sha256",
+            ".base",
+            "disagree on the frozen case identity",
+            ".anchor",
+        ] {
+            if !error.contains(fragment) {
+                return Err(format!("binding `{fragment}` not named: {error}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn release_selection_rejects_frozen_state_violations() -> Result<(), String> {
+        let fixture = TempFixture::new("release-frozen-state")?;
+        let manifest = valid_release_manifest(&fixture)?;
+        write_release_manifest(&fixture, &manifest)?;
+        // A blank id must fail before the duplicate check (first insertion
+        // would otherwise accept it and drop the row's stable identity).
+        let mut broken = manifest.clone();
+        broken["items"][0]["id"] = json!("   ");
+        write_release_manifest(&fixture, &broken)?;
+        let error = super::check_release_selection_at(&fixture.root)
+            .err()
+            .ok_or_else(|| "blank release item id passed validation".to_string())?;
+        if !error.contains("must not be blank") {
+            return Err(format!("blank id not named: {error}"));
+        }
+        // Judgment provenance is incomplete without `judged_at`, even when
+        // source and reviewer are present.
+        let mut broken = manifest.clone();
+        broken["items"][0]["judged_at"] = json!(null);
+        write_release_manifest(&fixture, &broken)?;
+        let error = super::check_release_selection_at(&fixture.root)
+            .err()
+            .ok_or_else(|| "null judged_at passed release validation".to_string())?;
+        if !error.contains(".judged_at") {
+            return Err(format!("judged_at not named: {error}"));
+        }
+        // The freeze records selection only: a replay verdict (non-not_run
+        // status, or a non-null outcome/evidence_ref) must fail.
+        let mut broken = manifest.clone();
+        broken["items"][0]["runtime_calibration"]["status"] = json!("passed");
+        broken["items"][0]["runtime_calibration"]["outcome"] = json!("caught");
+        broken["items"][0]["runtime_calibration"]["evidence_ref"] = json!("receipt.json");
+        write_release_manifest(&fixture, &broken)?;
+        let error = super::check_release_selection_at(&fixture.root)
+            .err()
+            .ok_or_else(|| "replay verdict passed frozen validation".to_string())?;
+        for fragment in ["requires `not_run`", "requires null outcome"] {
+            if !error.contains(fragment) {
+                return Err(format!("frozen state `{fragment}` not named: {error}"));
+            }
+        }
+        // Only quiet-direction rows count toward the quiet baseline: the
+        // same `no_findings` classification on a gap row must not count.
+        let mut counted = manifest.clone();
+        counted["items"][0]["expected_classification"] = json!("no_findings");
+        write_release_manifest(&fixture, &counted)?;
+        let parsed = super::check_release_selection_at(&fixture.root)?;
+        if super::release_floor_status(&parsed).quiet_baseline != 1 {
+            return Err(
+                "quiet-direction no_findings row must count toward the quiet baseline".to_string(),
+            );
+        }
+        let mut gap_counted = manifest.clone();
+        gap_counted["items"][1]["expected_classification"] = json!("no_findings");
+        write_release_manifest(&fixture, &gap_counted)?;
+        let parsed = super::check_release_selection_at(&fixture.root)?;
+        if super::release_floor_status(&parsed).quiet_baseline != 0 {
+            return Err(
+                "gap-direction no_findings row must not count toward the quiet baseline"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn canonical_release_selection_is_semantically_valid() -> Result<(), String> {
+        let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest has no repository parent".to_string())?;
+        let manifest = super::check_release_selection_at(repository_root)?;
+        if manifest.items.len() != 18 {
+            return Err(format!(
+                "frozen release denominator must contain 18 items, found {}",
+                manifest.items.len()
+            ));
+        }
+        let floors = super::release_floor_status(&manifest);
+        if floors.cases != 10 {
+            return Err(format!(
+                "frozen selection must span 10 cases, found {}",
+                floors.cases
+            ));
         }
         Ok(())
     }
