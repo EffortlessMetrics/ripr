@@ -1118,6 +1118,14 @@ fn init_json(evidence: &InitEvidence) -> Value {
 // Slice F: agent repair + test-edit + verify/receipt journey
 // ---------------------------------------------------------------------------
 
+/// Keeps a configured toolchain root (`RUSTUP_HOME`, `CARGO_HOME`) exactly
+/// as the ambient environment sets it; the `$HOME`-derived guess applies
+/// only when the variable is unset, so container layouts with roots
+/// outside `$HOME` are never overwritten with nonexistent paths.
+fn prefer_ambient_toolchain_root(ambient: Option<String>, derived: &str) -> String {
+    ambient.unwrap_or_else(|| derived.to_string())
+}
+
 /// Resolves the repair seam for one finding: exactly one packet must exist
 /// for the fixture baseline, or the journey fails for redesign instead of
 /// guessing which seam the finding means.
@@ -1133,10 +1141,21 @@ fn repair_seam_id(packets_stdout: &str) -> Result<String, String> {
             "installed seam packets must hold exactly one packet; observed {total}"
         ));
     }
-    parsed
+    // The counter alone does not bind the array: an inconsistent report
+    // (total 1, two entries) must refuse rather than silently take the
+    // first packet.
+    let packets = parsed
         .get("packets")
         .and_then(Value::as_array)
-        .and_then(|packets| packets.first())
+        .ok_or_else(|| "installed seam packets hold no packets array".to_string())?;
+    if packets.len() != 1 {
+        return Err(format!(
+            "installed seam packets array must hold exactly one entry; observed {}",
+            packets.len()
+        ));
+    }
+    packets
+        .first()
         .and_then(|packet| packet.get("seam_id"))
         .and_then(Value::as_str)
         .map(str::to_string)
@@ -1253,9 +1272,11 @@ fn verify_movement(verify_stdout: &str) -> Result<MovementEvidence, String> {
 }
 
 /// Requires the `outcome` route to show grip movement on exactly the
-/// repaired seam class: at least one moved seam, weakness before,
-/// strength after.
-fn outcome_movement(outcome_stdout: &str) -> Result<(usize, u64, u64), String> {
+/// repaired seam: a moved row carrying the repaired `seam_id` with a
+/// `weakly_gripped` before class and a `strongly_gripped` after class,
+/// plus aggregate weakness before and strength after. A moved row for any
+/// other seam cannot satisfy this gate.
+fn outcome_movement(outcome_stdout: &str, seam_id: &str) -> Result<(usize, u64, u64), String> {
     let parsed: Value = serde_json::from_str(outcome_stdout)
         .map_err(|error| format!("parse installed outcome JSON: {error}"))?;
     let moved = parsed
@@ -1264,6 +1285,16 @@ fn outcome_movement(outcome_stdout: &str) -> Result<(usize, u64, u64), String> {
         .ok_or_else(|| "installed outcome JSON holds no moved array".to_string())?;
     if moved.is_empty() {
         return Err("installed outcome moved no seam; refusing the repair claim".to_string());
+    }
+    let repaired_moved = moved.iter().any(|row| {
+        row.get("seam_id").and_then(Value::as_str) == Some(seam_id)
+            && row.get("before").and_then(Value::as_str) == Some("weakly_gripped")
+            && row.get("after").and_then(Value::as_str) == Some("strongly_gripped")
+    });
+    if !repaired_moved {
+        return Err(format!(
+            "installed outcome shows no weak-to-strong move for seam `{seam_id}`; refusing the repair claim"
+        ));
     }
     let before_weak = parsed
         .get("before")
@@ -1359,7 +1390,9 @@ fn run_repair_journey(
     // Toolchain roots stay ambient so `cargo test` resolves the pinned
     // toolchain under the fresh HOME; the build tree stays inside the
     // harness-owned fixture root so build residue never enters the
-    // checkout the edit cage guards.
+    // checkout the edit cage guards. Configured roots outside `$HOME`
+    // (container layouts) are preserved as-is; the `$HOME`-derived guess
+    // applies only when the variable is unset.
     let ambient_home = std::env::var("HOME").map_err(|error| format!("ambient HOME: {error}"))?;
     let isolated = (
         fixture_root
@@ -1374,8 +1407,14 @@ fn run_repair_journey(
             .join("build-repair")
             .to_string_lossy()
             .to_string(),
-        format!("{ambient_home}/.rustup"),
-        format!("{ambient_home}/.cargo"),
+        prefer_ambient_toolchain_root(
+            std::env::var("RUSTUP_HOME").ok(),
+            &format!("{ambient_home}/.rustup"),
+        ),
+        prefer_ambient_toolchain_root(
+            std::env::var("CARGO_HOME").ok(),
+            &format!("{ambient_home}/.cargo"),
+        ),
     );
     let product_envs = [
         ("RIPR_CACHE_DIR", isolated.1.as_str()),
@@ -1680,7 +1719,7 @@ fn run_repair_journey(
         &product_envs,
     )
     .map_err(|error| format!("installed outcome failed: {error}"))?;
-    let (outcome_moved, _, _) = outcome_movement(&outcome_stdout)?;
+    let (outcome_moved, _, _) = outcome_movement(&outcome_stdout, &seam_id)?;
     Ok(RepairEvidence {
         repo_rel,
         finding_id,
@@ -2712,6 +2751,10 @@ mod tests {
                 "two",
                 json!({"packets_total": 2, "packets": [{"seam_id": "a"}, {"seam_id": "b"}]}),
             ),
+            (
+                "inconsistent-count",
+                json!({"packets_total": 1, "packets": [{"seam_id": "a"}, {"seam_id": "b"}]}),
+            ),
             ("missing", json!({"packets_total": 1, "packets": [{}]})),
         ] {
             assert!(
@@ -2767,11 +2810,11 @@ mod tests {
     #[test]
     fn outcome_route_requires_weak_to_strong_movement() -> Result<(), String> {
         let good = json!({
-            "moved": [{"seam_id": "s1"}],
+            "moved": [{"seam_id": "s1", "before": "weakly_gripped", "after": "strongly_gripped"}],
             "before": {"weakly_gripped": 1},
             "after": {"strongly_gripped": 1},
         });
-        assert_eq!(outcome_movement(&good.to_string())?, (1, 1, 1));
+        assert_eq!(outcome_movement(&good.to_string(), "s1")?, (1, 1, 1));
         for (name, doc) in [
             (
                 "unmoved",
@@ -2779,18 +2822,44 @@ mod tests {
             ),
             (
                 "no-weakness",
-                json!({"moved": [{"seam_id": "s1"}], "before": {"weakly_gripped": 0}, "after": {"strongly_gripped": 1}}),
+                json!({"moved": [{"seam_id": "s1", "before": "weakly_gripped", "after": "strongly_gripped"}], "before": {"weakly_gripped": 0}, "after": {"strongly_gripped": 1}}),
             ),
             (
                 "no-strength",
-                json!({"moved": [{"seam_id": "s1"}], "before": {"weakly_gripped": 1}, "after": {"strongly_gripped": 0}}),
+                json!({"moved": [{"seam_id": "s1", "before": "weakly_gripped", "after": "strongly_gripped"}], "before": {"weakly_gripped": 1}, "after": {"strongly_gripped": 0}}),
+            ),
+            (
+                "wrong-seam",
+                json!({"moved": [{"seam_id": "other", "before": "weakly_gripped", "after": "strongly_gripped"}], "before": {"weakly_gripped": 1}, "after": {"strongly_gripped": 1}}),
+            ),
+            (
+                "row-not-weak-to-strong",
+                json!({"moved": [{"seam_id": "s1", "before": "strongly_gripped", "after": "strongly_gripped"}], "before": {"weakly_gripped": 1}, "after": {"strongly_gripped": 1}}),
             ),
         ] {
             assert!(
-                outcome_movement(&doc.to_string()).is_err(),
+                outcome_movement(&doc.to_string(), "s1").is_err(),
                 "outcome `{name}` must refuse"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn toolchain_roots_prefer_configured_ambient_values() -> Result<(), String> {
+        // The ambient lookup stays outside the helper so this test never
+        // mutates process environment.
+        assert_eq!(
+            prefer_ambient_toolchain_root(
+                Some("/usr/local/custom-toolchain".to_string()),
+                "/home/tester/.rustup",
+            ),
+            "/usr/local/custom-toolchain"
+        );
+        assert_eq!(
+            prefer_ambient_toolchain_root(None, "/home/tester/.rustup"),
+            "/home/tester/.rustup"
+        );
         Ok(())
     }
 
