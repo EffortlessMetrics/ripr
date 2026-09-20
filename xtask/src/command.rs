@@ -87,6 +87,7 @@ pub(crate) enum XtaskCommand {
     Dogfood,
     EvalSweep(Vec<String>),
     FirstHour(Vec<String>),
+    FirstHourControls(Vec<String>),
     Critic,
     Reports(Vec<String>),
     Cache(Vec<String>),
@@ -177,6 +178,7 @@ impl XtaskCommand {
             "windows-advisory-summary" => Self::WindowsAdvisorySummary(rest),
             "eval-sweep" => Self::EvalSweep(rest),
             "first-hour" => Self::FirstHour(rest),
+            "first-hour-controls" => Self::FirstHourControls(rest),
             "suggested-fixes" => Self::SuggestedFixes,
             "precommit" => Self::Precommit,
             "check-fast" => Self::CheckFast,
@@ -541,6 +543,8 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "package",
         "publish-dry-run",
         "issue-intake --issue <number>",
+        "first-hour --crate <path.crate> --prefix <clean-dir> --out <receipt-dir> --fixture-root <dir>",
+        "first-hour-controls --crate <path.crate> --prefix <clean-dir> --out <receipt-dir> --fixture-root <dir>",
     ]
 }
 
@@ -2039,6 +2043,22 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             false,
             false,
             "Fetches a live GitHub issue and emits a typed intake packet.",
+        ),
+        command_entry(
+            "first-hour --crate <path.crate> --prefix <clean-dir> --out <receipt-dir> --fixture-root <dir>",
+            "external_state_mutating",
+            "caller-selected --prefix install tree, --out receipt, and --fixture-root checkout (created, journey-run, cleaned)",
+            true,
+            false,
+            "Installs the packaged candidate into a clean prefix, builds the disposable baseline fixture, and runs the installed check journey under fresh per-rendering cache/HOME roots; deletes the harness-created fixture root on completion.",
+        ),
+        command_entry(
+            "first-hour-controls --crate <path.crate> --prefix <clean-dir> --out <receipt-dir> --fixture-root <dir>",
+            "external_state_mutating",
+            "caller-selected --prefix install tree (including one deliberately tampered executable), --out controls receipt, and --fixture-root checkouts (created, journey-run, cleaned)",
+            true,
+            false,
+            "Installs the packaged candidate once, then drives the production journey with three dishonest states (invalid base, empty diff, tampered binary); each control passes only on its typed refusal and the run exits nonzero otherwise.",
         ),
     ]
 }

@@ -44,6 +44,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::WindowsAdvisorySummary(args) => super::windows_advisory::run(&args),
         XtaskCommand::EvalSweep(args) => super::reports::eval_sweep(&args),
         XtaskCommand::FirstHour(args) => super::reports::first_hour(&args),
+        XtaskCommand::FirstHourControls(args) => super::reports::first_hour_controls(&args),
         XtaskCommand::SuggestedFixes => super::suggested_fixes(),
         XtaskCommand::Precommit => precommit_v2::run(),
         XtaskCommand::CheckFast => check_fast_strict::run(),

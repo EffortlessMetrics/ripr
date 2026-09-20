@@ -1,5 +1,6 @@
-//! Installed first-hour qualification harness — #1674 slices A (harness core)
-//! and B (fixture + installed check journey).
+//! Installed first-hour qualification harness — #1674 slices A (harness core),
+//! B (fixture + installed check journey), and C (negative controls against
+//! the production journey).
 //!
 //! Report-only `cargo xtask first-hour`. Owns the installed-artifact
 //! authority every later slice consumes: an explicit `.crate`/installed
@@ -48,14 +49,20 @@ struct FirstHourArgs {
     fixture_root: String,
 }
 
-fn take_value(args: &[String], index: &mut usize, flag: &str) -> Result<String, String> {
+fn take_value(
+    command: &str,
+    usage: &str,
+    args: &[String],
+    index: &mut usize,
+    flag: &str,
+) -> Result<String, String> {
     *index += 1;
     args.get(*index)
         .cloned()
-        .ok_or_else(|| format!("first-hour {flag} requires a value\n{USAGE}"))
+        .ok_or_else(|| format!("{command} {flag} requires a value\n{usage}"))
 }
 
-fn parse_args(args: &[String]) -> Result<FirstHourArgs, String> {
+fn parse_args(command: &str, usage: &str, args: &[String]) -> Result<FirstHourArgs, String> {
     let mut crate_path: Option<String> = None;
     let mut prefix: Option<String> = None;
     let mut out: Option<String> = None;
@@ -63,23 +70,33 @@ fn parse_args(args: &[String]) -> Result<FirstHourArgs, String> {
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
-            "--crate" => crate_path = Some(take_value(args, &mut index, "--crate")?),
-            "--prefix" => prefix = Some(take_value(args, &mut index, "--prefix")?),
-            "--out" => out = Some(take_value(args, &mut index, "--out")?),
-            "--fixture-root" => {
-                fixture_root = Some(take_value(args, &mut index, "--fixture-root")?);
+            "--crate" => {
+                crate_path = Some(take_value(command, usage, args, &mut index, "--crate")?);
             }
-            "--help" | "-h" => return Err(USAGE.to_string()),
-            other => return Err(format!("first-hour unknown argument `{other}`\n{USAGE}")),
+            "--prefix" => {
+                prefix = Some(take_value(command, usage, args, &mut index, "--prefix")?);
+            }
+            "--out" => out = Some(take_value(command, usage, args, &mut index, "--out")?),
+            "--fixture-root" => {
+                fixture_root = Some(take_value(
+                    command,
+                    usage,
+                    args,
+                    &mut index,
+                    "--fixture-root",
+                )?);
+            }
+            "--help" | "-h" => return Err(usage.to_string()),
+            other => return Err(format!("{command} unknown argument `{other}`\n{usage}")),
         }
         index += 1;
     }
     Ok(FirstHourArgs {
-        crate_path: crate_path.ok_or_else(|| format!("first-hour --crate is required\n{USAGE}"))?,
-        prefix: prefix.ok_or_else(|| format!("first-hour --prefix is required\n{USAGE}"))?,
-        out: out.ok_or_else(|| format!("first-hour --out is required\n{USAGE}"))?,
+        crate_path: crate_path.ok_or_else(|| format!("{command} --crate is required\n{usage}"))?,
+        prefix: prefix.ok_or_else(|| format!("{command} --prefix is required\n{usage}"))?,
+        out: out.ok_or_else(|| format!("{command} --out is required\n{usage}"))?,
         fixture_root: fixture_root
-            .ok_or_else(|| format!("first-hour --fixture-root is required\n{USAGE}"))?,
+            .ok_or_else(|| format!("{command} --fixture-root is required\n{usage}"))?,
     })
 }
 
@@ -545,13 +562,28 @@ fn fixture_git(
     )
 }
 
-/// Builds the disposable baseline repository: base commit (production +
-/// weak mid-range-only test), head commit (exact-boundary `>` to `>=`
-/// change the weak test cannot discriminate). Returns base/head SHAs.
-fn build_fixture_repo(harness: &mut Harness, fixture_root: &Path) -> Result<FixtureRepo, String> {
-    let mut repo = fixture_root.to_path_buf();
+/// Builds the disposable baseline repository under `label`: base commit
+/// (production + weak mid-range-only test), head commit (exact-boundary `>`
+/// to `>=` change the weak test cannot discriminate — or, when
+/// `mutate_head` is false, an empty head commit carrying the base tree for
+/// the no-change control). Returns base/head SHAs.
+fn build_fixture_repo(
+    harness: &mut Harness,
+    fixture_root: &Path,
+    label: &str,
+    mutate_head: bool,
+) -> Result<FixtureRepo, String> {
+    // Each journey owns an isolated checkout: rerunning the builder under
+    // one fixture root must never re-init an existing repository.
+    let mut repo = fixture_root.join(label);
     for component in FIXTURE_REPO_REL {
         repo.push(component);
+    }
+    if repo.exists() {
+        return Err(format!(
+            "fixture checkout `{}` already exists; the harness never reuses a live checkout",
+            repo.display()
+        ));
     }
     let src = repo.join("src");
     let tests = repo.join("tests");
@@ -579,14 +611,25 @@ fn build_fixture_repo(harness: &mut Harness, fixture_root: &Path) -> Result<Fixt
     let base_sha = fixture_git(harness, &repo, &["rev-parse", "HEAD"], FIXTURE_BASE_DATE)?
         .trim()
         .to_string();
-    std::fs::write(src.join("lib.rs"), FIXTURE_LIB_HEAD)
-        .map_err(|error| format!("write fixture head lib: {error}"))?;
-    fixture_git(
-        harness,
-        &repo,
-        &["commit", "-qam", "head"],
-        FIXTURE_HEAD_DATE,
-    )?;
+    if mutate_head {
+        std::fs::write(src.join("lib.rs"), FIXTURE_LIB_HEAD)
+            .map_err(|error| format!("write fixture head lib: {error}"))?;
+        fixture_git(
+            harness,
+            &repo,
+            &["commit", "-qam", "head"],
+            FIXTURE_HEAD_DATE,
+        )?;
+    } else {
+        // No-change control: the head commit carries the base tree, so the
+        // installed check observes an empty diff and must refuse a pass.
+        fixture_git(
+            harness,
+            &repo,
+            &["commit", "-qam", "head", "--allow-empty"],
+            FIXTURE_HEAD_DATE,
+        )?;
+    }
     let head_sha = fixture_git(harness, &repo, &["rev-parse", "HEAD"], FIXTURE_HEAD_DATE)?
         .trim()
         .to_string();
@@ -683,19 +726,23 @@ struct JourneyEvidence {
 
 /// Runs the installed check journey (issue steps 1-2): human rendering for
 /// the `Start here` front door plus JSON evidence, both through the admitted
-/// installed executable under fresh cache/HOME roots.
+/// installed executable under fresh cache/HOME roots. The checked base is a
+/// parameter so the invalid-base control can drive the production path with
+/// a bogus ref; the positive journey always passes the fixture base SHA.
 fn run_check_journey(
     harness: &mut Harness,
     subject: &InstalledSubject,
     repo: &FixtureRepo,
     fixture_root: &Path,
+    label: &str,
+    base_sha: &str,
 ) -> Result<JourneyEvidence, String> {
     admit_installed_executable(subject, &subject.executable)?;
-    let cache_dir = fixture_root.join("cache").join("ripr");
-    let home_dir = fixture_root.join("home");
-    std::fs::create_dir_all(&cache_dir)
-        .map_err(|error| format!("create journey cache: {error}"))?;
-    std::fs::create_dir_all(&home_dir).map_err(|error| format!("create journey home: {error}"))?;
+    // Each rendering runs cold under its own fresh cache/HOME: the JSON
+    // gate must not warm the cache the human front door then runs on, or a
+    // cold-cache-only human regression would pass undetected.
+    let cache_root = fixture_root.join("cache").join("ripr");
+    let home_root = fixture_root.join("home");
     let executable = subject.executable.to_string_lossy().to_string();
     let root = repo.path.to_string_lossy().to_string();
     let human_args = vec![
@@ -703,20 +750,17 @@ fn run_check_journey(
         "--root".to_string(),
         root.clone(),
         "--base".to_string(),
-        repo.base_sha.clone(),
+        base_sha.to_string(),
     ];
-    let human = journey_run(
-        harness,
-        "installed-check-human",
-        &executable,
-        &human_args,
-        &[
-            ("RIPR_CACHE_DIR", &cache_dir.to_string_lossy()),
-            ("HOME", &home_dir.to_string_lossy()),
-        ],
-    )
-    .map_err(|error| format!("installed check (human) failed: {error}"))?;
-    require_start_here(&human)?;
+    // Machine evidence before human rendering: the JSON gate pins the exact
+    // oracle, so an empty or misclassified observation refuses here with
+    // its own typed error instead of falling through to the human gate.
+    let json_cache = cache_root.join("json");
+    let json_home = home_root.join("json");
+    std::fs::create_dir_all(&json_cache)
+        .map_err(|error| format!("create journey json cache: {error}"))?;
+    std::fs::create_dir_all(&json_home)
+        .map_err(|error| format!("create journey json home: {error}"))?;
     let mut json_args = human_args.clone();
     json_args.push("--json".to_string());
     let json_stdout = journey_run(
@@ -725,15 +769,33 @@ fn run_check_journey(
         &executable,
         &json_args,
         &[
-            ("RIPR_CACHE_DIR", &cache_dir.to_string_lossy()),
-            ("HOME", &home_dir.to_string_lossy()),
+            ("RIPR_CACHE_DIR", &json_cache.to_string_lossy()),
+            ("HOME", &json_home.to_string_lossy()),
         ],
     )
     .map_err(|error| format!("installed check (json) failed: {error}"))?;
     let evidence = check_evidence_json(&json_stdout)?;
     require_boundary_oracle(&evidence)?;
+    let human_cache = cache_root.join("human");
+    let human_home = home_root.join("human");
+    std::fs::create_dir_all(&human_cache)
+        .map_err(|error| format!("create journey human cache: {error}"))?;
+    std::fs::create_dir_all(&human_home)
+        .map_err(|error| format!("create journey human home: {error}"))?;
+    let human = journey_run(
+        harness,
+        "installed-check-human",
+        &executable,
+        &human_args,
+        &[
+            ("RIPR_CACHE_DIR", &human_cache.to_string_lossy()),
+            ("HOME", &human_home.to_string_lossy()),
+        ],
+    )
+    .map_err(|error| format!("installed check (human) failed: {error}"))?;
+    require_start_here(&human)?;
     Ok(JourneyEvidence {
-        repo_rel: FIXTURE_REPO_REL.join("/"),
+        repo_rel: format!("{label}/{}", FIXTURE_REPO_REL.join("/")),
         base_sha: repo.base_sha.clone(),
         head_sha: repo.head_sha.clone(),
         human_digest: sha256_hex(human.as_bytes()),
@@ -811,12 +873,16 @@ fn write_receipt(
 // Entry point
 // ---------------------------------------------------------------------------
 
-pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
-    let parsed = parse_args(args)?;
-    let mut harness = Harness {
-        roots: Vec::new(),
-        ledger: Vec::new(),
-    };
+/// Resolved and ownership-checked harness paths, shared by the journey and
+/// the controls entry: no command installs or creates anything before these
+/// checks pass.
+struct FirstHourPaths {
+    prefix: PathBuf,
+    out: PathBuf,
+    fixture_root: PathBuf,
+}
+
+fn guard_paths(command: &str, parsed: &FirstHourArgs) -> Result<FirstHourPaths, String> {
     // Fail-closed ownership, checked before any install work: a
     // pre-existing fixture root is never adopted for deletion. The harness
     // creates it, so cleanup can only remove what the harness made.
@@ -827,7 +893,7 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
     let fixture_root = PathBuf::from(&parsed.fixture_root);
     if fixture_root.exists() {
         return Err(format!(
-            "first-hour --fixture-root `{}` already exists; slice A never deletes pre-existing directories",
+            "{command} --fixture-root `{}` already exists; the harness never deletes pre-existing directories",
             fixture_root.display()
         ));
     }
@@ -839,7 +905,7 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
     let out_norm = absolute_normalized(&out_root)?;
     if out_norm == fixture_norm || out_norm.starts_with(&fixture_norm) {
         return Err(format!(
-            "first-hour --out `{}` must not equal or nest under --fixture-root `{}`; the receipt would be cleaned before return",
+            "{command} --out `{}` must not equal or nest under --fixture-root `{}`; the receipt would be cleaned before return",
             out_root.display(),
             fixture_root.display()
         ));
@@ -853,23 +919,45 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
     let prefix_norm = absolute_normalized(&prefix)?;
     if prefix_norm == fixture_norm || prefix_norm.starts_with(&fixture_norm) {
         return Err(format!(
-            "first-hour --prefix `{}` must not equal or nest under --fixture-root `{}`; the install tree would be cleaned before return",
+            "{command} --prefix `{}` must not equal or nest under --fixture-root `{}`; the install tree would be cleaned before return",
             prefix.display(),
             fixture_root.display()
         ));
     }
-    let subject = install_package(&mut harness, &parsed.crate_path, &prefix)?;
+    Ok(FirstHourPaths {
+        prefix,
+        out: out_root,
+        fixture_root,
+    })
+}
+
+pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
+    let parsed = parse_args("first-hour", USAGE, args)?;
+    let mut harness = Harness {
+        roots: Vec::new(),
+        ledger: Vec::new(),
+    };
+    let paths = guard_paths("first-hour", &parsed)?;
+    let subject = install_package(&mut harness, &parsed.crate_path, &paths.prefix)?;
     admit_installed_executable(&subject, &subject.executable)?;
-    std::fs::create_dir_all(&fixture_root)
+    std::fs::create_dir_all(&paths.fixture_root)
         .map_err(|error| format!("create fixture root: {error}"))?;
-    harness.roots.push(fixture_root.clone());
+    harness.roots.push(paths.fixture_root.clone());
     // Slice B: baseline fixture plus the installed check journey. Every
     // product invocation resolves through the admitted installed
     // executable; the journey fails loudly when the boundary change goes
     // unobserved or the human front door does not render.
-    let repo = build_fixture_repo(&mut harness, &fixture_root)?;
-    let journey = run_check_journey(&mut harness, &subject, &repo, &fixture_root)?;
-    write_receipt(Path::new(&parsed.out), &subject, &harness, Some(&journey))?;
+    let repo = build_fixture_repo(&mut harness, &paths.fixture_root, "journey", true)?;
+    let base_sha = repo.base_sha.clone();
+    let journey = run_check_journey(
+        &mut harness,
+        &subject,
+        &repo,
+        &paths.fixture_root,
+        "journey",
+        &base_sha,
+    )?;
+    write_receipt(&paths.out, &subject, &harness, Some(&journey))?;
     println!(
         "first-hour slice B: {} finding(s) [{}] through {} ledger {} steps",
         journey.evidence.findings,
@@ -878,6 +966,259 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
         harness.ledger.len()
     );
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Slice C: negative controls against the production journey
+// ---------------------------------------------------------------------------
+
+const CONTROLS_USAGE: &str = "\
+cargo xtask first-hour-controls --crate <path.crate> --prefix <clean-dir> --out <receipt-dir>
+  --fixture-root <dir>
+Installs the packaged candidate once, then drives the production journey
+with three dishonest states. Each control passes only when the journey
+refuses with its typed error; an unexpected success or a different error
+fails the run. Writes a controls receipt and exits nonzero unless every
+control observes its refusal.";
+
+const CONTROLS_RECEIPT_FILE: &str = "first-hour-controls.json";
+
+/// A control that must refuse: a setup failure is reported as
+/// setup-not-established, never as a pass and never as a journey failure.
+struct ControlReport {
+    name: String,
+    expected: String,
+    observed: String,
+    pass: bool,
+    setup_ok: bool,
+}
+
+fn expect_refusal(
+    name: &str,
+    expected: &str,
+    outcome: Result<JourneyEvidence, String>,
+) -> ControlReport {
+    match outcome {
+        Ok(_) => ControlReport {
+            name: name.to_string(),
+            expected: expected.to_string(),
+            observed: "unexpected success: the journey recorded a pass it cannot prove".to_string(),
+            pass: false,
+            setup_ok: true,
+        },
+        Err(error) if error.contains(expected) => ControlReport {
+            name: name.to_string(),
+            expected: expected.to_string(),
+            observed: error,
+            pass: true,
+            setup_ok: true,
+        },
+        Err(error) => ControlReport {
+            name: name.to_string(),
+            expected: expected.to_string(),
+            observed: error,
+            pass: false,
+            setup_ok: true,
+        },
+    }
+}
+
+/// Flips one bit mid-file so the installed digest no longer binds the
+/// executable. The journey must refuse at admission, before any product
+/// invocation — the control additionally asserts no `installed-check-*`
+/// ledger step exists past the refusal point.
+fn tamper_installed_executable(subject: &InstalledSubject) -> Result<(), String> {
+    let mut bytes = std::fs::read(&subject.executable)
+        .map_err(|error| format!("read installed executable for tampering: {error}"))?;
+    if bytes.is_empty() {
+        return Err("installed executable is empty; nothing to tamper".to_string());
+    }
+    let middle = bytes.len() / 2;
+    bytes[middle] ^= 0xFF;
+    std::fs::write(&subject.executable, &bytes)
+        .map_err(|error| format!("write tampered executable: {error}"))?;
+    Ok(())
+}
+
+fn product_steps_since(harness: &Harness, ledger_len: usize) -> Vec<String> {
+    harness.ledger[ledger_len..]
+        .iter()
+        .filter(|entry| entry.step.starts_with("installed-check-"))
+        .map(|entry| entry.step.clone())
+        .collect()
+}
+
+fn control_report_json(report: &ControlReport) -> Value {
+    json!({
+        "name": report.name,
+        "expected_refusal": report.expected,
+        "observed": report.observed,
+        "pass": report.pass,
+        "setup_ok": report.setup_ok,
+    })
+}
+
+fn write_controls_receipt(
+    out: &Path,
+    subject: &InstalledSubject,
+    harness: &Harness,
+    reports: &[ControlReport],
+) -> Result<bool, String> {
+    let all_pass = reports.iter().all(|report| report.pass);
+    let receipt = json!({
+        "schema_version": SCHEMA_VERSION,
+        "subject": {
+            "crate_sha256": subject.crate_sha256,
+            "executable": subject.executable.to_string_lossy(),
+            "version_output": subject.version_output,
+        },
+        "controls": reports.iter().map(control_report_json).collect::<Vec<_>>(),
+        "all_pass": all_pass,
+        "ledger": harness.ledger.iter().map(ledger_json).collect::<Vec<_>>(),
+    });
+    std::fs::create_dir_all(out).map_err(|error| format!("create out dir: {error}"))?;
+    let text = serde_json::to_string_pretty(&receipt)
+        .map_err(|error| format!("render controls receipt: {error}"))?;
+    std::fs::write(out.join(CONTROLS_RECEIPT_FILE), format!("{text}\n"))
+        .map_err(|error| format!("write controls receipt: {error}"))?;
+    Ok(all_pass)
+}
+
+pub(crate) fn first_hour_controls(args: &[String]) -> Result<(), String> {
+    let parsed = parse_args("first-hour-controls", CONTROLS_USAGE, args)?;
+    let mut harness = Harness {
+        roots: Vec::new(),
+        ledger: Vec::new(),
+    };
+    let paths = guard_paths("first-hour-controls", &parsed)?;
+    let subject = install_package(&mut harness, &parsed.crate_path, &paths.prefix)?;
+    admit_installed_executable(&subject, &subject.executable)?;
+    std::fs::create_dir_all(&paths.fixture_root)
+        .map_err(|error| format!("create fixture root: {error}"))?;
+    harness.roots.push(paths.fixture_root.clone());
+    let mut reports = Vec::new();
+
+    // Control 1: invalid base. Fixture setup must succeed first; the
+    // installed check then fails on the bogus ref and the journey must
+    // propagate that failure instead of recording evidence. The JSON gate
+    // runs first, so the refusal names the json invocation.
+    let invalid_setup = build_fixture_repo(&mut harness, &paths.fixture_root, "control-base", true);
+    reports.push(match invalid_setup {
+        Err(error) => ControlReport {
+            name: "invalid-base".to_string(),
+            expected: "installed check (json) failed".to_string(),
+            observed: format!("setup failed: {error}"),
+            pass: false,
+            setup_ok: false,
+        },
+        Ok(repo) => {
+            let bogus = "0000000000000000000000000000000000000000";
+            expect_refusal(
+                "invalid-base",
+                "installed check (json) failed",
+                run_check_journey(
+                    &mut harness,
+                    &subject,
+                    &repo,
+                    &paths.fixture_root,
+                    "control-base",
+                    bogus,
+                ),
+            )
+        }
+    });
+
+    // Control 2: no change. The empty diff must surface zero findings and
+    // the oracle gate must refuse the pass.
+    let nochange_setup =
+        build_fixture_repo(&mut harness, &paths.fixture_root, "control-empty", false);
+    reports.push(match nochange_setup {
+        Err(error) => ControlReport {
+            name: "no-change".to_string(),
+            expected: "zero findings".to_string(),
+            observed: format!("setup failed: {error}"),
+            pass: false,
+            setup_ok: false,
+        },
+        Ok(repo) => {
+            let base_sha = repo.base_sha.clone();
+            expect_refusal(
+                "no-change",
+                "zero findings",
+                run_check_journey(
+                    &mut harness,
+                    &subject,
+                    &repo,
+                    &paths.fixture_root,
+                    "control-empty",
+                    &base_sha,
+                ),
+            )
+        }
+    });
+
+    // Control 3: tampered binary, last — tampering destroys the installed
+    // tree for any later product use. Admission must refuse before any
+    // product invocation: no installed-check-* step may follow.
+    let tampered = (|| -> Result<ControlReport, String> {
+        let repo = build_fixture_repo(&mut harness, &paths.fixture_root, "control-tamper", true)
+            .map_err(|error| format!("setup failed: {error}"))?;
+        tamper_installed_executable(&subject).map_err(|error| format!("setup failed: {error}"))?;
+        let ledger_len = harness.ledger.len();
+        let base_sha = repo.base_sha.clone();
+        let mut report = expect_refusal(
+            "tampered-binary",
+            "wrong binary",
+            run_check_journey(
+                &mut harness,
+                &subject,
+                &repo,
+                &paths.fixture_root,
+                "control-tamper",
+                &base_sha,
+            ),
+        );
+        // Tripwire: with admission intact, a refusal precedes every product
+        // step, so this branch fires only when admission was bypassed or
+        // moved — yet product steps still ran against a tampered binary.
+        let product_steps = product_steps_since(&harness, ledger_len);
+        if !product_steps.is_empty() {
+            report.pass = false;
+            report.observed = format!(
+                "product steps ran against a tampered binary: {}; {}",
+                product_steps.join(","),
+                report.observed
+            );
+        }
+        Ok(report)
+    })();
+    reports.push(match tampered {
+        Err(setup) => ControlReport {
+            name: "tampered-binary".to_string(),
+            expected: "wrong binary".to_string(),
+            observed: setup,
+            pass: false,
+            setup_ok: false,
+        },
+        Ok(report) => report,
+    });
+
+    let all_pass = write_controls_receipt(&paths.out, &subject, &harness, &reports)?;
+    let passed = reports.iter().filter(|report| report.pass).count();
+    println!(
+        "first-hour-controls: {passed}/{} controls observed their refusal",
+        reports.len()
+    );
+    if all_pass {
+        Ok(())
+    } else {
+        Err(reports
+            .iter()
+            .filter(|report| !report.pass)
+            .map(|report| format!("control `{}`: {}", report.name, report.observed))
+            .collect::<Vec<_>>()
+            .join("\n"))
+    }
 }
 
 #[cfg(test)]
@@ -1274,6 +1615,124 @@ mod tests {
     }
 
     #[test]
+    fn control_refusal_matrix_separates_pass_from_setup() -> Result<(), String> {
+        let ok: Result<JourneyEvidence, String> = Ok(JourneyEvidence {
+            repo_rel: "r".to_string(),
+            base_sha: "b".to_string(),
+            head_sha: "h".to_string(),
+            human_digest: "d".to_string(),
+            human_bytes: 1,
+            json_digest: "j".to_string(),
+            json_bytes: 1,
+            evidence: CheckEvidence {
+                findings: 1,
+                classifications: vec!["weakly_exposed".to_string()],
+                summary_probes: 1,
+            },
+        });
+        // An unexpected success is a control failure, never a pass.
+        let surprise = expect_refusal("probe", "wrong binary", ok);
+        assert!(!surprise.pass);
+        assert!(surprise.setup_ok);
+        assert!(surprise.observed.contains("unexpected success"));
+        // The typed refusal passes.
+        let refused: Result<JourneyEvidence, String> =
+            Err("wrong binary: `x` digest does not match".to_string());
+        let report = expect_refusal("probe", "wrong binary", refused);
+        assert!(report.pass);
+        assert!(report.setup_ok);
+        // A different error fails without implicating setup.
+        let other: Result<JourneyEvidence, String> = Err("disk on fire".to_string());
+        let mismatch = expect_refusal("probe", "wrong binary", other);
+        assert!(!mismatch.pass);
+        assert!(mismatch.setup_ok);
+        Ok(())
+    }
+
+    #[test]
+    fn tampering_breaks_the_installed_digest_binding() -> Result<(), String> {
+        let dir =
+            std::env::temp_dir().join(format!("ripr-first-hour-tamper-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).map_err(|error| format!("fixture dir: {error}"))?;
+        let executable = dir.join("ripr");
+        std::fs::write(&executable, b"installed-bytes-0123456789")
+            .map_err(|error| format!("write executable: {error}"))?;
+        let subject = InstalledSubject {
+            crate_path: "fixture.crate".to_string(),
+            crate_sha256: "0".repeat(64),
+            prefix: dir.clone(),
+            executable: executable.clone(),
+            executable_sha256: sha256_hex(b"installed-bytes-0123456789"),
+            executable_size: 26,
+            version_output: "ripr 0.11.0".to_string(),
+        };
+        assert!(matches!(
+            admit_installed_executable(&subject, &executable),
+            Ok(())
+        ));
+        tamper_installed_executable(&subject)?;
+        assert!(matches!(
+            admit_installed_executable(&subject, &executable),
+            Err(error) if error.contains("wrong binary")
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn journey_run_propagates_child_failure_with_named_status() -> Result<(), String> {
+        let mut harness = Harness {
+            roots: Vec::new(),
+            ledger: Vec::new(),
+        };
+        let outcome = journey_run(
+            &mut harness,
+            "probe-fail",
+            "git",
+            &[
+                "-C".to_string(),
+                "/nonexistent-ripr-first-hour-dir".to_string(),
+                "--version".to_string(),
+            ],
+            &[],
+        );
+        let error = refusal_of(outcome)?;
+        assert!(!error.is_empty());
+        // The ledger records the failure verbatim; a failing child is never
+        // recorded as ok.
+        assert_eq!(harness.ledger.len(), 1);
+        assert_ne!(harness.ledger[0].status, "ok");
+        Ok(())
+    }
+
+    #[test]
+    fn controls_entry_shares_the_fail_closed_guards() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-first-hour-controls-guard-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).map_err(|error| format!("pre-existing dir: {error}"))?;
+        assert!(matches!(
+            first_hour_controls(&[
+                "--crate".to_string(),
+                "missing.crate".to_string(),
+                "--prefix".to_string(),
+                dir.join("prefix").to_string_lossy().to_string(),
+                "--out".to_string(),
+                dir.join("out").to_string_lossy().to_string(),
+                "--fixture-root".to_string(),
+                dir.to_string_lossy().to_string(),
+            ]),
+            Err(error) if error.contains("already exists")
+        ));
+        assert!(!dir.join("prefix").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
     fn human_front_door_requires_its_start_here_section() -> Result<(), String> {
         require_start_here(
             "ripr static RIPR exposure analysis\n\nStart here:\n  State: top_gap\n",
@@ -1316,21 +1775,47 @@ mod tests {
 
     #[test]
     fn arg_surface_requires_every_identity_input() -> Result<(), String> {
-        let _ = refusal_of(parse_args(&[]))?;
-        let _ = refusal_of(parse_args(&["--crate".to_string(), "a.crate".to_string()]))?;
-        let Ok(parsed) = parse_args(&[
-            "--crate".to_string(),
-            "a.crate".to_string(),
-            "--prefix".to_string(),
-            "p".to_string(),
-            "--out".to_string(),
-            "o".to_string(),
-            "--fixture-root".to_string(),
-            "f".to_string(),
-        ]) else {
+        let _ = refusal_of(parse_args("first-hour", USAGE, &[]))?;
+        let _ = refusal_of(parse_args(
+            "first-hour",
+            USAGE,
+            &["--crate".to_string(), "a.crate".to_string()],
+        ))?;
+        let Ok(parsed) = parse_args(
+            "first-hour",
+            USAGE,
+            &[
+                "--crate".to_string(),
+                "a.crate".to_string(),
+                "--prefix".to_string(),
+                "p".to_string(),
+                "--out".to_string(),
+                "o".to_string(),
+                "--fixture-root".to_string(),
+                "f".to_string(),
+            ],
+        ) else {
             return Err("complete arg surface must parse".to_string());
         };
         assert_eq!(parsed.prefix, "p");
+        // The controls entry parses the same surface under its own name.
+        let Ok(controls) = parse_args(
+            "first-hour-controls",
+            CONTROLS_USAGE,
+            &[
+                "--crate".to_string(),
+                "a.crate".to_string(),
+                "--prefix".to_string(),
+                "p".to_string(),
+                "--out".to_string(),
+                "o".to_string(),
+                "--fixture-root".to_string(),
+                "f".to_string(),
+            ],
+        ) else {
+            return Err("controls arg surface must parse".to_string());
+        };
+        assert_eq!(controls.fixture_root, "f");
         Ok(())
     }
 }
