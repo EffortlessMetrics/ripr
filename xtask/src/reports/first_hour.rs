@@ -1772,7 +1772,7 @@ const LSP_REFRESH_COMMAND: &str = "ripr.refresh";
 /// refuses the journey instead of hanging the harness.
 const LSP_RESPONSE_TIMEOUT_SECS: u64 = 60;
 /// After the exit notification the server must be gone quickly: a live
-/// process past this budget is killed and refuses the journey as an
+/// process past this budget is terminated and refuses the journey as an
 /// orphan — never silently adopted.
 const LSP_EXIT_TIMEOUT_SECS: u64 = 10;
 /// The saved-workspace analysis poll budget: didSave refresh runs
@@ -2350,7 +2350,7 @@ fn run_lsp_journey(
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(format!(
-                    "installed LSP server still alive {}s after exit; killed as an orphan",
+                    "installed LSP server still alive {}s after exit; terminated as an orphan",
                     LSP_EXIT_TIMEOUT_SECS
                 ));
             }
@@ -3879,13 +3879,13 @@ mod tests {
         assert_eq!(
             prefer_ambient_toolchain_root(
                 Some("/usr/local/custom-toolchain".to_string()),
-                "/home/tester/.rustup",
+                "/synthetic-toolchain-root/.rustup",
             ),
             "/usr/local/custom-toolchain"
         );
         assert_eq!(
-            prefer_ambient_toolchain_root(None, "/home/tester/.rustup"),
-            "/home/tester/.rustup"
+            prefer_ambient_toolchain_root(None, "/synthetic-toolchain-root/.rustup"),
+            "/synthetic-toolchain-root/.rustup"
         );
         Ok(())
     }
