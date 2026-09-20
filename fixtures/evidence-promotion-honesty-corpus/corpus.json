@@ -1444,14 +1444,16 @@
       ]
     },
     {
-      "id": "rust_catalog_description_structural_oracle_control",
+      "id": "rust_catalog_description_structural_oracle",
       "language": "rust",
       "tier": "pure",
       "source_fixture": "fixtures/rust_catalog_description_structural_oracle",
-      "control": "must_stay_exposed",
-      "vector": "structural_oracle_with_coincidental_token_overlap_promotes_pending_specificity_retry",
+      "vector": "structural_oracle_with_coincidental_token_overlap_must_not_promote",
       "assertions": [
-        { "type": "must_promote" }
+        { "type": "must_not_report_clean" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
       ]
     }
   ]

@@ -23,10 +23,10 @@ The diff changes the rendered wording (`"checks catalog consistency"` ->
 
 ## Then
 
-Current residual (p1745 catalog-description survivor replicated): the wording
-row is `exposed` on structural evidence alone. Pinned as a control until the
-specificity retry lands; the retry must flip this row to non-promotion while
-keeping exact-sink oracles exposed.
+The wording row must not promote on structural evidence alone: with only the
+coincidental `catalog` token shared between oracle and changed expression,
+the row withholds at `weakly_exposed` (delta-token confirmation, #1748).
+An oracle quoting the changed word would confirm and expose.
 
 ## Must Not
 

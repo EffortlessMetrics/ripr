@@ -76,6 +76,17 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
             ),
         );
     }
+    // #1748: discrimination must bind in one oracle. A Yes whose strength
+    // comes from one oracle and whose change reference comes from another
+    // withholds (fail closed, under-credit): neither oracle alone would
+    // notice the behavior being wrong.
+    if discriminate.state == StageState::Yes && !analysis.bound_discriminator {
+        discriminate = StageEvidence::new(
+            StageState::Weak,
+            Confidence::Medium,
+            "Discriminator split across oracles: no single oracle binds entity identity, strong observation, and a change reference (specificity_unbound)",
+        );
+    }
 
     (observe, discriminate, related)
 }
@@ -102,6 +113,11 @@ struct RevealAssertionAnalysis {
     /// ties), so a withheld discriminator names the actual unresolved
     /// linkage instead of always blaming token coincidence.
     strongest_reason: Option<RelationReason>,
+    /// #1748: true when a single matched oracle binds entity identity, a
+    /// strong observation, and change reference together. Strength in one
+    /// oracle plus a change reference in another withholds even when the
+    /// row-level flags would otherwise allow `exposed`.
+    bound_discriminator: bool,
     /// True when this probe's family requires a `token_match` to confirm that
     /// an assertion actually references the specific changed sub-expression, and
     /// no such match has fired yet.
@@ -298,8 +314,34 @@ fn analyze_related_assertions(
             ProbeFamily::ErrorPath | ProbeFamily::ReturnValue
         )
         && wrapper_error_seam_expression(&[probe.expression.as_str(), analysis_expression]);
+    // #1748: confirmation-scoped delta tokens for the plain lexical path.
+    // A token present on both sides of the change is invariant under it, so
+    // only after-tokens absent from the before-text can confirm observation
+    // of the changed sub-expression. Scoped to ReturnValue probes with
+    // before-text: a rendered value is anonymous, so name overlap alone is
+    // coincidence. Families whose sink carries a stable name
+    // (FieldConstruction fields, MatchArm variants, error variants) keep
+    // their existing confirmation — naming the sink targets it. Effect
+    // families keep their target/literal semantics, and probes without
+    // before-text keep the full token set (prior behavior).
+    let delta_tokens: Option<Vec<String>> = match probe.before.as_deref() {
+        Some(before)
+            if !before.trim().is_empty() && matches!(probe.family, ProbeFamily::ReturnValue) =>
+        {
+            let before_tokens = extract_identifier_tokens(before);
+            Some(
+                probe_tokens
+                    .iter()
+                    .filter(|token| !before_tokens.contains(token))
+                    .cloned()
+                    .collect(),
+            )
+        }
+        _ => None,
+    };
     let match_context = RevealMatchContext {
         probe_tokens: &probe_tokens,
+        confirmation_tokens: delta_tokens.as_deref(),
         effect_literals: &effect_literals,
         match_arm_variants: &match_arm_variants,
         match_arm_literals: &match_arm_literals,
@@ -325,6 +367,8 @@ fn analyze_related_assertions(
     // For families that need token confirmation: start pessimistic and clear
     // once a token_match fires.
     let mut observation_unverified = false;
+    // #1748: no single oracle yet binds identity, strength, and confirmation.
+    let mut bound_discriminator = false;
 
     for (test, reason) in related_tests {
         let relation_reason = Some(*reason);
@@ -365,6 +409,11 @@ fn analyze_related_assertions(
                 cross_package_defeats_owner,
             );
             if matched {
+                // #1748: per-oracle confirmation, shared with the row-level
+                // unverified flag below and the single-oracle binding check.
+                let assertion_confirmed = !confirm_required
+                    || has_token_match
+                    || (is_effect_family(&probe.family) && effect_observer_confirms(assertion));
                 if confirm_required {
                     // Observation is confirmed when the assertion specifically
                     // references the changed sub-expression. For value families
@@ -377,13 +426,11 @@ fn analyze_related_assertions(
                     // flagged `observation_unverified`, while a plain
                     // non-observing assertion (no token, no effect observer)
                     // stays unverified.
-                    let observation_confirmed = has_token_match
-                        || (is_effect_family(&probe.family) && effect_observer_confirms(assertion));
                     if !matched_any {
                         // First matching assertion: observation is unverified
                         // unless confirmed.
-                        observation_unverified = !observation_confirmed;
-                    } else if observation_confirmed {
+                        observation_unverified = !assertion_confirmed;
+                    } else if assertion_confirmed {
                         // A later confirmed assertion clears the unverified flag.
                         observation_unverified = false;
                     }
@@ -396,10 +443,11 @@ fn analyze_related_assertions(
                 // changed sink — unless the test calls the owner, calls its
                 // helper, targets it by assertion affinity, or is named for
                 // it (the last preserving the spec'd variant-bound credit,
-                // RIPR-SPEC-0106 Part B). NOTE: entity binding without oracle
-                // specificity (e.g. a catalog-consistency check credited for
-                // a description-text change) remains a known residual for
-                // freeze-pass adjudication, not this gate.
+                // RIPR-SPEC-0106 Part B). #1748: entity binding additionally
+                // requires oracle specificity — the confirming token must be
+                // a delta token (see `confirmation_tokens`), so a
+                // catalog-consistency check credited for a description-text
+                // change withholds on coincidental overlap.
                 let identity = matches!(
                     reason,
                     RelationReason::DirectOwnerCall
@@ -414,6 +462,18 @@ fn analyze_related_assertions(
                     strongest_reason = Some(*reason);
                 } else if relative_strength.rank() == strongest.rank() {
                     strongest_identity = strongest_identity || identity;
+                }
+                // #1748: discrimination binds in a SINGLE oracle — entity
+                // identity, strong observation, and change reference
+                // together. Strength in one oracle plus a change reference
+                // in another is the coverage mistake in a new guise (e.g. a
+                // structural exact oracle plus a coincidental delta word in
+                // an unrelated oracle).
+                if identity
+                    && matches!(relative_strength, OracleStrength::Strong)
+                    && assertion_confirmed
+                {
+                    bound_discriminator = true;
                 }
                 related.push(RelatedTest {
                     name: test.name.clone(),
@@ -437,6 +497,7 @@ fn analyze_related_assertions(
         strongest_identity,
         strongest_reason,
         observation_unverified,
+        bound_discriminator,
     }
 }
 
@@ -477,6 +538,14 @@ struct RevealMatchContext<'a> {
     match_arm_guarded: bool,
     error_construction_variant: Option<&'a str>,
     family: &'a ProbeFamily,
+    /// #1748: confirmation-scoped tokens for the plain lexical path. When
+    /// `Some` (ReturnValue probes with before-text), observation
+    /// confirmation requires a whole-word hit on a token in the AFTER
+    /// expression that is absent from the BEFORE expression — tokens
+    /// invariant across the change cannot discriminate it, so shared tokens
+    /// (e.g. a coincidental `catalog`) never confirm. When `None`, confirmation
+    /// falls back to the full `probe_tokens`.
+    confirmation_tokens: Option<&'a [String]>,
     /// `true` only for #3700 wrapper error seams: the changed expression is a
     /// `map_err` conversion with no parseable variant, so the variant
     /// binding is not statically establishable and nothing may confirm
@@ -1144,6 +1213,7 @@ fn assertion_matches_probe_detail_with_literals(
 ) -> (bool, bool) {
     let RevealMatchContext {
         probe_tokens,
+        confirmation_tokens,
         effect_literals,
         match_arm_variants,
         match_arm_literals,
@@ -1255,7 +1325,17 @@ fn assertion_matches_probe_detail_with_literals(
         // the same error type would otherwise clear the unverified flag.
         producer_owned_result
     } else {
-        token_match || effect_literal_match || producer_owned_result
+        // #1748: confirmation requires a delta-token hit when the context
+        // carries confirmation scope; association (`matched` below) still
+        // uses the full token set, so the row stays linked and withholds
+        // instead of disappearing.
+        let confirmation_token_match = match confirmation_tokens {
+            Some(specific) => specific
+                .iter()
+                .any(|token| contains_as_whole_word(&assertion.text, token)),
+            None => token_match,
+        };
+        confirmation_token_match || effect_literal_match || producer_owned_result
     };
     // Fail-closed: if error_construction_variant is None (no parseable variant
     // in the probe), fall through to the standard token_match + family_match
@@ -1296,6 +1376,7 @@ fn assertion_matches_probe_detail(
     assertion_matches_probe_detail_with_literals(
         &RevealMatchContext {
             probe_tokens,
+            confirmation_tokens: None,
             effect_literals: &[],
             match_arm_variants,
             match_arm_literals,
@@ -2513,6 +2594,7 @@ mod tests {
         ] {
             let context = RevealMatchContext {
                 probe_tokens: &empty,
+                confirmation_tokens: None,
                 effect_literals: &empty,
                 match_arm_variants: &empty,
                 match_arm_literals: &pattern_literals,
@@ -2534,6 +2616,88 @@ mod tests {
                 "wrong confirmation: guarded={guarded} import={import_defeats_owner} cross_package={cross_package_defeats_owner}"
             );
         }
+    }
+
+    /// #1748: observation confirmation requires a delta token. The changed
+    /// wording shares `catalog`/`consistency` with the before-text, so a
+    /// structural oracle naming only the shared token leaves observation
+    /// unverified, while an oracle quoting the changed word confirms. The
+    /// association half is unaffected (matched stays true on shared tokens).
+    #[test]
+    fn delta_token_confirmation_withholds_shared_token_oracle() {
+        let family = ProbeFamily::ReturnValue;
+        let probe_tokens = extract_identifier_tokens("\"verifies catalog consistency\"");
+        let before_tokens = extract_identifier_tokens("\"checks catalog consistency\"");
+        let delta: Vec<String> = probe_tokens
+            .iter()
+            .filter(|token| !before_tokens.contains(token))
+            .cloned()
+            .collect();
+        assert_eq!(delta, vec!["verifies".to_string()]);
+        let empty: Vec<String> = Vec::new();
+        let structural = oracle(
+            "assert_eq!(entry_description_violations(&catalog), Vec::<String>::new());",
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+        );
+        let exact = oracle(
+            "assert_eq!(text, \"verifies catalog consistency\");",
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+        );
+        for (assertion, expected, what) in [
+            (&structural, false, "shared-token structural oracle"),
+            (&exact, true, "delta-token exact oracle"),
+        ] {
+            let context = RevealMatchContext {
+                probe_tokens: &probe_tokens,
+                confirmation_tokens: Some(&delta),
+                effect_literals: &empty,
+                match_arm_variants: &empty,
+                match_arm_literals: &empty,
+                match_arm_guarded: false,
+                error_construction_variant: None,
+                family: &family,
+                wrapper_seam: false,
+                owner_callee: None,
+            };
+            let (matched, has_token) =
+                assertion_matches_probe_detail_with_literals(&context, assertion, 1, false, false);
+            assert!(matched, "{what} must stay associated");
+            assert_eq!(has_token, expected, "{what} confirmation");
+        }
+    }
+
+    /// #1748: without before-text there is no delta to scope to, so
+    /// confirmation falls back to the full token set (prior behavior).
+    #[test]
+    fn no_before_text_falls_back_to_full_token_confirmation() {
+        let family = ProbeFamily::ReturnValue;
+        let probe_tokens = extract_identifier_tokens("\"verifies catalog consistency\"");
+        let empty: Vec<String> = Vec::new();
+        let structural = oracle(
+            "assert_eq!(entry_description_violations(&catalog), Vec::<String>::new());",
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+        );
+        let context = RevealMatchContext {
+            probe_tokens: &probe_tokens,
+            confirmation_tokens: None,
+            effect_literals: &empty,
+            match_arm_variants: &empty,
+            match_arm_literals: &empty,
+            match_arm_guarded: false,
+            error_construction_variant: None,
+            family: &family,
+            wrapper_seam: false,
+            owner_callee: None,
+        };
+        let (_, has_token) =
+            assertion_matches_probe_detail_with_literals(&context, &structural, 1, false, false);
+        assert!(
+            has_token,
+            "without before-text a shared token still confirms (prior behavior)"
+        );
     }
 
     // A diagnostic message that spells the owner call binds no input: the
