@@ -380,6 +380,16 @@ fn analyze_related_assertions(
                 }
                 matched_any = true;
                 let relative_strength = probe_relative_oracle_strength(&probe.family, assertion);
+                // #1746: identity is entity binding. A strong oracle whose
+                // test merely shares the file, module, name, or a token with
+                // the probe observes a nearby value, not necessarily the
+                // changed sink — unless the test calls the owner, calls its
+                // helper, targets it by assertion affinity, or is named for
+                // it (the last preserving the spec'd variant-bound credit,
+                // RIPR-SPEC-0106 Part B). NOTE: entity binding without oracle
+                // specificity (e.g. a catalog-consistency check credited for
+                // a description-text change) remains a known residual for
+                // freeze-pass adjudication, not this gate.
                 let identity = matches!(
                     reason,
                     RelationReason::DirectOwnerCall
