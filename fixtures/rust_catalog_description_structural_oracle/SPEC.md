@@ -30,6 +30,6 @@ keeping exact-sink oracles exposed.
 
 ## Must Not
 
-- Treat this control as adequate discrimination: a wording-only change
+- Treat this control as sufficient discrimination: a wording-only change
   passes the asserting test.
 - Claim runtime mutation adequacy.
