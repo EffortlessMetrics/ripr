@@ -1057,6 +1057,13 @@ fn run_init_journey(
         .map_err(|error| format!("read forced workflow: {error}"))?;
     toml_advisory_markers(&toml_forced)?;
     workflow_advisory_markers(&workflow_forced)?;
+    // The forced run targets only the two generated files: a --force that
+    // modifies or deletes the unrelated user workflow must still fail.
+    let sentinel_forced = std::fs::read_to_string(&sentinel)
+        .map_err(|error| format!("read user sentinel after --force: {error}"))?;
+    if sentinel_forced != "# user owned\n" {
+        return Err("installed init --force touched the user-owned workflow".to_string());
+    }
     Ok(InitEvidence {
         repo_rel,
         toml_digest: sha256_hex(toml.as_bytes()),
