@@ -93,6 +93,12 @@ pub(crate) struct RunOutcome {
     pub(crate) exit_status: Option<i32>,
     pub(crate) failed: BTreeSet<String>,
     pub(crate) passed: BTreeSet<String>,
+    /// Tests the harness reported as still running (`has been running for
+    /// over ... seconds`). A stuck observation is not a failure verdict:
+    /// the test may still have completed after the log ended. It exists so
+    /// a lane stopped by the job timeout can name its wedge instead of
+    /// going silent.
+    pub(crate) stuck: BTreeSet<String>,
     pub(crate) targets: Vec<String>,
     pub(crate) results: Vec<String>,
 }
@@ -104,6 +110,7 @@ impl RunOutcome {
             exit_status: None,
             failed: BTreeSet::new(),
             passed: BTreeSet::new(),
+            stuck: BTreeSet::new(),
             targets: Vec::new(),
             results: Vec::new(),
         }
@@ -154,13 +161,19 @@ fn classify(first: TestObservation, second: TestObservation) -> Option<Verdict> 
     }
 }
 
-/// The four artifact roles this command consumes.
+/// The artifact roles this command consumes: the two full-workspace runs,
+/// plus the optional earlier no-default-features lane. The no-features pair
+/// exists because a wedge in that earlier step cancels the job before the
+/// workspace runs start, leaving `run1`/`run2` missing while the
+/// incrementally tee-ed no-features log still names the wedge (#1729).
 #[derive(Debug, PartialEq, Eq)]
 struct Inputs {
     run1_log: String,
     run1_status: String,
     run2_log: String,
     run2_status: String,
+    nofeatures_log: Option<String>,
+    nofeatures_status: Option<String>,
 }
 
 /// Parse the argument list exhaustively.
@@ -174,6 +187,8 @@ fn parse_inputs(args: &[String]) -> Result<Inputs, String> {
     let mut run1_status: Option<String> = None;
     let mut run2_log: Option<String> = None;
     let mut run2_status: Option<String> = None;
+    let mut nofeatures_log: Option<String> = None;
+    let mut nofeatures_status: Option<String> = None;
 
     let mut index = 0usize;
     while index < args.len() {
@@ -183,9 +198,11 @@ fn parse_inputs(args: &[String]) -> Result<Inputs, String> {
             "--run1-status" => &mut run1_status,
             "--run2" => &mut run2_log,
             "--run2-status" => &mut run2_status,
+            "--nofeatures-log" => &mut nofeatures_log,
+            "--nofeatures-status" => &mut nofeatures_status,
             other => {
                 return Err(format!(
-                    "windows-advisory-summary got unexpected argument {other:?}; expected only --run1, --run1-status, --run2, --run2-status"
+                    "windows-advisory-summary got unexpected argument {other:?}; expected only --run1, --run1-status, --run2, --run2-status, --nofeatures-log, --nofeatures-status"
                 ));
             }
         };
@@ -226,29 +243,51 @@ fn parse_inputs(args: &[String]) -> Result<Inputs, String> {
                 .join(", ")
         ));
     }
+    // The no-features pair is one artifact pair: a log and its captured
+    // status. Exactly one of the two would leave run() with no usable
+    // partial to load, silently defeating the fallback without diagnosing
+    // the misconfiguration — so half a pair is an argument error.
+    if nofeatures_log.is_some() != nofeatures_status.is_some() {
+        return Err(
+            "windows-advisory-summary requires --nofeatures-log and --nofeatures-status together or neither".to_string(),
+        );
+    }
     let inputs = Inputs {
         run1_log: run1_log.unwrap_or_default(),
         run1_status: run1_status.unwrap_or_default(),
         run2_log: run2_log.unwrap_or_default(),
         run2_status: run2_status.unwrap_or_default(),
+        nofeatures_log,
+        nofeatures_status,
     };
 
-    // All four roles must be distinct artifacts. Two runs sharing a log would
-    // report every failure as reproduced; two runs sharing a *status* would give
-    // one run the other's exit code, so a clean run could be labelled a harness
-    // failure — both are wrong verdicts rather than errors. A log reused as a
-    // status file is equally incoherent.
-    let paths = [
-        &inputs.run1_log,
-        &inputs.run1_status,
-        &inputs.run2_log,
-        &inputs.run2_status,
+    // All provided roles must be distinct artifacts. Two runs sharing a log
+    // would report every failure as reproduced; two runs sharing a *status*
+    // would give one run the other's exit code, so a clean run could be
+    // labelled a harness failure — both are wrong verdicts rather than
+    // errors. A log reused as a status file is equally incoherent. Optional
+    // roles that were not passed contribute nothing to the comparison.
+    let mut roles: Vec<(&str, &String)> = vec![
+        ("--run1", &inputs.run1_log),
+        ("--run1-status", &inputs.run1_status),
+        ("--run2", &inputs.run2_log),
+        ("--run2-status", &inputs.run2_status),
     ];
-    let distinct: BTreeSet<&&String> = paths.iter().collect();
-    if distinct.len() != paths.len() {
+    if let Some(log) = inputs.nofeatures_log.as_ref() {
+        roles.push(("--nofeatures-log", log));
+    }
+    if let Some(status) = inputs.nofeatures_status.as_ref() {
+        roles.push(("--nofeatures-status", status));
+    }
+    let distinct: BTreeSet<&String> = roles.iter().map(|(_, path)| *path).collect();
+    if distinct.len() != roles.len() {
+        let provided = roles
+            .iter()
+            .map(|(flag, path)| format!("{flag} {path}"))
+            .collect::<Vec<_>>()
+            .join(", ");
         return Err(format!(
-            "windows-advisory-summary requires four distinct paths; got --run1 {}, --run1-status {}, --run2 {}, --run2-status {}",
-            inputs.run1_log, inputs.run1_status, inputs.run2_log, inputs.run2_status
+            "windows-advisory-summary requires distinct artifact paths; got {provided}"
         ));
     }
     Ok(inputs)
@@ -260,11 +299,20 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
         run1_status,
         run2_log,
         run2_status,
+        nofeatures_log,
+        nofeatures_status,
     } = parse_inputs(args)?;
 
     let first = load_run(Path::new(&run1_log), Path::new(&run1_status));
     let second = load_run(Path::new(&run2_log), Path::new(&run2_status));
     print!("{}", render(&first, &second));
+    if !first.state.is_usable()
+        && !second.state.is_usable()
+        && let (Some(log), Some(status)) = (nofeatures_log.as_ref(), nofeatures_status.as_ref())
+    {
+        let partial = load_run(Path::new(log), Path::new(status));
+        print!("{}", render_partial(&partial));
+    }
 
     // Advisory applies to test outcomes, not to evidence. A run whose log or
     // status is missing means this lane cannot be trusted, so fail loudly.
@@ -377,6 +425,10 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
         let line = strip_ansi(raw_line);
         let trimmed = line.trim();
         if let Some((name, failed)) = test_result_line(trimmed) {
+            // A completed test is not stuck, even when an earlier
+            // slow-timeout notice named it: the notice only proves it had
+            // not finished when the line was written.
+            outcome.stuck.remove(&name);
             if failed {
                 outcome.failed.insert(name);
             } else {
@@ -385,6 +437,9 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
         }
         if let Some(target) = running_target(trimmed) {
             outcome.targets.push(target);
+        }
+        if let Some(name) = stuck_test_line(trimmed) {
+            outcome.stuck.insert(name);
         }
         if trimmed.starts_with("test result:") {
             outcome.results.push(trimmed.to_string());
@@ -414,6 +469,19 @@ fn test_result_line(line: &str) -> Option<(String, bool)> {
     };
     let name = name.trim();
     (!name.is_empty()).then(|| (name.to_string(), failed))
+}
+
+/// `test some::path has been running for over 60 seconds` -> the stuck name.
+///
+/// The nextest slow-timeout notice is the only in-log signal that a
+/// timeout-stopped lane names its wedge. It is parsed into `stuck`, never
+/// into `failed`: the notice proves the test had not finished when the line
+/// was written, not that it failed.
+fn stuck_test_line(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("test ")?;
+    let (name, _) = rest.split_once(" has been running for over ")?;
+    let name = name.trim();
+    (!name.is_empty()).then(|| name.to_string())
 }
 
 /// `Running unittests src\lib.rs (target\debug\deps\ripr-abc.exe)` -> the
@@ -530,6 +598,55 @@ fn render(first: &RunOutcome, second: &RunOutcome) -> String {
     out
 }
 
+/// A single-sample observation from the earlier no-default-features lane,
+/// rendered only when both workspace runs are unusable. A job-timeout stop in
+/// that earlier step cancels the job before the workspace runs start, so
+/// without this section the summary names nothing (#1729). Stuck tests are
+/// named as observations, never as failure verdicts.
+fn render_partial(partial: &RunOutcome) -> String {
+    let mut out = String::from("### Partial lane observation (no-default-features)\n\n");
+    out.push_str("Both workspace runs are unusable, so no stability verdict can be derived. What follows is a single partial sample, not a verdict.\n\n");
+    let status = match partial.exit_status {
+        Some(code) => format!("cargo exit {code}"),
+        None => {
+            "cargo exit unknown (status file absent: the step was terminated before it recorded one)"
+                .to_string()
+        }
+    };
+    out.push_str(&format!(
+        "- no-default-features: `{}` ({status})\n",
+        partial.state.label()
+    ));
+    out.push_str(&format!(
+        "- observed {} pass, {} fail, {} stuck across {} target(s)\n\n",
+        partial.passed.len(),
+        partial.failed.len(),
+        partial.stuck.len(),
+        partial.targets.len()
+    ));
+    if partial.stuck.is_empty() {
+        out.push_str("No stuck-test notice was observed in the partial log.\n\n");
+    } else {
+        out.push_str("**Stuck tests observed (not verdicts).** Each was still running when its notice was written; it may have completed after the log ended.\n\n");
+        let mut stuck: Vec<&String> = partial.stuck.iter().collect();
+        stuck.sort();
+        for name in stuck {
+            out.push_str(&format!("- `{name}`\n"));
+        }
+        out.push('\n');
+    }
+    if !partial.failed.is_empty() {
+        let mut failed: Vec<&String> = partial.failed.iter().collect();
+        failed.sort();
+        out.push_str("**Failures observed in the partial log.**\n\n");
+        for name in failed {
+            out.push_str(&format!("- `{name}`\n"));
+        }
+        out.push('\n');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     fn packaged_temp_wiring_is_complete(workflow: &str) -> bool {
@@ -571,6 +688,7 @@ mod tests {
             exit_status: Some(if failed.is_empty() { 0 } else { 101 }),
             failed: failed.iter().map(|name| (*name).to_string()).collect(),
             passed: passed.iter().map(|name| (*name).to_string()).collect(),
+            stuck: BTreeSet::new(),
             targets: vec!["src/lib.rs".to_string()],
             results: vec!["test result: FAILED. 1 passed; 1 failed".to_string()],
         }
@@ -739,6 +857,7 @@ mod tests {
                 exit_status: Some(0),
                 failed: BTreeSet::new(),
                 passed: BTreeSet::new(),
+                stuck: BTreeSet::new(),
                 targets: Vec::new(),
                 results: Vec::new(),
             },
@@ -772,7 +891,7 @@ mod tests {
         ]);
         let error = run(&shared_status).err().unwrap_or_default();
         assert!(
-            error.contains("four distinct paths"),
+            error.contains("distinct artifact paths"),
             "shared status paths must be refused: {error}"
         );
 
@@ -788,7 +907,7 @@ mod tests {
         ]);
         let error = run(&shared_log).err().unwrap_or_default();
         assert!(
-            error.contains("four distinct paths"),
+            error.contains("distinct artifact paths"),
             "shared logs must be refused: {error}"
         );
     }
@@ -885,6 +1004,8 @@ mod tests {
                 run1_status: "1.status".to_string(),
                 run2_log: "2.log".to_string(),
                 run2_status: "2.status".to_string(),
+                nofeatures_log: None,
+                nofeatures_status: None,
             })
         );
     }
@@ -1410,6 +1531,170 @@ mod tests {
             );
         }
         Ok(())
+    }
+
+    /// The #1729 wedge line must parse into `stuck`, never into `failed`:
+    /// a still-running notice proves nothing about the outcome.
+    #[test]
+    fn stuck_notice_parses_as_stuck_never_failed() {
+        let parsed = parse_log(
+            "test lsp::tests::initialize_surfaces_poisoned_client_features_store_as_a_session_failure has been running for over 60 seconds\ntest other::t ... ok\n",
+        );
+        assert!(
+            parsed.stuck.contains(
+                "lsp::tests::initialize_surfaces_poisoned_client_features_store_as_a_session_failure"
+            ),
+            "{:?}",
+            parsed.stuck
+        );
+        assert!(parsed.failed.is_empty(), "{:?}", parsed.failed);
+        assert!(parsed.passed.contains("other::t"));
+    }
+
+    /// With both workspace runs missing, the no-features partial names the
+    /// wedge instead of leaving the summary blind — without deriving a
+    /// stability verdict.
+    #[test]
+    fn partial_section_names_stuck_test_without_verdict() {
+        let mut partial = RunOutcome::missing(RunState::StatusMissing);
+        partial.stuck.insert("lsp::tests::wedge".to_string());
+        partial.passed.insert("other::t".to_string());
+        partial.targets.push("src/lib.rs".to_string());
+        let rendered = render_partial(&partial);
+        assert!(rendered.contains("Partial lane observation"), "{rendered}");
+        assert!(rendered.contains("`lsp::tests::wedge`"), "{rendered}");
+        assert!(
+            rendered.contains("not a verdict"),
+            "a single sample must not read as a verdict: {rendered}"
+        );
+        assert!(!rendered.contains("repeated_failure"), "{rendered}");
+        assert!(!rendered.contains("unstable ("), "{rendered}");
+    }
+
+    /// A completed test leaves `stuck`, even when an earlier slow-timeout
+    /// notice named it: the notice only proves it had not finished when
+    /// the line was written.
+    #[test]
+    fn completed_test_clears_earlier_stuck_notice() {
+        let parsed = parse_log(
+            "test slow::t has been running for over 60 seconds\ntest slow::t ... ok\ntest bad::t has been running for over 120 seconds\ntest bad::t ... FAILED\n",
+        );
+        assert!(parsed.stuck.is_empty(), "{:?}", parsed.stuck);
+        assert!(parsed.passed.contains("slow::t"));
+        assert!(parsed.failed.contains("bad::t"));
+    }
+
+    /// Half a no-features pair is an argument error, not a silently skipped
+    /// fallback: run() needs both to load the partial.
+    #[test]
+    fn half_nofeatures_pair_is_refused() {
+        for argv in [
+            vec![
+                "--run1".to_string(),
+                "a.log".to_string(),
+                "--run1-status".to_string(),
+                "a.status".to_string(),
+                "--run2".to_string(),
+                "b.log".to_string(),
+                "--run2-status".to_string(),
+                "b.status".to_string(),
+                "--nofeatures-log".to_string(),
+                "c.log".to_string(),
+            ],
+            vec![
+                "--run1".to_string(),
+                "a.log".to_string(),
+                "--run1-status".to_string(),
+                "a.status".to_string(),
+                "--run2".to_string(),
+                "b.log".to_string(),
+                "--run2-status".to_string(),
+                "b.status".to_string(),
+                "--nofeatures-status".to_string(),
+                "c.status".to_string(),
+            ],
+        ] {
+            let refused = parse_inputs(&argv);
+            assert!(
+                matches!(refused, Err(ref error) if error.contains("together or neither")),
+                "half pair must be refused: {refused:?}"
+            );
+        }
+    }
+
+    /// Without the optional pair, behavior is exactly the old four-role
+    /// contract: missing runs render an evidence failure and nothing else.
+    #[test]
+    fn absent_nofeatures_pair_changes_nothing() {
+        assert_eq!(
+            parse_inputs(&[
+                "--run1".to_string(),
+                "a.log".to_string(),
+                "--run1-status".to_string(),
+                "a.status".to_string(),
+                "--run2".to_string(),
+                "b.log".to_string(),
+                "--run2-status".to_string(),
+                "b.status".to_string(),
+            ]),
+            Ok(Inputs {
+                run1_log: "a.log".to_string(),
+                run1_status: "a.status".to_string(),
+                run2_log: "b.log".to_string(),
+                run2_status: "b.status".to_string(),
+                nofeatures_log: None,
+                nofeatures_status: None,
+            })
+        );
+    }
+
+    /// The optional pair parses and participates in distinctness: a
+    /// no-features log reused as a workspace log is a wrong-verdict risk,
+    /// not an error to swallow.
+    #[test]
+    fn nofeatures_pair_parses_and_shares_distinctness() {
+        assert_eq!(
+            parse_inputs(&[
+                "--run1".to_string(),
+                "a.log".to_string(),
+                "--run1-status".to_string(),
+                "a.status".to_string(),
+                "--run2".to_string(),
+                "b.log".to_string(),
+                "--run2-status".to_string(),
+                "b.status".to_string(),
+                "--nofeatures-log".to_string(),
+                "c.log".to_string(),
+                "--nofeatures-status".to_string(),
+                "c.status".to_string(),
+            ]),
+            Ok(Inputs {
+                run1_log: "a.log".to_string(),
+                run1_status: "a.status".to_string(),
+                run2_log: "b.log".to_string(),
+                run2_status: "b.status".to_string(),
+                nofeatures_log: Some("c.log".to_string()),
+                nofeatures_status: Some("c.status".to_string()),
+            })
+        );
+        let shared = parse_inputs(&[
+            "--run1".to_string(),
+            "a.log".to_string(),
+            "--run1-status".to_string(),
+            "a.status".to_string(),
+            "--run2".to_string(),
+            "b.log".to_string(),
+            "--run2-status".to_string(),
+            "b.status".to_string(),
+            "--nofeatures-log".to_string(),
+            "a.log".to_string(),
+            "--nofeatures-status".to_string(),
+            "c.status".to_string(),
+        ]);
+        assert!(
+            matches!(shared, Err(ref error) if error.contains("distinct artifact paths")),
+            "shared log must be refused: {shared:?}"
+        );
     }
 
     #[test]

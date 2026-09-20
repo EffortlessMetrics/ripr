@@ -145,7 +145,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          cargo xtask windows-advisory-summary --run1 target/windows-run1.log --run1-status target/windows-run1.status --run2 target/windows-run2.log --run2-status target/windows-run2.status | tee target/windows-verdict.md >> "$GITHUB_STEP_SUMMARY"
+          cargo xtask windows-advisory-summary --run1 target/windows-run1.log --run1-status target/windows-run1.status --run2 target/windows-run2.log --run2-status target/windows-run2.status --nofeatures-log target/nofeatures-test.log --nofeatures-status target/nofeatures-test.status | tee target/windows-verdict.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize feature-combination results
         if: always()

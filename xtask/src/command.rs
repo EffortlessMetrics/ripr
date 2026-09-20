@@ -373,7 +373,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "gh-pr-status --pr <number>",
         "ci-budget [--workflow <name>] [--limit <n>] [--input <path>]",
         "module-health [--threshold <n>]",
-        "windows-advisory-summary --run1 <path> --run1-status <path> --run2 <path> --run2-status <path>",
+        "windows-advisory-summary --run1 <path> --run1-status <path> --run2 <path> --run2-status <path> [--nofeatures-log <path> --nofeatures-status <path>]",
         "suggested-fixes",
         "precommit",
         "check-pr",
@@ -681,12 +681,12 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Walks crates/ripr/src/ and xtask/src/ for *.rs files, counts lines per file, and writes an advisory ranked report flagging files over the configurable line threshold (default 2000); always exits 0, never mutates source, and is never wired into CI gates.",
         ),
         command_entry(
-            "windows-advisory-summary --run1 <path> --run1-status <path> --run2 <path> --run2-status <path>",
+            "windows-advisory-summary --run1 <path> --run1-status <path> --run2 <path> --run2-status <path> [--nofeatures-log <path> --nofeatures-status <path>]",
             "report_only",
             "stdout only",
             false,
             true,
-            "Turns two `cargo test --workspace --no-fail-fast` logs plus their captured cargo exit statuses into a Markdown verdict on stdout. Classifies each failing test from a three-state observation per run (failed / observed pass / not observed) into repeated_failure, unstable, or masked_unknown, so a test absent from one run is never counted as having passed there. Derives run state from the real exit status rather than log prose. Exits non-zero when a log or status file is missing, because the lane's test outcomes are advisory but its evidence is not. Reads only the supplied files and writes none.",
+            "Turns two `cargo test --workspace --no-fail-fast` logs plus their captured cargo exit statuses into a Markdown verdict on stdout. Classifies each failing test from a three-state observation per run (failed / observed pass / not observed) into repeated_failure, unstable, or masked_unknown, so a test absent from one run is never counted as having passed there. Derives run state from the real exit status rather than log prose. When both workspace runs are unusable, an optional earlier no-default-features log pair renders a single-sample partial observation naming stuck tests without deriving a stability verdict. Exits non-zero when a log or status file is missing, because the lane's test outcomes are advisory but its evidence is not. Reads only the supplied files and writes none.",
         ),
         command_entry(
             "suggested-fixes",
