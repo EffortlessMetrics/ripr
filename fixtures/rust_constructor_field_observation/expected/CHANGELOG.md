@@ -153,3 +153,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — rust_constructor_field_observation (2)
+
+Reason:
+RIPR-SPEC-0108: #1746 identity gate withholds Yes discriminator for unresolved caller chain (SPEC-0005 conservative diff-scoped principle); classification unchanged propagation_unknown
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

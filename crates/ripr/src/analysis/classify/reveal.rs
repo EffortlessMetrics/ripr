@@ -51,12 +51,26 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
     );
     let related = finalize_related_tests(analysis.related);
     let observe = build_observe_evidence(analysis.matched_any);
-    let discriminate = build_discriminate_evidence(
+    let mut discriminate = build_discriminate_evidence(
         &analysis.strongest,
         &analysis.strongest_kind,
         &probe.family,
         analysis.observation_unverified,
     );
+    // #1746: a Yes discriminator whose discriminating oracle is not bound to
+    // the changed sink is the coverage mistake, not discrimination. File
+    // proximity and token coincidence observe a nearby value at best. Cap at
+    // Weak so classify() emits weakly_exposed (fail closed, under-credit)
+    // unless the strongest matched oracle itself carries entity-level
+    // evidence (owner/helper call, assertion-target affinity, owner-named
+    // test).
+    if discriminate.state == StageState::Yes && !analysis.strongest_identity {
+        discriminate = StageEvidence::new(
+            StageState::Weak,
+            Confidence::Medium,
+            "Discriminator uncredited: strongest oracle reaches only through weak-token linkage without same-entity evidence (identity_unresolved)",
+        );
+    }
 
     (observe, discriminate, related)
 }
@@ -66,6 +80,20 @@ struct RevealAssertionAnalysis {
     strongest: OracleStrength,
     strongest_kind: OracleKind,
     matched_any: bool,
+    /// True when the DISCRIMINATING oracle — the strongest matched assertion
+    /// that drives `discriminate` — is bound to the changed SINK, not merely
+    /// the file, module, or name around it. File-level proximity
+    /// (`SameTestFile`, `SameModule`), name mention (`OwnerNamedTest`), and
+    /// token coincidence (`WeakTokenSubstring`) observe a nearby value at
+    /// best: a same-file test asserting a different function in the file
+    /// cannot discriminate this sink (#1746). Only entity-bound relations
+    /// confer identity (`DirectOwnerCall`, `HelperOwnerCall`,
+    /// `AssertionTargetAffinity`, `OwnerNamedTest` — the last preserving
+    /// the spec'd variant-bound credit, RIPR-SPEC-0106 Part B): reach established by
+    /// one test and oracle strength by another do not combine into
+    /// discrimination unless the discriminating oracle itself is
+    /// same-sink evidence. Ties at the top rank also confer identity.
+    strongest_identity: bool,
     /// True when this probe's family requires a `token_match` to confirm that
     /// an assertion actually references the specific changed sub-expression, and
     /// no such match has fired yet.
@@ -284,6 +312,7 @@ fn analyze_related_assertions(
     let mut strongest = OracleStrength::None;
     let mut strongest_kind = OracleKind::Unknown;
     let mut matched_any = false;
+    let mut strongest_identity = false;
     // For families that need token confirmation: start pessimistic and clear
     // once a token_match fires.
     let mut observation_unverified = false;
@@ -352,9 +381,19 @@ fn analyze_related_assertions(
                 }
                 matched_any = true;
                 let relative_strength = probe_relative_oracle_strength(&probe.family, assertion);
+                let identity = matches!(
+                    reason,
+                    RelationReason::DirectOwnerCall
+                        | RelationReason::HelperOwnerCall
+                        | RelationReason::AssertionTargetAffinity
+                        | RelationReason::OwnerNamedTest
+                );
                 if relative_strength.rank() > strongest.rank() {
                     strongest = relative_strength.clone();
                     strongest_kind = assertion.kind.clone();
+                    strongest_identity = identity;
+                } else if relative_strength.rank() == strongest.rank() {
+                    strongest_identity = strongest_identity || identity;
                 }
                 related.push(RelatedTest {
                     name: test.name.clone(),
@@ -375,6 +414,7 @@ fn analyze_related_assertions(
         strongest,
         strongest_kind,
         matched_any,
+        strongest_identity,
         observation_unverified,
     }
 }
@@ -2066,6 +2106,68 @@ mod tests {
         assert_eq!(observe.state, StageState::No);
         assert_eq!(discriminate.state, StageState::No);
         assert!(related.is_empty());
+    }
+
+    #[test]
+    fn reveal_evidence_withholds_yes_discriminator_for_weak_token_only_linkage() {
+        // #1746: a strong oracle in a test that merely shares a token with
+        // the probe observes a nearby value, not necessarily the changed
+        // sink. Reach plus oracle strength from token coincidence must not
+        // combine into discrimination.
+        let probe = probe(ProbeFamily::Predicate, "current.status == recorded.status");
+        let coincidental = test_with_assertions(
+            "artifact_terminal_status_is_observed",
+            vec![oracle(
+                "assert_eq!(record.status, \"terminal\");",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_, discriminate, _) = reveal_evidence(
+            &probe,
+            &[(&coincidental, RelationReason::WeakTokenSubstring)],
+        );
+
+        assert_eq!(discriminate.state, StageState::Weak);
+    }
+
+    #[test]
+    fn reveal_evidence_withholds_yes_discriminator_for_same_file_other_sink() {
+        // #1746: file proximity is not sink identity. A strong oracle in a
+        // same-file test asserting a different function cannot discriminate
+        // this sink, even though the relation outranks token coincidence.
+        let probe = probe(ProbeFamily::Predicate, "current.status == recorded.status");
+        let neighbor = test_with_assertions(
+            "sanitize_path_trims_underscores",
+            vec![oracle(
+                "assert_eq!(sanitize_path(\"a:b\"), \"a_b\");",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_, discriminate, _) =
+            reveal_evidence(&probe, &[(&neighbor, RelationReason::SameTestFile)]);
+
+        assert_eq!(discriminate.state, StageState::Weak);
+    }
+
+    #[test]
+    fn reveal_evidence_keeps_yes_discriminator_for_same_entity_oracle() {
+        // Same oracle shape as above, but the test calls the changed owner:
+        // the discriminating oracle is same-entity evidence, so Yes stands.
+        let probe = probe(ProbeFamily::Predicate, "current.status == recorded.status");
+        let aligned = test_with_assertions(
+            "binding_status_change_refuses",
+            vec![oracle(
+                "assert_eq!(record.status, \"terminal\");",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_, discriminate, _) =
+            reveal_evidence(&probe, &[(&aligned, RelationReason::DirectOwnerCall)]);
+
+        assert_eq!(discriminate.state, StageState::Yes);
     }
 
     #[test]
