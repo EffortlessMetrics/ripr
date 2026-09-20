@@ -1442,6 +1442,17 @@
         { "type": "must_not_promote" },
         { "type": "maximum_class", "class": "weakly_exposed" }
       ]
+    },
+    {
+      "id": "rust_catalog_description_structural_oracle_control",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_catalog_description_structural_oracle",
+      "control": "must_stay_exposed",
+      "vector": "structural_oracle_with_coincidental_token_overlap_promotes_pending_specificity_retry",
+      "assertions": [
+        { "type": "must_promote" }
+      ]
     }
   ]
 }
