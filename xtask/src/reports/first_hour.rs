@@ -1758,6 +1758,500 @@ fn repair_json(evidence: &RepairEvidence) -> Value {
 }
 
 // ---------------------------------------------------------------------------
+// Slice G: standalone-LSP journey (`ripr lsp --stdio` over real pipes)
+// ---------------------------------------------------------------------------
+
+/// Product command identifiers the journey observes in the initialize
+/// result instead of assuming: the server owns its command vocabulary.
+const LSP_STATUS_COMMAND: &str = "ripr.collectWorkspaceStatus";
+/// Each blocking wait on the installed server is bounded: a wedged server
+/// refuses the journey instead of hanging the harness.
+const LSP_RESPONSE_TIMEOUT_SECS: u64 = 60;
+/// After the exit notification the server must be gone quickly: a live
+/// process past this budget is killed and refuses the journey as an
+/// orphan — never silently adopted.
+const LSP_EXIT_TIMEOUT_SECS: u64 = 10;
+
+/// Percent-encodes one filesystem path as an LSP `file:` URI. Only
+/// unreserved characters, `/`, and `:` survive literally; everything else
+/// (spaces, non-ASCII, `#`, `?`) becomes UTF-8 `%XX`. The fixture checkout
+/// deliberately carries spaces and non-ASCII text, so this encoding — not
+/// string concatenation — is what the initialize `rootUri` uses.
+fn lsp_file_uri(path: &Path) -> String {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    let mut encoded = String::with_capacity(normalized.len() + 16);
+    for byte in normalized.bytes() {
+        if matches!(
+            byte,
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' | b':'
+        ) {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    if encoded.starts_with('/') {
+        format!("file://{encoded}")
+    } else {
+        format!("file:///{encoded}")
+    }
+}
+
+/// Frames one JSON-RPC value the way a generic LSP client sends it:
+/// `Content-Length` headers, CRLF CRLF, then exactly the body bytes.
+fn encode_lsp_message(value: &Value) -> Vec<u8> {
+    let body = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());
+    let mut framed = format!("Content-Length: {}\r\n\r\n", body.len()).into_bytes();
+    framed.extend_from_slice(body.as_bytes());
+    framed
+}
+
+/// Splits complete LSP frames off the front of a byte buffer: returns the
+/// parsed values plus the unconsumed remainder (a trailing partial frame).
+/// Anything that is not strict `Content-Length: N CRLF CRLF N JSON bytes`
+/// refuses — framing drift is a journey failure, never skipped content.
+fn parse_lsp_frames(buffer: &[u8]) -> Result<(Vec<Value>, Vec<u8>), String> {
+    const SEPARATOR: &[u8] = b"\r\n\r\n";
+    let mut frames = Vec::new();
+    let mut rest = buffer;
+    loop {
+        if rest.is_empty() {
+            break;
+        }
+        let Some(end) = rest
+            .windows(SEPARATOR.len())
+            .position(|window| window == SEPARATOR)
+        else {
+            break;
+        };
+        let (header_bytes, after) = rest.split_at(end);
+        let headers = std::str::from_utf8(header_bytes)
+            .map_err(|error| format!("LSP header is not UTF-8: {error}"))?;
+        let mut length: Option<usize> = None;
+        for line in headers.split("\r\n") {
+            let Some((name, value)) = line.split_once(':') else {
+                return Err(format!("LSP header line holds no colon: `{line}`"));
+            };
+            if name.trim().eq_ignore_ascii_case("content-length") {
+                length = Some(
+                    value
+                        .trim()
+                        .parse::<usize>()
+                        .map_err(|error| format!("LSP Content-Length is not a number: {error}"))?,
+                );
+            }
+        }
+        let length =
+            length.ok_or_else(|| "LSP frame holds no Content-Length header".to_string())?;
+        let body = &after[SEPARATOR.len()..];
+        if body.len() < length {
+            break;
+        }
+        let (body, remaining) = body.split_at(length);
+        let value: Value = serde_json::from_slice(body)
+            .map_err(|error| format!("LSP body is not JSON: {error}"))?;
+        frames.push(value);
+        rest = remaining;
+    }
+    Ok((frames, rest.to_vec()))
+}
+
+/// Waits for the response carrying one request id, collecting interleaved
+/// server notifications on the way. A foreign id, a response `error`, or
+/// the timeout refuses — the journey never pairs a verdict with the wrong
+/// request.
+fn await_lsp_response(
+    receiver: &std::sync::mpsc::Receiver<Result<Option<Value>, String>>,
+    id: u64,
+    notifications: &mut Vec<Value>,
+) -> Result<Value, String> {
+    let deadline = std::time::Duration::from_secs(LSP_RESPONSE_TIMEOUT_SECS);
+    loop {
+        let frame = receiver.recv_timeout(deadline).map_err(|error| {
+            format!("installed LSP server answered nothing for request {id}: {error}")
+        })??;
+        let Some(message) = frame else {
+            return Err(format!(
+                "installed LSP stdout closed before request {id} was answered"
+            ));
+        };
+        let matches_id = message
+            .get("id")
+            .and_then(Value::as_u64)
+            .is_some_and(|observed| observed == id);
+        if !matches_id {
+            notifications.push(message);
+            continue;
+        }
+        if let Some(error) = message.get("error") {
+            return Err(format!("installed LSP request {id} errored: {error}"));
+        }
+        return Ok(message);
+    }
+}
+
+/// Requires the initialize result to advertise exactly the surface the
+/// journey drives: hover plus the workspace-status command. A server that
+/// answers initialize without that surface cannot satisfy the bounded
+/// saved-workspace inspection below.
+fn lsp_initialize_capabilities(response: &Value) -> Result<Vec<String>, String> {
+    let capabilities = response
+        .get("result")
+        .and_then(|result| result.get("capabilities"))
+        .ok_or_else(|| "installed LSP initialize holds no result capabilities".to_string())?;
+    if capabilities.get("hoverProvider") != Some(&Value::Bool(true)) {
+        return Err("installed LSP server advertises no hover provider".to_string());
+    }
+    let commands = capabilities
+        .get("executeCommandProvider")
+        .and_then(|provider| provider.get("commands"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| "installed LSP server advertises no execute commands".to_string())?;
+    let names = commands
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if !names.iter().any(|name| name == LSP_STATUS_COMMAND) {
+        return Err(format!(
+            "installed LSP server advertises no `{LSP_STATUS_COMMAND}` command"
+        ));
+    }
+    Ok(names)
+}
+
+/// Requires the workspace-status result to bind the saved workspace the
+/// journey opened: `selected_single_root` over exactly the fixture
+/// checkout. Any other root state, a divergent effective root, or a
+/// command-level error refuses the saved-workspace claim.
+fn lsp_workspace_status(response: &Value, expected_root: &str) -> Result<String, String> {
+    let status = response
+        .get("result")
+        .and_then(|result| result.get("analysis_status"))
+        .ok_or_else(|| "installed LSP status holds no analysis_status".to_string())?;
+    let root_state = status
+        .get("root_state")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "installed LSP status holds no root_state".to_string())?;
+    if root_state != "selected_single_root" {
+        return Err(format!(
+            "installed LSP root state is `{root_state}`, not `selected_single_root`"
+        ));
+    }
+    let effective = status
+        .get("effective_root")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "installed LSP status holds no effective_root".to_string())?;
+    if effective != expected_root {
+        return Err(format!(
+            "installed LSP effective root is `{effective}`, not the journey checkout `{expected_root}`"
+        ));
+    }
+    Ok(root_state.to_string())
+}
+
+struct LspEvidence {
+    repo_rel: String,
+    root_state: String,
+    effective_root: String,
+    frames_read: usize,
+    notifications: usize,
+    stdout_bytes: u64,
+    stderr_bytes: u64,
+}
+
+/// Runs the standalone-LSP journey (issue step 8) against the installed
+/// binary over real OS pipes with a generic framed client: initialize,
+/// initialized, didOpen plus didSave of the real fixture file, one bounded
+/// `ripr.collectWorkspaceStatus` inspection, shutdown, exit. Stdout must
+/// parse as strict LSP frames end to end, and the server process must be
+/// gone after exit — no VSIX path, no in-process substitute.
+fn run_lsp_journey(
+    harness: &mut Harness,
+    subject: &InstalledSubject,
+    fixture_root: &Path,
+) -> Result<LspEvidence, String> {
+    admit_installed_executable(subject, &subject.executable)?;
+    let label = "lsp";
+    let repo = build_fixture_repo(harness, fixture_root, label, true)?;
+    let repo_rel = format!("{label}/{}", FIXTURE_REPO_REL.join("/"));
+    let home = fixture_root.join("home-lsp");
+    let cache = fixture_root.join("cache-lsp");
+    for dir in [&home, &cache] {
+        std::fs::create_dir_all(dir)
+            .map_err(|error| format!("create LSP dir {}: {error}", dir.display()))?;
+    }
+    let product_envs = [
+        ("RIPR_CACHE_DIR", cache.to_string_lossy().to_string()),
+        ("HOME", home.to_string_lossy().to_string()),
+    ];
+    let lib_path = repo.path.join("src").join("lib.rs");
+    let lib_text = std::fs::read_to_string(&lib_path)
+        .map_err(|error| format!("read fixture lib for didOpen: {error}"))?;
+    if lib_text != FIXTURE_LIB_HEAD {
+        return Err("fixture lib changed before the LSP journey; refusing".to_string());
+    }
+    let root_uri = lsp_file_uri(&repo.path);
+    let doc_uri = lsp_file_uri(&lib_path);
+    let expected_root = repo.path.to_string_lossy().replace('\\', "/");
+    let started = unix_epoch_secs();
+    let mut child = std::process::Command::new(&subject.executable)
+        .args(["lsp", "--stdio"])
+        .envs(product_envs.iter().map(|(k, v)| (k, v)))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("spawn installed LSP server: {error}"))?;
+    // The reader owns server stdout: strict frames stream to the channel,
+    // clean EOF (None) or the first framing violation (Err) ends it.
+    let (sender, receiver) = std::sync::mpsc::channel::<Result<Option<Value>, String>>();
+    let reader = child
+        .stdout
+        .take()
+        .ok_or_else(|| "LSP server holds no stdout".to_string())?;
+    let reader_handle = std::thread::spawn(move || {
+        use std::io::Read as _;
+        let mut stdout = reader;
+        let mut buffer = Vec::new();
+        let mut chunk = [0_u8; 8192];
+        let mut stdout_bytes: u64 = 0;
+        loop {
+            match stdout.read(&mut chunk) {
+                Ok(0) => {
+                    if buffer.is_empty() {
+                        let _ = sender.send(Ok(None));
+                    } else {
+                        let _ = sender.send(Err(format!(
+                            "installed LSP stdout ends with {} unframed byte(s)",
+                            buffer.len()
+                        )));
+                    }
+                    break;
+                }
+                Ok(read) => {
+                    stdout_bytes += read as u64;
+                    buffer.extend_from_slice(&chunk[..read]);
+                    match parse_lsp_frames(&buffer) {
+                        Ok((frames, rest)) => {
+                            buffer = rest;
+                            for frame in frames {
+                                if sender.send(Ok(Some(frame))).is_err() {
+                                    return stdout_bytes;
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            let _ = sender.send(Err(error));
+                            break;
+                        }
+                    }
+                }
+                Err(error) => {
+                    let _ = sender.send(Err(format!("read installed LSP stdout: {error}")));
+                    break;
+                }
+            }
+        }
+        stdout_bytes
+    });
+    // Server stderr streams to a second thread so a chatty server can never
+    // block on a full pipe while the journey waits for a response.
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "LSP server holds no stderr".to_string())?;
+    let stderr_handle = std::thread::spawn(move || {
+        use std::io::Read as _;
+        let mut stderr = stderr;
+        let mut bytes = Vec::new();
+        let _ = stderr.read_to_end(&mut bytes);
+        bytes
+    });
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "LSP server holds no stdin".to_string())?;
+    let mut notifications = Vec::new();
+    let send = |stdin: &mut std::process::ChildStdin, value: &Value| -> Result<(), String> {
+        use std::io::Write as _;
+        stdin
+            .write_all(&encode_lsp_message(value))
+            .and_then(|()| stdin.flush())
+            .map_err(|error| format!("write installed LSP stdin: {error}"))
+    };
+    let outcome: Result<LspEvidence, String> = (|| {
+        send(
+            &mut stdin,
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "processId": null,
+                    "rootUri": root_uri,
+                    "capabilities": {},
+                },
+            }),
+        )?;
+        let initialize = await_lsp_response(&receiver, 1, &mut notifications)?;
+        lsp_initialize_capabilities(&initialize)?;
+        send(
+            &mut stdin,
+            &json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}),
+        )?;
+        send(
+            &mut stdin,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": doc_uri,
+                        "languageId": "rust",
+                        "version": 1,
+                        "text": lib_text,
+                    },
+                },
+            }),
+        )?;
+        send(
+            &mut stdin,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didSave",
+                "params": {"textDocument": {"uri": doc_uri}},
+            }),
+        )?;
+        send(
+            &mut stdin,
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "workspace/executeCommand",
+                "params": {"command": LSP_STATUS_COMMAND, "arguments": []},
+            }),
+        )?;
+        let status = await_lsp_response(&receiver, 2, &mut notifications)?;
+        let root_state = lsp_workspace_status(&status, &expected_root)?;
+        send(
+            &mut stdin,
+            &json!({"jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null}),
+        )?;
+        let shutdown = await_lsp_response(&receiver, 3, &mut notifications)?;
+        if shutdown.get("result") != Some(&Value::Null) {
+            return Err(format!(
+                "installed LSP shutdown returned a non-null result: {}",
+                shutdown.get("result").unwrap_or(&Value::Null)
+            ));
+        }
+        send(
+            &mut stdin,
+            &json!({"jsonrpc": "2.0", "method": "exit", "params": null}),
+        )?;
+        drop(stdin);
+        // The exit notification must actually stop the server: poll for the
+        // process, then kill-and-refuse when it lingers as an orphan.
+        let mut waited_ms = 0_u64;
+        let exit_status = loop {
+            if let Some(status) = child
+                .try_wait()
+                .map_err(|error| format!("poll installed LSP server: {error}"))?
+            {
+                break status;
+            }
+            if waited_ms >= LSP_EXIT_TIMEOUT_SECS * 1000 {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!(
+                    "installed LSP server still alive {}s after exit; killed as an orphan",
+                    LSP_EXIT_TIMEOUT_SECS
+                ));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            waited_ms += 50;
+        };
+        if !exit_status.success() {
+            return Err(format!("installed LSP server exited with {exit_status}"));
+        }
+        // Drain the reader to clean EOF so every stdout byte proves framed;
+        // the channel already refused any framing violation inline. The
+        // three awaited responses were consumed above, so the total frame
+        // count adds those plus the interleaved notifications observed.
+        let deadline = std::time::Duration::from_secs(LSP_RESPONSE_TIMEOUT_SECS);
+        let mut drained = 0_usize;
+        loop {
+            match receiver.recv_timeout(deadline) {
+                Ok(Ok(Some(_))) => drained += 1,
+                Ok(Ok(None)) => break,
+                Ok(Err(error)) => return Err(error),
+                Err(_) => {
+                    return Err("installed LSP reader stalled before clean EOF".to_string());
+                }
+            }
+        }
+        let frames_read = 3 + notifications.len() + drained;
+        Ok(LspEvidence {
+            repo_rel,
+            root_state,
+            effective_root: expected_root,
+            frames_read,
+            notifications: notifications.len(),
+            stdout_bytes: 0,
+            stderr_bytes: 0,
+        })
+    })();
+    // Reader and stderr threads always join: byte counts come from the
+    // threads even when the exchange above refused midway.
+    let stdout_bytes = reader_handle.join().unwrap_or(0);
+    let stderr_bytes_vec = stderr_handle.join().unwrap_or_default();
+    let stderr_bytes = stderr_bytes_vec.len() as u64;
+    let mut evidence = outcome?;
+    evidence.stdout_bytes = stdout_bytes;
+    evidence.stderr_bytes = stderr_bytes;
+    if evidence.stdout_bytes == 0 {
+        return Err("installed LSP server wrote no framed stdout".to_string());
+    }
+    let mut argv = vec![subject.executable.to_string_lossy().to_string()];
+    argv.extend(["lsp".to_string(), "--stdio".to_string()]);
+    harness.ledger.push(LedgerEntry {
+        step: "installed-lsp-stdio".to_string(),
+        argv,
+        cwd: std::env::current_dir()
+            .map_err(|error| format!("current dir: {error}"))?
+            .to_string_lossy()
+            .to_string(),
+        started_epoch_secs: started,
+        status: format!(
+            "ok root_state={} frames={} notifications={} stdout={}B stderr={}B",
+            evidence.root_state,
+            evidence.frames_read,
+            evidence.notifications,
+            evidence.stdout_bytes,
+            evidence.stderr_bytes,
+        ),
+        env: product_envs
+            .iter()
+            .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+            .collect(),
+    });
+    Ok(evidence)
+}
+
+fn lsp_json(evidence: &LspEvidence) -> Value {
+    json!({
+        "repo": evidence.repo_rel,
+        "root_state": evidence.root_state,
+        "effective_root": evidence.effective_root,
+        "frames_read": evidence.frames_read,
+        "notifications": evidence.notifications,
+        "stdout_bytes": evidence.stdout_bytes,
+        "stderr_bytes": evidence.stderr_bytes,
+        "orphan": false,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Receipt skeleton
 // ---------------------------------------------------------------------------
 
@@ -1785,6 +2279,7 @@ fn write_receipt(
     journey: Option<&JourneyEvidence>,
     init: Option<&InitEvidence>,
     repair: Option<&RepairEvidence>,
+    lsp: Option<&LspEvidence>,
 ) -> Result<(), String> {
     let receipt = json!({
         "schema_version": SCHEMA_VERSION,
@@ -1801,7 +2296,10 @@ fn write_receipt(
         "journey": journey.map(journey_json),
         "init": init.map(init_json),
         "repair": repair.map(repair_json),
-        "slices_completed": if repair.is_some() {
+        "lsp": lsp.map(lsp_json),
+        "slices_completed": if lsp.is_some() {
+            vec!["A", "B", "E", "F", "G"]
+        } else if repair.is_some() {
             vec!["A", "B", "E", "F"]
         } else if init.is_some() {
             vec!["A", "B", "E"]
@@ -1911,6 +2409,8 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
     let init = run_init_journey(&mut harness, &subject, &paths.fixture_root)?;
     // Slice F: installed repair journey on its own isolated checkout.
     let repair = run_repair_journey(&mut harness, &subject, &paths.fixture_root)?;
+    // Slice G: standalone-LSP journey on its own isolated checkout.
+    let lsp = run_lsp_journey(&mut harness, &subject, &paths.fixture_root)?;
     write_receipt(
         &paths.out,
         &subject,
@@ -1918,12 +2418,14 @@ pub(crate) fn first_hour(args: &[String]) -> Result<(), String> {
         Some(&journey),
         Some(&init),
         Some(&repair),
+        Some(&lsp),
     )?;
     println!(
-        "first-hour slice F: {} finding(s) [{}] + init advisory-ok + repair {} through {} ledger {} steps",
+        "first-hour slice G: {} finding(s) [{}] + init advisory-ok + repair {} + lsp {} through {} ledger {} steps",
         journey.evidence.findings,
         journey.evidence.classifications.join(","),
         repair.receipt_change,
+        lsp.root_state,
         subject.executable.display(),
         harness.ledger.len()
     );
@@ -2842,6 +3344,157 @@ mod tests {
                 "outcome `{name}` must refuse"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn lsp_file_uri_percent_encodes_hostile_paths() -> Result<(), String> {
+        assert_eq!(
+            lsp_file_uri(Path::new("/tmp/ripr fixtures/grüße/repo")),
+            "file:///tmp/ripr%20fixtures/gr%C3%BC%C3%9Fe/repo"
+        );
+        assert_eq!(
+            lsp_file_uri(Path::new("/tmp/a#b?.rs")),
+            "file:///tmp/a%23b%3F.rs"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn lsp_framing_round_trips_strict_frames() -> Result<(), String> {
+        let first = json!({"jsonrpc": "2.0", "id": 1, "result": null});
+        let second = json!({"jsonrpc": "2.0", "method": "exit"});
+        let mut buffer = encode_lsp_message(&first);
+        buffer.extend_from_slice(&encode_lsp_message(&second));
+        let (frames, rest) = parse_lsp_frames(&buffer)?;
+        assert_eq!(frames, vec![first.clone(), second]);
+        assert!(rest.is_empty());
+        // A trailing partial frame stays remainder, never an error here:
+        // the reader refuses it only when stdout closes mid-frame.
+        let mut partial = encode_lsp_message(&first);
+        partial.truncate(partial.len() - 4);
+        let (frames, rest) = parse_lsp_frames(&partial)?;
+        assert!(frames.is_empty());
+        assert!(!rest.is_empty());
+        // Headerless bytes stay remainder mid-stream (indistinguishable
+        // from a partial frame); the reader refuses them only when stdout
+        // closes with bytes still unframed.
+        let (frames, rest) = parse_lsp_frames(b"{\"jsonrpc\":\"2.0\"}".as_slice())?;
+        assert!(frames.is_empty());
+        assert!(!rest.is_empty());
+        for (name, bytes) in [
+            (
+                "no-length",
+                b"Content-Type: application/json\r\n\r\n{}".as_slice(),
+            ),
+            ("bad-length", b"Content-Length: many\r\n\r\n{}".as_slice()),
+            ("colonless", b"Content-Length\r\n\r\n{}".as_slice()),
+            ("non-json", b"Content-Length: 4\r\n\r\nnope".as_slice()),
+        ] {
+            assert!(
+                parse_lsp_frames(bytes).is_err(),
+                "framing `{name}` must refuse"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn lsp_initialize_requires_hover_and_status_command() -> Result<(), String> {
+        let good = json!({
+            "result": {
+                "capabilities": {
+                    "hoverProvider": true,
+                    "executeCommandProvider": {"commands": ["ripr.refresh", "ripr.collectWorkspaceStatus"]},
+                },
+            },
+        });
+        assert_eq!(
+            lsp_initialize_capabilities(&good)?,
+            vec![
+                "ripr.refresh".to_string(),
+                "ripr.collectWorkspaceStatus".to_string()
+            ]
+        );
+        for (name, doc) in [
+            (
+                "no-hover",
+                json!({"result": {"capabilities": {"executeCommandProvider": {"commands": ["ripr.collectWorkspaceStatus"]}}}}),
+            ),
+            (
+                "no-commands",
+                json!({"result": {"capabilities": {"hoverProvider": true}}}),
+            ),
+            (
+                "no-status-command",
+                json!({"result": {"capabilities": {"hoverProvider": true, "executeCommandProvider": {"commands": ["ripr.refresh"]}}}}),
+            ),
+        ] {
+            assert!(
+                lsp_initialize_capabilities(&doc).is_err(),
+                "capabilities `{name}` must refuse"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn lsp_status_binds_the_saved_checkout() -> Result<(), String> {
+        let good = json!({
+            "result": {"analysis_status": {"root_state": "selected_single_root", "effective_root": "/tmp/root"}},
+        });
+        assert_eq!(
+            lsp_workspace_status(&good, "/tmp/root")?,
+            "selected_single_root"
+        );
+        for (name, doc, root) in [
+            (
+                "ambiguous",
+                json!({"result": {"analysis_status": {"root_state": "workspace_ambiguous", "effective_root": "/tmp/root"}}}),
+                "/tmp/root",
+            ),
+            (
+                "divergent-root",
+                json!({"result": {"analysis_status": {"root_state": "selected_single_root", "effective_root": "/tmp/other"}}}),
+                "/tmp/root",
+            ),
+            ("no-status", json!({"result": {}}), "/tmp/root"),
+        ] {
+            assert!(
+                lsp_workspace_status(&doc, root).is_err(),
+                "status `{name}` must refuse"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn lsp_response_wait_pairs_ids_and_surfaces_errors() -> Result<(), String> {
+        let (sender, receiver) = std::sync::mpsc::channel::<Result<Option<Value>, String>>();
+        sender
+            .send(Ok(Some(
+                json!({"jsonrpc": "2.0", "method": "ripr/analysisStatus"}),
+            )))
+            .map_err(|error| format!("stage notification: {error}"))?;
+        sender
+            .send(Ok(Some(
+                json!({"jsonrpc": "2.0", "id": 2, "result": {"ok": true}}),
+            )))
+            .map_err(|error| format!("stage response: {error}"))?;
+        let mut notifications = Vec::new();
+        let response = await_lsp_response(&receiver, 2, &mut notifications)?;
+        assert_eq!(response["result"], json!({"ok": true}));
+        assert_eq!(notifications.len(), 1);
+        // An error response never passes as a verdict.
+        sender
+            .send(Ok(Some(
+                json!({"jsonrpc": "2.0", "id": 3, "error": {"code": -32601}}),
+            )))
+            .map_err(|error| format!("stage error: {error}"))?;
+        let _ = refusal_of(await_lsp_response(&receiver, 3, &mut Vec::new()).map(|_| ()))?;
+        // A closed stdout without the id refuses instead of hanging.
+        drop(sender);
+        let _ = refusal_of(await_lsp_response(&receiver, 9, &mut Vec::new()).map(|_| ()))?;
         Ok(())
     }
 
