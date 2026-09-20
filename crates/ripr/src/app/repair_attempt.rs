@@ -222,10 +222,22 @@ pub(crate) fn receipt_binding(
     // after the after phase records it, while the agent-attributable hash
     // above already binds every agent-surface path addition, deletion, or
     // kind change. Status or violation drift still refuses.
-    if sha256_bytes(&agent_delta_bytes) != after.delta_sha256
-        || verdict.status != after.verdict.status
-        || verdict.violations != after.verdict.violations
-    {
+    let agent_matches = sha256_bytes(&agent_delta_bytes) == after.delta_sha256;
+    let verdict_matches =
+        verdict.status == after.verdict.status && verdict.violations == after.verdict.violations;
+    if !agent_matches || !verdict_matches {
+        // Pre-#1738 manifests hashed the full delta instead: when the tree
+        // still matches that record exactly, the attempt predates the new
+        // semantics — say so actionably instead of crying tamper. The
+        // after phase is terminal (no re-entry from ReadyToFinish), so the
+        // only rebind path is a fresh attempt with the current binary.
+        if !agent_matches && verdict_matches {
+            let full_delta_bytes = serde_json::to_vec(&delta)
+                .map_err(|error| format!("serialize repair delta failed: {error}"))?;
+            if sha256_bytes(&full_delta_bytes) == after.delta_sha256 {
+                return Err("repair attempt was recorded by an older binary; start a new repair attempt with this binary to rebind the receipt".to_string());
+            }
+        }
         return Err("repair attempt after verdict binding is tampered or stale".to_string());
     }
     let manifest_path = display_path(&manifest_path);
