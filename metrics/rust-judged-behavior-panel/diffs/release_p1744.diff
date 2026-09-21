@@ -1,0 +1,32 @@
+diff --git a/crates/ripr/src/output/doctor.rs b/crates/ripr/src/output/doctor.rs
+index 67dac337e..697dd54e1 100644
+--- a/crates/ripr/src/output/doctor.rs
++++ b/crates/ripr/src/output/doctor.rs
+@@ -1006,6 +1006,17 @@ mod tests {
+     /// and immediately execs it through `doctor_tool_check_with_command`, so
+     /// it is exposed to the same exec-contention family and must share the
+     /// same bounded launch retry rather than forking a parallel loop.
++    ///
++    /// #1743: ceiling for the shared launch retry. The old 3 x 25ms bound
++    /// was exhausted once under full-suite parallelism (three consecutive
++    /// `ExecutableFileBusy` inside ~50ms on an atomically published, unique
++    /// shim); ambient measurement shows zero ETXTBSY in 23k lone execs, so
++    /// the event is rare and bursty. Eight attempts (~175ms worst case)
++    /// cover a burst three times the observed one while staying far below
++    /// every elapsed assertion. Only launch failures retry; a real verdict
++    /// still breaks on the first attempt.
++    #[cfg(unix)]
++    const SHIM_PROBE_MAX_LAUNCH_ATTEMPTS: usize = 8;
+     #[cfg(unix)]
+     fn probe_published_tool_with_command(
+         tool: &str,
+@@ -1017,7 +1028,8 @@ mod tests {
+         loop {
+             launch_attempt += 1;
+             let outcome = doctor_tool_check_with_command(tool, build_command(), timeout, root);
+-            if launch_attempt >= 3 || !outcome.retryable_launch_failure {
++            if launch_attempt >= SHIM_PROBE_MAX_LAUNCH_ATTEMPTS || !outcome.retryable_launch_failure
++            {
+                 break outcome;
+             }
+             std::thread::sleep(Duration::from_millis(25));
