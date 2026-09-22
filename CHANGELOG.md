@@ -74,6 +74,12 @@ are scoped or reviewed.
 
 ### Fixed
 
+- The packaged VSIX no longer includes cargo build output. `npm run compile`
+  in `editors/vscode` runs `cargo xtask`, whose driver target directory is
+  relative to the working directory, and `vsce package` then packed
+  `editors/vscode/target/` (a 725 MB VSIX on the 0.11.0 trial join, 781 KB
+  once excluded). `editors/vscode/.vscodeignore` now excludes `target/**`.
+
 - The closing brace of an added `#[cfg(test)]` inline module is now
   inside test-evidence scope. Before this fix it produced a spurious
   `static_unknown` production finding. The module's opening line stays
