@@ -19,32 +19,39 @@ yanked = "deny"
 # cargo-deny advisory ignore entries accept IDs or `{ id, reason }` metadata,
 # but reject per-entry `until` fields (verified with cargo-deny 0.19.0). Keep
 # expiry metadata in comments and enforce it with `cargo xtask check-dependencies`.
+# Fail when an ignore entry no longer matches any crate in the graph, so a
+# suppression cannot outlive the dependency it was written for.
+unused-ignored-advisory = "deny"
 ignore = [
   # The `rust-unic` Unicode crate family is declared unmaintained
-  # (umbrella announcement: RUSTSEC-2025-0098). Each crate has its
-  # own RUSTSEC entry; cargo-deny treats them as separate errors so
-  # every transitive in the graph must be listed by ID. The crates
-  # reach our graph via `rustpython-parser` (the Python preview
-  # adapter substrate approved by the corrected ADR 0009 for
-  # Campaign 27); the advisory's own Solution line says "No safe
-  # upgrade is available" because the crates' upstream project
-  # (rust-unic) is no longer maintained.
+  # (RustSec informational `unmaintained`, advisory-db issue #2414). Each
+  # crate has its own RUSTSEC entry; cargo-deny treats them as separate
+  # errors, so every unic crate in the graph is listed by ID. All six
+  # reach the graph through one path:
+  #   ripr (default feature `lang-python`) -> rustpython-parser 0.4.0
+  #     -> unic-emoji-char / unic-ucd-ident -> the other four
+  # `lang-python` is a default feature, so the crates compile into the
+  # published crate's default build and the release server binaries.
   #
-  # None of these crates are flagged for any known vulnerability —
-  # they ship Unicode character-database tables that ripr's adapter
-  # never touches directly. The recommended migration target
-  # (`icu_properties` / `unicode-ident`) requires `rustpython-parser`
-  # itself to migrate, which is outside our control. Suppression is
-  # bounded to these specific RUSTSEC IDs; any future advisory
-  # upgrade (e.g., a CVE) will produce a new ID that fails the
-  # check again. Revisit when `rustpython-parser` migrates off
-  # `rust-unic` or when ADR 0009 is itself superseded.
-  "RUSTSEC-2025-0075",  # unic-char-range; expires: 2026-10-01
-  "RUSTSEC-2025-0080",  # unic-common; expires: 2026-10-01
-  "RUSTSEC-2025-0081",  # unic-char-property; expires: 2026-10-01
-  "RUSTSEC-2025-0090",  # unic-emoji-char; expires: 2026-10-01
-  "RUSTSEC-2025-0098",  # rust-unic umbrella announcement; expires: 2026-10-01
-  "RUSTSEC-2025-0100",  # unic-ucd-ident; expires: 2026-10-01
+  # None of the six carries a vulnerability; they are unmaintained
+  # Unicode table crates with `patched = []`. A different advisory
+  # against these crates gets a new ID and fails the check again.
+  #
+  # Disposition (#3811, 2026-09-22): accepted time-bounded suppression.
+  # No dependency movement removes them for 0.11: rustpython-parser
+  # 0.4.0 (2024-08-06) is its latest release. The candidate unic-free
+  # substrate, Astral's `ruff_python_parser` (crates.io 0.0.x since
+  # 2026-06), is a parser migration and requires Rust 1.96 against our
+  # MSRV 1.95. Owner of that migration: EffortlessMetrics/ripr#1430
+  # (ADR 0009 revisit). Revisit at expiry or when the parser moves,
+  # whichever comes first; `unused-ignored-advisory` rejects these rows
+  # once the unic crates leave the graph.
+  "RUSTSEC-2025-0075",  # unic-char-range; expires: 2026-12-31
+  "RUSTSEC-2025-0080",  # unic-common; expires: 2026-12-31
+  "RUSTSEC-2025-0081",  # unic-char-property; expires: 2026-12-31
+  "RUSTSEC-2025-0090",  # unic-emoji-char; expires: 2026-12-31
+  "RUSTSEC-2025-0098",  # unic-ucd-version; expires: 2026-12-31
+  "RUSTSEC-2025-0100",  # unic-ucd-ident; expires: 2026-12-31
 ]
 
 [licenses]
