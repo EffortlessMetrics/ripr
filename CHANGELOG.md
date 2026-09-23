@@ -9,6 +9,161 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### Added
+
+- Release qualification gains an installed first-hour journey.
+  `cargo xtask first-hour --crate <path.crate> --prefix <clean-dir>
+  --out <receipt-dir> --fixture-root <dir>` installs the packaged crate
+  into a clean prefix with ordinary `cargo install --locked` and refuses
+  live prefixes, pre-existing fixture roots, and non-matching
+  executables. It then drives the installed binary through a disposable
+  repository whose path contains spaces and non-ASCII text: `ripr check`
+  (the one expected `weakly_exposed` finding), `ripr init --ci github`
+  with conflict and `--force` proofs, the agent repair loop through
+  `agent verify` and `outcome` movement, and a standalone
+  `ripr lsp --stdio` session with strict framing and a no-orphan exit
+  check. Each step's argv and working directory go to a ledger, and
+  receipt evidence digests are normalized for run location so two runs
+  of one candidate can be compared. `cargo xtask first-hour-controls`
+  runs three negative controls (invalid base, empty diff, tampered
+  binary) that pass only on a typed refusal. `cargo xtask
+  check-release-challenge-selection` validates the frozen 0.11
+  release-challenge selection manifest and reports acceptance-floor
+  status without lowering unmet floors. These are maintainer
+  qualification commands; they change no `ripr` behavior
+  ([#1674](https://github.com/EffortlessMetrics/ripr/issues/1674),
+  [#1675](https://github.com/EffortlessMetrics/ripr/issues/1675)).
+
+### Changed
+
+- The release server manifest moves to schema 2 and no longer depends
+  on where it is hosted. It carries `schema_version: "2"`,
+  `product_version`, a content-derived `distribution_generation`,
+  `source_repository`, the target set, producer identity, and each
+  archive's relative subject, format, size, executable name, and
+  receipt. It contains no scheme, host, tag, or absolute URL, and
+  versions with channel suffixes fail closed in the archive and
+  manifest producers. A new release-distribution-catalog producer binds
+  product, generation, manifest digest, target set, and the allowed
+  stable/RC placements. The VS Code extension's embedded
+  `distribution.json` descriptor moves to schema 2 with release-identity
+  admission, and `vscode-package --catalog` checks the catalog bytes
+  inside the VSIX. Tools that read the version-1 manifest fields
+  directly need updating
+  ([#1710](https://github.com/EffortlessMetrics/ripr/pull/1710)).
+
+- A discriminator is credited as present only when one matched oracle
+  is tied to the changed code. Only a direct or helper owner call,
+  assertion-target affinity, or an owner-named test counts. File
+  proximity (`same_test_file`, `same_module`), token coincidence
+  (`weak_token_substring`), and other indirect linkage no longer
+  establish it: when the strongest oracle reaches the change only
+  through such linkage, the discriminator is capped at weak (the
+  finding reports `weakly_exposed` instead of `exposed`) and the
+  reason names the linkage (`identity_unresolved`). A discriminator is
+  also withheld (`specificity_unbound`) unless a single oracle carries
+  owner-level identity, a strong observation, and a reference to the
+  change. For return-value probes with before-text, observation
+  confirmation now requires a whole-word match on a token the change
+  introduced. The `rust_binding_status_wrong_owner_observer` and
+  `rust_catalog_description_structural_oracle` fixtures pin
+  non-promotion in the evidence-promotion honesty corpus. Some findings
+  that previously read `exposed` now read `weakly_exposed`
+  ([#1746](https://github.com/EffortlessMetrics/ripr/issues/1746),
+  [#1748](https://github.com/EffortlessMetrics/ripr/issues/1748)).
+
+### Fixed
+
+- The packaged VSIX no longer includes cargo build output. `npm run compile`
+  in `editors/vscode` runs `cargo xtask`, whose driver target directory is
+  relative to the working directory, and `vsce package` then packed
+  `editors/vscode/target/` (a 725 MB VSIX on the 0.11.0 trial join, 781 KB
+  once excluded). `editors/vscode/.vscodeignore` now excludes `target/**`.
+
+- The closing brace of an added `#[cfg(test)]` inline module is now
+  inside test-evidence scope. Before this fix it produced a spurious
+  `static_unknown` production finding. The module's opening line stays
+  outside the scope, and closing braces in production code are still
+  analyzed ([#1428](https://github.com/EffortlessMetrics/ripr/issues/1428)).
+
+- A Rust predicate boundary whose operand values static analysis cannot
+  resolve (for example values produced by `rfind` or `len_utf8`) no
+  longer prescribes "add boundary tests" that the suite may already
+  contain. The finding stays `weakly_exposed`, appends the first
+  unsupported operation to the missing-discriminator reason, and
+  carries the typed `rust_value_propagation_unresolved` limitation,
+  which defers to real mutation testing. A single related test with a
+  resolved boundary keeps the ordinary repair, whatever the row order.
+  Classified-seam cache generations advance
+  ([#1429](https://github.com/EffortlessMetrics/ripr/issues/1429)).
+
+- When a changed error return sits behind a boolean guard and a test
+  already asserts that exact error, the finding now names the guard
+  static analysis cannot trace through, using the typed
+  `rust_value_propagation_unresolved` limitation, instead of a bare
+  `infection_unknown`. It no longer prescribes a boundary or
+  error-assertion test. The class stays `infection_unknown`, and the
+  limitation reaches CLI, ledger, gate, LSP, and packet output
+  ([#1579](https://github.com/EffortlessMetrics/ripr/issues/1579)).
+
+- `ripr agent receipt` run again after a clean `agent repair --phase
+  after` no longer refuses with a stale binding. The durable binding now
+  covers only the agent's own changes and excludes files that the after
+  phase itself writes (verify, receipt, status, apply record, attempt
+  manifest). The full verdict still evaluates every change. For an
+  attempt recorded by an older binary, the refusal now says "repair
+  attempt was recorded by an older binary; start a new repair attempt
+  with this binary to rebind the receipt" instead of reporting
+  tampering ([#1738](https://github.com/EffortlessMetrics/ripr/issues/1738)).
+
+- PowerShell forms of generated commands whose program path is quoted
+  now start with the `&` call operator, including when the path is
+  indented. Previously PowerShell read the quoted path as a string: it
+  echoed the path, exited 0, and ran nothing. Unquoted program names
+  are unchanged. A Windows-only test runs translated lines under a real
+  `pwsh` and checks the argv and artifact bytes
+  ([#1672](https://github.com/EffortlessMetrics/ripr/issues/1672)).
+
+### Security
+
+- The VS Code extension checks a downloaded server manifest's raw bytes
+  against the digest in the embedded distribution descriptor before it
+  reads any field. It then validates the `server-manifest/2` contract and
+  builds asset URLs only from the accepted placement plus the checked
+  subject. Manifest bodies are capped at 1 MB and archives at their
+  checked size (256 MB for legacy flows). The first request and every
+  redirect are limited to the origin and the release-asset hosts.
+  Install receipts record the checked manifest digest, and a
+  descriptor-bound request rejects an unrecorded or mismatched cached
+  server instead of reusing it. Legacy flows without a descriptor keep
+  their shape checks and gain the same transport hardening
+  ([#1640](https://github.com/EffortlessMetrics/ripr/issues/1640),
+  [#1717](https://github.com/EffortlessMetrics/ripr/pull/1717)).
+
+- The VS Code extension no longer runs the system `tar` or
+  `Expand-Archive` to unpack a server archive. A built-in tar/zip reader
+  with no new dependency normalizes paths, accepts only known member
+  kinds, and enforces entry-count, total-size, and compression-ratio
+  limits before it creates any file. Only regular files in the extraction
+  plan are written, and a rejected archive leaves nothing behind
+  ([#1641](https://github.com/EffortlessMetrics/ripr/issues/1641)).
+
+- Dependabot version updates now wait 14 days after a release before
+  they are proposed (`cooldown: default-days: 14` on every configured
+  ecosystem)
+  ([#1692](https://github.com/EffortlessMetrics/ripr/pull/1692)).
+
+- Droid review automation runs the default-branch workflow definition
+  and never checks out the candidate head. `cargo xtask droid-admit`
+  checks repository, action, same-repo head and base, fresh SHAs, and
+  actor association, and writes an admission receipt before any job
+  that holds secrets runs. Fork, stale-head, retargeted, untrusted-actor,
+  oversized, and malformed subjects are refused. Comment-triggered runs
+  are admitted from facts fetched again from the API. Each analysis job
+  holds one write permission, and review and PR-body triggers stay
+  withheld
+  ([#1654](https://github.com/EffortlessMetrics/ripr/issues/1654)).
+
 ## 0.11.0 - Swarm promotion and fail-closed output hardening
 
 Release date: staged (unreleased).
