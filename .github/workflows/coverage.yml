@@ -34,6 +34,12 @@ jobs:
       - name: Clean coverage state
         run: cargo llvm-cov clean --workspace
 
+      # Binary-spawning tests resolve a pre-built target/debug/ripr and never
+      # spawn a nested build; the llvm-cov layout does not populate the default
+      # target dir, so build it plainly first (#3764).
+      - name: Pre-build spawned binaries
+        run: cargo build -p ripr
+
       - name: Generate coverage
         run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
 
