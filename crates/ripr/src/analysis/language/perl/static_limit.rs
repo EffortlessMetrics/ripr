@@ -18,12 +18,10 @@ use std::collections::BTreeSet;
 pub(super) struct Projection {
     /// Blocks strict actionability (any operational limitation or boundary).
     pub(super) blocks: bool,
-    /// Caps the exposure CLASS. Pre-#3520 the class was capped only by
-    /// semantic dynamic-dispatch evidence — boundaries, or a limitation
-    /// explicitly typed `dynamic_dispatch`. Operational states such as
-    /// `partial_emitter` keep findings advisory but never mask an earned
-    /// class: hiding evidence the packet actually carries is the
-    /// analyzer-cannot-resolve vs missing-proof inversion (#3215).
+    /// Caps exposure independently from repair eligibility. All boundary
+    /// variants except `MissingTestRunner` cap the class. Operational
+    /// limitation records such as `partial_emitter` keep findings advisory
+    /// without masking the evidence they carry (#3583).
     pub(super) blocks_class: bool,
     pub(super) kind: Option<StaticLimitKind>,
 }
@@ -54,7 +52,10 @@ pub(super) fn for_change(
         }
 
         projection.blocks = true;
-        projection.blocks_class = true;
+        // A missing runner cannot invalidate an otherwise established static
+        // sink observation. Keep every other boundary conservative, and OR
+        // rather than assign so a later runner boundary cannot clear a cap.
+        projection.blocks_class |= boundary.kind != BoundaryKind::MissingTestRunner;
         if let Some(kind) = boundary_kind(boundary.kind) {
             select_more_specific(&mut projection.kind, kind);
         }
@@ -164,6 +165,9 @@ fn priority(kind: StaticLimitKind) -> u8 {
         _ => u8::MAX,
     }
 }
+
+#[cfg(test)]
+mod runner_tests;
 
 #[cfg(test)]
 mod tests {
