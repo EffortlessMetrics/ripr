@@ -1591,6 +1591,8 @@ mod tests {
             rendered.contains("diff-first"),
             "expected diff-first guidance in why; got:\n{rendered}"
         );
+        assert!(rendered.contains("--base BASE"));
+        assert!(!rendered.contains("--base origin/main"));
         // Bug 2 regression guard: the why field must recommend --format repo-exposure-md,
         // not --mode fast (which is a speed tier, not a scope provider).
         assert!(

@@ -38,7 +38,7 @@ fn render_no_scope_note(output: &CheckOutput) -> String {
         )
     } else {
         "\nNote: no analysis scope was provided — `ripr check` is diff-first. \
-         Run `ripr check --base origin/main` to analyze your changes, or \
+         Run `ripr check --base BASE` with BASE set to an existing ref to analyze your changes, or \
          `ripr check --root . --format repo-exposure-md` for a full-repo scan. \
          An empty result here does NOT mean your changed behavior is covered.\n"
             .to_string()
@@ -2649,9 +2649,10 @@ mod tests {
             "expected no-scope guidance; got:\n{rendered}"
         );
         assert!(
-            rendered.contains("`ripr check --base origin/main`"),
+            rendered.contains("`ripr check --base BASE`"),
             "expected --base guidance; got:\n{rendered}"
         );
+        assert!(!rendered.contains("--base origin/main"));
         assert!(
             rendered.contains("does NOT mean your changed behavior is covered"),
             "expected honesty note; got:\n{rendered}"

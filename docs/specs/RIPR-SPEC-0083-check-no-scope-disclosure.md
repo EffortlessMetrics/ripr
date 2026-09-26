@@ -121,11 +121,12 @@ Note: `<base>...HEAD` contains no changed files, so there was nothing to analyze
   compared against `<base>`; make a change and re-run` — the honest action
   is to change something, not to provide a scope.
 
-- No established base at all: the legacy guidance is kept:
+- No established base at all: guidance names a placeholder for an existing
+  base ref. It must not suggest `origin/main` when that ref may not exist:
 
 ```
 Note: no analysis scope was provided — `ripr check` is diff-first. Run
-`ripr check --base origin/main` to analyze your changes, or
+`ripr check --base BASE` with BASE set to an existing ref to analyze your changes, or
 `ripr check --root . --format repo-exposure-md` for a full-repo scan. An empty result here
 does NOT mean your changed behavior is covered.
 ```
@@ -150,7 +151,7 @@ No-scope example (no established base):
   {
     "scope_status": "no_scope_provided",
     "category": "no_scope_disclosure",
-    "why": "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base origin/main or ripr check --root . --format repo-exposure-md"
+    "why": "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base BASE with BASE set to an existing ref or ripr check --root . --format repo-exposure-md"
   }
 ]
 ```
@@ -169,6 +170,8 @@ base instead of claiming no scope was provided:
 ```
 
 When changed files were analyzed (real analyzed-empty), `scope_disclosures` is absent.
+The `why` string is advisory prose, not an identity or a stable machine key;
+consumers use the structured `base` and `scope_status` fields instead.
 
 ### Non-claims
 

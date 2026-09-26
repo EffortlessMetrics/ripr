@@ -266,7 +266,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
                 &mut out,
                 3,
                 "why",
-                "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base origin/main or ripr check --root . --format repo-exposure-md",
+                "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base BASE with BASE set to an existing ref or ripr check --root . --format repo-exposure-md",
                 false,
             );
         }

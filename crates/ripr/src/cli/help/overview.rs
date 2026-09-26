@@ -23,7 +23,7 @@ Usage:
 
 Try this first:
   ripr doctor                     Check this workspace can produce evidence.
-  ripr check --base origin/main   Analyze the current diff, name the top gap.
+  ripr check                     Analyze the current diff, name the top gap.
 
 The loop is: ripr names one gap -> you add one focused test -> ripr records
 whether the gap closed. `ripr.toml` is optional; the zero-config run is the
@@ -39,7 +39,7 @@ What are you trying to do?
   Repair one named gap  ripr agent repair --seam-id ID --phase before
                         # edit one focused test
                         ripr agent repair --attempt ID --phase after
-  Compose PR evidence   ripr first-pr --root . --base origin/main --head HEAD
+  Compose PR evidence   ripr first-pr --root . --base BASE --head HEAD
   Work in an editor     ripr lsp --stdio
   Adopt advisory CI     ripr init --ci github
 
@@ -67,10 +67,10 @@ Options for one command: ripr help <command>
 
 Task map:
   Diagnose setup        ripr doctor
-  Inspect one change    ripr check --base origin/main
+  Inspect one change    ripr check
   Guided repo adoption  ripr pilot --root .
   Repair one named gap  ripr agent repair --seam-id ID --phase before|after|verify
-  Compose PR evidence   ripr first-pr --root . --base origin/main --head HEAD
+  Compose PR evidence   ripr first-pr --root . --base BASE --head HEAD
   Adopt advisory CI     ripr init --ci github
 
 Setup:
@@ -82,8 +82,8 @@ Setup:
 
 Analysis:
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5] [--timeout-ms 30000]
-  ripr check [--base origin/main] [--worktree] [--diff PATH] [--mode draft] [--format FORMAT]
-  ripr diff [--root .] [--base origin/main] [--head HEAD] [--mode draft] [--json]
+  ripr check [--base REV] [--worktree] [--diff PATH] [--mode draft] [--format FORMAT]
+  ripr diff [--root .] [--base REV] [--head HEAD] [--mode draft] [--json]
   ripr explain [--base REV|--diff PATH] <finding-id|file:line>
   ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
   ripr rerun --changed-test PATH[::TEST_NODE] [--root PATH] [--json] [--out PATH]
@@ -111,7 +111,7 @@ Editor & Agent:
 
 PR & Review:
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
-  ripr first-pr [--root .] [--base origin/main] [--head HEAD] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--out-dir target/ripr/reports] [--check]
+  ripr first-pr [--root .] [--base REV] [--head HEAD] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--out-dir target/ripr/reports] [--check]
   ripr start-here [same options as first-pr]
   ripr first-action [--root .] (--pr-guidance target/ripr/review/comments.json|--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json|--gap-ledger target/ripr/reports/gap-decision-ledger.json|--ledger target/ripr/reports/pr-evidence-ledger.json) [--out target/ripr/reports/first-useful-action.json]
   ripr review-comments --root . --base SHA --head SHA [--out target/ripr/review/comments.json]
@@ -156,10 +156,11 @@ What it does:
 
 Quick start (one command per group):
   ripr doctor                                             # setup
-  ripr check --base origin/main                           # ordinary first value
+  ripr check                                           # ordinary first value
   ripr agent repair --seam-id ID --phase before           # repair
-  ripr first-pr --root . --base origin/main --head HEAD   # PR evidence
+  ripr first-pr --root . --base BASE --head HEAD        # PR evidence
   ripr init --ci github                                   # advisory CI
+  # Replace BASE with your PR base ref.
   ripr reports index                                      # reports
 
 Start-here path:

@@ -74,10 +74,10 @@ fn exhaustive_help_keeps_the_same_roles_and_boundaries() -> Result<(), String> {
     let stdout = normalized(&rendered_help(&["help", "--all"])?);
     for needle in [
         "Diagnose setup ripr doctor",
-        "Inspect one change ripr check --base origin/main",
+        "Inspect one change ripr check",
         "Guided repo adoption ripr pilot --root .",
         "Repair one named gap ripr agent repair --seam-id ID --phase before|after|verify",
-        "Compose PR evidence ripr first-pr --root . --base origin/main --head HEAD",
+        "Compose PR evidence ripr first-pr --root . --base BASE --head HEAD",
         "Adopt advisory CI ripr init --ci github",
         "`ripr check` is the ordinary first-value analysis; `ripr pilot` is the guided repo-adoption workflow.",
         "`ripr first-pr` and `ripr start-here` compose `target/ripr/reports/start-here.{json,md}` from existing artifacts; they do not run analysis or repair a gap.",

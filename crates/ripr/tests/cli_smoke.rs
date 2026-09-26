@@ -12877,6 +12877,24 @@ fn check_default_base_with_clean_worktree_keeps_no_scope_note_only() -> Result<(
             "empty default-base run must keep the no-scope disclosure (base-naming form per #4012); got:\n{stdout}"
         ));
     }
+    if !stdout.contains("compared base was `main`") || stdout.contains("--base origin/main") {
+        return Err(format!(
+            "no-origin repo must name its resolved local main rather than suggest a nonexistent remote ref; got:\n{stdout}"
+        ));
+    }
+    let json = run_ripr(&["check", "--root", &root_str, "--json"]);
+    assert_success(&json);
+    let value: serde_json::Value = serde_json::from_slice(&json.stdout)
+        .map_err(|err| format!("parse no-origin check JSON: {err}"))?;
+    if value["base"] != "main"
+        || !value["scope_disclosures"][0]["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("main...HEAD") && !why.contains("origin/main"))
+    {
+        return Err(format!(
+            "no-origin JSON must bind guidance to its resolved local base: {value}"
+        ));
+    }
 
     ignore_remove_dir_all(&root);
     Ok(())
