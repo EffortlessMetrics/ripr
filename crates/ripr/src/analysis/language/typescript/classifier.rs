@@ -1511,6 +1511,11 @@ pub(crate) fn strongest_family_matching_oracle(
 // 8 parameters — all are structurally distinct context tokens required by the
 // TypeScript classifier pipeline; bundling them would force a heap allocation
 // per call.  The count is stable; no further parameters are planned.
+/// Test-only convenience over [`classify_change_with_alias_state`] for the
+/// 65 unit-test call sites that do not exercise the alias-load gap
+/// (#4106-B); production always threads the typed gap through the extended
+/// entry point.
+#[cfg(test)]
 #[allow(
     clippy::too_many_arguments,
     reason = "8 structurally-distinct context tokens; bundling forces heap allocation; count is stable"
@@ -1524,6 +1529,38 @@ pub(crate) fn classify_change(
     workspace_root: Option<&Path>,
     reexport_index: &ReExportIndex,
     alias_map: Option<&TsAliasMap>,
+) -> Option<Finding> {
+    classify_change_with_alias_state(
+        file,
+        line,
+        line_text,
+        owners,
+        all_tests,
+        workspace_root,
+        reexport_index,
+        alias_map,
+        None,
+    )
+}
+
+/// Like [`classify_change`], but carries the typed flag-ON alias-map load gap
+/// (#4106-B) so the `typescript_path_alias_unresolved` advice names the real
+/// fail-closed cause (missing / unparseable / JSONC / `extends` / unreadable
+/// config) instead of telling the user to enable a flag that is already on.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "9 structurally-distinct context tokens; bundling forces heap allocation; count is stable"
+)]
+pub(crate) fn classify_change_with_alias_state(
+    file: &Path,
+    line: usize,
+    line_text: &str,
+    owners: &[TypeScriptOwner],
+    all_tests: &[TypeScriptTest],
+    workspace_root: Option<&Path>,
+    reexport_index: &ReExportIndex,
+    alias_map: Option<&TsAliasMap>,
+    alias_unavailable: Option<&TsAliasMapLoadGap>,
 ) -> Option<Finding> {
     let changed_file = normalized_path(file);
     let owner = owners
@@ -1573,7 +1610,22 @@ pub(crate) fn classify_change(
             all_tests,
             |test| credited_test_files.contains(&test.file),
             alias_map,
+            alias_unavailable,
         );
+    // Ghost relative import disclosure (#4104-C): when an uncredited test
+    // name-calls the owner through a relative specifier that resolves to no
+    // workspace file, the exclusion is correct but was silent — name it.
+    let named_limitations_from_relative_import: Vec<TypeScriptNamedLimitation> =
+        if let Some(root) = workspace_root {
+            named_limitations_for_relative_import_unresolved(
+                owner,
+                all_tests,
+                |test| credited_test_files.contains(&test.file),
+                root,
+            )
+        } else {
+            Vec::new()
+        };
     // Oracle-based limitations fire from oracle-eligible candidates even when
     // there is no static_limit. We always compute them; they are empty when there
     // are no oracle-eligible candidates or no qualifying assertions.
@@ -1881,6 +1933,7 @@ pub(crate) fn classify_change(
         .chain(named_limitations_from_oracle.iter())
         .chain(named_limitations_from_ownership.iter())
         .chain(named_limitations_from_alias.iter())
+        .chain(named_limitations_from_relative_import.iter())
     {
         evidence.extend(named_limit.evidence_lines());
     }

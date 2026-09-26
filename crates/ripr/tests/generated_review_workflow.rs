@@ -1468,6 +1468,10 @@ fn generated_annotation_script_preserves_path_and_message_bytes() -> Result<(), 
     Ok(())
 }
 
+/// Unix-only like its callers: the shell-backed tests that use this
+/// helper are `#[cfg(unix)]`, and an ungated helper is dead code (and a
+/// `-D warnings` failure) on Windows builds.
+#[cfg(unix)]
 fn annotation_run_script(workflow: &str) -> Result<String, String> {
     let marker = "- name: Emit RIPR PR guidance annotations";
     let start = workflow.find(marker).ok_or("missing annotation step")?;
@@ -1485,6 +1489,10 @@ fn annotation_run_script(workflow: &str) -> Result<String, String> {
     Ok(script.to_string())
 }
 
+/// Unix-only like its callers: the shell-backed tests that use this
+/// helper are `#[cfg(unix)]`, and an ungated helper is dead code (and a
+/// `-D warnings` failure) on Windows builds.
+#[cfg(unix)]
 fn json_string(value: &str) -> String {
     let mut out = String::from("\"");
     for ch in value.chars() {
@@ -1502,6 +1510,10 @@ fn json_string(value: &str) -> String {
     out
 }
 
+/// Unix-only like its callers: the shell-backed tests that use this
+/// helper are `#[cfg(unix)]`, and an ungated helper is dead code (and a
+/// `-D warnings` failure) on Windows builds.
+#[cfg(unix)]
 fn decode_github(value: &str) -> Result<String, String> {
     let bytes = value.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -1523,6 +1535,10 @@ fn decode_github(value: &str) -> Result<String, String> {
     String::from_utf8(out).map_err(|err| format!("annotation is not utf-8: {err}"))
 }
 
+/// Unix-only like its callers: the shell-backed tests that use this
+/// helper are `#[cfg(unix)]`, and an ungated helper is dead code (and a
+/// `-D warnings` failure) on Windows builds.
+#[cfg(unix)]
 fn parse_warning(line: &str) -> Result<(String, String, String, String), String> {
     let rest = line
         .strip_prefix("::warning ")

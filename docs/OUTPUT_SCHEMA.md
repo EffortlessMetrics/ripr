@@ -960,6 +960,15 @@ The evidence-first fields are additive in schema `0.2`:
       it requires all three conditions (non-relative import, imported name
       matches the owner name, and the import did not credit the owner) and is
       classification-neutral (additive disclosure only).
+    - `typescript_relative_import_unresolved` — fired (#4104-C) when an
+      uncredited related test name-matches the owner through a RELATIVE
+      specifier that resolves to no workspace file (module renamed or moved
+      without updating the import). The real producer is
+      `static_limit.rs::named_limitations_for_relative_import_unresolved`;
+      the exclusion itself is correct (`owner_name_shadowed_by_unrelated_import`),
+      and this limitation discloses why, so `no_static_path` is known to be a
+      possible false negative. Classification-neutral (additive disclosure
+      only).
   - `typescript_limitation_sample: <name> at <file>:<line>` — additive; the
     `file:line` of the real AST evidence that triggered the named limitation.
   - `typescript_limitation_why: <name> — <why>` — additive; human-readable

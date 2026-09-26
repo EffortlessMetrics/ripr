@@ -705,7 +705,7 @@ fn tagged_template_tag_is_test_each(tag: &Expression<'_>) -> bool {
 }
 
 /// Single-line, length-bounded source snippet for limitation details.
-fn snippet_for_span(source: &str, start: usize, end: usize) -> String {
+pub(crate) fn snippet_for_span(source: &str, start: usize, end: usize) -> String {
     let snippet: String = source
         .get(start..end)
         .unwrap_or_default()

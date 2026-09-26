@@ -23,6 +23,19 @@ pub(crate) struct TypeScriptOwner {
     /// unreachable from every relation arm).
     pub(crate) exported_as_default: bool,
     pub(crate) imports: Vec<TypeScriptImport>,
+    /// Method-shape refinement for `OwnerKind::Method` owners: a getter is
+    /// invoked by property READS on a receiver, and the constructor runs on
+    /// every `new ClassName(...)` — both change which relation needle is
+    /// honest for the owner (#4104-B).
+    pub(crate) method_kind: TypeScriptMethodKind,
+    /// `true` when the owner's CONTAINING CLASS is the module's default
+    /// export (`export default class Cart { ... }`). A class default export
+    /// has no class-level owner entry — only its methods are indexed — so
+    /// each method carries this marker instead, and `exported_as_default`
+    /// stays false for them: a method is not itself the module's default
+    /// export. Constructor matching uses it to credit
+    /// `new <default-import local>(...)` (#4104-B, review #4138).
+    pub(crate) class_default_export: bool,
     /// Parameter facts resolved from the owner signature (issue #4102).
     /// `Some(n)` only when every parameter is a plain binding identifier and
     /// there is no rest parameter; `None` when the list could not be resolved
@@ -35,6 +48,20 @@ pub(crate) struct TypeScriptOwner {
     /// extraction had the containing source. Enables expected-semantics checks
     /// that need the owner body (predicate expected-side liveness, #4102).
     pub(crate) source_text: Option<String>,
+}
+
+/// Syntactic method-shape refinement recorded during owner extraction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub(crate) enum TypeScriptMethodKind {
+    /// An ordinary callable method — invoked only by member CALLS.
+    #[default]
+    Ordinary,
+    /// `get total()` — invoked by property reads (`cart.total`).
+    Getter,
+    /// `set total(v)` — invoked by property writes (`cart.total = v`).
+    Setter,
+    /// `constructor(...)` — invoked by `new ClassName(...)`.
+    Constructor,
 }
 
 impl TypeScriptOwner {
@@ -115,6 +142,20 @@ pub(crate) struct TypeScriptTestExtractionGap {
     /// or `test/it call in loop/callback/nested body`.
     pub(crate) shape: &'static str,
     /// Source snippet (single-line, bounded) of the unextracted registration.
+    pub(crate) snippet: String,
+}
+
+/// Owner-shaped construct the syntax-first owner extractor does not index
+/// (#4104-A). One per affected changed file (the first detected shape).
+pub(crate) struct TypeScriptOwnerExtractionGap {
+    pub(crate) file: PathBuf,
+    pub(crate) sample_line: usize,
+    /// Detected shape, one of `arrow-function class field`,
+    /// `class method with unsupported key`, `class static block`,
+    /// `accessor auto-accessor`, `enum declaration`, or
+    /// `module/namespace declaration`.
+    pub(crate) shape: &'static str,
+    /// Source snippet (single-line, bounded) of the unextracted owner shape.
     pub(crate) snippet: String,
 }
 

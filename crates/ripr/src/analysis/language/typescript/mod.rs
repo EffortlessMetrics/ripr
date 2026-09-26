@@ -82,7 +82,9 @@ pub(crate) use static_limit::*;
 pub(crate) use tests_extract::*;
 #[cfg(test)]
 pub(crate) use tsconfig::load_alias_map;
-pub(crate) use tsconfig::{TsAliasMap, TsAliasUnresolveCause, load_alias_map_with_read_error};
+pub(crate) use tsconfig::{
+    TsAliasMap, TsAliasMapLoadGap, TsAliasUnresolveCause, load_alias_map_with_read_error,
+};
 pub(crate) use types::*;
 
 /// TypeScript / JavaScript preview adapter.
@@ -133,6 +135,10 @@ impl LanguageAdapter for TypeScriptAdapter {
         let mut parse_limits: Vec<TypeScriptParseLimit> = Vec::new();
         let mut read_failures: Vec<TypeScriptReadFailure> = Vec::new();
         let mut extraction_gaps: Vec<TypeScriptTestExtractionGap> = Vec::new();
+        // Owner shapes the extractor does not index, detected on CHANGED
+        // production files only (#4104-A): their changed lines produce no
+        // finding today, so the disclosure is the only honest signal.
+        let mut owner_extraction_gaps: Vec<TypeScriptOwnerExtractionGap> = Vec::new();
         // Files that vanished from the index entirely (unreadable): the real
         // count is reported instead of a hardcoded 0 so downstream consumers
         // can tell an empty workspace from a silently incomplete one.
@@ -149,6 +155,13 @@ impl LanguageAdapter for TypeScriptAdapter {
             ts_workspace_read_budget(),
         );
         let source_cache = workspace_read.sources;
+        // Normalized-key view of the cache so Phase 2 can look a changed
+        // file's source up regardless of path-separator spelling (the
+        // `parse_limit_for_file` convention).
+        let source_by_normalized: std::collections::HashMap<String, &String> = source_cache
+            .iter()
+            .map(|(key, source)| (normalized_path(key), source))
+            .collect();
         let read_limits: Vec<TypeScriptParseLimit> = workspace_read
             .limits
             .into_iter()
@@ -204,11 +217,13 @@ impl LanguageAdapter for TypeScriptAdapter {
         // references are present, or when any other parse/resolution failure occurs.
         // A capped-read size limit on the config itself is surfaced below as a
         // named limitation rather than failing silently closed.
-        let (alias_map, alias_read_limit): (Option<TsAliasMap>, _) =
+        let (alias_map, alias_read_limit, alias_load_gap): (Option<TsAliasMap>, _, _) =
             if options.resolve_tsconfig_paths {
                 load_alias_map_with_read_error(&options.root)
             } else {
-                (None, None)
+                // Flag off: no gap — the MapUnavailable cause carries the
+                // honest "enable the flag" advice for this path (#4106-B).
+                (None, None, None)
             };
         let alias_map_ref: Option<&TsAliasMap> = alias_map.as_ref();
 
@@ -267,6 +282,19 @@ impl LanguageAdapter for TypeScriptAdapter {
                 continue;
             }
 
+            // Owner-extraction gap detection (#4104-A): a changed line inside
+            // an owner shape the extractor does not index produces NO finding
+            // below, so this bounded disclosure is the only honest signal.
+            if let Some(source) = source_by_normalized.get(&normalized_path(&changed.path)) {
+                let changed_lines: Vec<usize> =
+                    changed.added_lines.iter().map(|added| added.line).collect();
+                if let Some(gap) =
+                    detect_owner_extraction_gap(&changed.path, source, &changed_lines)
+                {
+                    owner_extraction_gaps.push(gap);
+                }
+            }
+
             // Resolve package/workspace discovery facts for this changed file.
             // Evidence lines are injected into every finding generated below
             // so that the rendering layer (typescript_preview_card) and the
@@ -288,7 +316,7 @@ impl LanguageAdapter for TypeScriptAdapter {
                 if should_ignore_typescript_changed_line(&added.text) {
                     continue;
                 }
-                if let Some(mut finding) = classify_change(
+                if let Some(mut finding) = classify_change_with_alias_state(
                     &changed.path,
                     added.line,
                     &added.text,
@@ -297,6 +325,7 @@ impl LanguageAdapter for TypeScriptAdapter {
                     Some(&options.root),
                     &reexport_index,
                     alias_map_ref,
+                    alias_load_gap.as_ref(),
                 ) {
                     finding.evidence.extend(discovery_evidence.clone());
                     // Inject verify-command evidence derived from the strongest
@@ -423,6 +452,28 @@ impl LanguageAdapter for TypeScriptAdapter {
                 ))?,
             );
         }
+        // Partial owner extraction (#4104-A): changed lines inside owner
+        // shapes the extractor does not index produce no finding, so this
+        // typed limitation replaces the silent skip.
+        for gap in &owner_extraction_gaps {
+            let limitation = owner_extraction_partial_limitation(gap);
+            limitations.push(
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::LanguageScopeUnsupported,
+                    AnalysisStage::LanguageAdapter,
+                    AnalysisRecovery::new(
+                        AnalysisRecoveryKind::Retry,
+                        "Re-run analysis after the adapter learns to extract the disclosed owner shape.",
+                    )?,
+                )
+                .with_path(gap.file.to_string_lossy())?
+                .with_affected_items(1)?
+                .with_detail(format!(
+                    "typescript_owner_extraction_partial: {} at {}",
+                    gap.shape, limitation.sample_source
+                ))?,
+            );
+        }
         // Capped-read bounds are named limitations, never silent skips. The
         // recovery names the env knobs so operators can raise the bounds.
         limitations.extend(read_limits.iter().map(|limit| {
@@ -498,6 +549,27 @@ impl LanguageAdapter for TypeScriptAdapter {
                 .with_detail(format!(
                     "Workspace discovery stopped at the {}-entry visit cap ({TS_MAX_WORKSPACE_FILES_ENV}); discovered files are a partial set.",
                     ts_workspace_file_limit()
+                ))?,
+            );
+        }
+        if workspace_scan.skipped_links > 0 {
+            // Symlinks/junctions are not followed during discovery (#4104-D);
+            // disclose the count so link-hidden tests or sources are not
+            // silently invisible to the analysis.
+            let skipped_links = workspace_scan.skipped_links;
+            limitations.push(
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::LanguageScopeUnsupported,
+                    AnalysisStage::LanguageAdapter,
+                    AnalysisRecovery::new(
+                        AnalysisRecoveryKind::Retry,
+                        "Replace symlinked/junctioned paths with real files or directories (discovery does not follow links), then re-run the analysis.",
+                    )?,
+                )
+                .with_affected_items(u64::try_from(skipped_links).unwrap_or(u64::MAX))?
+                .with_detail(format!(
+                    "typescript_workspace_links_skipped: {skipped_links} symlink/junction entr{} not followed; tests or sources behind them are invisible to this analysis",
+                    if skipped_links == 1 { "y was" } else { "ies were" }
                 ))?,
             );
         }

@@ -92,7 +92,10 @@ struct GlobEntry {
 /// out-of-root/unresolved candidate) instead of a generic message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TsAliasUnresolveCause {
-    /// No alias map: opt-out flag, missing config, or unparseable config.
+    /// No alias map was even attempted: the opt-in flag is off. Every
+    /// flag-ON unavailability carries a typed `TsAliasMapLoadGap` instead,
+    /// so this cause never masks a parse failure behind "enable the flag"
+    /// advice (#4106-B).
     MapUnavailable,
     /// `baseUrl` is absolute or non-normal; resolution deliberately
     /// fail-closes (`typescript_base_url_absolute_unsupported`).
@@ -114,8 +117,8 @@ impl TsAliasUnresolveCause {
     pub(crate) fn parts(self) -> (&'static str, &'static str) {
         match self {
             Self::MapUnavailable => (
-                "no tsconfig.json/jsconfig.json alias map was available (opt-out flag, missing config, or unparseable config)",
-                "enable `[typescript] resolve_tsconfig_paths = true` with a parseable config for credit",
+                "alias resolution is not enabled (`[typescript] resolve_tsconfig_paths` is unset or false in ripr.toml)",
+                "set `[typescript] resolve_tsconfig_paths = true` for credit",
             ),
             Self::BaseUrlAbsolute => (
                 "compilerOptions.baseUrl is absolute or non-normal, so single-hop resolution fails closed rather than guessing an in-root anchor",
@@ -132,6 +135,107 @@ impl TsAliasUnresolveCause {
             Self::CandidateUnresolved => (
                 "the matched pattern's candidate did not resolve to exactly one in-root workspace file (zero or multiple files, an unsupported template, or an out-of-root candidate rejected before probing)",
                 "point the matched template at exactly one existing workspace file for credit",
+            ),
+        }
+    }
+}
+
+/// Why no alias map exists even though the opt-in flag is ON (#4106-B).
+///
+/// The flag-ON fail-closed paths used to collapse into the generic
+/// "no alias map was available — enable the flag" advice, which told the
+/// user to enable a flag that was already enabled and left the real cause
+/// (unparseable JSON / JSONC comments / unsupported `extends` / missing
+/// config / unreadable config) indistinguishable from an opt-out. This
+/// typed gap names the actual cause so the `typescript_path_alias_unresolved`
+/// advice is actionable.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum TsAliasMapLoadGap {
+    /// Neither `tsconfig.json` nor `jsconfig.json` exists at the root.
+    ConfigMissing,
+    /// A config file exists but the strict JSON parser rejected it.
+    /// `config` records which file was loaded (`tsconfig.json` or the
+    /// `jsconfig.json` fallback) so the advice names the real file;
+    /// `jsonc_comments` records whether comment syntax (which `tsc` accepts
+    /// but this strict parser does not) was detected outside string
+    /// literals; `detail` carries the bounded parser message.
+    ConfigUnparseable {
+        config: &'static str,
+        jsonc_comments: bool,
+        detail: String,
+    },
+    /// The config uses `extends`/`references`, which single-hop resolution
+    /// deliberately does not follow. `config` names the loaded file.
+    ExtendsUnsupported { config: &'static str },
+    /// The config parsed but has no `compilerOptions.baseUrl` to anchor
+    /// candidates. `config` names the loaded file.
+    IncompleteConfig { config: &'static str },
+    /// The config exists but could not be read (size cap or IO error); the
+    /// size-limit case is separately disclosed by the capped-read lane.
+    /// `config` names the loaded file.
+    ReadFailed { config: &'static str },
+}
+
+impl TsAliasMapLoadGap {
+    /// Typed cause phrase for the limitation's `why_not_actionable` text,
+    /// paired with a cause-specific recovery hint. The advice never asks
+    /// the user to enable the flag here: the flag is already ON whenever a
+    /// gap is produced. Both phrases name the config file that was actually
+    /// loaded (`tsconfig.json` or the `jsconfig.json` fallback), so advice
+    /// for a JavaScript-only project does not point at a file that does not
+    /// exist (review #4138).
+    pub(crate) fn parts(&self) -> (String, String) {
+        match self {
+            Self::ConfigMissing => (
+                "no tsconfig.json or jsconfig.json exists at the workspace root".to_string(),
+                "add a tsconfig.json with compilerOptions.baseUrl and compilerOptions.paths for credit"
+                    .to_string(),
+            ),
+            Self::ConfigUnparseable {
+                config,
+                jsonc_comments: true,
+                detail,
+            } => (
+                format!(
+                    "the {config} at the workspace root could not be parsed as strict JSON ({detail}); the file contains comment syntax (JSONC), which the strict parser rejects"
+                ),
+                format!(
+                    "rewrite {config} as strict JSON without comments for credit (tsc itself accepts JSONC; this adapter currently does not)"
+                ),
+            ),
+            Self::ConfigUnparseable {
+                config,
+                jsonc_comments: false,
+                detail,
+            } => (
+                format!(
+                    "the {config} at the workspace root could not be parsed as strict JSON ({detail})"
+                ),
+                format!(
+                    "fix the {config} JSON syntax for credit (JSONC comments and trailing commas are not supported)"
+                ),
+            ),
+            Self::ExtendsUnsupported { config } => (
+                format!(
+                    "the {config} at the workspace root uses `extends`/`references`, which single-hop alias resolution deliberately does not follow"
+                ),
+                format!(
+                    "inline the extended compilerOptions.paths into {config} for credit"
+                ),
+            ),
+            Self::IncompleteConfig { config } => (
+                format!(
+                    "the {config} at the workspace root parsed but has no compilerOptions.baseUrl to anchor alias candidates"
+                ),
+                format!(
+                    "add compilerOptions.baseUrl (and compilerOptions.paths) to {config} for credit"
+                ),
+            ),
+            Self::ReadFailed { config } => (
+                format!("the {config} at the workspace root exists but could not be read"),
+                format!(
+                    "restore read access to {config} (check permissions and encoding), then re-run the analysis"
+                ),
             ),
         }
     }
@@ -284,20 +388,24 @@ pub(crate) fn load_alias_map(root: &Path) -> Option<TsAliasMap> {
 }
 
 /// Like [`load_alias_map`], but also reports the config path and read error
-/// when reading the first existing config file fails.
+/// when reading the first existing config file fails, plus the typed reason
+/// no map exists when the fail-closed path fires (#4106-B).
 ///
-/// The error is preserved so `analyze_diff` can surface size-limit outcomes
-/// (`OverFileLimit` / `OverWorkspaceBudget`) as named limitations instead of
-/// failing silently closed. Plain IO failures stay in the second slot too;
-/// disclosure for those is owned by the read-error lane, which filters on
-/// `CappedReadError::is_size_limit`.
+/// The read error is preserved so `analyze_diff` can surface size-limit
+/// outcomes (`OverFileLimit` / `OverWorkspaceBudget`) as named limitations
+/// instead of failing silently closed. Plain IO failures stay in the second
+/// slot too; disclosure for those is owned by the read-error lane, which
+/// filters on `CappedReadError::is_size_limit`. The third slot carries the
+/// `TsAliasMapLoadGap` for every flag-ON unavailability so the alias-gap
+/// advice names the real cause instead of a generic "enable the flag".
 pub(crate) fn load_alias_map_with_read_error(
     root: &Path,
 ) -> (
     Option<TsAliasMap>,
     Option<(PathBuf, super::bounded_read::CappedReadError)>,
+    Option<TsAliasMapLoadGap>,
 ) {
-    for filename in &["tsconfig.json", "jsconfig.json"] {
+    for &filename in &["tsconfig.json", "jsconfig.json"] {
         let path = root.join(filename);
         if !path.is_file() {
             continue;
@@ -305,23 +413,70 @@ pub(crate) fn load_alias_map_with_read_error(
         // Capped read: a read failure fail-closes the alias map; size-limit
         // outcomes are disclosed by the caller through the second slot.
         return match read_config_capped(&path) {
-            Ok(text) => (parse_alias_map(root, &text), None),
-            Err(err) => (None, Some((path, err))),
+            Ok(text) => match parse_alias_map(root, &text) {
+                Ok(map) => (Some(map), None, None),
+                Err(blocker) => {
+                    let gap = match blocker {
+                        TsAliasMapBlocker::Unparseable {
+                            jsonc_comments,
+                            detail,
+                        } => TsAliasMapLoadGap::ConfigUnparseable {
+                            config: filename,
+                            jsonc_comments,
+                            detail,
+                        },
+                        TsAliasMapBlocker::ExtendsUnsupported => {
+                            TsAliasMapLoadGap::ExtendsUnsupported { config: filename }
+                        }
+                        TsAliasMapBlocker::IncompleteConfig => {
+                            TsAliasMapLoadGap::IncompleteConfig { config: filename }
+                        }
+                    };
+                    (None, None, Some(gap))
+                }
+            },
+            Err(err) => (
+                None,
+                Some((path, err)),
+                Some(TsAliasMapLoadGap::ReadFailed { config: filename }),
+            ),
         };
     }
-    (None, None)
+    (None, None, Some(TsAliasMapLoadGap::ConfigMissing))
 }
 
-fn parse_alias_map(root: &Path, text: &str) -> Option<TsAliasMap> {
-    let raw: RawTsConfig = serde_json::from_str(text).ok()?;
+/// Why the strict single-hop alias-map compiler refused a config that was
+/// read successfully. Internal to `parse_alias_map`; surfaced to callers as
+/// a `TsAliasMapLoadGap`.
+enum TsAliasMapBlocker {
+    Unparseable {
+        jsonc_comments: bool,
+        detail: String,
+    },
+    ExtendsUnsupported,
+    IncompleteConfig,
+}
+
+fn parse_alias_map(root: &Path, text: &str) -> Result<TsAliasMap, TsAliasMapBlocker> {
+    let raw: RawTsConfig = serde_json::from_str(text).map_err(|err| {
+        TsAliasMapBlocker::Unparseable {
+            jsonc_comments: text_has_jsonc_comment(text),
+            // Bound the parser message: it can quote long input spans.
+            detail: err.to_string().chars().take(160).collect(),
+        }
+    })?;
 
     // Fail-closed: if extends/references are present, do NOT follow them.
     if raw.extends.is_some() || raw.references.is_some() {
-        return None;
+        return Err(TsAliasMapBlocker::ExtendsUnsupported);
     }
 
-    let compiler_opts = raw.compiler_options?;
-    let base_url = compiler_opts.base_url?;
+    let compiler_opts = raw
+        .compiler_options
+        .ok_or(TsAliasMapBlocker::IncompleteConfig)?;
+    let base_url = compiler_opts
+        .base_url
+        .ok_or(TsAliasMapBlocker::IncompleteConfig)?;
     let paths = compiler_opts.paths.unwrap_or_default();
 
     // An absolute baseUrl (POSIX `/…`, drive-letter, or UNC) cannot be
@@ -362,7 +517,7 @@ fn parse_alias_map(root: &Path, text: &str) -> Option<TsAliasMap> {
         // Multi-`*` keys → silently skipped (fail-closed).
     }
 
-    Some(TsAliasMap {
+    Ok(TsAliasMap {
         root: root.to_path_buf(),
         base_url,
         base_url_absolute,
@@ -372,6 +527,41 @@ fn parse_alias_map(root: &Path, text: &str) -> Option<TsAliasMap> {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// `true` when `text` contains `//` or `/*` outside string literals — the
+/// JSONC comment syntax `tsc` accepts but the strict parser rejects. A
+/// conservative scanner: string state tracks backslash escapes; anything
+/// the scanner is unsure about stays `false` (the plain unparseable wording
+/// covers it).
+fn text_has_jsonc_comment(text: &str) -> bool {
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '/' => {
+                if matches!(chars.peek(), Some('/') | Some('*')) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
 
 /// `true` only when every component of `p` is a normal name or `.` — no
 /// `..`, no rooted component, no drive letter / UNC prefix. Joining such a

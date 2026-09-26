@@ -121,6 +121,173 @@ pub(crate) fn named_limitation_for_static_limit(
     }
 }
 
+/// Build the `typescript_owner_extraction_partial` named limitation from one
+/// concrete detected gap (`TypeScriptOwnerExtractionGap` produced by
+/// `owners::detect_owner_extraction_gap`).
+///
+/// CLASSIFICATION-NEUTRAL, additive disclosure only (#4104-A): the owner
+/// universe keeps exactly the owners the extractor supports; this limitation
+/// tells consumers that a changed line inside the disclosed shape produces
+/// NO finding, so a zero-finding `analysis_complete: true` result must not
+/// be read as "the changed behavior has no owning seam or no tests".
+pub(crate) fn owner_extraction_partial_limitation(
+    gap: &TypeScriptOwnerExtractionGap,
+) -> TypeScriptNamedLimitation {
+    TypeScriptNamedLimitation {
+        name: "typescript_owner_extraction_partial",
+        sample_source: format!("{}:{}", normalized_path(&gap.file), gap.sample_line),
+        why_not_actionable: format!(
+            "the changed file `{}` contains changed lines inside an owner shape the syntax-first extractor does not index ({shape}: `{snippet}`); those lines produce no finding, so a zero-finding complete result here can mean an unsupported owner shape rather than a seam the current tests discriminate",
+            normalized_path(&gap.file),
+            shape = gap.shape,
+            snippet = gap.snippet,
+        ),
+        repair_route: "analysis/typescript-owner-extraction-shapes",
+    }
+}
+
+/// Collect `typescript_relative_import_unresolved` limitations from tests
+/// whose RELATIVE import name-matches the owner but resolves to no workspace
+/// file (#4104-C).
+///
+/// Real producer: a renamed/moved module leaves the test's specifier pointing
+/// at nothing. The relation layer then correctly excludes the test
+/// (`owner_name_shadowed_by_unrelated_import` / no resolvable import), but
+/// nothing disclosed WHY, and the generic advice suggested "add trusted
+/// related-test matching" that effectively already exists. This limitation
+/// names the ghost import so `no_static_path` is known to be a possible
+/// false negative.
+///
+/// Fires when ALL hold for at least one import in an uncredited test:
+/// 1. The import source is RELATIVE (`./` or `../`).
+/// 2. The imported symbol name matches the owner name (default imports via
+///    the local binding name; namespace imports are skipped — they cannot
+///    pin a single name).
+/// 3. The specifier resolves to NO workspace file (no extension or
+///    `/index` variant exists under the resolved path).
+///
+/// CLASSIFICATION-NEUTRAL: it never flips `no_static_path`; it discloses
+/// why the trusted relation is missing.
+pub(crate) fn named_limitations_for_relative_import_unresolved(
+    owner: &TypeScriptOwner,
+    all_tests: &[TypeScriptTest],
+    owner_was_credited: impl Fn(&TypeScriptTest) -> bool,
+    workspace_root: &Path,
+) -> Vec<TypeScriptNamedLimitation> {
+    let mut limitations: Vec<TypeScriptNamedLimitation> = Vec::new();
+    for test in all_tests {
+        if !limitations.is_empty() {
+            break;
+        }
+        if owner_was_credited(test) {
+            // Already credited — no gap to disclose.
+            continue;
+        }
+        for import in &test.imports_in_file {
+            if !import.source.starts_with("./") && !import.source.starts_with("../") {
+                continue;
+            }
+            let name_matches = match &import.imported {
+                Some(name) if name == "default" => import.local == owner.name,
+                Some(name) => name == &owner.name,
+                // Namespace imports cannot pin a single owner name — skip.
+                None => false,
+            };
+            if !name_matches {
+                continue;
+            }
+            if relative_import_resolves_to_workspace_file(
+                workspace_root,
+                &test.file,
+                &import.source,
+            ) {
+                continue;
+            }
+            limitations.push(TypeScriptNamedLimitation {
+                name: "typescript_relative_import_unresolved",
+                sample_source: format!("{}:{}", normalized_path(&test.file), test.line),
+                why_not_actionable: format!(
+                    "test `{}` name-calls owner `{}` via relative specifier `{}`, which resolves to no workspace file (module renamed or moved without updating the import?); the test is therefore excluded from trusted relations, so `no_static_path` for this owner can be a false negative",
+                    test.name, owner.name, import.source
+                ),
+                repair_route: "analysis/typescript-relative-import-resolution",
+            });
+            break;
+        }
+    }
+    limitations
+}
+
+/// `true` when the relative specifier `source`, resolved against the test
+/// file's directory, hits an existing workspace source file — mirroring the
+/// module-extension conventions of the relation layer (explicit extension,
+/// extensionless, or `/index` variants).
+fn relative_import_resolves_to_workspace_file(
+    workspace_root: &Path,
+    test_file: &Path,
+    source: &str,
+) -> bool {
+    // Lexically normalize the joined path so `..` segments collapse before
+    // probing; the test file and specifier are workspace-relative strings.
+    // PathBuf accepts forward slashes in components on every platform.
+    let test_dir = test_file.parent().unwrap_or(Path::new(""));
+    let joined = test_dir.join(source);
+    let mut components: Vec<std::ffi::OsString> = Vec::new();
+    for component in joined.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                components.pop();
+            }
+            std::path::Component::CurDir => {}
+            std::path::Component::Normal(part) => components.push(part.to_os_string()),
+            // Rooted/prefix components cannot occur for workspace-relative
+            // test files; treat the candidate as unresolved (fail-closed).
+            _ => return true,
+        }
+    }
+    let base = components
+        .iter()
+        .fold(PathBuf::new(), |acc, part| acc.join(part));
+    // Forward-slash spelling: PathBuf accepts it on every platform and it
+    // keeps the candidate list separator-stable.
+    let base_str = base.to_string_lossy().replace('\\', "/");
+    let extensions = [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"];
+    let mut candidates: Vec<PathBuf> = vec![base.clone()];
+    for ext in extensions {
+        candidates.push(PathBuf::from(format!("{base_str}{ext}")));
+        candidates.push(PathBuf::from(format!("{base_str}/index{ext}")));
+    }
+    // TypeScript's JS-extension rewrite (moduleResolution node16/bundler):
+    // an ESM-style `./util.js` specifier may resolve to the `util.ts` /
+    // `util.tsx` source (`.mjs` -> `.mts`, `.cjs` -> `.cts`, `.jsx` ->
+    // `.tsx`). Rewritten candidates are APPENDED, never substituted: dotted
+    // module names that are not JS-extension spellings (e.g. `./bar.v2`)
+    // must keep resolving to `bar.v2.ts` by plain extension-append — a
+    // `Path::with_extension`-style replacement would turn `bar.v2` into
+    // `bar.ts` and resolve against an unrelated file (review #4138).
+    if let Some(name) = base
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        && let Some((stem, ext)) = name.rsplit_once('.')
+        && !stem.is_empty()
+    {
+        let rewrite_targets: &[&str] = match ext {
+            "js" => &["ts", "tsx"],
+            "jsx" => &["tsx"],
+            "mjs" => &["mts"],
+            "cjs" => &["cts"],
+            _ => &[],
+        };
+        let parent = base.parent().unwrap_or(Path::new(""));
+        for target in rewrite_targets {
+            candidates.push(parent.join(format!("{stem}.{target}")));
+        }
+    }
+    candidates
+        .iter()
+        .any(|candidate| workspace_root.join(candidate).is_file())
+}
+
 /// Collect `typescript_target_unresolved` limitations from tests that reference
 /// the owner by name but whose ownership cannot be resolved.
 ///
@@ -218,15 +385,23 @@ pub(crate) fn named_limitations_for_unresolved_ownership(
 /// there).
 ///
 /// `alias_map` carries the same map the resolver used (None when the opt-in
-/// flag is off); its typed `unresolve_cause_for` keeps the advice honest by
-/// naming the actual fail-closed cause (no map / absolute baseUrl / no
-/// patterns / unmatched pattern / unresolved candidate) instead of a
-/// generic message.
+/// flag is off OR the flag-ON load fail-closed); its typed
+/// `unresolve_cause_for` keeps the advice honest by naming the actual
+/// fail-closed cause (absolute baseUrl / no patterns / unmatched pattern /
+/// unresolved candidate) instead of a generic message.
+///
+/// `alias_unavailable` carries the typed flag-ON load gap (#4106-B): when the
+/// flag is on and the map is None, the advice names the REAL cause (missing
+/// config / unparseable JSON / JSONC comments / unsupported `extends` /
+/// unreadable config) instead of telling the user to enable a flag that is
+/// already enabled. A None map with a None gap means the flag is off — the
+/// only case where "enable the flag" advice is honest.
 pub(crate) fn named_limitations_for_alias_unresolved(
     owner: &TypeScriptOwner,
     all_tests: &[TypeScriptTest],
     owner_was_credited: impl Fn(&TypeScriptTest) -> bool,
     alias_map: Option<&TsAliasMap>,
+    alias_unavailable: Option<&TsAliasMapLoadGap>,
 ) -> Vec<TypeScriptNamedLimitation> {
     let mut limitations: Vec<TypeScriptNamedLimitation> = Vec::new();
     let mut saw = false;
@@ -272,11 +447,21 @@ pub(crate) fn named_limitations_for_alias_unresolved(
                 continue;
             }
             // This import is name-matched and non-relative and did not credit the owner.
-            let cause = match alias_map {
-                None => TsAliasUnresolveCause::MapUnavailable,
-                Some(map) => map.unresolve_cause_for(&import.source),
+            // Cause selection (#4106-B): a present map names its own fail-closed
+            // cause; an absent map is either flag-off (the only honest "enable
+            // the flag" case) or a typed flag-ON load gap naming the real
+            // config problem.
+            let (cause_text, recovery_hint) = match (alias_map, alias_unavailable) {
+                (Some(map), _) => {
+                    let (cause, hint) = map.unresolve_cause_for(&import.source).parts();
+                    (cause.to_string(), hint.to_string())
+                }
+                (None, Some(gap)) => gap.parts(),
+                (None, None) => {
+                    let (cause, hint) = TsAliasUnresolveCause::MapUnavailable.parts();
+                    (cause.to_string(), hint.to_string())
+                }
             };
-            let (cause_text, recovery_hint) = cause.parts();
             let sample_source = format!("{}:{}", normalized_path(&test.file), test.line);
             limitations.push(TypeScriptNamedLimitation {
                 name: "typescript_path_alias_unresolved",
