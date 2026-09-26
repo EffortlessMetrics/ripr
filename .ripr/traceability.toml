@@ -2171,6 +2171,11 @@ name = "TypeScript preview static facts"
 spec = "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md"
 tests = [
   "crates/ripr/src/analysis/language/typescript/mod.rs",
+  "crates/ripr/src/analysis/language/typescript/tests.rs::tests::analyze_diff_credits_cross_extension_related_test_oracle_for_mts_sources",
+  "crates/ripr/src/analysis/language/typescript/related_tests.rs::module_extension_tests",
+  "crates/ripr/src/analysis/language/typescript/related_tests.rs::module_extension_tests::strip_typescript_module_extension_covers_every_routed_suffix",
+  "crates/ripr/src/analysis/repair_route.rs::tests::modern_ts_related_tests_keep_the_repair_packet_fail_closed",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::navigation_only_external_target_labels_modern_ts_js_extensions",
   "crates/ripr/src/analysis/language/typescript/tests.rs::tests::extract_tests_records_safe_mock_payload_shapes",
   "crates/ripr/src/analysis/language/typescript/tests.rs::tests::extract_tests_keeps_ambiguous_mock_payload_shapes_unbounded",
   "crates/ripr/src/analysis/language/typescript/tests.rs::tests::typescript_preview_mock_payload_guidance_names_literal_payload_without_repair_packet",

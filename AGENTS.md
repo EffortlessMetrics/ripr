@@ -514,3 +514,8 @@ in `docs/ROADMAP.md` and `docs/IMPLEMENTATION_PLAN.md`; campaign history is in
 `.allow/spec-system/slices/`; specs and `.ripr/traceability.toml` connect claims,
 tests and code. Keep durable failure knowledge in `docs/LEARNINGS.md`. Do not
 resurrect deleted active-goal manifests or store global writer/lifecycle state.
+
+`check-traceability` validates authored mappings and registered paths; its pass
+does not enumerate newly added tests or prove `::symbol` identity. During review,
+map behavior-discriminating tests to the relevant spec and explain intentional
+omissions. Symbol/test-role verification remains owned by #2345.

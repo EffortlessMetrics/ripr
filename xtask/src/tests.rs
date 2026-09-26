@@ -28168,6 +28168,27 @@ fn traceability_failure_report_renders_recommended_fixes() -> Result<(), String>
 }
 
 #[test]
+fn traceability_pass_report_discloses_registered_only_scope() -> Result<(), String> {
+    with_temp_cwd("traceability-pass-scope-report", |_| {
+        finish_traceability_report(
+            &[],
+            &["RIPR-SPEC-0027 symbol suffix unverified".to_string()],
+        )?;
+        let report = fs::read_to_string("target/ripr/reports/traceability.md")
+            .map_err(|err| format!("read traceability pass report: {err}"))?;
+
+        assert!(report.contains("Status: pass"));
+        assert!(report.contains("## Scope of this result"));
+        assert!(report.contains("does not enumerate Rust tests"));
+        assert!(report.contains("does not require every newly added test"));
+        assert!(report.contains("a test role, ran, or establishes the behavior"));
+        assert!(report.contains("Advisories (non-blocking)"));
+        assert!(report.contains("symbol suffix unverified"));
+        Ok(())
+    })
+}
+
+#[test]
 fn spec_ids_in_text_extracts_four_digit_ids_only() {
     let ids = spec_ids_in_text(
         "RIPR-SPEC-0001 RIPR-SPEC-001 RIPR-SPEC-9999 RIPR-SPEC-abcd RIPR-SPEC-12345",

@@ -6508,6 +6508,14 @@ fn finish_traceability_report(violations: &[String], advisories: &[String]) -> R
          discoverable for long-context human and agent work.",
     );
     body.push_str("\n\n");
+    body.push_str("## Scope of this result\n\n");
+    body.push_str(
+        "A pass checks the authored `[[behavior]]` entries, spec coverage, fixture spec IDs, \
+         and the file paths named by registered references. It does not enumerate Rust tests. \
+         It does not require every newly added test to appear in `.ripr/traceability.toml`. \
+         A `::symbol` suffix remains advisory and is not proof that the symbol exists, has \
+         a test role, ran, or establishes the behavior (see #2345).\n\n",
+    );
 
     if violations.is_empty() {
         body.push_str("## Violations\n\nNone detected.\n\n");
