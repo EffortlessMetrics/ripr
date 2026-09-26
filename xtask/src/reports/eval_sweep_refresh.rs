@@ -980,6 +980,16 @@ fn corpus_selection_state(corpus: Option<&CorpusCounts>) -> &'static str {
 /// working set. Vendor classification precedes generated/test so a vendored
 /// generated file is counted once, as vendored.
 fn count_corpus(dir: &Path) -> CorpusCounts {
+    count_corpus_with_read_dir(dir, |path| std::fs::read_dir(path))
+}
+
+/// Keep the production directory reader as the default; injecting its exact
+/// failure boundary lets the test exercise a truncated walk on hosts whose
+/// ACLs cannot reliably deny directory enumeration (#3878).
+fn count_corpus_with_read_dir(
+    dir: &Path,
+    mut read_dir: impl FnMut(&Path) -> std::io::Result<std::fs::ReadDir>,
+) -> CorpusCounts {
     let mut counts = CorpusCounts {
         source_files: 0,
         test_files: 0,
@@ -991,7 +1001,7 @@ fn count_corpus(dir: &Path) -> CorpusCounts {
     let mut stack = vec![dir.to_path_buf()];
     let mut seen = 0usize;
     while let Some(current) = stack.pop() {
-        let entries = match std::fs::read_dir(&current) {
+        let entries = match read_dir(&current) {
             Ok(entries) => entries,
             // An unreadable subtree is a truncated walk, not a smaller
             // corpus: the selection state can never claim complete, and the
@@ -3196,8 +3206,9 @@ mod python_eval_sweep_refresh {
     /// (#3735 N3): the counts can never claim complete, so the row's
     /// corpus-selection state is `partial` (consistent with the working-set-
     /// cap rule) with the counts omitted, and the limitation names the failed
-    /// subtree for the execution receipt. Windows denies the listing with an
-    /// ACL; Unix removes the read permission.
+    /// subtree for the execution receipt. Injecting the read failure at the
+    /// actual walker boundary is deterministic across platforms: `icacls`
+    /// success does not mean the Windows runner lost enumeration access.
     #[test]
     fn unreadable_subtree_marks_corpus_selection_incomplete() -> Result<(), String> {
         let dir = temp_root("corpus-unreadable");
@@ -3210,63 +3221,27 @@ mod python_eval_sweep_refresh {
             .map_err(|error| error.to_string())?;
         let sealed = dir.join("sealed");
 
-        // Deny only the LISTING of `sealed/`: the walk still sees the
-        // directory (metadata stays readable), then cannot enumerate it.
-        #[cfg(windows)]
-        let denied: Result<(), String> = capture_output_with_timeout(
-            "icacls",
-            &[
-                sealed.to_string_lossy().to_string(),
-                "/deny".to_string(),
-                "*S-1-1-0:(OI)(CI)(RD)".to_string(),
-            ],
-            &[],
-            Duration::from_secs(30),
-            "python_eval_sweep_refresh test icacls deny",
-        )
-        .and_then(|output| {
-            if output.timed_out || !output.status.is_some_and(|status| status.success()) {
-                Err(format!(
-                    "icacls deny failed: {}",
-                    first_line(&output.stderr)
+        // A normal walk observes both files. The injected reader then denies
+        // only the sealed subtree, after the real parent listing discovered it.
+        let complete = count_corpus(&dir);
+        assert!(
+            complete.complete,
+            "the control walk must enumerate the fixture"
+        );
+        assert_eq!(complete.source_files, 2);
+        let mut denied_calls = 0;
+        let counts = count_corpus_with_read_dir(&dir, |current| {
+            if current == sealed.as_path() {
+                denied_calls += 1;
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "injected sealed subtree denial",
                 ))
             } else {
-                Ok(())
+                std::fs::read_dir(current)
             }
         });
-        #[cfg(unix)]
-        let denied: Result<(), String> = {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o000))
-                .map_err(|error| format!("chmod sealed: {error}"))
-        };
-        denied.map_err(|error| format!("deny the sealed subtree: {error}"))?;
-
-        let counts = count_corpus(&dir);
-
-        // Restore access BEFORE asserting, so cleanup cannot fail.
-        #[cfg(windows)]
-        {
-            if let Ok(_restored) = capture_output_with_timeout(
-                "icacls",
-                &[
-                    sealed.to_string_lossy().to_string(),
-                    "/remove:d".to_string(),
-                    "*S-1-1-0".to_string(),
-                ],
-                &[],
-                Duration::from_secs(30),
-                "python_eval_sweep_refresh test icacls restore",
-            ) {}
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Ok(()) =
-                std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o755))
-            {
-            }
-        }
+        assert_eq!(denied_calls, 1, "the walker must reach the denied subtree");
 
         assert!(
             !counts.complete,
@@ -3312,6 +3287,45 @@ mod python_eval_sweep_refresh {
         );
 
         super::discard_partial_dir(&dir);
+        Ok(())
+    }
+
+    /// On Unix, also retain a real filesystem control for permission-denied
+    /// directory enumeration. This test requires a process that cannot bypass
+    /// mode bits; otherwise it reports the unavailable precondition explicitly.
+    #[cfg(unix)]
+    #[test]
+    fn real_unreadable_subtree_marks_corpus_selection_incomplete() -> Result<(), String> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = temp_root("corpus-real-unreadable");
+        super::discard_partial_dir(&dir);
+        let sealed = dir.join("sealed");
+        std::fs::create_dir_all(&sealed).map_err(|error| error.to_string())?;
+        std::fs::write(sealed.join("hidden.py"), "x = 1\n").map_err(|error| error.to_string())?;
+        std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o000))
+            .map_err(|error| format!("chmod sealed: {error}"))?;
+
+        let listing_denied = std::fs::read_dir(&sealed).is_err();
+        let counts = if listing_denied {
+            Some(count_corpus(&dir))
+        } else {
+            None
+        };
+        std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o755))
+            .map_err(|error| format!("restore sealed permissions: {error}"))?;
+        super::discard_partial_dir(&dir);
+
+        let counts = counts.ok_or_else(|| {
+            "NOT_ESTABLISHED: this process can still list a mode-000 directory".to_string()
+        })?;
+        assert!(!counts.complete);
+        assert!(
+            counts
+                .limitation
+                .as_deref()
+                .is_some_and(|s| s.contains("sealed"))
+        );
         Ok(())
     }
 
