@@ -1,4 +1,4 @@
-# Server Binary Release
+# Server Binary Rehearsal
 
 The VS Code/Open VSX extension can self-provision only when GitHub Releases has
 native `ripr` server archives and a manifest.
@@ -11,13 +11,14 @@ Use:
 .github/workflows/release-server-binaries.yml
 ```
 
-Manual dispatch:
+Dispatch from the selected swarm branch:
 
 ```bash
-gh workflow run release-server-binaries.yml -f version=0.8.0
+gh workflow run release-server-binaries.yml --ref <candidate-branch> -f version=<candidate-package-version>
 ```
 
-The workflow builds:
+This read-only entrypoint calls `server-archive-qualification.yml` with the
+dispatch commit's exact SHA. It builds and verifies:
 
 ```text
 x86_64-pc-windows-msvc
@@ -26,6 +27,17 @@ aarch64-apple-darwin
 x86_64-unknown-linux-gnu
 aarch64-unknown-linux-gnu
 ```
+
+Download the `ripr-server-qualification-*` Actions artifacts to inspect all
+five archives, per-target checksums, manifest, `SHA256SUMS`, and the
+JSON/Markdown receipt. The machine-readable receipt records the exact swarm
+SHA, version, each target archive digest and resolved Rust/Cargo toolchain,
+plus the Cargo.lock, workflow, manifest, and `SHA256SUMS` digests for the
+source-repo handoff. Actions artifacts expire and are not public release
+assets. The prospective URLs in the rehearsal manifest name the swarm repo;
+the source release must generate its own manifest for its selected source
+commit and independently verify the promoted assets. Public release creation
+and asset upload belong only to `EffortlessMetrics/ripr`.
 
 ## Exact-candidate qualification (read-only)
 
@@ -61,9 +73,9 @@ diagnostics on every failure, then fail closed if the endpoint or shape is
 unavailable. Its only writes are scoped
 GitHub Actions artifacts containing the archives, manifest, checksums, and
 qualification receipt. An Actions artifact is rehearsal evidence, not a
-GitHub Release asset and not publication proof. The existing
-`release-server-binaries.yml` workflow remains the separate publication
-authority and must not be used as the qualification receipt.
+GitHub Release asset and not publication proof. The swarm
+`release-server-binaries.yml` entrypoint uses this same qualification receipt;
+the source repository's separate release workflow owns publication.
 
 
 Packaging and manifest assembly intentionally live in Rust-first automation:
@@ -71,13 +83,10 @@ Packaging and manifest assembly intentionally live in Rust-first automation:
 ```bash
 cargo xtask release-server-archive --version <VERSION> --target <target> --executable <ripr-or-ripr.exe> --archive <zip-or-tar.gz>
 cargo xtask release-server-manifest --version <VERSION> --repository <owner/repo>
-cargo xtask release-upload-assets --version <VERSION>
 ```
 
-The workflow should only orchestrate those commands instead of keeping archive,
-checksum, manifest, or upload branching logic in shell or PowerShell.
-
-and uploads these assets to the matching GitHub Release:
+The qualification workflow orchestrates packaging and checksums. A later,
+separately authorized source-repo release may publish assets named:
 
 ```text
 ripr-server-v<VERSION>-<target>.zip

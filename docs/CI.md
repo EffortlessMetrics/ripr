@@ -754,9 +754,10 @@ moving them onto the shared `sccache`/`/mnt/ci-cache` path used by
 `routed-rust.yml` is a tracked follow-up rather than part of this placement
 change.
 
-Release and publish workflows (`publish-extension.yml`,
-`release-server-binaries.yml`) and branch protection (`.github/settings.yml`)
-are intentionally out of scope for this placement change.
+Publication workflow `publish-extension.yml`, the read-only server-binary
+rehearsal `release-server-binaries.yml`, and branch protection
+(`.github/settings.yml`) are intentionally out of scope for this placement
+change. Public release publication belongs to `EffortlessMetrics/ripr`.
 
 ## SARIF and Policy Contract
 

@@ -1,93 +1,25 @@
-name: Release ripr Server Binaries
+# Swarm builds release-shaped assets for inspection. Public release authority
+# belongs to EffortlessMetrics/ripr; this workflow cannot publish assets.
+name: Rehearse ripr Server Binaries (read-only)
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version, for example 0.2.0 or v0.2.0"
+        description: "Archive version matching the selected commit, for example 0.11.0"
         required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
-    name: build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            executable: ripr.exe
-            archive: zip
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            executable: ripr
-            archive: tar.gz
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-24.04-arm
-            executable: ripr
-            archive: tar.gz
-          - target: x86_64-apple-darwin
-            os: macos-15-intel
-            executable: ripr
-            archive: tar.gz
-          - target: aarch64-apple-darwin
-            os: macos-15
-            executable: ripr
-            archive: tar.gz
-
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: stable
-          targets: ${{ matrix.target }}
-
-      - name: Build ripr
-        run: cargo build -p ripr --release --target ${{ matrix.target }}
-
-      - name: Package server archive
-        run: cargo xtask release-server-archive --version "${{ github.event.inputs.version || github.ref_name }}" --target "${{ matrix.target }}" --executable "${{ matrix.executable }}" --archive "${{ matrix.archive }}"
-
-      - name: Upload server artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ripr-server-${{ matrix.target }}
-          path: dist/*
-
-  manifest:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: stable
-
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          pattern: ripr-server-*
-          path: dist
-          merge-multiple: true
-
-      - name: Generate manifest and checksums
-        run: cargo xtask release-server-manifest --version "${{ github.event.inputs.version || github.ref_name }}" --repository "${{ github.repository }}"
-
-      - name: Upload release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: cargo xtask release-upload-assets --version "${{ github.event.inputs.version || github.ref_name }}"
-
-# Authority: this workflow is the SOURCE-REPO release authority.
-# It must NOT be tag-triggered in the swarm (ripr-swarm) repo.
-# The swarm repo's copy of this workflow is a read-only rehearsal
-# surface (#1882). Publication authority lives in
-# EffortlessMetrics/ripr, not here. The `push: tags: ["v*"]` trigger
-# was removed (#1882) because swarm-side v*-shaped tags must not
-# trigger a real publication.
+  rehearse:
+    # Qualification fetches the dispatch commit by exact SHA, builds all five
+    # targets, verifies checksums, and retains the asset family and SHA-bound
+    # promotion handoff as short-lived Actions artifacts.
+    uses: ./.github/workflows/server-archive-qualification.yml
+    with:
+      candidate_sha: ${{ github.sha }}
+      candidate_tag: ""
+      version: ${{ inputs.version }}

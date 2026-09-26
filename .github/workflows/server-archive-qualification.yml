@@ -16,6 +16,18 @@ on:
         description: "Archive version label, for example 0.11.0"
         required: true
         type: string
+  workflow_call:
+    inputs:
+      candidate_sha:
+        required: true
+        type: string
+      candidate_tag:
+        required: false
+        default: ""
+        type: string
+      version:
+        required: true
+        type: string
 
 # Qualification is intentionally unable to write releases, tags, or repository
 # contents. The only external writes are scoped Actions artifacts below.
@@ -270,6 +282,43 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+      - name: Record exact build inputs
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+          ARCHIVE: ${{ matrix.archive }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:QUALIFICATION_VERSION.TrimStart('v')
+          $archivePath = "dist/ripr-server-v$version-$env:TARGET.$env:ARCHIVE"
+          if (-not (Test-Path $archivePath)) { throw 'qualified archive missing' }
+          $rustcVersion = (& rustc -vV) -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw 'rustc identity unavailable' }
+          $cargoVersion = (& cargo -vV) -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw 'cargo identity unavailable' }
+          $head = (& git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($LASTEXITCODE -ne 0 -or $head -ne $env:CANDIDATE_SHA.ToLowerInvariant()) { throw 'build source SHA mismatch' }
+          New-Item -ItemType Directory -Force build-identity | Out-Null
+          [ordered]@{
+            target = $env:TARGET
+            candidate_sha = $head
+            version = $version
+            archive_file = [IO.Path]::GetFileName($archivePath)
+            archive_sha256 = (Get-FileHash -Algorithm SHA256 $archivePath).Hash.ToLowerInvariant()
+            cargo_lock_sha256 = (Get-FileHash -Algorithm SHA256 Cargo.lock).Hash.ToLowerInvariant()
+            qualification_workflow_sha256 = (Get-FileHash -Algorithm SHA256 .github/workflows/server-archive-qualification.yml).Hash.ToLowerInvariant()
+            rehearsal_workflow_sha256 = (Get-FileHash -Algorithm SHA256 .github/workflows/release-server-binaries.yml).Hash.ToLowerInvariant()
+            rustc_verbose_version = $rustcVersion
+            cargo_verbose_version = $cargoVersion
+          } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 "build-identity/$env:TARGET.json"
+
+      - name: Upload exact build identity
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ripr-server-build-identity-${{ matrix.target }}
+          path: build-identity/${{ matrix.target }}.json
+          if-no-files-found: error
+
   manifest:
     name: assemble qualification manifest
     needs: [build, verify-candidate]
@@ -293,6 +342,12 @@ jobs:
         with:
           pattern: ripr-server-qualification-*
           path: dist
+          merge-multiple: true
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: ripr-server-build-identity-*
+          path: build-identities
           merge-multiple: true
 
       - name: Generate manifest and checksums
@@ -345,6 +400,30 @@ jobs:
           set -euo pipefail
           (cd dist && sha256sum -c SHA256SUMS)
           version="${QUALIFICATION_VERSION#v}"
+          jq -s 'sort_by(.target)' build-identities/*.json > build-identities.json
+          test "$(find build-identities -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 5
+          jq -e \
+            --arg sha "${CANDIDATE_SHA,,}" \
+            --arg version "${version}" \
+            --arg lock "$(sha256sum Cargo.lock | cut -d ' ' -f 1)" \
+            --arg qualification "$(sha256sum .github/workflows/server-archive-qualification.yml | cut -d ' ' -f 1)" \
+            --arg rehearsal "$(sha256sum .github/workflows/release-server-binaries.yml | cut -d ' ' -f 1)" \
+            --slurpfile manifest "dist/ripr-server-manifest-v${version}.json" \
+            'length == 5 and
+             ([.[].target] == ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]) and
+             all(.[];
+               .candidate_sha == $sha and .version == $version and
+               .cargo_lock_sha256 == $lock and
+               .qualification_workflow_sha256 == $qualification and
+               .rehearsal_workflow_sha256 == $rehearsal and
+               (.rustc_verbose_version | length > 0) and
+               (.cargo_verbose_version | length > 0) and
+               (.archive_sha256 == $manifest[0].assets[.target].sha256) and
+               (.archive_file == ("ripr-server-v" + $version + "-" + .target +
+                 (if .target == "x86_64-pc-windows-msvc" then ".zip" else ".tar.gz" end))))' \
+            build-identities.json >/dev/null
+          manifest_sha256="$(sha256sum "dist/ripr-server-manifest-v${version}.json" | cut -d ' ' -f 1)"
+          checksums_sha256="$(sha256sum dist/SHA256SUMS | cut -d ' ' -f 1)"
           jq -n \
             --arg candidate_sha "${CANDIDATE_SHA}" \
             --arg candidate_tag "${CANDIDATE_TAG}" \
@@ -354,8 +433,11 @@ jobs:
             --arg ruleset_source_url "${RULESET_SOURCE_URL}" \
             --arg ruleset_response_sha256 "${RULESET_RESPONSE_SHA256}" \
             --arg ruleset_id "${RULESET_ID}" \
+            --arg manifest_sha256 "${manifest_sha256}" \
+            --arg checksums_sha256 "${checksums_sha256}" \
+            --slurpfile build_identities build-identities.json \
             --argjson targets '["x86_64-pc-windows-msvc","x86_64-unknown-linux-gnu","aarch64-unknown-linux-gnu","x86_64-apple-darwin","aarch64-apple-darwin"]' \
-            '{schema_version: 1, status: "qualified_archive_shape", candidate_sha: $candidate_sha, candidate_tag: $candidate_tag, version: $version, targets: $targets, ruleset: {mode: $ruleset_mode, source_url: $ruleset_source_url, response_sha256: $ruleset_response_sha256, repository: $repository, id: $ruleset_id}, actions_artifacts_only: true, release_assets_created: false, repository_contents_written: false, secrets_required: false, limitations: ["Actions artifact retention is not a public release", "Manifest URLs are prospective and were not fetched"]}' \
+            '{schema_version: 2, status: "qualified_archive_shape", candidate_sha: $candidate_sha, candidate_tag: $candidate_tag, version: $version, targets: $targets, build_identities: $build_identities[0], manifest_sha256: $manifest_sha256, sha256sums_sha256: $checksums_sha256, ruleset: {mode: $ruleset_mode, source_url: $ruleset_source_url, response_sha256: $ruleset_response_sha256, repository: $repository, id: $ruleset_id}, actions_artifacts_only: true, release_assets_created: false, repository_contents_written: false, secrets_required: false, limitations: ["Actions artifact retention is not a public release", "Manifest URLs are prospective and were not fetched"]}' \
             > dist/server-archive-qualification-receipt.json
           {
             echo "# Server archive qualification receipt"
@@ -364,6 +446,9 @@ jobs:
             echo "- candidate tag: ${CANDIDATE_TAG:-none supplied}"
             echo "- version: ${version}"
             echo "- targets: five supported server targets"
+            echo "- per-target build inputs and archive digests: recorded in JSON receipt"
+            echo "- manifest SHA256: ${manifest_sha256}"
+            echo "- SHA256SUMS SHA256: ${checksums_sha256}"
             echo "- ruleset mode: ${RULESET_MODE}"
             echo "- ruleset source: ${RULESET_SOURCE_URL}"
             echo "- ruleset response SHA256: ${RULESET_RESPONSE_SHA256}"

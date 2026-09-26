@@ -374,12 +374,12 @@ existing GitHub Release rather than replacing it.
    and fixes only the broken path. Merge it.
 2. Rerun the failed workflow via `workflow_dispatch` with the same
    `version` input as the tag, for example
-   `gh workflow run release-server-binaries.yml -f version=0.8.0`. The
+   `gh workflow run release-server-binaries.yml --repo EffortlessMetrics/ripr -f version=0.8.0`. The
    asset names continue to use the original version, so they overlay
    correctly on the existing Release.
 3. After server assets are present and verified, rerun any downstream
    workflow that was gated on them, for example
-   `gh workflow run publish-extension.yml -f version=0.8.0`.
+   `gh workflow run publish-extension.yml --repo EffortlessMetrics/ripr -f version=0.8.0`.
 4. Do not retag and do not delete the GitHub Release. Leave the tag at
    the release-prep commit; the fix-forward commit is on `main` and any
    subsequent point release will include it.

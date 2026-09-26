@@ -9334,6 +9334,49 @@ jobs:
 }
 
 #[test]
+fn swarm_server_binary_rehearsal_cannot_publish() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "xtask manifest should have a repository parent".to_string())?;
+    let path = root.join(".github/workflows/release-server-binaries.yml");
+    let workflow = fs::read_to_string(&path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let validate = |candidate: &str| -> Result<(), String> {
+        if !candidate.contains("permissions:\n  contents: read")
+            || !candidate.contains("uses: ./.github/workflows/server-archive-qualification.yml")
+            || !candidate.contains("candidate_sha: ${{ github.sha }}")
+            || !candidate.contains("version: ${{ inputs.version }}")
+            || candidate.contains("contents: write")
+            || candidate.contains("release-upload-assets")
+            || candidate.contains("gh release")
+            || candidate.contains("GH_TOKEN")
+            || candidate.contains("github.token")
+            || candidate.contains("secrets.")
+            || candidate.contains("run:")
+            || candidate.contains("steps:")
+            || candidate.contains("push:")
+        {
+            return Err("swarm server-binary entrypoint must delegate exact-SHA read-only qualification without a publication path".to_string());
+        }
+        Ok(())
+    };
+    validate(&workflow)?;
+    for broken in [
+        workflow.replace("contents: read", "contents: write"),
+        format!("{workflow}\n# release-upload-assets"),
+        workflow.replace(
+            "candidate_sha: ${{ github.sha }}",
+            "candidate_sha: ${{ github.ref }}",
+        ),
+    ] {
+        if validate(&broken).is_ok() {
+            return Err("rehearsal publication negative control was accepted".to_string());
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> Result<(), String> {
     const QUALIFICATION_COMMIT_TYPE_COMMAND: &str = r#"git -C "${GITHUB_WORKSPACE}" cat-file -t"#;
     let workflow_path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -9423,11 +9466,11 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
         if candidate
             .matches("actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a")
             .count()
-            != 2
+            != 3
             || candidate
                 .matches("actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c")
                 .count()
-                != 1
+                != 2
             || candidate.contains("release-upload-assets")
             || candidate.contains("gh release")
             || candidate.contains("gh api")
@@ -28700,7 +28743,7 @@ fn command_catalog_pins_ci_enforced_classification() -> Result<(), String> {
     assert!(ci_enforced("check-static-language")?);
     assert!(ci_enforced("goldens check")?);
     assert!(ci_enforced("check-doc-index")?);
-    assert!(ci_enforced("release-upload-assets --version <version>")?);
+    assert!(!ci_enforced("release-upload-assets --version <version>")?);
     assert!(ci_enforced("release-readiness --version <version>")?);
     // Issue #2258: the routed-rust lanes invoke `cargo xtask precommit` as the
     // shared required gate table, so precommit and every gate it runs are

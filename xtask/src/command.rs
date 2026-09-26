@@ -1175,8 +1175,8 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "external_state_mutating",
             "GitHub release assets",
             true,
-            true,
-            "Uploads release assets; requires explicit release approval.",
+            false,
+            "Source-repo release command; uploads assets only with explicit release approval.",
         ),
         command_entry(
             "targeted-test-outcome --before <path> --after <path>",
