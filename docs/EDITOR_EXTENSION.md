@@ -1,6 +1,78 @@
 # Editor Extension
 
-The VS Code extension is a separate artifact from the Rust crate.
+Use the RIPR extension in VS Code to inspect saved-workspace changes, understand
+one focused test gap or named limitation, and copy a bounded next action. The
+extension presents static evidence; it does not edit source, generate tests, run
+mutation testing, execute project verification, or make merge decisions.
+
+## Install
+
+For an ordinary editor install, use either public extension registry:
+
+- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr): install `EffortlessMetrics.ripr`.
+- [Open VSX](https://open-vsx.org/extension/EffortlessMetrics/ripr): install `EffortlessMetrics.ripr`.
+
+The released extension normally resolves a matching server without a separate
+`cargo install ripr` step. A local VSIX can be built and installed for
+source-development smoke testing; offline, pinned, and controlled server paths
+remain available under [Package and server details](#package-and-server-details).
+
+## First Useful Editor Path
+
+1. Install the extension and open the repository workspace.
+2. Save the files you want RIPR to analyze. The current model analyzes saved
+   workspace state, not unsaved editor buffers.
+3. Run `ripr: Show Status`. It names the selected workspace root, server source,
+   analysis state, enabled languages, and the next safe action.
+4. Let analysis refresh, or run `ripr: Refresh Diagnostics`. Use
+   `ripr: Restart Server` after changing server or startup settings.
+5. Open Problems and hover a RIPR diagnostic to inspect the changed behavior,
+   related test, missing discriminator, or static limitation.
+6. Use the bounded action that is actually offered: open the best related test,
+   copy a targeted-test brief or repair packet, copy verification/receipt
+   guidance, or refresh/diagnose setup when no repair is safe.
+7. Make the focused test or fixture edit yourself, run the repository's normal
+   verification outside the extension, and retain any RIPR before/after receipt
+   separately from the project test result.
+
+The useful result is not always a repair command. Status may report:
+
+- one current actionable gap;
+- no focused test gap found under the available evidence;
+- stale analysis because a relevant buffer has unsaved edits;
+- a limited or preview-language result with a named static boundary;
+- an unavailable or failed server/analysis state with a recovery action; or
+- a wrong-root, malformed, or stale artifact that was refused.
+
+An empty Problems panel is not proof that testing is complete. Read
+`ripr: Show Status` before interpreting absence as a clean result.
+
+### Trust Boundary
+
+Editor diagnostics and actions are advisory, saved-workspace static evidence.
+They do not grant source-edit authority, execute a copied command, run mutants,
+establish runtime test adequacy, choose a gate result, or approve a merge.
+TypeScript, JavaScript, and Python remain preview surfaces within their
+published limits; an installed adapter does not imply Rust parity.
+
+For the shortest install-to-first-PR walkthrough, see
+[Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md). For the local
+install-to-receipt loop, see
+[Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md). For
+the local actionable queue, current repair packet, and repo map, see
+[Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md). For
+the handoff from receipt to `start-here` packet, see
+[Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md). For
+the diagnostic-to-gap-state repair loop, see
+[Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md). For the older
+saved-workspace seam walkthrough, see
+[Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md). For the plain-language
+to internal vocabulary bridge, see [Terminology](TERMINOLOGY.md). For
+preview-language static-limit labels, see [Static limits](STATIC_LIMITS.md).
+
+## Package and Server Details
+
+The VS Code extension is a separate artifact from the Rust crate:
 
 ```text
 Rust crate:
@@ -13,8 +85,13 @@ Open VSX extension:
   EffortlessMetrics.ripr
 ```
 
-The extension is a universal VSIX preview client. It resolves the
-server in this order:
+The extension is a universal VSIX preview client. It does not yet publish
+platform-specific VSIXs with bundled native binaries.
+
+### Server Resolution
+
+On activation, the extension resolves the server in this order and records the
+selected source in the `ripr` output channel:
 
 ```text
 1. ripr.server.path
@@ -25,9 +102,20 @@ server in this order:
 6. actionable error
 ```
 
-It does not yet publish platform-specific VSIXs with bundled native binaries.
+Normal Marketplace and Open VSX installs should not require Cargo. For offline,
+pinned, or controlled environments, manual installation remains available:
 
-## Location
+```bash
+cargo install ripr
+```
+
+Set `ripr.server.path` when the server should come from an explicit executable.
+A source-built extension needs a compatible source-built or explicitly pinned
+server; do not assume an unreleased matching server is publicly downloadable.
+
+### Source Location and Local VSIX
+
+The extension source lives at:
 
 ```text
 editors/vscode/
@@ -36,29 +124,11 @@ editors/vscode/
 This directory is intentionally outside the Cargo workspace. It is a Node/VS
 Code extension package, not a Rust package.
 
-## Requirements
+For a local VSIX smoke, run `npm run package`, then install
+`editors/vscode/dist/ripr-VERSION.vsix`, replacing `VERSION` with the package
+version.
 
-The extension can provision the matching server automatically. Manual install is
-still supported for offline or controlled environments:
-
-```bash
-cargo install ripr
-```
-
-## Install Paths
-
-Normal editor installs should not require a separate `cargo install ripr` step.
-Use one of these surfaces:
-
-- VS Code Marketplace: install `EffortlessMetrics.ripr`.
-- Open VSX: install `EffortlessMetrics.ripr`.
-- Local VSIX smoke: run `npm run package`, then install
-  `editors/vscode/dist/ripr-VERSION.vsix` (replace `VERSION` with the release version).
-
-On activation, the extension resolves a configured, bundled, cached,
-downloaded, or PATH server and writes the selected source to the `ripr` output
-channel. `cargo install ripr` remains the manual fallback for offline, pinned,
-or controlled environments.
+### Managed Download Integrity
 
 Managed downloads are admitted to the cache only after a unique sibling
 staging directory has passed manifest-version, archive-digest, executable
@@ -71,49 +141,6 @@ version does not disturb an already completed prior version.
 The receipt records local installation integrity; it is not a release
 provenance attestation. Producer-owned provenance verification remains a
 separate supply-chain boundary.
-
-## First Use
-
-The editor path should not require report-format knowledge:
-
-1. Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX.
-2. Open a Rust/Cargo workspace, a Python-shaped workspace (Python preview is
-   detected automatically when no `ripr.toml` exists), or a workspace with
-   TypeScript or JavaScript preview enabled in `ripr.toml`.
-3. Check the `ripr` status bar item for server state, workspace state,
-   analysis progress, stale analysis, analysis failure, recommended next
-   action, or "no focused test gap found." (Internal status IDs such as
-   `no_actionable_seam` and `first_useful_action` remain stable in the JSON
-   contract.)
-4. Let the saved-workspace analysis refresh, or run `ripr: Refresh Diagnostics`
-   (use `ripr: Restart Server` after server or setting changes).
-5. Open the Problems panel and hover a ripr-flagged change to inspect evidence.
-6. Use `Copy Current Repair Packet`, `Copy Repo Gap Map`,
-   `Copy Targeted Test Brief`, the agent copy commands, or
-   `Open Best Related Test`.
-7. Add one focused test and verify with the copied command chain or the CI
-   artifact packet.
-
-The extension owns normal first-run server provisioning. A separate
-`cargo install ripr` remains a fallback for offline, pinned, or controlled
-environments.
-
-For the shortest install-to-first-pr walkthrough, see
-[Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md). For the local
-install-to-receipt loop, see
-[Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md). For
-the local actionable queue, current repair packet, and repo map, see
-[Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md). For
-the handoff from receipt to `start-here` packet, see
-[Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md). For
-the local repair loop from diagnostic to gap state, bounded action, verify,
-receipt, and refresh, see
-[Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md). For the older
-saved-workspace seam walkthrough, see
-[Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md). For the plain-language
-to internal vocabulary bridge (seam, discriminator, grip, canonical gap, etc.),
-see [Terminology](TERMINOLOGY.md). For preview-language static-limit labels,
-see [Static limits](STATIC_LIMITS.md).
 
 ## Settings
 
