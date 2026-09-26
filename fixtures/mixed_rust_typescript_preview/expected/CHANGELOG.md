@@ -407,3 +407,27 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — mixed_rust_typescript_preview (4)
+
+Reason:
+RIPR-SPEC-0027: the #4103 relation-anchor gate holds tests that only token-call the owner (no import/declaration anchor, mock/spy-only observation, or off-position boundary literal) at weakly_exposed with the missing anchor disclosed, instead of exposed; the fixture's assertion shape is one of the audited anchor-gate classes and its evidence lines are unchanged
+
+Command:
+`cargo xtask goldens bless mixed_rust_typescript_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — mixed_rust_typescript_preview (5)
+
+Reason:
+RIPR-SPEC-0027: oracle classification is independent of relation credit - the unanchored bare owner call still classifies its exact-value assertion (exact_value/strong) and the recommendation names the missing proof; exposure stays weakly_exposed under the #4103 anchor gate
+
+Command:
+`cargo xtask goldens bless mixed_rust_typescript_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

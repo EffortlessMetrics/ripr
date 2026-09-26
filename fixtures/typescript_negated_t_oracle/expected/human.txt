@@ -18,11 +18,11 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if (amount >= threshold) {
-  Missing discriminator: Related test reaches `applyDiscount` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or …
+  Missing discriminator: Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/discount.test.ts:1 discounted value is not the full amount
   Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, an…
   Evidence:
-    - reach yes: 2 related test(s) found for owner `applyDiscount`
+    - reach weak: 2 related test(s) found for owner `applyDiscount`
     - infection unknown: TypeScript preview adapter does not yet model infection.
     - 5 more evidence line(s) hidden
 

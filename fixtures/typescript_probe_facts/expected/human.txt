@@ -18,11 +18,11 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: const total = applyDiscount(amount, threshold);
-  Missing discriminator: Related test reaches `summarize` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repa…
+  Missing discriminator: Only heuristic TypeScript test links were found for `summarize`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/ambiguous.test.ts:1 summarize smoke
-  Next step: TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is emi…
+  Next step: TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.
   Evidence:
-    - reach yes: 1 related test(s) found for owner `summarize`
+    - reach weak: 1 related test(s) found for owner `summarize`
     - infection unknown: TypeScript preview adapter does not yet model infection.
     - 4 more evidence line(s) hidden
 

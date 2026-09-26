@@ -3,7 +3,7 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/javascript_jsx_preview/input",
-  "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"javascript","files":1},{"language":"rust","files":0}]},
+  "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"javascript","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
     "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:11beabd80cc76d54a8ead0c8d1da81e1ae1bab79b7c9b311315bfc32ce5aa255","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
@@ -11,9 +11,9 @@
   "findings": [
     {
       "id": "probe:src_price-label.jsx:typescript_preview:bf103b81",
-      "classification": "exposed",
+      "classification": "weakly_exposed",
       "severity": "warning",
-      "confidence": 0.60,
+      "confidence": 0.40,
       "probe": {
         "id": "probe:src_price-label.jsx:typescript_preview:bf103b81",
         "family": "predicate",
@@ -24,28 +24,38 @@
         "owner": "javascript:src/price-label.jsx::PriceLabel"
        },
       "ripr": {
-        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `PriceLabel`"},
+        "reach": {"state":"weak","confidence":"low","summary":"1 related test(s) found for owner `PriceLabel`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
-        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted oracle kind: `exact_value` (rank 5)"},
-        "discriminate": {"state":"yes","confidence":"low","summary":"Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter: strong oracle found but no strong assertion observes an owner call at the changed predicate boundary; missing proof: `amount == threshold`."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `PriceLabel`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/price-label.test.jsx:1 renders discounted price uses strong exact value oracle: expect(...).toEqual(...)"],
+      "evidence_path": ["reach weak: 1 related test(s) found for owner `PriceLabel`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator weak: TypeScript preview adapter: strong oracle found but no strong assertion observes an owner call at the changed predicate boundary; missing proof: `amount == threshold`.", "related test tests/price-label.test.jsx:1 renders discounted price uses strong exact value oracle: expect(...).toEqual(...)", "missing discriminator amount == threshold: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: PriceLabel", "typescript_limitation: typescript_dynamic_assertion_unresolved", "typescript_limitation_sample: typescript_dynamic_assertion_unresolved at tests/price-label.test.jsx:2", "typescript_limitation_why: typescript_dynamic_assertion_unresolved — the matcher `.toEqual(...)` receives a non-literal dynamic argument; the adapter cannot statically resolve the expected value and cannot confirm the discriminator pins the changed behavior", "typescript_limitation_repair_route: typescript_dynamic_assertion_unresolved → analysis/typescript-dynamic-assertion-resolution", "typescript_oracle_observed: PriceLabel({ amount: 100, threshold: 100 })", "typescript_oracle_confidence: medium", "typescript_oracle_evidence_ref: tests/price-label.test.jsx:2", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/price-label.jsx;line=2;kind=typescript_preview_probe;source_id=probe:src_price-label.jsx:typescript_preview:bf103b81;owner=PriceLabel", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
-      "missing": ["Related test reaches `PriceLabel` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
+      "evidence": ["owner: PriceLabel", "missing_discriminator: amount == threshold", "typescript_oracle_observed: PriceLabel({ amount: 100, threshold: 100 })", "typescript_oracle_confidence: medium", "typescript_oracle_evidence_ref: tests/price-label.test.jsx:2", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/price-label.jsx;line=2;kind=typescript_preview_probe;source_id=probe:src_price-label.jsx:typescript_preview:bf103b81;owner=PriceLabel", "related_test_relation: same_file_proximity (renders discounted price)", "related_test_uncertain: same_file_proximity (renders discounted price)", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["Only heuristic TypeScript test links were found for `PriceLabel`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
       "assertion_texts": {
       },
       "activation": {
         "observed_values": [
         ],
         "missing_discriminators": [
+          {
+            "value": "amount == threshold",
+            "reason": "changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator",
+            "flow_sink": null
+          }
         ]
       },
       "observed_values": [
       ],
       "missing_discriminators": [
+        {
+          "value": "amount == threshold",
+          "reason": "changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator",
+          "flow_sink": null
+        }
       ],
       "related_tests_total": 1,
       "related_tests": [
@@ -55,9 +65,7 @@
           "line": 1,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "expect(...).toEqual(...)",
-          "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "oracle": "expect(...).toEqual(...)"
         }
       ],
       "typescript_preview_card": {
@@ -72,7 +80,7 @@
           "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
           "This card is advisory and is not a repair packet."
         ],
-        "missing_discriminator": null,
+        "missing_discriminator": "amount == threshold",
         "oracle_kind": "exact_value",
         "oracle_strength": "strong",
         "owner": "PriceLabel",
@@ -84,21 +92,31 @@
           "name": "renders discounted price"
         },
         "repair_packet_ready": false,
-        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
         "source": "check_typescript_preview",
         "static_limits": [],
         "suggested_assertion_shape": "Exact-value evidence is present; verify it targets the changed discriminator.",
         "verify": {
           "command": null
         },
-        "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
       },
       "preview_actionability": {
-        "actionability_category": "strong_oracle_observed",
+        "actionability_category": "incomplete_repair_packet",
         "authority_boundary": "preview_advisory_only",
-        "evidence_needed_to_promote": "none for a repair packet; retain strong related-test evidence as non-actionable context",
-        "gap_state": "already_observed",
-        "missing_actionability_fields": [],
+        "evidence_needed_to_promote": "canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints",
+        "gap_state": "advisory",
+        "missing_actionability_fields": [
+          "canonical_gap_id",
+          "repair_kind",
+          "target_test_shape",
+          "related_test_or_observer",
+          "verify_command",
+          "receipt_command",
+          "must_not_change",
+          "allowed_edit_surface",
+          "raw_evidence_refs"
+        ],
         "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
@@ -113,15 +131,15 @@
           }
         ],
         "repair_packet_ready": false,
-        "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
         "unlock_condition": null,
-        "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted"
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
       },
       "stop_reasons": [],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
-      "suggested_next_action": "TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "recommended_next_step": "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
+      "suggested_next_action": "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
       "language": "javascript",
       "language_status": "preview",
       "owner_kind": "component",

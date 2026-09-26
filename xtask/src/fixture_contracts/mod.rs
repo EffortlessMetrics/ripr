@@ -1745,7 +1745,7 @@ pub(crate) const TYPESCRIPT_PREVIEW_REPAIR_LOOP_REQUIRED_CASES: &[(&str, &str)] 
     ),
     (
         "javascript_already_observed_unchanged",
-        "already_observed_unchanged",
+        "unanchored_relation_holds_advisory",
     ),
     ("typescript_complete_boundary_packet_closed", "resolved"),
 ];

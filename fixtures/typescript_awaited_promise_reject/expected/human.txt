@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/typescript_awaited_promise_reject/input
 
-Summary: 2 probe(s), 1 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
 
 Changed file(s) by language: rust: 0, typescript: 1.
 
@@ -18,11 +18,11 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return await Promise.reject(new Error("missing id"));
-  Missing discriminator: Related test reaches `loadProfile` with broad error evidence; keep it weak until TypeScript preview can establish the thrown or rejected payload and emit a bounded error-path repai…
+  Missing discriminator: Only heuristic TypeScript test links were found for `loadProfile`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/profile.test.ts:1 rejects missing profile id broadly
   Next step: TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching "missing id"`; add an exact payload to `toThrow` (string, object,…
   Evidence:
-    - reach yes: 1 related test(s) found for owner `loadProfile`
+    - reach weak: 1 related test(s) found for owner `loadProfile`
     - infection unknown: TypeScript preview adapter does not yet model infection.
     - 5 more evidence line(s) hidden
 

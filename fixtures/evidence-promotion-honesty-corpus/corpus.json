@@ -552,10 +552,15 @@
       "language": "typescript",
       "tier": "pure",
       "source_fixture": "fixtures/typescript_strong_oracle",
-      "vector": "strong_exact_value_oracle_still_exposed",
-      "control": "must_stay_exposed",
+      "vector": "strong_exact_value_oracle_with_unanchored_relation_stays_weakly_exposed",
+      "reason": "#4103 relation-anchor gate: the fixture test bare-calls applyDiscount with no import/declaration anchor, so the strong exact-value oracle no longer promotes and the finding holds at weakly_exposed with the relation disclosed heuristic-only. Oracle classification stays independent of relation credit (exact_value/strong asserted). The TypeScript must_promote controls remain ts_ava_t_is_exact_value, ts_tape_equal_exact_value, and ts_same_method_owner_identity_positive_control, whose tests are import-anchored.",
       "assertions": [
-        { "type": "must_promote" }
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
       ]
     },
     {
@@ -1478,6 +1483,39 @@
         { "type": "must_not_promote" },
         { "type": "expected_finding_count", "count": 2 },
         { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_predicate_boundary_dead_argument",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/ts_predicate_boundary_overcredit",
+      "vector": "predicate_boundary_literal_in_dead_argument_position_not_witnessed",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "ts_domock_relation_gate",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/ts_domock_relation_gate",
+      "vector": "domock_hoisted_registration_treated_as_owner_module_mock",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_emit_limitation", "expected_limit_kind": "mocked_module" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
         { "type": "maximum_class", "class": "weakly_exposed" }
       ]
     }

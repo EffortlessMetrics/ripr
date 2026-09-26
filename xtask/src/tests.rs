@@ -19330,7 +19330,11 @@ fn dogfood_language_preview_run_checks_static_limit_receipt() -> Result<(), Stri
         assert_eq!(run.preview_findings, 1);
         assert_eq!(run.missing_preview_status, 0);
         assert_eq!(run.related_tests, 1);
-        assert_eq!(run.classifications, vec!["exposed".to_string()]);
+        // The #4103/#4102 relation gates hold a vi.mock'd owner module at
+        // weakly_exposed with the mocked_module limit disclosed: the mocked
+        // observation cannot witness the real changed sink. The fixture
+        // goldens were blessed for exactly this classification.
+        assert_eq!(run.classifications, vec!["weakly_exposed".to_string()]);
         assert_eq!(run.static_limit_kinds, vec!["mocked_module".to_string()]);
         assert!(run.json_path.exists());
         assert!(run.human_path.exists());

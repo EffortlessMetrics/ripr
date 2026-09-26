@@ -541,17 +541,17 @@
       "source_finding_id": "probe:src_pricing.ts:typescript_preview:0335115b",
       "language": "typescript",
       "language_status": "preview",
-      "risk_class": "exposed finding coexisting with a named oracle limitation",
+      "risk_class": "strong exact oracle with a dynamically resolved expected side held at weakly_exposed",
       "evidence_kind": "named_oracle_limitation",
       "oracle_kind": "exact_value",
-      "gap_state": "already_observed",
-      "actionability_category": "strong_oracle_observed",
+      "gap_state": "advisory",
+      "actionability_category": "incomplete_repair_packet",
       "static_limit_kind": null,
       "disposition": "candidate_future_support",
       "repair_packet_ready": false,
       "authority_boundary": "preview_advisory_only",
-      "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted",
-      "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
+      "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract",
+      "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
       "future_support": "dynamic-argument resolution must bind the non-literal matcher argument to a concrete expected value before the named limitation can clear",
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "typescript_limitation: typescript_dynamic_assertion_unresolved",
@@ -570,7 +570,7 @@
         "no RIPR Zero authority",
         "no support-tier promotion"
       ],
-      "reason": "An exposed classification may coexist with a named oracle limitation; the limitation blocks the repair packet but does not suppress the independently-derived exposure classification."
+      "reason": "A dynamically resolved expected side (toBe(getExpectedValue())) cannot statically pin the boundary outcome (#4102 expected-side liveness guard), so the finding holds at weakly_exposed with an advisory incomplete-packet gap; the exact_value/strong oracle classification of the assertion survives and the named dynamic-assertion limitation still blocks any repair packet. The prior already_observed/strong_oracle_observed pin was the dishonest state: it claimed an exact observation the dynamic expected side cannot establish."
     }
   ]
 }

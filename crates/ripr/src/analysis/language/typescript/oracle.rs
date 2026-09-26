@@ -844,16 +844,24 @@ pub(crate) fn oracle_metadata_evidence_lines(
 /// added `throw` — produced a "complete" packet whose repair action restated an
 /// assertion that cannot observe the change.
 ///
-/// Returns an empty `Vec` when there are no oracle-eligible candidates or no
-/// family-matching assertions with metadata to surface.
+/// Returns an empty `Vec` when no candidate observes an owner call or no
+/// family-matching assertions with metadata exist.
 pub(crate) fn collect_oracle_metadata_evidence_lines(
     probe_family: &ProbeFamily,
     candidates: &[TypeScriptRelatedCandidate<'_>],
+    owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
 ) -> Vec<String> {
-    // Only oracle-eligible candidates (direct call, imported call, etc.)
+    // Candidates observing an owner-name call: trusted relations by
+    // construction, plus gate-denied relations whose test still calls the
+    // owner by name — assertion classification is independent of relation
+    // credit (see `candidate_observes_owner_call`).
     let strongest_assertion_with_file = candidates
         .iter()
-        .filter(|c| c.relation.uses_oracle())
+        .filter(|candidate| {
+            candidate_observes_owner_call(candidate, owner, alias_map, workspace_root)
+        })
         .flat_map(|candidate| {
             candidate
                 .test

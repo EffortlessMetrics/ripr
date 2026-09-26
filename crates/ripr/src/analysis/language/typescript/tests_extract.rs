@@ -45,10 +45,13 @@ pub(crate) fn extract_tests(file: &Path, source: &str) -> Vec<TypeScriptTest> {
     tests
 }
 
-/// Walk a list of top-level statements and collect every syntactic
-/// `vi.mock("path")` / `jest.mock("path")` argument we see. The list is
-/// deduplicated and used by the classifier to surface the
-/// `mocked_module` static-limit per RIPR-SPEC-0026.
+/// Walk a list of statements and collect every syntactic
+/// `vi.mock("path")` / `jest.mock("path")` (and the non-hoisted `doMock`
+/// variants) argument we see, at ANY statement depth the runners hoist
+/// through — including `describe(...)` callback bodies, where both Jest and
+/// Vitest legally allow `mock`/`doMock` calls. The list is deduplicated and
+/// used by the classifier to surface the `mocked_module` static-limit per
+/// RIPR-SPEC-0026.
 ///
 /// This is purely syntactic — the adapter does not resolve the mocked
 /// module identifier through the project's import graph, so the limit
@@ -57,38 +60,134 @@ pub(crate) fn extract_mocks_from_statements(
     statements: &oxc_allocator::Vec<'_, Statement<'_>>,
 ) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
+    collect_mock_paths(statements, &mut out);
+    out
+}
+
+/// Recursively collect mock paths from statements. Statement containers
+/// (blocks, if/else, loops, try/catch, switch) and function-bodied call
+/// arguments (describe/it/beforeAll callbacks) are walked; everything else
+/// is ignored. Deduplication preserves first-seen order.
+fn collect_mock_paths(statements: &[Statement<'_>], out: &mut Vec<String>) {
     for stmt in statements {
-        let Statement::ExpressionStatement(expr_stmt) = stmt else {
-            continue;
-        };
-        let Expression::CallExpression(call) = &expr_stmt.expression else {
-            continue;
-        };
-        let Expression::StaticMemberExpression(member) = &call.callee else {
-            continue;
-        };
-        let Expression::Identifier(object_ident) = &member.object else {
-            continue;
-        };
-        let object_name = object_ident.name.as_str();
-        if object_name != "vi" && object_name != "jest" {
-            continue;
-        }
-        if member.property.name.as_str() != "mock" {
-            continue;
-        }
-        let Some(first_arg) = call.arguments.first() else {
-            continue;
-        };
-        let oxc_ast::ast::Argument::StringLiteral(literal) = first_arg else {
-            continue;
-        };
-        let path = literal.value.to_string();
-        if !out.iter().any(|existing| existing == &path) {
-            out.push(path);
+        match stmt {
+            Statement::BlockStatement(block) => collect_mock_paths(&block.body, out),
+            Statement::ExpressionStatement(expr_stmt) => {
+                collect_mock_path_from_expression(&expr_stmt.expression, out);
+            }
+            Statement::IfStatement(if_stmt) => {
+                collect_mock_paths(std::slice::from_ref(&if_stmt.consequent), out);
+                if let Some(alternate) = &if_stmt.alternate {
+                    collect_mock_paths(std::slice::from_ref(alternate), out);
+                }
+            }
+            Statement::DoWhileStatement(do_while) => {
+                collect_mock_paths(std::slice::from_ref(&do_while.body), out)
+            }
+            Statement::WhileStatement(while_stmt) => {
+                collect_mock_paths(std::slice::from_ref(&while_stmt.body), out)
+            }
+            Statement::ForStatement(for_stmt) => {
+                collect_mock_paths(std::slice::from_ref(&for_stmt.body), out)
+            }
+            Statement::ForInStatement(for_in) => {
+                collect_mock_paths(std::slice::from_ref(&for_in.body), out)
+            }
+            Statement::ForOfStatement(for_of) => {
+                collect_mock_paths(std::slice::from_ref(&for_of.body), out)
+            }
+            Statement::LabeledStatement(labeled) => {
+                collect_mock_paths(std::slice::from_ref(&labeled.body), out)
+            }
+            Statement::TryStatement(try_stmt) => {
+                collect_mock_paths(&try_stmt.block.body, out);
+                if let Some(handler) = &try_stmt.handler {
+                    collect_mock_paths(&handler.body.body, out);
+                }
+                if let Some(finalizer) = &try_stmt.finalizer {
+                    collect_mock_paths(&finalizer.body, out);
+                }
+            }
+            Statement::SwitchStatement(switch_stmt) => {
+                for case in &switch_stmt.cases {
+                    collect_mock_paths(&case.consequent, out);
+                }
+            }
+            Statement::VariableDeclaration(decl) => {
+                for declarator in &decl.declarations {
+                    if let Some(init) = &declarator.init {
+                        collect_mock_path_from_expression(init, out);
+                    }
+                }
+            }
+            Statement::FunctionDeclaration(func) => {
+                if let Some(body) = &func.body {
+                    collect_mock_paths(&body.statements, out);
+                }
+            }
+            _ => {}
         }
     }
-    out
+}
+
+/// Collect a mock path from an expression: a direct `vi.mock("path")` /
+/// `jest.doMock("path")` call, or a call whose function arguments are
+/// callbacks to recurse into (so a describe-scoped mock is found). A mock
+/// call chained after another call (`jest.mock("a").mock("b")`) is found by
+/// descending into a `StaticMemberExpression` callee's object, so chained
+/// registrations stay under the owner-module mock guard.
+fn collect_mock_path_from_expression(expression: &Expression<'_>, out: &mut Vec<String>) {
+    let Expression::CallExpression(call) = expression else {
+        return;
+    };
+    if let Some(path) = mock_path_from_call(call)
+        && !out.iter().any(|existing| existing == &path)
+    {
+        out.push(path);
+    }
+    if let Expression::StaticMemberExpression(member) = &call.callee {
+        collect_mock_path_from_expression(&member.object, out);
+    }
+    for argument in &call.arguments {
+        match argument {
+            oxc_ast::ast::Argument::ArrowFunctionExpression(arrow) => {
+                collect_mock_paths(&arrow.body.statements, out);
+            }
+            oxc_ast::ast::Argument::FunctionExpression(func) => {
+                if let Some(body) = &func.body {
+                    collect_mock_paths(&body.statements, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Extract the mocked module path from a `vi.mock("path")` /
+/// `jest.mock("path")` / `vi.doMock("path")` / `jest.doMock("path")` call.
+/// `doMock` is the non-hoisted variant both runners expose (it affects only
+/// modules loaded after the call); the adapter cannot prove the observed
+/// call reaches the real module, so the owner-module mock guard treats it
+/// exactly like `mock` (#4103 shape 2).
+fn mock_path_from_call(call: &oxc_ast::ast::CallExpression<'_>) -> Option<String> {
+    let Expression::StaticMemberExpression(member) = &call.callee else {
+        return None;
+    };
+    let Expression::Identifier(object_ident) = &member.object else {
+        return None;
+    };
+    let object_name = object_ident.name.as_str();
+    if object_name != "vi" && object_name != "jest" {
+        return None;
+    }
+    if !matches!(member.property.name.as_str(), "mock" | "doMock") {
+        return None;
+    }
+    let first_arg = call.arguments.first()?;
+    let oxc_ast::ast::Argument::StringLiteral(literal) = first_arg else {
+        return None;
+    };
+    Some(literal.value.to_string())
 }
 
 pub(crate) fn collect_tests_from_statements(

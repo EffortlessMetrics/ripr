@@ -426,12 +426,27 @@ pub(crate) fn owner_call_relation(
     if test_mocks_owner_module(test, owner, alias_map, workspace_root) {
         return None;
     }
+    // #4103 shape 4: a `vi.spyOn`/`jest.spyOn` on the owner name combined
+    // with a value fabrication (`.mockReturnValue(...)` /
+    // `.mockImplementation(...)`) replaces the owner implementation — the
+    // observed value is the fabrication, not the changed sink, so no trusted
+    // owner-call relation may be credited. A bare spyOn (call-through) is
+    // unaffected and still relates.
+    if test_spies_owner_with_fabrication(test, &owner.name) {
+        return None;
+    }
     if contains_call_name(&test.body_text, &owner.name)
         && !owner_name_shadowed_by_unrelated_import(test, owner, alias_map, workspace_root)
         // Shadow guard (#4102): a test body that declares its own
-        // `function <owner>(...)` / `const <owner> = ...` calls the local
-        // declaration, not the imported owner — do not credit DirectOwnerCall.
+        // `function <owner>(...)` / `const <owner> = ...` (or a destructured
+        // property binding of the name) calls the local declaration, not the
+        // imported owner — do not credit DirectOwnerCall.
         && !local_identifier_declared_in_test_body(&test.body_text, &owner.name)
+        && !owner_name_destructured_from_unrelated_source(test, owner, alias_map, workspace_root)
+        // #4103 shape 1: a bare `ownerName(...)` only counts when a
+        // declaration anchors the name to the owner (same file, or an import
+        // of the owner from the owner's module).
+        && direct_owner_call_has_declaration_anchor(test, owner, alias_map, workspace_root)
     {
         return Some(TypeScriptRelationKind::DirectOwnerCall);
     }
@@ -449,9 +464,26 @@ pub(crate) fn owner_call_relation(
     }) {
         return Some(TypeScriptRelationKind::ImportAliasOwnerCall);
     }
+    // Named (or namespace) import of the owner from the owner's module with a
+    // call through the import's local binding. The same identity guards as the
+    // direct-call arm apply: a body-local declaration of the import's local
+    // name (#4102 shape 4 / #4103 shape 4 relation side) shadows the call, and
+    // a body-local destructure of the owner name from an unrelated source
+    // (#4103 shape 1) binds the bare call to that source — neither may be
+    // credited as an imported owner call.
     if test.imports_in_file.iter().any(|import| {
-        import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root)
-            && import_references_owner_call(import, &test.body_text, owner)
+        if !import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root) {
+            return false;
+        }
+        if local_identifier_declared_in_test_body(&test.body_text, &import.local) {
+            return false;
+        }
+        if !import.namespace
+            && owner_name_destructured_from_unrelated_source(test, owner, alias_map, workspace_root)
+        {
+            return false;
+        }
+        import_references_owner_call(import, &test.body_text, owner)
     }) {
         return Some(TypeScriptRelationKind::ImportedOwnerCall);
     }
@@ -743,6 +775,404 @@ fn test_mocks_owner_module(
     })
 }
 
+/// Fabrication method shapes that replace a spy's observed value (#4103
+/// shape 4).
+const SPY_FABRICATION_SHAPES: [&str; 4] = [
+    ".mockReturnValue(",
+    ".mockImplementation(",
+    ".mockResolvedValue(",
+    ".mockRejectedValue(",
+];
+
+/// #4103 shape 4: `true` when the test body spies on the owner name
+/// (`vi.spyOn(module, 'ownerName')` / `jest.spyOn(...)`) AND fabricates a
+/// value FOR THAT SPY: the fabrication method is chained directly after the
+/// owner `spyOn(...)` call closes (`vi.spyOn(mod, 'owner').mockReturnValue(v)`)
+/// or invoked on the variable the spy is bound to
+/// (`const spy = spyOn(mod, 'owner'); spy.mockReturnValue(v)`).
+///
+/// The fabricated value is what an assertion on the spied name observes; the
+/// changed sink never executes, so any owner-call credit through this test
+/// is mock-fabricated evidence. A bare spyOn without a fabrication on its
+/// own value still calls through to the owner and is NOT blocked, and a mock
+/// on an unrelated object (`logger.mockReturnValue(...)`) must never refuse
+/// the owner relation — the fabrication has to be tied to the owner spy.
+pub(crate) fn test_spies_owner_with_fabrication(test: &TypeScriptTest, owner_name: &str) -> bool {
+    let body = &test.body_text;
+    if !body.contains("spyOn(") {
+        return false;
+    }
+    ["vi.spyOn(", "jest.spyOn(", "spyOn("].iter().any(|needle| {
+        body.match_indices(needle).any(|(idx, _)| {
+            let after_open = &body[idx + needle.len()..];
+            spy_call_targets_name(after_open, owner_name)
+                && owner_spy_call_fabricated(body, idx, after_open)
+        })
+    })
+}
+
+/// Whether the owner-targeting `spyOn(...)` call whose needle starts at
+/// `call_start` (with `after_open` the body right after the call's open
+/// paren) fabricates its value: a fabrication shape chained directly after
+/// the call closes, or invoked on the variable the spy result is bound to.
+fn owner_spy_call_fabricated(body: &str, call_start: usize, after_open: &str) -> bool {
+    let Some(close_rel) = spy_call_close_offset(after_open) else {
+        return false;
+    };
+    let tail = after_open[close_rel + 1..].trim_start();
+    let tail = tail.strip_prefix('?').unwrap_or(tail).trim_start();
+    if SPY_FABRICATION_SHAPES
+        .iter()
+        .any(|shape| tail.starts_with(shape))
+    {
+        return true;
+    }
+    spy_bound_variable_name(body, call_start)
+        .is_some_and(|variable| spy_variable_fabricates(body, &variable))
+}
+
+/// Byte offset of the `)` closing the call whose argument list starts at the
+/// beginning of `after_open` (the call's own open paren sits before it).
+/// Strings are skipped; bounded so an unterminated call cannot run away.
+fn spy_call_close_offset(after_open: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (offset, ch) in after_open.char_indices().take(2000) {
+        if let Some(open) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == open {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '"' | '\'' | '`' => quote = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' => {
+                if depth == 0 {
+                    return Some(offset);
+                }
+                depth = depth.saturating_sub(1);
+            }
+            ']' | '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The variable name the `spyOn(...)` call starting at `call_start` is bound
+/// to, when the call is the right-hand side of a simple `name = spyOn(...)`
+/// (`const spy = spyOn(...)`, a bare `spy = spyOn(...)` assignment, with an
+/// optional `await` and the needle's `vi.` / `jest.` qualifier). A member
+/// tail (`obj.spy = ...`), a compound operator (`==`, `=>`), or any other
+/// prefix returns `None` (conservative: only clear bindings count).
+fn spy_bound_variable_name(body: &str, call_start: usize) -> Option<String> {
+    let mut prefix = body[..call_start].trim_end();
+    // The qualified needle forms leave the callee qualifier (`vi.` / `jest.`)
+    // at the end of the prefix.
+    if let Some(stripped) = prefix.strip_suffix('.') {
+        let qualifier_len = stripped
+            .chars()
+            .rev()
+            .take_while(|ch| is_javascript_identifier_char(*ch))
+            .count();
+        prefix = &stripped[..stripped.len() - qualifier_len];
+    }
+    if let Some(stripped) = strip_trailing_await_keyword(prefix) {
+        prefix = stripped;
+    }
+    let assigned = prefix.strip_suffix('=')?.trim_end();
+    // A compound operator ending in `=` (`==`, `===`, `!=`, `<=`, `>=`,
+    // `=>`, `+=`, ...) never binds the call result.
+    if assigned
+        .chars()
+        .next_back()
+        .is_some_and(|ch| "=!<>+-*/%&|^:".contains(ch))
+    {
+        return None;
+    }
+    let variable: String = assigned
+        .chars()
+        .rev()
+        .take_while(|ch| is_javascript_identifier_char(*ch))
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    if variable.is_empty() {
+        return None;
+    }
+    let head = &assigned[..assigned.len() - variable.len()];
+    // A member tail (`obj.spy = ...`) or a longer identifier is not a simple
+    // binding of the spy result.
+    if head
+        .chars()
+        .next_back()
+        .is_some_and(|ch| is_javascript_identifier_char(ch) || ch == '.')
+    {
+        return None;
+    }
+    Some(variable)
+}
+
+/// Strip a trailing standalone `await` keyword from an assignment prefix.
+fn strip_trailing_await_keyword(prefix: &str) -> Option<&str> {
+    let stripped = prefix.trim_end().strip_suffix("await")?;
+    if stripped
+        .chars()
+        .next_back()
+        .is_some_and(is_javascript_identifier_char)
+    {
+        return None; // part of a longer identifier, not the keyword
+    }
+    Some(stripped.trim_end())
+}
+
+/// Whether a fabrication shape is invoked on `variable` with identifier
+/// boundaries (`spy.mockReturnValue(...)`, not `myspy.mockReturnValue(...)`).
+fn spy_variable_fabricates(body: &str, variable: &str) -> bool {
+    SPY_FABRICATION_SHAPES.iter().any(|shape| {
+        let needle = format!("{variable}{shape}");
+        body.match_indices(&needle)
+            .any(|(idx, _)| has_member_call_boundary(body, idx))
+    })
+}
+
+/// Whether the argument list after `spyOn(` names `owner_name` as the spied
+/// method. Only the spyOn call's own argument list is scanned (up to its
+/// matching close paren), so a `.mockReturnValue("...")` chained after the
+/// call can never be mistaken for the spied name. The method name is the LAST
+/// string literal of the argument list — `spyOn(module, 'name')` and
+/// `spyOn(require('path'), 'name')` both put it there. Bounded so an
+/// unterminated call cannot run away.
+fn spy_call_targets_name(after_open: &str, owner_name: &str) -> bool {
+    let bounded: String = after_open.chars().take(500).collect();
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut body = String::new();
+    let mut strings: Vec<String> = Vec::new();
+    let mut closed = false;
+    for ch in bounded.chars() {
+        if closed {
+            break;
+        }
+        if let Some(open) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == open {
+                quote = None;
+                strings.push(std::mem::take(&mut body));
+            } else {
+                body.push(ch);
+            }
+            continue;
+        }
+        match ch {
+            '"' | '\'' | '`' => quote = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' => {
+                if depth == 0 {
+                    closed = true;
+                } else {
+                    depth = depth.saturating_sub(1);
+                }
+            }
+            ']' | '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    strings
+        .iter()
+        .rev()
+        .find(|literal| !literal.is_empty())
+        .is_some_and(|name| name == owner_name)
+}
+
+/// Initializer text of every body-local destructuring that binds the owner
+/// name (`const { ownerName } = <init>`), one entry per matching declaration
+/// line; comment lines are skipped.
+fn owner_name_destructure_inits(test: &TypeScriptTest, owner_name: &str) -> Vec<String> {
+    let body = &test.body_text;
+    if !body.contains('{') {
+        return Vec::new();
+    }
+    body.lines()
+        .filter_map(|line| {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") {
+                return None;
+            }
+            let after_keyword = ["const ", "let ", "var "]
+                .into_iter()
+                .find_map(|keyword| trimmed.strip_prefix(keyword))?;
+            let open = after_keyword.find('{')?;
+            let close_rel = after_keyword[open..].find('}')? + open;
+            let binds_owner = after_keyword[open + 1..close_rel].split(',').any(|part| {
+                part.split(':')
+                    .next()
+                    .map(str::trim)
+                    .is_some_and(|name| name == owner_name)
+            });
+            if !binds_owner {
+                return None;
+            }
+            Some(
+                after_keyword[close_rel + 1..]
+                    .split_once('=')
+                    .map(|(_, rhs)| rhs.trim().trim_end_matches(';').trim())
+                    .unwrap_or("")
+                    .to_string(),
+            )
+        })
+        .collect()
+}
+
+/// #4103 shape 1: whether a body-local destructuring
+/// (`const { applyDiscount } = <init>`) binds the owner name to a source
+/// other than the owner's own module. The bare `applyDiscount(...)` call then
+/// reaches the destructured value — a helper or factory, not the owner — so
+/// it must not credit `DirectOwnerCall`.
+///
+/// A destructuring FROM the owner's module (`require("../src/owner")`, or a
+/// namespace import of it) is not a shadow: it anchors the call through
+/// `owner_name_destructured_from_owner_source` instead.
+fn owner_name_destructured_from_unrelated_source(
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
+) -> bool {
+    owner_name_destructure_inits(test, &owner.name)
+        .iter()
+        .any(|init| {
+            // `require("<path>")`: a shadow only when the path is NOT the
+            // owner's own module.
+            if let Some(source) = require_source_from_text(init) {
+                return normalized_relative_import_module(
+                    &test.file,
+                    &source,
+                    alias_map,
+                    workspace_root,
+                )
+                .is_none_or(|module| module != normalized_module_path(&owner.file));
+            }
+            // `<namespace>` where the namespace import binds the owner's
+            // module: not a shadow. Anything else (factory call, dynamic
+            // import, an unrelated binding) is.
+            let init_ident: String = init
+                .chars()
+                .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '$')
+                .collect();
+            !test.imports_in_file.iter().any(|import| {
+                import.namespace
+                    && import.local == init_ident
+                    && import_source_matches_owner(
+                        import,
+                        &test.file,
+                        owner,
+                        alias_map,
+                        workspace_root,
+                    )
+            })
+        })
+}
+
+/// #4103 shape 1 (anchor complement): a body-local destructuring that binds
+/// the owner name from the owner's own module — CommonJS
+/// `const { owner } = require("../src/owner")`, or a destructure of a
+/// recorded namespace import of the owner module — anchors the bare
+/// `owner(...)` call to the owner exactly like a recorded import would. The
+/// import layer extracts only top-level statements, so this body-local shape
+/// must anchor itself or a real CommonJS test falls back to the heuristic
+/// relation.
+fn owner_name_destructured_from_owner_source(
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
+) -> bool {
+    owner_name_destructure_inits(test, &owner.name)
+        .iter()
+        .any(|init| {
+            if let Some(source) = require_source_from_text(init) {
+                return normalized_relative_import_module(
+                    &test.file,
+                    &source,
+                    alias_map,
+                    workspace_root,
+                )
+                .is_some_and(|module| module == normalized_module_path(&owner.file));
+            }
+            let init_ident: String = init
+                .chars()
+                .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '$')
+                .collect();
+            test.imports_in_file.iter().any(|import| {
+                import.namespace
+                    && import.local == init_ident
+                    && import_source_matches_owner(
+                        import,
+                        &test.file,
+                        owner,
+                        alias_map,
+                        workspace_root,
+                    )
+            })
+        })
+}
+
+/// Extract the string-literal path from a `require("...")` call in `init`
+/// text, when it is the simple literal form.
+fn require_source_from_text(init: &str) -> Option<String> {
+    let start = init.find("require(")? + "require(".len();
+    let rest = init[start..].trim_start();
+    let quote = rest.chars().next()?;
+    if !matches!(quote, '"' | '\'') {
+        return None;
+    }
+    let body = rest.strip_prefix(quote)?;
+    let end = body.find(quote)?;
+    Some(body[..end].to_string())
+}
+
+/// #4103 shape 1: `true` when a declaration anchors a bare `ownerName(...)`
+/// call to the owner under analysis — the test lives in the owner's own
+/// file, it imports the owner (named import, or a default/require binding
+/// under the owner's name) from the owner's module, or a body-local
+/// destructuring binds the owner name from the owner's module (a CommonJS
+/// test keeps its `require` destructure inside the test body, which the
+/// import layer does not record). A bare unimported call has no such anchor:
+/// the same-named function may be defined anywhere, so the relation must not
+/// credit it (fail-closed to the heuristic fallback).
+fn direct_owner_call_has_declaration_anchor(
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
+) -> bool {
+    if normalized_module_path(&test.file) == normalized_module_path(&owner.file) {
+        return true;
+    }
+    test.imports_in_file.iter().any(|import| {
+        import.local == owner.name
+            && import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root)
+            && match import.imported.as_deref() {
+                Some(name) => name == owner.name || name == "default",
+                // A bare namespace binding without a default/name record is
+                // not an anchor for a bare call.
+                None => false,
+            }
+    }) || owner_name_destructured_from_owner_source(test, owner, alias_map, workspace_root)
+}
+
 /// `const m = await import("../src/pricing");` followed by an
 /// `m.loyaltyPrice(...)` member call, both inside the test body (#4103
 /// under-credit).
@@ -1001,11 +1431,10 @@ pub(crate) fn find_related_tests(
     related_test_candidates(owner, all_tests, workspace_root, reexport_index, alias_map)
         .into_iter()
         .map(|candidate| {
-            let strongest = candidate
-                .relation
-                .uses_oracle()
-                .then(|| strongest_assertion(&candidate.test.assertions))
-                .flatten();
+            let strongest =
+                candidate_observes_owner_call(&candidate, owner, alias_map, workspace_root)
+                    .then(|| strongest_assertion(&candidate.test.assertions))
+                    .flatten();
             let (oracle_kind, oracle_strength, oracle_text) = match strongest {
                 Some(assertion) => (
                     assertion.oracle_kind.clone(),
@@ -1028,6 +1457,43 @@ pub(crate) fn find_related_tests(
             }
         })
         .collect()
+}
+
+/// Whether this candidate's test observes an owner-name call whose assertion
+/// classification may be read independently of relation credit.
+///
+/// Oracle facts and relation credit are orthogonal (RIPR-SPEC-0027):
+/// the #4102/#4103 relation gates decide whether a test's call may CREDIT
+/// exposure, not whether the test's assertion shape may be CLASSIFIED. A
+/// broad `toThrow` is broad-error/weak evidence and a smoke call is smoke
+/// evidence regardless of whether the relation to the owner is anchored.
+///
+/// Trusted relations observe the owner by construction. A relation denied by
+/// the gates still contains an owner-name call unless a gate found POSITIVE
+/// evidence that the name does not reach the owner: a body-local declaration,
+/// an unrelated import/destructure shadow, an owner-module mock, or a spy
+/// fabrication all make the assertion observe a different function or a
+/// fabricated value, so those assertions stay unclassified for the owner. A
+/// missing declaration anchor alone is unproven rather than disproven — the
+/// test really calls a function of the owner's name — so its assertion shape
+/// stays readable while the finding discloses the uncertain relation and
+/// withholds exposure credit.
+pub(crate) fn candidate_observes_owner_call(
+    candidate: &TypeScriptRelatedCandidate<'_>,
+    owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
+) -> bool {
+    if candidate.relation.uses_oracle() {
+        return true;
+    }
+    let test = candidate.test;
+    contains_call_name(&test.body_text, &owner.name)
+        && !local_identifier_declared_in_test_body(&test.body_text, &owner.name)
+        && !owner_name_shadowed_by_unrelated_import(test, owner, alias_map, workspace_root)
+        && !owner_name_destructured_from_unrelated_source(test, owner, alias_map, workspace_root)
+        && !test_mocks_owner_module(test, owner, alias_map, workspace_root)
+        && !test_spies_owner_with_fabrication(test, &owner.name)
 }
 
 /// Map a `TypeScriptRelationKind` to the domain `(RelationReason, RelationConfidence)`.

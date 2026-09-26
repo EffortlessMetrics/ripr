@@ -13,6 +13,9 @@
 //! - `typescript_test_extraction_partial` — LANDED in partial test-extraction disclosure
 //!   (template-literal titles, tagged-template `.each`, tests generated in
 //!   loops/callbacks; detection only — extracting these shapes is follow-up)
+//! - `typescript_spy_fabricated_observer` — LANDED in spy-oracle fabrication
+//!   disclosure (#4103 shape 4: `vi.spyOn(module, name).mockReturnValue(...)`;
+//!   the fabricated value is observed, not the changed sink)
 
 use super::*;
 
@@ -480,6 +483,38 @@ pub(crate) fn named_limitations_for_alias_unresolved(
                 repair_route: "analysis/typescript-tsconfig-path-alias-resolution",
             });
             saw = true;
+            break;
+        }
+    }
+    limitations
+}
+
+/// Collect `typescript_spy_fabricated_observer` limitations from tests that
+/// spy on the owner and fabricate its return value (#4103 shape 4).
+///
+/// Real producer: `related_tests::test_spies_owner_with_fabrication` detects
+/// `vi.spyOn(module, 'ownerName')` / `jest.spyOn(...)` combined with a
+/// `.mockReturnValue(...)`/`.mockImplementation(...)` family call in the same
+/// test body. Assertions on the spied name observe the fabricated value, not
+/// the changed sink, so the finding must not present the test as an owner
+/// observer; the relation gate already refuses the trusted relation, and this
+/// limitation names why.
+pub(crate) fn named_limitations_for_spy_fabrication(
+    owner: &TypeScriptOwner,
+    all_tests: &[TypeScriptTest],
+) -> Vec<TypeScriptNamedLimitation> {
+    let mut limitations: Vec<TypeScriptNamedLimitation> = Vec::new();
+    for test in all_tests {
+        if test_spies_owner_with_fabrication(test, &owner.name) {
+            limitations.push(TypeScriptNamedLimitation {
+                name: "typescript_spy_fabricated_observer",
+                sample_source: format!("{}:{}", normalized_path(&test.file), test.line),
+                why_not_actionable: format!(
+                    "test `{}` replaces `{}` via vi.spyOn/jest.spyOn with a fabricated return value; the observed value does not flow from the changed sink",
+                    test.name, owner.name
+                ),
+                repair_route: "analysis/typescript-spy-oracle-resolution",
+            });
             break;
         }
     }

@@ -24,18 +24,18 @@
         "owner": "typescript:src/profile.ts::updateProfile"
        },
       "ripr": {
-        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `updateProfile`"},
+        "reach": {"state":"weak","confidence":"low","summary":"1 related test(s) found for owner `updateProfile`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `profile.status == status`."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `updateProfile`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `profile.status == status`.", "local flow reaches constructed field: profile.status = status; (line 4)", "related test tests/profile.test.ts:1 updates and records status uses unknown unknown oracle", "missing discriminator profile.status == status: changed TypeScript field/object value at line 4 lacks a concrete preview discriminator"],
+      "evidence_path": ["reach weak: 1 related test(s) found for owner `updateProfile`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `profile.status == status`.", "local flow reaches constructed field: profile.status = status; (line 4)", "related test tests/profile.test.ts:1 updates and records status uses unknown unknown oracle", "missing discriminator profile.status == status: changed TypeScript field/object value at line 4 lacks a concrete preview discriminator"],
       "flow_sinks": [
         {"kind":"struct_field","text":"profile.status = status;","line":4}
       ],
-      "evidence": ["owner: updateProfile", "missing_discriminator: profile.status == status", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/profile.ts;line=4;kind=typescript_preview_probe;source_id=probe:src_profile.ts:typescript_preview:7c5ce045;owner=updateProfile", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
-      "missing": ["Related test reaches `updateProfile` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
+      "evidence": ["owner: updateProfile", "missing_discriminator: profile.status == status", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/profile.ts;line=4;kind=typescript_preview_probe;source_id=probe:src_profile.ts:typescript_preview:7c5ce045;owner=updateProfile", "related_test_relation: same_file_proximity (updates and records status)", "related_test_uncertain: same_file_proximity (updates and records status)", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["Only heuristic TypeScript test links were found for `updateProfile`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
       "assertion_texts": {
       },
       "activation": {
@@ -66,9 +66,7 @@
           "line": 1,
           "oracle_strength": "unknown",
           "oracle_kind": "unknown",
-          "oracle": "",
-          "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "oracle": ""
         }
       ],
       "typescript_preview_card": {
@@ -163,18 +161,18 @@
         "owner": "typescript:src/profile.ts::updateProfile"
        },
       "ripr": {
-        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `updateProfile`"},
+        "reach": {"state":"weak","confidence":"low","summary":"1 related test(s) found for owner `updateProfile`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `call audit.record includes status`."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `updateProfile`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `call audit.record includes status`.", "local flow reaches call effect: audit.record(status); (line 5)", "related test tests/profile.test.ts:1 updates and records status uses unknown unknown oracle", "missing discriminator call audit.record includes status: changed TypeScript call side effect at line 5 lacks a concrete preview discriminator"],
+      "evidence_path": ["reach weak: 1 related test(s) found for owner `updateProfile`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `call audit.record includes status`.", "local flow reaches call effect: audit.record(status); (line 5)", "related test tests/profile.test.ts:1 updates and records status uses unknown unknown oracle", "missing discriminator call audit.record includes status: changed TypeScript call side effect at line 5 lacks a concrete preview discriminator"],
       "flow_sinks": [
         {"kind":"call_effect","text":"audit.record(status);","line":5}
       ],
-      "evidence": ["owner: updateProfile", "missing_discriminator: call audit.record includes status", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/profile.ts;line=5;kind=typescript_preview_probe;source_id=probe:src_profile.ts:typescript_preview:be31b1f9;owner=updateProfile", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
-      "missing": ["Related test reaches `updateProfile` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form with an exact payload (string, object, or class reference).", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
+      "evidence": ["owner: updateProfile", "missing_discriminator: call audit.record includes status", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/profile.ts;line=5;kind=typescript_preview_probe;source_id=probe:src_profile.ts:typescript_preview:be31b1f9;owner=updateProfile", "related_test_relation: same_file_proximity (updates and records status)", "related_test_uncertain: same_file_proximity (updates and records status)", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["Only heuristic TypeScript test links were found for `updateProfile`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
       "assertion_texts": {
       },
       "activation": {
@@ -205,9 +203,7 @@
           "line": 1,
           "oracle_strength": "unknown",
           "oracle_kind": "unknown",
-          "oracle": "",
-          "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "oracle": ""
         }
       ],
       "typescript_preview_card": {

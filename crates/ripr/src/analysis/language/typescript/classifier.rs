@@ -432,12 +432,23 @@ pub(crate) fn ts_observation_guard_limitation(
 ///   either the whole argument is the literal, or an object-literal argument
 ///   pins the comparison operand's field to it (`{ total: 50 }`). A literal
 ///   inside a larger expression (`price + 100`) leaves the effective input
-///   unknown and a literal in an argument past the owner's readable parameter
-///   positions (`applyDiscount(150, 100)` against a single-parameter owner) is
-///   never read by the comparison.
+///   unknown and never witnesses. With owner parameter facts, an argument at
+///   or beyond the declared arity is dead (`applyDiscount(150, 100)` against
+///   a single-parameter owner never reads `100`), and when the compared
+///   operand names an owner parameter the literal must sit in exactly that
+///   parameter's position; without parameter facts (destructured or rest
+///   signatures) the position check degrades to arity-blind matching rather
+///   than guessing.
+/// - **Expected side liveness** (#4102 guard 5): a dynamically resolved
+///   expectation (`toBe(applyDiscount(100))`) and a self-comparing tautology
+///   cannot discriminate. When the owner body is available, a dead expected
+///   literal — one that matches neither the changed behavior's value at the
+///   boundary input nor, when checkable, differs from the unchanged
+///   behavior's — cannot witness either; unresolved checks leave the witness
+///   decision unchanged rather than fabricate runtime facts.
 /// - **No literal operand** (`count <= limit`): the adapter has no literal to
 ///   map, so it accepts the same textual witness the Rust boundary evidence
-///   accepts without value resolution — two identical arguments in one
+///   accepts without value resolution — two identical LIVE arguments in one
 ///   observed owner call (`isAllowed(5, 5)`) — or an object-literal argument
 ///   that names both operands with identical values (`PriceLabel({ amount:
 ///   100, threshold: 100 })`). Otherwise the boundary is not witnessed.
@@ -453,12 +464,17 @@ pub(crate) fn ts_observation_guard_limitation(
 /// (`pricing.applyDiscount(100)`) witnesses only when the receiver binds to
 /// the owner's own module (a namespace import of the owner file; the landed
 /// receiver resolution keeps a same-named method on an unrelated receiver —
-/// `other.total(50)` — from witnessing); a test body that declares its own
-/// same-name function or const calls the shadow, not the owner; an expected
-/// side that itself calls the owner is a tautology; and a dead expected
-/// literal — one that matches neither the changed behavior's value at the
-/// boundary input nor, when checkable, differs from the unchanged behavior's
-/// — cannot witness. Every unresolved case fails closed.
+/// `other.total(50)`, including a test-local object — from witnessing); a
+/// test body that declares its own same-name function or const calls the
+/// shadow, not the owner, so a shadowing candidate cannot witness at all; an
+/// expected side that itself calls the owner is a tautology; and a dead
+/// expected literal cannot witness. Every unresolved case leaves the
+/// decision on the existing path rather than guessing.
+///
+/// Residual over-credit (#4102, disclosed): when the compared operand is a
+/// derived local (`const total = raw * 2;`) the adapter cannot map it to a
+/// parameter, so any position the known arity reads is accepted. That stays
+/// advisory.
 pub(crate) fn ts_predicate_boundary_is_witnessed(
     probe_shape: &TypeScriptProbeShape,
     line_text: &str,
@@ -508,10 +524,26 @@ pub(crate) fn ts_predicate_boundary_is_witnessed(
             let Some(observed) = assertion.observed_expression.as_deref() else {
                 continue;
             };
+            // Expected-side guard (#4102): a dynamically resolved expected
+            // side cannot tie the assertion to a concrete boundary outcome.
+            if !assertion_expected_side_is_pinned(assertion) {
+                continue;
+            }
+            // Expected-side guard (#4102): a self-comparing expectation
+            // (`toBe(applyDiscount(100))`) is a tautology that discriminates
+            // nothing.
+            if assertion_is_self_comparing(assertion, observed) {
+                continue;
+            }
             for arguments in owner_call_arguments(observed, &owner.name, &owner_receivers) {
                 let witnessed = if literals.is_empty() {
-                    call_has_identical_arguments(&arguments)
-                        || object_argument_pins_operands_equal(&arguments, left, right)
+                    call_has_identical_arguments(&arguments, &owner.params)
+                        || object_argument_pins_operands_equal(
+                            &arguments,
+                            left,
+                            right,
+                            &owner.params,
+                        )
                 } else {
                     literals.iter().any(|literal| {
                         boundary_literal_reaches_read_argument(
@@ -541,6 +573,29 @@ pub(crate) fn ts_predicate_boundary_is_witnessed(
         }
     }
     false
+}
+
+/// Expected-side guard (#4102): a dynamically resolved expected side
+/// (`toBe(buildExpected())`) cannot tie the assertion to a concrete boundary
+/// outcome, so it can never witness. An unset expected value with no dynamic
+/// marker simply carries no matcher-argument facts; the deeper expected-side
+/// guards (self-comparing tautology, dead expected) decide on what is
+/// checkable rather than guessing.
+fn assertion_expected_side_is_pinned(assertion: &TypeScriptAssertion) -> bool {
+    !assertion.has_dynamic_matcher_arg
+}
+
+/// #4102 shape 5: a self-comparing assertion (`expect(applyDiscount(100))
+/// .toBe(applyDiscount(100))`) is a tautology — it passes under both sides of
+/// the changed comparison and can never discriminate. Compared with
+/// whitespace stripped so formatting alone cannot hide the tautology.
+fn assertion_is_self_comparing(assertion: &TypeScriptAssertion, observed: &str) -> bool {
+    let Some(expected) = assertion.expected_value_or_variant.as_deref() else {
+        return false;
+    };
+    let normalize =
+        |text: &str| -> String { text.chars().filter(|ch| !ch.is_whitespace()).collect() };
+    normalize(expected) == normalize(observed)
 }
 
 /// Build the named limitation for a predicate whose boundary no strong
@@ -644,7 +699,9 @@ fn receiver_before_dot(before_match: &str) -> String {
 /// A member match (`pricing.applyDiscount(...)`) is kept only when the
 /// receiver is bound to the owner's own module via a namespace import
 /// (`owner_receivers`); otherwise the match is a same-named method on an
-/// unrelated receiver and is skipped.
+/// unrelated receiver and is skipped. A test body that declares a local
+/// binding of the owner name never reaches this function: the shadow guard
+/// skips such a candidate entirely before calls are collected.
 fn owner_call_arguments(
     observed: &str,
     owner_name: &str,
@@ -670,7 +727,8 @@ fn owner_call_arguments(
         // Member access (`receiver.owner(...)`): keep only when the receiver
         // resolves to the owner's own module (namespace import); a same-named
         // method on an unrelated receiver (`other.total(50)`) must not
-        // witness the owner's boundary.
+        // witness the owner's boundary. Bare calls are filtered upstream by
+        // the shadow guard, which skips a shadowing candidate entirely.
         if before.trim_end().ends_with('.')
             && !owner_receivers
                 .iter()
@@ -741,22 +799,49 @@ fn balanced_call_arguments(inner: &str) -> Option<Vec<String>> {
     None
 }
 
-fn call_has_identical_arguments(arguments: &[String]) -> bool {
-    arguments.iter().enumerate().any(|(idx, left)| {
-        !left.is_empty() && arguments.iter().skip(idx + 1).any(|right| right == left)
+/// `true` when an argument at `position` can be read by the owner. With no
+/// parameter facts every position is live (previous behaviour); with facts,
+/// positions at or beyond the declared arity are dead — extra call arguments
+/// a fixed-signature owner never reads.
+fn argument_position_is_live(position: usize, params: &[String]) -> bool {
+    params.is_empty() || position < params.len()
+}
+
+/// `true` when two LIVE arguments of one observed owner call are identical
+/// (`isAllowed(5, 5)` witnesses `count <= limit`). Arguments in dead
+/// positions (past the owner's declared arity) are ignored — a duplicated
+/// literal parked in an unread argument cannot witness (#4102 shape 1).
+fn call_has_identical_arguments(arguments: &[String], params: &[String]) -> bool {
+    let live: Vec<&String> = arguments
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| argument_position_is_live(*idx, params))
+        .map(|(_, argument)| argument)
+        .collect();
+    live.iter().enumerate().any(|(idx, left)| {
+        !left.is_empty() && live.iter().skip(idx + 1).any(|right| *right == *left)
     })
 }
 
 /// `true` when an object-literal argument binds both comparison operands
 /// (matched by their last member segment, e.g. `props.amount` → `amount`) to
-/// the same non-empty value text.
-fn object_argument_pins_operands_equal(arguments: &[String], left: &str, right: &str) -> bool {
+/// the same non-empty value text. Object arguments in dead positions (past
+/// the owner's declared arity) are ignored (#4102 shape 1).
+fn object_argument_pins_operands_equal(
+    arguments: &[String],
+    left: &str,
+    right: &str,
+    params: &[String],
+) -> bool {
     let key_of = |operand: &str| operand.rsplit('.').next().unwrap_or(operand).to_string();
     let (left_key, right_key) = (key_of(left), key_of(right));
     if left_key.is_empty() || left_key == right_key {
         return false;
     }
-    arguments.iter().any(|argument| {
+    arguments.iter().enumerate().any(|(position, argument)| {
+        if !argument_position_is_live(position, params) {
+            return false;
+        }
         let Some(body) = argument
             .trim()
             .strip_prefix('{')
@@ -794,7 +879,7 @@ enum ReadPosition {
 
 fn comparison_read_position(operand: &str, owner: &TypeScriptOwner) -> ReadPosition {
     let segment = last_identifier_segment(operand);
-    if let Some(idx) = owner.parameters.iter().position(|name| name == segment) {
+    if let Some(idx) = owner.params.iter().position(|name| name == segment) {
         return ReadPosition::Index(idx);
     }
     match owner.arity {
@@ -1066,7 +1151,7 @@ fn comparison_operand_value(
     arguments: &[String],
 ) -> Option<f64> {
     let segment = last_identifier_segment(operand);
-    if let Some(idx) = owner.parameters.iter().position(|name| name == segment)
+    if let Some(idx) = owner.params.iter().position(|name| name == segment)
         && let Some(value) = arguments
             .get(idx)
             .and_then(|argument| numeric_literal_value(argument))
@@ -1081,7 +1166,7 @@ fn comparison_operand_value(
 /// whose observed argument position carries a plain numeric literal.
 fn observed_argument_bindings(owner: &TypeScriptOwner, arguments: &[String]) -> Vec<(String, f64)> {
     owner
-        .parameters
+        .params
         .iter()
         .enumerate()
         .filter_map(|(idx, name)| {
@@ -1472,16 +1557,25 @@ pub(crate) fn ts_oracle_kind_matches_seam(
 /// Returns `(rank: u8, kind: OracleKind)` where rank is the
 /// `oracle_strength.rank()` of the best matching assertion, and kind is its
 /// `oracle_kind`. Returns `(0, OracleKind::Unknown)` when there are no
-/// oracle-eligible candidates or no family-matching assertion.
+/// candidates observing an owner call or no family-matching assertion.
+///
+/// Candidates qualify via `candidate_observes_owner_call`: trusted relations
+/// by construction, and gate-denied relations whose test still contains an
+/// owner-name call. Oracle classification is independent of relation credit —
+/// the exposure decision separately consumes `has_oracle_eligible_relation`,
+/// so a heuristic-only relation can never promote here.
 pub(crate) fn strongest_family_matching_oracle(
     probe_family: &ProbeFamily,
     candidates: &[TypeScriptRelatedCandidate<'_>],
+    owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
 ) -> (u8, OracleKind) {
     let mut best_rank: u8 = 0;
     let mut best_kind = OracleKind::Unknown;
 
     for candidate in candidates {
-        if !candidate.relation.uses_oracle() {
+        if !candidate_observes_owner_call(candidate, owner, alias_map, workspace_root) {
             continue;
         }
         for assertion in &candidate.test.assertions {
@@ -1593,6 +1687,12 @@ pub(crate) fn classify_change_with_alias_state(
         } else {
             Vec::new()
         };
+    // Spy-fabrication limitation (#4103 shape 4): a test that spies on the
+    // owner and fabricates its return value observes the fabrication, not the
+    // changed sink. Additive disclosure; the relation gate separately refuses
+    // the trusted relation for such tests.
+    let named_limitations_from_spy: Vec<TypeScriptNamedLimitation> =
+        named_limitations_for_spy_fabrication(owner, all_tests);
 
     // Path-alias unresolved disclosure (RIPR-SPEC-0099 always-on honesty):
     // When a test has a non-relative, name-matched import that was NOT credited
@@ -1632,16 +1732,30 @@ pub(crate) fn classify_change_with_alias_state(
     let named_limitations_from_oracle =
         named_limitations_for_oracle_candidates(owner, &related_candidates);
     // Oracle metadata evidence lines (RIPR-SPEC-0085 §PR5).
-    // Emitted from the strongest oracle-eligible assertion across candidates.
-    // ADDITIVE: does not change oracle_kind, oracle_strength, static_limit_kind,
-    // or repair_packet_ready. At most one assertion's metadata is emitted
-    // (the strongest, by oracle_strength rank) to avoid redundant evidence.
+    // Emitted from the strongest owner-call-observing assertion across
+    // candidates. ADDITIVE: does not change oracle_kind, oracle_strength,
+    // static_limit_kind, or repair_packet_ready. At most one assertion's
+    // metadata is emitted (the strongest, by oracle_strength rank) to avoid
+    // redundant evidence.
     let probe_shape = classify_probe_shape_detail(line_text);
-    let oracle_metadata_lines: Vec<String> =
-        collect_oracle_metadata_evidence_lines(&probe_shape.family, &related_candidates);
+    let oracle_metadata_lines: Vec<String> = collect_oracle_metadata_evidence_lines(
+        &probe_shape.family,
+        &related_candidates,
+        owner,
+        alias_map,
+        workspace_root,
+    );
     let has_oracle_eligible_relation = related_candidates
         .iter()
         .any(|candidate| candidate.relation.uses_oracle());
+    // Owner-call evidence is broader than trusted relation credit: a test
+    // whose relation was denied by the #4102/#4103 gates still observes an
+    // owner-name call, so its oracle classification and missing-discriminator
+    // messaging stay readable. Only the exposure/boundary-witness decision
+    // above consumes `has_oracle_eligible_relation`.
+    let has_owner_call_evidence = related_candidates.iter().any(|candidate| {
+        candidate_observes_owner_call(candidate, owner, alias_map, workspace_root)
+    });
 
     // RIPR-SPEC-0104: compute strongest_strength/strongest_kind at the
     // ASSERTION level, filtered by probe_family↔oracle_kind match.
@@ -1658,8 +1772,13 @@ pub(crate) fn classify_change_with_alias_state(
     // slice) and filter each assertion by `ts_oracle_kind_matches_seam`. This
     // lets a multi-assertion test contribute its family-matching assertion even
     // when its overall-strongest assertion is wrong-family (anti-over-correction).
-    let (strongest_strength, strongest_kind) =
-        strongest_family_matching_oracle(&probe_shape.family, &related_candidates);
+    let (strongest_strength, strongest_kind) = strongest_family_matching_oracle(
+        &probe_shape.family,
+        &related_candidates,
+        owner,
+        alias_map,
+        workspace_root,
+    );
     let mock_payload_oracle = related_mock_payload_oracle(&related);
 
     // Move flow_sink computation here so it is available to the observation
@@ -1755,7 +1874,7 @@ pub(crate) fn classify_change_with_alias_state(
     }
 
     let missing_discriminators = if matches!(class, ExposureClass::WeaklyExposed)
-        && has_oracle_eligible_relation
+        && has_owner_call_evidence
         && static_limit.is_none()
     {
         typescript_missing_discriminators(&probe_shape, line, line_text, flow_sink.as_ref())
@@ -1805,7 +1924,7 @@ pub(crate) fn classify_change_with_alias_state(
     let actionability = typescript_actionability_for(
         &class,
         static_limit.as_ref(),
-        has_oracle_eligible_relation,
+        has_owner_call_evidence,
         &missing_discriminators,
         observed_evidence_label(&related),
     );
@@ -1878,15 +1997,20 @@ pub(crate) fn classify_change_with_alias_state(
         ExposureClass::NoStaticPath => {
             no_static_path_recommendation(owner)
         }
-        _ if !has_oracle_eligible_relation => {
-            "TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.".to_string()
-        }
+        // Owner-call evidence with a named missing discriminator takes
+        // precedence over the relation note: the oracle classification is
+        // independent of relation credit, so the next step names the proof
+        // the related test still lacks. The relation uncertainty stays
+        // disclosed in `missing` and the related-test evidence lines.
         _ if let Some(discriminator) = missing_discriminators.first() => {
             weak_oracle_recommendation(
                 &strongest_kind,
                 &discriminator.value,
                 mock_payload_oracle.as_deref(),
             )
+        }
+        _ if !has_oracle_eligible_relation => {
+            "TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.".to_string()
         }
         _ if owner.owner_kind == OwnerKind::ModuleFunction => {
             format!(
@@ -1933,6 +2057,7 @@ pub(crate) fn classify_change_with_alias_state(
         .chain(named_limitations_from_oracle.iter())
         .chain(named_limitations_from_ownership.iter())
         .chain(named_limitations_from_alias.iter())
+        .chain(named_limitations_from_spy.iter())
         .chain(named_limitations_from_relative_import.iter())
     {
         evidence.extend(named_limit.evidence_lines());

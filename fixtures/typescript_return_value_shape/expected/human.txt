@@ -18,11 +18,11 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Math.round(amount * 100) / 100;
-  Missing discriminator: Related test reaches `roundCents` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` …
+  Missing discriminator: Only heuristic TypeScript test links were found for `roundCents`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/rounding.test.ts:6 rounds two decimals
   Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == Math.round(amount * 100) / 100`; no actionable repair packet is emitte…
   Evidence:
-    - reach yes: 1 related test(s) found for owner `roundCents`
+    - reach weak: 1 related test(s) found for owner `roundCents`
     - infection unknown: TypeScript preview adapter does not yet model infection.
     - 5 more evidence line(s) hidden
 

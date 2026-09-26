@@ -45,7 +45,7 @@ impl TypeScriptActionability {
 pub(crate) fn typescript_actionability_for(
     class: &ExposureClass,
     static_limit: Option<&TypeScriptStaticLimit>,
-    has_oracle_eligible_relation: bool,
+    has_owner_call_evidence: bool,
     missing_discriminators: &[MissingDiscriminatorFact],
     observed_evidence_label: &'static str,
 ) -> TypeScriptActionability {
@@ -103,7 +103,12 @@ pub(crate) fn typescript_actionability_for(
         };
     }
 
-    if !has_oracle_eligible_relation {
+    // `ambiguous_related_test` is reserved for tests whose link to the owner
+    // carries no owner-name call at all (pure proximity/name links): their
+    // assertions cannot be attributed to the owner. A gate-denied relation
+    // whose test still calls the owner by name has real oracle evidence, so
+    // it falls through to the packet-contract branches instead.
+    if !has_owner_call_evidence {
         return TypeScriptActionability {
             gap_state: "advisory",
             category: "ambiguous_related_test",

@@ -321,7 +321,7 @@
       "source_finding_id": "probe:src_discount.ts:typescript_preview:2396aec1",
       "language": "typescript",
       "language_status": "preview",
-      "classification": "exposed",
+      "classification": "weakly_exposed",
       "changed_owner": "applyDiscount",
       "probe_family": "predicate",
       "oracle_kind": "exact_value",
@@ -362,7 +362,7 @@
         "no RIPR Zero authority",
         "no support-tier promotion"
       ],
-      "reason": "The mocked-module case is the false-actionable guard: exact assertions do not override a named static limitation."
+      "reason": "The mocked-module case is the false-actionable guard: exact assertions do not override a named static limitation. The test bare-calls applyDiscount with no import anchor (#4103 shape 1), so exposure holds at weakly_exposed while the exact-value oracle classification (exact_value/strong) stays readable; oracle classification is independent of relation credit."
     },
     {
       "id": "javascript_already_observed_unchanged",
@@ -370,13 +370,13 @@
       "source_finding_id": "probe:src_discount.js:typescript_preview:8152c8c0",
       "language": "javascript",
       "language_status": "preview",
-      "classification": "exposed",
+      "classification": "weakly_exposed",
       "changed_owner": "applyDiscount",
       "probe_family": "predicate",
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "gap_state": "already_observed",
-      "actionability_category": "strong_oracle_observed",
+      "gap_state": "advisory",
+      "actionability_category": "incomplete_repair_packet",
       "static_limit_kind": null,
       "repair_packet_ready": false,
       "authority_boundary": "preview_advisory_only",
@@ -385,10 +385,10 @@
       "verify_result": "not_run",
       "receipt_command": "ripr agent receipt --source fixtures/javascript_js_preview --out target/ripr/reports/javascript-already-observed-preview-receipt.json",
       "receipt_state": "unchanged_no_repair_packet",
-      "outcome": "already_observed_unchanged",
-      "why_not_actionable": "related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted",
-      "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
-      "operator_note": "Already-observed JavaScript preview evidence stays non-actionable and unchanged rather than being queued as repair work.",
+      "outcome": "unanchored_relation_holds_advisory",
+      "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract",
+      "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+      "operator_note": "Unanchored JavaScript owner-call evidence keeps its exact-value oracle classification and stays non-actionable rather than being queued as repair work.",
       "must_not_change": [
         "production behavior",
         "public API",
@@ -411,7 +411,7 @@
         "no RIPR Zero authority",
         "no support-tier promotion"
       ],
-      "reason": "The unchanged case proves separately labeled JavaScript preview evidence can be useful without creating repair work."
+      "reason": "The unchanged case proves separately labeled JavaScript preview evidence stays useful without creating repair work. The test bare-calls applyDiscount with no import anchor (#4103 shape 1), so exposure credit is withheld at weakly_exposed and the gap is advisory with an incomplete packet contract, while the exact-value oracle classification (exact_value/strong) survives."
     },
     {
       "id": "typescript_complete_boundary_packet_closed",
