@@ -50,7 +50,7 @@ need to run it.
 | Seam diagnostics | Saved-workspace LSP seam diagnostics are on, with explicit config or initialization options allowed to disable them. |
 | Report caps | Context packets and collect-context commands include up to `5` related tests by default. |
 | Suppressions | Badge renderers look for `.ripr/suppressions.toml`; a missing file is normal. |
-| Badges | Repo badges count configured-visible unresolved seam gaps and stay advisory unless an explicit failure policy is selected. |
+| Badges | Public repo badges count unresolved canonical actionable gaps, or explicit gap-decision-ledger projection targets when a ledger is supplied. Seam-native counts remain internal inventory. Badge rendering stays advisory unless an explicit failure policy is selected. |
 | Cache | Full repo seam cache stores up to `20000` seams by default, compact repo seam cache stores up to `100000` seams by default, and large repos can opt into higher process-local limits. |
 | CI | Generated GitHub workflows upload advisory pilot/report/agent artifacts, keep SARIF rendering/upload optional, and use `continue-on-error` by default. |
 | Calibration | Runtime data is imported only when explicitly supplied; `ripr` does not run mutation testing by default. |
@@ -584,9 +584,9 @@ Validation rules (all enforced; violations fail `test-efficiency-report`):
 | Unmatched declarations rejected | A declared `test`/`path` selector that matches no test fails the report. |
 | Ambiguous name-only selectors rejected | If `test = "..."` matches multiple entries and no `path` is given, fail and list the candidates. |
 
-Future `ripr+` will use the `declared_intent` metadata to exclude
-declared intentional test-efficiency findings from its count. See
-[Badge policy](BADGE_POLICY.md).
+`ripr+` uses the `declared_intent` metadata to keep the analyzer's original
+class visible while excluding declared intentional test-efficiency findings
+from its actionable count. See [Badge policy](BADGE_POLICY.md).
 
 ### `.ripr/suppressions.toml`
 
@@ -722,11 +722,14 @@ Analysis formats, diff-scoped:
 | `github` | `--format github` | GitHub Actions annotations. |
 | `sarif` | `--format sarif` | SARIF consumers, including GitHub code scanning. |
 
-Badge formats, diff-scoped, for README status: `badge-json`, `badge-shields`,
-`badge-plus-json`, `badge-plus-shields`.
+Badge formats, diff-scoped, for PR and CI artifacts only: `badge-json`,
+`badge-shields`, `badge-plus-json`, `badge-plus-shields`. These are not public
+README, crate-page, or store headline authority.
 
-Badge formats, repo-scoped, rendered from the gap ledger: `repo-badge-json`,
-`repo-badge-shields`, `repo-badge-plus-json`, `repo-badge-plus-shields`.
+Badge formats, repo-scoped, for public baseline status: `repo-badge-json`,
+`repo-badge-shields`, `repo-badge-plus-json`, `repo-badge-plus-shields`. They
+use canonical actionable gaps by default, or explicit gap-decision-ledger
+projection targets when `--gap-ledger` is supplied.
 
 Repo-scope formats, rendered against the full repo baseline rather than a diff:
 `repo-seams-json`, `repo-seams-md`, `repo-exposure-json`,
