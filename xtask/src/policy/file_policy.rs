@@ -69,37 +69,77 @@ pub(crate) fn check_file_policy() -> Result<(), String> {
 }
 
 fn validate_test_covered_by(path: &str, commands: &[(usize, String)]) -> Result<(), String> {
-    let mut built = BTreeSet::new();
+    let mut warmed = BTreeSet::new();
     validate_test_covered_by_with(path, commands, |args| {
-        if let Some(build_args) = build_args_before_list(args) {
-            let build_key = build_args.join("\u{1f}");
-            if built.insert(build_key) {
-                let build = capture_output_with_timeout(
-                    "cargo",
-                    &build_args,
-                    &[],
-                    TEST_COVERED_BY_BUILD_TIMEOUT,
-                    "test-valued covered_by build",
-                )?;
-                if build.timed_out || !build.status.is_some_and(|status| status.success()) {
-                    return Ok(enumeration_result(build, TEST_COVERED_BY_BUILD_TIMEOUT));
-                }
+        let spawns = enumeration_spawns(args);
+        let warmup = spawns.len() == 2;
+        let mut listed = None;
+        for (index, spawn) in spawns.into_iter().enumerate() {
+            if index == 0 && warmup && !warmed.insert(spawn.args.join("\u{1f}")) {
+                continue;
             }
+            let output = capture_output_with_timeout(
+                "cargo",
+                &spawn.args,
+                &[],
+                spawn.timeout,
+                spawn.description,
+            )?;
+            if output.timed_out || !output.status.is_some_and(|status| status.success()) {
+                return Ok(enumeration_result(output, spawn.timeout));
+            }
+            listed = Some(output);
         }
-        let output = capture_output_with_timeout(
-            "cargo",
-            args,
-            &[],
-            TEST_COVERED_BY_LIST_TIMEOUT,
-            "test-valued covered_by enumeration",
-        )?;
+        let output = listed
+            .ok_or_else(|| "test-valued covered_by enumeration produced no spawn".to_string())?;
         Ok(enumeration_result(output, TEST_COVERED_BY_LIST_TIMEOUT))
     })
 }
 
+/// One cargo spawn used to prove a test-valued `covered_by` pointer.
+struct CoveredBySpawn {
+    args: Vec<String>,
+    timeout: Duration,
+    description: &'static str,
+}
+
+/// Warm a cold compile under the build budget, then list under the list cap.
+///
+/// Ordinary `cargo test` pointers warm with `--no-run`. `cargo test --doc`
+/// rejects `--no-run` (`can't skip running doc tests with --no-run`), and a
+/// second `cargo test --doc -- --list` still runs `rustdoc --test` after the
+/// library is fresh. That pointer is therefore enumerated once, under the
+/// compile budget. A second spawn would put the doctest compile back inside
+/// the five-minute list cap (#4141).
+fn enumeration_spawns(args: &[String]) -> Vec<CoveredBySpawn> {
+    if let Some(build_args) = build_args_before_list(args) {
+        vec![
+            CoveredBySpawn {
+                args: build_args,
+                timeout: TEST_COVERED_BY_BUILD_TIMEOUT,
+                description: "test-valued covered_by build",
+            },
+            CoveredBySpawn {
+                args: args.to_vec(),
+                timeout: TEST_COVERED_BY_LIST_TIMEOUT,
+                description: "test-valued covered_by enumeration",
+            },
+        ]
+    } else {
+        vec![CoveredBySpawn {
+            args: args.to_vec(),
+            timeout: TEST_COVERED_BY_BUILD_TIMEOUT,
+            description: "test-valued covered_by doc enumeration",
+        }]
+    }
+}
+
 /// Build args for `cargo test … --no-run`, or `None` when Cargo rejects
 /// that combination. `cargo test --doc --no-run` is an error, so a
-/// documentation-test pointer keeps the list command as its only spawn.
+/// documentation-test pointer is not given a `--no-run` spawn.
+/// [`enumeration_spawns`] enumerates that pointer once under the build
+/// budget. Cargo recompiles doctests on every listing, so a follow-up list
+/// would charge that compile against the list cap.
 fn build_args_before_list(args: &[String]) -> Option<Vec<String>> {
     let mut build_args = Vec::new();
     for arg in args {
@@ -186,9 +226,11 @@ mod tests {
     use std::time::Duration;
 
     use super::COVERED_BY_INSTRUMENT_PREFIX;
+    use super::TEST_COVERED_BY_BUILD_TIMEOUT;
     use super::TEST_COVERED_BY_LIST_TIMEOUT;
     use super::build_args_before_list;
     use super::enumeration_result;
+    use super::enumeration_spawns;
     use super::validate_test_covered_by;
     use super::validate_test_covered_by_with;
     use crate::is_cargo_test_command;
@@ -381,11 +423,21 @@ mod tests {
         let build = build_args_before_list(&args)
             .ok_or("ordinary cargo test lost its separate build step")?;
         let expected = ["test", "-p", "xtask", "some_filter", "--no-run"].map(str::to_string);
-        if build == expected {
-            Ok(())
-        } else {
-            Err(format!("build args drifted: {build:?}"))
+        if build != expected {
+            return Err(format!("build args drifted: {build:?}"));
         }
+        let spawns = enumeration_spawns(&args);
+        if spawns.len() != 2
+            || spawns[0].args != expected
+            || spawns[0].timeout != TEST_COVERED_BY_BUILD_TIMEOUT
+            || spawns[1].args != args
+            || spawns[1].timeout != TEST_COVERED_BY_LIST_TIMEOUT
+        {
+            return Err(
+                "ordinary pointer no longer warms with --no-run before the list cap".to_string(),
+            );
+        }
+        Ok(())
     }
 
     #[test]
@@ -405,6 +457,44 @@ mod tests {
         } else {
             Err("cargo test --doc must not be combined with --no-run".to_string())
         }
+    }
+
+    #[test]
+    fn test_covered_by_doc_pointer_is_enumerated_once_under_the_build_budget() -> Result<(), String>
+    {
+        let args = [
+            "test",
+            "--workspace",
+            "--doc",
+            "--",
+            "--list",
+            "--format",
+            "terse",
+        ]
+        .map(str::to_string);
+        let spawns = enumeration_spawns(&args);
+        if spawns.len() != 1 {
+            return Err(format!(
+                "doc pointer spawned twice, which recompiles doctests ({})",
+                spawns.len()
+            ));
+        }
+        if spawns[0].timeout != TEST_COVERED_BY_BUILD_TIMEOUT {
+            return Err(
+                "doc enumeration was charged against the list cap instead of the build budget"
+                    .to_string(),
+            );
+        }
+        if spawns[0].args.iter().any(|arg| arg == "--no-run") {
+            return Err("doc enumeration appended --no-run, which Cargo rejects".to_string());
+        }
+        if spawns[0].args != args {
+            return Err("doc enumeration changed the list command".to_string());
+        }
+        if spawns[0].description != "test-valued covered_by doc enumeration" {
+            return Err("doc enumeration is no longer the spawn that counts tests".to_string());
+        }
+        Ok(())
     }
 
     #[test]
