@@ -231,10 +231,12 @@ TypeScript and JavaScript are opt-in previews. Diff analysis recognizes:
 .ts  .tsx  .mts  .cts  .js  .jsx  .mjs  .cjs
 ```
 
-The modern module suffixes are analysis inputs, but some downstream repair,
-related-test, targeted-rerun, and packet surfaces can still under-emit for
-`.mts`, `.cts`, `.mjs`, and `.cjs`. An absent repair packet is therefore not
-evidence that the file was ignored or that the change is safe.
+In the development build, these extensions also share the language
+classification used by repair eligibility, related-test packet labels, and
+targeted reruns. Recognizing a file does not make its findings repairable:
+a complete supported route and sufficient evidence are still required. Read
+the reported limitation or next action; an absent repair packet is not evidence
+that the change is safe.
 
 Perl needs a `lang-perl` build and the unpublished `perl-ripr-facts` exporter,
 so it is not usable from a released build/exporter combination.
