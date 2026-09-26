@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::analysis_outcome::{
@@ -12,6 +11,8 @@ use super::path::{
     parse_old_path_for_confinement, parse_old_path_marker, parse_rename_from_path,
     parse_rename_to_path,
 };
+
+mod stream;
 
 /// Default file-count limit for parsed diffs. Same default as the Rust adapter
 /// (`analysis/language/rust.rs:DIFF_INDEX_FILE_LIMIT`); kept in sync so the
@@ -37,18 +38,7 @@ fn parse_unified_diff_with_metadata_and_limit(
     input: &str,
     limit: usize,
 ) -> Result<ParsedDiff, String> {
-    let parsed = parse_unified_diff_with_metadata(input);
-    if parsed.changed_files.len() > limit {
-        return Err(format!(
-            "diff_scope_oversized: {} changed files exceed the {DIFF_FILE_LIMIT_ENV} \
-             limit ({limit}); analysis was not run to protect runner memory before \
-             probe expansion. Repair route: reduce the diff scope, split the extraction \
-             PR, run a narrower diff, or raise the limit via \
-             {DIFF_FILE_LIMIT_ENV}=<number>.",
-            parsed.changed_files.len()
-        ));
-    }
-    Ok(parsed)
+    stream::parse_bounded_lines(input.lines(), limit)
 }
 
 fn diff_file_limit_from_env() -> usize {
@@ -64,102 +54,7 @@ pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
 }
 
 pub(crate) fn parse_unified_diff_with_metadata(input: &str) -> ParsedDiff {
-    let mut files: BTreeMap<PathBuf, ChangedFile> = BTreeMap::new();
-    let mut state = parser_state::ParserState::default();
-
-    // Collect lines so we can peek at the next line for the RANK-2 fix:
-    // when `in_hunk` and we see `--- <plausible-path>` immediately followed by
-    // `+++ <path>`, we must close the current hunk and open a new file section
-    // rather than misinterpreting the markers as hunk-body payload.
-    let lines: Vec<&str> = input.lines().collect();
-    let mut i = 0;
-    while i < lines.len() {
-        let raw = lines[i];
-
-        if state.handle_diff_boundary(raw) {
-            i += 1;
-            continue;
-        }
-
-        // Binary file sentinel: `Binary files a/x and b/x differ` (or
-        // `/dev/null` variants) signals that this file has no textual hunks
-        // and produces no analyzable line-level probes. Treat it as a hunk
-        // closer so a following textual file-section is not mis-attributed to
-        // the binary file's still-open hunk, and so the parser does not fall
-        // through and consume the literal `Binary files ...` line as hunk
-        // payload.
-        if state.handle_binary_files_sentinel(raw) {
-            state.record_binary_deletion(raw);
-            i += 1;
-            continue;
-        }
-
-        if state.handle_submodule_mode(raw) {
-            i += 1;
-            continue;
-        }
-
-        if state.handle_submodule_index(raw) {
-            i += 1;
-            continue;
-        }
-
-        if state.handle_rename_metadata(raw, &mut files) {
-            i += 1;
-            continue;
-        }
-
-        // RANK-2 fix: detect a plain-diff file-section boundary while in_hunk.
-        // A genuine `--- payload` line inside a hunk starts with `-` (one dash)
-        // and is consumed as a removed line.  A file-section separator starts
-        // with `--- ` (three dashes + space) and is always followed immediately
-        // by `+++ <path>`.  We peek at the next line before committing.
-        if state.combined_quarantine()
-            && parse_old_path_marker(raw)
-            && lines
-                .get(i + 1)
-                .is_some_and(|next| is_new_path_marker(next))
-        {
-            // A plain `---`/`+++` pair can follow a combined hunk without a
-            // `diff --git` boundary. Combined source text carries parent
-            // prefix columns and cannot match these unprefixed markers.
-            state.close_combined_quarantine();
-        }
-
-        if state.in_hunk()
-            && parse_old_path_marker(raw)
-            && lines
-                .get(i + 1)
-                .is_some_and(|next| is_new_path_marker(next))
-        {
-            // This `--- ` line opens a new file section: close the current hunk
-            // and fall through to the normal path-marker handler below.
-            state.close_hunk();
-        }
-
-        if state.register_path_marker(raw, &mut files) {
-            i += 1;
-            continue;
-        }
-
-        if state.handle_hunk_header(raw) {
-            i += 1;
-            continue;
-        }
-
-        state.consume_hunk_line(raw, &mut files);
-        i += 1;
-    }
-
-    ParsedDiff {
-        changed_files: files.into_values().collect(),
-        deleted_file_count: state.deleted_file_count(),
-        submodule_file_count: state.submodule_file_count(),
-        renamed_file_count: state.renamed_file_count(),
-        pure_rename_file_count: state.pure_rename_file_count(),
-        pure_rename_paths: state.pure_rename_paths(),
-        limitations: state.limitations(),
-    }
+    stream::parse_unbounded(input)
 }
 
 #[derive(Debug, Default)]
@@ -671,7 +566,7 @@ mod parser_state {
             // one changed program. Emitting their lines as ordinary changes
             // invents behavior that exists in neither parent, so quarantine the
             // region and record it instead (#2828). Coordinates still advance so
-            // that lines after the region keep honest line numbers.
+            // that lines after a quarantined region keep honest line numbers.
             let side = match raw.as_bytes().first() {
                 Some(b'+') => Some(ConflictSide::Added),
                 Some(b'-') => Some(ConflictSide::Removed),
@@ -1149,6 +1044,7 @@ deleted file mode 100644
         let spaced = "diff --git a/src/old file.rs b/src/new file.rs\nsimilarity index 80%\nrename from src/old file.rs\nrename to src/new file.rs\n--- \"a/src/old file.rs\"\n+++ \"b/src/new file.rs\"\n@@ -1 +1 @@\n-old\n+new\n";
         let parsed = parse_unified_diff_with_metadata(spaced);
         assert_eq!(parsed.renamed_file_count, 1);
+        assert_eq!(parsed.pure_rename_file_count, 0);
         assert_eq!(parsed.changed_files.len(), 1);
         assert_eq!(
             parsed.changed_files[0].path,
@@ -1173,6 +1069,7 @@ deleted file mode 100644
 ";
 
         let files = parse_unified_diff(diff);
+
         assert!(files.is_empty());
     }
 
@@ -1739,8 +1636,8 @@ deleted file mode 100644
             "error must use diff_scope_oversized prefix: {err}"
         );
         assert!(
-            err.contains("10 changed files"),
-            "error must name the file count: {err}"
+            err.contains("at least 6 changed files"),
+            "error must name the observed lower bound, not the unread total: {err}"
         );
         Ok(())
     }
