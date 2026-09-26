@@ -34,6 +34,9 @@ ingest_reason|forbidden_edit|Swarm-ingest classifier reason: forbidden-file edit
 ingest_reason|missing_verify|Swarm-ingest classifier reason: verify evidence absent or failing.
 ingest_reason|movement_without_snapshot_provenance|Swarm-ingest classifier reason: movement claimed without before/after sha256 artifact provenance.
 ingest_reason|stale_packet|Swarm-ingest classifier reason: packet marked stale; movement claim discarded.
+kind|python_repair_driver_binding|Prepare binding and apply record for the governed Python repair driver (schema 0.1).
+kind|python_repair_verification_check_report|Structural check report for Python repair verification receipts (schema 0.1).
+kind|python_repair_verification_receipt|Immutable Python repair verification candidate receipt (schema 0.1).
 oracle_alignment|alias|Python oracle observes an import alias of the changed owner.
 oracle_alignment|changed_sink_token|Python oracle observes a changed-sink token from the changed line.
 oracle_alignment|direct|Python oracle observes the changed owner by name.

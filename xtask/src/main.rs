@@ -13285,9 +13285,47 @@ fn check_output_contracts() -> Result<(), String> {
                     &mut violations,
                 );
             }
+            "kind" => {
+                let producer = match value.as_str() {
+                    "python_repair_driver_binding" => {
+                        "crates/ripr/src/app/python_repair_binding.rs"
+                    }
+                    "python_repair_verification_receipt" => {
+                        "crates/ripr/src/app/python_repair_verification.rs"
+                    }
+                    "python_repair_verification_check_report" => {
+                        "xtask/src/reports/python_repair_verification.rs"
+                    }
+                    other => {
+                        violations.push(format!("unrecognized output kind `{other}`"));
+                        continue;
+                    }
+                };
+                let source = read_text_lossy(Path::new(producer))?;
+                require_contract_value(producer, &source, value, kind, &mut violations);
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
             other => violations.push(format!(
                 "policy/output_contracts.txt uses unsupported kind `{other}`"
             )),
+        }
+    }
+
+    // These producer-owned kinds are durable artifacts in the governed Python
+    // repair path. Removing a registry row must fail too, not just a bad row.
+    for value in [
+        "python_repair_driver_binding",
+        "python_repair_verification_check_report",
+        "python_repair_verification_receipt",
+    ] {
+        if !seen.contains(&format!("kind|{value}")) {
+            violations.push(format!("missing output contract entry: kind|{value}"));
         }
     }
 
