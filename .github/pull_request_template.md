@@ -26,8 +26,21 @@ Proposal:
 Spec:
 ADR:
 Plan item:
-Active goal:
-Issue:
+Governing issue or accepted claim:
+Acceptance delta (one sentence):
+
+## Candidate Relationships
+
+Candidate branch (GitHub PR head is authoritative after publication):
+Stack parent or prerequisite PR (if any):
+Proposed replacement of PR (if any; not yet accepted):
+Acceptance retained from a replaced candidate (if any):
+Accepted winner and losing candidate disposition (when decided):
+
+Name a stack or proposed replacement explicitly. A proposed replacement does
+not make its predecessor superseded. Shared files or a shared parent issue
+alone do not establish duplication. If the relationship is unknown, record it
+as needing reconciliation before disposing of either PR.
 
 ## Scope
 
