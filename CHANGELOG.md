@@ -529,6 +529,17 @@ are scoped or reviewed.
 
 ### Fixed
 
+- The LSP local file-URI decoder refuses a parent-directory segment (`..`),
+  including one written with percent-encoding or backslashes, instead of
+  admitting it as an absolute path. Saved-content digest reads use only an
+  admitted path, so a refused URI's display fallback is not opened even when
+  the working directory contains a `file:` directory that would let that
+  relative string follow `..`. A path this process builds may still contain
+  `..` from a relative join, and that spelling is collapsed before a `file:`
+  URI is emitted. Filenames that only contain two dots (`foo..bar`,
+  `..hidden`) stay ordinary local paths. This refuses the client-supplied
+  read; it is not a claim that a client can disclose the bytes
+  ([#4145](https://github.com/EffortlessMetrics/ripr-swarm/issues/4145)).
 - `check-file-policy` builds test binaries before it lists `covered_by`
   subjects. A cold compile is no longer charged against the five-minute
   list cap, and a timeout is reported as an instrument failure rather than

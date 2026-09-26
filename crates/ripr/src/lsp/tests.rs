@@ -11702,7 +11702,12 @@ fn relative_path(root: &Path, path: &Path) -> Result<String, String> {
 }
 
 fn normalize_fixture_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    // Fixture roots are joined as `CARGO_MANIFEST_DIR/../../fixtures/...`.
+    // The file-URI encoder collapses that `..` before emission, so projection
+    // has to collapse the same way or the decoded URI is no longer a prefix
+    // of the root spelling.
+    super::uri::collapse_parent_segments(&normalized).unwrap_or(normalized)
 }
 
 fn pretty_json(value: &serde_json::Value) -> String {

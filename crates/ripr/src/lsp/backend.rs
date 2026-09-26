@@ -2701,10 +2701,13 @@ fn path_is_detectable_source_dir_python(root: &Path, path: &Path) -> bool {
 
 /// Root-relative components of `path` when `path` sits below `root`. Root
 /// components compare with the platform path rule (case-insensitive on
-/// Windows), mirroring the LSP URI authority's containment rule; `.` and
-/// `..` segments resolve before classification; non-UTF-8 components fail
-/// closed.
+/// Windows), mirroring the LSP URI authority's containment rule. `.` and
+/// `..` resolve on both sides first, including a root this process built
+/// with a relative join (`crates/ripr/../..`). A collapsed file URI and
+/// that uncollapsed root are the same directory.
 fn root_relative_components(root: &Path, path: &Path) -> Option<Vec<String>> {
+    let root = super::uri::normalize_path(root);
+    let path = super::uri::normalize_path(path);
     fn component_names(path: &Path) -> Vec<Option<String>> {
         path.components()
             .filter(|component| {
@@ -2717,8 +2720,8 @@ fn root_relative_components(root: &Path, path: &Path) -> Option<Vec<String>> {
             .collect()
     }
 
-    let root_names = component_names(root);
-    let path_names = component_names(path);
+    let root_names = component_names(&root);
+    let path_names = component_names(&path);
     if path_names.len() < root_names.len() {
         return None;
     }
@@ -2811,6 +2814,43 @@ mod workspace_input_tests {
 
         assert!(WorkspaceInputKind::PythonProjectMarker.reloads_repository_config());
         assert!(!WorkspaceInputKind::PythonProjectMarker.invalidates_workspace_graph());
+        Ok(())
+    }
+
+    #[test]
+    fn parent_segments_in_the_workspace_root_still_classify_root_python_sources()
+    -> Result<(), String> {
+        let repo =
+            std::env::temp_dir().join(format!("ripr-root-parent-segments-{}", std::process::id()));
+        let nested = repo.join("crates").join("pkg");
+        std::fs::create_dir_all(&nested).map_err(|err| err.to_string())?;
+        let root = nested.join("..").join("..");
+        let source = repo.join("src").join("app.py");
+        let dotted_source = repo.join("src").join("nested").join("..").join("app.py");
+        let outside = repo.join("scripts").join("app.py");
+        let generated = repo.join("src").join("client_pb2.py");
+        let escaped = repo.join("src").join("..").join("..").join("outside.py");
+        let source_kind = workspace_input_kind(&root, &source);
+        let dotted_kind = workspace_input_kind(&root, &dotted_source);
+        let outside_kind = workspace_input_kind(&root, &outside);
+        let generated_kind = workspace_input_kind(&root, &generated);
+        let escaped_kind = workspace_input_kind(&root, &escaped);
+        let _ = std::fs::remove_dir_all(&repo);
+        if source_kind != Some(WorkspaceInputKind::PythonSourcePresence) {
+            return Err(format!(
+                "src/app.py under a root with parent segments was {source_kind:?}"
+            ));
+        }
+        if dotted_kind != Some(WorkspaceInputKind::PythonSourcePresence) {
+            return Err(format!(
+                "src/nested/../app.py was not collapsed before classification: {dotted_kind:?}"
+            ));
+        }
+        if outside_kind.is_some() || generated_kind.is_some() || escaped_kind.is_some() {
+            return Err(format!(
+                "non-inputs were classified: outside={outside_kind:?} generated={generated_kind:?} escaped={escaped_kind:?}"
+            ));
+        }
         Ok(())
     }
 
