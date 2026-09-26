@@ -335,7 +335,8 @@ fn write_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
     // #4004): ambient textconv, color, external-diff, and context config must
     // not change what the packet analyzes. The assembly pins `-c
     // core.quotePath=true`, `--no-ext-diff`, `--no-textconv`, `--no-color`,
-    // `--binary`, and three-context presentation.
+    // `--src-prefix=a/`, `--dst-prefix=b/`, `--binary`, and three-context
+    // presentation.
     let diff = ripr::analysis::load_pr_evidence_diff_range(repo, &options.base, &options.head)?;
     write_parented_file(&out, PR_DIFF, diff)
 }

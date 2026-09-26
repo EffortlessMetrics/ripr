@@ -477,12 +477,12 @@ jobs:
           mkdir -p target/ripr/reports
           # Pinned diff contract (#4005): the same presentation pins as the
           # production loaders. Ambient external-diff, textconv, color,
-          # context, and path-quoting configuration must not change the
-          # bytes RIPR analyzes.
+          # context, path-quoting, and side-prefix configuration must not
+          # change the bytes RIPR analyzes.
           base_ref="origin/${{ github.base_ref }}"
           base_sha="$(git rev-parse --verify "${base_ref}^{commit}")" || { echo "ripr: cannot resolve base ref $base_ref" >&2; exit 1; }
           head_sha="$(git rev-parse --verify "HEAD^{commit}")" || { echo "ripr: cannot resolve HEAD" >&2; exit 1; }
-          git -c core.quotePath=true diff --binary --no-ext-diff --no-textconv --no-color --unified=3 --inter-hunk-context=0 "${base_sha}...${head_sha}" > target/ripr/reports/pr.diff || { echo "ripr: git diff failed for ${base_sha}...${head_sha}" >&2; exit 1; }
+          git -c core.quotePath=true diff --binary --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ --unified=3 --inter-hunk-context=0 "${base_sha}...${head_sha}" > target/ripr/reports/pr.diff || { echo "ripr: git diff failed for ${base_sha}...${head_sha}" >&2; exit 1; }
           byte_count="$(wc -c < target/ripr/reports/pr.diff | tr -d ' ')"
           digest="$(sha256sum target/ripr/reports/pr.diff)" || {
             echo "ripr: failed to compute SHA-256 for patch" >&2

@@ -115,7 +115,7 @@ where
 /// analysis shape (`ripr check --diff` consumes source-coordinate patches).
 /// Recorded in the badge input identity receipt; the argv is assembled by
 /// `ripr::analysis::load_diff_range`, never inline here.
-pub(crate) const BADGE_DIFF_PRESENTATION_ARGV: &str = "git -c core.quotePath=true diff --no-ext-diff --no-textconv --no-color --unified=0 --inter-hunk-context=0 --submodule=short <resolved-base>...HEAD";
+pub(crate) const BADGE_DIFF_PRESENTATION_ARGV: &str = "git -c core.quotePath=true diff --no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/ --unified=0 --inter-hunk-context=0 --submodule=short <resolved-base>...HEAD";
 
 pub(crate) const BADGE_IDENTITY_INPUT_PHASE: &str = "input";
 pub(crate) const BADGE_IDENTITY_COMPLETE_PHASE: &str = "complete";

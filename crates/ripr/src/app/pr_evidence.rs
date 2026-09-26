@@ -350,7 +350,8 @@ fn write_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
     // records. `--binary` stays the caller extra and the evidence path
     // selects three context lines (the pre-#3930 presentation); the
     // assembly pins `-c core.quotePath=true`, `--no-ext-diff`,
-    // `--no-textconv`, `--no-color`, and `--inter-hunk-context=0`.
+    // `--no-textconv`, `--no-color`, `--src-prefix=a/`,
+    // `--dst-prefix=b/`, and `--inter-hunk-context=0`.
     let diff = crate::analysis::load_pr_evidence_diff_range(repo, &options.base, &options.head)?;
     write_parented_file(&out, PR_DIFF, diff)
 }

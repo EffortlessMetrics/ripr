@@ -999,6 +999,8 @@ fn generated_capture_step_uses_pinned_diff_contract() -> Result<(), Box<dyn Erro
         "--no-ext-diff",
         "--no-textconv",
         "--no-color",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
         "--unified=3",
         "--inter-hunk-context=0",
         "core.quotePath",
@@ -1115,6 +1117,8 @@ fn pinned_capture_flags_retain_edit_hidden_by_textconv() -> Result<(), Box<dyn E
             "--no-ext-diff",
             "--no-textconv",
             "--no-color",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
             "--unified=3",
             "--inter-hunk-context=0",
             range,
@@ -1217,6 +1221,16 @@ fn generated_capture_step_runs_end_to_end() -> Result<(), Box<dyn Error>> {
     let base_sha = fixture_git_output(&repo, &["rev-parse", "--verify", "main^{commit}"])?;
     let head_sha = fixture_git_output(&repo, &["rev-parse", "--verify", "HEAD^{commit}"])?;
 
+    // Make the ambient repository hostile to the parser's expected side
+    // prefixes. The unpinned control proves the fixture actually changes Git's
+    // presentation; the generated command must override it back to a/ and b/.
+    fixture_git_ok(&repo, &["config", "--local", "diff.noprefix", "true"])?;
+    let unpinned = fixture_git_output(&repo, &["diff", "main...HEAD"])?;
+    assert!(
+        unpinned.contains("diff --git probe.txt probe.txt"),
+        "diff.noprefix control must remove side prefixes; got:\n{unpinned}"
+    );
+
     // Positive: the step resolves main, captures the edit, and retains a
     // receipt whose identities and byte count match the run.
     let script = body
@@ -1229,9 +1243,14 @@ fn generated_capture_step_runs_end_to_end() -> Result<(), Box<dyn Error>> {
         String::from_utf8_lossy(&run.stderr)
     );
     let patch = fs::read(repo.join("target/ripr/reports/pr.diff"))?;
+    let patch_text = String::from_utf8_lossy(&patch);
     assert!(
-        String::from_utf8_lossy(&patch).contains("after"),
+        patch_text.contains("after"),
         "captured patch must contain the feature-branch edit"
+    );
+    assert!(
+        patch_text.contains("diff --git a/probe.txt b/probe.txt"),
+        "generated capture must restore canonical side prefixes despite diff.noprefix; got:\n{patch_text}"
     );
     let receipt: serde_json::Value = serde_json::from_str(&fs::read_to_string(
         repo.join("target/ripr/reports/pr-diff.receipt.json"),

@@ -572,15 +572,24 @@ fn run_git_diff_bytes(
     // Analysis consumes source-coordinate patches, not human diff views.
     // Pin every caller, including worktree mode: helpers can suppress real
     // changes, textconv can invent source coordinates, and ambient context
-    // can expand a one-line edit into a full-file payload (#3850). The
-    // context-line count is the one caller-selected presentation knob (the
-    // appended pin wins over any same-named extra): analysis takes zero,
+    // can expand a one-line edit into a full-file payload (#3850). Git's
+    // source/destination prefixes are also parser identity syntax: ambient
+    // diff.noprefix can remove them, so a real path such as b/identity.rs
+    // can collapse onto identity.rs after the parser strips the expected b/
+    // side prefix (#4086). (diff.mnemonicPrefix only rewrites worktree/index
+    // comparisons, never the <base>...HEAD range form issued here.) Append canonical
+    // side prefixes after caller extras so neither repository config nor a
+    // conflicting presentation extra can change file identity.
+    // The context-line count is the one caller-selected presentation knob
+    // (the appended pin wins over any same-named extra): analysis takes zero,
     // the PR-evidence packet takes three.
     let unified_arg = format!("--unified={unified}");
     args.extend_from_slice(&[
         "--no-ext-diff",
         "--no-textconv",
         "--no-color",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
         unified_arg.as_str(),
         "--inter-hunk-context=0",
     ]);
@@ -631,6 +640,129 @@ mod tests {
 
         let result = load_diff(&dir, None, Some(&diff_file), None);
         assert_eq!(result.as_deref(), Ok("test content"));
+
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn given_ambient_diff_prefix_settings_when_range_loaded_then_repository_paths_keep_identity()
+    -> std::io::Result<()> {
+        // #4086: the parser strips Git's ordinary a/ and b/ side prefixes.
+        // Without explicit loader pins, diff.noprefix=true turns b/identity.rs
+        // into a marker that is indistinguishable from identity.rs after that
+        // strip. diff.mnemonicPrefix is deliberately not in this matrix: it
+        // only rewrites worktree/index comparisons, so a <base>...HEAD range
+        // diff keeps canonical prefixes and the leg could never discriminate.
+        let dir = unique_fixture_root("diff-side-prefix-identity")?;
+        init_git_repo(&dir, "main")?;
+        fs::create_dir_all(dir.join("b"))?;
+        fs::write(dir.join("identity.rs"), "pub fn outer() -> u32 { 1 }\n")?;
+        fs::write(
+            dir.join("b").join("identity.rs"),
+            "pub fn nested() -> u32 { 2 }\n",
+        )?;
+        run_git_checked(&dir, &["add", "."])?;
+        run_git_checked(&dir, &["commit", "-m", "base paths", "--quiet"])?;
+
+        fs::write(dir.join("identity.rs"), "pub fn outer() -> u32 { 10 }\n")?;
+        fs::write(
+            dir.join("b").join("identity.rs"),
+            "pub fn nested() -> u32 { 20 }\n",
+        )?;
+        run_git_checked(&dir, &["add", "."])?;
+        run_git_checked(&dir, &["commit", "-m", "change paths", "--quiet"])?;
+
+        {
+            let (setting, value) = ("diff.noprefix", "true");
+            run_git_checked(&dir, &["config", setting, value])?;
+
+            let raw = Command::new("git")
+                .args(["diff", "HEAD~1...HEAD"])
+                .current_dir(&dir)
+                .output()?;
+            assert!(
+                raw.status.success(),
+                "{setting} raw-control git diff failed: {}",
+                String::from_utf8_lossy(&raw.stderr)
+            );
+            let raw = String::from_utf8_lossy(&raw.stdout);
+            assert!(
+                raw.contains("identity.rs") && raw.contains("b/identity.rs"),
+                "{setting} raw control did not contain both fixture paths:\n{raw}"
+            );
+            assert!(
+                !raw.contains("diff --git a/identity.rs b/identity.rs"),
+                "{setting} raw control retained canonical prefixes, so the fixture does not discriminate:\n{raw}"
+            );
+
+            let diff = load_diff_range(&dir, "HEAD~1", "HEAD").map_err(std::io::Error::other)?;
+
+            assert!(
+                diff.contains("diff --git a/identity.rs b/identity.rs"),
+                "{setting} must not change the canonical outer-file boundary:\n{diff}"
+            );
+            assert!(
+                diff.contains("diff --git a/b/identity.rs b/b/identity.rs"),
+                "{setting} must not change the canonical nested-file boundary:\n{diff}"
+            );
+
+            let parsed = super::super::parse::parse_unified_diff(&diff);
+            let mut paths: Vec<PathBuf> = parsed.iter().map(|file| file.path.clone()).collect();
+            paths.sort();
+            assert_eq!(
+                paths,
+                vec![PathBuf::from("b/identity.rs"), PathBuf::from("identity.rs")],
+                "{setting} must not collapse distinct repository paths"
+            );
+
+            run_git_checked(&dir, &["config", "--unset", setting])?;
+        }
+
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn shared_diff_authority_overrides_conflicting_prefix_extras() -> std::io::Result<()> {
+        // The shared authority appends its identity pins after caller extras.
+        // A future caller adding its own presentation flags must not be able to
+        // move the parser onto a different side-prefix dialect.
+        let dir = unique_fixture_root("diff-side-prefix-extra-precedence")?;
+        init_git_repo(&dir, "main")?;
+        fs::create_dir_all(dir.join("src"))?;
+        fs::write(
+            dir.join("src").join("lib.rs"),
+            "pub fn value() -> u32 { 1 }\n",
+        )?;
+        run_git_checked(&dir, &["add", "."])?;
+        run_git_checked(&dir, &["commit", "-m", "base source", "--quiet"])?;
+
+        fs::write(
+            dir.join("src").join("lib.rs"),
+            "pub fn value() -> u32 { 2 }\n",
+        )?;
+        run_git_checked(&dir, &["add", "."])?;
+        run_git_checked(&dir, &["commit", "-m", "change source", "--quiet"])?;
+
+        let bytes = run_git_diff_bytes(
+            &dir,
+            "HEAD~1...HEAD",
+            &["--src-prefix=old/", "--dst-prefix=new/"],
+            "0",
+            None,
+        )
+        .map_err(std::io::Error::other)?;
+        let diff = String::from_utf8(bytes).map_err(std::io::Error::other)?;
+
+        assert!(
+            diff.contains("diff --git a/src/lib.rs b/src/lib.rs"),
+            "{diff}"
+        );
+        assert!(diff.contains("--- a/src/lib.rs"), "{diff}");
+        assert!(diff.contains("+++ b/src/lib.rs"), "{diff}");
+        assert!(!diff.contains("old/src/lib.rs"), "{diff}");
+        assert!(!diff.contains("new/src/lib.rs"), "{diff}");
 
         ignore_remove_dir_all(&dir);
         Ok(())
