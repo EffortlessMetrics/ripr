@@ -408,12 +408,19 @@ fn parse_repo_exposure_seams(seams: &[Value]) -> Result<Vec<StaticSeamRecord>, S
 }
 
 fn parse_check_output_findings(findings: &[Value]) -> Result<Vec<StaticSeamRecord>, String> {
-    let mut records = Vec::new();
-    for finding in findings {
-        let Some(record) = static_seam_record_from_check_finding(finding) else {
-            continue;
-        };
-        records.push(record);
+    let records: Vec<StaticSeamRecord> = findings
+        .iter()
+        .filter_map(static_seam_record_from_check_finding)
+        .collect();
+    // Check-output findings are matched by canonical gap id. When a snapshot
+    // has findings but none carries one (Rust `ripr check --json` today), an
+    // empty comparison would read as "nothing moved"; refuse instead so the
+    // receipt cannot hide real movement.
+    if records.is_empty() && !findings.is_empty() {
+        return Err(format!(
+            "check-output snapshot has {} finding(s) but none carries a canonical gap id, so `ripr outcome` cannot match them; for Rust, capture both snapshots with `ripr check --format repo-exposure-json` instead; preview-language findings (Python, TypeScript) without a canonical gap id have no comparable outcome receipt",
+            findings.len()
+        ));
     }
     Ok(records)
 }
@@ -1680,6 +1687,53 @@ mod tests {
         assert_eq!(verify["changed_seams"][0]["change"], "improved");
         assert_eq!(verify["changed_seams"][0]["gap_movement"], "closed");
         Ok(())
+    }
+
+    #[test]
+    fn targeted_test_outcome_refuses_check_json_without_canonical_gap_ids() {
+        // Shape of Rust `ripr check --json`: findings carry a probe id but no
+        // canonical gap id, so nothing is comparable across snapshots.
+        let before = r#"{"schema_version":"0.2","findings":[{"id":"probe:src_lib.rs:predicate:37a3a415","classification":"weakly_exposed","probe":{"id":"probe:src_lib.rs:predicate:37a3a415","file":"src/lib.rs","line":8,"family":"predicate"}}]}"#;
+        let after = before.replace("weakly_exposed", "exposed");
+        let result = targeted_test_outcome_report_from_json(
+            before,
+            &after,
+            "before.json".to_string(),
+            "after.json".to_string(),
+        );
+        assert!(
+            matches!(&result, Err(message) if message.contains("none carries a canonical gap id")
+                && message.contains("--format repo-exposure-json")),
+            "expected a refusal, got {result:?}"
+        );
+
+        // Preview-language findings without canonical ids are refused too,
+        // and the message must not send them to repo exposure, which carries
+        // no Python or TypeScript seams.
+        let python = r#"{"schema_version":"0.2","findings":[{"id":"probe:src_discount.py:2:python_preview","classification":"weakly_exposed"}]}"#;
+        let result = targeted_test_outcome_report_from_json(
+            python,
+            python,
+            "before.json".to_string(),
+            "after.json".to_string(),
+        );
+        assert!(
+            matches!(&result, Err(message) if message.contains("preview-language findings (Python, TypeScript)")
+                && message.contains("no comparable outcome receipt")),
+            "expected a preview-language refusal, got {result:?}"
+        );
+
+        let empty = r#"{"schema_version":"0.2","findings":[]}"#;
+        assert!(
+            targeted_test_outcome_report_from_json(
+                empty,
+                empty,
+                "before.json".to_string(),
+                "after.json".to_string(),
+            )
+            .is_ok(),
+            "a snapshot with no findings is still a valid empty comparison"
+        );
     }
 
     #[test]

@@ -550,6 +550,12 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr outcome` no longer reports zero movement for check-output snapshots
+  whose findings carry no canonical gap id, such as Rust `ripr check --json`.
+  It refuses the pair, points Rust users to `ripr check --format
+  repo-exposure-json`, and says that preview-language findings without an id
+  have no comparable receipt
+  ([#3797](https://github.com/EffortlessMetrics/ripr-swarm/issues/3797)).
 - `cargo xtask actionable-gap-outcomes` no longer reports an agent receipt's
   `verification.status: "verification_not_run"` as the attempt's verify
   result. It counts as a missing verify result
