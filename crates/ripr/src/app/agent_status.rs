@@ -838,6 +838,150 @@ fn pilot_found_no_repair_target(root: &Path) -> bool {
             .is_some_and(Value::is_null)
 }
 
+/// Python first-use statuses that record "pilot produced no repair card"
+/// (`output::pilot::types::PilotPythonFirstUseStatus`). `analysis_unavailable`
+/// is a failed analysis, not that fact, and `ready` has repair cards.
+const PILOT_NO_REPAIR_CARD_PYTHON_STATUSES: &[&str] = &["no_python_findings", "no_repair_cards"];
+
+/// The diff-first routes a complete `ripr pilot` run recorded when it ranked
+/// no seam, produced no repair card, and recorded no repair start.
+struct PilotCheckRoutes {
+    /// Languages whose route is enabled in `[languages]`, with their
+    /// distinct recorded check commands.
+    enabled_languages: Vec<String>,
+    commands: Vec<String>,
+    /// Routed languages the effective config does not enable, as the
+    /// `[languages] enabled` entry that turns each on.
+    disabled_config_languages: Vec<String>,
+}
+
+/// Reads the retained pilot summary (#4216, Python and TypeScript
+/// re-walks): `status: complete`, empty `top_actionable_seams`, an explicit
+/// null `next.repair_command`, `language_routes.state: required` (pilot
+/// itself sends the code to `ripr check`, which offers no `ripr agent
+/// repair` start), and no repair card (`python_first_use` absent, null, or
+/// a no-repair-card status). Sending the user back to pilot then only routes
+/// them to `ripr check` again, for any routed language. A missing,
+/// unreadable, timed-out, seam-ranking, repair-card-bearing,
+/// analysis-unavailable, or command-less summary is not this fact.
+fn pilot_routed_changed_code_to_check(root: &Path) -> Option<PilotCheckRoutes> {
+    let text = std::fs::read_to_string(root.join(PILOT_SUMMARY_ARTIFACT)).ok()?;
+    let summary = serde_json::from_str::<Value>(&text).ok()?;
+    let complete = summary.pointer("/status").and_then(Value::as_str) == Some("complete");
+    let no_seams = summary
+        .pointer("/top_actionable_seams")
+        .and_then(Value::as_array)
+        .is_some_and(Vec::is_empty);
+    let no_repair_start = summary
+        .pointer("/next/repair_command")
+        .is_some_and(Value::is_null);
+    let routes_required = summary
+        .pointer("/language_routes/state")
+        .and_then(Value::as_str)
+        == Some("required");
+    let no_repair_cards = summary
+        .pointer("/python_first_use")
+        .filter(|first_use| !first_use.is_null())
+        .is_none_or(|first_use| {
+            first_use
+                .get("status")
+                .and_then(Value::as_str)
+                .is_some_and(|status| PILOT_NO_REPAIR_CARD_PYTHON_STATUSES.contains(&status))
+        });
+    if !(complete && no_seams && no_repair_start && routes_required && no_repair_cards) {
+        return None;
+    }
+    let mut routes = PilotCheckRoutes {
+        enabled_languages: Vec::new(),
+        commands: Vec::new(),
+        disabled_config_languages: Vec::new(),
+    };
+    for route in summary
+        .pointer("/language_routes/routes")
+        .and_then(Value::as_array)?
+    {
+        let Some(command) = route.get("command").and_then(Value::as_str) else {
+            continue;
+        };
+        let language = route.get("language").and_then(Value::as_str);
+        if route.get("enabled").and_then(Value::as_bool) == Some(true) {
+            if let Some(language) = language {
+                routes.enabled_languages.push(language.to_string());
+            }
+            if !routes.commands.iter().any(|known| known == command) {
+                routes.commands.push(command.to_string());
+            }
+        } else if let Some(language) = language {
+            // JavaScript runs through the TypeScript-family adapter, which
+            // the `typescript` entry turns on (pilot `language_routes`).
+            let config_language = if language == "javascript" {
+                "typescript"
+            } else {
+                language
+            };
+            if !routes
+                .disabled_config_languages
+                .iter()
+                .any(|known| known == config_language)
+            {
+                routes
+                    .disabled_config_languages
+                    .push(config_language.to_string());
+            }
+        }
+    }
+    (!routes.commands.is_empty() || !routes.disabled_config_languages.is_empty()).then_some(routes)
+}
+
+/// "the python, typescript code", or "the code" for an empty list.
+fn routed_code_phrase(languages: &[String]) -> String {
+    if languages.is_empty() {
+        "the code".to_string()
+    } else {
+        format!("the {} code", languages.join(", "))
+    }
+}
+
+fn pilot_routed_to_check_message(routes: &PilotCheckRoutes, root_display: &str) -> String {
+    let mut message =
+        "the last complete `ripr pilot` run ranked no seam and produced no repair card".to_string();
+    if !routes.commands.is_empty() {
+        let commands = routes
+            .commands
+            .iter()
+            .map(|command| format!("`{command}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        message.push_str(&format!(
+            ": it routed {} to {commands}, which reviews changes diff-first and offers no `ripr agent repair` start, and running pilot again unchanged routes there again. Read the findings from {commands}, add or strengthen a test for the changed behavior by hand, then rerun {commands} to see whether static evidence now finds a discriminator",
+            routed_code_phrase(&routes.enabled_languages)
+        ));
+    }
+    if !routes.disabled_config_languages.is_empty() {
+        let entries = routes
+            .disabled_config_languages
+            .iter()
+            .map(|language| format!("\"{language}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let lead = if routes.commands.is_empty() {
+            ": "
+        } else {
+            ". Also, "
+        };
+        message.push_str(&format!(
+            "{lead}{} is not enabled in ripr.toml [languages], so `ripr check` does not analyze it yet: add {entries} to `[languages] enabled` in ripr.toml, then run `ripr check --root {}`",
+            routed_code_phrase(&routes.disabled_config_languages),
+            shell_arg(root_display)
+        ));
+    }
+    message.push_str(&format!(
+        ". If the workspace changed since that run, rerun `ripr pilot --root {}`",
+        shell_arg(root_display)
+    ));
+    message
+}
+
 /// The legacy seven-artifact loop, kept for `agent start` and manual users,
 /// with three refusals: it never recommends a command that needs a seam status
 /// does not know, never a redirect into a directory that does not exist, and
@@ -864,6 +1008,14 @@ fn legacy_next_command(
                 kind: "pilot_found_no_repair_target".to_string(),
                 artifact: PILOT_SUMMARY_ARTIFACT.to_string(),
                 message: "the last complete `ripr pilot` run offered no repair attempt: its top seam is not eligible for `ripr agent repair`, and running pilot again unchanged ranks the same seams. Read `target/ripr/pilot/pilot-summary.md` for that seam, add a test for it by hand in the crate that owns it, then rerun `ripr pilot` to rank the seams against that test".to_string(),
+            });
+            return None;
+        }
+        if let Some(routes) = pilot_routed_changed_code_to_check(root) {
+            warnings.push(AgentStatusWarning {
+                kind: "pilot_routed_to_check_no_repair_target".to_string(),
+                artifact: PILOT_SUMMARY_ARTIFACT.to_string(),
+                message: pilot_routed_to_check_message(&routes, root_display),
             });
             return None;
         }
@@ -2276,6 +2428,160 @@ mod tests {
             .ok_or_else(|| "expected a next command".to_string())?;
         assert_eq!(next.step, "select_seam");
         assert_eq!(next.command, "ripr pilot --root .");
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// #4216 (Python and TypeScript re-walks): a complete pilot run that
+    /// ranked no seam, produced no repair card, and routed the code to
+    /// `ripr check` is terminal for status, whatever the language. Status
+    /// names the hand step and the recorded check command instead of looping
+    /// back to pilot; a route not enabled in `[languages]` names the enable
+    /// step instead of promising a discriminator. Every other summary still
+    /// routes to pilot.
+    #[test]
+    fn agent_status_stops_when_pilot_routed_changed_code_to_check() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("pilot-routed-to-check");
+        let enabled_routes = r#"[{"language": "typescript", "enabled": true, "command": "ripr check --root ."}, {"language": "python", "enabled": true, "command": "ripr check --root ."}]"#;
+        let summary = |status: &str, state: &str, first_use: &str, routes: &str, repair: &str| {
+            format!(
+                r#"{{"status": "{status}", "top_actionable_seams": [], {first_use} "language_routes": {{"state": "{state}", "routes": {routes}}}, "next": {{"repair_command": {repair}}}}}"#
+            )
+        };
+        let stopped = |text: &str| -> Result<String, String> {
+            write_file(&root.join(PILOT_SUMMARY_ARTIFACT), text)?;
+            let report = build_agent_status_report(&root, Path::new("."));
+            if report.next_command.is_some() {
+                return Err(format!(
+                    "expected no next command for {text}: {:?}",
+                    report.next_command
+                ));
+            }
+            let warning = report
+                .warnings
+                .iter()
+                .find(|warning| warning.kind == "pilot_routed_to_check_no_repair_target")
+                .ok_or_else(|| {
+                    format!("expected a routed-to-check warning: {:?}", report.warnings)
+                })?;
+            assert_eq!(warning.artifact, PILOT_SUMMARY_ARTIFACT);
+            let rendered = render_agent_status_markdown(&report);
+            assert!(
+                !rendered.contains("```bash\nripr pilot --root"),
+                "{rendered}"
+            );
+            assert!(!warning.message.contains("  "), "{}", warning.message);
+            Ok(warning.message.clone())
+        };
+
+        // Positive: python_first_use null, missing key, or a no-repair-card
+        // status; the enabled routes name the check command and hand step.
+        for first_use in [
+            r#""python_first_use": null,"#,
+            "",
+            r#""python_first_use": {"status": "no_repair_cards", "repair_cards_total": 0},"#,
+            r#""python_first_use": {"status": "no_python_findings", "repair_cards_total": 0},"#,
+        ] {
+            let message = stopped(&summary(
+                "complete",
+                "required",
+                first_use,
+                enabled_routes,
+                "null",
+            ))?;
+            for expected in [
+                "routed the typescript, python code to `ripr check --root .`",
+                "add or strengthen a test for the changed behavior by hand, then rerun `ripr check --root .`",
+                "If the workspace changed since that run, rerun `ripr pilot --root .`",
+            ] {
+                assert!(message.contains(expected), "{message}");
+            }
+        }
+
+        // A route not enabled in `[languages]` names the enable step and
+        // promises no discriminator.
+        let message = stopped(&summary(
+            "complete",
+            "required",
+            "",
+            r#"[{"language": "javascript", "enabled": false, "command": "ripr check --root ."}]"#,
+            "null",
+        ))?;
+        assert!(
+            message.contains("the typescript code is not enabled in ripr.toml [languages]"),
+            "{message}"
+        );
+        assert!(
+            message.contains(r#"add "typescript" to `[languages] enabled` in ripr.toml"#),
+            "{message}"
+        );
+        assert!(!message.contains("discriminator"), "{message}");
+
+        // A route without a language renders without a double space.
+        let message = stopped(&summary(
+            "complete",
+            "required",
+            "",
+            r#"[{"enabled": true, "command": "ripr check --root ."}]"#,
+            "null",
+        ))?;
+        assert!(
+            message.contains("routed the code to `ripr check --root .`"),
+            "{message}"
+        );
+
+        // Controls: every other summary keeps status on `select_seam`.
+        for control in [
+            summary("timed_out", "required", "", enabled_routes, "null"),
+            summary("complete", "supplementary", "", enabled_routes, "null"),
+            summary("complete", "not_detected", "", enabled_routes, "null"),
+            summary(
+                "complete",
+                "required",
+                r#""python_first_use": {"status": "ready", "repair_cards_total": 1},"#,
+                enabled_routes,
+                "null",
+            ),
+            summary(
+                "complete",
+                "required",
+                r#""python_first_use": {"status": "analysis_unavailable", "repair_cards_total": 0},"#,
+                enabled_routes,
+                "null",
+            ),
+            summary(
+                "complete",
+                "required",
+                "",
+                enabled_routes,
+                r#""ripr check --root .""#,
+            ),
+            summary(
+                "complete",
+                "required",
+                "",
+                r#"[{"language": "perl", "enabled": false, "command": null}]"#,
+                "null",
+            ),
+            "{ not json".to_string(),
+        ] {
+            write_file(&root.join(PILOT_SUMMARY_ARTIFACT), &control)?;
+            let report = build_agent_status_report(&root, Path::new("."));
+            let next = report
+                .next_command
+                .as_ref()
+                .ok_or_else(|| format!("expected pilot for control {control}"))?;
+            assert_eq!(next.step, "select_seam", "{control}");
+            assert_eq!(next.command, "ripr pilot --root .", "{control}");
+        }
+        std::fs::remove_file(root.join(PILOT_SUMMARY_ARTIFACT))
+            .map_err(|err| format!("remove summary: {err}"))?;
+        let report = build_agent_status_report(&root, Path::new("."));
+        assert_eq!(
+            report.next_command.as_ref().map(|next| next.step.as_str()),
+            Some("select_seam")
+        );
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())

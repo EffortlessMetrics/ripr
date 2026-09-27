@@ -42,11 +42,11 @@
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `route_order`", "infection yes: Changed Python return expression can alter the owner return value: `return [\"index\", \"browse\", \"detail\"]`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches returned value: return [\"index\", \"browse\", \"detail\"] (line 2)", "related test tests/test_routes.py:4 test_first uses strong exact value oracle: assert route_order()[0] == \"index\"", "missing discriminator return value == [\"index\", \"browse\", \"detail\"]: changed Python returned-value at line 2 lacks a concrete repair discriminator"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `route_order`", "infection yes: Changed Python return expression can alter the owner return value: `return [\"index\", \"browse\", \"detail\"]`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches returned value: return [\"index\", \"browse\", \"detail\"] (line 2)", "related test tests/test_routes.py:4 test_first uses strong exact value oracle: assert route_order()[0] == \"index\"", "missing discriminator return value == <expected value>: changed Python returned-value at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"return_value","text":"return [\"index\", \"browse\", \"detail\"]","line":2}
       ],
-      "evidence": ["owner: route_order", "owner_kind: function", "missing_discriminator: return value == [\"index\", \"browse\", \"detail\"]", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_routes.py", "suggested_test_name: test_first", "suggested_test_node_id: tests/test_routes.py::test_first", "suggested_verify_command: pytest tests/test_routes.py::test_first", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_first)", "test_verify_command: pytest tests/test_routes.py::test_first (test_first)", "related_test_relation: syntactic_call (test_first)", "test_oracle: exact_value strong (test_first)", "test_oracle_shape: field_assertion (test_first)"],
+      "evidence": ["owner: route_order", "owner_kind: function", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_routes.py", "suggested_test_name: test_first", "suggested_test_node_id: tests/test_routes.py::test_first", "suggested_verify_command: pytest tests/test_routes.py::test_first", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_first)", "test_verify_command: pytest tests/test_routes.py::test_first (test_first)", "related_test_relation: syntactic_call (test_first)", "test_oracle: exact_value strong (test_first)", "test_oracle_shape: field_assertion (test_first)"],
       "missing": ["A strong Python oracle reaches `route_order`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -55,7 +55,7 @@
         ],
         "missing_discriminators": [
           {
-            "value": "return value == [\"index\", \"browse\", \"detail\"]",
+            "value": "return value == <expected value>",
             "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
             "flow_sink": {"kind":"return_value","text":"return [\"index\", \"browse\", \"detail\"]","line":2}
           }
@@ -65,7 +65,7 @@
       ],
       "missing_discriminators": [
         {
-          "value": "return value == [\"index\", \"browse\", \"detail\"]",
+          "value": "return value == <expected value>",
           "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
           "flow_sink": {"kind":"return_value","text":"return [\"index\", \"browse\", \"detail\"]","line":2}
         }
@@ -99,8 +99,8 @@
         "changed_owner": "route_order",
         "changed_behavior": "return_value changed at src/routes.py:2: `return [\"index\", \"browse\", \"detail\"]`",
         "current_test_evidence": "tests/test_routes.py:4 test_first currently has oracle_strength=strong, oracle_kind=exact_value: assert route_order()[0] == \"index\"",
-        "missing_discriminator": "return value == [\"index\", \"browse\", \"detail\"]",
-        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == [\"index\", \"browse\", \"detail\"]`.",
+        "missing_discriminator": "return value == <expected value>",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == <expected value>`.",
         "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
         "suggested_location": {
           "test_file": "tests/test_routes.py",
@@ -122,8 +122,8 @@
       "stop_reasons": [],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == [\"index\", \"browse\", \"detail\"]`.",
-      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == [\"index\", \"browse\", \"detail\"]`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",

@@ -296,12 +296,24 @@ canonical repair-gap ID or repair recommendation is emitted.
 Direct weak findings may also carry activation-level missing discriminator
 facts for the first preview repair classes. For example, a changed
 `if amount >= threshold:` predicate can emit `amount == threshold`; a changed
-`return amount >= 100` expression can emit `return value == amount >= 100`; a
-changed `raise ValueError("positive required")` path can emit
+`return 42` expression can emit `return value == 42`; a changed
+`raise ValueError("positive required")` path can emit
 `raises ValueError matching "positive required"`; a changed
 `self.status = "paid"` assignment can emit `self.status == "paid"`; and a
 changed `logger.warning("coupon expired")` call can emit
-`log contains "coupon expired"`. These facts are evidence only until a later
+`log contains "coupon expired"`. A missing discriminator never restates the
+changed production expression as its own oracle: an assertion such as
+`result == sum(i.quantity for i in self.items) + 1` passes for every mutant of
+that expression. The expected side of a returned value, returned-dict field,
+constructor keyword, or plain assignment is kept only when it is one
+independent literal (a single string, including one triple-quoted string,
+number, `True`, `False`, or `None`; a string-delimited compound such as
+`"Hello, " + name + "!"` is not one, and adjacent-string concatenation such
+as `"a" "b"` is conservatively not one either).
+Otherwise it is the `<expected value>` placeholder
+(`return value == <expected value>`, `self.total == <expected value>`,
+`result.total == <expected value>`), and no concrete expected value is
+claimed. These facts are evidence only until a later
 repair-card contract supplies the test shape, verify command, receipt command,
 and edit boundaries. Heuristic-only links, no related-test paths, and static
 limits must not emit repair guidance.
@@ -522,6 +534,10 @@ GapRecords, can copy a bounded Python agent packet from current actionable
 GapRecords, can copy a full repair card with a current validated GapRecord
 freshness cue, can copy a fail-fast pytest skeleton, and can open the
 suggested test file when the repair route carries a bare test name.
+
+The single-literal expected-value rule (including one triple-quoted string,
+and excluding compounds and adjacent-string concatenation) is covered by
+`crates/ripr/src/analysis/language/python/tests.rs::classify_change_never_restates_changed_expression_as_discriminator`.
 
 ## Implementation Mapping
 

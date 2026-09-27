@@ -26,6 +26,15 @@ changed behavior
 -> recommended targeted test intent
 ```
 
+A changed line that only opens or closes a block (`}`, `});`, `} else {`,
+`else {`) seeds no probe when its contiguous changed run also holds a
+behavioral line and every block it closes was opened inside that run, as
+with the braces of a newly added function or branch. A structural line that
+closes a block opened outside its run (a lone inserted or removed
+`} else {`, or one inserted with other lines between existing statements)
+moves existing code between branches, so it keeps its probe and the change
+never reads as "no behavioral candidates" (#4216 row 5).
+
 ## Required Evidence
 
 Each finding should carry:
@@ -265,6 +274,11 @@ Fixture coverage:
 - `given_direct_field_assignment_with_opaque_rhs_then_names_field_assignment_limitation`
 - `given_control_flow_nested_field_assignment_then_boundary_value_is_not_credited`
 - `given_mutable_borrow_after_field_assignment_then_stale_value_is_not_credited`
+- `structural_delimiter_lines_are_recognized`
+- `probes_for_file_skips_brace_and_else_lines_of_new_function`
+- `probes_for_file_keeps_lone_structural_line_hunks`
+- `probes_for_file_keeps_structural_line_closing_outside_block_in_mixed_run`
+- `lone_else_split_hunk_is_not_no_behavioral_candidates`
 
 ## Implementation Mapping
 

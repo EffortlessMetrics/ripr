@@ -161,11 +161,30 @@ completeness, with the shared repair-packet validator as the only authority:
   finding carries a structured static-limit kind, the action names the real
   blocker: the named static limitation holds the packet, and the operator
   must resolve the limitation and rerun preview evidence before acting.
-  Without a structured static-limit kind the line stays generic rather than
-  inventing a limitation the analysis did not name.
-- Otherwise, for a preview language with a structured repair-packet
-  projection, the action directs the operator to complete the missing
-  repair-packet fields before acting.
+  Without a structured static-limit kind the finding falls through to the
+  exposed and closed-packet rules below.
+- An `exposed` preview finding says there is no repair to make and must be
+  verified independently, in every preview language (#4216).
+- Otherwise, when `preview_actionability_for` projects a packet the shared
+  validator kept closed (TypeScript and JavaScript today), the action is
+  terminal (#4216): it quotes `preview_actionability_for`'s
+  `why_not_actionable` (in most closed-packet cases the validator never ran;
+  the part after `validator: ` when present, without a leading
+  `is not agent-packet eligible: `, so the specific cause and its remedy
+  survive the budget;
+  collapsed to one line and bounded to the digest line budget), states that
+  `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route the
+  finding, and names the manual step before rerunning `ripr check`: add a test
+  that calls the code when no test reaches it (`no_static_path`); check by hand
+  whether a test observes the change for an unknown class (`static_unknown`,
+  `infection_unknown`, `propagation_unknown`, for example a Bun-bridge
+  visibility limit); otherwise add or strengthen a test by hand. The routing
+  and manual-step parts are never truncated. The renderer only reads
+  readiness; it never decides it.
+- A preview finding with no projected actionability (for example Perl, whose
+  production findings do not yet carry the projected actionability evidence)
+  keeps the generic line directing the operator to complete the missing
+  repair-packet fields.
 - Python has no structured repair-packet projection; the Python repair card
   (`output/python_repair_card.rs`) is the authority on whether a Python
   finding carries a repair route (#4216). An `exposed` finding says there is
@@ -249,10 +268,13 @@ inputs where present.
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_reports_no_actionable_gap_when_all_findings_suppressed`
 - `crates/ripr/src/output/human.rs::tests::digest_labels_observation_rationale_as_observed_advisory_for_exposed`
 - `crates/ripr/src/output/human.rs::tests::digest_keeps_missing_discriminator_label_for_non_exposed_classes`
-- `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_keeps_missing_fields_line_for_incomplete_packet`
+- `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_names_terminal_manual_step_for_closed_packet`
+- `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_says_no_repair_for_exposed_typescript`
+- `crates/ripr/src/output/human.rs::tests::preview_limited_closed_packet_unknown_class_asks_for_manual_check`
+- `crates/ripr/src/output/human.rs::tests::preview_limited_closed_packet_shows_validator_cause_over_preamble`
 - `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_names_complete_but_advisory_packet`
 - `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_names_limitation_block_when_no_fields_missing`
-- `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_keeps_missing_fields_line_without_static_limit_kind`
+- `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_uses_closed_packet_line_without_static_limit_kind`
 - `crates/ripr/src/output/human.rs::tests::preview_limited_python_no_static_path_names_untested_code`
 - `crates/ripr/tests/cli_smoke.rs::check_python_finding_without_repair_card_names_the_terminal_manual_step`
 - `crates/ripr/tests/cli_smoke.rs::check_python_finding_with_repair_card_points_at_the_card`

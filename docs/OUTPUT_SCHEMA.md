@@ -12192,10 +12192,19 @@ Field contract:
   routes to a new repair attempt. It is `null` when nothing is missing, and
   also when status cannot choose honestly: an unreadable attempt manifest,
   several current awaiting attempts, several open seams, an unreadable
-  `HEAD`, or a complete pilot summary whose top seam recorded no repair start.
+  `HEAD`, a complete pilot summary whose top seam recorded no repair start,
+  or a complete pilot summary that ranked no seam, recorded no repair card
+  (`python_first_use` absent, `null`, or status `no_python_findings` or
+  `no_repair_cards`) and routed the code to `ripr check`
+  (`language_routes.state: required` with a recorded route command).
   A warning (`repair_attempt_unreadable`, `ambiguous_repair_attempts`,
   `multiple_open_repair_seams`, `repair_attempt_head_unknown`,
-  `pilot_found_no_repair_target`) then names the choices.
+  `pilot_found_no_repair_target`, `pilot_routed_to_check_no_repair_target`)
+  then names the choices. The last names the recorded check command and the
+  hand step (add or strengthen a test, then rerun that check) for an enabled
+  route, the enable step (add the language to `[languages] enabled` in
+  `ripr.toml`) for a route with `enabled: false`, and says to rerun pilot if
+  the workspace changed since that run.
 - `warnings[]` - stale-looking or unreadable-artifact hints. Timestamp warnings
   are emitted when `agent verify` is older than a before/after snapshot or
   `agent receipt` is older than `agent verify`. For a seam with no attempt
@@ -15465,7 +15474,12 @@ Python static-limit findings with `static_limit_kind` become report-only
 `StaticLimitation` records with `repairability = "analyzer_limitation"` and no
 agent-packet projection. Visibility-unknown presentation text and Python static
 limits remain limitations and do not become generic `static_unknown` repair
-instructions.
+instructions. A TypeScript preview finding whose repair packet the shared
+validator kept closed becomes a report-only `StaticLimitation` record with
+`static_limit_kind = "typescript_repair_packet_not_delegatable"`, and a weakly
+exposed Python preview finding without a `python_repair_card` becomes one with
+`static_limit_kind = "python_repair_card_unavailable"`; neither carries a repair
+route, verify command, or receipt (RIPR-SPEC-0046).
 
 The command writes JSON to `target/ripr/reports/gap-decision-ledger.json` and
 Markdown to `target/ripr/reports/gap-decision-ledger.md` by default. It does

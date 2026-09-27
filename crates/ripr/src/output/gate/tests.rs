@@ -1278,6 +1278,95 @@ fn gate_changed_test_and_missing_guidance_candidates_stay_advisory() -> Result<(
     Ok(())
 }
 
+/// #4216 row 2: a review card the producer declared a static limitation
+/// because no test reaches the changed owner must not be headlined with the
+/// PR-wide "nearby focused test changed" reason. The headline follows the
+/// card's own `why_not_actionable`; the nearby-test flag and the advisory
+/// decision are unchanged. A card without a static limitation keeps the
+/// nearby-test reason (control).
+#[test]
+fn gate_static_limitation_reason_outranks_pr_wide_nearby_test_flag() -> Result<(), String> {
+    let dir = temp_dir("gate-no-test-reaches-owner")?;
+    let guidance = write_temp_json(&dir, "comments.json", NO_TEST_REACHES_OWNER_GUIDANCE_JSON)?;
+    for mode in [GateMode::VisibleOnly, GateMode::Acknowledgeable] {
+        let mut input = fixture_input(mode)?;
+        input.root = dir.clone();
+        input.pr_guidance = Some(
+            guidance
+                .strip_prefix(&dir)
+                .map_err(|err| err.to_string())?
+                .to_path_buf(),
+        );
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(report.summary.blocking, 0);
+        let limited = report
+            .decisions
+            .iter()
+            .find(|decision| decision.source_id == "loyalty")
+            .ok_or("missing static-limitation decision")?;
+        assert!(
+            limited
+                .gate_reason
+                .contains("no existing test reaches `src/lib.rs::loyalty_price`"),
+            "{}",
+            limited.gate_reason
+        );
+        assert!(
+            !limited.gate_reason.contains("nearby focused test changed"),
+            "{}",
+            limited.gate_reason
+        );
+        assert!(limited.evidence.nearby_test_changed);
+        assert_ne!(limited.decision, "blocking");
+        let control = report
+            .decisions
+            .iter()
+            .find(|decision| decision.source_id == "changed-test")
+            .ok_or("missing control decision")?;
+        assert!(
+            control.gate_reason.contains("nearby focused test changed"),
+            "{}",
+            control.gate_reason
+        );
+    }
+    // N3 pin: with no test changed in the PR the same card is otherwise
+    // policy-eligible without a route, so it is headlined by the gate's own
+    // incomplete-route limitation. This pins current behavior; the order is
+    // not changed here.
+    let unchanged = write_temp_json(
+        &dir,
+        "unchanged.json",
+        &NO_TEST_REACHES_OWNER_GUIDANCE_JSON
+            .replace(r#""unchanged_tests": false"#, r#""unchanged_tests": true"#),
+    )?;
+    let mut input = fixture_input(GateMode::VisibleOnly)?;
+    input.root = dir.clone();
+    input.pr_guidance = Some(
+        unchanged
+            .strip_prefix(&dir)
+            .map_err(|err| err.to_string())?
+            .to_path_buf(),
+    );
+    let report = build_gate_decision_report(&input)?;
+    let limited = report
+        .decisions
+        .iter()
+        .find(|decision| decision.source_id == "loyalty")
+        .ok_or("missing unchanged-tests decision")?;
+    assert!(!limited.evidence.nearby_test_changed);
+    assert!(
+        limited
+            .gate_reason
+            .starts_with("incomplete_repair_route: missing "),
+        "{}",
+        limited.gate_reason
+    );
+    ignore_remove_dir_all(dir);
+    Ok(())
+}
+
 #[test]
 fn gate_baseline_check_blocks_new_candidate() -> Result<(), String> {
     let dir = temp_dir("gate-baseline-new")?;
@@ -2393,6 +2482,7 @@ fn given_candidate_without_any_identity_then_baseline_identity_uses_path_line_cl
         configured_off: false,
         suppression_reason: None,
         summary_reason: None,
+        why_not_actionable: None,
         gap_ledger_gate_candidate: false,
         gap_ledger_gate_reason: None,
         gap_ledger_safe_gate_predicate: false,
@@ -3496,6 +3586,35 @@ const SUMMARY_AND_SUPPRESSED_JSON: &str = r#"{
           "reason": "severity_off",
           "missing_discriminator": "amount == discount_threshold",
           "placement": {"path": "src/pricing.rs", "line": 89}
+        }
+      ]
+    }"#;
+
+const NO_TEST_REACHES_OWNER_GUIDANCE_JSON: &str = r#"{
+      "schema_version": "0.1",
+      "summary": {"unchanged_tests": false},
+      "comments": [
+        {
+          "id": "loyalty",
+          "seam_id": "7d5754b6ffcd5c82",
+          "gap_state": "static_limitation",
+          "grip_class": "ungripped",
+          "severity": "warning",
+          "owner": "src/lib.rs::loyalty_price",
+          "missing_discriminator": "5 (boundary value)",
+          "seam": {"expression": "member_years >= 5", "file": "src/lib.rs", "line": 29},
+          "placement": {"path": "src/lib.rs", "line": 29},
+          "why_not_actionable": "no existing test reaches `src/lib.rs::loyalty_price` (no static test path to the changed owner); the route authority does not propose a first-test target, so no repair route is available"
+        },
+        {
+          "id": "changed-test",
+          "seam_id": "changed-test-seam",
+          "gap_state": "actionable",
+          "grip_class": "weakly_gripped",
+          "severity": "warning",
+          "missing_discriminator": "amount == discount_threshold",
+          "placement": {"path": "src/pricing.rs", "line": 88},
+          "why_not_actionable": "ignored: only static_limitation cards carry a producer reason"
         }
       ]
     }"#;

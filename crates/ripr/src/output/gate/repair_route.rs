@@ -296,6 +296,7 @@ mod tests {
             configured_off: false,
             suppression_reason: None,
             summary_reason: None,
+            why_not_actionable: None,
             gap_ledger_gate_candidate: false,
             gap_ledger_gate_reason: None,
             gap_ledger_safe_gate_predicate: false,

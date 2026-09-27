@@ -11,7 +11,7 @@ Analysis outcome: complete_with_findings (analysis complete).
 
 Start here:
   State: preview_limited
-  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  Safe next action: this TypeScript preview finding's repair packet is not ready (no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add a test that calls it by hand, then rerun `ripr check`.
   File: src/audit.ts:10
   Language: typescript
   Language status: preview

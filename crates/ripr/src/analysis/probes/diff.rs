@@ -7,7 +7,9 @@ use super::binding_predicate::{
     BindingPredicateResolution, ChangedBindingPredicateUse, masked_brace_delta, masked_paren_delta,
     resolve_changed_binding_uses,
 };
-use super::classify::{parser_probe_shapes_for_changed_line, should_ignore_changed_line};
+use super::classify::{
+    is_structural_delimiter_line, parser_probe_shapes_for_changed_line, should_ignore_changed_line,
+};
 use super::expectations::{expected_sinks, required_oracles};
 use super::family::delta_for_family;
 use super::ids::{diff_probe_id, normalize_expression};
@@ -59,10 +61,12 @@ pub(crate) fn probes_for_file_with_relations(
         changed_nodes: &changed_nodes,
     };
     let mut emitted_parser_shapes = Vec::<(usize, String)>::new();
+    let skip_added = structural_lines_covered_by_run(&changed.added_lines);
+    let skip_removed = structural_lines_covered_by_run(&changed.removed_lines);
 
-    for added in &changed.added_lines {
+    for (added_index, added) in changed.added_lines.iter().enumerate() {
         let text = added.text.trim();
-        if should_ignore_changed_line(text) {
+        if should_ignore_changed_line(text) || skip_added[added_index] {
             continue;
         }
         if changed_line_is_test_evidence(
@@ -158,9 +162,9 @@ pub(crate) fn probes_for_file_with_relations(
         }
     }
 
-    for removed in &changed.removed_lines {
+    for (removed_index, removed) in changed.removed_lines.iter().enumerate() {
         let text = removed.text.trim();
-        if should_ignore_changed_line(text) {
+        if should_ignore_changed_line(text) || skip_removed[removed_index] {
             continue;
         }
         // Use new_side_line so the owner lookup queries the new-file index at the
@@ -196,6 +200,54 @@ pub(crate) fn probes_for_file_with_relations(
     dedup_probe_ids(&mut probes);
 
     probes
+}
+
+/// Which changed lines of one diff side are structural delimiters
+/// (`}`, `} else {`) that the same contiguous changed run already speaks
+/// for (#4216 row 5). Such a line is skipped only when the run holds a
+/// behavioral line AND every block the line closes was opened inside that
+/// run: the braces of a newly added function or branch then carry no
+/// behavior of their own. A structural line that closes a block opened
+/// outside the run is kept: a lone `} else {`, or `} else {` inserted with
+/// `audit();` between existing `a();` and `b();`, moves existing code
+/// into another branch, so the change stays an honest unknown instead of
+/// being dropped. Runs are consecutive `line` values on that side, and the
+/// run-local depth counts braces on comment/string-masked text.
+fn structural_lines_covered_by_run(lines: &[ChangedLine]) -> Vec<bool> {
+    let mut order = (0..lines.len()).collect::<Vec<_>>();
+    order.sort_by_key(|&index| lines[index].line);
+    let mut skip = vec![false; lines.len()];
+    let mut run_start = 0;
+    while run_start < order.len() {
+        let mut run_end = run_start + 1;
+        while run_end < order.len()
+            && lines[order[run_end - 1]].line.checked_add(1) == Some(lines[order[run_end]].line)
+        {
+            run_end += 1;
+        }
+        let run = &order[run_start..run_end];
+        let has_behavioral_line = run.iter().any(|&index| {
+            let text = lines[index].text.trim();
+            !should_ignore_changed_line(text) && !is_structural_delimiter_line(text)
+        });
+        if has_behavioral_line {
+            let mut depth = 0usize;
+            for &index in run {
+                let masked = mask_comments_and_strings(lines[index].text.trim());
+                let leading_closes = masked
+                    .chars()
+                    .take_while(|ch| *ch == '}' || ch.is_whitespace())
+                    .filter(|ch| *ch == '}')
+                    .count();
+                skip[index] = is_structural_delimiter_line(lines[index].text.trim())
+                    && depth >= leading_closes;
+                let (opens, closes) = brace_delta(&masked);
+                depth = depth.saturating_sub(closes) + opens;
+            }
+        }
+        run_start = run_end;
+    }
+    skip
 }
 
 /// Retarget a changed simple `let` line to the same-function predicate
@@ -1119,6 +1171,140 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    /// #4216 row 5: a newly added function seeds probes only on lines that
+    /// carry an expression. Brace-only and else-only lines emitted
+    /// `static_unknown` probes that inflated the summary; the tail value
+    /// `amount` is the else-branch return value and keeps its probe.
+    #[test]
+    fn probes_for_file_skips_brace_and_else_lines_of_new_function() {
+        let lines = [
+            (
+                28,
+                "pub fn loyalty_price(amount: u64, member_years: u32) -> u64 {",
+            ),
+            (29, "    if member_years >= 5 {"),
+            (30, "        amount - amount * 5 / 100"),
+            (31, "    } else {"),
+            (32, "        amount"),
+            (33, "    }"),
+            (34, "}"),
+        ];
+        let changed = ChangedFile {
+            path: PathBuf::from("src/lib.rs"),
+            added_lines: lines
+                .iter()
+                .map(|(line, text)| ChangedLine {
+                    line: *line,
+                    new_side_line: *line,
+                    text: (*text).to_string(),
+                })
+                .collect(),
+            removed_lines: vec![],
+        };
+
+        let probes = probes_for_file(Path::new("workspace"), &changed, &RustIndex::default());
+        let mut probe_lines = probes
+            .iter()
+            .map(|probe| probe.location.line)
+            .collect::<Vec<_>>();
+        probe_lines.dedup();
+
+        assert_eq!(probe_lines, vec![28, 29, 30, 32], "probes: {probes:?}");
+    }
+
+    /// F1 (#4216 row 5 review): a lone `} else {` on either side is the
+    /// whole change, so it keeps its probe; a structural line is skipped
+    /// only when its contiguous run holds a behavioral line.
+    #[test]
+    fn probes_for_file_keeps_lone_structural_line_hunks() {
+        let lone = |line: usize| ChangedLine {
+            line,
+            new_side_line: 4,
+            text: "    } else {".to_string(),
+        };
+        for (side, changed) in [
+            (
+                "added",
+                ChangedFile {
+                    path: PathBuf::from("src/lib.rs"),
+                    added_lines: vec![lone(4)],
+                    removed_lines: vec![],
+                },
+            ),
+            (
+                "removed",
+                ChangedFile {
+                    path: PathBuf::from("src/lib.rs"),
+                    added_lines: vec![],
+                    removed_lines: vec![lone(4)],
+                },
+            ),
+        ] {
+            let probes = probes_for_file(Path::new("workspace"), &changed, &RustIndex::default());
+            assert!(
+                !probes.is_empty(),
+                "{side}: lone `}} else {{` lost its probe"
+            );
+        }
+
+        // A separate run of only braces keeps its probe even when another
+        // run in the same file carries behavior.
+        let changed = ChangedFile {
+            path: PathBuf::from("src/lib.rs"),
+            added_lines: vec![
+                ChangedLine {
+                    line: 2,
+                    new_side_line: 2,
+                    text: "let total = discounted;".to_string(),
+                },
+                ChangedLine {
+                    line: 9,
+                    new_side_line: 9,
+                    text: "} else {".to_string(),
+                },
+            ],
+            removed_lines: vec![],
+        };
+        let probes = probes_for_file(Path::new("workspace"), &changed, &RustIndex::default());
+        assert!(
+            probes.iter().any(|probe| probe.location.line == 9),
+            "{probes:?}"
+        );
+    }
+
+    /// #4216 row 5 review: `} else {` inserted together with `audit();`
+    /// between existing `a();` and `b();` closes a block opened outside the
+    /// run, so it moves existing `b()` into the else branch. The run holds a
+    /// behavioral line, yet the structural line keeps its probe.
+    #[test]
+    fn probes_for_file_keeps_structural_line_closing_outside_block_in_mixed_run() {
+        let changed = ChangedFile {
+            path: PathBuf::from("src/lib.rs"),
+            added_lines: vec![
+                ChangedLine {
+                    line: 4,
+                    new_side_line: 4,
+                    text: "    } else {".to_string(),
+                },
+                ChangedLine {
+                    line: 5,
+                    new_side_line: 5,
+                    text: "        audit();".to_string(),
+                },
+            ],
+            removed_lines: vec![],
+        };
+        let probes = probes_for_file(Path::new("workspace"), &changed, &RustIndex::default());
+        assert!(
+            probes.iter().any(|probe| probe.location.line == 4),
+            "{probes:?}"
+        );
+        assert!(
+            probes.iter().any(|probe| probe.location.line == 5),
+            "{probes:?}"
+        );
     }
 
     #[test]

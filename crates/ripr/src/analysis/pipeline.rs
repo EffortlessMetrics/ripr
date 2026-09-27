@@ -1586,6 +1586,64 @@ mod tests {
         Ok(())
     }
 
+    /// #4216 row 5 review (F1): a diff whose only changed line is a lone
+    /// `} else {` splits (added) or joins (removed) a block, so it changes
+    /// behavior. Structural-line suppression must not turn that into
+    /// `no_behavioral_candidates`; the change stays an honest finding.
+    #[test]
+    fn lone_else_split_hunk_is_not_no_behavioral_candidates() -> Result<(), String> {
+        let split = "pub fn f(c: bool) {\n    if c {\n        a();\n    } else {\n        b();\n    }\n}\nfn a() {}\nfn b() {}\n";
+        let joined = "pub fn f(c: bool) {\n    if c {\n        a();\n        b();\n    }\n}\nfn a() {}\nfn b() {}\n";
+        let cases = [
+            (
+                "added",
+                split,
+                "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -2,4 +2,5 @@ pub fn f(c: bool) {\n     if c {\n         a();\n+    } else {\n         b();\n     }\n",
+            ),
+            (
+                "removed",
+                joined,
+                "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -2,5 +2,4 @@ pub fn f(c: bool) {\n     if c {\n         a();\n-    } else {\n         b();\n     }\n",
+            ),
+        ];
+        for (side, source, diff) in cases {
+            let root = temp_root(&format!("lone-else-{side}"))?;
+            write(root.join("src/lib.rs").as_path(), source)?;
+            let options = AnalysisOptions {
+                root: root.clone(),
+                base: None,
+                diff_file: None,
+                mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
+                include_unchanged_tests: false,
+                resolve_tsconfig_paths: false,
+                perl_facts_path: None,
+                git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
+            };
+            let result = run_pipeline_for_diff_text(
+                &options,
+                &OraclePolicy::default(),
+                &[LanguageId::Rust],
+                &[],
+                diff,
+            )?;
+            let outcome = result
+                .analysis_outcome
+                .ok_or_else(|| format!("{side}: missing analysis outcome"))?;
+            assert_ne!(
+                outcome.kind,
+                AnalysisOutcomeKind::NoBehavioralCandidates,
+                "{side}"
+            );
+            assert!(!result.findings.is_empty(), "{side}: expected a finding");
+            let _ = fs::remove_dir_all(root);
+        }
+        Ok(())
+    }
+
     /// #3940 follow-up: the envelope base and the typed outcome identity name
     /// one resolved value. A scope-less run (no explicit base) takes the
     /// loader's resolved default into the identity; an explicit base and a

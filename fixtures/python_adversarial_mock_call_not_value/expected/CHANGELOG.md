@@ -216,3 +216,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — python_adversarial_mock_call_not_value (5)
+
+Reason:
+RIPR-SPEC-0028 (#4216 row 6): Python missing discriminator no longer restates the changed return expression; non-literal return names <expected value>
+
+Command:
+`cargo xtask goldens bless python_adversarial_mock_call_not_value --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

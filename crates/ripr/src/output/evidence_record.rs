@@ -1097,7 +1097,13 @@ pub(crate) fn static_limitations_for(
                     entry.seam.owner()
                 )
             } else {
-                route_readiness.missing_evidence.join("; ")
+                // A prose reason, not a bare noun list: every consumer (the
+                // card's `why_not_actionable`, the gate headline, the
+                // evidence record) shows this text as-is (#4216 row 2 review).
+                format!(
+                    "the repair route is missing evidence: {}",
+                    route_readiness.missing_evidence.join("; ")
+                )
             },
             category: if no_test_reaches_owner {
                 NO_TEST_REACHES_OWNER_CATEGORY.to_string()
@@ -2206,6 +2212,20 @@ mod tests {
                 .missing_evidence
                 .iter()
                 .any(|evidence| evidence == "safe test target")
+        );
+        // #4216 row 2 review (F2): the projected limitation reason reads as
+        // missing evidence, not as a bare noun list, because the review card
+        // and the gate headline show it verbatim.
+        let reasons = static_limitations_for(&entry)
+            .into_iter()
+            .map(|limitation| limitation.reason)
+            .collect::<Vec<_>>();
+        assert!(
+            reasons.iter().any(|reason| {
+                reason.starts_with("the repair route is missing evidence: ")
+                    && reason.ends_with("; safe test target")
+            }),
+            "{reasons:?}"
         );
         entry.evidence.related_tests[0].test_target = Some(test_target_fixture(
             "below_threshold_has_no_discount",

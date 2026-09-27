@@ -555,7 +555,10 @@ Initial implementation should add tests for:
 - missing and malformed input reports;
 - recommendation calibration agreement and disagreement;
 - mutation calibration agreement, disagreement, and ambiguous join handling;
-- generated workflow opt-in wiring.
+- generated workflow opt-in wiring;
+- a producer-declared static limitation outranks the PR-wide nearby-test
+  reason in the gate headline without changing eligibility
+  (`crates/ripr/src/output/gate/tests.rs::gate_static_limitation_reason_outranks_pr_wide_nearby_test_flag`).
 
 ## Implementation Mapping
 

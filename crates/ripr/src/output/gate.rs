@@ -399,6 +399,9 @@ fn candidate_from_guidance_item(
         .or_else(|| item.get("suppression_reason").and_then(Value::as_str))
         .map(ToOwned::to_owned);
     let summary_reason = string_field(item.get("summary_reason"));
+    let why_not_actionable = (route_facts.gap_state.as_deref() == Some("static_limitation"))
+        .then(|| string_field(item.get("why_not_actionable")))
+        .flatten();
     GateCandidate {
         source: source.to_string(),
         source_id,
@@ -432,6 +435,7 @@ fn candidate_from_guidance_item(
         configured_off: suppression_reason.as_deref() == Some("severity_off"),
         suppression_reason,
         summary_reason,
+        why_not_actionable,
         gap_ledger_gate_candidate: false,
         gap_ledger_gate_reason: None,
         gap_ledger_safe_gate_predicate: false,
@@ -500,6 +504,7 @@ fn candidate_from_gap_record(record: &GapRecord) -> GateCandidate {
         configured_off: record.policy_state == "not_policy_targeted",
         suppression_reason: (record.policy_state == "suppressed").then(|| "suppressed".to_string()),
         summary_reason: None,
+        why_not_actionable: None,
         gap_ledger_gate_candidate: gate_candidate,
         gap_ledger_gate_reason: gate_reason,
         gap_ledger_safe_gate_predicate: gap_decision_ledger::safe_gate_predicate_satisfied(record),
@@ -890,6 +895,15 @@ fn gate_reason(
         }
         if candidate.source == "summary_only" {
             return "summary-only recommendation remains visible and advisory".to_string();
+        }
+        // The producer already declared this card non-actionable and named
+        // why (for example, no existing test reaches the changed owner).
+        // That per-card reason outranks the PR-wide nearby-test flag, which
+        // would otherwise claim a focused test changed near an owner no test
+        // reaches (#4216 row 2). Eligibility is unchanged; only the stated
+        // reason follows the producer.
+        if let Some(why) = candidate.why_not_actionable.as_deref() {
+            return format!("static limitation keeps this candidate advisory: {why}");
         }
         if candidate.nearby_test_changed {
             return "nearby focused test changed in this PR, so the candidate stays advisory"

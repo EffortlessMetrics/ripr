@@ -282,6 +282,10 @@ pub(super) struct GateCandidate {
     /// of an inline comment slot.  Closed vocabulary: `inline_comment_cap_reached`,
     /// `no_safe_changed_line_placement`, `navigation_only_cross_language_target`.
     pub(super) summary_reason: Option<String>,
+    /// Producer-owned reason a review card with `gap_state=static_limitation`
+    /// is not actionable (the card's `why_not_actionable`). `None` for any
+    /// other card and for gap-ledger records.
+    pub(super) why_not_actionable: Option<String>,
     pub(super) gap_ledger_gate_candidate: bool,
     pub(super) gap_ledger_gate_reason: Option<String>,
     pub(super) gap_ledger_safe_gate_predicate: bool,

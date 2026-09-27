@@ -40,13 +40,13 @@
         "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount >= 100`"},
         "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `smoke_only` (rank 2)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `return value == amount >= 100`."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `return value == <expected value>`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `is_priority`", "infection yes: Changed Python return expression can alter the owner return value: `return amount >= 100`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == amount >= 100`.", "local flow reaches returned value: return amount >= 100 (line 2)", "related test tests/test_priority.py:4 test_priority_amount uses smoke smoke only oracle: assert is_priority(100)", "missing discriminator return value == amount >= 100: changed Python returned-value at line 2 lacks a concrete repair discriminator"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `is_priority`", "infection yes: Changed Python return expression can alter the owner return value: `return amount >= 100`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == <expected value>`.", "local flow reaches returned value: return amount >= 100 (line 2)", "related test tests/test_priority.py:4 test_priority_amount uses smoke smoke only oracle: assert is_priority(100)", "missing discriminator return value == <expected value>: changed Python returned-value at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"return_value","text":"return amount >= 100","line":2}
       ],
-      "evidence": ["owner: is_priority", "owner_kind: function", "missing_discriminator: return value == amount >= 100", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_priority.py", "suggested_test_name: test_priority_amount", "suggested_test_node_id: tests/test_priority.py::test_priority_amount", "suggested_verify_command: pytest tests/test_priority.py::test_priority_amount", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_priority_amount)", "test_verify_command: pytest tests/test_priority.py::test_priority_amount (test_priority_amount)", "related_test_relation: syntactic_call (test_priority_amount)", "test_oracle: smoke_only smoke (test_priority_amount)", "test_oracle_shape: broad_smoke_assertion (test_priority_amount)"],
+      "evidence": ["owner: is_priority", "owner_kind: function", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_priority.py", "suggested_test_name: test_priority_amount", "suggested_test_node_id: tests/test_priority.py::test_priority_amount", "suggested_verify_command: pytest tests/test_priority.py::test_priority_amount", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_priority_amount)", "test_verify_command: pytest tests/test_priority.py::test_priority_amount (test_priority_amount)", "related_test_relation: syntactic_call (test_priority_amount)", "test_oracle: smoke_only smoke (test_priority_amount)", "test_oracle_shape: broad_smoke_assertion (test_priority_amount)"],
       "missing": ["Related Python test reaches `is_priority` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the returned value."],
       "assertion_texts": {
       },
@@ -55,7 +55,7 @@
         ],
         "missing_discriminators": [
           {
-            "value": "return value == amount >= 100",
+            "value": "return value == <expected value>",
             "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
             "flow_sink": {"kind":"return_value","text":"return amount >= 100","line":2}
           }
@@ -65,7 +65,7 @@
       ],
       "missing_discriminators": [
         {
-          "value": "return value == amount >= 100",
+          "value": "return value == <expected value>",
           "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
           "flow_sink": {"kind":"return_value","text":"return amount >= 100","line":2}
         }
@@ -99,8 +99,8 @@
         "changed_owner": "is_priority",
         "changed_behavior": "return_value changed at src/priority.py:2: `return amount >= 100`",
         "current_test_evidence": "tests/test_priority.py:4 test_priority_amount currently has oracle_strength=smoke, oracle_kind=smoke_only: assert is_priority(100)",
-        "missing_discriminator": "return value == amount >= 100",
-        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == amount >= 100`.",
+        "missing_discriminator": "return value == <expected value>",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == <expected value>`.",
         "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
         "suggested_location": {
           "test_file": "tests/test_priority.py",
@@ -122,8 +122,8 @@
       "stop_reasons": [],
       "oracle_kind": "smoke_only",
       "oracle_strength": "smoke",
-      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == amount >= 100`.",
-      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == amount >= 100`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",

@@ -39,7 +39,7 @@ Evidence
 
 Weakness
   - A strong Python oracle reaches `next_value`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output.
-  - missing discriminator return value == count - 1: changed Python returned-value at line 2 lacks a concrete repair discriminator
+  - missing discriminator return value == <expected value>: changed Python returned-value at line 2 lacks a concrete repair discriminator
 
 Python repair card (preview/advisory)
   card version: python_repair_card.v1
@@ -49,8 +49,8 @@ Python repair card (preview/advisory)
   changed owner: next_value
   changed behavior: return_value changed at src/counter.py:2: `return count - 1`
   current test evidence: tests/test_counter.py:4 test_next currently has oracle_strength=strong, oracle_kind=exact_value: assert count == 5
-  missing discriminator: return value == count - 1
-  recommended test shape: Strengthen the existing pytest exact return-value assertion for `return value == count - 1`.
+  missing discriminator: return value == <expected value>
+  recommended test shape: Strengthen the existing pytest exact return-value assertion for `return value == <expected value>`.
   suggested assertion: Assert the returned value equals the expected value for the changed inputs.
   suggested file: tests/test_counter.py
   suggested test: test_next
@@ -68,7 +68,7 @@ Python repair card (preview/advisory)
     - Verify success alone is not a gap-closure receipt.
 
 Next step
-  Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == count - 1`.
+  Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
 
 
 Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

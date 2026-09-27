@@ -5,7 +5,7 @@ use crate::output::preview_actionability::preview_actionability_for;
 use crate::output::python_repair_card::python_repair_card;
 use std::collections::BTreeSet;
 
-use super::sections::render_finding_digest_with_config;
+use super::sections::{one_line, render_finding_digest_with_config};
 
 pub(crate) struct HumanTriage<'a> {
     pub(crate) state: HumanTriageState,
@@ -147,9 +147,20 @@ pub(crate) fn render_human_triage(
                         "  Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.\n",
                     );
                 }
-                _ => match triage.selected.filter(|finding| finding.language == Some(LanguageId::Python)) {
-                    Some(finding) => out.push_str(&python_preview_safe_action(finding)),
-                    None => out.push_str(
+                not_ready => match triage.selected {
+                    Some(finding) if finding.language == Some(LanguageId::Python) => {
+                        out.push_str(&python_preview_safe_action(finding));
+                    }
+                    Some(finding) if finding.class == ExposureClass::Exposed => {
+                        out.push_str(EXPOSED_PREVIEW_SAFE_ACTION);
+                    }
+                    Some(finding) if let Some(actionability) = not_ready.as_ref() => {
+                        out.push_str(&packet_closed_preview_safe_action(
+                            finding,
+                            &actionability.why_not_actionable,
+                        ));
+                    }
+                    _ => out.push_str(
                         "  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.\n",
                     ),
                 },
@@ -197,6 +208,51 @@ pub(crate) fn render_human_triage(
     out.push_str("  Machine data: rerun with --format json\n\n");
 }
 
+/// An exposed preview finding has nothing to repair, in any preview language.
+const EXPOSED_PREVIEW_SAFE_ACTION: &str = "  Safe next action: preview-language evidence is advisory; a related test appears to observe this change, so there is no repair to make; verify independently before relying on it.\n";
+
+/// #4216 (TS/JS arm of row 1): the shared validator behind
+/// `preview_actionability_for` kept this preview finding's repair packet
+/// closed, so `check` emits no repair packet, the gap ledger carries no repair
+/// route (#4224), and no ripr command routes it. "Complete the missing
+/// repair-packet fields" asked for something the operator cannot supply. The
+/// line is terminal instead: it quotes `preview_actionability_for`'s
+/// `why_not_actionable` (in most closed-packet cases the validator never
+/// ran) and names the manual step. Readiness is only read here, never
+/// decided.
+fn packet_closed_preview_safe_action(finding: &Finding, why_not_actionable: &str) -> String {
+    let language = finding
+        .language
+        .map_or("preview-language", LanguageId::display_name);
+    let manual_step = match finding.class {
+        ExposureClass::NoStaticPath => "add a test that calls it by hand",
+        // An unknown class is a visibility limit (for example the Bun bridge's
+        // cross-language gap), not a known weak test: ask for the same check
+        // the Python static-limit line names, not a test edit.
+        ExposureClass::StaticUnknown
+        | ExposureClass::InfectionUnknown
+        | ExposureClass::PropagationUnknown => "check by hand whether a test observes this change",
+        _ => "add or strengthen a test by hand",
+    };
+    // Only the quoted reason is bounded; the routing and manual-step parts
+    // stay whole.
+    // The authority's reason opens with a generic preview preamble and ends
+    // with `validator: <specific cause>`; under the line budget the specific
+    // cause is the part the user can act on, so show it when present.
+    // The cause itself may still open with the fixed eligibility phrase;
+    // drop it so the remedy ("derive an input ...") fits the budget.
+    let specific = why_not_actionable
+        .split_once("validator: ")
+        .map_or(why_not_actionable, |(_, cause)| cause);
+    let specific = specific
+        .strip_prefix("is not agent-packet eligible: ")
+        .unwrap_or(specific);
+    let reason = one_line(specific);
+    format!(
+        "  Safe next action: this {language} preview finding's repair packet is not ready ({reason}); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; {manual_step}, then rerun `ripr check`.\n"
+    )
+}
+
 /// #4216 row 1: Python has no structured preview packet, so the generic
 /// "complete the missing repair-packet fields" line told the operator to do
 /// something they cannot, and pilot, first-pr and status each routed back to
@@ -207,7 +263,7 @@ pub(crate) fn render_human_triage(
 /// step left, a manual test or check. An exposed finding has nothing to repair.
 fn python_preview_safe_action(finding: &Finding) -> String {
     if finding.class == ExposureClass::Exposed {
-        return "  Safe next action: preview-language evidence is advisory; a related test appears to observe this change, so there is no repair to make; verify independently before relying on it.\n".to_string();
+        return EXPOSED_PREVIEW_SAFE_ACTION.to_string();
     }
     if python_repair_card(finding).is_some() {
         return "  Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it.\n".to_string();

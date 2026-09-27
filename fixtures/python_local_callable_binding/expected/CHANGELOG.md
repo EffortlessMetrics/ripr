@@ -215,3 +215,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_local_callable_binding (5)
+
+Reason:
+RIPR-SPEC-0028 (#4216 row 6): Python missing discriminator no longer restates the changed return expression; non-literal return names <expected value>
+
+Command:
+`cargo xtask goldens bless python_local_callable_binding --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

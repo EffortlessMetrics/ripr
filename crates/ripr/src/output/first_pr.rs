@@ -3494,6 +3494,53 @@ mod tests {
         cleanup(&repo)
     }
 
+    /// #4216: a weakly exposed Python finding without a repair card used to
+    /// leave first-pr at a bare generic "no actionable gap". The ledger now
+    /// carries a non-delegatable static-limitation record, and first-pr names
+    /// why no card exists and the manual step, as advisory no-action.
+    #[test]
+    fn python_finding_without_repair_card_names_limitation_and_manual_step() -> Result<(), String> {
+        use crate::output::gap_decision_ledger::{
+            GapDecisionLedgerInput, GapDecisionLedgerSourceKind, build_gap_decision_ledger_report,
+            render_gap_decision_ledger_json,
+        };
+        let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::CheckOutput,
+            records_path: "check.json".to_string(),
+            records_json: Ok(include_str!(
+                "../../../../fixtures/python_same_stem_sibling_owner_not_related/expected/check.json"
+            )
+            .to_string()),
+        });
+        let ledger_json = render_gap_decision_ledger_json(&report)?;
+        let repo = temp_repo("first-pr-python-no-card")?;
+        let ledger_value: Value =
+            serde_json::from_str(&ledger_json).map_err(|err| format!("parse ledger: {err}"))?;
+        write_json(&repo.join(DEFAULT_GAP_LEDGER), ledger_value)?;
+        write_json(
+            &repo.join(DEFAULT_REVIEW_COMMENTS),
+            review_comments_report(Vec::new()),
+        )?;
+        let packet = render_start_here_packet(&repo, &FirstPrOptions::default());
+        assert_eq!(packet["status"], "no_action", "{packet}");
+        assert_eq!(packet["selected"]["output_state"], "no_actionable_gap");
+        let reason = packet["selected"]["reason"].as_str().unwrap_or_default();
+        assert!(
+            reason.contains(
+                "Static limitation `python_repair_card_unavailable` at `pricing.py:5`: this Python preview finding has no repair card (static evidence names no concrete missing discriminator)"
+            ),
+            "{reason}"
+        );
+        assert!(
+            reason.contains("add or strengthen a test by hand, then rerun `ripr check`"),
+            "{reason}"
+        );
+        assert!(packet["commands"].get("agent_packet").is_none(), "{packet}");
+        cleanup(&repo)
+    }
+
     /// A carried repair start that no producer builds from the card's seam
     /// id: the non-default `--root` makes any rebuilt command differ.
     const CARD_REPAIR_COMMAND: &str =

@@ -40,13 +40,13 @@
         "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`"},
         "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `mock_expectation` (rank 4)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`."}
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `return value == <expected value>`."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `send_alert`", "infection yes: Changed Python return expression can alter the owner return value: `return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`.", "local flow reaches returned value: return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"}) (line 2)", "related test tests/test_notifier.py:6 test_send_alert_calls_post uses medium mock expectation oracle: client.post.assert_called_once()", "missing discriminator return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"}): changed Python returned-value at line 2 lacks a concrete repair discriminator"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `send_alert`", "infection yes: Changed Python return expression can alter the owner return value: `return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == <expected value>`.", "local flow reaches returned value: return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"}) (line 2)", "related test tests/test_notifier.py:6 test_send_alert_calls_post uses medium mock expectation oracle: client.post.assert_called_once()", "missing discriminator return value == <expected value>: changed Python returned-value at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"return_value","text":"return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})","line":2}
       ],
-      "evidence": ["owner: send_alert", "owner_kind: function", "missing_discriminator: return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_notifier.py", "suggested_test_name: test_send_alert_calls_post", "suggested_test_node_id: tests/test_notifier.py::test_send_alert_calls_post", "suggested_verify_command: pytest tests/test_notifier.py::test_send_alert_calls_post", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_send_alert_calls_post)", "test_verify_command: pytest tests/test_notifier.py::test_send_alert_calls_post (test_send_alert_calls_post)", "related_test_relation: syntactic_call (test_send_alert_calls_post)", "test_oracle: mock_expectation medium (test_send_alert_calls_post)", "test_oracle_shape: mock_expectation (test_send_alert_calls_post)"],
+      "evidence": ["owner: send_alert", "owner_kind: function", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_notifier.py", "suggested_test_name: test_send_alert_calls_post", "suggested_test_node_id: tests/test_notifier.py::test_send_alert_calls_post", "suggested_verify_command: pytest tests/test_notifier.py::test_send_alert_calls_post", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_send_alert_calls_post)", "test_verify_command: pytest tests/test_notifier.py::test_send_alert_calls_post (test_send_alert_calls_post)", "related_test_relation: syntactic_call (test_send_alert_calls_post)", "test_oracle: mock_expectation medium (test_send_alert_calls_post)", "test_oracle_shape: mock_expectation (test_send_alert_calls_post)"],
       "missing": ["Related Python test reaches `send_alert` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the returned value."],
       "assertion_texts": {
       },
@@ -55,7 +55,7 @@
         ],
         "missing_discriminators": [
           {
-            "value": "return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})",
+            "value": "return value == <expected value>",
             "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
             "flow_sink": {"kind":"return_value","text":"return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})","line":2}
           }
@@ -65,7 +65,7 @@
       ],
       "missing_discriminators": [
         {
-          "value": "return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})",
+          "value": "return value == <expected value>",
           "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
           "flow_sink": {"kind":"return_value","text":"return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})","line":2}
         }
@@ -99,8 +99,8 @@
         "changed_owner": "send_alert",
         "changed_behavior": "return_value changed at src/notifier.py:2: `return client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`",
         "current_test_evidence": "tests/test_notifier.py:6 test_send_alert_calls_post currently has oracle_strength=medium, oracle_kind=mock_expectation: client.post.assert_called_once()",
-        "missing_discriminator": "return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})",
-        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`.",
+        "missing_discriminator": "return value == <expected value>",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == <expected value>`.",
         "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
         "suggested_location": {
           "test_file": "tests/test_notifier.py",
@@ -122,8 +122,8 @@
       "stop_reasons": [],
       "oracle_kind": "mock_expectation",
       "oracle_strength": "medium",
-      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`.",
-      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == client.post(\"/alerts\", {\"level\": level, \"priority\": \"critical\"})`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",

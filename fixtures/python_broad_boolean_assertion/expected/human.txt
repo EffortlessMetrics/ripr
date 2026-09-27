@@ -25,7 +25,7 @@ Start here:
   Suggested test: test_priority_amount
   Test node: tests/test_priority.py::test_priority_amount
   Verify command: pytest tests/test_priority.py::test_priority_amount (high)
-  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == amount >= 100`.
+  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `is_priority`
     - infection yes: Changed Python return expression can alter the owner return value: `return amount >= 100`

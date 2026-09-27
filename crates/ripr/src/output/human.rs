@@ -1165,21 +1165,146 @@ mod tests {
         assert!(!digest.contains("  Language:"), "digest:\n{digest}");
     }
 
-    // #2273: the preview_limited safe next action distinguishes a
-    // complete-but-advisory repair packet (shared validator authority) from
-    // one with missing fields.
+    // #2273 / #4216: the preview_limited safe next action distinguishes a
+    // complete-but-advisory repair packet (shared validator authority) from a
+    // packet the validator kept closed. A closed packet gets a terminal line
+    // that quotes the validator's `why_not_actionable` verbatim and names the
+    // manual step, never "complete the missing repair-packet fields", which
+    // the operator cannot supply.
     #[test]
-    fn preview_limited_safe_action_keeps_missing_fields_line_for_incomplete_packet() {
+    fn preview_limited_safe_action_names_terminal_manual_step_for_closed_packet()
+    -> Result<(), String> {
         let finding = typescript_preview_finding(false);
+        let why = crate::output::preview_actionability::preview_actionability_for(&finding)
+            .filter(|actionability| !actionability.repair_packet_ready)
+            .ok_or_else(|| "fixture must project a closed packet".to_string())?
+            .why_not_actionable;
         let output = single_finding_output(finding);
 
         let rendered = render(&output);
 
         assert!(rendered.contains("State: preview_limited"));
-        assert!(rendered.contains(
-            "  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.\n"
-        ));
+        let expected = format!(
+            "  Safe next action: this TypeScript preview finding's repair packet is not ready ({}); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`.\n",
+            super::sections::one_line(&why)
+        );
+        assert!(rendered.contains(&expected), "{rendered}");
+        assert!(!rendered.contains("complete the missing repair-packet fields"));
         assert!(!rendered.contains("the repair packet is complete but remains advisory"));
+        Ok(())
+    }
+
+    // #4216 review: an unknown-class closed packet (for example a Bun-bridge
+    // cross-language visibility limit: StaticUnknown, no static_limit_kind,
+    // missing fields present) is not a known weak test, so the manual step is
+    // the Python static-limit check, not a test edit. A long validator reason
+    // is bounded; the routing and manual-step parts stay whole.
+    #[test]
+    fn preview_limited_closed_packet_unknown_class_asks_for_manual_check() {
+        for class in [
+            ExposureClass::StaticUnknown,
+            ExposureClass::InfectionUnknown,
+            ExposureClass::PropagationUnknown,
+        ] {
+            let mut finding = typescript_preview_finding(false);
+            finding.class = class.clone();
+            finding
+                .evidence
+                .retain(|line| !line.starts_with("why_not_actionable: "));
+            finding.evidence.push(format!(
+                "why_not_actionable: Bun bridge visibility limit {}",
+                "x".repeat(400)
+            ));
+            let output = single_finding_output(finding);
+
+            let rendered = render(&output);
+
+            let line = rendered
+                .lines()
+                .find(|line| line.starts_with("  Safe next action:"))
+                .unwrap_or_default();
+            assert!(
+                line.ends_with(
+                    "…); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; check by hand whether a test observes this change, then rerun `ripr check`."
+                ),
+                "{class:?}: {line}"
+            );
+            assert!(!line.contains("add or strengthen a test"), "{line}");
+            assert!(
+                !line.contains(&"x".repeat(200)),
+                "reason must be bounded: {line}"
+            );
+        }
+    }
+
+    // #4216: a long generic preamble must not crowd out the validator's
+    // specific cause under the line budget; the cause is what the user acts on.
+    #[test]
+    fn preview_limited_closed_packet_shows_validator_cause_over_preamble() {
+        let mut finding = typescript_preview_finding(false);
+        finding
+            .evidence
+            .retain(|line| !line.starts_with("why_not_actionable: "));
+        finding.evidence.push(format!(
+            "why_not_actionable: generic preamble {}; validator: boundary constant `DISCOUNT_THRESHOLD` is unresolved",
+            "p".repeat(300)
+        ));
+        let output = single_finding_output(finding);
+
+        let rendered = render(&output);
+
+        let line = rendered
+            .lines()
+            .find(|line| line.starts_with("  Safe next action:"))
+            .unwrap_or_default();
+        assert!(
+            line.contains("(boundary constant `DISCOUNT_THRESHOLD` is unresolved)"),
+            "{line}"
+        );
+        assert!(!line.contains("generic preamble"), "{line}");
+
+        // The fixed eligibility phrase after `validator: ` is dropped too, so
+        // the remedy survives the line budget.
+        let mut finding = typescript_preview_finding(false);
+        finding
+            .evidence
+            .retain(|line| !line.starts_with("why_not_actionable: "));
+        finding.evidence.push(
+            "why_not_actionable: generic preamble; validator: is not agent-packet eligible: observed call input `login('alice')` does not reach the missing discriminator `user.length == 3`; derive an input that hits the boundary"
+                .to_string(),
+        );
+        let rendered = render(&single_finding_output(finding));
+        let line = rendered
+            .lines()
+            .find(|line| line.starts_with("  Safe next action:"))
+            .unwrap_or_default();
+        assert!(
+            line.contains("(observed call input `login('alice')` does not reach"),
+            "{line}"
+        );
+        assert!(
+            line.contains("derive an input that hits the boundary"),
+            "{line}"
+        );
+        assert!(!line.contains("is not agent-packet eligible"), "{line}");
+    }
+
+    // #4216: an exposed TypeScript preview finding has nothing to repair; its
+    // safe action matches the Python exposed wording, not the packet lines.
+    #[test]
+    fn preview_limited_safe_action_says_no_repair_for_exposed_typescript() {
+        let mut finding = typescript_preview_finding(false);
+        finding.class = ExposureClass::Exposed;
+        let output = single_finding_output(finding);
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("State: preview_limited"), "{rendered}");
+        assert!(rendered.contains(
+            "  Safe next action: preview-language evidence is advisory; a related test appears to observe this change, so there is no repair to make; verify independently before relying on it.\n"
+        ), "{rendered}");
+        assert!(!rendered.contains("complete the missing repair-packet fields"));
+        assert!(!rendered.contains("repair packet is not ready"));
     }
 
     #[test]
@@ -1220,11 +1345,11 @@ mod tests {
     }
 
     // Guard against over-crediting the limitation arm: the same blocked
-    // packet WITHOUT a structured static-limit kind keeps the generic
-    // missing-fields line (e.g. a strong-oracle preview finding whose packet
-    // simply lacks projected contract fields).
+    // packet WITHOUT a structured static-limit kind is not framed as a named
+    // limitation; it gets the terminal closed-packet line (e.g. a strong-oracle
+    // preview finding whose packet simply lacks projected contract fields).
     #[test]
-    fn preview_limited_safe_action_keeps_missing_fields_line_without_static_limit_kind() {
+    fn preview_limited_safe_action_uses_closed_packet_line_without_static_limit_kind() {
         let mut finding = typescript_preview_finding(false);
         finding
             .evidence
@@ -1234,10 +1359,14 @@ mod tests {
         let rendered = render(&output);
 
         assert!(rendered.contains("State: preview_limited"));
-        assert!(rendered.contains(
-            "  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.\n"
-        ));
+        assert!(
+            rendered.contains(
+                "  Safe next action: this TypeScript preview finding's repair packet is not ready ("
+            ),
+            "{rendered}"
+        );
         assert!(!rendered.contains("blocked by the named static limitation"));
+        assert!(!rendered.contains("complete the missing repair-packet fields"));
     }
 
     // #4216 row 1: a Python preview finding that no test reaches has no

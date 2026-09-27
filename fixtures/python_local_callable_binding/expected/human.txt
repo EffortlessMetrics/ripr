@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_stop.py
   Suggested test: test_stop_after_attempt
   Verify command: python -m unittest tests.test_stop.StopTest.test_stop_after_attempt (high)
-  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == attempt_number >= self.max_attempt_number`.
+  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `__call__`
     - infection yes: Changed Python return expression can alter the owner return value: `return attempt_number >= self.max_attempt_number`

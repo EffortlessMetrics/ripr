@@ -42,11 +42,11 @@
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `next_value`", "infection yes: Changed Python return expression can alter the owner return value: `return count - 1`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches returned value: return count - 1 (line 2)", "related test tests/test_counter.py:4 test_next uses strong exact value oracle: assert count == 5", "missing discriminator return value == count - 1: changed Python returned-value at line 2 lacks a concrete repair discriminator"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `next_value`", "infection yes: Changed Python return expression can alter the owner return value: `return count - 1`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches returned value: return count - 1 (line 2)", "related test tests/test_counter.py:4 test_next uses strong exact value oracle: assert count == 5", "missing discriminator return value == <expected value>: changed Python returned-value at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"return_value","text":"return count - 1","line":2}
       ],
-      "evidence": ["owner: next_value", "owner_kind: function", "missing_discriminator: return value == count - 1", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_counter.py", "suggested_test_name: test_next", "suggested_test_node_id: tests/test_counter.py::test_next", "suggested_verify_command: pytest tests/test_counter.py::test_next", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_next)", "test_verify_command: pytest tests/test_counter.py::test_next (test_next)", "related_test_relation: syntactic_call (test_next)", "test_oracle: exact_value strong (test_next)"],
+      "evidence": ["owner: next_value", "owner_kind: function", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_counter.py", "suggested_test_name: test_next", "suggested_test_node_id: tests/test_counter.py::test_next", "suggested_verify_command: pytest tests/test_counter.py::test_next", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_next)", "test_verify_command: pytest tests/test_counter.py::test_next (test_next)", "related_test_relation: syntactic_call (test_next)", "test_oracle: exact_value strong (test_next)"],
       "missing": ["A strong Python oracle reaches `next_value`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -55,7 +55,7 @@
         ],
         "missing_discriminators": [
           {
-            "value": "return value == count - 1",
+            "value": "return value == <expected value>",
             "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
             "flow_sink": {"kind":"return_value","text":"return count - 1","line":2}
           }
@@ -65,7 +65,7 @@
       ],
       "missing_discriminators": [
         {
-          "value": "return value == count - 1",
+          "value": "return value == <expected value>",
           "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
           "flow_sink": {"kind":"return_value","text":"return count - 1","line":2}
         }
@@ -99,8 +99,8 @@
         "changed_owner": "next_value",
         "changed_behavior": "return_value changed at src/counter.py:2: `return count - 1`",
         "current_test_evidence": "tests/test_counter.py:4 test_next currently has oracle_strength=strong, oracle_kind=exact_value: assert count == 5",
-        "missing_discriminator": "return value == count - 1",
-        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == count - 1`.",
+        "missing_discriminator": "return value == <expected value>",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == <expected value>`.",
         "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
         "suggested_location": {
           "test_file": "tests/test_counter.py",
@@ -122,8 +122,8 @@
       "stop_reasons": [],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == count - 1`.",
-      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == count - 1`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",

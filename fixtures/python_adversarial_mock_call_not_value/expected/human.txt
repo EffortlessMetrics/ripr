@@ -25,7 +25,7 @@ Start here:
   Suggested test: test_send_alert_calls_post
   Test node: tests/test_notifier.py::test_send_alert_calls_post
   Verify command: pytest tests/test_notifier.py::test_send_alert_calls_post (high)
-  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == client.post("/alerts", {"level": level, "priori…
+  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `send_alert`
     - infection yes: Changed Python return expression can alter the owner return value: `return client.post("/alerts", {"level": level, "priority": "critical"})`

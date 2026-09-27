@@ -2,10 +2,10 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/source_role_harness_suppression/input
 
-Summary: 3 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 3 unknown
+Summary: 2 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 2 unknown
 
 Analysis outcome: complete_with_findings (analysis complete).
-  Counts: 2 changed file(s), 31 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
+  Counts: 2 changed file(s), 31 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
 
 Start here:
   State: static_limited
@@ -27,6 +27,6 @@ Next: drill into the top finding:
   ripr context --root fixtures/source_role_harness_suppression/input --diff fixtures/source_role_harness_suppression/diff.patch --mode fast --at probe:src_lib.rs:predicate:34000fd8
 
 Hidden:
-  2 lower-priority finding(s) omitted from default human output.
+  1 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

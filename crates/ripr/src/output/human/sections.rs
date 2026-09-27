@@ -139,7 +139,7 @@ pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &Ripr
 /// This is the *digest* policy: the digest shows one selected finding and routes
 /// the reader to `--format human-full`, so losing detail here is recoverable.
 /// The full form must not use it — see [`wrapped_fragment`].
-fn one_line(value: &str) -> String {
+pub(super) fn one_line(value: &str) -> String {
     let collapsed = value.split_whitespace().collect::<Vec<_>>().join(" ");
     if collapsed.chars().count() <= LINE_BUDGET {
         collapsed
