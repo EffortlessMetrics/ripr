@@ -16,8 +16,87 @@ pub(crate) struct CompactGripContext<'a> {
         BTreeMap<String, Vec<usize>>,
     pub(in crate::analysis::test_grip_evidence) tests_by_file_stem: BTreeMap<String, Vec<usize>>,
     pub(in crate::analysis::test_grip_evidence) tests_by_import_token: BTreeMap<String, Vec<usize>>,
+    name_module_candidates: NameModuleCandidateIndex,
     owner_named_cache: RefCell<BTreeMap<String, Vec<usize>>>,
     same_module_cache: RefCell<BTreeMap<String, Vec<usize>>>,
+}
+
+/// Candidate generation only: the existing `contains` and `same_module`
+/// predicates remain the authority for admitting relations.
+#[derive(Default)]
+struct NameModuleCandidateIndex {
+    name_trigrams: BTreeMap<[u8; 3], Vec<usize>>,
+    module_prefixes: BTreeMap<String, Vec<usize>>,
+}
+
+impl NameModuleCandidateIndex {
+    fn insert(&mut self, index: usize, name: &str, module: Option<&str>) {
+        let trigrams = name
+            .as_bytes()
+            .windows(3)
+            .map(|window| [window[0], window[1], window[2]]);
+        for trigram in trigrams.collect::<BTreeSet<_>>() {
+            self.name_trigrams.entry(trigram).or_default().push(index);
+        }
+        if let Some(module) = module {
+            // Include the exact module and all slash-delimited ancestors.
+            // An owner parent may also match an underscore-flattened prefix.
+            self.module_prefixes
+                .entry(module.to_string())
+                .or_default()
+                .push(index);
+            for (position, _) in module.match_indices('/') {
+                self.module_prefixes
+                    .entry(module[..position].to_string())
+                    .or_default()
+                    .push(index);
+            }
+        }
+    }
+
+    fn name_candidates(&self, query: &str, test_count: usize) -> Vec<usize> {
+        if query.len() < 3 {
+            // Sub-byte-trigram names have no safe indexed key.
+            return (0..test_count).collect();
+        }
+        let mut rarest: Option<&Vec<usize>> = None;
+        for window in query.as_bytes().windows(3) {
+            let Some(indices) = self.name_trigrams.get(&[window[0], window[1], window[2]]) else {
+                return Vec::new();
+            };
+            if rarest.is_none_or(|prior| indices.len() < prior.len()) {
+                rarest = Some(indices);
+            }
+        }
+        rarest.cloned().unwrap_or_default()
+    }
+
+    fn module_candidates(&self, owner_module: &str) -> Vec<usize> {
+        let Some((parent, _)) = owner_module.rsplit_once('/') else {
+            return Vec::new();
+        };
+        if parent.is_empty() {
+            return Vec::new();
+        }
+        let mut indices = self
+            .module_prefixes
+            .get(parent)
+            .cloned()
+            .unwrap_or_default();
+        let flattened = parent.replace('/', "_");
+        if flattened != parent {
+            indices.extend(
+                self.module_prefixes
+                    .get(&flattened)
+                    .into_iter()
+                    .flatten()
+                    .copied(),
+            );
+        }
+        indices.sort_unstable();
+        indices.dedup();
+        indices
+    }
 }
 
 pub(in crate::analysis::test_grip_evidence) struct CompactTest<'a> {
@@ -74,7 +153,7 @@ impl<'a> CompactGripContext<'a> {
             local_function_names_by_file: &function_names_by_file,
             direct_helper_import_aliases_by_file: &direct_helper_import_aliases_by_file,
         };
-        let tests = index
+        let tests: Vec<CompactTest<'a>> = index
             .tests
             .iter()
             .enumerate()
@@ -194,6 +273,14 @@ impl<'a> CompactGripContext<'a> {
                 }
             })
             .collect();
+        let mut name_module_candidates = NameModuleCandidateIndex::default();
+        for (test_index, test) in tests.iter().enumerate() {
+            name_module_candidates.insert(
+                test_index,
+                &test.name_lower,
+                test.module_path.as_deref(),
+            );
+        }
         Self {
             index,
             tests,
@@ -203,6 +290,7 @@ impl<'a> CompactGripContext<'a> {
             tests_by_assertion_token,
             tests_by_file_stem,
             tests_by_import_token,
+            name_module_candidates,
             owner_named_cache: RefCell::new(BTreeMap::new()),
             same_module_cache: RefCell::new(BTreeMap::new()),
         }
@@ -216,10 +304,10 @@ impl<'a> CompactGripContext<'a> {
             return indices.clone();
         }
         let indices = self
-            .tests
-            .iter()
-            .enumerate()
-            .filter_map(|(index, test)| test.name_lower.contains(owner_name_lower).then_some(index))
+            .name_module_candidates
+            .name_candidates(owner_name_lower, self.tests.len())
+            .into_iter()
+            .filter(|&index| self.tests[index].name_lower.contains(owner_name_lower))
             .collect::<Vec<_>>();
         self.owner_named_cache
             .borrow_mut()
@@ -235,20 +323,118 @@ impl<'a> CompactGripContext<'a> {
             return indices.clone();
         }
         let indices = self
-            .tests
-            .iter()
-            .enumerate()
-            .filter_map(|(index, test)| {
-                test.module_path
+            .name_module_candidates
+            .module_candidates(owner_module)
+            .into_iter()
+            .filter(|&index| {
+                self.tests[index]
+                    .module_path
                     .as_deref()
                     .is_some_and(|test_module| same_module(owner_module, test_module))
-                    .then_some(index)
             })
             .collect::<Vec<_>>();
         self.same_module_cache
             .borrow_mut()
             .insert(owner_module.to_string(), indices.clone());
         indices
+    }
+}
+
+#[cfg(test)]
+mod candidate_index_tests {
+    use super::*;
+
+    #[test]
+    fn name_and_module_candidates_match_independent_full_scans() {
+        let fixtures = [
+            ("owner_start", Some("a/b/nested")),
+            ("prefix_owner_middle_suffix", Some("a_b/nested")),
+            ("suffix_owner", Some("a/b")),
+            ("ownowner", Some("a_b")),
+            ("éclair_owner", Some("a_b/nested/child")),
+            ("owner_éclair", Some("a/b_else/sibling")),
+            ("unrelated", Some("a/b_else")),
+            ("", None),
+        ];
+        let mut index = NameModuleCandidateIndex::default();
+        for (i, (name, module)) in fixtures.iter().enumerate() {
+            index.insert(i, name, *module);
+        }
+        for query in [
+            "owner", "own", "ow", "o", "é", "éclair", "", "no-match", "ownown",
+        ] {
+            let actual = if query.is_empty() {
+                Vec::new()
+            } else {
+                index
+                    .name_candidates(query, fixtures.len())
+                    .into_iter()
+                    .filter(|&i| fixtures[i].0.contains(query))
+                    .collect::<Vec<_>>()
+            };
+            let expected = fixtures
+                .iter()
+                .enumerate()
+                .filter_map(|(i, (name, _))| {
+                    (!query.is_empty() && name.contains(query)).then_some(i)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected, "name query {query:?}");
+        }
+        for owner in [
+            "a/b/owner",
+            "a_b/owner",
+            "a/b",
+            "a/owner",
+            "flat",
+            "/owner",
+            "missing/owner",
+        ] {
+            let actual = index
+                .module_candidates(owner)
+                .into_iter()
+                .filter(|&i| {
+                    fixtures[i]
+                        .1
+                        .is_some_and(|module| same_module(owner, module))
+                })
+                .collect::<Vec<_>>();
+            // Inline legacy predicate: deliberately independent of the indexed
+            // candidate generator and of `same_module`.
+            let expected = fixtures
+                .iter()
+                .enumerate()
+                .filter_map(|(i, (_, module))| {
+                    let parent = owner
+                        .rsplit_once('/')
+                        .map(|(parent, _)| parent)
+                        .unwrap_or("");
+                    let related = !parent.is_empty()
+                        && module.is_some_and(|module| {
+                            module == parent
+                                || module.starts_with(&format!("{parent}/"))
+                                || module.starts_with(&format!("{}/", parent.replace('/', "_")))
+                        });
+                    related.then_some(i)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected, "module query {owner:?}");
+        }
+    }
+
+    #[test]
+    fn new_queries_inspect_only_indexed_candidates() {
+        let mut index = NameModuleCandidateIndex::default();
+        // Every noise name shares the query's `tar` trigram, so only the
+        // rarest-trigram choice keeps the candidate list at one entry.
+        for i in 0..4096 {
+            index.insert(i, &format!("noise_tar_{i}"), Some("unrelated/tests"));
+        }
+        index.insert(4096, "prefix_target_suffix", Some("target/nested"));
+        assert_eq!(index.name_candidates("target", 4097), [4096]);
+        assert_eq!(index.module_candidates("target/owner"), [4096]);
+        assert!(index.name_candidates("absent", 4097).is_empty());
+        assert!(index.name_candidates("target_absent", 4097).is_empty());
     }
 }
 
