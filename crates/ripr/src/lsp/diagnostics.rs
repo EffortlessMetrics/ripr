@@ -2339,8 +2339,9 @@ fn absolute_finding_path(root: &Path, finding: &Finding) -> PathBuf {
 /// Split diff-analysis findings into the production scope the LSP publishes
 /// and the out-of-scope tail it must not pin as line-local diagnostics.
 ///
-/// The scope predicate is the producer-owned source-role model (#3285) —
-/// the same authority the CLI seeding surface and the seam inventory use —
+/// The scope predicate is the producer-owned `seeds_diff_probes` rule
+/// (#3285) — the exact authority the CLI diff seeding uses, so a changed
+/// `xtask/` or `build.rs` finding the CLI reports is not dropped here —
 /// not a parallel LSP-only test-path matcher. It is
 /// applied only to Rust anchors (`.rs`); other languages keep their own
 /// adapter-owned test-file handling. Paths are relativized against the
@@ -2396,7 +2397,7 @@ fn finding_anchor_is_out_of_scope_rust_path(
     } else {
         file.as_path()
     };
-    !crate::analysis::classify_with(relative, context).seeds_production_findings()
+    !crate::analysis::seeds_diff_probes(relative, context)
 }
 
 #[cfg(test)]

@@ -10710,6 +10710,45 @@ fn workspace_diagnostics_production_only_diff_keeps_full_projection() -> Result<
 }
 
 #[test]
+fn workspace_diagnostics_keep_changed_automation_and_build_script_findings() -> Result<(), String> {
+    // The CLI seeds probes for changed `xtask/` and loose `build.rs`
+    // files; the editor partition shares that rule, so it must pin those
+    // findings instead of counting them out of scope.
+    let root = unique_lsp_test_root("lsp-test-file-scope-automation")?;
+    init_lsp_test_scope_repo(root.path())?;
+    std::fs::create_dir_all(root.path().join("xtask/src"))
+        .map_err(|err| format!("create xtask dir failed: {err}"))?;
+    std::fs::write(
+        root.path().join("xtask/src/main.rs"),
+        "fn wedged(stuck: usize, limit: usize) -> bool {\n    stuck > limit\n}\nfn main() {\n    let _ = wedged(1, 0);\n}\n",
+    )
+    .map_err(|err| format!("write changed xtask/src/main.rs failed: {err}"))?;
+    std::fs::write(
+        root.path().join("build.rs"),
+        "fn wants_rerun(stamp: u64, limit: u64) -> bool {\n    stamp > limit\n}\nfn main() {\n    let _ = wants_rerun(1, 0);\n}\n",
+    )
+    .map_err(|err| format!("write changed build.rs failed: {err}"))?;
+    commit_lsp_test_scope_change(root.path(), "change automation and build script")?;
+
+    let diagnostics =
+        workspace_diagnostics_with_config(root.path(), &lsp_test_scope_config(), true)?;
+
+    for relative in ["xtask/src/main.rs", "build.rs"] {
+        if lsp_test_scope_diagnostic_count(&diagnostics, root.path(), relative)? == 0 {
+            return Err(format!(
+                "changed {relative} received no LSP diagnostics; out_of_scope={}",
+                diagnostics.snapshot.out_of_scope_test_file_findings
+            ));
+        }
+    }
+    assert_eq!(
+        diagnostics.snapshot.out_of_scope_test_file_findings, 0,
+        "the partition must not drop findings the seeding rule produced"
+    );
+    Ok(())
+}
+
+#[test]
 fn file_uri_to_path_decodes_spaces_and_windows_drive_prefix() -> Result<(), String> {
     let uri = test_uri(&format!("file:///{}{}", "C%3A", "/path/to/ripr%20repo"))?;
 

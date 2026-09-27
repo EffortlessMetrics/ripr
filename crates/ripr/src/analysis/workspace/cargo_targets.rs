@@ -52,6 +52,8 @@ use super::source_role::SourceRoleContext;
 pub(crate) struct DeclaredCargoTargets {
     pub(crate) tests: BTreeSet<PathBuf>,
     pub(crate) benches: BTreeSet<PathBuf>,
+    /// The build script Cargo compiles for this package, if any.
+    pub(crate) build_script: Option<PathBuf>,
 }
 
 /// Read `path = ...` entries from the `[[test]]` and `[[bench]]` arrays
@@ -67,7 +69,29 @@ pub(crate) fn declared_targets_from_manifest(
     };
     collect_explicit_paths(value.get("test"), manifest_dir, &mut targets.tests);
     collect_explicit_paths(value.get("bench"), manifest_dir, &mut targets.benches);
+    targets.build_script = build_script_from_manifest(&value, manifest_dir);
     targets
+}
+
+/// Cargo's build-script resolution for one package manifest: no
+/// `[package]` (a virtual workspace) builds nothing; `build = false`
+/// disables the script; `build = "path"` names it; otherwise (`build`
+/// absent or `true`) Cargo builds `build.rs` when that file exists.
+fn build_script_from_manifest(value: &toml::Value, manifest_dir: &Path) -> Option<PathBuf> {
+    let package = value.get("package")?;
+    let path = match package.get("build") {
+        Some(toml::Value::Boolean(false)) => return None,
+        Some(toml::Value::String(path)) => manifest_dir.join(path.trim()),
+        Some(toml::Value::Boolean(true)) | None => {
+            let default = manifest_dir.join("build.rs");
+            if !default.is_file() {
+                return None;
+            }
+            default
+        }
+        Some(_) => return None,
+    };
+    Some(normalize(&path))
 }
 
 fn collect_explicit_paths(
@@ -642,7 +666,14 @@ where
     let mut context = SourceRoleContext::empty();
     for file in files {
         let anchored = workspace_root.join(file);
-        let Some(root) = package_root_of(&anchored) else {
+        // A build script sits beside its manifest, outside every source
+        // layout, so its own directory is the package-root candidate.
+        let Some(root) = package_root_of(&anchored).or_else(|| {
+            anchored
+                .parent()
+                .filter(|parent| parent.join("Cargo.toml").is_file())
+                .map(Path::to_path_buf)
+        }) else {
             continue;
         };
         if !manifests.contains_key(&root) {
@@ -658,6 +689,10 @@ where
             context
                 .declared_bench_targets
                 .extend(strip_root(workspace_root, &targets.benches));
+            context.build_scripts.extend(strip_root(
+                workspace_root,
+                &targets.build_script.iter().cloned().collect(),
+            ));
         }
     }
     context
@@ -887,6 +922,61 @@ fn unique_workspace(tag: &str) -> PathBuf {
 #[cfg(test)]
 mod context {
     use super::*;
+
+    #[test]
+    fn context_for_files_records_only_build_scripts_cargo_compiles() -> Result<(), String> {
+        // Cargo builds `build.rs` by default, `package.build = "path"` by
+        // name, nothing under `build = false`, and nothing for a virtual
+        // workspace or a directory with no manifest.
+        let dir = unique_workspace("build-scripts-ctx");
+        let files = [
+            (
+                "default/Cargo.toml",
+                "[package]\nname='d'\nversion='0.1.0'\n",
+            ),
+            ("default/build.rs", "fn main() {}\n"),
+            (
+                "custom/Cargo.toml",
+                "[package]\nname='c'\nversion='0.1.0'\nbuild='tools/gen.rs'\n",
+            ),
+            ("custom/src/lib.rs", "pub fn f() {}\n"),
+            ("custom/tools/gen.rs", "fn main() {}\n"),
+            (
+                "disabled/Cargo.toml",
+                "[package]\nname='x'\nversion='0.1.0'\nbuild=false\n",
+            ),
+            ("disabled/build.rs", "compile_error!(\"never built\");\n"),
+            ("virtual/Cargo.toml", "[workspace]\nmembers=[]\n"),
+            ("virtual/build.rs", "fn main() {}\n"),
+            ("loose/build.rs", "fn main() {}\n"),
+        ];
+        for (path, text) in files {
+            let target = dir.join(path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(&target, text).map_err(|e| e.to_string())?;
+        }
+        let rust_files = [
+            "default/build.rs",
+            "custom/src/lib.rs",
+            "custom/tools/gen.rs",
+            "disabled/build.rs",
+            "virtual/build.rs",
+            "loose/build.rs",
+        ]
+        .map(PathBuf::from);
+        let context = context_for_files(&dir, rust_files.iter().map(PathBuf::as_path));
+        assert_eq!(
+            context.build_scripts,
+            BTreeSet::from([
+                PathBuf::from("custom/tools/gen.rs"),
+                PathBuf::from("default/build.rs"),
+            ])
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
 
     #[test]
     fn context_for_files_collects_declared_targets_from_disk() -> Result<(), String> {
